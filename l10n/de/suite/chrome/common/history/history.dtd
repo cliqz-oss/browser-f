@@ -1,0 +1,57 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- history.xul, history-panel.xul, placesOverlay.xul -->
+
+<!ENTITY historyWindowTitle.label       "Chronik">
+<!ENTITY menuBar.tooltip                "Menüleiste">
+<!ENTITY searchBar.tooltip              "Suchleiste">
+
+<!ENTITY search.placeholder             "Chronik durchsuchen">
+<!ENTITY search.key                     "f">
+<!ENTITY view.label                     "Ansicht">
+
+<!ENTITY view.columns.label             "Spalten anzeigen">
+<!ENTITY view.columns.accesskey         "p">
+<!ENTITY view.sortBy.label              "Sortieren nach">
+<!ENTITY view.sortBy.accesskey          "S">
+<!ENTITY view.groupBy.label             "Gruppieren nach">
+<!ENTITY view.groupBy.accesskey         "G">
+
+<!ENTITY view.unsorted.label            "Unsortiert">
+<!ENTITY view.unsorted.accesskey        "U">
+<!ENTITY view.sortAscending.label       "&quot;A > Z&quot;-Sortierreihenfolge">
+<!ENTITY view.sortAscending.accesskey   "A">
+<!ENTITY view.sortDescending.label      "&quot;Z > A&quot;-Sortierreihenfolge">
+<!ENTITY view.sortDescending.accesskey  "Z">
+
+<!ENTITY view.groupNone.label           "Nichts">
+<!ENTITY view.groupNone.accesskey       "N">
+<!ENTITY view.groupDay.label            "Tag">
+<!ENTITY view.groupDay.accesskey        "T">
+<!ENTITY view.groupSite.label           "Website">
+<!ENTITY view.groupSite.accesskey       "W">
+<!ENTITY view.groupDayAndSite.label     "Tag und Website">
+<!ENTITY view.groupDayAndSite.accesskey "u">
+
+<!ENTITY cmd.open.label                 "Öffnen">
+<!ENTITY cmd.open.accesskey             "f">
+<!ENTITY cmd.open_window.label          "Link in neuem Fenster öffnen">
+<!ENTITY cmd.open_window.accesskey      "L">
+<!ENTITY cmd.open_tab.label             "Link in neuem Tab öffnen">
+<!ENTITY cmd.open_tab.accesskey         "T">
+
+<!ENTITY bookmarkLinkCmd.label          "Lesezeichen für diesen Link hinzufügen…">
+<!ENTITY bookmarkLinkCmd.accesskey      "D">
+<!ENTITY bookmarkLinksCmd.label         "Lesezeichen für diese Links hinzufügen…">
+<!ENTITY bookmarkLinksCmd.accesskey     "D">
+
+<!ENTITY col.title.label                "Titel">
+<!ENTITY col.title.accesskey            "T">
+<!ENTITY col.url.label                  "Adresse">
+<!ENTITY col.url.accesskey              "A">
+<!ENTITY col.lastvisit.label            "Zuletzt besucht">
+<!ENTITY col.lastvisit.accesskey        "Z">
+<!ENTITY col.visitcount.label           "Anzahl Besuche">
+<!ENTITY col.visitcount.accesskey       "B">

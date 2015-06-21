@@ -1,0 +1,32 @@
+<!ENTITY dialog.title                 "Sende-Optionen">
+<!ENTITY sendMail.title               "Textformat">
+<!ENTITY sendMaildesc.label           "Beim Senden von Nachrichten im HTML-Format an Empfänger, die laut Liste HTML nicht empfangen können oder wollen:">
+<!ENTITY askMe.label                  "Fragen, wie gesendet werden soll">
+<!ENTITY askMe.accesskey              "F">
+<!ENTITY convertPlain.label           "Nachrichten in reinen Text konvertieren">
+<!ENTITY convertPlain.accesskey       "N">
+<!ENTITY sendHTML.label               "Nachrichten trotzdem als HTML senden">
+<!ENTITY sendHTML.accesskey           "a">
+<!ENTITY sendBoth.label               "Nachrichten als Reintext und HTML senden">
+<!ENTITY sendBoth.accesskey           "c">
+<!ENTITY override.label               "Hinweis: 
+Nutzen Sie das Adressbuch, um das bevorzugte Format für einzelne Empfänger anzugeben.">
+
+<!ENTITY domaindesc.label             "Wenn Sie eine Nachricht an eine Adresse mit einem der folgenden Domainnamen senden, sendet &brandShortName; die Nachricht automatisch im richtigen Format.">
+<!ENTITY HTMLTab.label                "HTML-Domains">
+<!ENTITY HTMLTab.accesskey            "M">
+<!ENTITY PlainTextTab.label           "Reintext-Domains">
+<!ENTITY PlainTextTab.accesskey       "R">
+<!ENTITY AddHtmlDomain.label          "Hinzufügen…">
+<!ENTITY AddHtmlDomain.accesskey      "H">
+<!ENTITY AddPlainText.label           "Hinzufügen…">
+<!ENTITY AddPlainText.accesskey       "H">
+<!ENTITY DeleteHtmlDomain.label       "Löschen">
+<!ENTITY DeleteHtmlDomain.accesskey   "L">
+<!ENTITY DeletePlainText.label        "Löschen">
+<!ENTITY DeletePlainText.accesskey    "L">
+
+<!ENTITY add.htmltitle                "HTML-Domain hinzufügen">
+<!ENTITY add.htmldomain               "HTML-Domainname:">
+<!ENTITY add.plaintexttitle           "Reintext-Domain hinzufügen">
+<!ENTITY add.plaintextdomain          "Reintext-Domainname:">

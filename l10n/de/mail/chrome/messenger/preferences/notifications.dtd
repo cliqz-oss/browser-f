@@ -1,0 +1,24 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY notificationsDialog2.title       "Benachrichtigungen">
+<!ENTITY window.width                     "35em">
+
+<!ENTITY alertCustomization.intro         "In den Benachrichtigungen Folgendes anzeigen:">
+<!ENTITY previewText.label                "Textausschnitt">
+<!ENTITY previewText.accesskey            "T">
+<!ENTITY subject.label                    "Betreff">
+<!ENTITY subject.accesskey                "B">
+<!ENTITY sender.label                     "Absender">
+<!ENTITY sender.accesskey                 "A">
+
+<!-- LOCALIZATION NOTE: totalOpenTimeBefore.label is displayed first, then
+there's a field where the user can enter a number, and totalOpenTimeEnd.label
+is displayed at the end of the line. The translations of the
+totalOpenTimeBefore.label and totalOpenTimeEnd.label parts don't have to mean
+the exact same thing as in English; please try instead to translate the whole
+sentence. -->
+<!ENTITY  totalOpenTimeBefore.label       "Benachrichtigung über neue Nachrichten für">
+<!ENTITY  totalOpenTimeBefore.accesskey   "N">
+<!ENTITY  totalOpenTimeEnd.label          "Sekunden anzeigen">

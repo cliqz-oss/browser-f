@@ -1,0 +1,25 @@
+<!-- ***** BEGIN LICENSE BLOCK *****
+   - This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- WARNING! This file contains UTF-8 encoded characters!
+   - If this ==> … <== doesn't look like an ellipsis (three dots in a row),
+   - your editor isn't using UTF-8 encoding and may munge up the document!
+  -->
+
+<!ENTITY pref.categories.add.title "Kategorie hinzufügen">
+<!ENTITY pref.categories.addButton.label "Hinzufügen…">
+<!ENTITY pref.categories.addButton.accesskey "H">
+<!ENTITY pref.categories.edit.title "Kategorie bearbeiten">
+<!ENTITY pref.categories.editButton.label "Bearbeiten…">
+<!ENTITY pref.categories.editButton.accesskey "B">
+<!ENTITY pref.categories.removeButton.label "Entfernen">
+<!ENTITY pref.categories.removeButton.accesskey "E">
+<!ENTITY pref.categories.name.label "Name">
+<!ENTITY pref.categories.color.label "Farbe">
+<!ENTITY pref.categories.usecolor.label "Farbe verwenden">
+<!ENTITY pref.categories.none.label "(keine)">
+<!ENTITY pref.categories.overwrite "Eine Kategorie mit diesem Namen existiert bereits. \n Wollen Sie diese überschreiben?">
+<!ENTITY pref.categories.overwrite.title "Warnung: Doppelter Name">
+<!ENTITY pref.categories.noBlankCategories "Sie müssen einen Kategorienamen eingeben.">

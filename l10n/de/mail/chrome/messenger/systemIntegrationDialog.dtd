@@ -1,0 +1,21 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY systemIntegration.title  "Systemintegration">
+<!ENTITY acceptIntegration.label  "Als Standard festlegen">
+<!ENTITY cancelIntegration.label  "Integration überspringen">
+<!ENTITY cancelIntegration2.label "Abbrechen">
+<!ENTITY defaultClient.intro  "&brandShortName; als Standard-Anwendung verwenden für:">
+
+<!ENTITY email.label "E-Mail">
+<!ENTITY newsgroups.label "Newsgruppen">
+<!ENTITY feeds.label "Feeds">
+
+<!ENTITY unsetDefault.tooltip "Die Festlegung &brandShortName; als Standard-Anwendung zu verwenden, kann nicht innerhalb &brandShortName;s aufgehoben werden. Um eine andere Anwendung als Standard festzulegen, muss deren 'Als Standard festlegen'-Einstellung verwendet werden.">
+
+<!ENTITY checkOnStartup.label "Bei jedem Start von &brandShortName; überprüfen">
+<!ENTITY checkOnStartup.accesskey "B">
+
+<!ENTITY searchIntegration.label "&searchIntegration.engineName; ermöglichen, Nachrichten zu durchsuchen">
+<!ENTITY searchIntegration.accesskey "S">

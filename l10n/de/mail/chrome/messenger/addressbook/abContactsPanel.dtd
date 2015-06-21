@@ -1,0 +1,24 @@
+
+<!ENTITY addressbookPicker.label            "Adressbuch:">
+<!ENTITY addressbookPicker.accesskey        "d">
+<!ENTITY searchInput.label                  "Suche nach:">
+<!ENTITY searchInput.accesskey              "S">
+<!ENTITY SearchNameOrEmail.label            "Name oder E-Mail-Adresse">
+
+<!ENTITY deleteAddrBookCard.label           "Löschen">
+<!ENTITY deleteAddrBookCard.accesskey       "L">
+<!ENTITY addrBookCardProperties.label       "Eigenschaften">
+<!ENTITY addrBookCardProperties.accesskey   "E">
+<!ENTITY addtoToFieldMenu.label             "Zu &quot;An&quot; hinzufügen">
+<!ENTITY addtoToFieldMenu.accesskey         "A">
+<!ENTITY addtoCcFieldMenu.label             "Zu &quot;Kopie (CC)&quot; hinzufügen">
+<!ENTITY addtoCcFieldMenu.accesskey         "C">
+<!ENTITY addtoBccFieldMenu.label            "Zu &quot;Blindkopie (BCC)&quot; hinzufügen">
+<!ENTITY addtoBccFieldMenu.accesskey        "B">
+
+<!ENTITY toButton.label                     ">> &quot;An:&quot;">
+<!ENTITY toButton.accesskey                 "A">
+<!ENTITY ccButton.label                     ">> &quot;Kopie (CC):&quot;">
+<!ENTITY ccButton.accesskey                 "C">
+<!ENTITY bccButton.label                    ">> &quot;Blindkopie (BCC):&quot;">
+<!ENTITY bccButton.accesskey                "B">

@@ -1,0 +1,18 @@
+<!ENTITY  splash_firstrun "&brandShortName; wird eingerichtet\u2026">
+<!ENTITY  no_space_to_start_error "Es ist nicht genügend Platz verfügbar, um &brandShortName; zu starten.">
+<!ENTITY  error_loading_file "Beim Versuch, Dateien zu laden, die &brandShortName; benötigt, ist ein Fehler aufgetreten">
+<!ENTITY  crash_reporter_title "&brandShortName;-Absturz-Melder">
+<!ENTITY  crash_message "&brandShortName; ist abgestürzt. Ihre Tabs sollten auf der &brandShortName;-Startseite angezeigt werden, wenn Sie neu starten.">
+<!ENTITY  crash_help_message "Bitte helfen Sie uns, dieses Problem zu beheben!">
+<!ENTITY  crash_send_report_message "Absturzbericht an Mozilla senden">
+<!ENTITY  crash_include_url "Seitenadresse einfügen">
+<!ENTITY  crash_close_label "Schließen">
+<!ENTITY  crash_restart_label "&brandShortName; neu starten">
+<!ENTITY  sending_crash_report "Absturzbericht wird versandt\u2026">
+<!ENTITY  exit_label "Beenden">
+<!ENTITY  continue_label "Fortsetzen">
+
+<!ENTITY  launcher_shortcuts_title "&brandShortName; Web-Apps">
+<!ENTITY  launcher_shortcuts_empty "Es wurden keine Web-Apps gefunden">
+
+<!ENTITY choose_file "Datei wählen">

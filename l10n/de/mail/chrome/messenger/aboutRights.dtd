@@ -1,0 +1,66 @@
+<!-- rights.locale-direction instead of the usual local.dir entity, so RTL can skip translating page. -->
+<!ENTITY rights.locale-direction "ltr">
+<!ENTITY rights.title            "Über Ihre Rechte">
+<!ENTITY rights.intro-header     "Über Ihre Rechte">
+<!ENTITY rights.intro "&brandFullName; ist freie und quelloffene Software, entwickelt von einer Gemeinschaft tausender Gleichgesinnter, verteilt über die gesamte Welt. Es gibt da einige Dinge, die Sie wissen sollten:">
+
+<!-- Note on pointa / pointb / pointc form:
+     These points each have an embedded link in the HTML, so each point is
+     split into chunks for text before the link, the link text, and the text
+     after the link. If a localized grammar doesn't need the before or after
+     chunk, it can be left blank.
+
+     Also note the leading/trailing whitespace in strings here, which is
+     deliberate for formatting around the embedded links. -->
+<!ENTITY rights.intro-point1a "&brandShortName; wird Ihnen unter den Bedingungen der ">
+<!ENTITY rights.intro-point1b "Mozilla Public License">
+<!ENTITY rights.intro-point1c " zur Verfügung gestellt. Das bedeutet, Sie dürfen &brandShortName; verwenden, kopieren und an andere verteilen. Sie sind auch gerne eingeladen, den Quellcode von &brandShortName; zu verändern und an Ihre eigenen Bedürfnisse anzupassen. Die Mozilla Public License gibt Ihnen auch das Recht, Ihre veränderte Version an andere zu verteilen.">
+
+<!ENTITY rights.intro-point2a "Mozilla gibt Ihnen kein Recht, die Marken &quot;Mozilla&quot; oder &quot;Thunderbird&quot; oder die Logos zu verwenden. Weitere Informationen zur Nutzung der Marken finden Sie ">
+<!ENTITY rights.intro-point2b "hier">
+<!ENTITY rights.intro-point2c ".">
+
+<!-- point 3 text for official branded builds -->
+<!ENTITY rights.intro-point3a "Datenschutzerklärungen für Produkte von &vendorShortName;s finden Sie ">
+<!ENTITY rights.intro-point3b "hier">
+<!ENTITY rights.intro-point3c ".">
+
+<!-- point 3 text for unbranded builds -->
+<!ENTITY rights.intro-point3-unbranded "Jegliche Datenschutzerklärungen, die für dieses Produkt gelten, sollten hier gelistet werden:">
+
+<!-- point 4 text for official branded builds -->
+<!ENTITY rights.intro-point4a "&brandShortName; bietet auch optionale Dienste wie den Add-on-Update-Dienst an; allerdings können wir keine Garantie dafür übernehmen, dass sie 100&#37; genau und fehlerfrei sind. Weitere Details, inklusive Informationen darüber, wie Sie diese Dienste deaktivieren können, finden Sie in den ">
+<!ENTITY rights.intro-point4b "Service-Bedingungen">
+<!ENTITY rights.intro-point4c ".">
+
+<!-- point 4 text for unbranded builds -->
+<!ENTITY rights.intro-point4a-unbranded "Falls dieses Produkt Web-Dienste enthält, sollten gültige Service-Bedingungen für den Dienst oder die Dienste zum Bereich ">
+<!ENTITY rights.intro-point4b-unbranded "Web-Dienste">
+<!ENTITY rights.intro-point4c-unbranded " verlinkt werden.">
+
+<!ENTITY rights.webservices-header "&brandFullName; Web-Dienste">
+
+<!-- Note that this paragraph references a couple of entities from
+     preferences/security.dtd, so that we can refer to text the user sees in
+     the UI, without this page being forgotten every time those strings are
+     updated.  -->
+<!-- intro paragraph for branded builds -->
+<!ENTITY rights.webservices-a "&brandFullName; bietet optionale Dienste (&quot;Services&quot;) wie den Add-on-Update-Dienst, die für den Gebrauch mit der Binaryversion von &brandShortName; unter den unten angegebenen Bedingungen zur Verfügung gestellt werden. Falls Sie die Dienste nicht verwenden möchten oder die Bedingungen für Sie nicht akzeptabel sind, können Sie den Add-on-Update-Dienst abschalten, indem Sie das Einstellungen-Fenster öffnen, dort den Bereich ">
+<!ENTITY rights.webservices-b "&quot;Erweitert&quot;">
+<!ENTITY rights.webservices-c " und darin den Tab ">
+<!ENTITY rights.webservices-d "&quot;Update&quot;">
+<!ENTITY rights.webservices-e " auswählen und die Optionen unter &quot;Automatisch auf Updates überprüfen für:&quot; deaktivieren.">
+
+<!-- intro paragraph for unbranded builds -->
+<!ENTITY rights.webservices-unbranded "Ein Überblick über die verwendeten Website-Dienste und eine Anleitung, wie sie deaktiviert werden können, wenn das vorgesehen ist, sollte hier eingefügt werden.">
+
+<!-- point 1 text for unbranded builds -->
+<!ENTITY rights.webservices-term1-unbranded "Jegliche Bedingungen für die Dienste, die dieses Produkt verwendet, sollten hier gelistet werden.">
+
+<!-- points 1-7 text for branded builds -->
+<!ENTITY rights.webservices-term1 "&vendorShortName; kann die Dienste nach eigenem Ermessen abschalten oder verändern.">
+<!ENTITY rights.webservices-term2 "Sie sind eingeladen, diese Dienste mit der dazugehörigen &brandShortName;-Version zu verwenden, und Sie haben alle Rechte, die Sie dafür benötigen. &vendorShortName; und ihre Lizenznehmer behalten sich alle anderen Rechte an den Diensten vor. Diese Bedingungen beabsichtigen nicht, jegliche Rechte einzuschränken, die von Open-Source-Lizenzen gewährt werden, die auf &brandShortName; und entsprechende Quellcode-Versionen von &brandShortName; anwendbar sind.">
+<!ENTITY rights.webservices-term3 "Die Dienste werden &quot;wie es ist&quot; zur Verfügung gestellt. &vendorShortName;, ihre Mitwirkenden, Lizenznehmer und Distributoren gewähren keinerlei Gewährleistung, weder ausdrücklich noch implizit, einschließlich – aber nicht begrenzt auf – Marktreife oder Verwendbarkeit für einen bestimmten Zweck. Das volle Risiko bezüglich der Auswahl des für Sie richtigen Dienstes und die Qualität und Leistungsfähigkeit des Dienstes liegt bei Ihnen. Manche Gerichtsbarkeiten erlauben nicht den Ausschluss oder die Eingrenzung von implizierten Risiken, so dass dieser Haftungsausschluss möglicherweise nicht für Sie gilt.">
+<!ENTITY rights.webservices-term4 "In keinem Fall, außer wenn durch geltendes Recht gefordert, sind &vendorShortName;, ihre Mitwirkenden, Lizenznehmer oder Distributoren für irgendwelchen indirekten oder speziellen Schäden, Schäden durch Seiteneffekte (Nebenwirkungen) oder Folgeschäden, die aus der Benutzung von &brandShortName; oder den Diensten folgen, haftbar. Die gesamte Haftbarkeit unter diesen Bedingungen beschränkt sich auf maximal $500 (fünfhundert Dollar). Manche Gerichtsbarkeiten erlauben nicht den Ausschluss oder die Eingrenzung von bestimmten Risiken, so dass diese Ausschlüsse oder Eingrenzungen möglicherweise nicht für Sie gelten.">
+<!ENTITY rights.webservices-term5 "&vendorShortName; kann diese Bedingungen bei Bedarf von Zeit zu Zeit aktualisieren. Diese Bedingungen können nicht ohne eine schriftliche Zusicherung von &vendorShortName; verändert oder aufgehoben werden.">
+<!ENTITY rights.webservices-term6 "Diese Bedingungen werden durch die Gesetze des Staates Kalifornien, USA, geschützt, ausschließlich den damit in Konflikt stehenden Rechtsvorschriften. Sollten einzelne Bestimmungen dieser Bedingungen unwirksam oder undurchführbar sein, bleibt davon die Wirksamkeit der anderen Bedingungen unberührt. Falls ein Konflikt bestehen sollte, zwischen der übersetzten Version dieser Bedingungen und der englischsprachigen Version, gelten die Bedingungen der englischsprachigen Version.">

@@ -1,0 +1,57 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- LOCALIZATION NOTE: The text in some of these strings is supposed to be
+     fun and playful. Please feel free to adjust the tone as works best in
+     your language and/or locale. More detailed notes below. -->
+
+<!ENTITY pageTitle                 "&brandShortName;-Feedback">
+
+<!ENTITY intro.header              "Haben Sie eine Minute?">
+<!ENTITY intro.message             "Sagen Sie uns, was Sie bislang von &brandShortName; für Android halten.">
+<!ENTITY intro.happyLink           "Ich liebe es">
+<!ENTITY intro.sadLink             "Ich hatte einige Probleme damit">
+<!ENTITY intro.maybeLater          "Vielleicht später">
+
+<!-- LOCALIZATION NOTE (support.pre): Include a trailing space as needed. -->
+<!-- LOCALIZATION NOTE (support.link): Avoid leading/trailing spaces, this text is a link. -->
+<!-- LOCALIZATION NOTE (support.post): Include a starting space as needed. -->
+<!ENTITY support.pre3              "Besuchen Sie unsere ">
+<!ENTITY support.link2             "Hilfeseite">
+<!ENTITY support.post3             ", um Lösungen für häufig auftretende Probleme zu finden.">
+
+<!ENTITY happy.header              "Schön, das zu hören!">
+
+<!-- LOCALIZATION NOTE (happy.message): "share the love" — This feels purposely exaggerated in English,
+     but essentially it means that we want you to let others know how much you love Firefox. -->
+<!ENTITY happy.message             "Möchten Sie uns an Ihrer Zufriedenheit teilhaben lassen, indem Sie uns eine Bewertung mit fünf Sternen bei Google Play geben?">
+
+<!-- LOCALIZATION NOTE (happy.finePrint): "feels great" — Another exaggeration where we're trying to
+     get people to rate us by playfully telling them there's a benefit in it for them as well. -->
+<!ENTITY happy.finePrint           "Es dauert weniger als eine Minute und tut nicht weh ;).">
+
+<!ENTITY happy.ratingLink          "Ja, Google Play öffnen">
+<!ENTITY happy.maybeLater2         "Vielleicht später">
+<!ENTITY happy.noThanks            "Nein, danke">
+
+<!ENTITY sad.header                "Oh nein!">
+<!ENTITY sad.message               "Es tut uns leid, dass Sie bei der Benutzung von &brandShortName; auf Probleme gestoßen sind. Bitte sagen Sie uns, was passiert ist, sodass wir dies beheben können.">
+<!ENTITY sad.placeholder           "Geben Sie Ihr Feedback hier ein">
+<!ENTITY sad.lastSite2             "Zuletzt besuchte Seite mitteilen">
+
+<!-- LOCALIZATION NOTE (sad.urlPlaceholder): Placeholder text that appears in "Last visited site" input box when there is no text. -->
+<!ENTITY sad.urlPlaceholder        "http://">
+<!ENTITY sad.thanksHeader2         "Vielen Dank.">
+
+<!-- LOCALIZATION NOTE (sad.thanksMessageTop): "real people" — We're stating that an actual human will look at the feedback
+     and that it doesn't just go to some automated system that looks for keywords, or something like that. -->
+<!ENTITY sad.thanksMessageTop      "Wir strengen uns stets an, um &brandShortName; zu verbessern. Sie können davon ausgehen, dass richtige Menschen sich Ihr Feedback anschauen und ihr Bestes geben, um das Problem zu beheben.">
+
+<!-- LOCALIZATION NOTE (sad.thanksMessageBottom): We're suggesting that there will be consequences for the people working
+     on Firefox if they don't resolve the user's problem, like "or if they don't fix it, we'll fire them." If this doesn't
+     work in your language, you can change it to something like "no matter what" or just remove it entirely. -->
+<!ENTITY sad.thanksMessageBottom   "">
+
+<!ENTITY feedback.privacy2         "Zum Schutz Ihrer Privatsphäre sollten Sie keine persönlichen Informationen in Ihrem Feedback angeben.">
+<!ENTITY feedback.send             "Feedback absenden">

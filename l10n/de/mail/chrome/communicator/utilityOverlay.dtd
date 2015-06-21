@@ -1,0 +1,58 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- LOCALIZATION NOTE : FILE This file contains the global menu items -->
+
+<!ENTITY fileMenu.label					"Datei">
+<!ENTITY fileMenu.accesskey				"D">
+<!ENTITY newMenu.label						"Neu">
+<!ENTITY newMenu.accesskey					"N">
+
+<!ENTITY editMenu.label					"Bearbeiten">
+<!ENTITY editMenu.accesskey				"B">
+<!ENTITY undoCmd.label						"Rückgängig">
+<!ENTITY undoCmd.key						"Z">
+<!ENTITY undoCmd.accesskey					"R">
+<!ENTITY redoCmd.label						"Wiederherstellen">
+<!ENTITY redoCmd.key						"Y">
+<!ENTITY redoCmd.accesskey					"W">
+<!ENTITY cutCmd.label						"Ausschneiden">
+<!ENTITY cutCmd.key							"X">
+<!ENTITY cutCmd.accesskey					"A">
+<!ENTITY copyCmd.label						"Kopieren">
+<!ENTITY copyCmd.key						"C">
+<!ENTITY copyCmd.accesskey					"K">
+<!ENTITY pasteCmd.label						"Einfügen">
+<!ENTITY pasteCmd.key						"V">
+<!ENTITY pasteCmd.accesskey					"i">
+<!ENTITY deleteCmd.label					"Löschen">
+<!ENTITY deleteCmd.accesskey				"L">
+<!ENTITY selectAllCmd.label					"Alles auswählen">
+<!ENTITY selectAllCmd.key					"A">
+<!ENTITY selectAllCmd.accesskey				"u">
+<!ENTITY preferencesCmd2.label "Einstellungen">
+<!ENTITY preferencesCmd2.accesskey "E">
+<!ENTITY preferencesCmdUnix.label       "Einstellungen">
+<!ENTITY preferencesCmdUnix.accesskey     "E">
+
+<!ENTITY viewMenu.label					"Ansicht">
+<!ENTITY viewMenu.accesskey				"A">
+<!ENTITY viewToolbarsMenu.label				"Symbolleisten">
+<!ENTITY viewToolbarsMenu.accesskey			"y">
+<!ENTITY showTaskbarCmd.label					"Statusleiste">
+<!ENTITY showTaskbarCmd.accesskey				"u">
+
+<!ENTITY closeCmd.label			"Schließen">
+<!ENTITY closeCmd.key			"W">
+<!ENTITY closeCmd.accesskey		"c">
+
+<!ENTITY quitApplicationCmd.label	"Beenden">
+<!ENTITY quitApplicationCmd.key		"Q">
+<!ENTITY quitApplicationCmd.accesskey	"B">
+
+<!ENTITY quitApplicationCmdUnix.label	"Beenden">
+<!ENTITY quitApplicationCmdUnix.accesskey	"B">
+
+<!ENTITY quitApplicationCmdMac.label	"&brandShortName; beenden">
+<!ENTITY quitApplicationCmdMac.accesskey	"b">

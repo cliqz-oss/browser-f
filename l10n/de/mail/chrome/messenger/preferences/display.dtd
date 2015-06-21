@@ -1,0 +1,46 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY itemFormatting.label             "Formatierung">
+<!ENTITY itemTags.label                   "Schlagwörter">
+
+<!ENTITY style.label                      "Stil:">
+<!ENTITY style.accesskey                  "S">
+<!ENTITY regularStyle.label               "Normal">
+<!ENTITY bold.label                       "Fett">
+<!ENTITY italic.label                     "Kursiv">
+<!ENTITY boldItalic.label                 "Fett kursiv">
+<!ENTITY size.label                       "Größe:">
+<!ENTITY size.accesskey                   "r">
+<!ENTITY regularSize.label                "Normal">
+<!ENTITY bigger.label                     "Größer">
+<!ENTITY smaller.label                    "Kleiner">
+<!ENTITY quotedTextColor.label            "Farbe:">
+<!ENTITY quotedTextColor.accesskey        "a">
+<!ENTITY displayWidth.label               "Reintext-Nachrichten">
+<!ENTITY displayText.label                "Beim Anzeigen von zitierten Reintext-Nachrichten:">
+
+<!-- LOCALIZATION NOTE : (emoticonsAndStructs.label) 'Emoticons' are also known as 'Smileys', e.g. :-)   -->
+<!ENTITY convertEmoticons.label        "Emoticons als Grafiken anzeigen">
+<!ENTITY convertEmoticons.accesskey    "m">
+
+<!-- labels -->
+<!ENTITY displayTagsText.label     "Schlagwörter können beim Sortieren und Erkennen von Nachrichten helfen.">
+<!ENTITY addTagButton.label        "Hinzufügen">
+<!ENTITY addTagButton.accesskey    "H">
+<!ENTITY editTagButton.label       "Bearbeiten">
+<!ENTITY editTagButton.accesskey   "B">
+<!ENTITY removeTagButton.label     "Löschen">
+<!ENTITY removeTagButton.accesskey "L">
+
+<!-- Fonts and Colors -->
+<!ENTITY fontsAndColors1.label   "Schriftarten und Farben">
+<!ENTITY defaultFont.label       "Standard-Schriftart:">
+<!ENTITY defaultFont.accesskey   "n">
+<!ENTITY defaultSize.label       "Größe:">
+<!ENTITY defaultSize.accesskey   "G">
+<!ENTITY fontOptions.accesskey   "E">
+<!ENTITY fontOptions.label       "Erweitert…">
+<!ENTITY colorButton.label       "Farben…">
+<!ENTITY colorButton.accesskey   "F">

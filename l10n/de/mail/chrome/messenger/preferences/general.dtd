@@ -1,0 +1,39 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY messengerStartPage.label         "&brandShortName;-Startseite">
+<!ENTITY enableStartPage.label            "Beim Aufrufen von &brandShortName; die Startseite anzeigen">
+<!ENTITY enableStartPage.accesskey        "m">
+<!ENTITY location.label                   "Adresse:">
+<!ENTITY location1.accesskey              "r">
+<!ENTITY useDefault.label                 "Standard wiederherstellen">
+<!ENTITY useDefault.accesskey             "w">
+
+<!ENTITY changeDockIconOptions.label      "Einstellungen für Dock-Symbol ändern">
+<!ENTITY dockOptions.label                "Dock-Symbol-Einstellungen…">
+<!ENTITY dockOptions.accesskey            "D">
+
+<!ENTITY newMessagesArrive.label          "Wenn neue Nachrichten eintreffen">
+<!ENTITY playSound.label                  "Einen Klang abspielen">
+<!ENTITY playSound1.accesskey             "K">
+<!ENTITY showAnimatedAlert.label          "Eine Benachrichtigung anzeigen">
+<!ENTITY showAnimatedAlert.accesskey      "B">
+<!ENTITY customizeMailAlert.label         "Anpassen…">
+<!ENTITY customizeMailAlert.accesskey     "A">
+
+<!ENTITY showTrayIcon.label               "Im Infobereich anzeigen">
+<!ENTITY showTrayIcon.accesskey           "n">
+
+<!ENTITY play.label                       "Probe hören">
+<!ENTITY play.accesskey                   "P">
+<!ENTITY systemsound.label                "Systemklang für neue Nachrichten">
+<!ENTITY systemsoundMac.label             "System-Warnton">
+<!ENTITY systemsoundMac.accesskey         "S">
+<!ENTITY systemsound.accesskey            "S">
+<!ENTITY customsound.label                "Benutzerdefinierter Klang">
+<!ENTITY customsound.accesskey            "e">
+<!ENTITY browse.label                     "Durchsuchen…">
+<!ENTITY browse.accesskey                 "u">
+
+<!ENTITY defaultSearchEngine.label        "Standardsuchmaschine">

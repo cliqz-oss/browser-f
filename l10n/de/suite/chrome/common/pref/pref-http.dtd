@@ -1,0 +1,23 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY pref.http.title                     "HTTP-Verbindungen">
+
+<!-- Network-->
+<!ENTITY prefDirect.label                    "Optionen für direkte Verbindungen">
+<!ENTITY prefProxy.label                     "Optionen für Proxy-Verbindungen">
+<!ENTITY prefEnableHTTP10.label              "HTTP 1.0 verwenden">
+<!ENTITY prefEnableHTTP10.accesskey          "v">
+<!ENTITY prefEnableHTTP10Proxy.accesskey     "w">
+<!ENTITY prefEnableHTTP11.label              "HTTP 1.1 verwenden">
+<!ENTITY prefEnableHTTP11.accesskey          "H">
+<!ENTITY prefEnableHTTP11Proxy.accesskey     "T">
+<!ENTITY prefEnablePipelining.label          "Pipelining verwenden">
+<!ENTITY prefEnablePipelining.accesskey      "P">
+<!ENTITY prefEnablePipeliningProxy.accesskey "i">
+<!ENTITY prefPara                            "HTTP-Verbindungen können mit diesen Optionen feineingestelt werden, um Geschwindigkeit oder Kompatibilität zu verbessern. Manche Proxy-Server zum Beispiel benötigen bekannterweise HTTP/1.0 (siehe Release Notes für Details).">
+<!ENTITY prefPipeWarning                     "ACHTUNG: Pipelining ist eine experimentelle Funktion, um die Seitenladegeschwindigkeit zu verbessern, die aber leider von manchen Webservern und Proxies nicht gut unterstützt wird.">
+<!ENTITY prefUseragent.label                 "User-Agent-String">
+<!ENTITY prefFirefoxCompat.label             "Firefox-Kompatibilität ausweisen">
+<!ENTITY prefFirefoxCompat.accesskey         "F">

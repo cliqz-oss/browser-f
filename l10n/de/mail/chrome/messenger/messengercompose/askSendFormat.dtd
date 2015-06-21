@@ -1,0 +1,17 @@
+<!--LOCALIZATION NOTE askSendFormat.dtd UI for dialog that asks the user, which format to use for sending a message -->
+<!ENTITY windowTitle.label "HTML-Mail-Frage">
+
+<!ENTITY recipient.label "Einer oder mehrere der Empfänger sind laut Liste nicht fähig, HTML-Nachrichten zu empfangen.">
+
+<!ENTITY question.label "Wollen Sie die Nachricht in reinen Text umwandeln oder als HTML senden?">
+
+<!ENTITY plainTextAndHtml.label "Als reinen Text und HTML senden">
+<!ENTITY plainTextAndHtml.accesskey "A">
+<!ENTITY plainTextOnly.label "Nur als reinen Text senden">
+<!ENTITY plainTextOnly.accesskey "T">
+<!ENTITY htmlOnly.label "Nur als HTML senden">
+<!ENTITY htmlOnly.accesskey "H">
+
+<!ENTITY send.label "Senden">
+<!ENTITY send.accesskey "S">
+

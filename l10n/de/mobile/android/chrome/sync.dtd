@@ -1,0 +1,27 @@
+<!ENTITY sync.title                 "Sync">
+<!ENTITY sync.notconnected          "Nicht verbunden">
+<!ENTITY sync.connect               "Verbinden">
+<!ENTITY sync.connected             "Verbunden">
+<!ENTITY sync.details               "Details">
+<!ENTITY sync.deviceName            "Dieses Gerät">
+<!ENTITY sync.disconnect            "Trennen">
+<!ENTITY sync.syncNow               "Jetzt synchronisieren">
+
+<!ENTITY sync.setup.title           "Mit Sync verbinden">
+<!ENTITY sync.setup.pair            "Zum Aktivieren wählen Sie &#x0022;Gerät verbinden&#x0022; auf Ihrem anderen Gerät.">
+<!ENTITY sync.fallback              "Ich bin nicht in der Nähe meines Computers…">
+<!ENTITY sync.setup.manual          "Sync-Benutzerkonto-Daten eingeben">
+<!ENTITY sync.account               "Benutzerkonto-Name">
+<!ENTITY sync.password              "Passwort">
+<!ENTITY sync.recoveryKey           "Wiederherstellungs-Schlüssel">
+<!ENTITY sync.customServer          "Eigenen Server verwenden">
+<!ENTITY sync.serverURL             "Server-URL">
+<!ENTITY sync.setup.connect         "Verbinden">
+<!ENTITY sync.setup.cancel          "Abbrechen">
+<!ENTITY sync.setup.tutorial        "Anleitung">
+<!ENTITY sync.setup.waiting2        "Warten auf anderes Gerät…">
+
+<!ENTITY sync.pair.title            "Gerät verbinden">
+<!ENTITY sync.pair.description      "Um Ihr neues Gerät zu aktivieren, wählen Sie &#x0022;Verbinden&#x0022; auf dem Gerät.">
+<!ENTITY sync.setup.close           "Schließen">
+<!ENTITY sync.setup.waitingdownload "Ihre Daten werden nun im Hintergrund heruntergeladen. Sie können dieses Fenster jederzeit schließen.">

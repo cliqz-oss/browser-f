@@ -1,0 +1,19 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY aboutPrivateBrowsing.title            "Sie surfen im privaten Modus">
+<!ENTITY aboutPrivateBrowsing.title.normal     "Neues privates Fenster öffnen?">
+
+<!ENTITY aboutPrivateBrowsing.subtitle         "&brandShortName; wird keine Chronik für dieses Fenster anlegen.">
+<!ENTITY aboutPrivateBrowsing.subtitle.normal  "&brandShortName; wird keine Chronik für private Fenster anlegen.">
+
+<!ENTITY aboutPrivateBrowsing.description      "Dies schließt besuchte Seiten, Sucheinträge, Download-Chronik, Formulardaten, Cookies, und temporäre Internetdateien ein. Allerdings werden alle Lesezeichen, die Sie anlegen, und Dateien, die Sie herunterladen, beibehalten.">
+
+<!ENTITY aboutPrivateBrowsing.notPrivate       "Sie befinden sich derzeit nicht in einem privaten Fenster.">
+
+<!ENTITY aboutPrivateBrowsing.moreInfo         "Während auf diesem Computer keine Spuren Ihrer Browserchronik gespeichert werden, kann Ihr Arbeitgeber oder Ihr Internetanbieter trotzdem nachverfolgen, welche Seiten Sie besuchen.">
+<!ENTITY aboutPrivateBrowsing.learnMore        "Weitere Informationen">
+
+<!ENTITY privatebrowsingpage.openPrivateWindow.label "Neues privates Fenster öffnen">
+<!ENTITY privatebrowsingpage.openPrivateWindow.accesskey "p">
