@@ -1,0 +1,11 @@
+release-runner*.ini
+master_config.json
+buildbot-configs
+buildbotcustom
+tools
+.coverage
+.tox
+coverage.xml
+lib/python/buildtools.egg-info/
+nosetests.xml
+*.pyc

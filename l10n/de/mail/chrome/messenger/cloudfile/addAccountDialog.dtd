@@ -1,0 +1,13 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this file,
+   - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
+<!ENTITY addAccountDialog.title   "Filelink einrichten">
+<!ENTITY addAccountDialog.menuTitle "Wählen Sie einen Online-Speicherdienst">
+<!ENTITY addAccountDialog.style "width: 40em; min-height: 20em;">
+<!ENTITY addAccountDialog.accountName.label "Kontoname:">
+<!ENTITY addAccountDialog.noAccountText "Es tut uns leid, aber die derzeitige Version von &brandShortName; erlaubt nur ein Konto pro Speicherdienst.">
+<!ENTITY addAccountDialog.createAccountText2 "Große Dateianhänge können mit einem dieser Online-Speicherdienste versendet werden. Sie können entweder ein bereits bestehendes Konto einrichten oder ein neues Konto registrieren.">
+<!ENTITY addAccountDialog.authorizing "Autorisierung wird überprüft...">
+<!ENTITY addAccountDialog.error "Beim Einrichten des Kontos trat ein Fehler auf!">
+<!ENTITY addAccountDialog.acceptButton.label "Konto einrichten">
+<!ENTITY addAccountDialog.learnMore "Weitere Informationen…">

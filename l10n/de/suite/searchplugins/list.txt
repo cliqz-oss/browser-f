@@ -1,0 +1,4 @@
+duckduckgo
+google
+wikipedia-de
+yahoo

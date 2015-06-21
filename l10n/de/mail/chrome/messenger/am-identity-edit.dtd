@@ -1,0 +1,7 @@
+<!ENTITY identityDialog.style "width: 100ch;">
+<!ENTITY identityTitle.label "Identität konfigurieren">
+<!ENTITY identityListDesc.label "Konfigurieren Sie diese Identität:">
+
+<!ENTITY settingsTab.label       "Einstellungen">
+<!ENTITY copiesFoldersTab.label "Kopien &amp; Ordner">
+<!ENTITY addressingTab.label    "Verfassen &amp; Adressieren">

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+-->
+<!DOCTYPE html [
+  <!ENTITY % htmlDTD PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "DTD/xhtml1-strict.dtd">
+  %htmlDTD;
+  <!ENTITY % globalDTD SYSTEM "chrome://global/locale/global.dtd">
+  %globalDTD;
+  <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
+  %brandDTD;
+  <!ENTITY % browserDTD SYSTEM "chrome://browser/locale/browser.dtd">
+  %browserDTD;
+  <!ENTITY % aboutPrivateBrowsingDTD SYSTEM "chrome://browser/locale/aboutPrivateBrowsing.dtd">
+  %aboutPrivateBrowsingDTD;
+]>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <link rel="stylesheet" href="chrome://browser/content/aboutPrivateBrowsing.css" type="text/css" media="all"/>
+    <script type="application/javascript;version=1.7" src="chrome://browser/content/aboutPrivateBrowsing.js"></script>
+  </head>
+
+  <body dir="&locale.dir;" class="private">
+    <div id="pageContainer">
+      <h1 class="titleText showPrivate">&aboutPrivateBrowsing.title;</h1>
+      <h1 class="titleText showNormal">&aboutPrivateBrowsing.title.normal;</h1>
+
+      <p class="subtitleText showPrivate">&aboutPrivateBrowsing.subtitle;</p>
+      <p class="subtitleText showNormal">&aboutPrivateBrowsing.subtitle.normal;</p>
+
+      <p class="descriptionText">&aboutPrivateBrowsing.description;</p>
+
+      <p class="notPrivateText showNormal">&aboutPrivateBrowsing.notPrivate;</p>
+
+      <button xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
+              id="startPrivateBrowsing"
+              class="openPrivate showNormal"
+              label="&privatebrowsingpage.openPrivateWindow.label;"
+              accesskey="&privatebrowsingpage.openPrivateWindow.accesskey;"/>
+      <div class="showPrivate">
+        <p class="moreInfoText">&aboutPrivateBrowsing.moreInfo;</p>
+        <p><a id="learnMore" target="_blank">&aboutPrivateBrowsing.learnMore;</a></p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -1,0 +1,6 @@
+<!ENTITY joinChatWindow.title           "Chat betreten">
+<!ENTITY name.label                     "Raum">
+<!ENTITY optional.label                 "(optional)">
+<!ENTITY account.label                  "Konto">
+<!ENTITY autojoin.label                 "Diesen Chat-Raum automatisch betreten">
+<!ENTITY autojoin.accesskey             "A">

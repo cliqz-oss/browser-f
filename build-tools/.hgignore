@@ -1,0 +1,14 @@
+\.pyc$
+^build/
+slavealloc\.db
+\..*\.swp
+twistd\.pid
+^[^\/]*\.egg-info
+dist/
+slavealloc.log
+release-runner.ini
+.coverage
+.tox/
+coverage.xml
+lib/python/buildtools.egg-info/
+nosetests.xml

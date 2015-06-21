@@ -1,0 +1,39 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY pref.toolbars.title    "Symbolleisten">
+
+<!ENTITY composition.caption    "Diese Schaltflächen in der Erstellen-Symbolleiste anzeigen:">
+
+<!ENTITY new.label              "Neu">
+<!ENTITY open.label             "Öffnen">
+<!ENTITY save.label             "Speichern">
+<!ENTITY publish.label          "Publizieren">
+<!ENTITY preview.label          "Vorschau">
+<!ENTITY cut.label              "Ausschneiden">
+<!ENTITY copy.label             "Kopieren">
+<!ENTITY paste.label            "Einfügen">
+<!ENTITY print.label            "Drucken">
+<!ENTITY find.label             "Suchen">
+<!ENTITY image.label            "Grafik">
+<!ENTITY hline.label            "H. Linie">
+<!ENTITY table.label            "Tabelle">
+<!ENTITY link.label             "Link">
+<!ENTITY anchor.label           "Anker">
+
+<!ENTITY formatting.caption     "Diese Schaltflächen in der Formatieren-Symbolleiste anzeigen:">
+
+<!ENTITY smaller.label          "Kleiner">
+<!ENTITY larger.label           "Größer">
+<!ENTITY bold.label             "Fett">
+<!ENTITY bullets.label          "Aufzählungszeichen">
+<!ENTITY numbers.label          "Zahlen">
+<!ENTITY italic.label           "Kursiv">
+<!ENTITY outdent.label          "Hinaus rücken">
+<!ENTITY indent.label           "Einrücken">
+<!ENTITY underline.label        "Unterstrichen">
+
+<!ENTITY absolutePosition.label "Absolute Positionierung">
+<!ENTITY decreaseZIndex.label   "In den Hintergrund stellen">
+<!ENTITY increaseZIndex.label   "In den Vordergrund bringen">

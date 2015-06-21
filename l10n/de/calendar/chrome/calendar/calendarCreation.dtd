@@ -1,0 +1,22 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY wizard.title             "Neuen Kalender erstellen">
+<!ENTITY wizard.label             "Einen neuen Kalender erstellen">
+<!ENTITY wizard.description       "Ort Ihres Kalenders feststellen">
+
+<!ENTITY initialpage.description    "Ihr Kalender kann auf Ihrem Computer oder auf einem Server gespeichert werden, sodass Sie von anderen Orten darauf zugreifen bzw. ihn mit Freunden oder Arbeitskollegen gemeinsam verwenden können.">
+<!ENTITY initialpage.computer.label  "Auf meinem Computer">
+<!ENTITY initialpage.network.label  "Im Netzwerk">
+
+<!ENTITY locationpage.description         "Geben Sie die benötigten Informationen an, um auf Ihren externen Kalender zuzugreifen">
+<!ENTITY locationpage.login.description   "Optional: Geben Sie Benutzernamen und Passwort an">
+<!ENTITY locationpage.username.label      "Benutzername:">
+<!ENTITY locationpage.password.label      "Passwort:">
+
+<!ENTITY custompage.shortdescription  "Ihren Kalender anpassen">
+<!ENTITY custompage.longdescription   "Sie können Ihrem Kalender einen Namen geben und Ereignisse dieses Kalenders einfärben.">
+
+<!ENTITY finishpage.shortdescription  "Kalender erstellt">
+<!ENTITY finishpage.longdescription   "Ihr Kalender wurde erstellt.">

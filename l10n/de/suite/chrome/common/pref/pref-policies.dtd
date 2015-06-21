@@ -1,0 +1,23 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!ENTITY  pref.policies.title "Sicherheitsregeln">
+
+<!ENTITY  zoneIntro.label     "&brandShortName; erlaubt Ihnen, Regeln aufzustellen, die entscheiden, welche Zugriffsmöglichkeiten bestimmte Websites für verschiedene Funktionalitäten haben, inklusive Aspekten von Scripting und Java.">
+
+<!ENTITY  policies.label      "Regeln:">
+<!ENTITY  default.label       "Standard-Regel">
+<!ENTITY  allWebsites.label   "Alle Webseiten">
+<!ENTITY  trusted.label       "Vertrauenswürdige Websites">
+<!ENTITY  annoyances.label    "Allgemeine Störungen">
+<!ENTITY  restricted.label    "Beschränkte Websites">
+
+<!ENTITY  addSite.label       "Website hinzufügen…">
+<!ENTITY  addSite.accesskey   "h">
+<!ENTITY  settings.label      "Einstellungen für">
+<!ENTITY  settings.accesskey  "e">
+
+<!ENTITY  description.label   "Regel-Beschreibung:">
+ 

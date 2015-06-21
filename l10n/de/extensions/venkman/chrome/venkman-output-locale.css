@@ -1,0 +1,26 @@
+/* -*- tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ *
+ * This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/*
+ * Note to translators: Only localize the text after "content:", don't touch
+ * the [msg-type="FOO"] selectors.
+ */
+
+.msg-data[msg-type="HELP"]:before {
+    content: "Help:";
+}
+
+.msg-data[msg-type="USAGE"]:before {
+    content: "Usage:";
+}
+
+.msg-data[msg-type="LOG"]:before {
+    content: "LOG:";
+}
+
+.msg-data[msg-type="ETRACE"]:before {
+    content: "X";  /* X is a mnemonic for eXception */
+}

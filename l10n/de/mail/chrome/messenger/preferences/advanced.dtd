@@ -1,0 +1,136 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY itemGeneral.label       "Allgemein">
+<!ENTITY dataChoicesTab.label    "Datenübermittlung">
+<!ENTITY itemDisplay.label       "Lesen &amp; Ansicht">
+<!ENTITY itemUpdate.label        "Update">
+<!ENTITY itemNetworking.label    "Netzwerk &amp; Speicherplatz">
+<!ENTITY itemCertificates.label  "Zertifikate">
+
+<!-- General Settings -->
+<!ENTITY enableGlodaSearch.label       "Globale Suche und Nachrichtenindizierung aktivieren">
+<!ENTITY enableGlodaSearch.accesskey   "N">
+<!ENTITY allowHWAccel.label            "Hardwarebeschleunigung verwenden, wenn verfügbar">
+<!ENTITY allowHWAccel.accesskey        "H">
+<!ENTITY storeType.label               "Speichermethode für neue Konten:">
+<!ENTITY storeType.accesskey           "m">
+<!ENTITY mboxStore2.label              "Eine Datei pro Ordner (mbox)">
+<!ENTITY maildirStore.label            "Eine Datei pro Nachricht (maildir)">
+
+<!ENTITY scrolling.label               "Bildlauf">
+<!ENTITY useAutoScroll.label           "Automatischen Bildlauf aktivieren">
+<!ENTITY useAutoScroll.accesskey       "A">
+<!ENTITY useSmoothScrolling.label      "Sanften Bildlauf aktivieren">
+<!ENTITY useSmoothScrolling.accesskey  "f">
+
+<!ENTITY systemIntegration.label       "Systemintegration">
+<!ENTITY alwaysCheckDefault.label      "Beim Starten prüfen, ob &brandShortName; als Standard-Anwendung registriert ist">
+<!ENTITY alwaysCheckDefault.accesskey  "B">
+<!ENTITY searchIntegration.label       "&searchIntegration.engineName; ermöglichen, Nachrichten zu durchsuchen">
+<!ENTITY searchIntegration.accesskey   "S">
+<!ENTITY checkDefaultsNow.label        "Jetzt prüfen…">
+<!ENTITY checkDefaultsNow.accesskey    "J">
+<!ENTITY configEditDesc.label          "Erweiterte Konfiguration">
+<!ENTITY configEdit.label              "Konfiguration bearbeiten…">
+<!ENTITY configEdit.accesskey          "K">
+<!ENTITY returnReceiptsInfo.label      "Den Umgang mit Empfangsbestätigungen (MDN) regeln:">
+<!ENTITY showReturnReceipts.label      "Empfangsbestätigungen…">
+<!ENTITY showReturnReceipts.accesskey  "E">
+
+<!-- Data Choices -->
+<!ENTITY telemetrySection.label          "Telemetrie">
+<!ENTITY telemetryDesc.label             "Übermittelt Anwendungsdaten wie Performanz, Nutzung, Hardware und Benutzeranpassungen des E-Mail-Programms an &vendorShortName;, um &brandShortName; zu verbessern.">
+<!ENTITY enableTelemetry.label           "Telemetrie aktivieren">
+<!ENTITY enableTelemetry.accesskey       "T">
+<!ENTITY telemetryLearnMore.label        "Weitere Informationen">
+
+<!ENTITY crashReporterSection.label      "Absturzmelder">
+<!ENTITY crashReporterDesc.label         "&brandShortName; übermittelt Absturzberichte, um &vendorShortName; dabei zu helfen, das E-Mail-Programm stabiler und sicherer zu machen.">
+<!ENTITY enableCrashReporter.label       "Absturzmelder aktivieren">
+<!ENTITY enableCrashReporter.accesskey   "A">
+<!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
+
+<!-- Display and Reading Settings -->
+<!ENTITY reading.caption                "Lesen">
+<!ENTITY display.caption                "Ansicht">
+<!ENTITY showCondensedAddresses.label   "Bei bekannten Kontakten nur den Anzeigenamen zeigen">
+<!ENTITY showCondensedAddresses.accesskey "B">
+
+<!ENTITY autoMarkAsRead.label          "Nachrichten automatisch als gelesen markieren">
+<!ENTITY autoMarkAsRead.accesskey      "a">
+<!ENTITY markAsReadNoDelay.label       "Sofort beim Anzeigen">
+<!ENTITY markAsReadNoDelay.accesskey   "S">
+<!-- LOCALIZATION NOTE (markAsReadDelay.label): This will concatenate to
+     "After displaying for [___] seconds",
+     using (markAsReadDelay.label) and a number (secondsLabel.label). -->
+<!ENTITY markAsReadDelay.label         "Nach dem Anzeigen für">
+<!ENTITY markAsReadDelay.accesskey     "c">
+<!ENTITY secondsLabel.label            "Sekunden">
+<!ENTITY openMsgIn.label               "Nachricht durch Doppelklick öffnen in:">
+<!ENTITY openMsgInNewTab.label         "Neuem Tab">
+<!ENTITY openMsgInNewTab.accesskey     "T">
+<!ENTITY reuseExpRadio0.label          "Neuem Fenster">
+<!ENTITY reuseExpRadio0.accesskey      "N">
+<!ENTITY reuseExpRadio1.label          "Vorhandenem Fenster">
+<!ENTITY reuseExpRadio1.accesskey      "V">
+<!ENTITY closeMsgOnMoveOrDelete.label  "Nachrichtenfenster/-tab beim Verschieben oder Löschen schließen">
+<!ENTITY closeMsgOnMoveOrDelete.accesskey "h">
+
+<!-- Update -->
+<!ENTITY updateApp.label                 "&brandShortName;-Updates:">
+<!ENTITY updateAuto.label                "Updates automatisch installieren (empfohlen: erhöhte Sicherheit)">
+<!ENTITY updateAuto.accesskey            "U">
+<!ENTITY updateCheck.label               "Nach Updates suchen, aber Installation manuell durchführen">
+<!ENTITY updateCheck.accesskey           "N">
+<!ENTITY updateManual.label              "Nicht nach Updates suchen (nicht empfohlen: Sicherheitsrisiko)">
+<!ENTITY updateManual.accesskey          "d">
+<!ENTITY updateAutoAddonWarn.label       "Warnen, falls dadurch Add-ons deaktiviert werden">
+<!ENTITY updateAutoAddonWarn.accesskey   "W">
+<!ENTITY updateHistory.label             "Update-Chronik anzeigen">
+<!ENTITY updateHistory.accesskey         "C">
+
+<!ENTITY useService.label                "Einen Hintergrunddienst zum Installieren von Updates verwenden">
+<!ENTITY useService.accesskey            "H">
+
+<!-- Networking and Disk Space -->
+<!ENTITY showSettings.label             "Einstellungen…">
+<!ENTITY showSettings.accesskey         "E">
+<!ENTITY proxiesConfigure.label         "Festlegen wie sich &brandShortName; mit dem Internet verbindet">
+<!ENTITY connectionsInfo.caption        "Verbindung">
+<!ENTITY offlineInfo.caption            "Offline">
+<!ENTITY offlineInfo.label              "Das Verhalten des Offline-Modus konfigurieren">
+<!ENTITY showOffline.label              "Offline…">
+<!ENTITY showOffline.accesskey          "O">
+
+<!ENTITY Diskspace                      "Speicherplatz">
+<!ENTITY offlineCompactFolders.label     "Alle Ordner komprimieren, wenn dies insgesamt mehr Platz spart als">
+<!ENTITY offlineCompactFolders.accesskey "A">
+<!ENTITY offlineCompactFoldersMB.label   "MB">
+
+<!-- LOCALIZATION NOTE:
+  The entities useCacheBefore.label and useCacheAfter.label appear on a single
+  line in preferences as follows:
+
+  &useCacheBefore.label  [ textbox for cache size in MB ]   &useCacheAfter.label;
+-->
+<!ENTITY useCacheBefore.label            "Es werden bis zu">
+<!ENTITY useCacheBefore.accesskey        "U">
+<!ENTITY useCacheAfter.label             "MB Speicherplatz als Cache verwendet">
+<!ENTITY clearCacheNow.label             "Jetzt leeren">
+<!ENTITY clearCacheNow.accesskey         "l">
+
+<!-- Certificates -->
+<!ENTITY certSelection.description       "Wenn eine Website nach dem persönlichen Sicherheitszertifikat verlangt:">
+<!ENTITY certs.auto                      "Automatisch eins wählen">
+<!ENTITY certs.auto.accesskey            "A">
+<!ENTITY certs.ask                       "Jedes Mal fragen">
+<!ENTITY certs.ask.accesskey             "e">
+<!ENTITY enableOCSP.label                "Aktuelle Gültigkeit von Zertifikaten durch Anfrage bei OCSP-Server bestätigen lassen">
+<!ENTITY enableOCSP.accesskey            "G">
+
+<!ENTITY viewCertificates.label         "Zertifikate">
+<!ENTITY viewCertificates.accesskey     "Z">
+<!ENTITY viewSecurityDevices.label      "Kryptographie-Module">
+<!ENTITY viewSecurityDevices.accesskey  "K">

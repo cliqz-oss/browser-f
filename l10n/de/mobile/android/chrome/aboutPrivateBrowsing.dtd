@@ -1,0 +1,13 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY privatebrowsingpage.title                  "Privater Modus">
+
+<!ENTITY privatebrowsingpage.issueDesc.private      "Sie haben einen privaten Tab geöffnet.">
+<!ENTITY privatebrowsingpage.issueDesc.normal       "Dies ist kein privater Tab.">
+
+<!ENTITY privatebrowsingpage.description            "Im privaten Modus wird &brandShortName; keinerlei Chronik anlegen. Dies betrifft besuchte Seiten, Sucheinträge, Formulardaten, Cookies, temporäre Internetdateien und die Download-Chronik. Allerdings werden alle Lesezeichen, die Sie anlegen, oder Dateien, die Sie herunterladen, beibehalten.">
+<!ENTITY privatebrowsingpage.description.private    "&privatebrowsingpage.issueDesc.private; &privatebrowsingpage.description;">
+
+<!ENTITY privatebrowsingpage.moreInfo               "Während auf diesem Gerät keine Spuren Ihrer Browserchronik gespeichert werden, kann Ihr Internetanbieter trotzdem nachverfolgen, welche Seiten Sie besuchen.">

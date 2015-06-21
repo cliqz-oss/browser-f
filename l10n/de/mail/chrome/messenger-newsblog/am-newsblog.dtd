@@ -1,0 +1,24 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY biffStart.label "Neue Artikel alle">
+<!ENTITY biffStart.accesskey "N">
+<!ENTITY biffEnd.label "Minuten abrufen">
+
+<!ENTITY loginAtStartup.label "Neue Artikel beim Programmstart abrufen">
+<!ENTITY loginAtStartup.accesskey "e">
+
+<!ENTITY useQuickMode.label "Artikel-Zusammenfassung anstelle der Webseite anzeigen">
+<!ENTITY useQuickMode.accesskey "A">
+
+<!ENTITY manageSubscriptions.label "Abonnements verwalten…"> 
+<!ENTITY manageSubscriptions.accesskey "o">
+
+<!ENTITY feedWindowTitle.label "Feed-Konten-Assistent">
+
+<!-- entities from defaults/isp/rss.rdf -->
+<!ENTITY feeds.accountName "Blogs &amp; News-Feeds">
+<!ENTITY feeds.wizardShortName "Feeds">
+<!ENTITY feeds.wizardLongName "Blogs &amp; News-Feeds">
+<!ENTITY feeds.wizardLongName.accesskey "B">

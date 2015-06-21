@@ -1,0 +1,42 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY  startupAction.label         "Beim Start von &brandShortName;:">
+<!ENTITY  startupAction.accesskey     "S">
+<!ENTITY  startupOffline.label        "Chat-Konten nicht verbinden">
+<!ENTITY  startupConnectAuto.label    "Chat-Konten automatisch verbinden">
+
+<!-- LOCALIZATION NOTE: reportIdleAfter.label is displayed first, then
+there's a field where the user can enter a number, and itemTime is
+displayed at the end of the line. The translations of the
+reportIdleAfter.label and idleTime parts don't have to mean the exact
+same thing as in English; please try instead to translate the whole
+sentence. -->
+<!ENTITY  reportIdleAfter.label         "Kontakte über Untätigkeit informieren nach">
+<!ENTITY  reportIdleAfter.accesskey     "U">
+<!ENTITY  idleTime                      "Minuten ohne Aktion am Computer">
+
+<!ENTITY  andSetStatusToAway.label      "und eigenen Status auf Abwesend setzen mit dieser Statusnachricht:">
+<!ENTITY  andSetStatusToAway.accesskey  "A">
+
+<!ENTITY  sendTyping.label              "Kontakte bei laufendem Gespräch über Tippen informieren">
+<!ENTITY  sendTyping.accesskey          "T">
+
+<!ENTITY  chatNotifications.label             "Wenn direkt an Sie gerichtete Nachrichten eintreffen">
+<!ENTITY  desktopChatNotifications.label      "Eine Benachrichtigung anzeigen">
+<!ENTITY  desktopChatNotifications.accesskey  "B">
+<!ENTITY  completeNotification.label          "mit dem Namen des Absenders und einer Vorschau der Nachricht">
+<!ENTITY  buddyInfoOnly.label                 "nur mit dem Namen des Absenders">
+<!ENTITY  dummyNotification.label             "ohne jegliche Informationen">
+<!ENTITY  chatSound.accesskey                 "K">
+<!ENTITY  chatSound.label                     "Einen Klang abspielen">
+<!ENTITY  play.label                          "Probe hören">
+<!ENTITY  play.accesskey                      "P">
+<!ENTITY  systemSound.label                   "Systemklang für neue Nachrichten">
+<!ENTITY  systemSound.accesskey               "y">
+<!ENTITY  customsound.label                   "Benutzerdefinierter Klang">
+<!ENTITY  customsound.accesskey               "e">
+<!ENTITY  browse.label                        "Durchsuchen…">
+<!ENTITY  browse.accesskey                    "D">
+

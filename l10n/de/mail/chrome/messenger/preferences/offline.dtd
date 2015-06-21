@@ -1,0 +1,32 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY offlineDialog.title              "Offline-Einstellungen">
+
+<!ENTITY checkAutoDetect.label "Automatisch erkannten Online-/Offline-Status verwenden">
+<!ENTITY checkAutoDetect.accesskey "u">
+<!ENTITY titleStartUp "Benutzerdefinierter Zustand beim Programmstart:">
+<!ENTITY radioRememberPrevState.label     "Vorherigen Online-/Offline-Status merken">
+<!ENTITY radioRememberPrevState.accesskey "V">
+<!ENTITY radioAskState.label "Fragen, ob man online arbeiten möchte">
+<!ENTITY radioAskState.accesskey "F">
+<!ENTITY radioAlwaysOnlineState.label "Immer online starten">
+<!ENTITY radioAlwaysOnlineState.accesskey "l">
+<!ENTITY radioAlwaysOffline.label "Immer offline starten">
+<!ENTITY radioAlwaysOffline.accesskey "m">
+
+<!ENTITY textGoingOnline                  "Postausgang senden, sobald man im Online-Modus ist:">
+<!ENTITY radioAutoSend.label              "Ja">
+<!ENTITY radioAutoSend.accesskey          "J">
+<!ENTITY radioNotSend.label               "Nein">
+<!ENTITY radioNotSend.accesskey           "N">
+<!ENTITY radioAskUnsent.label             "Fragen">
+<!ENTITY radioAskUnsent.accesskey         "r">
+<!ENTITY textGoingOffline                 "Beim Wechsel in den Offline-Modus Nachrichten zum Offline-Lesen herunterladen:">
+<!ENTITY radioAutoDownload.label          "Ja">
+<!ENTITY radioAutoDownload.accesskey      "a">
+<!ENTITY radioNotDownload.label           "Nein">
+<!ENTITY radioNotDownload.accesskey       "e">
+<!ENTITY radioAskDownload.label           "Fragen">
+<!ENTITY radioAskDownload.accesskey       "g">
