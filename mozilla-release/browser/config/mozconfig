@@ -6,4 +6,11 @@
 #  . $topsrcdir/browser/config/mozconfig
 # to the top of your mozconfig file.
 
+ac_add_options --enable-update-channel=release
+ac_add_options --enable-update-packaging
+
 ac_add_options --enable-application=browser
+ac_add_options --enable-official-branding
+ac_add_options --with-branding=browser/branding/cliqz
+
+mk_add_options MOZ_MAKE_FLAGS="-j8"

@@ -8,11 +8,11 @@
 
 # BrandFullNameInternal is used for some registry and file system values
 # instead of BrandFullName and typically should not be modified.
-!define BrandFullNameInternal "Mozilla Firefox"
-!define CompanyName           "Mozilla Corporation"
-!define URLInfoAbout          "https://www.mozilla.org"
-!define URLUpdateInfo         "https://www.mozilla.org/firefox/${AppVersion}/releasenotes"
-!define HelpLink              "https://support.mozilla.org"
+!define BrandFullNameInternal "CLIQZ"
+!define CompanyName           "CLIQZ GmbH"
+!define URLInfoAbout          "https://www.cliqz.com"
+!define URLUpdateInfo         "https://www.cliqz.com?version=${AppVersion}"
+!define HelpLink              "https://cliqz.com/support"
 
 ; The OFFICIAL define is a workaround to support different urls for Release and
 ; Beta since they share the same branding when building with other branches that
@@ -23,7 +23,7 @@
 !define Channel "release"
 
 # The installer's certificate name and issuer expected by the stub installer
-!define CertNameDownload   "Mozilla Corporation"
+!define CertNameDownload   "CLIQZ GmbH"
 !define CertIssuerDownload "DigiCert Assured ID Code Signing CA-1"
 
 # Dialog units are used so the UI displays correctly with the system's DPI
