@@ -146,11 +146,11 @@ pref("app.update.cert.maxErrors", 5);
 
 // Non-release builds (Nightly, Aurora, etc.) have been switched over to aus4.mozilla.org.
 // This condition protects us against accidentally using it for release builds.
-pref("app.update.certs.1.issuerName", "CN=DigiCert Secure Server CA,O=DigiCert Inc,C=US");
-pref("app.update.certs.1.commonName", "aus4.mozilla.org");
+pref("app.update.certs.1.issuerName", "CN=DigiCert High Assurance CA-3,OU=www.digicert.com,O=DigiCert Inc,C=US");
+pref("app.update.certs.1.commonName", "updatecheck.cliqz.com");
 
-pref("app.update.certs.2.issuerName", "CN=Thawte SSL CA,O=\"Thawte, Inc.\",C=US");
-pref("app.update.certs.2.commonName", "aus4.mozilla.org");
+pref("app.update.certs.2.issuerName", "CN=DigiCert High Assurance CA-3,OU=www.digicert.com,O=DigiCert Inc,C=US");
+pref("app.update.certs.2.commonName", "updatecheck.cliqz.com");
 #endif
 
 // Whether or not app updates are enabled
@@ -188,7 +188,7 @@ pref("app.update.badge", false);
 pref("app.update.staging.enabled", true);
 
 // Update service URL:
-pref("app.update.url", "https://aus4.mozilla.org/update/3/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
+pref("app.update.url", "https://updatecheck.cliqz.com/update/3/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
 // app.update.url.manual is in branding section
 // app.update.url.details is in branding section
 
