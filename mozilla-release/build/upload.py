@@ -23,9 +23,14 @@
 # to the base path.
 
 import sys, os
+import re
 from optparse import OptionParser
 from subprocess import check_call, check_output
 import redo
+import sys
+import boto
+import boto.s3
+import boto.s3.key
 
 def RequireEnvironmentVariable(v):
     """Return the value of the environment variable named v, or print
@@ -115,6 +120,36 @@ def GetRemotePath(path, local_file, base_path):
     dir = dir[len(base_path)+1:].replace('\\','/')
     return path + dir
 
+def UploadFilesToS3(s3_bucket, s3_path, files, verbose=False):
+    """Upload only mar file(s) from the list to s3_bucket/s3_path/.
+    If verbose is True, print status updates while working."""
+
+    s3 = boto.connect_s3()
+    bucket = s3.get_bucket(s3_bucket)
+
+    try:
+        for source_file in files:
+            source_file = os.path.abspath(source_file)
+            if not os.path.isfile(source_file):
+                raise IOError("File not found: %s" % source_file)
+            if not re.search('(\w+)\.mar$', source_file):
+                continue
+
+            dest_file = os.path.basename(source_file)
+            full_key_name = os.path.join(s3_path, dest_file)
+
+            bucket_key = boto.s3.key.Key(bucket)
+            bucket_key.key = full_key_name
+            if verbose:
+                print "Uploading " + source_file
+            bucket_key.set_contents_from_filename(source_file)
+
+    finally:
+        pass
+
+    if verbose:
+        print "Upload complete"
+
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None):
     """Upload each file in the list files to user@host:path. Optionally pass
     port and ssh_key to the ssh commands. If base_path is not None, upload
@@ -158,8 +193,11 @@ def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None,
         print "Upload complete"
 
 if __name__ == '__main__':
-    host = RequireEnvironmentVariable('UPLOAD_HOST')
-    user = RequireEnvironmentVariable('UPLOAD_USER')
+    s3_path = OptionalEnvironmentVariable('S3_UPLOAD_PATH')
+    s3_bucket = OptionalEnvironmentVariable('S3_BUCKET')
+    if not s3_bucket:
+        host = RequireEnvironmentVariable('UPLOAD_HOST')
+        user = RequireEnvironmentVariable('UPLOAD_USER')
     path = OptionalEnvironmentVariable('UPLOAD_PATH')
     upload_to_temp_dir = OptionalEnvironmentVariable('UPLOAD_TO_TEMP')
     port = OptionalEnvironmentVariable('UPLOAD_PORT')
@@ -167,26 +205,31 @@ if __name__ == '__main__':
         port = int(port)
     key = OptionalEnvironmentVariable('UPLOAD_SSH_KEY')
     post_upload_command = OptionalEnvironmentVariable('POST_UPLOAD_CMD')
-    if (not path and not upload_to_temp_dir) or (path and upload_to_temp_dir):
-        print "One (and only one of UPLOAD_PATH or UPLOAD_TO_TEMP must be " + \
-              "defined."
-        sys.exit(1)
-    if sys.platform == 'win32':
-        if path is not None:
-            path = FixupMsysPath(path)
-        if post_upload_command is not None:
-            post_upload_command = FixupMsysPath(post_upload_command)
+    if not s3_bucket:
+        if (not path and not upload_to_temp_dir) or (path and upload_to_temp_dir):
+            print "One (and only one of UPLOAD_PATH or UPLOAD_TO_TEMP must be " + \
+                  "defined."
+            sys.exit(1)
+    if not s3_bucket:
+        if sys.platform == 'win32':
+            if path is not None:
+                path = FixupMsysPath(path)
+            if post_upload_command is not None:
+                post_upload_command = FixupMsysPath(post_upload_command)
 
     parser = OptionParser(usage="usage: %prog [options] <files>")
     parser.add_option("-b", "--base-path",
                       action="store", dest="base_path",
-                      help="Preserve file paths relative to this path when uploading. If unset, all files will be uploaded directly to UPLOAD_PATH.")
+                      help="Preserve file paths relative to this path when uploading. If unset, all files will be uploaded directly to UPLOAD_PATH/S3_UPLOAD_PATH.")
     (options, args) = parser.parse_args()
     if len(args) < 1:
         print "You must specify at least one file to upload"
         sys.exit(1)
     try:
-        UploadFiles(user, host, path, args, base_path=options.base_path,
+        if s3_bucket:
+            UploadFilesToS3(s3_bucket, s3_path, args, verbose=True)
+        else:
+            UploadFiles(user, host, path, args, base_path=options.base_path,
                     port=port, ssh_key=key, upload_to_temp_dir=upload_to_temp_dir,
                     post_upload_command=post_upload_command,
                     verbose=True)
