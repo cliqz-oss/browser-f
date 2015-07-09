@@ -27,3 +27,4 @@ pyasn1.pth:python/pyasn1
 bitstring.pth:python/bitstring
 redo.pth:python/redo
 requests.pth:python/requests
+boto.pth:python/boto
