@@ -10,14 +10,15 @@ supported_platforms = {
         'win64': 'win64',
         'window': 'win64',
         'windows': 'win64',
-        'mac64': 'macosx64'
+        'mac64': 'macosx64',
+        'linux-x86_64': 'linux64'
         }
 
 class BuildProperties:
     def __init__(self):
         self.properties = {
                 "properties": {
-                    "appName": "",
+                    "appName": "Firefox",
                     "buildid": "",
                     "completeMarFilename": "",
                     "completeMarHash": "",
@@ -50,7 +51,6 @@ class BuildProperties:
 
     def update_properties(self, all_props):
         self.properties['properties']['buildid'] = all_props['buildid']
-        self.properties['properties']['appName'] = all_props['moz_app_name'].capitalize()
         self.properties['properties']['appVersion'] = all_props['moz_app_version']
         self.properties['properties']['completeMarFilename'] = all_props['completeMarFilename']
         self.properties['properties']['completeMarUrl'] = REPOSITORY + all_props['completeMarFilename']
