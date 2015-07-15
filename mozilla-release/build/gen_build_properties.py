@@ -7,6 +7,7 @@ REPOSITORY = 'http://repository.cliqz.com/pub/'
 
 supported_platforms = {
         'win': 'win32',
+        'win32': 'win32',
         'win64': 'win64',
         'window': 'win64',
         'windows': 'win64',
