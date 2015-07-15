@@ -125,6 +125,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, verbose=False):
     If verbose is True, print status updates while working."""
 
     s3 = boto.connect_s3()
+    s3 = boto.s3.connection.S3Connection(calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
     bucket = s3.get_bucket(s3_bucket)
 
     try:
