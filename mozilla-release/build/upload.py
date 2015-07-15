@@ -132,7 +132,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, verbose=False):
             source_file = os.path.abspath(source_file)
             if not os.path.isfile(source_file):
                 raise IOError("File not found: %s" % source_file)
-            if not re.search('(\w+)\.mar$', source_file):
+            if not re.search('(\w+)\.(mar|exe|tar\.bz2)$', source_file):
                 continue
 
             dest_file = os.path.basename(source_file)
