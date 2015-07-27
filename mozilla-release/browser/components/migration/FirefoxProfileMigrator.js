@@ -31,6 +31,23 @@ XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
                                   "resource://gre/modules/ProfileAge.jsm");
 
 
+/* start CLIQZ helpers */
+
+function getFile(path) {
+  let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  return file;
+}
+
+function getFFFolder() {
+  let ffFolder = FileUtils.getDir(
+    "ULibDir", ["Application Support", "Firefox"]
+    , false);
+  return ffFolder.exists() ? ffFolder : null;
+}
+
+/* end CLIQZ helpers */
+
 function FirefoxProfileMigrator() {
   this.wrappedJSObject = this; // for testing...
 }
@@ -54,6 +71,31 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function () {
   }
   return allProfiles;
 };
+
+FirefoxProfileMigrator.prototype._getAllProfiles = function () {
+  let profileRoot = getFFFolder().clone();
+
+  var p = new Map();
+  profileRoot.append("profiles.ini");
+  var iniParser = Cc["@mozilla.org/xpcom/ini-processor-factory;1"].
+                    getService(Ci.nsIINIParserFactory).
+                    createINIParser(profileRoot);
+  var profiles = iniParser.getSections();
+  while(profiles.hasMore()) {
+    var profile = profiles.getNext();
+    try {
+      p.set(
+        iniParser.getString(profile, "Name"),
+        getFile(OS.Path.join(getFFFolder().clone().path, iniParser.getString(profile, "Path")))
+      );
+    } catch (e) {
+
+    }
+   //  profile.QueryInterface(Ci.nsIToolkitProfile);
+  }
+
+  return p;
+}
 
 function sorter(a, b) {
   return a.id.toLocaleLowerCase().localeCompare(b.id.toLocaleLowerCase());
