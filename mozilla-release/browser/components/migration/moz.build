@@ -33,6 +33,7 @@ if CONFIG['OS_ARCH'] == 'WINNT':
 EXTRA_PP_COMPONENTS += [
     'BrowserProfileMigrators.manifest',
     'ChromeProfileMigrator.js',
+    'FirefoxProfileMigrator.js',
 ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':

@@ -42,7 +42,7 @@ function getFile(path) {
 function getFFFolder() {
   let ffFolder = FileUtils.getDir(
 #ifdef XP_WIN
-    "LocalAppData", ["Mozilla", "Firefox", "Profiles"]
+    "AppData", ["Mozilla", "Firefox"]
 #elifdef XP_MACOSX
     "ULibDir", ["Application Support", "Firefox"]
 #else
@@ -80,27 +80,34 @@ FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
 FirefoxProfileMigrator.prototype._getAllProfiles = function () {
   let profileRoot = getFFFolder().clone();
-
-  var p = new Map();
   profileRoot.append("profiles.ini");
+
+  var profiles = new Map();
   var iniParser = Cc["@mozilla.org/xpcom/ini-processor-factory;1"].
                     getService(Ci.nsIINIParserFactory).
                     createINIParser(profileRoot);
-  var profiles = iniParser.getSections();
-  while(profiles.hasMore()) {
-    var profile = profiles.getNext();
+  
+  var sections = iniParser.getSections();
+  while(sections.hasMore()) {
     try {
-      p.set(
+      var profile = sections.getNext();
+      var profilePath = iniParser.getString(profile, "Path");
+      var path = OS.Path.join(getFFFolder().clone().path, profilePath);
+
+#ifdef XP_WIN
+      path = path.replace("/", "\\");
+#endif
+
+      profiles.set(
         iniParser.getString(profile, "Name"),
-        getFile(OS.Path.join(getFFFolder().clone().path, iniParser.getString(profile, "Path")))
+        getFile(path)
       );
     } catch (e) {
 
     }
-   //  profile.QueryInterface(Ci.nsIToolkitProfile);
   }
 
-  return p;
+  return profiles;
 }
 
 function sorter(a, b) {
