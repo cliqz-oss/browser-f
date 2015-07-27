@@ -41,7 +41,13 @@ function getFile(path) {
 
 function getFFFolder() {
   let ffFolder = FileUtils.getDir(
+#ifdef XP_WIN
+    "LocalAppData", ["Mozilla", "Firefox", "Profiles"]
+#elifdef XP_MACOSX
     "ULibDir", ["Application Support", "Firefox"]
+#else
+    "Home", [".config", "mozilla", "firefox"]
+#endif
     , false);
   return ffFolder.exists() ? ffFolder : null;
 }
@@ -54,23 +60,23 @@ function FirefoxProfileMigrator() {
 
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
-FirefoxProfileMigrator.prototype._getAllProfiles = function () {
-  let allProfiles = new Map();
-  let profiles =
-    Components.classes["@mozilla.org/toolkit/profile-service;1"]
-              .getService(Components.interfaces.nsIToolkitProfileService)
-              .profiles;
-  while (profiles.hasMoreElements()) {
-    let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
-    let rootDir = profile.rootDir;
+// FirefoxProfileMigrator.prototype._getAllProfiles = function () {
+//   let allProfiles = new Map();
+//   let profiles =
+//     Components.classes["@mozilla.org/toolkit/profile-service;1"]
+//               .getService(Components.interfaces.nsIToolkitProfileService)
+//               .profiles;
+//   while (profiles.hasMoreElements()) {
+//     let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
+//     let rootDir = profile.rootDir;
 
-    if (rootDir.exists() && rootDir.isReadable() &&
-        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
-      allProfiles.set(profile.name, rootDir);
-    }
-  }
-  return allProfiles;
-};
+//     if (rootDir.exists() && rootDir.isReadable() &&
+//         !rootDir.equals(MigrationUtils.profileStartup.directory)) {
+//       allProfiles.set(profile.name, rootDir);
+//     }
+//   }
+//   return allProfiles;
+// };
 
 FirefoxProfileMigrator.prototype._getAllProfiles = function () {
   let profileRoot = getFFFolder().clone();
