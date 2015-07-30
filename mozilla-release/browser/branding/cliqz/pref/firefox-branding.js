@@ -13,10 +13,10 @@ pref("app.update.download.backgroundInterval", 60);
 pref("app.update.promptWaitTime", 172800);
 // URL user can browse to manually if for some reason all update installation
 // attempts fail.
-pref("app.update.url.manual", "https://www.mozilla.org/firefox/");
+pref("app.update.url.manual", "https://www.cliqz.com/firefox/");
 // A default value for the "More information about this update" link
 // supplied in the "An update is available" page of the update wizard.
-pref("app.update.url.details", "https://www.mozilla.org/%LOCALE%/firefox/notes");
+pref("app.update.url.details", "https://www.cliqz.com/%LOCALE%/browser/notes");
 
 // The number of days a binary is permitted to be old
 // without checking for an update.  This assumes that
@@ -26,3 +26,6 @@ pref("app.update.checkInstallTime.days", 63);
 // Number of usages of the web console or scratchpad.
 // If this is less than 5, then pasting code into the web console or scratchpad is disabled
 pref("devtools.selfxss.count", 0);
+
+// url used for fetching snippets on about:home
+pref("browser.aboutHomeSnippets.updateUrl", 'https://www.cliqz.com/');
