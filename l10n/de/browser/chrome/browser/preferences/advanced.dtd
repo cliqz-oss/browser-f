@@ -113,6 +113,7 @@
 <!ENTITY offlineAppRemove.confirm        "Offline-Daten entfernen">
 
 <!ENTITY certificateTab.label            "Zertifikate">
+<!ENTITY certSelection.label             "Anfragen">
 <!ENTITY certSelection.description       "Wenn eine Website nach dem persönlichen Sicherheitszertifikat verlangt:">
 <!ENTITY certs.auto                      "Automatisch eins wählen">
 <!ENTITY certs.auto.accesskey            "w">
