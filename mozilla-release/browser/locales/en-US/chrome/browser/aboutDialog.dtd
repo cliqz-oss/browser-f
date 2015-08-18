@@ -105,3 +105,7 @@
      example: You are currently on the _Stable_ update channel. -->
 <!ENTITY channel.description.start  "You are currently on the ">
 <!ENTITY channel.description.end    " update channel. ">
+
+
+<!-- CLIQZ -->
+<!ENTITY version.basedon            "based on Firefox ">

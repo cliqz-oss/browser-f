@@ -42,9 +42,9 @@
     <hbox id="clientBox">
       <vbox id="leftBox" flex="1"/>
       <vbox id="rightBox" flex="1">
-#expand <label id="version">__MOZ_APP_VERSION__</label>
         <label id="distribution" class="text-blurb"/>
         <label id="distributionId" class="text-blurb"/>
+#expand <label id="version">&version.basedon;__MOZ_APP_VERSION__</label>
 
         <vbox id="detailsBox">
           <vbox id="updateBox">
@@ -121,8 +121,8 @@
 #endif
             </description>
           </vbox>
-          <description class="text-blurb" id="communityDesc">
-            <label class="text-link" href="http://www.cliqz.com/">&community.mozillaLink;</label>
+          <description class="text-blurb" id="communityDesc" hidden="true">
+            <label class="text-link" href="http://www.cliqz.com/" hidden="true">&community.mozillaLink;</label>
           </description>
           <description class="text-blurb" id="contributeDesc">
               We Redesign The Internet

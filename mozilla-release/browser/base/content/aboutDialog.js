@@ -21,6 +21,7 @@ function init(aEvent)
       distroIdField.value = distroId + " - " + distroVersion;
       distroIdField.style.display = "block";
 
+      /*
       try {
         // This is in its own try catch due to bug 895473 and bug 900925.
         var distroAbout = Services.prefs.getComplexValue("distribution.about",
@@ -33,6 +34,7 @@ function init(aEvent)
         // Pref is unset
         Components.utils.reportError(ex);
       }
+      */
     }
   }
   catch (e) {
