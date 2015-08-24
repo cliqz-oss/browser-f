@@ -59,6 +59,8 @@ export S3_BUCKET=repository.cliqz.com
 export S3_UPLOAD_PATH=test/
 export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
 
+./mach clobber
+
 # Fixing git Windows-style line endings.
 if [ $IS_WIN ]; then
     echo '***** Fixing git Windows-style line endings. *****'
