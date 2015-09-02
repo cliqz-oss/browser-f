@@ -3,8 +3,6 @@ import json
 import os
 import re
 
-REPOSITORY = 'http://repository.cliqz.com/pub/'
-
 supported_platforms = {
         'win': 'win32',
         'win32': 'win32',
@@ -55,7 +53,7 @@ class BuildProperties:
         self.properties['properties']['buildid'] = all_props['buildid']
         self.properties['properties']['appVersion'] = all_props['moz_app_version']
         self.properties['properties']['completeMarFilename'] = all_props['completeMarFilename']
-        self.properties['properties']['completeMarUrl'] = REPOSITORY + all_props['completeMarFilename']
+        self.properties['properties']['completeMarUrl'] = 'http://' + os.path.join(s3_bucket, s3_path, all_props['completeMarFilename'])
         self.properties['properties']['completeMarHash'] = all_props['completeMarHash']
         self.properties['properties']['completeMarSize'] = all_props['completeMarSize']
         if all_props['moz_pkg_platform'] in supported_platforms:
@@ -64,13 +62,21 @@ class BuildProperties:
             raise ValueError("Not supported platform [%s]" % all_props['moz_pkg_platform'])
         self.properties['properties']['locale'] = os.environ.get('CQZ_UI_LOCALE', None)
         if not self.properties['properties']['locale']:
-            raise ValueError("Environment variable CQZ_UI_LOCALE must be defined")
+            raise ValueError("Environment variable CQZ_UI_LOCALE must be set")
 
 if __name__ == '__main__':
     script_directory = os.path.dirname(os.path.realpath(__file__))
-    obj_directory = os.environ.get('MOZ_OBJDIR')
+    obj_directory = os.environ.get('MOZ_OBJDIR','')
     if not obj_directory:
-        raise ValueError("Expecting defined environment variable MOZ_OBJDIR")
+        raise ValueError("Environment variable MOZ_OBJDIR must be set")
+
+    s3_bucket = os.environ.get('S3_BUCKET','')
+    if not s3_bucket:
+        raise ValueError("Environment variable S3_BUCKET must be set")
+
+    s3_path = os.environ.get('S3_UPLOAD_PATH','')
+    if not s3_path:
+        raise ValueError("Environment variable S3_UPLOAD_PATH must be set")
 
     prop = BuildProperties()
 
