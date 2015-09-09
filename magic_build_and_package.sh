@@ -1,5 +1,9 @@
 #! /bin/bash
 
+# Required ENVs:
+# * GIT_WIN_PATH
+# * WIN32_REDIST_DIR
+
 # set -u
 set -e
 set -x
@@ -43,20 +47,18 @@ else
     echo 'Unknow OS -`$OSTYPE`'
 fi
 
-if [ $IS_WIN ]; then
-    echo 'kk'
-fi
-
 echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
 cd mozilla-release
+export CLIQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini)
 
+export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_OBJDIR=obj-firefox
 export MOZCONFIG=`pwd`/browser/config/mozconfig
 export MOZ_AUTOMATION_UPLOAD=1
-export BALROG_PATH=/c/jenkins/workspace/cliqzfox-build/cliqzfox-build/build-tools/scripts/updates
+export BALROG_PATH=`pwd`/../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
-export S3_UPLOAD_PATH=test/
+export S3_UPLOAD_PATH=`echo test/$CQZ_VERSION/${LANG:0:2}`
 export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
 
 ./mach clobber
@@ -94,12 +96,13 @@ echo '***** Building *****'
 echo '***** Inject the repackaging *****'
 if [ $IS_MAC_OS ]; then
     cp -R ../repack/distribution ./obj-firefox/dist/CLIQZ.app/Contents/Resources/
+    cp -R ../cliqz.cfg ./obj-firefox/dist/CLIQZ.app/Contents/Resources/
 else
     cp -R ../repack/distribution ./obj-firefox/dist/bin/
+    cp -R ../cliqz.cfg ./obj-firefox/dist/bin/
 fi
 
 # for German builds
-echo '***** For German builds *****'
 if [ $IS_DE ]; then
     echo '***** Copying dictionaries for German builds *****'
     if [ $IS_MAC_OS ]; then
