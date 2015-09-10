@@ -59,24 +59,24 @@ export MOZ_AUTOMATION_UPLOAD=1
 export BALROG_PATH=`pwd`/../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 export S3_UPLOAD_PATH=`echo test/$CQZ_VERSION/${LANG:0:2}`
-export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
+#export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
 
 ./mach clobber
 
 # Fixing git Windows-style line endings.
-if [ $IS_WIN ]; then
-    echo '***** Fixing git Windows-style line endings. *****'
-    "${GIT_WIN_PATH}" --version
-    "${GIT_WIN_PATH}" config core.autocrlf false
-    "${GIT_WIN_PATH}" config core.eof lf
-    "${GIT_WIN_PATH}" rm --cached -r .
-    "${GIT_WIN_PATH}" reset --hard
-fi
+#if [ $IS_WIN ]; then
+#    echo '***** Fixing git Windows-style line endings. *****'
+#    "${GIT_WIN_PATH}" --version
+#    "${GIT_WIN_PATH}" config core.autocrlf false
+#    "${GIT_WIN_PATH}" config core.eof lf
+#    "${GIT_WIN_PATH}" rm --cached -r .
+#    "${GIT_WIN_PATH}" reset --hard
+#fi
 
 if [ $IS_WIN ]; then
     echo "ac_add_options --enable-jemalloc" >> browser/config/mozconfig
     #be sure that exists
-    export WIN32_REDIST_DIR="/c/Program Files (x86)/Microsoft Visual Studio 12.0/VC/redist/x86/Microsoft.VC120.CRT"
+    #export WIN32_REDIST_DIR="/c/Program Files (x86)/Microsoft Visual Studio 12.0/VC/redist/x86/Microsoft.VC120.CRT"
 fi
 
 
