@@ -51,13 +51,15 @@ echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
 cd mozilla-release
 
-export MOZ_OBJDIR=obj-firefox
-export MOZCONFIG=`pwd`/browser/config/mozconfig
+export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
 export BALROG_PATH=/c/jenkins/workspace/cliqzfox-build/cliqzfox-build/build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
-export S3_UPLOAD_PATH=test/
-export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
+if [ $CQZ_RELEASE_CHANNEL ]; then
+  export S3_UPLOAD_PATH=`echo $CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
+else
+  export S3_UPLOAD_PATH=`echo pub/$CQZ_VERSION/${LANG:0:2}`
+fi
 
 
 cd obj-firefox

@@ -63,6 +63,7 @@ class BuildProperties:
         self.properties['properties']['locale'] = os.environ.get('CQZ_UI_LOCALE', None)
         if not self.properties['properties']['locale']:
             raise ValueError("Environment variable CQZ_UI_LOCALE must be set")
+        self.properties['properties']['branch'] = os.environ.get('CQZ_RELEASE_CHANNEL', 'master')
 
 if __name__ == '__main__':
     script_directory = os.path.dirname(os.path.realpath(__file__))

@@ -56,9 +56,6 @@ export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_OBJDIR=obj-firefox
 export MOZCONFIG=`pwd`/browser/config/mozconfig
 export MOZ_AUTOMATION_UPLOAD=1
-export BALROG_PATH=`pwd`/../build-tools/scripts/updates
-export S3_BUCKET=repository.cliqz.com
-export S3_UPLOAD_PATH=`echo test/$CQZ_VERSION/${LANG:0:2}`
 #export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
 
 ./mach clobber
