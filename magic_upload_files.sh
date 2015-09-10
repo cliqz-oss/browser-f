@@ -68,3 +68,10 @@ if [ $IS_WIN ]; then
 else
     make automation/build
 fi
+
+echo '***** Genereting build_properties.json *****'
+../build/gen_build_properties.py
+
+
+echo '***** Submiting to Balrog *****'
+#python ../../build-tools/scripts/updates/balrog-submitter.py --credentials-file ../build/creds.txt --username balrogadmin --api-root http://balrog-admin.cliqz.com/api --build-properties build_properties.json
