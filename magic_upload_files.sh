@@ -51,6 +51,8 @@ echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
 cd mozilla-release
 
+export MOZ_OBJDIR=obj-firefox
+export MOZCONFIG=`pwd`/browser/config/mozconfig
 export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
