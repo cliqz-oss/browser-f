@@ -57,9 +57,9 @@ export MOZ_AUTOMATION_UPLOAD=1
 export BALROG_PATH=/c/jenkins/workspace/cliqzfox-build/cliqzfox-build/build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 if [ $CQZ_RELEASE_CHANNEL ]; then
-  export S3_UPLOAD_PATH=`echo $CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
+  export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 else
-  export S3_UPLOAD_PATH=`echo pub/$CQZ_VERSION/${LANG:0:2}`
+  export S3_UPLOAD_PATH=`echo dist/release/$CQZ_VERSION/${LANG:0:2}`
 fi
 
 cd obj-firefox
