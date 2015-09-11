@@ -137,7 +137,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, verbose=False):
                 continue
 
             dest_file = os.path.basename(source_file)
-            full_key_name = os.path.join(s3_path, dest_file)
+            full_key_name = '/'+s3_path+'/'+dest_file
 
             bucket_key = boto.s3.key.Key(bucket)
             bucket_key.key = full_key_name

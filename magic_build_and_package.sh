@@ -1,7 +1,6 @@
 #! /bin/bash
 
 # Required ENVs:
-# * GIT_WIN_PATH
 # * WIN32_REDIST_DIR
 
 # set -u
@@ -50,30 +49,18 @@ fi
 echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
 cd mozilla-release
-export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini | head -n1)
 
+export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_OBJDIR=obj-firefox
 export MOZCONFIG=`pwd`/browser/config/mozconfig
 export MOZ_AUTOMATION_UPLOAD=1
-#export GIT_WIN_PATH="/c/Program Files (x86)/Git/cmd/git.exe"
 
 ./mach clobber
 
-# Fixing git Windows-style line endings.
-#if [ $IS_WIN ]; then
-#    echo '***** Fixing git Windows-style line endings. *****'
-#    "${GIT_WIN_PATH}" --version
-#    "${GIT_WIN_PATH}" config core.autocrlf false
-#    "${GIT_WIN_PATH}" config core.eof lf
-#    "${GIT_WIN_PATH}" rm --cached -r .
-#    "${GIT_WIN_PATH}" reset --hard
-#fi
 
 if [ $IS_WIN ]; then
     echo "ac_add_options --enable-jemalloc" >> browser/config/mozconfig
-    #be sure that exists
-    #export WIN32_REDIST_DIR="/c/Program Files (x86)/Microsoft Visual Studio 12.0/VC/redist/x86/Microsoft.VC120.CRT"
 fi
 
 

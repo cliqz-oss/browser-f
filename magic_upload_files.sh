@@ -51,6 +51,7 @@ echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
 cd mozilla-release
 
+export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
 export BALROG_PATH=/c/jenkins/workspace/cliqzfox-build/cliqzfox-build/build-tools/scripts/updates
@@ -60,7 +61,6 @@ if [ $CQZ_RELEASE_CHANNEL ]; then
 else
   export S3_UPLOAD_PATH=`echo pub/$CQZ_VERSION/${LANG:0:2}`
 fi
-
 
 cd obj-firefox
 
@@ -76,4 +76,4 @@ echo '***** Genereting build_properties.json *****'
 
 
 echo '***** Submiting to Balrog *****'
-#python ../../build-tools/scripts/updates/balrog-submitter.py --credentials-file ../build/creds.txt --username balrogadmin --api-root http://balrog-admin.cliqz.com/api --build-properties build_properties.json
+python ../../build-tools/scripts/updates/balrog-submitter.py --credentials-file ../build/creds.txt --username balrogadmin --api-root http://balrog-admin.cliqz.com/api --build-properties build_properties.json
