@@ -58,7 +58,7 @@ export MOZCONFIG=`pwd`/browser/config/mozconfig
 export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
-export BALROG_PATH=/c/jenkins/workspace/cliqzfox-build/cliqzfox-build/build-tools/scripts/updates
+export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 if [ $CQZ_RELEASE_CHANNEL ]; then
   export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
