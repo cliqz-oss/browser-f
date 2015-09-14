@@ -7,7 +7,10 @@
 set -e
 set -x
 
-LANG='en-US'
+if [ -z "$LANG" ]; then
+  LANG='en-US'
+fi
+
 VERBOSE=false #TODO
 
 while [[ $# > 1 ]]
