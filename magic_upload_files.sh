@@ -60,7 +60,7 @@ export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
-export S3_BUCKET=repository.cliqz.com
+export S3_BUCKET=cliqz-browser
 if [ $CQZ_RELEASE_CHANNEL ]; then
   export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 else
