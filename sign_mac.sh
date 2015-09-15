@@ -14,4 +14,4 @@ cp -r /Volumes/CLIQZ/CLIQZ.app pkg
 codesign -s "CLIQZ Gmbh" --deep ./pkg/CLIQZ.app
 hdiutil detach /Volumes/CLIQZ
 rm dist/$DMG_FILE_NAME
-appdmg ../../CLIQZ-dmg.json dist/<DMG_FILE_NAME>
+appdmg ../../CLIQZ-dmg.json dist/$DMG_FILE_NAME
