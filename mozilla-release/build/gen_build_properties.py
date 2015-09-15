@@ -53,7 +53,7 @@ class BuildProperties:
         self.properties['properties']['buildid'] = all_props['buildid']
         self.properties['properties']['appVersion'] = all_props['moz_app_version']
         self.properties['properties']['completeMarFilename'] = all_props['completeMarFilename']
-        self.properties['properties']['completeMarUrl'] = 'http://' + s3_bucket +'/'+ s3_path +'/'+ all_props['completeMarFilename']
+        self.properties['properties']['completeMarUrl'] = 'http://repository.cliqz.com/'+ s3_path +'/'+ all_props['completeMarFilename']
         self.properties['properties']['completeMarHash'] = all_props['completeMarHash']
         self.properties['properties']['completeMarSize'] = all_props['completeMarSize']
         if all_props['moz_pkg_platform'] in supported_platforms:
