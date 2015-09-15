@@ -2,7 +2,7 @@
 
 cd mozilla-release
 
-export MOZ_VERSION=$(awk -F "=" '/version/ {print $2}' browser/config/version.txt | head -n1)
+export MOZ_VERSION=$(head -n1 browser/config/version.txt)
 
 cd obj-firefox
 
