@@ -6,7 +6,10 @@ export MOZ_VERSION=$(awk -F "=" '/version/ {print $2}' browser/config/version.tx
 
 cd obj-firefox
 
-DMG_FILE_NAME=CLIQZ-$MOZ_VERSION.$LANG.mac64.dmg
+export DMG_FILE_NAME=CLIQZ-$MOZ_VERSION.$LANG.mac64.dmg
+
+echo "***** MAC SIGNING *****"
+echo "DMG FILE NAME: $DMG_FILE_NAME"
 
 mkdir pkg
 hdiutil attach dist/$DMG_FILE_NAME
