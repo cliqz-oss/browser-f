@@ -1,4 +1,4 @@
-cd C:\jenkins\workspace\cliqzfox-build\cliqzfox-build\mozilla-release\obj-firefox
+cd %CQZ_WORKSPACE%\mozilla-release\obj-firefox
 
 set ff_version=''
 set lang=%1%
@@ -24,5 +24,3 @@ cd ..
 copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\instgen\app.tag + pkg\installer.7z dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 
 "%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
-
-cd C:\jenkins\workspace\cliqzfox-build\cliqzfox-build
