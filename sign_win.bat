@@ -15,6 +15,8 @@ echo %lang%
 echo %CLZ_SIGNTOOL_PATH%
 
 "%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\setup.exe
+"%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\core\updater.exe
+"%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\core\CLIQZ.exe
 
 cd pkg
 
