@@ -1,7 +1,6 @@
 cd %CQZ_WORKSPACE%\mozilla-release\obj-firefox
 
 set ff_version=''
-set lang=%1%
 set archivator_exe=c:\mozilla-build\7zip\7z.exe
 for /F %%f in (..\browser\config\version.txt) do set ff_version=%%f
 set ff_exe=%ff_version%.en-US
