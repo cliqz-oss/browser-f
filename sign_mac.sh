@@ -14,8 +14,8 @@ echo "DMG FILE NAME: $DMG_FILE_NAME"
 mkdir pkg
 hdiutil attach dist/$DMG_FILE_NAME
 cp -r /Volumes/CLIQZ/CLIQZ.app pkg
-codesign -s "CLIQZ Gmbh" --deep ./pkg/CLIQZ.app
-codesign -s "CLIQZ Gmbh" ./dist/update/*.mar
+codesign -s $CQZ_CERT_NAME --deep ./pkg/CLIQZ.app
+codesign -s $CQZ_CERT_NAME ./dist/update/*.mar
 hdiutil detach /Volumes/CLIQZ
 rm dist/$DMG_FILE_NAME
 appdmg ../../CLIQZ-dmg.json dist/$DMG_FILE_NAME
