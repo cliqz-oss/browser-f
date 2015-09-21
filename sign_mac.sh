@@ -15,7 +15,7 @@ mkdir pkg
 hdiutil attach dist/$DMG_FILE_NAME
 cp -r /Volumes/CLIQZ/CLIQZ.app pkg
 codesign -s "CLIQZ Gmbh" --deep ./pkg/CLIQZ.app
-codesign -s "CLIQZ Gmbh" ./dist/*.mar
+codesign -s "CLIQZ Gmbh" ./dist/update/*.mar
 hdiutil detach /Volumes/CLIQZ
 rm dist/$DMG_FILE_NAME
 appdmg ../../CLIQZ-dmg.json dist/$DMG_FILE_NAME
