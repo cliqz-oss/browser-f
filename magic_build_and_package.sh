@@ -108,10 +108,21 @@ if [ $IS_WIN ]; then
     ./mach build installer
     cd obj-firefox
     mozmake update-packaging
+    cd ..
 else
     echo '***** Mac & Linux packaging *****'
     cd obj-firefox
     make update-packaging
+    cd ..
+fi
+
+if [ $CQZ_CERT_DB_PATH ]; then
+    echo '***** Signing mar *****'
+    cd obj-firefox/dist/update
+    MAR_FILE=`ls *.mar | head -n `
+    ../bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE out.mar
+    mv out.mar $MAR_FILE
+    cd ../../..
 fi
 
 echo '***** Build & package finished successfully. *****'
