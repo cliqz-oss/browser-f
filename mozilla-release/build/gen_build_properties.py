@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import hashlib
 
 supported_platforms = {
         'win': 'win32',
@@ -55,7 +56,13 @@ class BuildProperties:
         self.properties['properties']['completeMarFilename'] = all_props['completeMarFilename']
         self.properties['properties']['completeMarUrl'] = 'http://repository.cliqz.com/'+ s3_path +'/'+ all_props['completeMarFilename']
         self.properties['properties']['completeMarHash'] = all_props['completeMarHash']
-        self.properties['properties']['completeMarSize'] = all_props['completeMarSize']
+
+        full_path = os.path.join(os.getcwd(), "dist", "update", all_props['completeMarFilename'])
+        mar = open(full_path, 'rb').read()
+
+        self.properties['properties']['completeMarHash'] = hashlib.sha512(mar).hexdigest()
+        self.properties['properties']['completeMarSize'] = os.path.getsize(full_path)
+
         if all_props['moz_pkg_platform'] in supported_platforms:
             self.properties['properties']['platform'] = supported_platforms[all_props['moz_pkg_platform']]
         else:
