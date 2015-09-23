@@ -61,6 +61,7 @@ export MOZ_AUTOMATION_UPLOAD=1
 
 ./mach clobber
 
+echo "ac_add_options --with-google-api-keyfile=\"$PWD/../google-api-key\"" >> $MOZCONFIG
 
 if [ $IS_WIN ]; then
     echo "ac_add_options --enable-jemalloc" >> browser/config/mozconfig
