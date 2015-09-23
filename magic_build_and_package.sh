@@ -120,8 +120,9 @@ if [ $CQZ_CERT_DB_PATH ]; then
     echo '***** Signing mar *****'
     cd obj-firefox/dist/update
     MAR_FILE=`ls *.mar | head -n 1`
-    ../bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE out.mar
-    mv out.mar $MAR_FILE
+    cd ../bin
+    ./signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s ../update/$MAR_FILE ../update/out.mar
+    mv ../update/out.mar ../update/$MAR_FILE
     cd ../../..
 fi
 
