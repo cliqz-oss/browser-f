@@ -64,7 +64,11 @@ export MOZ_AUTOMATION_UPLOAD=1
 echo "ac_add_options --with-google-api-keyfile=\"$PWD/../google-api-key\"" >> $MOZCONFIG
 
 if [ $IS_WIN ]; then
-    echo "ac_add_options --enable-jemalloc" >> browser/config/mozconfig
+    echo "ac_add_options --enable-jemalloc" >> $MOZCONFIG
+fi
+
+if [ $CQZ_RELEASE_CHANNEL ]; then
+    echo "ac_add_options --enable-update-channel=$CQZ_RELEASE_CHANNEL" >> $MOZCONFIG
 fi
 
 
