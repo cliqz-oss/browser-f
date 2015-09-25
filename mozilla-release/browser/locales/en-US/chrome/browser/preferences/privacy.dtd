@@ -14,7 +14,7 @@
 
 <!ENTITY  history.label                 "History">
 
-<!ENTITY  locationBar.label             "Location Bar">
+<!ENTITY  locationBar.label             "Search Bar">
 
 <!ENTITY  locbar.suggest.label          "When using the location bar, suggest:">
 <!ENTITY  locbar.history.label          "History">

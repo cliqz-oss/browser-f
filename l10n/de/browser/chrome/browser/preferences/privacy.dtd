@@ -14,7 +14,7 @@
 
 <!ENTITY  history.label                 "Chronik">
 
-<!ENTITY  locationBar.label             "Adressleiste">
+<!ENTITY  locationBar.label             "Suchleiste">
 
 <!ENTITY  locbar.suggest.label          "Vorschläge beim Verwenden der Adressleiste:">
 <!ENTITY  locbar.history.label          "Einträge aus der Chronik">
