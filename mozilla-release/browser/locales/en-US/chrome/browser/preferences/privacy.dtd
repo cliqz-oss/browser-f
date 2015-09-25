@@ -10,6 +10,7 @@
 <!ENTITY trackingProtection.accesskey   "m">
 <!ENTITY trackingProtectionLearnMore.label "Learn more">
 <!ENTITY doNotTrackInfo.label           "Learn More">
+<!ENTITY doNotTrackInfo.label2          "When the feature is enabled, CLIQZ will tell advertising networks and other websites and applications that you want to opt-out of tracking for purposes like behavioral advertising.">
 
 <!ENTITY  history.label                 "History">
 
