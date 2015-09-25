@@ -37,6 +37,10 @@
 # link title for http://www.mozilla.com/en-US/firefox/about/
 #define firefox_about Über uns
 
+#define cliqz_triqz CLIQZ Triqz
+# not the place to put this url!
+#define cliqz_triqz_url https://cliqz.com/home/cliqz-triqz
+
 # LOCALIZATION NOTE (firefox_feedback):
 # link title for browser feedback page
 # currently used by Metro only: https://input.mozilla.org/feedback/metrofirefox
