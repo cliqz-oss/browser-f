@@ -20,5 +20,3 @@ ac_add_options --disable-debug
 export MOZ_APP_PROFILE=CLIQZ
 
 mk_add_options MOZ_MAKE_FLAGS="-j8"
-
-ac_add_options --with-google-api-keyfile="/src/luciancor/CLIQZfox/mozilla-release/../google-api-key"
