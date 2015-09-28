@@ -4,8 +4,7 @@
 
 <!ENTITY defaultSearchEngine.label             "Default Search Engine">
 
-<!ENTITY chooseYourDefaultSearchEngine.label   "Choose your default search engine. &brandShortName; uses it in the location bar, search bar, and start page.">
-
+<!ENTITY chooseYourDefaultSearchEngine.label   "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
 <!ENTITY provideSearchSuggestions.label        "Provide search suggestions">
 <!ENTITY provideSearchSuggestions.accesskey    "s">
 

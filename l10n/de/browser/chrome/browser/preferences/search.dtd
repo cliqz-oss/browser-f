@@ -4,8 +4,7 @@
 
 <!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
 
-<!ENTITY chooseYourDefaultSearchEngine.label   "Wählen Sie Ihre Standardsuchmaschine. &brandShortName; verwendet diese für Suchen über die Adressleiste, die Suchleiste und Startseiten.">
-
+<!ENTITY chooseYourDefaultSearchEngine.label   "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
