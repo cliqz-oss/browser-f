@@ -294,7 +294,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY devToolbarToolsButton.tooltip     "Entwicklerwerkzeuge ein-/ausblenden">
 <!ENTITY devToolbarOtherToolsButton.label  "Mehr">
 
-<!ENTITY getMoreDevtoolsCmd.label        "Weitere Tools laden">
+<!ENTITY getMoreDevtoolsCmd.label        "Weitere Tools laden (Firefox add-ons)">
 <!ENTITY getMoreDevtoolsCmd.accesskey    "T">
 
 <!ENTITY fileMenu.label         "Datei"> 
