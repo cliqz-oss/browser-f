@@ -28,7 +28,7 @@
 
 <!ENTITY dataChoicesTab.label            "Datenübermittlung">
 
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browserstatus an &vendorShortName;.">
+<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browserstatus an das CLIQZ-Team.">
 <!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
 <!ENTITY enableHealthReport.accesskey    "S">
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
@@ -38,7 +38,7 @@
 <!ENTITY enableTelemetryData.accesskey   "Z">
 <!ENTITY telemetryLearnMore.label        "Weitere Informationen">
 
-<!ENTITY crashReporterDesc.label         "&brandShortName; übermittelt Absturzberichte, um &vendorShortName; dabei zu helfen, den Browser stabiler und sicherer zu machen.">
+<!ENTITY crashReporterDesc.label         "&brandShortName; übermittelt Absturzberichte, um das CLIQZ-Team dabei zu helfen, den Browser stabiler und sicherer zu machen.">
 <!ENTITY enableCrashReporter.label       "Absturzmelder aktivieren">
 <!ENTITY enableCrashReporter.accesskey   "A">
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
