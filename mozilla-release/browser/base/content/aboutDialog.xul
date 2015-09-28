@@ -132,9 +132,7 @@
     </hbox>
     <vbox id="bottomBox">
       <hbox pack="center">
-        <label class="text-link bottom-link" href="about:license">&bottomLinks.license;</label>
         <label class="text-link bottom-link" href="about:rights">&bottomLinks.rights;</label>
-        <label class="text-link bottom-link" href="https://www.cliqz.com/privacy/">&bottomLinks.privacy;</label>
       </hbox>
       <description id="trademark">&trademarkInfo.part1;</description>
     </vbox>
