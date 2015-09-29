@@ -67,10 +67,11 @@ if [ $IS_WIN ]; then
     echo "ac_add_options --enable-jemalloc" >> $MOZCONFIG
 fi
 
-if [ $CQZ_RELEASE_CHANNEL ]; then
-    echo "ac_add_options --enable-update-channel=$CQZ_RELEASE_CHANNEL" >> $MOZCONFIG
+if [ -z $CQZ_RELEASE_CHANNEL ]; then
+  export CQZ_RELEASE_CHANNEL=release
 fi
 
+echo "ac_add_options --enable-update-channel=$CQZ_RELEASE_CHANNEL" >> $MOZCONFIG
 
 #  for german builds
 if [[ "$LANG" == 'de' ]]; then
