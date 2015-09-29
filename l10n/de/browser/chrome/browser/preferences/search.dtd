@@ -9,9 +9,9 @@
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
 
-<!ENTITY oneClickSearchEngines.label           "Ein-Klick-Suchmaschinen">
+<!ENTITY oneClickSearchEngines.label           "Direkt suchen">
 
-<!ENTITY chooseWhichOneToDisplay.label         "Die Suchleiste ermöglicht das direkte Suchen mit einer anderen Suchmaschine. Die anzuzeigenden Suchmaschinen können hier ausgewählt werden.">
+<!ENTITY chooseWhichOneToDisplay.label         "Um direkt mit einer Suchmaschine zu suchen, schreibe das entsprechende Kürzel vor Deine Anfrage, z.B. #gm + Dein Suchbegriff um Ergebnisse von Google Maps zu erhalten.">
 
 <!ENTITY engineNameColumn.label                "Suchmaschine">
 <!ENTITY engineKeywordColumn.label             "Schlüsselwort">
@@ -23,3 +23,4 @@
 <!ENTITY removeEngine.accesskey                "E">
 
 <!ENTITY addMoreSearchEngines.label            "Weitere Suchmaschinen hinzufügen…">
+<!ENTITY addMoreSearchEnginesDesc.label        "CLIQZ nutzt Add-ons aus dem offiziellen Mozilla Firefox Verzeichnis">

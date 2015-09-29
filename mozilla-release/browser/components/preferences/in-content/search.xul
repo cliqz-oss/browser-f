@@ -69,5 +69,7 @@
 
       <hbox id="addEnginesBox" pack="start">
         <label id="addEngines" class="text-link" value="&addMoreSearchEngines.label;"/>
+        <html:br/>
+        <label>&addMoreSearchEnginesDesc.label;</label>
       </hbox>
     </groupbox>

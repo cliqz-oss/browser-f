@@ -9,9 +9,9 @@
 <!ENTITY provideSearchSuggestions.accesskey    "s">
 
 
-<!ENTITY oneClickSearchEngines.label           "One-click search engines">
+<!ENTITY oneClickSearchEngines.label           "Direct searches">
 
-<!ENTITY chooseWhichOneToDisplay.label         "The search bar lets you search alternate engines directly. Choose which ones to display.">
+<!ENTITY chooseWhichOneToDisplay.label         "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
 
 <!ENTITY engineNameColumn.label                "Search Engine">
 <!ENTITY engineKeywordColumn.label             "Keyword">
@@ -23,3 +23,4 @@
 <!ENTITY removeEngine.accesskey                "r">
 
 <!ENTITY addMoreSearchEngines.label            "Add more search engines…">
+<!ENTITY addMoreSearchEnginesDesc.label        "CLIQZ uses add-ons of the official Mozilla Firefox repository">
