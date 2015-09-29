@@ -28,6 +28,8 @@
 
 <!ENTITY dataChoicesTab.label            "Data Choices">
 
+<!ENTITY healthReportIntro.label         "We care about your privacy. When CLIQZ sends information to the CLIQZ team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
+
 <!ENTITY healthReportDesc.label          "Helps you understand your browser performance and shares data with the CLIQZ team about your browser health">
 <!ENTITY enableHealthReport.label        "Enable &brandShortName; Health Report">
 <!ENTITY enableHealthReport.accesskey    "R">

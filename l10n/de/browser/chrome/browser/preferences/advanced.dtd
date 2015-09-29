@@ -28,6 +28,8 @@
 
 <!ENTITY dataChoicesTab.label            "Datenübermittlung">
 
+<!ENTITY healthReportIntro.label          "Den Schutz Deiner Daten nehmen wir sehr ernst. Wenn CLIQZ Daten an das CLIQZ Team sendet, verarbeiten wir diese Daten wie in unserer <label class='text-link' href='https://cliqz.com/privacy'>Datenschutzerklärung</label> beschrieben.">
+
 <!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browserstatus an das CLIQZ-Team.">
 <!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
 <!ENTITY enableHealthReport.accesskey    "S">

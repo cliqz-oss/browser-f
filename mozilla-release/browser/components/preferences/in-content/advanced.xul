@@ -192,6 +192,11 @@
 #ifdef MOZ_DATA_REPORTING
     <!-- Data Choices -->
     <tabpanel id="dataChoicesPanel" orient="vertical">
+      <groupbox>
+        <hbox>
+          <label flex="1">&healthReportIntro.label;</label>
+        </hbox>
+      </groupbox>
 #ifdef MOZ_SERVICES_HEALTHREPORT
       <groupbox>
         <caption>
