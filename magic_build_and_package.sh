@@ -96,7 +96,7 @@ echo '***** Inject the repackaging *****'
 if [ $IS_MAC_OS ]; then
     cp -R ../repack/distribution ./obj-firefox/dist/CLIQZ.app/Contents/Resources/
     cp -R ../cliqz.cfg ./obj-firefox/dist/CLIQZ.app/Contents/Resources/
-    cp -R cliqz@cliqz.com.xpi ./obj-firefox/dist/CLIQZ.app/Content/Resources/distribution/extensions/
+    cp -R cliqz@cliqz.com.xpi ./obj-firefox/dist/CLIQZ.app/Contents/Resources/distribution/extensions/
 else
     cp -R ../repack/distribution ./obj-firefox/dist/bin/
     cp -R ../cliqz.cfg ./obj-firefox/dist/bin/
