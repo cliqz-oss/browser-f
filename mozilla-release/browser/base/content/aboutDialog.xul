@@ -125,15 +125,32 @@
             <label class="text-link" href="http://www.cliqz.com/" hidden="true">&community.mozillaLink;</label>
           </description>
           <description class="text-blurb" id="contributeDesc">
-              We Redesign The Internet
+            &cliqz.headline;
+          </description>
+          <description class="text-blurb" id="contributeDesc">
+            &cliqz.desc1.text;
+            <label class="text-link" href="https://cliqz.com/privacy">
+              &cliqz.desc1.privacy;
+            </label>
+            &cliqz.desc1.or;
+            <label class="text-link" href="https://cliqz.com/en/support">
+              &cliqz.desc1.contact;
+            </label>.
+          </description>
+          <description class="text-blurb" id="contributeDesc">
+            &cliqz.desc2.text1;
+            <label class="text-link" href="http://mozilla.org">
+              &cliqz.desc2.mozilla;
+            </label>.
+            &cliqz.desc2.text2;
+            <label class="text-link" href="about:license">
+              &cliqz.desc2.here;
+            </label>.
           </description>
         </vbox>
       </vbox>
     </hbox>
     <vbox id="bottomBox">
-      <hbox pack="center">
-        <label class="text-link bottom-link" href="about:rights">&bottomLinks.rights;</label>
-      </hbox>
       <description id="trademark">&trademarkInfo.part1;</description>
     </vbox>
   </vbox>
