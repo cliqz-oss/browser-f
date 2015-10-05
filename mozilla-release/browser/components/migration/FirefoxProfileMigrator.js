@@ -31,29 +31,84 @@ XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
                                   "resource://gre/modules/ProfileAge.jsm");
 
 
+/* start CLIQZ helpers */
+
+function getFile(path) {
+  let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+  file.initWithPath(path);
+  return file;
+}
+
+function getFFFolder() {
+  let ffFolder = FileUtils.getDir(
+#ifdef XP_WIN
+    "AppData", ["Mozilla", "Firefox"]
+#elifdef XP_MACOSX
+    "ULibDir", ["Application Support", "Firefox"]
+#else
+    "Home", [".config", "mozilla", "firefox"]
+#endif
+    , false);
+  return ffFolder.exists() ? ffFolder : null;
+}
+
+/* end CLIQZ helpers */
+
 function FirefoxProfileMigrator() {
   this.wrappedJSObject = this; // for testing...
 }
 
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
-FirefoxProfileMigrator.prototype._getAllProfiles = function () {
-  let allProfiles = new Map();
-  let profiles =
-    Components.classes["@mozilla.org/toolkit/profile-service;1"]
-              .getService(Components.interfaces.nsIToolkitProfileService)
-              .profiles;
-  while (profiles.hasMoreElements()) {
-    let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
-    let rootDir = profile.rootDir;
+// FirefoxProfileMigrator.prototype._getAllProfiles = function () {
+//   let allProfiles = new Map();
+//   let profiles =
+//     Components.classes["@mozilla.org/toolkit/profile-service;1"]
+//               .getService(Components.interfaces.nsIToolkitProfileService)
+//               .profiles;
+//   while (profiles.hasMoreElements()) {
+//     let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
+//     let rootDir = profile.rootDir;
 
-    if (rootDir.exists() && rootDir.isReadable() &&
-        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
-      allProfiles.set(profile.name, rootDir);
+//     if (rootDir.exists() && rootDir.isReadable() &&
+//         !rootDir.equals(MigrationUtils.profileStartup.directory)) {
+//       allProfiles.set(profile.name, rootDir);
+//     }
+//   }
+//   return allProfiles;
+// };
+
+FirefoxProfileMigrator.prototype._getAllProfiles = function () {
+  let profileRoot = getFFFolder().clone();
+  profileRoot.append("profiles.ini");
+
+  var profiles = new Map();
+  var iniParser = Cc["@mozilla.org/xpcom/ini-processor-factory;1"].
+                    getService(Ci.nsIINIParserFactory).
+                    createINIParser(profileRoot);
+  
+  var sections = iniParser.getSections();
+  while(sections.hasMore()) {
+    try {
+      var profile = sections.getNext();
+      var profilePath = iniParser.getString(profile, "Path");
+      var path = OS.Path.join(getFFFolder().clone().path, profilePath);
+
+#ifdef XP_WIN
+      path = path.replace("/", "\\");
+#endif
+
+      profiles.set(
+        iniParser.getString(profile, "Name"),
+        getFile(path)
+      );
+    } catch (e) {
+
     }
   }
-  return allProfiles;
-};
+
+  return profiles;
+}
 
 function sorter(a, b) {
   return a.id.toLocaleLowerCase().localeCompare(b.id.toLocaleLowerCase());

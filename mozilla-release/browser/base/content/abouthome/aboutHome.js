@@ -339,6 +339,7 @@ let gSearchSuggestionController;
 
 function setupSearchEngine()
 {
+  return; // disable search engine
   // The "autofocus" attribute doesn't focus the form element
   // immediately when the element is first drawn, so the
   // attribute is also used for styling when the page first loads.
@@ -347,7 +348,7 @@ function setupSearchEngine()
     searchText.removeEventListener("blur", searchText_onBlur);
     searchText.removeAttribute("autofocus");
   });
- 
+
   let searchEngineName = document.documentElement.getAttribute("searchEngineName");
   let searchEngineInfo = SEARCH_ENGINES[searchEngineName];
   let logoElt = document.getElementById("searchEngineLogo");
@@ -387,6 +388,7 @@ function loadCompleted()
  */
 function loadSnippets()
 {
+  return; // disable snippets
   if (!gSnippetsMap)
     throw new Error("Snippets map has not properly been initialized");
 
@@ -445,6 +447,7 @@ function loadSnippets()
 let _snippetsShown = false;
 function showSnippets()
 {
+  return; // disable snippets
   let snippetsElt = document.getElementById("snippets");
 
   // Show about:rights notification, if needed.
@@ -496,6 +499,7 @@ function showSnippets()
  */
 function showDefaultSnippets()
 {
+  return; // disable snippets
   // Clear eventual contents...
   let snippetsElt = document.getElementById("snippets");
   snippetsElt.innerHTML = "";

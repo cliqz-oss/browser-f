@@ -50,7 +50,7 @@
 <!ENTITY bottomLinks.license        "Licensing Information">
 
 <!-- LOCALIZATION NOTE (bottomLinks.rights): This is a link title that links to about:rights. -->
-<!ENTITY bottomLinks.rights         "End-User Rights">
+<!ENTITY bottomLinks.rights         "Terms of use">
 
 <!-- LOCALIZATION NOTE (bottomLinks.privacy): This is a link title that links to https://www.mozilla.org/legal/privacy/. -->
 <!ENTITY bottomLinks.privacy        "Privacy Policy">
@@ -90,7 +90,7 @@
 <!ENTITY update.unsupported.linkText "Learn more">
 <!ENTITY update.unsupported.end      "">
 
-<!-- LOCALIZATION NOTE (update.downloading.start,update.downloading.end): update.downloading.start and 
+<!-- LOCALIZATION NOTE (update.downloading.start,update.downloading.end): update.downloading.start and
      update.downloading.end all go into one line, with the amount downloaded inserted in between. As this
      is all in one line, try to make the localized text short (see bug 596813 for screenshots). The — is
      the "em dash" (long dash).
@@ -105,3 +105,18 @@
      example: You are currently on the _Stable_ update channel. -->
 <!ENTITY channel.description.start  "You are currently on the ">
 <!ENTITY channel.description.end    " update channel. ">
+
+
+<!-- CLIQZ -->
+<!ENTITY version.basedon            "based on Firefox ">
+<!ENTITY cliqz.headline             "We Redesign the Internet">
+<!ENTITY cliqz.desc1.text           "The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: CLIQZ does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our">
+<!ENTITY cliqz.desc1.privacy        "privacy standards">
+<!ENTITY cliqz.desc1.or             "or">
+<!ENTITY cliqz.desc1.contact        "get in contact">
+
+<!ENTITY cliqz.desc2.text1          "Parts of the CLIQZ Browser are building upon the">
+<!ENTITY cliqz.desc2.mozilla        "Mozilla open source project">
+<!ENTITY cliqz.desc2.text2          "Information about the Mozilla Public License 2.0 and other open source and free software can be found">
+<!ENTITY cliqz.desc2.here           "here">
+<!ENTITY cliqz.desc2.text3          "All other parts of the CLIQZ Browser, that is for example integrated search, anti-tracking, and human web, are the exclusive property of CLIQZ.">

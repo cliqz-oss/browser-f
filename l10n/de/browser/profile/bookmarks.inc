@@ -4,7 +4,7 @@
 #filter emptyLines
 
 # LOCALIZATION NOTE: The 'en-US' strings in the URLs will be replaced with
-# your locale code, and link to your translated pages as soon as they're 
+# your locale code, and link to your translated pages as soon as they're
 # live.
 
 #define bookmarks_title Lesezeichen
@@ -19,7 +19,7 @@
 
 # LOCALIZATION NOTE (firefox_heading):
 # Firefox links folder name
-#define firefox_heading Mozilla Firefox
+#define firefox_heading CLIQZ
 
 # LOCALIZATION NOTE (firefox_help):
 # link title for http://www.mozilla.com/en-US/firefox/help/
@@ -36,6 +36,10 @@
 # LOCALIZATION NOTE (firefox_about):
 # link title for http://www.mozilla.com/en-US/firefox/about/
 #define firefox_about Über uns
+
+#define cliqz_triqz CLIQZ Triqz
+# not the place to put this url!
+#define cliqz_triqz_url https://cliqz.com/home/cliqz-triqz
 
 # LOCALIZATION NOTE (firefox_feedback):
 # link title for browser feedback page

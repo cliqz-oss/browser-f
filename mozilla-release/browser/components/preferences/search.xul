@@ -85,6 +85,8 @@
       <hbox pack="start">
         <label id="addEngines" class="text-link" value="&addMoreSearchEngines.label;"
                onclick="if (event.button == 0) { gSearchPane.loadAddEngines(); }"/>
+        <html:br/>
+        <label>&addMoreSearchEnginesDesc.label;</label>
       </hbox>
     </groupbox>
 

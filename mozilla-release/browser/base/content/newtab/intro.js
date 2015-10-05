@@ -21,7 +21,7 @@ let gIntro = {
 
     this._nodes.panel.addEventListener("popupshowing", e => this._setUpPanel());
     this._nodes.panel.addEventListener("popuphidden", e => this._hidePanel());
-    this._nodes.what.addEventListener("click", e => this.showPanel());
+    //this._nodes.what.addEventListener("click", e => this.showPanel());
   },
 
   showIfNecessary: function() {

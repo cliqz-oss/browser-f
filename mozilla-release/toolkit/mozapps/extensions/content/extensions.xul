@@ -122,6 +122,7 @@
 
   <!-- main header -->
   <hbox id="header" align="center">
+    <label value="&cliqz.firefoxAddons;"/>
     <toolbarbutton id="back-btn" class="nav-button header-button" command="cmd_back"
             tooltiptext="&cmd.back.tooltip;" hidden="true" disabled="true"/>
     <toolbarbutton id="forward-btn" class="nav-button header-button" command="cmd_forward"
@@ -205,7 +206,6 @@
     </richlistbox>
 
     <box id="view-port-container" class="main-content" flex="1">
-
       <!-- view port -->
       <deck id="view-port" flex="1" selectedIndex="0">
 

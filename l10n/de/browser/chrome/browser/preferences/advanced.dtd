@@ -28,7 +28,9 @@
 
 <!ENTITY dataChoicesTab.label            "Datenübermittlung">
 
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browserstatus an &vendorShortName;.">
+<!ENTITY healthReportIntro.label          "Den Schutz Deiner Daten nehmen wir sehr ernst. Wenn CLIQZ Daten an das CLIQZ Team sendet, verarbeiten wir diese Daten wie in unserer <label class='text-link' href='https://cliqz.com/privacy'>Datenschutzerklärung</label> beschrieben.">
+
+<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browserstatus an das CLIQZ-Team.">
 <!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
 <!ENTITY enableHealthReport.accesskey    "S">
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
@@ -38,7 +40,7 @@
 <!ENTITY enableTelemetryData.accesskey   "Z">
 <!ENTITY telemetryLearnMore.label        "Weitere Informationen">
 
-<!ENTITY crashReporterDesc.label         "&brandShortName; übermittelt Absturzberichte, um &vendorShortName; dabei zu helfen, den Browser stabiler und sicherer zu machen.">
+<!ENTITY crashReporterDesc.label         "&brandShortName; übermittelt Absturzberichte, um das CLIQZ-Team dabei zu helfen, den Browser stabiler und sicherer zu machen.">
 <!ENTITY enableCrashReporter.label       "Absturzmelder aktivieren">
 <!ENTITY enableCrashReporter.accesskey   "A">
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
@@ -113,6 +115,7 @@
 <!ENTITY offlineAppRemove.confirm        "Offline-Daten entfernen">
 
 <!ENTITY certificateTab.label            "Zertifikate">
+<!ENTITY certSelection.label             "Anfragen">
 <!ENTITY certSelection.description       "Wenn eine Website nach dem persönlichen Sicherheitszertifikat verlangt:">
 <!ENTITY certs.auto                      "Automatisch eins wählen">
 <!ENTITY certs.auto.accesskey            "w">
