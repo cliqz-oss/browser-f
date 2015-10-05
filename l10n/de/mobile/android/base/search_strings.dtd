@@ -1,0 +1,30 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY search_app_name '&brandShortName;-Suche'>
+
+<!--  Localization note (search_bar_hint): The &formatS; will be replaced with the name of
+      the currently selected search engine. -->
+<!ENTITY search_bar_hint 'Mit \u0022&formatS;\u0022 suchen'>
+
+<!ENTITY search_empty_title2 'Mit dem Suchen beginnen'>
+<!ENTITY search_empty_message 'Schnell nach dem Gewünschten suchen'>
+
+<!--  Localization note (search_plus_content_description): This is the content description
+      for the "+" icon that appears at the end of search suggestions. -->
+<!ENTITY search_plus_content_description 'Zur Suchleiste hinzufügen'>
+
+<!ENTITY search_pref_title 'Einstellungen'>
+<!ENTITY search_pref_button_content_description 'Einstellungen'>
+
+<!ENTITY pref_clearHistory_confirmation 'Chronik gelöscht'>
+<!ENTITY pref_clearHistory_dialogMessage 'Gesamte Suchchronik auf diesem Gerät löschen?'>
+<!ENTITY pref_clearHistory_title 'Suchchronik löschen'>
+
+<!ENTITY pref_searchProvider_title 'Suchmaschine'>
+
+<!ENTITY search_widget_button_label 'Suchen'>
+
+<!ENTITY network_error_title 'Keine Internetverbindung'>
+<!ENTITY network_error_message 'Zum Überprüfen Ihrer Netzwerkverbindung hier antippen'>

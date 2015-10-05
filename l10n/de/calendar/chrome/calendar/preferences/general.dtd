@@ -1,0 +1,42 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- WARNING! This file contains UTF-8 encoded characters!                      
+   - If this ==> … <== doesn't look like an ellipsis (three dots in a row),   
+   - your editor isn't using UTF-8 encoding and may munge up the document!      
+  -->
+
+<!ENTITY pref.mainbox.label "Allgemeine Einstellungen">
+<!ENTITY pref.dateformat.label "Datums-Textformat:">
+<!ENTITY pref.dateformat.accesskey "D">
+<!ENTITY pref.dateformat.long "Lang">
+<!ENTITY pref.dateformat.short "Kurz">
+
+<!ENTITY pref.timezones.caption "Zeitzone">
+<!ENTITY pref.timezones.label "Wählen Sie den nächstgelegenen Ort in Ihrer Zeitzone aus:">
+<!ENTITY pref.timezones.accesskey "Z">
+
+<!ENTITY pref.defaults.label "Standardwerte für neue Ereignisse">
+<!ENTITY pref.events.label "Termine">
+<!ENTITY pref.tasks.label "Aufgaben">
+
+<!ENTITY pref.default_event_length.label "Standarddauer:">
+<!ENTITY pref.default_event_length.accesskey "E">
+
+<!ENTITY pref.default_task_none.label "Keine">
+<!ENTITY pref.default_task_start_of_day.label "Tagesanfang">
+<!ENTITY pref.default_task_end_of_day.label "Tagesende">
+<!ENTITY pref.default_task_tomorrow.label "Morgen">
+<!ENTITY pref.default_task_next_week.label "Nächste Woche">
+<!ENTITY pref.default_task_offset_current.label "In Relation zum aktuellen Zeitpunkt">
+<!ENTITY pref.default_task_offset_start.label "In Relation zum Beginn">
+<!ENTITY pref.default_task_offset_next_hour.label "In Relation zur folgenden Stunde">
+
+<!ENTITY pref.calendar.todaypane.agenda.caption "Tagesplan">
+<!ENTITY pref.soondays.label "Der Bereich &quot;Demnächst&quot; zeigt:">
+<!ENTITY pref.soondays.accesskey "m">
+
+<!ENTITY pref.accessibility.label "Barrierefreiheit">
+<!ENTITY pref.systemcolors.label "Farben für eine barrierefreie Darstellung optimieren">
+<!ENTITY pref.systemcolors.accesskey "F">

@@ -1,0 +1,16 @@
+<!--LOCALIZATION NOTE msgCompSMIMEOverlay.dtd UI for s/mime hooks in message composition -->
+
+<!ENTITY menu_securityEncryptRequire.label "Nachricht verschlüsseln">
+<!ENTITY menu_securityEncryptRequire.accesskey "v">
+
+<!ENTITY menu_securitySign.label "Nachricht unterschreiben">
+<!ENTITY menu_securitySign.accesskey "u">
+
+<!ENTITY menu_securityStatus.label "Sicherheitsinformationen anzeigen">
+<!ENTITY menu_securityStatus.accesskey "i">
+
+<!ENTITY securityButton.label "S/MIME">
+<!ENTITY securityButton.tooltip "Sicherheitseinstellungen ansehen oder ändern">
+
+<!ENTITY menu_viewSecurityStatus.label "Nachrichten-Sicherheit">
+<!ENTITY menu_viewSecurityStatus.accesskey "c">

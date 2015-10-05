@@ -1,0 +1,5 @@
+<!ENTITY attachImageSource.label         "Dieses Bild an die Nachricht anhängen">
+<!ENTITY attachImageSource.accesskey     "B">
+
+<!ENTITY attachLinkSource.label          "Den Quelltext des Links an die Nachricht anhängen">
+<!ENTITY attachLinkSource.accesskey      "Q">

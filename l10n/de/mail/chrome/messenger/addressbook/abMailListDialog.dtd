@@ -1,0 +1,23 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- Title -->
+<!ENTITY mailListWindow.title           "Verteiler-Liste">
+<!-- Labels -->
+<!ENTITY addToAddressBook.label         "Hinzufügen zu:">
+
+<!ENTITY ListName.label                 "Listenname:">
+<!ENTITY ListNickName.label             "Listen-Spitzname:">
+<!ENTITY ListDescription.label          "Beschreibung:">
+<!-- See bug 58485, when we implement drag and drop, add 'or drag addresses' back in -->
+<!ENTITY AddressTitle.label             "Geben Sie E-Mail-Adressen ein, um sie in die Verteiler-Liste einzufügen:">
+<!ENTITY UpButton.label                 "Nach oben">
+<!ENTITY DownButton.label               "Nach unten">
+
+<!-- Access Keys -->
+<!ENTITY addToAddressBook.accesskey     "H">
+<!ENTITY ListName.accesskey             "L">
+<!ENTITY ListNickName.accesskey         "S">
+<!ENTITY ListDescription.accesskey      "e">
+

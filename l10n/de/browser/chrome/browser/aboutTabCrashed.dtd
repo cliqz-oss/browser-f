@@ -1,0 +1,11 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY tabCrashed.header "Dieser Tab ist abgestürzt.">
+<!ENTITY tabCrashed.message "Sie können diesen Tab wiederherstellen oder schließen oder alle abgestürzten Tabs wiederherstellen.">
+<!ENTITY tabCrashed.sendReport "Absturzbericht senden">
+<!ENTITY tabCrashed.reportSent "Absturzbericht bereits gesendet. Vielen Dank, dass Sie beim Verbessern von &brandShortName; helfen!">
+<!ENTITY tabCrashed.closeTab "Diesen Tab schließen">
+<!ENTITY tabCrashed.restoreTab "Diesen Tab wiederherstellen">
+<!ENTITY tabCrashed.restoreAll "Alle abgestürzte Tabs wiederherstellen">

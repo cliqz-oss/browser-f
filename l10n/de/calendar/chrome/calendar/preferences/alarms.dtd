@@ -1,0 +1,36 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!-- WARNING! This file contains UTF-8 encoded characters!
+   - If this ==> … <== doesn't look like an ellipsis (three dots in a row),
+   - your editor isn't using UTF-8 encoding and may munge up the document!
+  -->
+
+<!ENTITY pref.alarmgoesoff.label "Wenn eine Erinnerung fällig ist:">
+<!ENTITY pref.playasound "Einen Klang abspielen">
+<!ENTITY pref.calendar.alarms.playsound.accessKey "k">
+<!ENTITY pref.calendar.alarms.sound.useDefault.label "Standardklang verwenden">
+<!ENTITY pref.calendar.alarms.sound.useDefault.accessKey "s">
+<!ENTITY pref.calendar.alarms.sound.browse.label "Durchsuchen…">
+<!ENTITY pref.calendar.alarms.sound.browse.accessKey "D">
+<!ENTITY pref.calendar.alarms.sound.play.label "Abspielen">
+<!ENTITY pref.calendar.alarms.sound.play.accessKey "b">
+<!ENTITY pref.showalarmbox "Den Erinnerungen-Dialog anzeigen">
+<!ENTITY pref.calendar.alarms.showAlarmBox.accessKey "n">
+<!ENTITY pref.missedalarms "Versäumte Erinnerungen anzeigen">
+<!ENTITY pref.calendar.alarms.missedAlarms.accessKey "z">
+<!ENTITY pref.calendar.alarms.defaults.label "Standardeinstellungen für Erinnerungen">
+<!ENTITY pref.defalarm4events.label "Standardeinstellungen für Erinnerungen bei Terminen:">
+<!ENTITY pref.defalarm4events.accesskey "e">
+<!ENTITY pref.defalarm4todos.label "Standardeinstellungen für Erinnerungen bei Aufgaben:">
+<!ENTITY pref.defalarm4todos.accesskey "a">
+<!ENTITY pref.alarm.on "Ein">
+<!ENTITY pref.alarm.off "Aus">
+<!ENTITY pref.defalarmlen4events.label "Erinnerungszeitpunkt vor Terminbeginn:">
+<!ENTITY pref.defalarmlen4events.accesskey "u">
+<!ENTITY pref.defalarmlen4todos.label "Erinnerungszeitpunkt vor Aufgabenbeginn:">
+<!ENTITY pref.defalarmlen4todos.accesskey "o">
+
+<!ENTITY pref.defaultsnoozelength.label "Standardintervall für erneutes Erinnern:">
+<!ENTITY pref.defaultsnoozelength.accesskey "R">

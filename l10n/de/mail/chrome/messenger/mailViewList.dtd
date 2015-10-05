@@ -1,0 +1,5 @@
+<!--LOCALIZATION NOTE msgViewPickerOverlay.dtd UI for showing various views on a folder -->
+
+<!ENTITY mailViewListTitle.label "Individuelle Ansichten">
+<!ENTITY viewName.label "Ansichtsname">
+

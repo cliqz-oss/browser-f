@@ -1,0 +1,11 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY identityDialog.style "width: 67ch;">
+<!ENTITY identityTitle.label "Identitäts-Einstellungen">
+<!ENTITY identityListDesc.label "Einstellungen für diese Identität konfigurieren:">
+
+<!ENTITY settingsTab.label       "Einstellungen">
+<!ENTITY copiesFoldersTab.label "Kopien &amp; Ordner">
+<!ENTITY addressingTab.label    "Verfassen &amp; Adressieren">

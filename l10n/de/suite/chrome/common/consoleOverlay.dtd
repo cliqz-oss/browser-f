@@ -1,0 +1,21 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY menuBar.tooltip       "Menüleiste">
+<!ENTITY modeToolbar.tooltip   "Modus-Symbolleiste">
+<!ENTITY entryToolbar.tooltip  "Symbolleiste für JavaScript-Eingaben">
+<!ENTITY toolbarsCmd.label     "Anzeigen/Verstecken">
+<!ENTITY toolbarsCmd.accesskey "A">
+<!ENTITY toolbarMode.label     "Modus">
+<!ENTITY toolbarMode.accesskey "M">
+<!ENTITY toolbarEval.label     "JavaScript-Eingabe">
+<!ENTITY toolbarEval.accesskey "J">
+
+<!ENTITY all.accesskey         "l">
+<!ENTITY errors.accesskey      "e">
+<!ENTITY warnings.accesskey    "W">
+<!ENTITY messages.accesskey    "N">
+<!ENTITY clear.accesskey       "s">
+<!ENTITY evaluate.accesskey    "v">
+<!ENTITY filter2.accesskey     "F">

@@ -1,0 +1,11 @@
+<!ENTITY feedbackHeader2.label          "Feedback-Werkzeuge">
+
+<!ENTITY feedback.communicate.title     "Kommunizieren Sie mit uns!">
+<!ENTITY feedback.feedback.title        "Feedback senden">
+<!ENTITY feedback.feedback.good         "Gut">
+<!ENTITY feedback.feedback.bad          "Schlecht">
+
+<!ENTITY feedback.tools.title           "Werkzeuge">
+<!ENTITY feedback.allowTelemetry.title  "Performanz-Daten senden">
+<!ENTITY feedback.forceCompat.title     "Add-on-Kompatibilität erzwingen">
+<!ENTITY feedback.errorConsole.title    "Fehler-Konsole aktivieren">

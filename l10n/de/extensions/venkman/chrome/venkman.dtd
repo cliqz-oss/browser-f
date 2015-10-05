@@ -1,0 +1,85 @@
+<!--
+   -
+   - This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY MainWindow.title "JavaScript-Debugger">
+
+<!-- floating views -->
+<!ENTITY ViewFloat.tooltip      "Hier klicken, um diese Ansicht an-/abzudocken">
+<!ENTITY ViewGrippy.tooltip     "Hier klicken, um diese Ansicht zu bewegen">
+<!ENTITY ViewClose.tooltip      "Hier klicken, um diese Ansicht zu schließen">
+
+<!-- help menu -->
+<!ENTITY Help.commands     "Kommandoreferenz">
+<!ENTITY Help.about        "Über Venkman">
+
+<!-- toolips -->
+<!ENTITY DebugBar.tooltip "Debug-Symbolleiste">
+<!ENTITY MenuBar.tooltip  "Menüleiste">
+
+<!-- breakpoint view -->
+<!ENTITY Break.label        "Haltepunkte">
+<!ENTITY BreakCol0.label    "Name">
+<!ENTITY BreakCol1.label    "Zeile/PC">
+
+<!-- locals view -->
+<!ENTITY Locals.label       "Lokale Variablen">
+<!ENTITY LocalsCol0.header  "Name">
+<!ENTITY LocalsCol1.header  "Typ">
+<!ENTITY LocalsCol2.header  "Wert">
+<!ENTITY LocalsCol3.header  "Flags">
+
+<!-- session view -->
+<!ENTITY Session.label      "Interaktive Sitzung">
+
+<!-- script view -->
+<!ENTITY Scripts.label         "Geladene Skripte">
+<!ENTITY ScriptsSearch.label   "Suchen">
+<!ENTITY ScriptsSearch.tooltip "Hier klicken, um das Suchfeld zu leeren">
+<!ENTITY ScriptsCol0.header    "Name">
+<!ENTITY ScriptsCol1.header    "Zeile">
+<!ENTITY ScriptsCol2.header    "Länge">
+
+<!-- source view -->
+<!ENTITY Source.label       "Quellcode">
+<!ENTITY SourceHeader.tip   "Quelle-Symbolleiste">
+<!ENTITY SourceCol0.display "Rand">
+<!ENTITY SourceCol1.display "Zeilennummer">
+
+<!-- stack view -->
+<!ENTITY Stack.label        "Aufruf-Stack">
+<!ENTITY StackCol0.header   "Name">
+<!ENTITY StackCol1.header   "Adresse">
+
+<!-- watch view -->
+<!ENTITY Watch.label        "Beobachtungen">
+<!ENTITY WatchCol0.header   "Name">
+<!ENTITY WatchCol1.header   "Typ">
+<!ENTITY WatchCol2.header   "Wert">
+<!ENTITY WatchCol3.header   "Flags">
+
+<!-- window view -->
+<!ENTITY Windows.label      "Offene Fenster">
+<!ENTITY WindowsCol0.label  "Datei">
+
+<!-- breakpoint properties window -->
+<!ENTITY BPProps.URL.label          "URL">
+<!ENTITY BPProps.Line.label         "Zeile">
+<!ENTITY BPProps.PC.label           "PC">
+<!ENTITY BPProps.FunctionName.label "Funktion">
+<!ENTITY BPProps.TriggerCount.label "Auslösezähler">
+<!ENTITY BPProps.OneTime.label      "Haltepunkt nach dem ersten Auslösen löschen">
+<!ENTITY BPProps.Then.label         "Dann …">
+<!ENTITY BPProps.ConditionalCheck.label      "Wenn ausgelöst, Folgendes ausführen…">
+<!ENTITY BPProps.NeverStopRadio.label        "Ohne Rücksicht auf das Ergebnis fortsetzen">
+<!ENTITY BPProps.AlwaysStopRadio.label       "Ohne Rücksicht auf das Ergebnis anhalten">
+<!ENTITY BPProps.ConditionalBreakRadio.label "Anhalten, wenn das Ergebnis wahr ist">
+<!ENTITY BPProps.EarlyReturnRadio.label  "Frühe Rückkehr vom Aufruf mit dem Ergebnis">
+<!ENTITY BPProps.PassExceptionsCheck.label   "Exceptions zum Aufrufer weitergeben">
+<!ENTITY BPProps.LogResultCheck.label        "Log-Ergebnis">
+<!ENTITY BPProps.Apply.label  "Ausführen">
+<!ENTITY BPProps.Revert.label "Zurück">
+<!ENTITY BPProps.Close.label  "Schließen">
+

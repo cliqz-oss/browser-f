@@ -1,0 +1,14 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY aboutDevices.title              "Geräte">
+<!ENTITY aboutDevices.header             "Ihre Geräte">
+<!ENTITY aboutDevices.refresh            "Aktualisieren">
+<!ENTITY aboutDevices.addDeviceHeader    "Gerät hinzufügen">
+<!ENTITY aboutDevices.roku               "Roku">
+<!ENTITY aboutDevices.chromecast         "Chromecast">
+<!-- Localization note (aboutDevices.placeholder): this is the hint shown to the
+     user prompting them to input the IP address of a casting device. -->
+<!ENTITY aboutDevices.placeholder        "IP-Adresse">
+<!ENTITY aboutDevices.connectManually    "Manuell verbinden">

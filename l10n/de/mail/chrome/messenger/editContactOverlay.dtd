@@ -1,0 +1,19 @@
+<!ENTITY editContactPanelDeleteContact.label "Löschen">
+<!ENTITY editContactPanelDeleteContact.accesskey "L">
+
+<!ENTITY editContactName.label "Name:">
+<!ENTITY editContactName.accesskey "N">
+
+<!ENTITY editContactEmail.label "E-Mail-Adresse:">
+<!ENTITY editContactEmail.accesskey "E">
+
+<!ENTITY editContactAddressBook.label "Adressbuch:">
+<!ENTITY editContactAddressBook.accesskey "A">
+
+<!ENTITY editContactPanelCancel.label "Abbrechen">
+<!ENTITY editContactPanelCancel.accesskey "b">
+
+<!ENTITY editContactPanelDone.label "Fertig">
+<!ENTITY editContactPanelDone.accesskey "F">
+
+<!ENTITY contactMoveDisabledWarning.description "Sie können das Adressbuch nicht wechseln, da sich der Kontakt in einer Verteiler-Liste befindet.">

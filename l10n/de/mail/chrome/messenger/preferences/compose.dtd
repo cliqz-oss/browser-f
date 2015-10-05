@@ -1,0 +1,63 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY itemGeneral.label                   "Allgemein">
+<!ENTITY itemAutoComplete.label              "Adressieren">
+<!ENTITY itemSpellCheck.label                "Rechtschreibung">
+
+<!ENTITY dialogCompose.title                 "Verfassen">
+
+<!ENTITY forwardMsg.label                     "Nachrichten weiterleiten:">
+<!ENTITY forwardMsg.accesskey                 "N">
+<!ENTITY inline.label                         "Eingebunden">
+<!ENTITY asAttachment.label                   "Als Anhang">
+<!ENTITY addExtension.label                   "Dateinamenserweiterung hinzufügen">
+<!ENTITY addExtension.accesskey               "D">
+
+<!ENTITY htmlComposeHeader.label              "HTML-Optionen">
+<!ENTITY font.label                           "Schriftart:">
+<!ENTITY font.accesskey                       "c">
+<!ENTITY size.label                           "Größe:">
+<!ENTITY size.accesskey                       "G">
+<!ENTITY fontColor.label                      "Text:">
+<!ENTITY fontColor.accesskey                  "T">
+<!ENTITY bgColor.label                        "Hintergrund:">
+<!ENTITY bgColor.accesskey                    "H">
+<!ENTITY restoreHTMLDefaults.label            "Standard wiederherstellen">
+<!ENTITY restoreHTMLDefaults.accesskey        "w">
+
+<!ENTITY spellCheck.label                     "Rechtschreibprüfung vor dem Senden">
+<!ENTITY spellCheck.accesskey                 "R">
+<!ENTITY spellCheckInline.label               "Sofort-Rechtschreibprüfung aktivieren">
+<!ENTITY spellCheckInline1.accesskey          "S">
+<!ENTITY languagePopup.label                  "Sprache:">
+<!ENTITY languagePopup.accessKey              "p">
+<!ENTITY downloadDictionaries.label           "Weitere Wörterbücher herunterladen">
+
+<!ENTITY warnOnSendAccelKey.label             "Bestätigen, wenn das Tastaturkürzel zum Senden einer Nachricht verwendet wird">
+<!ENTITY warnOnSendAccelKey.accesskey         "B">
+<!ENTITY autoSave.label                       "Alle">
+<!ENTITY autoSave.accesskey                   "A">
+<!ENTITY autoSaveEnd.label                    "Minuten automatisch speichern">
+
+<!ENTITY emailCollectionPicker.label           "Adressen beim Senden automatisch hinzufügen zu:">
+<!ENTITY emailCollectionPicker.accesskey       "A">
+<!ENTITY addressingTitle.label                 "Adress-Autovervollständigung">
+<!ENTITY autocompleteText.label                "Beim Adressieren von Nachrichten nach passenden Einträgen suchen in:">
+<!ENTITY addressingEnable.label                "Lokale Adressbücher">
+<!ENTITY addressingEnable.accesskey            "L">
+<!ENTITY directories.label                     "LDAP-Verzeichnisserver:">
+<!ENTITY directories.accesskey                 "D">
+<!ENTITY directoriesNone.label                 "Keine">
+<!ENTITY editDirectories.label                 "Bearbeiten…">
+<!ENTITY editDirectories.accesskey             "B">
+
+<!ENTITY sendOptionsDescription.label          "Verhalten beim Senden von HTML-Nachrichten:">
+<!ENTITY sendOptions.label                     "Sende-Optionen…">
+<!ENTITY sendOptions.accesskey                 "O">
+
+<!ENTITY attachmentReminder.label              "Auf fehlende Anhänge prüfen">
+<!ENTITY attachmentReminder.accesskey          "u">
+<!ENTITY attachmentReminderOptions.label       "Schlüsselwörter…">
+<!ENTITY attachmentReminderOptions.accesskey   "S">
