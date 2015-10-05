@@ -10,10 +10,11 @@
 <!ENTITY trackingProtection.accesskey   "u">
 <!ENTITY trackingProtectionLearnMore.label "Weitere Informationen">
 <!ENTITY doNotTrackInfo.label           "Weitere Informationen">
+<!ENTITY doNotTrackInfo.label2          "Wenn diese Funktion aktiviert ist, teilt CLIQZ Werbenetzwerken, Websites und Anwendungen mit, dass Du nicht zwecks verhaltensbasierter Werbung und Ähnlichem verfolgt werden möchtest.">
 
 <!ENTITY  history.label                 "Chronik">
 
-<!ENTITY  locationBar.label             "Adressleiste">
+<!ENTITY  locationBar.label             "Suchleiste">
 
 <!ENTITY  locbar.suggest.label          "Vorschläge beim Verwenden der Adressleiste:">
 <!ENTITY  locbar.history.label          "Einträge aus der Chronik">

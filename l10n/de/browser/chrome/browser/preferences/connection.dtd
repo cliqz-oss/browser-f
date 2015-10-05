@@ -41,7 +41,7 @@
 <!ENTITY  SOCKSport.accesskey           "t">
 <!ENTITY  noproxy.label                 "Kein Proxy für:">
 <!ENTITY  noproxy.accesskey             "n">
-<!ENTITY  noproxyExplain.label          "Beispiel: .mozilla.org, .net.de, 192.168.1.0/24">
+<!ENTITY  noproxyExplain.label          "Beispiel: .cliqz.com, .net.de, 192.168.1.0/24">
 <!ENTITY  shareproxy.label              "Für alle Protokolle diesen Proxy-Server verwenden">
 <!ENTITY  shareproxy.accesskey          "F">
 <!ENTITY  autologinproxy.label          "Keine Authentifizierungsanfrage bei gespeichertem Passwort">

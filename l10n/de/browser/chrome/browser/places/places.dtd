@@ -85,6 +85,7 @@
 <!ENTITY col.url.label           "Adresse">
 <!ENTITY col.mostrecentvisit.label "Zuletzt besucht">
 <!ENTITY col.visitcount.label    "Meistbesucht">
+<!ENTITY col.keyword.label       "Stichwort">
 <!ENTITY col.description.label   "Beschreibung">
 <!ENTITY col.dateadded.label     "Hinzugefügt">
 <!ENTITY col.lastmodified.label  "Zuletzt verändert">

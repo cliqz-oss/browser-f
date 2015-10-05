@@ -1,4 +1,4 @@
-<?xml version="1.0"?> <!-- -*- Mode: HTML -*- --> 
+<?xml version="1.0"?> <!-- -*- Mode: HTML -*- -->
 
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -42,9 +42,9 @@
     <hbox id="clientBox">
       <vbox id="leftBox" flex="1"/>
       <vbox id="rightBox" flex="1">
-#expand <label id="version">__MOZ_APP_VERSION__</label>
         <label id="distribution" class="text-blurb"/>
         <label id="distributionId" class="text-blurb"/>
+#expand <label id="version">&version.basedon;__MOZ_APP_VERSION__</label>
 
         <vbox id="detailsBox">
           <vbox id="updateBox">
@@ -120,29 +120,41 @@
               &warningDesc.telemetryDesc;
 #endif
             </description>
-            <description class="text-blurb" id="communityExperimentalDesc">
-              &community.exp.start;<label class="text-link" href="http://www.mozilla.org/">&community.exp.mozillaLink;</label>&community.exp.middle;<label class="text-link" href="about:credits">&community.exp.creditsLink;</label>&community.exp.end;
-            </description>
           </vbox>
-          <description class="text-blurb" id="communityDesc">
-            &community.start2;<label class="text-link" href="http://www.mozilla.org/">&community.mozillaLink;</label>&community.middle2;<label class="text-link" href="about:credits">&community.creditsLink;</label>&community.end3;
+          <description class="text-blurb" id="communityDesc" hidden="true">
+            <label class="text-link" href="http://www.cliqz.com/" hidden="true">&community.mozillaLink;</label>
           </description>
           <description class="text-blurb" id="contributeDesc">
-              &helpus.start;<label class="text-link" href="https://sendto.mozilla.org/page/contribute/Give-Now?source=mozillaorg_default_footer&#38;ref=firefox_about&#38;utm_campaign=firefox_about&#38;tm_source=firefox&#38;tm_medium=referral&#38;utm_content=20140929_FireFoxAbout">&helpus.donateLink;</label>&helpus.middle;<label class="text-link" href="http://www.mozilla.org/contribute/">&helpus.getInvolvedLink;</label>&helpus.end;
+            &cliqz.headline;
+          </description>
+          <description class="text-blurb" id="contributeDesc">
+            &cliqz.desc1.text;
+            <label class="text-link" href="https://cliqz.com/privacy">
+              &cliqz.desc1.privacy;
+            </label>
+            &cliqz.desc1.or;
+            <label class="text-link" href="https://cliqz.com/en/support">
+              &cliqz.desc1.contact;
+            </label>.
+          </description>
+          <description class="text-blurb" id="contributeDesc">
+            &cliqz.desc2.text1;
+            <label class="text-link" href="http://mozilla.org">
+              &cliqz.desc2.mozilla;
+            </label>.
+            &cliqz.desc2.text2;
+            <label class="text-link" href="about:license">
+              &cliqz.desc2.here;
+            </label>.
           </description>
         </vbox>
       </vbox>
     </hbox>
     <vbox id="bottomBox">
-      <hbox pack="center">
-        <label class="text-link bottom-link" href="about:license">&bottomLinks.license;</label>
-        <label class="text-link bottom-link" href="about:rights">&bottomLinks.rights;</label>
-        <label class="text-link bottom-link" href="https://www.mozilla.org/privacy/">&bottomLinks.privacy;</label>
-      </hbox>
       <description id="trademark">&trademarkInfo.part1;</description>
     </vbox>
   </vbox>
-  
+
   <keyset>
     <key keycode="VK_ESCAPE" oncommand="window.close();"/>
   </keyset>
