@@ -62,8 +62,8 @@ export MOZ_AUTOMATION_UPLOAD=1
 ./mach clobber
 
 if [ $CQZ_GOOGLE_API_KEY ]; then
-  echo $CQZ_GOOGLE_API_KEY >> ../google-api-key
-  echo "ac_add_options --with-google-api-keyfile=\"$PWD/../google-api-key\"" > $MOZCONFIG
+  echo $CQZ_GOOGLE_API_KEY > ../google-api-key
+  echo "ac_add_options --with-google-api-keyfile=\"$PWD/../google-api-key\"" >> $MOZCONFIG
 fi
 
 if [ $IS_WIN ]; then
