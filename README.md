@@ -1,11 +1,10 @@
 # CLIQZ Browser
 
-CLIQZ is a novel internet browser that incorporates search as first class feature.
-CLIQZ Browser in based on Mozilla Firefox.
+CLIQZ develops novel Internet browsers that incorporate search as primary feature. This repository is about the CLIQZ Browsers based on Mozilla Firefox, available to users as  “CLIQZ for Windows beta” and “CLIQZ for Mac beta”.  Learn more at [cliqz.com](https://cliqz.com).
 
 ## Building
 
-First you should have environment prepared to build regular Firefox, to do that
+First you should have environment prepared to build regular Firefox. To do that
 follow [Mozilla instructions](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions).
 
 Next run building script: `./magic_build_and_package.sh`
