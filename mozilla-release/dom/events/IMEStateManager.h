@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,13 +8,13 @@
 #define mozilla_IMEStateManager_h_
 
 #include "mozilla/EventForwards.h"
+#include "mozilla/StaticPtr.h"
 #include "nsIWidget.h"
 
 class nsIContent;
 class nsIDOMMouseEvent;
 class nsIEditor;
 class nsINode;
-class nsPIDOMWindow;
 class nsPresContext;
 class nsISelection;
 
@@ -33,6 +34,7 @@ class TextComposition;
 class IMEStateManager
 {
   typedef widget::IMEMessage IMEMessage;
+  typedef widget::IMENotification IMENotification;
   typedef widget::IMEState IMEState;
   typedef widget::InputContext InputContext;
   typedef widget::InputContextAction InputContextAction;
@@ -94,6 +96,13 @@ public:
                               nsIContent* aContent,
                               nsIEditor* aEditor);
 
+  // This method is called when the editor is initialized.
+  static void OnEditorInitialized(nsIEditor* aEditor);
+
+  // This method is called when the editor is (might be temporarily) being
+  // destroyed.
+  static void OnEditorDestroying(nsIEditor* aEditor);
+
   /**
    * All composition events must be dispatched via DispatchCompositionEvent()
    * for storing the composition target and ensuring a set of composition
@@ -133,12 +142,18 @@ public:
    * Send a notification to IME.  It depends on the IME or platform spec what
    * will occur (or not occur).
    */
-  static nsresult NotifyIME(IMEMessage aMessage, nsIWidget* aWidget);
-  static nsresult NotifyIME(IMEMessage aMessage, nsPresContext* aPresContext);
+  static nsresult NotifyIME(const IMENotification& aNotification,
+                            nsIWidget* aWidget,
+                            bool aOriginIsRemote = false);
+  static nsresult NotifyIME(IMEMessage aMessage,
+                            nsIWidget* aWidget,
+                            bool aOriginIsRemote = false);
+  static nsresult NotifyIME(IMEMessage aMessage,
+                            nsPresContext* aPresContext,
+                            bool aOriginIsRemote = false);
 
   static nsINode* GetRootEditableNode(nsPresContext* aPresContext,
                                       nsIContent* aContent);
-  static bool IsTestingIME() { return sIsTestingIME; }
 
 protected:
   static nsresult OnChangeFocusInternal(nsPresContext* aPresContext,
@@ -157,13 +172,15 @@ protected:
 
   static bool IsEditable(nsINode* node);
 
-  static bool IsEditableIMEState(nsIWidget* aWidget);
+  static bool IsIMEObserverNeeded(const IMEState& aState);
 
   static nsIContent*    sContent;
   static nsPresContext* sPresContext;
+  static StaticRefPtr<nsIWidget> sFocusedIMEWidget;
   static bool           sInstalledMenuKeyboardListener;
-  static bool           sIsTestingIME;
   static bool           sIsGettingNewIMEState;
+  static bool           sCheckForIMEUnawareWebApps;
+  static bool           sRemoteHasFocus;
 
   class MOZ_STACK_CLASS GettingNewIMEStateBlocker final
   {

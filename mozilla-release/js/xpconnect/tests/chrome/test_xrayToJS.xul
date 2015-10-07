@@ -146,7 +146,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   // DO NOT CHANGE WTIHOUT REVIEW FROM AN XPCONNECT PEER.
   var version = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo).version;
   var isNightlyBuild = version.endsWith("a1");
-  var isReleaseBuild = !version.contains("a");
+  var isReleaseBuild = !version.includes("a");
   var gPrototypeProperties = {};
   gPrototypeProperties['Date'] =
     ["getTime", "getTimezoneOffset", "getYear", "getFullYear", "getUTCFullYear",
@@ -498,13 +498,16 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
        "Underlying object has getter");
     is(trickyObject.nonConfigurableGetterSetterProp, undefined,
        "Filtering properly over Xray here too");
+    is((trickyObject.nonConfigurableGetterSetterProp = 'redefined'), 'redefined',
+       "Assigning to non-configurable prop should fail silently in non-strict mode");
     checkThrows(function() {
-	trickyObject.nonConfigurableGetterSetterProp = 'redefined';
-    }, /config/, "Should throw when redefining non-configurable prop");
+      "use strict";
+      trickyObject.nonConfigurableGetterSetterProp = 'redefined';
+    }, /config/, "Should throw when redefining non-configurable prop in strict mode");
     is(trickyObject.nonConfigurableGetterSetterProp, undefined,
-       "Redefinition should have thrown");
+       "Redefinition should have failed");
     is(trickyObject.wrappedJSObject.nonConfigurableGetterSetterProp, 5,
-       "Redefinition really should have thrown");
+       "Redefinition really should have failed");
 
     checkThrows(function() { trickyObject.hasOwnProperty = 33; }, /shadow/,
                 "Should reject shadowing of pre-existing inherited properties over Xrays");
@@ -576,9 +579,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
         is(e[name], undefined, name + " property censored after suspicious replacement");
       }
       testProperty('message', x => x == 'some message', 'some other message', 42);
-      testProperty('fileName', x => /xul/.test(x), 'otherFilename.html', new iwin.Object());
-      testProperty('columnNumber', x => x > 5 && x < 100, 99, 99.5);
-      testProperty('lineNumber', x => x > 100 && x < 10000, 50, 'foo');
+      testProperty('fileName', x => x == '', 'otherFilename.html', new iwin.Object());
+      testProperty('columnNumber', x => x == 1, 99, 99.5);
+      testProperty('lineNumber', x => x == 0, 50, 'foo');
 
       // Note - an Exception newed via Xrays is going to have an empty stack given the
       // current semantics and implementation. This tests the current behavior, but that
@@ -613,7 +616,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 
       // Test with modified flags accessors
       iwin.eval(`
-var props = ["global", "ignoreCase", "multiline", "sticky"];
+var props = ["global", "ignoreCase", "multiline", "sticky", "source"];
 var origDescs = {};
 for (var prop of props) {
   origDescs[prop] = Object.getOwnPropertyDescriptor(RegExp.prototype, prop);

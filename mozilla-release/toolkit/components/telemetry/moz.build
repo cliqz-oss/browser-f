@@ -30,22 +30,28 @@ EXTRA_COMPONENTS += [
 ]
 
 EXTRA_JS_MODULES += [
-    'TelemetryFile.jsm',
+    'TelemetryArchive.jsm',
     'TelemetryLog.jsm',
+    'TelemetryReportingPolicy.jsm',
+    'TelemetrySend.jsm',
     'TelemetryStopwatch.jsm',
+    'TelemetryStorage.jsm',
+    'TelemetryUtils.jsm',
     'ThirdPartyCookieProbe.jsm',
     'UITelemetry.jsm',
 ]
 
 EXTRA_PP_JS_MODULES += [
+    'TelemetryController.jsm',
     'TelemetryEnvironment.jsm',
-    'TelemetryPing.jsm',
     'TelemetrySession.jsm',
 ]
 
-FAIL_ON_WARNINGS = True
+TESTING_JS_MODULES += [
+  'tests/unit/TelemetryArchiveTesting.jsm',
+]
 
-MSVC_ENABLE_PGO = True
+FAIL_ON_WARNINGS = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -53,10 +59,26 @@ FINAL_LIBRARY = 'xul'
 
 GENERATED_FILES = [
     'TelemetryHistogramData.inc',
+    'TelemetryHistogramEnums.h',
 ]
+
+histogram_files = [
+    'Histograms.json',
+    '/dom/base/UseCounters.conf',
+]
+
+data = GENERATED_FILES['TelemetryHistogramData.inc']
+data.script = 'gen-histogram-data.py'
+data.inputs = histogram_files
+
+enums = GENERATED_FILES['TelemetryHistogramEnums.h']
+enums.script = 'gen-histogram-enum.py'
+enums.inputs = histogram_files
 
 if CONFIG['MOZILLA_OFFICIAL']:
     DEFINES['MOZILLA_OFFICIAL'] = True
+
+DEFINES['MOZ_APP_VERSION'] = '"%s"' % CONFIG['MOZ_APP_VERSION']
 
 LOCAL_INCLUDES += [
     '/xpcom/build',

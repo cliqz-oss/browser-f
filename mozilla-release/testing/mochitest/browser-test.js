@@ -15,6 +15,7 @@ if (Cu === undefined) {
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
+Cu.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
@@ -29,7 +30,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "SelfSupportBackend",
   "resource:///modules/SelfSupportBackend.jsm");
 
 const SIMPLETEST_OVERRIDES =
-  ["ok", "is", "isnot", "ise", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
+  ["ok", "is", "isnot", "todo", "todo_is", "todo_isnot", "info", "expectAssertions", "requestCompleteLog"];
 
 window.addEventListener("load", function testOnLoad() {
   window.removeEventListener("load", testOnLoad);
@@ -87,7 +88,6 @@ let TabDestroyObserver = {
 function testInit() {
   gConfig = readConfig();
   if (gConfig.testRoot == "browser" ||
-      gConfig.testRoot == "metro" ||
       gConfig.testRoot == "webapprtChrome") {
     // Make sure to launch the test harness for the first opened window only
     var prefs = Services.prefs;
@@ -350,7 +350,7 @@ Tester.prototype = {
         this.dumper.structuredLogger.testEnd("browser-test.js",
                                              "FAIL",
                                              "PASS",
-                                             "No tests to run. Did you pass an invalid --test-path?");
+                                             "No tests to run. Did you pass invalid test_paths?");
       }
       this.dumper.structuredLogger.info("*** End BrowserChrome Test Results ***");
 
@@ -461,7 +461,7 @@ Tester.prototype = {
         if (this._globalProperties.indexOf(prop) == -1) {
           this._globalProperties.push(prop);
           if (this._globalPropertyWhitelist.indexOf(prop) == -1)
-            this.currentTest.addResult(new testResult(false, "leaked window property: " + prop, "", false));
+            this.currentTest.addResult(new testResult(false, "test left unexpected property on window: " + prop, "", false));
         }
       }, this);
 
@@ -554,20 +554,29 @@ Tester.prototype = {
         // frames and browser intentionally kept alive until shutdown to
         // eliminate false positives.
         if (gConfig.testRoot == "browser") {
-          // Replace the document currently loaded in the browser's sidebar.
-          // This will prevent false positives for tests that were the last
-          // to touch the sidebar. They will thus not be blamed for leaking
-          // a document.
-          let sidebar = document.getElementById("sidebar");
-          sidebar.setAttribute("src", "data:text/html;charset=utf-8,");
-          sidebar.docShell.createAboutBlankContentViewer(null);
-          sidebar.setAttribute("src", "about:blank");
+          //Skip if SeaMonkey
+          if (AppConstants.MOZ_APP_NAME != "seamonkey") {
+            // Replace the document currently loaded in the browser's sidebar.
+            // This will prevent false positives for tests that were the last
+            // to touch the sidebar. They will thus not be blamed for leaking
+            // a document.
+            let sidebar = document.getElementById("sidebar");
+            sidebar.setAttribute("src", "data:text/html;charset=utf-8,");
+            sidebar.docShell.createAboutBlankContentViewer(null);
+            sidebar.setAttribute("src", "about:blank");
 
-          // Do the same for the social sidebar.
-          let socialSidebar = document.getElementById("social-sidebar-browser");
-          socialSidebar.setAttribute("src", "data:text/html;charset=utf-8,");
-          socialSidebar.docShell.createAboutBlankContentViewer(null);
-          socialSidebar.setAttribute("src", "about:blank");
+            // Do the same for the social sidebar.
+            let socialSidebar = document.getElementById("social-sidebar-browser");
+            socialSidebar.setAttribute("src", "data:text/html;charset=utf-8,");
+            socialSidebar.docShell.createAboutBlankContentViewer(null);
+            socialSidebar.setAttribute("src", "about:blank");
+
+            SelfSupportBackend.uninit();
+            CustomizationTabPreloader.uninit();
+            SocialFlyout.unload();
+            SocialShare.uninit();
+            TabView.uninit();
+          }
 
           // Destroy BackgroundPageThumbs resources.
           let {BackgroundPageThumbs} =
@@ -580,12 +589,6 @@ Tester.prototype = {
             gBrowser._preloadedBrowser = null;
             gBrowser.getNotificationBox(browser).remove();
           }
-
-          SelfSupportBackend.uninit();
-          CustomizationTabPreloader.uninit();
-          SocialFlyout.unload();
-          SocialShare.uninit();
-          TabView.uninit();
         }
 
         // Schedule GC and CC runs before finishing in order to detect
@@ -763,8 +766,10 @@ Tester.prototype = {
         var result = this.currentTest.scope.generatorTest();
         this.currentTest.scope.__generator = result;
         result.next();
-      } else {
+      } else if (typeof this.currentTest.scope.test == "function") {
         this.currentTest.scope.test();
+      } else {
+        throw "This test didn't call add_task, nor did it define a generatorTest() function, nor did it define a test() function, so we don't know how to run it.";
       }
     } catch (ex) {
       let isExpected = !!this.SimpleTest.isExpectingUncaughtException();
@@ -908,9 +913,9 @@ function testScope(aTester, aTest, expected) {
 
   var self = this;
   this.ok = function test_ok(condition, name, diag, stack) {
-    if (this.__expected == 'fail') {
+    if (self.__expected == 'fail') {
         if (!condition) {
-          this.__num_failed++;
+          self.__num_failed++;
           condition = true;
         }
     }
@@ -924,10 +929,6 @@ function testScope(aTester, aTest, expected) {
   };
   this.isnot = function test_isnot(a, b, name) {
     self.ok(a != b, name, "Didn't expect " + a + ", but got it", false,
-            Components.stack.caller);
-  };
-  this.ise = function test_ise(a, b, name) {
-    self.ok(a === b, name, "Got " + a + ", strictly expected " + b, false,
             Components.stack.caller);
   };
   this.todo = function test_todo(condition, name, diag, stack) {

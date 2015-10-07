@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,6 +20,8 @@ namespace dom {
 struct BrowserElementDownloadOptions;
 class BrowserElementNextPaintEventCallback;
 class DOMRequest;
+enum class BrowserFindCaseSensitivity: uint32_t;
+enum class BrowserFindDirection: uint32_t;
 } // namespace dom
 
 class ErrorResult;
@@ -79,6 +81,11 @@ public:
   already_AddRefed<dom::DOMRequest> GetCanGoBack(ErrorResult& aRv);
   already_AddRefed<dom::DOMRequest> GetCanGoForward(ErrorResult& aRv);
   already_AddRefed<dom::DOMRequest> GetContentDimensions(ErrorResult& aRv);
+
+  void FindAll(const nsAString& aSearchString, dom::BrowserFindCaseSensitivity aCaseSensitivity,
+               ErrorResult& aRv);
+  void FindNext(dom::BrowserFindDirection aDirection, ErrorResult& aRv);
+  void ClearMatch(ErrorResult& aRv);
 
   void AddNextPaintListener(dom::BrowserElementNextPaintEventCallback& listener,
                             ErrorResult& aRv);

@@ -84,6 +84,7 @@ class MacroAssemblerMIPS : public Assembler
     void convertBoolToInt32(Register source, Register dest);
     void convertInt32ToDouble(Register src, FloatRegister dest);
     void convertInt32ToDouble(const Address& src, FloatRegister dest);
+    void convertInt32ToDouble(const BaseIndex& src, FloatRegister dest);
     void convertUInt32ToDouble(Register src, FloatRegister dest);
     void convertUInt32ToFloat32(Register src, FloatRegister dest);
     void convertDoubleToFloat32(FloatRegister src, FloatRegister dest);
@@ -376,19 +377,9 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
   protected:
     MoveResolver moveResolver_;
 
-    // Extra bytes currently pushed onto the frame beyond frameDepth_. This is
-    // needed to compute offsets to stack slots while temporary space has been
-    // reserved for unexpected spills or C++ function calls. It is maintained
-    // by functions which track stack alignment, which for clear distinction
-    // use StudlyCaps (for example, Push, Pop).
-    uint32_t framePushed_;
-    void adjustFrame(int value) {
-        setFramePushed(framePushed_ + value);
-    }
   public:
     MacroAssemblerMIPSCompat()
-      : inCall_(false),
-        framePushed_(0)
+      : inCall_(false)
     { }
 
   public:
@@ -440,14 +431,6 @@ class MacroAssemblerMIPSCompat : public MacroAssemblerMIPS
         addPendingJump(bo, ImmPtr(c->raw()), Relocation::JITCODE);
         ma_liPatchable(ScratchRegister, Imm32((uint32_t)c->raw()));
         ma_callJitHalfPush(ScratchRegister);
-    }
-    void call(const CallSiteDesc& desc, const Register reg) {
-        call(reg);
-        append(desc, currentOffset(), framePushed_);
-    }
-    void call(const CallSiteDesc& desc, Label* label) {
-        call(label);
-        append(desc, currentOffset(), framePushed_);
     }
 
     void callAndPushReturnAddress(Label* label) {
@@ -832,9 +815,6 @@ public:
         ma_li(ScratchRegister, ptr);
         ma_b(SecondScratchReg, ScratchRegister, label, cond);
     }
-    void branchPtr(Condition cond, Address addr, ImmMaybeNurseryPtr ptr, Label* label) {
-        branchPtr(cond, addr, noteMaybeNurseryPtr(ptr), label);
-    }
 
     void branchPtr(Condition cond, Address addr, ImmWord ptr, Label* label) {
         ma_lw(SecondScratchReg, addr);
@@ -1169,25 +1149,6 @@ public:
         MOZ_CRASH("NYI");
     }
 
-    CodeOffsetLabel PushWithPatch(ImmWord word) {
-        framePushed_ += sizeof(word.value);
-        return pushWithPatch(word);
-    }
-    CodeOffsetLabel PushWithPatch(ImmPtr imm) {
-        return PushWithPatch(ImmWord(uintptr_t(imm.value)));
-    }
-
-    void implicitPop(uint32_t args) {
-        MOZ_ASSERT(args % sizeof(intptr_t) == 0);
-        adjustFrame(-args);
-    }
-    uint32_t framePushed() const {
-        return framePushed_;
-    }
-    void setFramePushed(uint32_t framePushed) {
-        framePushed_ = framePushed;
-    }
-
     // Builds an exit frame on the stack, with a return address to an internal
     // non-function. Returns offset to be passed to markSafepointAt().
     void buildFakeExitFrame(Register scratch, uint32_t* offset);
@@ -1200,10 +1161,6 @@ public:
     // to make a call.
     void callJit(Register callee);
     void callJitFromAsmJS(Register callee) { callJit(callee); }
-
-    void reserveStack(uint32_t amount);
-    void freeStack(uint32_t amount);
-    void freeStack(Register amount);
 
     void add32(Register src, Register dest);
     void add32(Imm32 imm, Register dest);
@@ -1247,6 +1204,7 @@ public:
     void and32(const Address& src, Register dest);
     void or32(Imm32 imm, Register dest);
     void or32(Imm32 imm, const Address& dest);
+    void or32(Register src, Register dest);
     void xor32(Imm32 imm, Register dest);
     void xorPtr(Imm32 imm, Register dest);
     void xorPtr(Register src, Register dest);
@@ -1267,7 +1225,6 @@ public:
     void movePtr(ImmPtr imm, Register dest);
     void movePtr(AsmJSImmPtr imm, Register dest);
     void movePtr(ImmGCPtr imm, Register dest);
-    void movePtr(ImmMaybeNurseryPtr imm, Register dest);
 
     void load8SignExtend(const Address& address, Register dest);
     void load8SignExtend(const BaseIndex& src, Register dest);

@@ -13,7 +13,6 @@
 
 class nsICacheEntry;
 class nsInputStreamPump;
-class nsIStorageStream;
 class nsIStreamListener;
 
 namespace mozilla {
@@ -83,7 +82,7 @@ public:
   NS_IMETHOD SynthesizeStatus(uint16_t aStatus, const nsACString& aReason) override;
   NS_IMETHOD SynthesizeHeader(const nsACString& aName, const nsACString& aValue) override;
   NS_IMETHOD Cancel() override;
-  NS_IMETHOD SetSecurityInfo(nsISupports* aSecurityInfo) override;
+  NS_IMETHOD SetChannelInfo(mozilla::dom::ChannelInfo* aChannelInfo) override;
 
   virtual void NotifyController() override;
 };
@@ -95,9 +94,6 @@ class InterceptedChannelContent : public InterceptedChannelBase
 
   // Reader-side of the response body when synthesizing in a child proces
   nsCOMPtr<nsIInputStream> mSynthesizedInput;
-
-  // Pump to read the synthesized body in child processes
-  nsRefPtr<nsInputStreamPump> mStoragePump;
 
   // Listener for the synthesized response to fix up the notifications before they reach
   // the actual channel.
@@ -113,7 +109,7 @@ public:
   NS_IMETHOD SynthesizeStatus(uint16_t aStatus, const nsACString& aReason) override;
   NS_IMETHOD SynthesizeHeader(const nsACString& aName, const nsACString& aValue) override;
   NS_IMETHOD Cancel() override;
-  NS_IMETHOD SetSecurityInfo(nsISupports* aSecurityInfo) override;
+  NS_IMETHOD SetChannelInfo(mozilla::dom::ChannelInfo* aChannelInfo) override;
 
   virtual void NotifyController() override;
 };

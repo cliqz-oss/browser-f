@@ -54,6 +54,9 @@ static NS_DEFINE_CID(kFrameTraversalCID, NS_FRAMETRAVERSAL_CID);
 #include "TouchCaret.h"
 #include "SelectionCarets.h"
 
+#include "AccessibleCaretEventHub.h"
+#include "AccessibleCaretManager.h"
+
 #include "mozilla/MouseEvents.h"
 #include "mozilla/TextEvents.h"
 
@@ -710,6 +713,12 @@ nsFrameSelection::SetCaretBidiLevel(nsBidiLevel aLevel)
   // If the current level is undefined, we have just inserted new text.
   // In this case, we don't want to reset the keyboard language
   mCaretBidiLevel = aLevel;
+
+  nsRefPtr<nsCaret> caret;
+  if (mShell && (caret = mShell->GetCaret())) {
+    caret->SchedulePaint();
+  }
+
   return;
 }
 
@@ -817,6 +826,14 @@ nsFrameSelection::Init(nsIPresShell *aShell, nsIContent *aLimiter)
     int8_t index = GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
     if (mDomSelections[index]) {
       mDomSelections[index]->AddSelectionListener(selectionCarets);
+    }
+  }
+
+  nsRefPtr<AccessibleCaretEventHub> eventHub = mShell->GetAccessibleCaretEventHub();
+  if (eventHub) {
+    int8_t index = GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
+    if (mDomSelections[index]) {
+      mDomSelections[index]->AddSelectionListener(eventHub);
     }
   }
 }
@@ -1001,8 +1018,13 @@ nsFrameSelection::MoveCaret(nsDirection       aDirection,
       switch (aAmount) {
         case eSelectBeginLine:
         case eSelectEndLine:
-          // set the caret Bidi level to the paragraph embedding level
-          SetCaretBidiLevel(NS_GET_BASE_LEVEL(theFrame));
+          // In Bidi contexts, PeekOffset calculates pos.mContentOffset
+          // differently depending on whether the movement is visual or logical.
+          // For visual movement, pos.mContentOffset depends on the direction-
+          // ality of the first/last frame on the line (theFrame), and the caret
+          // directionality must correspond.
+          SetCaretBidiLevel(visualMovement ? NS_GET_EMBEDDING_LEVEL(theFrame) :
+                                             NS_GET_BASE_LEVEL(theFrame));
           break;
 
         default:
@@ -1084,7 +1106,7 @@ Selection::ToStringWithFormat(const char* aFormatType, uint32_t aFlags,
   NS_ConvertUTF8toUTF16 format(aFormatType);
   ToStringWithFormat(format, aFlags, aWrapCol, aReturn, result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   return NS_OK;
 }
@@ -1141,7 +1163,7 @@ Selection::SetInterlinePosition(bool aHintRight)
   ErrorResult result;
   SetInterlinePosition(aHintRight, result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   return NS_OK;
 }
@@ -1162,7 +1184,7 @@ Selection::GetInterlinePosition(bool* aHintRight)
   ErrorResult result;
   *aHintRight = GetInterlinePosition(result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   return NS_OK;
 }
@@ -1175,6 +1197,32 @@ Selection::GetInterlinePosition(ErrorResult& aRv)
     return false;
   }
   return mFrameSelection->GetHint() == CARET_ASSOCIATE_AFTER;
+}
+
+Nullable<int16_t>
+Selection::GetCaretBidiLevel(mozilla::ErrorResult& aRv) const
+{
+  if (!mFrameSelection) {
+    aRv.Throw(NS_ERROR_NOT_INITIALIZED);
+    return Nullable<int16_t>();
+  }
+  nsBidiLevel caretBidiLevel = mFrameSelection->GetCaretBidiLevel();
+  return (caretBidiLevel & BIDI_LEVEL_UNDEFINED) ?
+    Nullable<int16_t>() : Nullable<int16_t>(caretBidiLevel);
+}
+
+void
+Selection::SetCaretBidiLevel(const Nullable<int16_t>& aCaretBidiLevel, mozilla::ErrorResult& aRv)
+{
+  if (!mFrameSelection) {
+    aRv.Throw(NS_ERROR_NOT_INITIALIZED);
+    return;
+  }
+  if (aCaretBidiLevel.IsNull()) {
+    mFrameSelection->UndefineCaretBidiLevel();
+  } else {
+    mFrameSelection->SetCaretBidiLevel(aCaretBidiLevel.Value());
+  }
 }
 
 nsPrevNextBidiLevels
@@ -1383,12 +1431,13 @@ void nsFrameSelection::BidiLevelFromMove(nsIPresShell*      aPresShell,
  * @param aContentOffset is the new caret position, as an offset into aNode
  */
 void nsFrameSelection::BidiLevelFromClick(nsIContent *aNode,
-                                          uint32_t    aContentOffset)
+                                          uint32_t    aContentOffset,
+                                          CaretAssociateHint aHint)
 {
   nsIFrame* clickInFrame=nullptr;
   int32_t OffsetNotUsed;
 
-  clickInFrame = GetFrameForNodeOffset(aNode, aContentOffset, mHint, &OffsetNotUsed);
+  clickInFrame = GetFrameForNodeOffset(aNode, aContentOffset, aHint, &OffsetNotUsed);
   if (!clickInFrame)
     return;
 
@@ -1467,7 +1516,7 @@ nsFrameSelection::HandleClick(nsIContent*        aNewFocus,
   // Don't take focus when dragging off of a table
   if (!mDragSelectingCells)
   {
-    BidiLevelFromClick(aNewFocus, aContentOffset);
+    BidiLevelFromClick(aNewFocus, aContentOffset, aHint);
     PostReason(nsISelectionListener::MOUSEDOWN_REASON + nsISelectionListener::DRAG_REASON);
     if (aContinueSelection &&
         AdjustForMaintainedSelection(aNewFocus, aContentOffset))
@@ -3225,6 +3274,12 @@ nsFrameSelection::DisconnectFromPresShell()
     mDomSelections[index]->RemoveSelectionListener(selectionCarets);
   }
 
+  nsRefPtr<AccessibleCaretEventHub> eventHub = mShell->GetAccessibleCaretEventHub();
+  if (eventHub) {
+    int8_t index = GetIndexFromSelectionType(nsISelectionController::SELECTION_NORMAL);
+    mDomSelections[index]->RemoveSelectionListener(eventHub);
+  }
+
   StopAutoScrollTimer();
   for (int32_t i = 0; i < nsISelectionController::NUM_SELECTIONTYPES; i++) {
     mDomSelections[i]->Clear(nullptr);
@@ -3871,7 +3926,7 @@ Selection::GetRangesForInterval(nsIDOMNode* aBeginNode, int32_t aBeginOffset,
   GetRangesForInterval(*beginNode, aBeginOffset, *endNode, aEndOffset,
                        aAllowAdjacent, results, result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   *aResultCount = results.Length();
   if (*aResultCount == 0) {
@@ -3879,7 +3934,7 @@ Selection::GetRangesForInterval(nsIDOMNode* aBeginNode, int32_t aBeginOffset,
   }
 
   *aResults = static_cast<nsIDOMRange**>
-                         (nsMemory::Alloc(sizeof(nsIDOMRange*) * *aResultCount));
+                         (moz_xmalloc(sizeof(nsIDOMRange*) * *aResultCount));
   NS_ENSURE_TRUE(*aResults, NS_ERROR_OUT_OF_MEMORY);
 
   for (uint32_t i = 0; i < *aResultCount; i++) {
@@ -4574,7 +4629,7 @@ Selection::RemoveAllRanges()
 {
   ErrorResult result;
   RemoveAllRanges(result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -4612,7 +4667,7 @@ Selection::AddRange(nsIDOMRange* aDOMRange)
   nsRange* range = static_cast<nsRange*>(aDOMRange);
   ErrorResult result;
   AddRange(*range, result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -4679,7 +4734,7 @@ Selection::RemoveRange(nsIDOMRange* aDOMRange)
   nsRange* range = static_cast<nsRange*>(aDOMRange);
   ErrorResult result;
   RemoveRange(*range, result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -4777,7 +4832,7 @@ Selection::Collapse(nsINode* aParentNode, int32_t aOffset)
 
   ErrorResult result;
   Collapse(*aParentNode, static_cast<uint32_t>(aOffset), result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -4853,7 +4908,7 @@ Selection::CollapseToStart()
 {
   ErrorResult result;
   CollapseToStart(result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -4894,7 +4949,7 @@ Selection::CollapseToEnd()
 {
   ErrorResult result;
   CollapseToEnd(result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -4974,7 +5029,7 @@ Selection::GetRangeAt(int32_t aIndex, nsIDOMRange** aReturn)
   ErrorResult result;
   *aReturn = GetRangeAt(aIndex, result);
   NS_IF_ADDREF(*aReturn);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 nsRange*
@@ -5105,7 +5160,7 @@ Selection::Extend(nsINode* aParentNode, int32_t aOffset)
 
   ErrorResult result;
   Extend(*aParentNode, static_cast<uint32_t>(aOffset), result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -5405,7 +5460,7 @@ Selection::SelectAllChildren(nsIDOMNode* aParentNode)
   nsCOMPtr<nsINode> node = do_QueryInterface(aParentNode);
   NS_ENSURE_TRUE(node, NS_ERROR_INVALID_ARG);
   SelectAllChildren(*node, result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -5441,7 +5496,7 @@ Selection::ContainsNode(nsIDOMNode* aNode, bool aAllowPartial, bool* aYes)
   }
   ErrorResult result;
   *aYes = ContainsNode(*node, aAllowPartial, result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 bool
@@ -5683,7 +5738,7 @@ Selection::ScrollIntoView(SelectionRegion aRegion, bool aIsSynchronous,
   ErrorResult result;
   ScrollIntoView(aRegion, aIsSynchronous, aVPercent, aHPercent, result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   return NS_OK;
 }
@@ -5779,7 +5834,7 @@ Selection::AddSelectionListener(nsISelectionListener* aNewListener)
   ErrorResult result;
   AddSelectionListener(aNewListener, result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   return NS_OK;
 }
@@ -5802,7 +5857,7 @@ Selection::RemoveSelectionListener(nsISelectionListener* aListenerToRemove)
   ErrorResult result;
   RemoveSelectionListener(aListenerToRemove, result);
   if (result.Failed()) {
-    return result.ErrorCode();
+    return result.StealNSResult();
   }
   return NS_OK;
 }
@@ -5873,7 +5928,7 @@ Selection::DeleteFromDocument()
 {
   ErrorResult result;
   DeleteFromDocument(result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void
@@ -5893,7 +5948,7 @@ Selection::Modify(const nsAString& aAlter, const nsAString& aDirection,
 {
   ErrorResult result;
   Modify(aAlter, aDirection, aGranularity, result);
-  return result.ErrorCode();
+  return result.StealNSResult();
 }
 
 void

@@ -44,6 +44,14 @@ bool atomics_futexWait(JSContext* cx, unsigned argc, Value* vp);
 bool atomics_futexWake(JSContext* cx, unsigned argc, Value* vp);
 bool atomics_futexWakeOrRequeue(JSContext* cx, unsigned argc, Value* vp);
 
+/* asm.js callouts */
+int32_t atomics_add_asm_callout(int32_t vt, int32_t offset, int32_t value);
+int32_t atomics_sub_asm_callout(int32_t vt, int32_t offset, int32_t value);
+int32_t atomics_and_asm_callout(int32_t vt, int32_t offset, int32_t value);
+int32_t atomics_or_asm_callout(int32_t vt, int32_t offset, int32_t value);
+int32_t atomics_xor_asm_callout(int32_t vt, int32_t offset, int32_t value);
+int32_t atomics_cmpxchg_asm_callout(int32_t vt, int32_t offset, int32_t oldval, int32_t newval);
+
 class FutexRuntime
 {
 public:
@@ -89,19 +97,22 @@ public:
     //
     // If the thread is waiting in a call to futexWait() and the
     // reason is WakeForJSInterrupt then the futexWait() will return
-    // with WokenForJSInterrupt; in the latter case the caller of
-    // futexWait() must handle the interrupt.
+    // with WaitingNotifiedForInterrupt; in the latter case the caller
+    // of futexWait() must handle the interrupt.
     void wake(WakeReason reason);
 
     bool isWaiting();
 
   private:
     enum FutexState {
-        Idle,                   // We are not waiting or woken
-        Waiting,                // We are waiting, nothing has happened yet
-        WaitingInterrupted,     // We are waiting, but have been interrupted
-        Woken,                  // Woken by a script call to futexWake
-        WokenForJSInterrupt     // Woken by an interrupt handler
+        Idle,                        // We are not waiting or woken
+        Waiting,                     // We are waiting, nothing has happened yet
+        WaitingNotifiedForInterrupt, // We are waiting, but have been interrupted,
+                                     //   and have not yet started running the
+                                     //   interrupt handler
+        WaitingInterrupted,          // We are waiting, but have been interrupted
+                                     //   and are running the interrupt handler
+        Woken                        // Woken by a script call to futexWake
     };
 
     // Condition variable that this runtime will wait on.

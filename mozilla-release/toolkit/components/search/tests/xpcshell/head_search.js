@@ -72,6 +72,115 @@ function dumpn(text)
 }
 
 /**
+ * Configure preferences to load engines from
+ * chrome://testsearchplugin/locale/searchplugins/
+ * unless the loadFromJars parameter is set to false.
+ */
+function configureToLoadJarEngines(loadFromJars = true)
+{
+  let defaultBranch = Services.prefs.getDefaultBranch(null);
+
+  let url = "chrome://testsearchplugin/locale/searchplugins/";
+  defaultBranch.setCharPref("browser.search.jarURIs", url);
+
+  defaultBranch.setBoolPref("browser.search.loadFromJars", loadFromJars);
+
+  // Give the pref a user set value that is the opposite of the default,
+  // to ensure user set values are ignored.
+  Services.prefs.setBoolPref("browser.search.loadFromJars", !loadFromJars)
+
+  // Ensure a test engine exists in the app dir anyway.
+  let dir = Services.dirsvc.get(NS_APP_SEARCH_DIR, Ci.nsIFile);
+  if (!dir.exists())
+    dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+  do_get_file("data/engine-app.xml").copyTo(dir, "app.xml");
+}
+
+/**
+ * Fake the installation of an add-on in the profile, by creating the
+ * directory and registering it with the directory service.
+ */
+function installAddonEngine(name = "engine-addon")
+{
+  const XRE_EXTENSIONS_DIR_LIST = "XREExtDL";
+  const gProfD = do_get_profile().QueryInterface(Ci.nsILocalFile);
+
+  let dir = gProfD.clone();
+  dir.append("extensions");
+  if (!dir.exists())
+    dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+
+  dir.append("search-engine@tests.mozilla.org");
+  dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+
+  do_get_file("data/install.rdf").copyTo(dir, "install.rdf");
+  let addonDir = dir.clone();
+  dir.append("searchplugins");
+  dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+  do_get_file("data/" + name + ".xml").copyTo(dir, "bug645970.xml");
+
+  Services.dirsvc.registerProvider({
+    QueryInterface: XPCOMUtils.generateQI([Ci.nsIDirectoryServiceProvider,
+                                           Ci.nsIDirectoryServiceProvider2]),
+
+    getFile: function (prop, persistant) {
+      throw Cr.NS_ERROR_FAILURE;
+    },
+
+    getFiles: function (prop) {
+      let result = [];
+
+      switch (prop) {
+      case XRE_EXTENSIONS_DIR_LIST:
+        result.push(addonDir);
+        break;
+      default:
+        throw Cr.NS_ERROR_FAILURE;
+      }
+
+      return {
+        QueryInterface: XPCOMUtils.generateQI([Ci.nsISimpleEnumerator]),
+        hasMoreElements: () => result.length > 0,
+        getNext: () => result.shift()
+      };
+    }
+  });
+}
+
+/**
+ * Copy the engine-distribution.xml engine to a fake distribution
+ * created in the profile, and registered with the directory service.
+ */
+function installDistributionEngine()
+{
+  const XRE_APP_DISTRIBUTION_DIR = "XREAppDist";
+
+  const gProfD = do_get_profile().QueryInterface(Ci.nsILocalFile);
+
+  let dir = gProfD.clone();
+  dir.append("distribution");
+  dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+  let distDir = dir.clone();
+
+  dir.append("searchplugins");
+  dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+
+  dir.append("common");
+  dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
+
+  do_get_file("data/engine-override.xml").copyTo(dir, "bug645970.xml");
+
+  Services.dirsvc.registerProvider({
+    getFile: function(aProp, aPersistent) {
+      aPersistent.value = true;
+      if (aProp == XRE_APP_DISTRIBUTION_DIR)
+        return distDir.clone();
+      return null;
+    }
+  });
+}
+
+/**
  * Clean the profile of any metadata files left from a previous run.
  */
 function removeMetadata()
@@ -99,6 +208,34 @@ function getSearchMetadata()
   do_print("Parsing metadata");
   return readJSONFile(metadata);
 }
+
+function promiseGlobalMetadata() {
+  return new Promise(resolve => Task.spawn(function* () {
+    let path = OS.Path.join(OS.Constants.Path.profileDir, "search-metadata.json");
+    let bytes = yield OS.File.read(path);
+    resolve(JSON.parse(new TextDecoder().decode(bytes))["[global]"]);
+  }));
+}
+
+function promiseSaveGlobalMetadata(globalData) {
+  return new Promise(resolve => Task.spawn(function* () {
+    let path = OS.Path.join(OS.Constants.Path.profileDir, "search-metadata.json");
+    let bytes = yield OS.File.read(path);
+    let data = JSON.parse(new TextDecoder().decode(bytes));
+    data["[global]"] = globalData;
+    yield OS.File.writeAtomic(path,
+                              new TextEncoder().encode(JSON.stringify(data)));
+    resolve();
+  }));
+}
+
+let forceExpiration = Task.async(function* () {
+  let metadata = yield promiseGlobalMetadata();
+
+  // Make the current geodefaults expire 1s ago.
+  metadata.searchdefaultexpir = Date.now() - 1000;
+  yield promiseSaveGlobalMetadata(metadata);
+});
 
 function removeCacheFile()
 {
@@ -140,6 +277,22 @@ function isUSTimezone() {
 
   let UTCOffset = (new Date()).getTimezoneOffset();
   return UTCOffset >= 150 && UTCOffset <= 600;
+}
+
+const kDefaultenginenamePref = "browser.search.defaultenginename";
+const kTestEngineName = "Test search engine";
+const kLocalePref = "general.useragent.locale";
+
+function getDefaultEngineName(isUS) {
+  const nsIPLS = Ci.nsIPrefLocalizedString;
+  // Copy the logic from nsSearchService
+  let pref = kDefaultenginenamePref;
+  if (isUS === undefined)
+    isUS = Services.prefs.getCharPref(kLocalePref) == "en-US" && isUSTimezone();
+  if (isUS) {
+    pref += ".US";
+  }
+  return Services.prefs.getComplexValue(pref, nsIPLS).data;
 }
 
 /**
@@ -208,6 +361,8 @@ if (!isChild) {
   Services.prefs.setIntPref("browser.search.geoip.timeout", 2000);
   // But still disable geoip lookups - tests that need it will re-configure this.
   Services.prefs.setCharPref("browser.search.geoip.url", "");
+  // Also disable region defaults - tests using it will also re-configure it.
+  Services.prefs.getDefaultBranch(BROWSER_SEARCH_PREF).setCharPref("geoSpecificDefaults.url", "");
 }
 
 /**
@@ -378,6 +533,24 @@ function waitForSearchNotification(aExpectedData) {
       resolve(aSubject);
     }, SEARCH_SERVICE_TOPIC, false);
   });
+}
+
+function asyncInit() {
+  return new Promise(resolve => {
+    Services.search.init(function() {
+      do_check_true(Services.search.isInitialized);
+      resolve();
+    });
+  });
+}
+
+function asyncReInit() {
+  let promise = waitForSearchNotification("reinit-complete");
+
+  Services.search.QueryInterface(Ci.nsIObserver)
+          .observe(null, "nsPref:changed", kLocalePref);
+
+  return promise;
 }
 
 // This "enum" from nsSearchService.js

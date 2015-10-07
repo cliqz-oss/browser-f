@@ -15,6 +15,7 @@ import org.mozilla.gecko.mozglue.RobocopTarget;
 import org.mozilla.gecko.mozglue.generatorannotations.WrapElementForJNI;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.util.FloatUtils;
+import org.mozilla.gecko.AppConstants;
 
 import android.content.Context;
 import android.graphics.PointF;
@@ -346,6 +347,11 @@ class GeckoLayerClient implements LayerView.Listener, PanZoomTarget
     }
 
     private void adjustViewport(DisplayPortMetrics displayPort) {
+        // TODO: APZ For fennec might need margins information to deal with
+        // the dynamic toolbar.
+        if (AppConstants.MOZ_ANDROID_APZ)
+            return;
+
         ImmutableViewportMetrics metrics = getViewportMetrics();
         ImmutableViewportMetrics clampedMetrics = metrics.clamp();
 
@@ -591,7 +597,7 @@ class GeckoLayerClient implements LayerView.Listener, PanZoomTarget
                 .setViewportOrigin(offsetX, offsetY)
                 .setZoomFactor(zoom)
                 .setPageRect(pageRect, cssPageRect)
-                .setIsRTL(tab.getIsRTL());
+                .setIsRTL(tab != null ? tab.getIsRTL() : false);
             // Since we have switched to displaying a different document, we need to update any
             // viewport-related state we have lying around. This includes mGeckoViewport and
             // mViewportMetrics. Usually this information is updated via handleViewportMessage
@@ -605,8 +611,10 @@ class GeckoLayerClient implements LayerView.Listener, PanZoomTarget
 
             setViewportMetrics(newMetrics);
 
-            mView.setBackgroundColor(tab.getBackgroundColor());
-            setZoomConstraints(tab.getZoomConstraints());
+            if (tab != null) {
+                mView.setBackgroundColor(tab.getBackgroundColor());
+                setZoomConstraints(tab.getZoomConstraints());
+            }
 
             // At this point, we have just switched to displaying a different document than we
             // we previously displaying. This means we need to abort any panning/zooming animations

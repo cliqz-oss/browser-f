@@ -12,6 +12,7 @@
 #include <stagefright/MediaBuffer.h>
 #include <utils/threads.h>
 #include "MediaResourceHandler.h"
+#include "mozilla/Monitor.h"
 
 namespace android {
 // This class is intended to be a proxy for MediaCodec with codec resource
@@ -55,7 +56,6 @@ public:
   static sp<MediaCodecProxy> CreateByType(sp<ALooper> aLooper,
                                           const char *aMime,
                                           bool aEncoder,
-                                          bool aAsync=false,
                                           wp<CodecResourceListener> aListener=nullptr);
 
   // MediaCodec methods
@@ -129,14 +129,22 @@ public:
                  int64_t aTimestampUsecs, uint64_t flags);
   status_t Output(MediaBuffer** aBuffer, int64_t aTimeoutUs);
   bool Prepare();
-  bool IsWaitingResources();
-  bool IsDormantNeeded();
-  void RequestMediaResources();
   void ReleaseMediaResources();
   // This updates mOutputBuffer when receiving INFO_OUTPUT_BUFFERS_CHANGED event.
   bool UpdateOutputBuffers();
 
   void ReleaseMediaBuffer(MediaBuffer* abuffer);
+
+  // It asks for the OMX codec and blocked until the resource is grant to be
+  // allocated.
+  bool AskMediaCodecAndWait();
+
+  // It asks for the OMX codec asynchronously.
+  // Only video codec is supported.
+  bool AsyncAskMediaCodec();
+
+  // Free the OMX codec so others can allocate it.
+  void SetMediaCodecFree();
 
 protected:
   virtual ~MediaCodecProxy();
@@ -156,13 +164,7 @@ private:
   MediaCodecProxy(sp<ALooper> aLooper,
                   const char *aMime,
                   bool aEncoder,
-                  bool aAsync,
                   wp<CodecResourceListener> aListener);
-
-  // Request Resource
-  bool requestResource();
-  // Cancel Resource
-  void cancelResource();
 
   // Allocate Codec Resource
   bool allocateCodec();
@@ -188,6 +190,8 @@ private:
   Vector<sp<ABuffer> > mInputBuffers;
   Vector<sp<ABuffer> > mOutputBuffers;
 
+  mozilla::Monitor mMediaCodecLock;
+  bool mPendingRequestMediaResource;
 };
 
 } // namespace android

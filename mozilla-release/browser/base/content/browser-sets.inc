@@ -38,7 +38,7 @@
 
     <commandset id="editMenuCommands"/>
 
-    <command id="View:PageSource" oncommand="BrowserViewSourceOfDocument(window.gBrowser.selectedBrowser.contentDocumentAsCPOW);" observes="isImage"/>
+    <command id="View:PageSource" oncommand="BrowserViewSource(window.gBrowser.selectedBrowser);" observes="isImage"/>
     <command id="View:PageInfo" oncommand="BrowserPageInfo();"/>
     <command id="View:FullScreen" oncommand="BrowserFullScreen();"/>
     <command id="View:ReaderView" oncommand="ReaderParent.toggleReaderMode(event);"/>
@@ -114,8 +114,6 @@
     <command id="Tools:PrivateBrowsing"
       oncommand="OpenBrowserWindow({private: true});" reserved="true"/>
 #ifdef E10S_TESTING_ONLY
-    <command id="Tools:RemoteWindow"
-      oncommand="OpenBrowserWindow({remote: true});"/>
     <command id="Tools:NonRemoteWindow"
       oncommand="OpenBrowserWindow({remote: false});"/>
 #endif

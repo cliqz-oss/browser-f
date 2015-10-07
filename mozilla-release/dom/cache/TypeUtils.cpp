@@ -12,10 +12,9 @@
 #include "mozilla/dom/Request.h"
 #include "mozilla/dom/Response.h"
 #include "mozilla/dom/cache/CachePushStreamChild.h"
-#include "mozilla/dom/cache/PCacheTypes.h"
+#include "mozilla/dom/cache/CacheTypes.h"
 #include "mozilla/dom/cache/ReadStream.h"
 #include "mozilla/ipc/BackgroundChild.h"
-#include "mozilla/ipc/FileDescriptorSetChild.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/ipc/PFileDescriptorSetChild.h"
 #include "mozilla/ipc/InputStreamUtils.h"
@@ -23,89 +22,50 @@
 #include "nsIAsyncInputStream.h"
 #include "nsIAsyncOutputStream.h"
 #include "nsIIPCSerializableInputStream.h"
+#include "nsQueryObject.h"
+#include "nsPromiseFlatString.h"
 #include "nsStreamUtils.h"
 #include "nsString.h"
 #include "nsURLParsers.h"
+#include "nsCRT.h"
+#include "nsHttp.h"
 
-namespace {
+namespace mozilla {
+namespace dom {
+namespace cache {
 
-using mozilla::ErrorResult;
-using mozilla::unused;
-using mozilla::void_t;
-using mozilla::dom::cache::PCacheReadStream;
 using mozilla::ipc::BackgroundChild;
 using mozilla::ipc::FileDescriptor;
 using mozilla::ipc::PBackgroundChild;
 using mozilla::ipc::PFileDescriptorSetChild;
 
-// Utility function to remove the fragment from a URL, check its scheme, and optionally
-// provide a URL without the query.  We're not using nsIURL or URL to do this because
-// they require going to the main thread.
-static void
-ProcessURL(nsAString& aUrl, bool* aSchemeValidOut,
-           nsAString* aUrlWithoutQueryOut, ErrorResult& aRv)
+namespace {
+
+static bool
+HasVaryStar(mozilla::dom::InternalHeaders* aHeaders)
 {
-  NS_ConvertUTF16toUTF8 flatURL(aUrl);
-  const char* url = flatURL.get();
+  nsAutoTArray<nsCString, 16> varyHeaders;
+  ErrorResult rv;
+  aHeaders->GetAll(NS_LITERAL_CSTRING("vary"), varyHeaders, rv);
+  MOZ_ALWAYS_TRUE(!rv.Failed());
 
-  // off the main thread URL parsing using nsStdURLParser.
-  nsCOMPtr<nsIURLParser> urlParser = new nsStdURLParser();
-
-  uint32_t pathPos;
-  int32_t pathLen;
-  uint32_t schemePos;
-  int32_t schemeLen;
-  aRv = urlParser->ParseURL(url, flatURL.Length(), &schemePos, &schemeLen,
-                            nullptr, nullptr,       // ignore authority
-                            &pathPos, &pathLen);
-  if (NS_WARN_IF(aRv.Failed())) { return; }
-
-  if (aSchemeValidOut) {
-    nsAutoCString scheme(Substring(flatURL, schemePos, schemeLen));
-    *aSchemeValidOut = scheme.LowerCaseEqualsLiteral("http") ||
-                       scheme.LowerCaseEqualsLiteral("https");
+  for (uint32_t i = 0; i < varyHeaders.Length(); ++i) {
+    nsAutoCString varyValue(varyHeaders[i]);
+    char* rawBuffer = varyValue.BeginWriting();
+    char* token = nsCRT::strtok(rawBuffer, NS_HTTP_HEADER_SEPS, &rawBuffer);
+    for (; token;
+         token = nsCRT::strtok(rawBuffer, NS_HTTP_HEADER_SEPS, &rawBuffer)) {
+      nsDependentCString header(token);
+      if (header.EqualsLiteral("*")) {
+        return true;
+      }
+    }
   }
-
-  uint32_t queryPos;
-  int32_t queryLen;
-  uint32_t refPos;
-  int32_t refLen;
-
-  aRv = urlParser->ParsePath(url + pathPos, flatURL.Length() - pathPos,
-                             nullptr, nullptr,               // ignore filepath
-                             &queryPos, &queryLen,
-                             &refPos, &refLen);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return;
-  }
-
-  // TODO: Remove this once Request/Response properly strip the fragment (bug 1110476)
-  if (refLen >= 0) {
-    // ParsePath gives us ref position relative to the start of the path
-    refPos += pathPos;
-
-    aUrl = Substring(aUrl, 0, refPos - 1);
-  }
-
-  if (!aUrlWithoutQueryOut) {
-    return;
-  }
-
-  if (queryLen < 0) {
-    *aUrlWithoutQueryOut = aUrl;
-    return;
-  }
-
-  // ParsePath gives us query position relative to the start of the path
-  queryPos += pathPos;
-
-  // We want everything before the query sine we already removed the trailing
-  // fragment
-  *aUrlWithoutQueryOut = Substring(aUrl, 0, queryPos - 1);
+  return false;
 }
 
 void
-SerializeNormalStream(nsIInputStream* aStream, PCacheReadStream& aReadStreamOut)
+SerializeNormalStream(nsIInputStream* aStream, CacheReadStream& aReadStreamOut)
 {
   nsAutoTArray<FileDescriptor, 4> fds;
   SerializeInputStream(aStream, aReadStreamOut.params(), fds);
@@ -129,19 +89,21 @@ SerializeNormalStream(nsIInputStream* aStream, PCacheReadStream& aReadStreamOut)
   }
 }
 
+void
+ToHeadersEntryList(nsTArray<HeadersEntry>& aOut, InternalHeaders* aHeaders)
+{
+  MOZ_ASSERT(aHeaders);
+
+  nsAutoTArray<InternalHeaders::Entry, 16> entryList;
+  aHeaders->GetEntries(entryList);
+
+  for (uint32_t i = 0; i < entryList.Length(); ++i) {
+    InternalHeaders::Entry& entry = entryList[i];
+    aOut.AppendElement(HeadersEntry(entry.mName, entry.mValue));
+  }
+}
+
 } // anonymous namespace
-
-namespace mozilla {
-namespace dom {
-namespace cache {
-
-using mozilla::ipc::BackgroundChild;
-using mozilla::ipc::FileDescriptor;
-using mozilla::ipc::FileDescriptorSetChild;
-using mozilla::ipc::PFileDescriptorSetChild;
-using mozilla::ipc::PBackgroundChild;
-using mozilla::ipc::OptionalFileDescriptorSet;
-
 
 already_AddRefed<InternalRequest>
 TypeUtils::ToInternalRequest(const RequestOrUSVString& aIn,
@@ -181,10 +143,9 @@ TypeUtils::ToInternalRequest(const OwningRequestOrUSVString& aIn,
 }
 
 void
-TypeUtils::ToPCacheRequest(PCacheRequest& aOut, InternalRequest* aIn,
-                           BodyAction aBodyAction,
-                           ReferrerAction aReferrerAction,
-                           SchemeAction aSchemeAction, ErrorResult& aRv)
+TypeUtils::ToCacheRequest(CacheRequest& aOut, InternalRequest* aIn,
+                          BodyAction aBodyAction, SchemeAction aSchemeAction,
+                          ErrorResult& aRv)
 {
   MOZ_ASSERT(aIn);
 
@@ -192,10 +153,9 @@ TypeUtils::ToPCacheRequest(PCacheRequest& aOut, InternalRequest* aIn,
 
   nsAutoCString url;
   aIn->GetURL(url);
-  CopyUTF8toUTF16(url, aOut.url());
 
   bool schemeValid;
-  ProcessURL(aOut.url(), &schemeValid, &aOut.urlWithoutQuery(), aRv);
+  ProcessURL(url, &schemeValid, &aOut.urlWithoutQuery(), &aOut.urlQuery(), aRv);
   if (aRv.Failed()) {
     return;
   }
@@ -203,28 +163,21 @@ TypeUtils::ToPCacheRequest(PCacheRequest& aOut, InternalRequest* aIn,
   if (!schemeValid) {
     if (aSchemeAction == TypeErrorOnInvalidScheme) {
       NS_NAMED_LITERAL_STRING(label, "Request");
-      aRv.ThrowTypeError(MSG_INVALID_URL_SCHEME, &label, &aOut.url());
-      return;
-    }
-
-    if (aSchemeAction == NetworkErrorOnInvalidScheme) {
-      aRv.Throw(NS_ERROR_DOM_NETWORK_ERR);
+      NS_ConvertUTF8toUTF16 urlUTF16(url);
+      aRv.ThrowTypeError(MSG_INVALID_URL_SCHEME, &label, &urlUTF16);
       return;
     }
   }
 
-  if (aReferrerAction == ExpandReferrer) {
-    UpdateRequestReferrer(GetGlobalObject(), aIn);
-  }
   aIn->GetReferrer(aOut.referrer());
 
   nsRefPtr<InternalHeaders> headers = aIn->Headers();
   MOZ_ASSERT(headers);
-  headers->GetPHeaders(aOut.headers());
+  ToHeadersEntryList(aOut.headers(), headers);
   aOut.headersGuard() = headers->Guard();
   aOut.mode() = aIn->Mode();
   aOut.credentials() = aIn->GetCredentialsMode();
-  aOut.context() = aIn->ContentPolicyType();
+  aOut.contentPolicyType() = aIn->ContentPolicyType();
   aOut.requestCache() = aIn->GetCacheMode();
 
   if (aBodyAction == IgnoreBody) {
@@ -243,19 +196,17 @@ TypeUtils::ToPCacheRequest(PCacheRequest& aOut, InternalRequest* aIn,
 }
 
 void
-TypeUtils::ToPCacheResponseWithoutBody(PCacheResponse& aOut,
-                                       InternalResponse& aIn, ErrorResult& aRv)
+TypeUtils::ToCacheResponseWithoutBody(CacheResponse& aOut,
+                                      InternalResponse& aIn, ErrorResult& aRv)
 {
   aOut.type() = aIn.Type();
 
-  nsAutoCString url;
-  aIn.GetUrl(url);
-  CopyUTF8toUTF16(url, aOut.url());
+  aIn.GetUrl(aOut.url());
 
-  if (aOut.url() != EmptyString()) {
+  if (aOut.url() != EmptyCString()) {
     // Pass all Response URL schemes through... The spec only requires we take
     // action on invalid schemes for Request objects.
-    ProcessURL(aOut.url(), nullptr, nullptr, aRv);
+    ProcessURL(aOut.url(), nullptr, nullptr, nullptr, aRv);
     if (aRv.Failed()) {
       return;
     }
@@ -265,13 +216,22 @@ TypeUtils::ToPCacheResponseWithoutBody(PCacheResponse& aOut,
   aOut.statusText() = aIn.GetStatusText();
   nsRefPtr<InternalHeaders> headers = aIn.UnfilteredHeaders();
   MOZ_ASSERT(headers);
-  headers->GetPHeaders(aOut.headers());
+  if (HasVaryStar(headers)) {
+    aRv.ThrowTypeError(MSG_RESPONSE_HAS_VARY_STAR);
+    return;
+  }
+  ToHeadersEntryList(aOut.headers(), headers);
   aOut.headersGuard() = headers->Guard();
-  aOut.securityInfo() = aIn.GetSecurityInfo();
+  aOut.channelInfo() = aIn.GetChannelInfo().AsIPCChannelInfo();
+  if (aIn.GetPrincipalInfo()) {
+    aOut.principalInfo() = *aIn.GetPrincipalInfo();
+  } else {
+    aOut.principalInfo() = void_t();
+  }
 }
 
 void
-TypeUtils::ToPCacheResponse(PCacheResponse& aOut, Response& aIn, ErrorResult& aRv)
+TypeUtils::ToCacheResponse(CacheResponse& aOut, Response& aIn, ErrorResult& aRv)
 {
   if (aIn.BodyUsed()) {
     aRv.ThrowTypeError(MSG_FETCH_BODY_CONSUMED_ERROR);
@@ -279,10 +239,13 @@ TypeUtils::ToPCacheResponse(PCacheResponse& aOut, Response& aIn, ErrorResult& aR
   }
 
   nsRefPtr<InternalResponse> ir = aIn.GetInternalResponse();
-  ToPCacheResponseWithoutBody(aOut, *ir, aRv);
+  ToCacheResponseWithoutBody(aOut, *ir, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return;
+  }
 
   nsCOMPtr<nsIInputStream> stream;
-  aIn.GetBody(getter_AddRefs(stream));
+  ir->GetInternalBody(getter_AddRefs(stream));
   if (stream) {
     aIn.SetBodyUsed();
   }
@@ -295,8 +258,8 @@ TypeUtils::ToPCacheResponse(PCacheResponse& aOut, Response& aIn, ErrorResult& aR
 
 // static
 void
-TypeUtils::ToPCacheQueryParams(PCacheQueryParams& aOut,
-                               const CacheQueryOptions& aIn)
+TypeUtils::ToCacheQueryParams(CacheQueryParams& aOut,
+                              const CacheQueryOptions& aIn)
 {
   aOut.ignoreSearch() = aIn.mIgnoreSearch;
   aOut.ignoreMethod() = aIn.mIgnoreMethod;
@@ -310,7 +273,7 @@ TypeUtils::ToPCacheQueryParams(PCacheQueryParams& aOut,
 }
 
 already_AddRefed<Response>
-TypeUtils::ToResponse(const PCacheResponse& aIn)
+TypeUtils::ToResponse(const CacheResponse& aIn)
 {
   if (aIn.type() == ResponseType::Error) {
     nsRefPtr<InternalResponse> error = InternalResponse::NetworkError();
@@ -320,17 +283,21 @@ TypeUtils::ToResponse(const PCacheResponse& aIn)
 
   nsRefPtr<InternalResponse> ir = new InternalResponse(aIn.status(),
                                                        aIn.statusText());
-  ir->SetUrl(NS_ConvertUTF16toUTF8(aIn.url()));
+  ir->SetUrl(aIn.url());
 
   nsRefPtr<InternalHeaders> internalHeaders =
-    new InternalHeaders(aIn.headers(), aIn.headersGuard());
+    ToInternalHeaders(aIn.headers(), aIn.headersGuard());
   ErrorResult result;
   ir->Headers()->SetGuard(aIn.headersGuard(), result);
   MOZ_ASSERT(!result.Failed());
   ir->Headers()->Fill(*internalHeaders, result);
   MOZ_ASSERT(!result.Failed());
 
-  ir->SetSecurityInfo(aIn.securityInfo());
+  ir->InitChannelInfo(aIn.channelInfo());
+  if (aIn.principalInfo().type() == mozilla::ipc::OptionalPrincipalInfo::TPrincipalInfo) {
+    UniquePtr<mozilla::ipc::PrincipalInfo> info(new mozilla::ipc::PrincipalInfo(aIn.principalInfo().get_PrincipalInfo()));
+    ir->SetPrincipalInfo(Move(info));
+  }
 
   nsCOMPtr<nsIInputStream> stream = ReadStream::Create(aIn.body());
   ir->SetBody(stream);
@@ -358,20 +325,24 @@ TypeUtils::ToResponse(const PCacheResponse& aIn)
 }
 
 already_AddRefed<InternalRequest>
-TypeUtils::ToInternalRequest(const PCacheRequest& aIn)
+TypeUtils::ToInternalRequest(const CacheRequest& aIn)
 {
   nsRefPtr<InternalRequest> internalRequest = new InternalRequest();
 
   internalRequest->SetMethod(aIn.method());
-  internalRequest->SetURL(NS_ConvertUTF16toUTF8(aIn.url()));
+
+  nsAutoCString url(aIn.urlWithoutQuery());
+  url.Append(aIn.urlQuery());
+  internalRequest->SetURL(url);
+
   internalRequest->SetReferrer(aIn.referrer());
   internalRequest->SetMode(aIn.mode());
   internalRequest->SetCredentialsMode(aIn.credentials());
-  internalRequest->SetContentPolicyType(aIn.context());
+  internalRequest->SetContentPolicyType(aIn.contentPolicyType());
   internalRequest->SetCacheMode(aIn.requestCache());
 
   nsRefPtr<InternalHeaders> internalHeaders =
-    new InternalHeaders(aIn.headers(), aIn.headersGuard());
+    ToInternalHeaders(aIn.headers(), aIn.headersGuard());
   ErrorResult result;
   internalRequest->Headers()->SetGuard(aIn.headersGuard(), result);
   MOZ_ASSERT(!result.Failed());
@@ -386,11 +357,99 @@ TypeUtils::ToInternalRequest(const PCacheRequest& aIn)
 }
 
 already_AddRefed<Request>
-TypeUtils::ToRequest(const PCacheRequest& aIn)
+TypeUtils::ToRequest(const CacheRequest& aIn)
 {
   nsRefPtr<InternalRequest> internalRequest = ToInternalRequest(aIn);
   nsRefPtr<Request> request = new Request(GetGlobalObject(), internalRequest);
   return request.forget();
+}
+
+// static
+already_AddRefed<InternalHeaders>
+TypeUtils::ToInternalHeaders(const nsTArray<HeadersEntry>& aHeadersEntryList,
+                             HeadersGuardEnum aGuard)
+{
+  nsTArray<InternalHeaders::Entry> entryList(aHeadersEntryList.Length());
+
+  for (uint32_t i = 0; i < aHeadersEntryList.Length(); ++i) {
+    const HeadersEntry& headersEntry = aHeadersEntryList[i];
+    entryList.AppendElement(InternalHeaders::Entry(headersEntry.name(),
+                                                   headersEntry.value()));
+  }
+
+  nsRefPtr<InternalHeaders> ref = new InternalHeaders(Move(entryList), aGuard);
+  return ref.forget();
+}
+
+// Utility function to remove the fragment from a URL, check its scheme, and optionally
+// provide a URL without the query.  We're not using nsIURL or URL to do this because
+// they require going to the main thread.
+// static
+void
+TypeUtils::ProcessURL(nsACString& aUrl, bool* aSchemeValidOut,
+                      nsACString* aUrlWithoutQueryOut,nsACString* aUrlQueryOut,
+                      ErrorResult& aRv)
+{
+  const nsAFlatCString& flatURL = PromiseFlatCString(aUrl);
+  const char* url = flatURL.get();
+
+  // off the main thread URL parsing using nsStdURLParser.
+  nsCOMPtr<nsIURLParser> urlParser = new nsStdURLParser();
+
+  uint32_t pathPos;
+  int32_t pathLen;
+  uint32_t schemePos;
+  int32_t schemeLen;
+  aRv = urlParser->ParseURL(url, flatURL.Length(), &schemePos, &schemeLen,
+                            nullptr, nullptr,       // ignore authority
+                            &pathPos, &pathLen);
+  if (NS_WARN_IF(aRv.Failed())) { return; }
+
+  if (aSchemeValidOut) {
+    nsAutoCString scheme(Substring(flatURL, schemePos, schemeLen));
+    *aSchemeValidOut = scheme.LowerCaseEqualsLiteral("http") ||
+                       scheme.LowerCaseEqualsLiteral("https") ||
+                       scheme.LowerCaseEqualsLiteral("app");
+  }
+
+  uint32_t queryPos;
+  int32_t queryLen;
+  uint32_t refPos;
+  int32_t refLen;
+
+  aRv = urlParser->ParsePath(url + pathPos, flatURL.Length() - pathPos,
+                             nullptr, nullptr,               // ignore filepath
+                             &queryPos, &queryLen,
+                             &refPos, &refLen);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return;
+  }
+
+  // TODO: Remove this once Request/Response properly strip the fragment (bug 1110476)
+  if (refLen >= 0) {
+    // ParsePath gives us ref position relative to the start of the path
+    refPos += pathPos;
+
+    aUrl = Substring(aUrl, 0, refPos - 1);
+  }
+
+  if (!aUrlWithoutQueryOut) {
+    return;
+  }
+
+  MOZ_ASSERT(aUrlQueryOut);
+
+  if (queryLen < 0) {
+    *aUrlWithoutQueryOut = aUrl;
+    *aUrlQueryOut = EmptyCString();
+    return;
+  }
+
+  // ParsePath gives us query position relative to the start of the path
+  queryPos += pathPos;
+
+  *aUrlWithoutQueryOut = Substring(aUrl, 0, queryPos - 1);
+  *aUrlQueryOut = Substring(aUrl, queryPos - 1, queryLen + 1);
 }
 
 void
@@ -440,7 +499,7 @@ TypeUtils::ToInternalRequest(const nsAString& aIn, ErrorResult& aRv)
 
 void
 TypeUtils::SerializeCacheStream(nsIInputStream* aStream,
-                                PCacheReadStreamOrVoid* aStreamOut,
+                                CacheReadStreamOrVoid* aStreamOut,
                                 ErrorResult& aRv)
 {
   *aStreamOut = void_t();
@@ -455,7 +514,7 @@ TypeUtils::SerializeCacheStream(nsIInputStream* aStream,
     return;
   }
 
-  PCacheReadStream readStream;
+  CacheReadStream readStream;
   readStream.controlChild() = nullptr;
   readStream.controlParent() = nullptr;
   readStream.pushStreamChild() = nullptr;
@@ -479,7 +538,7 @@ TypeUtils::SerializeCacheStream(nsIInputStream* aStream,
 
 void
 TypeUtils::SerializePushStream(nsIInputStream* aStream,
-                               PCacheReadStream& aReadStreamOut,
+                               CacheReadStream& aReadStreamOut,
                                ErrorResult& aRv)
 {
   nsCOMPtr<nsIAsyncInputStream> asyncStream = do_QueryInterface(aStream);

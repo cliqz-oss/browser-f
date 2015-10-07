@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -770,8 +771,11 @@ DOMStorageCache::StartDatabase()
 
     sDatabase = db.forget();
   } else {
+    // Use DOMLocalStorageManager::Ensure in case we're called from
+    // DOMSessionStorageManager's initializer and we haven't yet initialized the
+    // local storage manager.
     nsRefPtr<DOMStorageDBChild> db = new DOMStorageDBChild(
-        DOMLocalStorageManager::Self());
+        DOMLocalStorageManager::Ensure());
 
     nsresult rv = db->Init();
     if (NS_FAILED(rv)) {

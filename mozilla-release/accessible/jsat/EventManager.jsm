@@ -174,10 +174,17 @@ this.EventManager.prototype = {
         let event = aEvent.QueryInterface(Ci.nsIAccessibleStateChangeEvent);
         let state = Utils.getState(event);
         if (state.contains(States.CHECKED)) {
-          this.present(
-            Presentation.
-              actionInvoked(aEvent.accessible,
-                            event.isEnabled ? 'check' : 'uncheck'));
+          if (aEvent.accessible.role === Roles.SWITCH) {
+            this.present(
+              Presentation.
+                actionInvoked(aEvent.accessible,
+                              event.isEnabled ? 'on' : 'off'));
+          } else {
+            this.present(
+              Presentation.
+                actionInvoked(aEvent.accessible,
+                              event.isEnabled ? 'check' : 'uncheck'));
+          }
         } else if (state.contains(States.SELECTED)) {
           this.present(
             Presentation.
@@ -191,6 +198,12 @@ this.EventManager.prototype = {
         let acc = aEvent.accessible;
         if (acc === this.contentControl.vc.position) {
           this.present(Presentation.nameChanged(acc));
+        } else {
+          let {liveRegion, isPolite} = this._handleLiveRegion(aEvent,
+            ['text', 'all']);
+          if (liveRegion) {
+            this.present(Presentation.nameChanged(acc, isPolite));
+          }
         }
         break;
       }
@@ -293,6 +306,12 @@ this.EventManager.prototype = {
         if (position === target ||
             Utils.getEmbeddedControl(position) === target) {
           this.present(Presentation.valueChanged(target));
+        } else {
+          let {liveRegion, isPolite} = this._handleLiveRegion(aEvent,
+            ['text', 'all']);
+          if (liveRegion) {
+            this.present(Presentation.valueChanged(target, isPolite));
+          }
         }
       }
     }

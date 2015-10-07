@@ -46,6 +46,9 @@ EXPORTS += [
 ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
+    SOURCES += [
+        'D3D11ShareHandleImage.cpp',
+    ]
     UNIFIED_SOURCES += [
         'D3D9SurfaceImage.cpp',
         'IMFYCbCrImage.cpp',
@@ -94,6 +97,7 @@ EXPORTS.mozilla.layers += [
     # proper interface for the code there
     'apz/src/APZCTreeManager.h',
     'apz/src/APZUtils.h',
+    'apz/src/AsyncPanZoomAnimation.h',
     'apz/testutil/APZTestData.h',
     'apz/util/ActiveElementManager.h',
     'apz/util/APZCCallbackHelper.h',
@@ -114,12 +118,14 @@ EXPORTS.mozilla.layers += [
     'client/TextureClient.h',
     'client/TextureClientPool.h',
     'client/TextureClientRecycleAllocator.h',
+    'client/TextureClientSharedSurface.h',
     'client/TiledContentClient.h',
     'composite/AsyncCompositionManager.h',
     'composite/CanvasLayerComposite.h',
     'composite/ColorLayerComposite.h',
     'composite/ContainerLayerComposite.h',
     'composite/ContentHost.h',
+    'composite/FrameUniformityData.h',
     'composite/ImageHost.h',
     'composite/ImageLayerComposite.h',
     'composite/LayerManagerComposite.h',
@@ -127,6 +133,7 @@ EXPORTS.mozilla.layers += [
     'composite/TextureHost.h',
     'Compositor.h',
     'CompositorTypes.h',
+    'D3D11ShareHandleImage.h',
     'D3D9SurfaceImage.h',
     'Effects.h',
     'ImageDataSerializer.h',
@@ -134,6 +141,7 @@ EXPORTS.mozilla.layers += [
     'ipc/CompositableForwarder.h',
     'ipc/CompositableTransactionParent.h',
     'ipc/CompositorChild.h',
+    'ipc/CompositorLRU.h',
     'ipc/CompositorParent.h',
     'ipc/FenceUtils.h',
     'ipc/ImageBridgeChild.h',
@@ -157,6 +165,7 @@ EXPORTS.mozilla.layers += [
     'opengl/MacIOSurfaceTextureHostOGL.h',
     'opengl/TextureClientOGL.h',
     'opengl/TextureHostOGL.h',
+    'PersistentBufferProvider.h',
     'RenderTrace.h',
     'TransactionIdAllocator.h',
     'YCbCrImageDataSerializer.h',
@@ -208,17 +217,14 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
         'opengl/GrallocTextureHost.cpp',
     ]
     LOCAL_INCLUDES += ['/widget/gonk']
+    CXXFLAGS += [
+         '-I%s/%s' % (CONFIG['ANDROID_SOURCE'], d) for d in [
+             'system/core/libsync/include'
+         ]
+    ]
     SOURCES += [
         'ipc/ShadowLayerUtilsGralloc.cpp',
     ]
-
-    if CONFIG['ANDROID_VERSION'] >= '17':
-        EXPORTS.mozilla.layers += [
-            'ipc/FenceUtilsGonk.h',
-        ]
-        SOURCES += [
-            'ipc/FenceUtilsGonk.cpp',
-        ]
 
 UNIFIED_SOURCES += [
     'apz/src/APZCTreeManager.cpp',
@@ -230,6 +236,7 @@ UNIFIED_SOURCES += [
     'apz/src/InputQueue.cpp',
     'apz/src/OverscrollHandoffState.cpp',
     'apz/src/TaskThrottler.cpp',
+    'apz/src/WheelScrollAnimation.cpp',
     'apz/testutil/APZTestData.cpp',
     'apz/util/ActiveElementManager.cpp',
     'apz/util/APZCCallbackHelper.cpp',
@@ -263,6 +270,7 @@ UNIFIED_SOURCES += [
     'client/TextureClient.cpp',
     'client/TextureClientPool.cpp',
     'client/TextureClientRecycleAllocator.cpp',
+    'client/TextureClientSharedSurface.cpp',
     'client/TiledContentClient.cpp',
     'composite/AsyncCompositionManager.cpp',
     'composite/CanvasLayerComposite.cpp',
@@ -271,6 +279,7 @@ UNIFIED_SOURCES += [
     'composite/ContainerLayerComposite.cpp',
     'composite/ContentHost.cpp',
     'composite/FPSCounter.cpp',
+    'composite/FrameUniformityData.cpp',
     'composite/ImageHost.cpp',
     'composite/ImageLayerComposite.cpp',
     'composite/LayerManagerComposite.cpp',
@@ -288,7 +297,9 @@ UNIFIED_SOURCES += [
     'ipc/CompositableTransactionParent.cpp',
     'ipc/CompositorBench.cpp',
     'ipc/CompositorChild.cpp',
+    'ipc/CompositorLRU.cpp',
     'ipc/CompositorParent.cpp',
+    'ipc/FenceUtils.cpp',
     'ipc/ImageBridgeChild.cpp',
     'ipc/ImageBridgeParent.cpp',
     'ipc/ISurfaceAllocator.cpp',
@@ -324,6 +335,7 @@ SOURCES += [
     'ImageContainer.cpp',
     'Layers.cpp',
     'LayerTreeInvalidation.cpp',
+    'PersistentBufferProvider.cpp',
 ]
 
 # Disable RTTI in google protocol buffer
@@ -358,8 +370,6 @@ IPDL_SOURCES = [
 
 FAIL_ON_WARNINGS = True
 
-MSVC_ENABLE_PGO = True
-
 include('/ipc/chromium/chromium-config.mozbuild')
 
 LOCAL_INCLUDES += [
@@ -385,6 +395,7 @@ CXXFLAGS += [
 ]
 
 MOCHITEST_MANIFESTS += ['apz/test/mochitest.ini']
+MOCHITEST_CHROME_MANIFESTS += ['apz/test/chrome.ini']
 
 CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 CXXFLAGS += CONFIG['TK_CFLAGS']

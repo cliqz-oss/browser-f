@@ -2,16 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop, sinon */
-/* jshint newcap:false */
-
-var expect = chai.expect;
-
 describe("loop.shared.mixins", function() {
   "use strict";
 
+  var expect = chai.expect;
   var sandbox;
   var sharedMixins = loop.shared.mixins;
+  var TestUtils = React.addons.TestUtils;
   var ROOM_STATES = loop.store.ROOM_STATES;
 
   beforeEach(function() {
@@ -180,7 +177,8 @@ describe("loop.shared.mixins", function() {
 
         comp = TestUtils.renderIntoDocument(React.createElement(TestComp));
 
-        sinon.assert.calledOnce(onDocumentVisibleStub);
+        // Twice, because it's also called when the component was mounted.
+        sinon.assert.calledTwice(onDocumentVisibleStub);
       });
 
     it("should call onDocumentVisible when document visibility changes to hidden",
@@ -229,9 +227,9 @@ describe("loop.shared.mixins", function() {
 
       sandbox.stub(view, "getDOMNode").returns({
         querySelector: function(classSelector) {
-          if (classSelector.contains("local")) {
+          if (classSelector.includes("local")) {
             return localElement;
-          } else if (classSelector.contains("screen")) {
+          } else if (classSelector.includes("screen")) {
             return screenShareElement;
           }
           return remoteElement;
@@ -371,88 +369,6 @@ describe("loop.shared.mixins", function() {
     });
 
     describe("Events", function() {
-      describe("resize", function() {
-        it("should update the width on the local stream element", function() {
-          localElement = {
-            offsetWidth: 100,
-            offsetHeight: 100,
-            style: { width: "0%" }
-          };
-
-          rootObject.events.resize();
-          sandbox.clock.tick(10);
-
-          expect(localElement.style.width).eql("100%");
-        });
-
-        it("should update the height on the remote stream element", function() {
-          remoteElement = {
-            offsetWidth: 100,
-            offsetHeight: 100,
-            style: { height: "0%" }
-          };
-
-          rootObject.events.resize();
-          sandbox.clock.tick(10);
-
-          expect(remoteElement.style.height).eql("100%");
-        });
-
-        it("should update the height on the screen share stream element", function() {
-          screenShareElement = {
-            offsetWidth: 100,
-            offsetHeight: 100,
-            style: { height: "0%" }
-          };
-
-          rootObject.events.resize();
-          sandbox.clock.tick(10);
-
-          expect(screenShareElement.style.height).eql("100%");
-        });
-      });
-
-      describe("orientationchange", function() {
-        it("should update the width on the local stream element", function() {
-          localElement = {
-            offsetWidth: 100,
-            offsetHeight: 100,
-            style: { width: "0%" }
-          };
-
-          rootObject.events.orientationchange();
-          sandbox.clock.tick(10);
-
-          expect(localElement.style.width).eql("100%");
-        });
-
-        it("should update the height on the remote stream element", function() {
-          remoteElement = {
-            offsetWidth: 100,
-            offsetHeight: 100,
-            style: { height: "0%" }
-          };
-
-          rootObject.events.orientationchange();
-          sandbox.clock.tick(10);
-
-          expect(remoteElement.style.height).eql("100%");
-        });
-
-        it("should update the height on the screen share stream element", function() {
-          screenShareElement = {
-            offsetWidth: 100,
-            offsetHeight: 100,
-            style: { height: "0%" }
-          };
-
-          rootObject.events.orientationchange();
-          sandbox.clock.tick(10);
-
-          expect(screenShareElement.style.height).eql("100%");
-        });
-      });
-
 
       describe("Video stream dimensions", function() {
         var localVideoDimensions = {
@@ -468,11 +384,9 @@ describe("loop.shared.mixins", function() {
           }
         };
 
-        beforeEach(function() {
-          view.updateVideoDimensions(localVideoDimensions, remoteVideoDimensions);
-        });
-
         it("should register video dimension updates correctly", function() {
+          view.updateVideoDimensions(localVideoDimensions, remoteVideoDimensions);
+
           expect(view._videoDimensionsCache.local.camera.width)
             .eql(localVideoDimensions.camera.width);
           expect(view._videoDimensionsCache.local.camera.height)
@@ -487,6 +401,24 @@ describe("loop.shared.mixins", function() {
           expect(view._videoDimensionsCache.remote.camera.aspectRatio.height)
             .eql(0.32857142857142857);
         });
+
+        it("should unregister video dimension updates correctly", function() {
+          view.updateVideoDimensions(localVideoDimensions, {});
+
+          expect("camera" in view._videoDimensionsCache.local).eql(true);
+          expect("camera" in view._videoDimensionsCache.remote).eql(false);
+        });
+
+        it("should not populate the cache on another component instance", function() {
+            view.updateVideoDimensions(localVideoDimensions, remoteVideoDimensions);
+
+            var view2 =
+              TestUtils.renderIntoDocument(React.createElement(TestComp));
+
+            expect(view2._videoDimensionsCache.local).to.be.empty;
+            expect(view2._videoDimensionsCache.remote).to.be.empty;
+        });
+
       });
     });
   });
@@ -498,7 +430,7 @@ describe("loop.shared.mixins", function() {
       navigator.mozLoop = {
         doNotDisturb: true,
         getAudioBlob: sinon.spy(function(name, callback) {
-          callback(null, new Blob([new ArrayBuffer(10)], {type: 'audio/ogg'}));
+          callback(null, new Blob([new ArrayBuffer(10)], {type: "audio/ogg"}));
         })
       };
 
@@ -539,7 +471,7 @@ describe("loop.shared.mixins", function() {
   });
 
   describe("loop.shared.mixins.RoomsAudioMixin", function() {
-    var view, fakeAudioMixin, TestComp, comp;
+    var view, fakeAudioMixin, comp;
 
     function createTestComponent(initialState) {
       var TestComp = React.createClass({

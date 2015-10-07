@@ -64,6 +64,14 @@ const kEventConstructors = {
                                                           return new BluetoothDiscoveryStateChangedEvent(aName, aProps);
                                                        },
                                              },
+  BluetoothGattCharacteristicEvent:          { create: function (aName, aProps) {
+                                                          return new BluetoothGattCharacteristicEvent(aName, aProps);
+                                                       },
+                                             },
+  BluetoothLeDeviceEvent:                    { create: function (aName, aProps) {
+                                                          return new BluetoothLeDeviceEvent(aName, aProps);
+                                                       },
+                                             },
   BluetoothPairingEvent:                     { create: function (aName, aProps) {
                                                           return new BluetoothPairingEvent(aName, aProps);
                                                        },
@@ -122,10 +130,6 @@ const kEventConstructors = {
                                                          return e;
                                                        },
                                              },
-  CSSFontFaceLoadEvent:                      { create: function (aName, aProps) {
-                                                         return new CSSFontFaceLoadEvent(aName, aProps);
-                                                       },
-                                             },
   CustomEvent:                               { create: function (aName, aProps) {
                                                          return new CustomEvent(aName, aProps);
                                                        },
@@ -164,6 +168,10 @@ const kEventConstructors = {
                                                          return new DeviceProximityEvent(aName, aProps);
                                                        },
                                              },
+  DeviceStorageAreaChangedEvent:             { create: function (aName, aProps) {
+                                                         return new DeviceStorageAreaChangedEvent(aName, aProps);
+                                                       },
+                                             },
   DeviceStorageChangeEvent:                  { create: function (aName, aProps) {
                                                          return new DeviceStorageChangeEvent(aName, aProps);
                                                        },
@@ -193,6 +201,10 @@ const kEventConstructors = {
   },
   FocusEvent:                                { create: function (aName, aProps) {
                                                          return new FocusEvent(aName, aProps);
+                                                       },
+                                             },
+  FontFaceSetLoadEvent:                      { create: function (aName, aProps) {
+                                                         return new FontFaceSetLoadEvent(aName, aProps);
                                                        },
                                              },
   GamepadEvent:                              { create: function (aName, aProps) {
@@ -413,6 +425,10 @@ const kEventConstructors = {
                                                                                   aProps.allowedDirections, aProps.direction, aProps.delta || 0.0,
                                                                                   aProps.clickCount);
                                                          return e;
+                                                       },
+                                             },
+  SpeechRecognitionError:                    { create: function (aName, aProps) {
+                                                         return new SpeechRecognitionError(aName, aProps);
                                                        },
                                              },
   SpeechRecognitionEvent:                    { create: function (aName, aProps) {

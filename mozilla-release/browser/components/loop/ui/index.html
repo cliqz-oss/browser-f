@@ -9,9 +9,12 @@
     <link rel="stylesheet" type="text/css" href="../content/shared/css/reset.css">
     <link rel="stylesheet" type="text/css" href="../content/shared/css/common.css">
     <link rel="stylesheet" type="text/css" href="../content/shared/css/conversation.css">
-    <link rel="stylesheet" type="text/css" href="../content/css/panel.css">
-    <link rel="stylesheet" type="text/css" href="../content/css/contacts.css">
-    <link rel="stylesheet" type="text/css" href="../content/css/webapp.css">
+    <link class="fx-embedded-panel" rel="stylesheet" type="text/css"
+          href="../content/css/panel.css">
+    <link class="fx-embedded-panel" rel="stylesheet" type="text/css"
+          href="../content/css/contacts.css">
+    <link class="standalone" rel="stylesheet" type="text/css"
+          href="../content/css/webapp.css">
     <link rel="stylesheet" type="text/css" href="ui-showcase.css">
  </head>
   <body>
@@ -32,12 +35,11 @@
       };
       window.OTProperties.assetURL = window.OTProperties.cdnURL + 'sdk-content/';
       window.OTProperties.configURL = window.OTProperties.assetURL + 'js/dynamic_config.min.js';
-      window.OTProperties.cssURL = window.OTProperties.assetURL + 'css/ot.css';
     </script>
     <script src="../content/js/multiplexGum.js"></script>
     <script src="../content/shared/libs/sdk.js"></script>
     <script src="../content/shared/libs/react-0.12.2.js"></script>
-    <script src="../content/shared/libs/jquery-2.1.0.js"></script>
+    <script src="../content/shared/libs/jquery-2.1.4.js"></script>
     <script src="../content/shared/libs/lodash-2.4.1.js"></script>
     <script src="../content/shared/libs/backbone-1.1.2.js"></script>
     <script src="../content/shared/js/feedbackApiClient.js"></script>
@@ -49,7 +51,6 @@
     <script src="../content/shared/js/validate.js"></script>
     <script src="../content/shared/js/dispatcher.js"></script>
     <script src="../content/shared/js/store.js"></script>
-    <script src="../content/shared/js/roomStore.js"></script>
     <script src="../content/shared/js/conversationStore.js"></script>
     <script src="../content/shared/js/roomStates.js"></script>
     <script src="../content/shared/js/fxOSActiveRoomStore.js"></script>
@@ -57,6 +58,11 @@
     <script src="../content/shared/js/feedbackStore.js"></script>
     <script src="../content/shared/js/views.js"></script>
     <script src="../content/shared/js/feedbackViews.js"></script>
+    <script src="../content/shared/js/textChatStore.js"></script>
+    <script src="../content/shared/js/textChatView.js"></script>
+    <script src="../content/shared/js/urlRegExps.js"></script>
+    <script src="../content/shared/js/linkifiedTextView.js"></script>
+    <script src="../content/js/roomStore.js"></script>
     <script src="../content/js/roomViews.js"></script>
     <script src="../content/js/conversationViews.js"></script>
     <script src="../content/js/client.js"></script>
@@ -82,6 +88,7 @@
     </script>
     <script src="../content/js/panel.js"></script>
     <script src="../content/js/conversation.js"></script>
+    <script src="react-frame-component.js"></script>
     <script src="ui-showcase.js"></script>
   </body>
 </html>

@@ -35,12 +35,18 @@ RematerializedFrame::RematerializedFrame(JSContext* cx, uint8_t* top, unsigned n
                                          InlineFrameIterator& iter, MaybeReadFallback& fallback)
   : prevUpToDate_(false),
     isDebuggee_(iter.script()->isDebuggee()),
+    isConstructing_(iter.isConstructing()),
     top_(top),
     pc_(iter.pc()),
     frameNo_(iter.frameNo()),
     numActualArgs_(numActualArgs),
     script_(iter.script())
 {
+    if (iter.isFunctionFrame())
+        callee_ = iter.callee(fallback);
+    else
+        callee_ = nullptr;
+
     CopyValueToRematerializedFrame op(slots_);
     iter.readFrameArgsAndLocals(cx, op, op, &scopeChain_, &hasCallObj_, &returnValue_,
                                 &argsObj_, &thisValue_, ReadFrame_Actuals,
@@ -52,7 +58,7 @@ RematerializedFrame::New(JSContext* cx, uint8_t* top, InlineFrameIterator& iter,
                          MaybeReadFallback& fallback)
 {
     unsigned numFormals = iter.isFunctionFrame() ? iter.calleeTemplate()->nargs() : 0;
-    unsigned argSlots = Max(numFormals, iter.numActualArgs());
+    unsigned argSlots = Max(numFormals, iter.numActualArgs()) + iter.isConstructing();
     size_t numBytes = sizeof(RematerializedFrame) +
         (argSlots + iter.script()->nfixed()) * sizeof(Value) -
         sizeof(Value); // 1 Value included in sizeof(RematerializedFrame)
@@ -98,7 +104,7 @@ RematerializedFrame::FreeInVector(Vector<RematerializedFrame*>& frames)
 {
     for (size_t i = 0; i < frames.length(); i++) {
         RematerializedFrame* f = frames[i];
-        Debugger::assertNotInFrameMaps(f);
+        MOZ_ASSERT(!Debugger::inFrameMaps(f));
         f->RematerializedFrame::~RematerializedFrame();
         js_free(f);
     }
@@ -147,12 +153,14 @@ RematerializedFrame::initFunctionScopeObjects(JSContext* cx)
 void
 RematerializedFrame::mark(JSTracer* trc)
 {
-    gc::MarkScriptRoot(trc, &script_, "remat ion frame script");
-    gc::MarkObjectRoot(trc, &scopeChain_, "remat ion frame scope chain");
-    gc::MarkValueRoot(trc, &returnValue_, "remat ion frame return value");
-    gc::MarkValueRoot(trc, &thisValue_, "remat ion frame this");
-    gc::MarkValueRootRange(trc, slots_, slots_ + numActualArgs_ + script_->nfixed(),
-                           "remat ion frame stack");
+    TraceRoot(trc, &script_, "remat ion frame script");
+    TraceRoot(trc, &scopeChain_, "remat ion frame scope chain");
+    if (callee_)
+        TraceRoot(trc, &callee_, "remat ion frame callee");
+    TraceRoot(trc, &returnValue_, "remat ion frame return value");
+    TraceRoot(trc, &thisValue_, "remat ion frame this");
+    TraceRootRange(trc, numActualArgs_ + isConstructing_ + script_->nfixed(),
+                   slots_, "remat ion frame stack");
 }
 
 void

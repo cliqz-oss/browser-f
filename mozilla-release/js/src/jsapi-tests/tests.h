@@ -7,6 +7,7 @@
 #ifndef jsapi_tests_tests_h
 #define jsapi_tests_tests_h
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/TypeTraits.h"
 
 #include <errno.h>
@@ -229,7 +230,7 @@ class JSAPITest
             "global", JSCLASS_GLOBAL_FLAGS,
             nullptr, nullptr, nullptr, nullptr,
             nullptr, nullptr, nullptr, nullptr,
-            nullptr, nullptr, nullptr,
+            nullptr, nullptr, nullptr, nullptr,
             JS_GlobalObjectTraceHook
         };
         return &c;
@@ -284,7 +285,6 @@ class JSAPITest
             return nullptr;
         JS_SetErrorReporter(rt, &reportError);
         setNativeStackQuota(rt);
-        JS::RuntimeOptionsRef(rt).setVarObjFix(true);
         return rt;
     }
 

@@ -16,9 +16,12 @@ const {Cc, Ci, Cu} = require("chrome");
 const {
   Tooltip,
   SwatchColorPickerTooltip,
-  SwatchCubicBezierTooltip
+  SwatchCubicBezierTooltip,
+  CssDocsTooltip,
+  SwatchFilterTooltip
 } = require("devtools/shared/widgets/Tooltip");
 const {CssLogic} = require("devtools/styleinspector/css-logic");
+const EventEmitter = require("devtools/toolkit/event-emitter");
 const {Promise:promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
@@ -34,6 +37,7 @@ const VIEW_NODE_SELECTOR_TYPE = exports.VIEW_NODE_SELECTOR_TYPE = 1;
 const VIEW_NODE_PROPERTY_TYPE = exports.VIEW_NODE_PROPERTY_TYPE = 2;
 const VIEW_NODE_VALUE_TYPE = exports.VIEW_NODE_VALUE_TYPE = 3;
 const VIEW_NODE_IMAGE_URL_TYPE = exports.VIEW_NODE_IMAGE_URL_TYPE = 4;
+const VIEW_NODE_LOCATION_TYPE = exports.VIEW_NODE_LOCATION_TYPE = 5;
 
 /**
  * Manages all highlighters in the style-inspector.
@@ -57,6 +61,8 @@ function HighlightersOverlay(view) {
   // Only initialize the overlay if at least one of the highlighter types is
   // supported
   this.supportsHighlighters = this.highlighterUtils.supportsCustomHighlighters();
+
+  EventEmitter.decorate(this);
 }
 
 exports.HighlightersOverlay = HighlightersOverlay;
@@ -122,9 +128,13 @@ HighlightersOverlay.prototype = {
     if (type) {
       this.highlighterShown = type;
       let node = this.view.inspector.selection.nodeFront;
-      this._getHighlighter(type).then(highlighter => {
-        highlighter.show(node);
-      });
+      this._getHighlighter(type)
+          .then(highlighter => highlighter.show(node))
+          .then(shown => {
+            if (shown) {
+              this.emit("highlighter-shown");
+            }
+          });
     }
   },
 
@@ -174,6 +184,7 @@ HighlightersOverlay.prototype = {
           promise.then(null, Cu.reportError);
         }
         this.highlighterShown = null;
+        this.emit("highlighter-hidden");
       });
     }
   },
@@ -239,7 +250,8 @@ TooltipsOverlay.prototype = {
   get isEditing() {
     return this.colorPicker.tooltip.isShown() ||
            this.colorPicker.eyedropperOpen ||
-           this.cubicBezier.tooltip.isShown();
+           this.cubicBezier.tooltip.isShown() ||
+           this.filterEditor.tooltip.isShown();
   },
 
   /**
@@ -261,6 +273,10 @@ TooltipsOverlay.prototype = {
       this.colorPicker = new SwatchColorPickerTooltip(this.view.inspector.panelDoc);
       // Cubic bezier tooltip
       this.cubicBezier = new SwatchCubicBezierTooltip(this.view.inspector.panelDoc);
+      // MDN CSS help tooltip
+      this.cssDocs = new CssDocsTooltip(this.view.inspector.panelDoc);
+      // Filter editor tooltip
+      this.filterEditor = new SwatchFilterTooltip(this.view.inspector.panelDoc);
     }
 
     this._isStarted = true;
@@ -284,6 +300,14 @@ TooltipsOverlay.prototype = {
 
     if (this.cubicBezier) {
       this.cubicBezier.destroy();
+    }
+
+    if (this.cssDocs) {
+      this.cssDocs.destroy();
+    }
+
+    if (this.filterEditor) {
+      this.filterEditor.destroy();
     }
 
     this._isStarted = false;
@@ -326,13 +350,13 @@ TooltipsOverlay.prototype = {
     let nodeInfo = this.view.getNodeInfo(target);
     if (!nodeInfo) {
       // The hovered node isn't something we care about
-      return promise.reject();
+      return promise.reject(false);
     }
 
     let type = this._getTooltipType(nodeInfo);
     if (!type) {
       // There is no tooltip type defined for the hovered node
-      return promise.reject();
+      return promise.reject(false);
     }
 
     if (this.isRuleView && this.colorPicker.tooltip.isShown()) {
@@ -343,6 +367,15 @@ TooltipsOverlay.prototype = {
     if (this.isRuleView && this.cubicBezier.tooltip.isShown()) {
       this.cubicBezier.revert();
       this.cubicBezier.hide();
+    }
+
+    if (this.isRuleView && this.cssDocs.tooltip.isShown()) {
+      this.cssDocs.hide();
+    }
+
+    if (this.isRuleView && this.filterEditor.tooltip.isShown()) {
+      this.filterEditor.revert();
+      this.filterEdtior.hide();
     }
 
     let inspector = this.view.inspector;
@@ -372,6 +405,14 @@ TooltipsOverlay.prototype = {
 
     if (this.cubicBezier) {
       this.cubicBezier.hide();
+    }
+
+    if (this.cssDocs) {
+      this.cssDocs.hide();
+    }
+
+    if (this.filterEditor) {
+      this.filterEditor.hide();
     }
   },
 

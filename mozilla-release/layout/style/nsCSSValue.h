@@ -87,7 +87,7 @@ struct URLValue {
            nsIPrincipal* aOriginPrincipal);
 
 protected:
-  ~URLValue();
+  ~URLValue() {};
 
 public:
   bool operator==(const URLValue& aOther) const;
@@ -108,8 +108,7 @@ private:
   // null if the URI is invalid.
   mutable nsCOMPtr<nsIURI> mURI;
 public:
-  nsStringBuffer* mString; // Could use nsRefPtr, but it'd add useless
-                           // null-checks; this is never null.
+  nsRefPtr<nsStringBuffer> mString;
   nsCOMPtr<nsIURI> mReferrer;
   nsCOMPtr<nsIPrincipal> mOriginPrincipal;
 
@@ -138,8 +137,10 @@ public:
   nsRefPtrHashtable<nsPtrHashKey<nsISupports>, imgRequestProxy> mRequests; 
 
   // Override AddRef and Release to not only log ourselves correctly, but
-  // also so that we delete correctly without a virtual destructor
-  NS_INLINE_DECL_REFCOUNTING(ImageValue)
+  // also so that we delete correctly without a virtual destructor (assuming
+  // callers always call *our* Release method and not our base class's).
+  NS_METHOD_(MozExternalRefCountType) AddRef();
+  NS_METHOD_(MozExternalRefCountType) Release();
 };
 
 struct GridNamedArea {
@@ -748,24 +749,24 @@ protected:
     float      mFloat;
     // Note: the capacity of the buffer may exceed the length of the string.
     // If we're of a string type, mString is not null.
-    nsStringBuffer* mString;
+    nsStringBuffer* MOZ_OWNING_REF mString;
     nscolor    mColor;
-    Array*     mArray;
-    mozilla::css::URLValue* mURL;
-    mozilla::css::ImageValue* mImage;
-    mozilla::css::GridTemplateAreasValue* mGridTemplateAreas;
-    nsCSSValueGradient* mGradient;
-    nsCSSValueTokenStream* mTokenStream;
-    nsCSSValuePair_heap* mPair;
-    nsCSSRect_heap* mRect;
-    nsCSSValueTriplet_heap* mTriplet;
-    nsCSSValueList_heap* mList;
+    Array* MOZ_OWNING_REF mArray;
+    mozilla::css::URLValue* MOZ_OWNING_REF mURL;
+    mozilla::css::ImageValue* MOZ_OWNING_REF mImage;
+    mozilla::css::GridTemplateAreasValue* MOZ_OWNING_REF mGridTemplateAreas;
+    nsCSSValueGradient* MOZ_OWNING_REF mGradient;
+    nsCSSValueTokenStream* MOZ_OWNING_REF mTokenStream;
+    nsCSSValuePair_heap* MOZ_OWNING_REF mPair;
+    nsCSSRect_heap* MOZ_OWNING_REF mRect;
+    nsCSSValueTriplet_heap* MOZ_OWNING_REF mTriplet;
+    nsCSSValueList_heap* MOZ_OWNING_REF mList;
     nsCSSValueList* mListDependent;
-    nsCSSValueSharedList* mSharedList;
-    nsCSSValuePairList_heap* mPairList;
+    nsCSSValueSharedList* MOZ_OWNING_REF mSharedList;
+    nsCSSValuePairList_heap* MOZ_OWNING_REF mPairList;
     nsCSSValuePairList* mPairListDependent;
-    nsCSSValueFloatColor* mFloatColor;
-    mozilla::css::FontFamilyListRefCnt* mFontFamilyList;
+    nsCSSValueFloatColor* MOZ_OWNING_REF mFloatColor;
+    mozilla::css::FontFamilyListRefCnt* MOZ_OWNING_REF mFontFamilyList;
   } mValue;
 };
 
@@ -1536,7 +1537,8 @@ public:
   nsCOMPtr<nsIURI> mBaseURI;
   nsCOMPtr<nsIURI> mSheetURI;
   nsCOMPtr<nsIPrincipal> mSheetPrincipal;
-  mozilla::CSSStyleSheet* mSheet;
+  // XXX Should store sheet here (see Bug 952338)
+  // mozilla::CSSStyleSheet* mSheet;
   uint32_t mLineNumber;
   uint32_t mLineOffset;
 

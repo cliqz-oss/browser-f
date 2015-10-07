@@ -9,10 +9,11 @@
 
 #include "nsRefPtr.h"
 #include "nsString.h"
+#include "MediaResource.h"
 
 namespace mozilla {
 
-class LargeDataBuffer;
+class MediaByteBuffer;
 class SourceBufferResource;
 
 class ContainerParser {
@@ -23,17 +24,17 @@ public:
   // Return true if aData starts with an initialization segment.
   // The base implementation exists only for debug logging and is expected
   // to be called first from the overriding implementation.
-  virtual bool IsInitSegmentPresent(LargeDataBuffer* aData);
+  virtual bool IsInitSegmentPresent(MediaByteBuffer* aData);
 
   // Return true if aData starts with a media segment.
   // The base implementation exists only for debug logging and is expected
   // to be called first from the overriding implementation.
-  virtual bool IsMediaSegmentPresent(LargeDataBuffer* aData);
+  virtual bool IsMediaSegmentPresent(MediaByteBuffer* aData);
 
   // Parse aData to extract the start and end frame times from the media
   // segment.  aData may not start on a parser sync boundary.  Return true
   // if aStart and aEnd have been updated.
-  virtual bool ParseStartAndEndTimestamps(LargeDataBuffer* aData,
+  virtual bool ParseStartAndEndTimestamps(MediaByteBuffer* aData,
                                           int64_t& aStart, int64_t& aEnd);
 
   // Compare aLhs and rHs, considering any error that may exist in the
@@ -43,7 +44,7 @@ public:
 
   virtual int64_t GetRoundingError();
 
-  LargeDataBuffer* InitData();
+  MediaByteBuffer* InitData();
 
   bool HasInitData()
   {
@@ -51,13 +52,25 @@ public:
   }
 
   bool HasCompleteInitData();
+  // Returns the byte range of the first complete init segment, or an empty
+  // range if not complete.
+  MediaByteRange InitSegmentRange();
+  // Returns the byte range of the first complete media segment header,
+  // or an empty range if not complete.
+  MediaByteRange MediaHeaderRange();
+  // Returns the byte range of the first complete media segment or an empty
+  // range if not complete.
+  MediaByteRange MediaSegmentRange();
 
   static ContainerParser* CreateForMIMEType(const nsACString& aType);
 
 protected:
-  nsRefPtr<LargeDataBuffer> mInitData;
+  nsRefPtr<MediaByteBuffer> mInitData;
   nsRefPtr<SourceBufferResource> mResource;
   bool mHasInitData;
+  MediaByteRange mCompleteInitSegmentRange;
+  MediaByteRange mCompleteMediaHeaderRange;
+  MediaByteRange mCompleteMediaSegmentRange;
   const nsCString mType;
 };
 

@@ -253,9 +253,8 @@ private:
   void FireLoadEvent(nsIThreadInternal* aThread);
 };
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
-#ifdef PR_LOGGING
 static PRLogModuleInfo *
 GetLoaderLog()
 {
@@ -264,21 +263,17 @@ GetLoaderLog()
     sLog = PR_NewLogModule("nsCSSLoader");
   return sLog;
 }
-#endif /* PR_LOGGING */
 
-#define LOG_FORCE(args) PR_LOG(GetLoaderLog(), PR_LOG_ALWAYS, args)
-#define LOG_ERROR(args) PR_LOG(GetLoaderLog(), PR_LOG_ERROR, args)
-#define LOG_WARN(args) PR_LOG(GetLoaderLog(), PR_LOG_WARNING, args)
-#define LOG_DEBUG(args) PR_LOG(GetLoaderLog(), PR_LOG_DEBUG, args)
+#define LOG_ERROR(args) MOZ_LOG(GetLoaderLog(), mozilla::LogLevel::Error, args)
+#define LOG_WARN(args) MOZ_LOG(GetLoaderLog(), mozilla::LogLevel::Warning, args)
+#define LOG_DEBUG(args) MOZ_LOG(GetLoaderLog(), mozilla::LogLevel::Debug, args)
 #define LOG(args) LOG_DEBUG(args)
 
-#define LOG_FORCE_ENABLED() PR_LOG_TEST(GetLoaderLog(), PR_LOG_ALWAYS)
-#define LOG_ERROR_ENABLED() PR_LOG_TEST(GetLoaderLog(), PR_LOG_ERROR)
-#define LOG_WARN_ENABLED() PR_LOG_TEST(GetLoaderLog(), PR_LOG_WARNING)
-#define LOG_DEBUG_ENABLED() PR_LOG_TEST(GetLoaderLog(), PR_LOG_DEBUG)
+#define LOG_ERROR_ENABLED() MOZ_LOG_TEST(GetLoaderLog(), mozilla::LogLevel::Error)
+#define LOG_WARN_ENABLED() MOZ_LOG_TEST(GetLoaderLog(), mozilla::LogLevel::Warning)
+#define LOG_DEBUG_ENABLED() MOZ_LOG_TEST(GetLoaderLog(), mozilla::LogLevel::Debug)
 #define LOG_ENABLED() LOG_DEBUG_ENABLED()
 
-#ifdef PR_LOGGING
 #define LOG_URI(format, uri)                        \
   PR_BEGIN_MACRO                                    \
     NS_ASSERTION(uri, "Logging null uri");          \
@@ -288,12 +283,8 @@ GetLoaderLog()
       LOG((format, _logURISpec.get()));             \
     }                                               \
   PR_END_MACRO
-#else // PR_LOGGING
-#define LOG_URI(format, uri)
-#endif // PR_LOGGING
 
 // And some convenience strings...
-#ifdef PR_LOGGING
 static const char* const gStateStrings[] = {
   "eSheetStateUnknown",
   "eSheetNeedsParser",
@@ -301,7 +292,6 @@ static const char* const gStateStrings[] = {
   "eSheetLoading",
   "eSheetComplete"
 };
-#endif
 
 /********************************
  * SheetLoadData implementation *
@@ -673,9 +663,7 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
     // aCharset is now either "UTF-16BE", "UTF-16BE" or "UTF-8"
     // which will swallow the BOM.
     mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
     LOG(("  Setting from BOM to: %s", PromiseFlatCString(aCharset).get()));
-#endif
     return NS_OK;
   }
 
@@ -686,9 +674,7 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
     channel->GetContentCharset(specified);
     if (EncodingUtils::FindEncodingForLabel(specified, aCharset)) {
       mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
       LOG(("  Setting from HTTP to: %s", PromiseFlatCString(aCharset).get()));
-#endif
       return NS_OK;
     }
   }
@@ -709,10 +695,8 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
         aCharset.AssignLiteral("UTF-8");
       }
       mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
       LOG(("  Setting from @charset rule to: %s",
           PromiseFlatCString(aCharset).get()));
-#endif
       return NS_OK;
     }
   }
@@ -724,10 +708,8 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
     mOwningElement->GetCharset(specified16);
     if (EncodingUtils::FindEncodingForLabel(specified16, aCharset)) {
       mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
       LOG(("  Setting from charset attribute to: %s",
           PromiseFlatCString(aCharset).get()));
-#endif
       return NS_OK;
     }
   }
@@ -736,10 +718,8 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
   // in via mCharsetHint instead.
   if (EncodingUtils::FindEncodingForLabel(mCharsetHint, aCharset)) {
     mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
       LOG(("  Setting from charset attribute (preload case) to: %s",
           PromiseFlatCString(aCharset).get()));
-#endif
     return NS_OK;
   }
 
@@ -748,10 +728,8 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
     aCharset = mParentData->mCharset;
     if (!aCharset.IsEmpty()) {
       mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
       LOG(("  Setting from parent sheet to: %s",
           PromiseFlatCString(aCharset).get()));
-#endif
       return NS_OK;
     }
   }
@@ -761,17 +739,13 @@ SheetLoadData::OnDetermineCharset(nsIUnicharStreamLoader* aLoader,
     aCharset = mLoader->mDocument->GetDocumentCharacterSet();
     MOZ_ASSERT(!aCharset.IsEmpty());
     mCharset.Assign(aCharset);
-#ifdef PR_LOGGING
     LOG(("  Setting from document to: %s", PromiseFlatCString(aCharset).get()));
-#endif
     return NS_OK;
   }
 
   aCharset.AssignLiteral("UTF-8");
   mCharset = aCharset;
-#ifdef PR_LOGGING
   LOG(("  Setting from default to: %s", PromiseFlatCString(aCharset).get()));
-#endif
   return NS_OK;
 }
 
@@ -1670,7 +1644,7 @@ Loader::LoadSheet(SheetLoadData* aLoadData, StyleSheetState aSheetState)
     nsRefPtr<nsCORSListenerProxy> corsListener =
       new nsCORSListenerProxy(streamLoader, aLoadData->mLoaderPrincipal,
 			      withCredentials);
-    rv = corsListener->Init(channel);
+    rv = corsListener->Init(channel, DataURIHandling::Allow);
     if (NS_FAILED(rv)) {
 #ifdef DEBUG
       mSyncCallback = false;

@@ -67,6 +67,7 @@ this.SystemMessagePermissionsTable = {
     "wifi-manage": []
   },
   "dummy-system-message": { }, // for system message testing framework
+  "dummy-system-message2": { }, // for system message testing framework
   "headset-button": { },
   "icc-stkcommand": {
     "settings": ["read", "write"]
@@ -88,6 +89,9 @@ this.SystemMessagePermissionsTable = {
   "sms-delivery-success": {
     "sms": []
   },
+  "sms-delivery-error": {
+    "sms": []
+  },
   "sms-read-success": {
     "sms": []
   },
@@ -95,6 +99,9 @@ this.SystemMessagePermissionsTable = {
     "sms": []
   },
   "sms-sent": {
+    "sms": []
+  },
+  "sms-failed": {
     "sms": []
   },
   "telephony-new-call": {

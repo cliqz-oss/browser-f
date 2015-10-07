@@ -17,7 +17,6 @@ const PREF_APP_UPDATE_CERT_MAXERRORS      = "app.update.cert.maxErrors";
 const PREF_APP_UPDATE_CERT_REQUIREBUILTIN = "app.update.cert.requireBuiltIn";
 const PREF_APP_UPDATE_CHANNEL             = "app.update.channel";
 const PREF_APP_UPDATE_ENABLED             = "app.update.enabled";
-const PREF_APP_UPDATE_METRO_ENABLED       = "app.update.metro.enabled";
 const PREF_APP_UPDATE_IDLETIME            = "app.update.idletime";
 const PREF_APP_UPDATE_LOG                 = "app.update.log";
 const PREF_APP_UPDATE_NEVER_BRANCH        = "app.update.never.";
@@ -131,6 +130,10 @@ XPCOMUtils.defineLazyGetter(this, "gDefaultPrefBranch", function test_gDPB() {
 XPCOMUtils.defineLazyGetter(this, "gPrefRoot", function test_gPR() {
   return Services.prefs.getBranch(null);
 });
+
+XPCOMUtils.defineLazyServiceGetter(this, "gEnv",
+                                   "@mozilla.org/process/environment;1",
+                                   "nsIEnvironment");
 
 XPCOMUtils.defineLazyGetter(this, "gZipW", function test_gZipW() {
   return Cc["@mozilla.org/zipwriter;1"].
@@ -624,6 +627,7 @@ function logTestInfo(aText, aCaller) {
  */
 function debugDump(aText, aCaller) {
   if (DEBUG_AUS_TEST) {
-    logTestInfo(aText, aCaller);
+    let caller = aCaller ? aCaller : Components.stack.caller;
+    logTestInfo(aText, caller);
   }
 }

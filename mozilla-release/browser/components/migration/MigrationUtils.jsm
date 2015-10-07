@@ -15,13 +15,10 @@ const TOPIC_DID_IMPORT_BOOKMARKS = "initial-migration-did-import-default-bookmar
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/Task.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "Dict",
-                                  "resource://gre/modules/Dict.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
                                   "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "BookmarkHTMLUtils",
                                   "resource://gre/modules/BookmarkHTMLUtils.jsm");
 
@@ -32,7 +29,7 @@ let gMigrationBundle = null;
 function getMigrationBundle() {
   if (!gMigrationBundle) {
     gMigrationBundle = Services.strings.createBundle(
-     "chrome://browser/locale/migration/migration.properties"); 
+     "chrome://browser/locale/migration/migration.properties");
   }
   return gMigrationBundle;
 }
@@ -46,11 +43,12 @@ function getMigrationBundle() {
  */
 function getMigratorKeyForDefaultBrowser() {
   const APP_DESC_TO_KEY = {
-    "Internet Explorer": "ie",
-    "Safari":            "safari",
-    "Firefox":           "firefox",
-    "Google Chrome":     "chrome",  // Windows, Linux
-    "Chrome":            "chrome",  // OS X
+    "Internet Explorer":                 "ie",
+    "Safari":                            "safari",
+    "Firefox":                           "firefox",
+    "Google Chrome":                     "chrome",  // Windows, Linux
+    "Chrome":                            "chrome",  // OS X
+    "360\u5b89\u5168\u6d4f\u89c8\u5668": "360se",
   };
 
   let browserDesc = "";
@@ -198,7 +196,7 @@ this.MigratorPrototype = {
     function doMigrate() {
       // TODO: use Map (for the items) and Set (for the resources)
       // once they are iterable.
-      let resourcesGroupedByItems = new Dict();
+      let resourcesGroupedByItems = new Map();
       resources.forEach(function(resource) {
         if (resourcesGroupedByItems.has(resource.type))
           resourcesGroupedByItems.get(resource.type).push(resource);
@@ -206,7 +204,7 @@ this.MigratorPrototype = {
           resourcesGroupedByItems.set(resource.type, [resource]);
       });
 
-      if (resourcesGroupedByItems.count == 0)
+      if (resourcesGroupedByItems.size == 0)
         throw new Error("No items to import");
 
       let notify = function(aMsg, aItemType) {
@@ -214,28 +212,30 @@ this.MigratorPrototype = {
       }
 
       notify("Migration:Started");
-      resourcesGroupedByItems.listkeys().forEach(function(migrationType) {
-        let migrationTypeA = migrationType;
-        let itemResources = resourcesGroupedByItems.get(migrationType);
+      for (let [key, value] of resourcesGroupedByItems) {
+      	// TODO: (bug 449811).
+      	let migrationType = key, itemResources = value;
+
         notify("Migration:ItemBeforeMigrate", migrationType);
 
         let itemSuccess = false;
-        itemResources.forEach(function(resource) {
+        for (let res of itemResources) {
+          let resource = res;
           let resourceDone = function(aSuccess) {
             let resourceIndex = itemResources.indexOf(resource);
             if (resourceIndex != -1) {
               itemResources.splice(resourceIndex, 1);
               itemSuccess |= aSuccess;
               if (itemResources.length == 0) {
-                resourcesGroupedByItems.del(migrationType);
+                resourcesGroupedByItems.delete(migrationType);
                 notify(itemSuccess ?
                        "Migration:ItemAfterMigrate" : "Migration:ItemError",
                        migrationType);
-                if (resourcesGroupedByItems.count == 0)
+                if (resourcesGroupedByItems.size == 0)
                   notify("Migration:Ended");
               }
             }
-          };
+          }
 
           Services.tm.mainThread.dispatch(function() {
             // If migrate throws, an error occurred, and the callback
@@ -248,8 +248,8 @@ this.MigratorPrototype = {
               resourceDone(false);
             }
           }, Ci.nsIThread.DISPATCH_NORMAL);
-        });
-      });
+        }
+      }
     }
 
     if (MigrationUtils.isStartupMigration && !this.startupOnlyMigrator) {
@@ -407,10 +407,22 @@ this.MigrationUtils = Object.freeze({
    */
   getLocalizedString: function MU_getLocalizedString(aKey, aReplacements) {
     const OVERRIDES = {
+      //XXXgijs no strings for Edge, pretend we're MSIE for all the different import flavours:
+      "1_edge": "1_ie",
+      "2_edge": "2_ie",
+      "4_edge": "4_ie",
+      "8_edge": "8_ie",
+      "16_edge": "16_ie",
+      "32_edge": "32_ie",
+      "64_edge": "64_ie",
       "4_firefox": "4_firefox_history_and_bookmarks",
       "64_firefox": "64_firefox_other"
     };
     aKey = OVERRIDES[aKey] || aKey;
+
+    if (aKey == "sourceNameEdge") {
+      return "Microsoft Edge";
+    }
 
     if (aReplacements === undefined)
       return getMigrationBundle().GetStringFromName(aKey);
@@ -422,25 +434,26 @@ this.MigrationUtils = Object.freeze({
    * Helper for creating a folder for imported bookmarks from a particular
    * migration source.  The folder is created at the end of the given folder.
    *
-   * @param aSourceNameStr
+   * @param sourceNameStr
    *        the source name (first letter capitalized).  This is used
    *        for reading the localized source name from the migration
    *        bundle (e.g. if aSourceNameStr is Mosaic, this will try to read
    *        sourceNameMosaic from the migration bundle).
-   * @param aParentId
-   *        the item-id of the folder in which the new folder should be
-   *        created.
-   * @return the item-id of the new folder.
+   * @param parentGuid
+   *        the GUID of the folder in which the new folder should be created.
+   * @return the GUID of the new folder.
    */
-  createImportedBookmarksFolder:
-  function MU_createImportedBookmarksFolder(aSourceNameStr, aParentId) {
-    let source = this.getLocalizedString("sourceName" + aSourceNameStr);
-    let label = this.getLocalizedString("importedBookmarksFolder", [source]);
-    return PlacesUtils.bookmarks.createFolder(
-      aParentId, label, PlacesUtils.bookmarks.DEFAULT_INDEX);
-  },
+  createImportedBookmarksFolder: Task.async(function* (sourceNameStr, parentGuid) {
+    let source = this.getLocalizedString("sourceName" + sourceNameStr);
+    let title = this.getLocalizedString("importedBookmarksFolder", [source]);
+    return (yield PlacesUtils.bookmarks.insert({
+      type: PlacesUtils.bookmarks.TYPE_FOLDER, parentGuid, title
+    })).guid;
+  }),
 
-  get _migrators() gMigrators ? gMigrators : gMigrators = new Dict(),
+  get _migrators() {
+    return gMigrators ? gMigrators : gMigrators = new Map();
+  },
 
   /*
    * Returns the migrator for the given source, if any data is available
@@ -448,8 +461,10 @@ this.MigrationUtils = Object.freeze({
    *
    * @param aKey internal name of the migration source.
    *             Supported values: ie (windows),
+   *                               edge (windows),
    *                               safari (mac/windows),
    *                               chrome (mac/windows/linux),
+   *                               360se (windows),
    *                               firefox.
    *
    * If null is returned,  either no data can be imported
@@ -470,11 +485,13 @@ this.MigrationUtils = Object.freeze({
         migrator = Cc["@mozilla.org/profile/migrator;1?app=browser&type=" +
                       aKey].createInstance(Ci.nsIBrowserProfileMigrator);
       }
-      catch(ex) { }
+      catch(ex) { Cu.reportError(ex) }
       this._migrators.set(aKey, migrator);
     }
 
-    return migrator && migrator.sourceExists ? migrator : null;
+    try {
+      return migrator && migrator.sourceExists ? migrator : null;
+    } catch (ex) { Cu.reportError(ex); return null }
   },
 
   // Iterates the available migrators, in the most suitable
@@ -482,7 +499,7 @@ this.MigrationUtils = Object.freeze({
   get migrators() {
     let migratorKeysOrdered = [
 #ifdef XP_WIN
-      "firefox", "ie", "chrome", "safari"
+      "firefox", "edge", "ie", "chrome", "safari", "360se"
 #elifdef XP_MACOSX
       "firefox", "safari", "chrome"
 #elifdef XP_UNIX
@@ -563,7 +580,6 @@ this.MigrationUtils = Object.freeze({
    *        migrator for it, or with the first option selected as a fallback
    *        (The first option is hardcoded to be the most common browser for
    *         the OS we run on.  See migration.xul).
-   *          
    * @throws if aMigratorKey is invalid or if it points to a non-existent
    *         source.
    */

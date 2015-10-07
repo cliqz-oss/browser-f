@@ -15,15 +15,14 @@
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nsRefPtrHashtable.h"
+#include "nsRect.h"
 
 struct nsRoleMapEntry;
 
 struct nsRect;
 class nsIFrame;
 class nsIAtom;
-struct nsIntRect;
 class nsIPersistentProperties;
-class nsView;
 
 namespace mozilla {
 namespace a11y {
@@ -39,7 +38,7 @@ class HTMLLIAccessible;
 class HyperTextAccessible;
 class ImageAccessible;
 class KeyBinding;
-class MathMLAccessible;
+class OuterDocAccessible;
 class ProxyAccessible;
 class Relation;
 class RootAccessible;
@@ -83,6 +82,8 @@ enum ENameValueFlag {
 struct GroupPos
 {
   GroupPos() : level(0), posInSet(0), setSize(0) { }
+  GroupPos(int32_t aLevel, int32_t aPosInSet, int32_t aSetSize) :
+    level(aLevel), posInSet(aPosInSet), setSize(aSetSize) { }
 
   int32_t level;
   int32_t posInSet;
@@ -620,6 +621,9 @@ public:
     MOZ_ASSERT(IsProxy());
     return mBits.proxy;
   }
+
+  bool IsOuterDoc() const { return mType == eOuterDocType; }
+  OuterDocAccessible* AsOuterDoc();
 
   bool IsProgress() const { return mType == eProgressType; }
 

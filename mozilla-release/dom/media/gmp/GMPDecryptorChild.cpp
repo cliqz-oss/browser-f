@@ -4,6 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GMPDecryptorChild.h"
+#include "GMPContentChild.h"
 #include "GMPChild.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/unused.h"
@@ -18,7 +19,7 @@
 namespace mozilla {
 namespace gmp {
 
-GMPDecryptorChild::GMPDecryptorChild(GMPChild* aPlugin,
+GMPDecryptorChild::GMPDecryptorChild(GMPContentChild* aPlugin,
                                      const nsTArray<uint8_t>& aPluginVoucher,
                                      const nsTArray<uint8_t>& aSandboxVoucher)
   : mSession(nullptr)

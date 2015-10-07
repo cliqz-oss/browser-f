@@ -385,9 +385,26 @@ function executeInContent(name, data={}, objects={}, expectResponse=true) {
  */
 function* getComputedStyleProperty(selector, pseudo, propName) {
  return yield executeInContent("Test:GetComputedStylePropertyValue",
-                               {selector: selector,
-                                pseudo: pseudo,
+                               {selector,
+                                pseudo,
                                 name: propName});
+}
+
+/**
+ * Send an async message to the frame script and wait until the requested
+ * computed style property has the expected value.
+ * @param {String} selector: The selector used to obtain the element.
+ * @param {String} pseudo: pseudo id to query, or null.
+ * @param {String} prop: name of the property.
+ * @param {String} expected: expected value of property
+ * @param {String} name: the name used in test message
+ */
+function* waitForComputedStyleProperty(selector, pseudo, name, expected) {
+ return yield executeInContent("Test:WaitForComputedStylePropertyValue",
+                               {selector,
+                                pseudo,
+                                expected,
+                                name});
 }
 
 /**
@@ -475,6 +492,21 @@ function waitForWindow() {
 }
 
 /**
+ * Listen for a new tab to open and return a promise that resolves when one
+ * does and completes the load event.
+ * @return a promise that resolves to the tab object
+ */
+let waitForTab = Task.async(function*() {
+  info("Waiting for a tab to open");
+  yield once(gBrowser.tabContainer, "TabOpen");
+  let tab = gBrowser.selectedTab;
+  let browser = tab.linkedBrowser;
+  yield once(browser, "load", true);
+  info("The tab load completed");
+  return tab;
+});
+
+/**
  * @see SimpleTest.waitForClipboard
  * @param {Function} setup Function to execute before checking for the
  * clipboard content
@@ -502,8 +534,7 @@ function fireCopyEvent(element) {
  *
  * @param {Function} validatorFn A validator function that returns a boolean.
  * This is called every few milliseconds to check if the result is true. When
- * it is true, the promise resolves. If validatorFn never returns true, then
- * polling timeouts after several tries and the promise rejects.
+ * it is true, the promise resolves.
  * @param {String} name Optional name of the test. This is used to generate
  * the success and failure messages.
  * @return a promise that resolves when the function returned true or rejects
@@ -511,7 +542,6 @@ function fireCopyEvent(element) {
  */
 function waitForSuccess(validatorFn, name="untitled") {
   let def = promise.defer();
-  let start = Date.now();
 
   function wait(validatorFn) {
     if (validatorFn()) {
@@ -569,6 +599,17 @@ let getFontFamilyDataURL = Task.async(function*(font, nodeFront) {
   let dataURL = yield data.string();
   return dataURL;
 });
+
+/**
+ * Simulate the key input for the given input in the window.
+ * @param {String} input The string value to input
+ * @param {Window} win The window containing the panel
+ */
+function synthesizeKeys(input, win) {
+  for (let key of input.split("")) {
+     EventUtils.synthesizeKey(key, {}, win);
+  }
+}
 
 /* *********************************************
  * RULE-VIEW

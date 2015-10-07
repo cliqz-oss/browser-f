@@ -8,6 +8,9 @@
   --tab-toolbar-navbar-overlap: 1px;
   --tab-min-height: 31px;
 }
+#TabsToolbar {
+  --tab-stroke-background-size: auto 100%;
+}
 
 %define tabCurveWidth 30px
 %define tabCurveHalfWidth 15px
@@ -40,10 +43,6 @@
 
 .tabbrowser-tab {
   -moz-box-align: stretch;
-}
-
-.tabbrowser-tab[remote] {
-  text-decoration: underline;
 }
 
 /* The selected tab should appear above adjacent tabs, .tabs-newtab-button and the highlight of #nav-bar */
@@ -250,7 +249,7 @@
                     @fgTabTexture@,
                     none;
   background-repeat: repeat-x;
-  background-size: auto 100%;
+  background-size: var(--tab-stroke-background-size), auto 100%;
   /* The padding-top combined with background-clip: content-box (the bottom-most) ensure the
      background-color doesn't extend above the top border. */
   padding-top: 2px;
@@ -264,7 +263,7 @@
                     @fgTabTextureLWT@;/*,
                     lwtHeader;*/
   /* Don't stretch the LWT header images */
-  background-size: auto 100%, auto 100%, auto auto;
+  background-size: var(--tab-stroke-background-size), auto 100%, auto auto;
 }
 
 /* These LWT styles are normally overridden by browser-lightweightTheme.css */
@@ -318,20 +317,30 @@
   background-size: 85% 100%;
 }
 
-/* Background tab separators (3px wide).
-   Also show separators beside the selected tab when dragging it. */
+/* Tab separators */
+
+.tabbrowser-tab::after,
+.tabbrowser-tab::before {
+  width: 1px;
+  -moz-margin-start: -1px;
+  background-image: linear-gradient(transparent 5px,
+                                    currentColor 5px,
+                                    currentColor calc(100% - 4px),
+                                    transparent calc(100% - 4px));
+  opacity: 0.2;
+}
+
+#TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab::before,
+#TabsToolbar[brighttext] > #tabbrowser-tabs > .tabbrowser-tab::after {
+  opacity: 0.4;
+}
+
+/* Also show separators beside the selected tab when dragging it. */
 #tabbrowser-tabs[movingtab] > .tabbrowser-tab[beforeselected]:not([last-visible-tab])::after,
 .tabbrowser-tab:not([visuallyselected]):not([afterselected-visible]):not([afterhovered]):not([first-visible-tab]):not(:hover)::before,
 #tabbrowser-tabs:not([overflow]) > .tabbrowser-tab[last-visible-tab]:not([visuallyselected]):not([beforehovered]):not(:hover)::after {
-  -moz-margin-start: -1.5px;
-  -moz-margin-end: -1.5px;
-  background-image: url(chrome://browser/skin/tabbrowser/tab-separator.png);
-  background-position: left bottom var(--tab-toolbar-navbar-overlap);
-  background-repeat: no-repeat;
-  background-size: 3px 100%;
   content: "";
   display: -moz-box;
-  width: 3px;
 }
 
 /* New tab button */

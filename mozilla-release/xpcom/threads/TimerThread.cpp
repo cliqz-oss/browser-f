@@ -82,7 +82,7 @@ TimerObserverRunnable::Run()
 nsresult
 TimerThread::Init()
 {
-  PR_LOG(GetTimerLog(), PR_LOG_DEBUG,
+  MOZ_LOG(GetTimerLog(), LogLevel::Debug,
          ("TimerThread::Init [%d]\n", mInitialized));
 
   if (mInitialized) {
@@ -129,7 +129,7 @@ TimerThread::Init()
 nsresult
 TimerThread::Shutdown()
 {
-  PR_LOG(GetTimerLog(), PR_LOG_DEBUG, ("TimerThread::Shutdown begin\n"));
+  MOZ_LOG(GetTimerLog(), LogLevel::Debug, ("TimerThread::Shutdown begin\n"));
 
   if (!mThread) {
     return NS_ERROR_NOT_INITIALIZED;
@@ -167,7 +167,7 @@ TimerThread::Shutdown()
 
   mThread->Shutdown();    // wait for the thread to die
 
-  PR_LOG(GetTimerLog(), PR_LOG_DEBUG, ("TimerThread::Shutdown end\n"));
+  MOZ_LOG(GetTimerLog(), LogLevel::Debug, ("TimerThread::Shutdown end\n"));
   return NS_OK;
 }
 
@@ -205,7 +205,6 @@ TimerThread::Run()
   }
 #endif
 
-  NS_SetIgnoreStatusOfCurrentThread();
   MonitorAutoLock lock(mMonitor);
 
   // We need to know how many microseconds give a positive PRIntervalTime. This
@@ -260,13 +259,9 @@ TimerThread::Run()
           RemoveTimerInternal(timer);
           timer = nullptr;
 
-#ifdef DEBUG_TIMERS
-          if (PR_LOG_TEST(GetTimerLog(), PR_LOG_DEBUG)) {
-            PR_LOG(GetTimerLog(), PR_LOG_DEBUG,
-                   ("Timer thread woke up %fms from when it was supposed to\n",
-                    fabs((now - timerRef->mTimeout).ToMilliseconds())));
-          }
-#endif
+          MOZ_LOG(GetTimerLog(), LogLevel::Debug,
+                 ("Timer thread woke up %fms from when it was supposed to\n",
+                  fabs((now - timerRef->mTimeout).ToMilliseconds())));
 
           {
             // We release mMonitor around the Fire call to avoid deadlock.
@@ -346,16 +341,14 @@ TimerThread::Run()
         }
       }
 
-#ifdef DEBUG_TIMERS
-      if (PR_LOG_TEST(GetTimerLog(), PR_LOG_DEBUG)) {
+      if (MOZ_LOG_TEST(GetTimerLog(), LogLevel::Debug)) {
         if (waitFor == PR_INTERVAL_NO_TIMEOUT)
-          PR_LOG(GetTimerLog(), PR_LOG_DEBUG,
+          MOZ_LOG(GetTimerLog(), LogLevel::Debug,
                  ("waiting for PR_INTERVAL_NO_TIMEOUT\n"));
         else
-          PR_LOG(GetTimerLog(), PR_LOG_DEBUG,
+          MOZ_LOG(GetTimerLog(), LogLevel::Debug,
                  ("waiting for %u\n", PR_IntervalToMilliseconds(waitFor)));
       }
-#endif
     }
 
     mWaiting = true;
@@ -442,6 +435,7 @@ TimerThread::RemoveTimer(nsTimerImpl* aTimer)
 int32_t
 TimerThread::AddTimerInternal(nsTimerImpl* aTimer)
 {
+  mMonitor.AssertCurrentThreadOwns();
   if (mShutdown) {
     return -1;
   }
@@ -459,9 +453,9 @@ TimerThread::AddTimerInternal(nsTimerImpl* aTimer)
   NS_ADDREF(aTimer);
 
 #ifdef MOZ_TASK_TRACER
-  // Create a FakeTracedTask, and dispatch it here. This is the start point of
-  // the latency.
-  aTimer->DispatchTracedTask();
+  // Caller of AddTimer is the parent task of its timer event, so we store the
+  // TraceInfo here for later used.
+  aTimer->GetTLSTraceInfo();
 #endif
 
   return insertSlot - mTimers.Elements();
@@ -470,6 +464,7 @@ TimerThread::AddTimerInternal(nsTimerImpl* aTimer)
 bool
 TimerThread::RemoveTimerInternal(nsTimerImpl* aTimer)
 {
+  mMonitor.AssertCurrentThreadOwns();
   if (!mTimers.RemoveElement(aTimer)) {
     return false;
   }
@@ -481,6 +476,10 @@ TimerThread::RemoveTimerInternal(nsTimerImpl* aTimer)
 void
 TimerThread::ReleaseTimerInternal(nsTimerImpl* aTimer)
 {
+  if (!mShutdown) {
+    // copied to a local array before releasing in shutdown
+    mMonitor.AssertCurrentThreadOwns();
+  }
   // Order is crucial here -- see nsTimerImpl::Release.
   aTimer->mArmed = false;
   NS_RELEASE(aTimer);
@@ -489,22 +488,23 @@ TimerThread::ReleaseTimerInternal(nsTimerImpl* aTimer)
 void
 TimerThread::DoBeforeSleep()
 {
+  // Mainthread
+  MonitorAutoLock lock(mMonitor);
   mSleeping = true;
 }
 
+// Note: wake may be notified without preceding sleep notification
 void
 TimerThread::DoAfterSleep()
 {
-  mSleeping = true; // wake may be notified without preceding sleep notification
-  for (uint32_t i = 0; i < mTimers.Length(); i ++) {
-    nsTimerImpl* timer = mTimers[i];
-    // get and set the delay to cause its timeout to be recomputed
-    uint32_t delay;
-    timer->GetDelay(&delay);
-    timer->SetDelay(delay);
-  }
-
+  // Mainthread
+  MonitorAutoLock lock(mMonitor);
   mSleeping = false;
+
+  // Wake up the timer thread to re-process the array to ensure the sleep delay is correct,
+  // and fire any expired timers (perhaps quite a few)
+  mNotified = true;
+  mMonitor.Notify();
 }
 
 

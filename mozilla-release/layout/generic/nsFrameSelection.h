@@ -20,7 +20,6 @@
 #include "nsBidiPresUtils.h"
 
 class nsRange;
-class nsTableOuterFrame;
 
 // IID for the nsFrameSelection interface
 // 3c6ae2d0-4cf1-44a1-9e9d-2411867f19c6
@@ -517,6 +516,13 @@ public:
     return mDelayedMouseEventClickCount;
   }
 
+  bool MouseDownRecorded()
+  {
+    return !GetDragState() &&
+           HasDelayedCaretData() &&
+           GetClickCountInDelayedCaretData() < 2;
+  }
+
   /** Get the content node that limits the selection
    *  When searching up a nodes for parents, as in a text edit field
    *    in an browser page, we must stop at this node else we reach into the 
@@ -615,7 +621,9 @@ private:
                          uint32_t aContentOffset,
                          nsSelectionAmount aAmount,
                          CaretAssociateHint aHint);
-  void BidiLevelFromClick(nsIContent *aNewFocus, uint32_t aContentOffset);
+  void BidiLevelFromClick(nsIContent *aNewFocus,
+                          uint32_t aContentOffset,
+                          CaretAssociateHint aHint);
   nsPrevNextBidiLevels GetPrevNextBidiLevels(nsIContent *aNode,
                                              uint32_t aContentOffset,
                                              CaretAssociateHint aHint,

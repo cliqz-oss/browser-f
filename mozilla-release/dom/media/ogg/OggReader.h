@@ -14,15 +14,10 @@
 #include <vorbis/codec.h>
 #endif
 #include "MediaDecoderReader.h"
+#include "MediaResource.h"
 #include "OggCodecState.h"
 #include "VideoUtils.h"
 #include "mozilla/Monitor.h"
-
-namespace mozilla {
-namespace dom {
-class TimeRanges;
-}
-}
 
 namespace mozilla {
 
@@ -77,7 +72,7 @@ public:
                                 MetadataTags** aTags) override;
   virtual nsRefPtr<SeekPromise>
   Seek(int64_t aTime, int64_t aEndTime) override;
-  virtual nsresult GetBuffered(dom::TimeRanges* aBuffered) override;
+  virtual media::TimeIntervals GetBuffered() override;
 
   virtual bool IsMediaSeekable() override;
 
@@ -320,6 +315,8 @@ private:
 
   // Number of audio frames decoded so far.
   int64_t mDecodedAudioFrames;
+
+  MediaResourceIndex mResource;
 };
 
 } // namespace mozilla

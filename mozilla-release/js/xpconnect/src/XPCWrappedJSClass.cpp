@@ -172,7 +172,7 @@ nsXPCWrappedJSClass::~nsXPCWrappedJSClass()
         mRuntime->GetWrappedJSClassMap()->Remove(this);
 
     if (mName)
-        nsMemory::Free(mName);
+        free(mName);
 }
 
 JSObject*
@@ -515,7 +515,8 @@ nsXPCWrappedJSClass::DelegatedQueryInterface(nsXPCWrappedJS* self,
       NativeGlobal(js::GetGlobalForObjectCrossCompartment(self->GetJSObject()));
     NS_ENSURE_TRUE(nativeGlobal, NS_ERROR_FAILURE);
     NS_ENSURE_TRUE(nativeGlobal->GetGlobalJSObject(), NS_ERROR_FAILURE);
-    AutoEntryScript aes(nativeGlobal, /* aIsMainThread = */ true);
+    AutoEntryScript aes(nativeGlobal, "XPCWrappedJS QueryInterface",
+                        /* aIsMainThread = */ true);
     XPCCallContext ccx(NATIVE_CALLER, aes.cx());
     if (!ccx.IsValid()) {
         *aInstancePtr = nullptr;
@@ -606,7 +607,7 @@ nsXPCWrappedJSClass::GetArraySizeFromParam(JSContext* cx,
                                            uint16_t methodIndex,
                                            uint8_t paramIndex,
                                            nsXPTCMiniVariant* nativeParams,
-                                           uint32_t* result)
+                                           uint32_t* result) const
 {
     uint8_t argnum;
     nsresult rv;
@@ -637,7 +638,7 @@ nsXPCWrappedJSClass::GetInterfaceTypeFromParam(JSContext* cx,
                                                uint16_t methodIndex,
                                                const nsXPTType& type,
                                                nsXPTCMiniVariant* nativeParams,
-                                               nsID* result)
+                                               nsID* result) const
 {
     uint8_t type_tag = type.TagPart();
 
@@ -675,7 +676,7 @@ nsXPCWrappedJSClass::GetInterfaceTypeFromParam(JSContext* cx,
     return false;
 }
 
-void
+/* static */ void
 nsXPCWrappedJSClass::CleanupPointerArray(const nsXPTType& datum_type,
                                          uint32_t array_count,
                                          void** arrayp)
@@ -690,12 +691,12 @@ nsXPCWrappedJSClass::CleanupPointerArray(const nsXPTType& datum_type,
         void** pp = (void**) arrayp;
         for (uint32_t k = 0; k < array_count; k++) {
             void* p = pp[k];
-            if (p) nsMemory::Free(p);
+            if (p) free(p);
         }
     }
 }
 
-void
+/* static */ void
 nsXPCWrappedJSClass::CleanupPointerTypeObject(const nsXPTType& type,
                                               void** pp)
 {
@@ -705,7 +706,57 @@ nsXPCWrappedJSClass::CleanupPointerTypeObject(const nsXPTType& type,
         if (p) p->Release();
     } else {
         void* p = *((void**)pp);
-        if (p) nsMemory::Free(p);
+        if (p) free(p);
+    }
+}
+
+void
+nsXPCWrappedJSClass::CleanupOutparams(JSContext* cx, uint16_t methodIndex,
+                                      const nsXPTMethodInfo* info, nsXPTCMiniVariant* nativeParams,
+                                      bool inOutOnly, uint8_t n) const
+{
+    // clean up any 'out' params handed in
+    for (uint8_t i = 0; i < n; i++) {
+        const nsXPTParamInfo& param = info->params[i];
+        if (!param.IsOut())
+            continue;
+
+        const nsXPTType& type = param.GetType();
+        if (!type.deprecated_IsPointer())
+            continue;
+        void* p = nativeParams[i].val.p;
+        if (!p)
+            continue;
+
+        // The inOutOnly flag was introduced when consolidating two very
+        // similar code paths in CallMethod in bug 1175513. I don't know
+        // if and why the difference is necessary.
+        if (!inOutOnly || param.IsIn()) {
+            if (type.IsArray()) {
+                void** pp = *static_cast<void***>(p);
+                if (pp) {
+                    // we need to get the array length and iterate the items
+                    uint32_t array_count;
+                    nsXPTType datum_type;
+
+                    if (NS_SUCCEEDED(mInfo->GetTypeForParam(methodIndex, &param,
+                                                            1, &datum_type)) &&
+                        datum_type.deprecated_IsPointer() &&
+                        GetArraySizeFromParam(cx, info, param, methodIndex,
+                                              i, nativeParams, &array_count) &&
+                        array_count) {
+
+                        CleanupPointerArray(datum_type, array_count, pp);
+                    }
+
+                    // always release the array if it is inout
+                    free(pp);
+                }
+            } else {
+                CleanupPointerTypeObject(type, static_cast<void**>(p));
+            }
+        }
+        *static_cast<void**>(p) = nullptr;
     }
 }
 
@@ -913,7 +964,8 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
     // definitely will be when we turn off XPConnect for the web.
     nsIGlobalObject* nativeGlobal =
       NativeGlobal(js::GetGlobalForObjectCrossCompartment(wrapper->GetJSObject()));
-    AutoEntryScript aes(nativeGlobal, /* aIsMainThread = */ true);
+    AutoEntryScript aes(nativeGlobal, "XPCWrappedJS method call",
+                        /* aIsMainThread = */ true);
     XPCCallContext ccx(NATIVE_CALLER, aes.cx());
     if (!ccx.IsValid())
         return retval;
@@ -1146,45 +1198,7 @@ nsXPCWrappedJSClass::CallMethod(nsXPCWrappedJS* wrapper, uint16_t methodIndex,
 
 pre_call_clean_up:
     // clean up any 'out' params handed in
-    for (i = 0; i < paramCount; i++) {
-        const nsXPTParamInfo& param = info->params[i];
-        if (!param.IsOut())
-            continue;
-
-        const nsXPTType& type = param.GetType();
-        if (!type.deprecated_IsPointer())
-            continue;
-        void* p;
-        if (!(p = nativeParams[i].val.p))
-            continue;
-
-        if (param.IsIn()) {
-            if (type.IsArray()) {
-                void** pp;
-                if (nullptr != (pp = *((void***)p))) {
-
-                    // we need to get the array length and iterate the items
-                    uint32_t array_count;
-                    nsXPTType datum_type;
-
-                    if (NS_SUCCEEDED(mInfo->GetTypeForParam(methodIndex, &param,
-                                                            1, &datum_type)) &&
-                        datum_type.deprecated_IsPointer() &&
-                        GetArraySizeFromParam(cx, info, param, methodIndex,
-                                              i, nativeParams, &array_count) &&
-                        array_count) {
-
-                        CleanupPointerArray(datum_type, array_count, pp);
-                    }
-
-                    // always release the array if it is inout
-                    nsMemory::Free(pp);
-                }
-            } else
-                CleanupPointerTypeObject(type, (void**)p);
-        }
-        *((void**)p) = nullptr;
-    }
+    CleanupOutparams(cx, methodIndex, info, nativeParams, /* inOutOnly = */ true, paramCount);
 
     // Make sure "this" doesn't get deleted during this call.
     nsCOMPtr<nsIXPCWrappedJSClass> kungFuDeathGrip(this);
@@ -1295,21 +1309,9 @@ pre_call_clean_up:
                 break;
         }
 
-// see bug #961488
-#if (defined(XP_UNIX) && !defined(XP_MACOSX) && !defined(_AIX)) && \
-    ((defined(__sparc) && !defined(__sparcv9) && !defined(__sparcv9__)) || \
-    (defined(__powerpc__) && !defined (__powerpc64__)))
-        if (type_tag == nsXPTType::T_JSVAL) {
-            if (!XPCConvert::JSData2Native(*(void**)(&pv->val), val, type,
-                                           &param_iid, nullptr))
-                break;
-        } else
-#endif
-        {
-            if (!XPCConvert::JSData2Native(&pv->val, val, type,
-                                           &param_iid, nullptr))
-                break;
-        }
+        if (!XPCConvert::JSData2Native(&pv->val, val, type,
+                                       &param_iid, nullptr))
+            break;
     }
 
     // if any params were dependent, then we must iterate again to convert them.
@@ -1390,40 +1392,7 @@ pre_call_clean_up:
     if (i != paramCount) {
         // We didn't manage all the result conversions!
         // We have to cleanup any junk that *did* get converted.
-
-        for (uint8_t k = 0; k < i; k++) {
-            const nsXPTParamInfo& param = info->params[k];
-            if (!param.IsOut())
-                continue;
-            const nsXPTType& type = param.GetType();
-            if (!type.deprecated_IsPointer())
-                continue;
-            void* p;
-            if (!(p = nativeParams[k].val.p))
-                continue;
-
-            if (type.IsArray()) {
-                void** pp;
-                if (nullptr != (pp = *((void***)p))) {
-                    // we need to get the array length and iterate the items
-                    uint32_t array_count;
-                    nsXPTType datum_type;
-
-                    if (NS_SUCCEEDED(mInfo->GetTypeForParam(methodIndex, &param,
-                                                            1, &datum_type)) &&
-                        datum_type.deprecated_IsPointer() &&
-                        GetArraySizeFromParam(cx, info, param, methodIndex,
-                                              k, nativeParams, &array_count) &&
-                        array_count) {
-
-                        CleanupPointerArray(datum_type, array_count, pp);
-                    }
-                    nsMemory::Free(pp);
-                }
-            } else
-                CleanupPointerTypeObject(type, (void**)p);
-            *((void**)p) = nullptr;
-        }
+        CleanupOutparams(cx, methodIndex, info, nativeParams, /* inOutOnly = */ false, i);
     } else {
         // set to whatever the JS code might have set as the result
         retval = xpcc->GetPendingResult();
@@ -1454,6 +1423,7 @@ static const JSClass XPCOutParamClass = {
     nullptr,   /* setProperty */
     nullptr,   /* enumerate */
     nullptr,   /* resolve */
+    nullptr,   /* mayResolve */
     nullptr,   /* convert */
     FinalizeStub,
     nullptr,   /* call */
@@ -1486,11 +1456,11 @@ nsXPCWrappedJSClass::DebugDump(int16_t depth)
         mInfo->GetName(&name);
         XPC_LOG_ALWAYS(("interface name is %s", name));
         if (name)
-            nsMemory::Free(name);
+            free(name);
         char * iid = mIID.ToString();
         XPC_LOG_ALWAYS(("IID number is %s", iid ? iid : "invalid"));
         if (iid)
-            NS_Free(iid);
+            free(iid);
         XPC_LOG_ALWAYS(("InterfaceInfo @ %x", mInfo.get()));
         uint16_t methodCount = 0;
         if (depth) {

@@ -31,6 +31,7 @@ include PBrowserOrId;
 
 using class IPC::SerializedLoadContext from "SerializedLoadContext.h";
 using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
+using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
 
 namespace mozilla {
 namespace net {
@@ -67,15 +68,24 @@ parent:
 
   PWebSocket(PBrowserOrId browser, SerializedLoadContext loadContext);
   PTCPServerSocket(uint16_t localPort, uint16_t backlog, nsString binaryType);
-  PUDPSocket(nsCString filter);
+  PUDPSocket(Principal principal, nsCString filter);
 
   PDNSRequest(nsCString hostName, uint32_t flags, nsCString networkInterface);
+
+
+  /* Predictor Methods */
+  PredPredict(OptionalURIParams targetURI, OptionalURIParams sourceURI,
+              uint32_t reason, SerializedLoadContext loadContext,
+              bool hasVerifier);
+  PredLearn(URIParams targetURI, OptionalURIParams sourceURI,
+            uint32_t reason, SerializedLoadContext loadContext);
+  PredReset();
 
   PRemoteOpenFile(SerializedLoadContext loadContext,
                   URIParams fileuri,
                   OptionalURIParams appuri);
 
-  SpeculativeConnect(URIParams uri);
+  SpeculativeConnect(URIParams uri, bool anonymous);
   HTMLDNSPrefetch(nsString hostname, uint16_t flags);
   CancelHTMLDNSPrefetch(nsString hostname, uint16_t flags, nsresult reason);
 
@@ -108,6 +118,10 @@ child:
                                 nsString realm, uint64_t callbackId);
   // Notifies child that a given app is now offline (or online)
   AppOfflineStatus(uint32_t appId, bool offline);
+
+  /* Predictor Methods */
+  PredOnPredictPreconnect(URIParams uri);
+  PredOnPredictDNS(URIParams uri);
 
 both:
   // Actually we need PTCPSocket() for parent. But ipdl disallows us having different

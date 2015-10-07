@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -62,8 +63,8 @@ nsXBLProtoImplField::~nsXBLProtoImplField()
 {
   MOZ_COUNT_DTOR(nsXBLProtoImplField);
   if (mFieldText)
-    nsMemory::Free(mFieldText);
-  NS_Free(mName);
+    free(mFieldText);
+  free(mName);
   NS_CONTENT_DELETE_LIST_MEMBER(nsXBLProtoImplField, this, mNext);
 }
 
@@ -76,7 +77,7 @@ nsXBLProtoImplField::AppendFieldText(const nsAString& aText)
     char16_t* temp = mFieldText;
     mFieldText = ToNewUnicode(newFieldText);
     mFieldTextLength = newFieldText.Length();
-    nsMemory::Free(temp);
+    free(temp);
   }
   else {
     mFieldText = ToNewUnicode(aText);
@@ -244,12 +245,7 @@ FieldGetterImpl(JSContext *cx, JS::CallArgs args)
     return true;
   }
 
-  JS::Rooted<JS::Value> v(cx);
-  if (!JS_GetPropertyById(cx, thisObj, id, &v)) {
-    return false;
-  }
-  args.rval().set(v);
-  return true;
+  return JS_GetPropertyById(cx, thisObj, id, args.rval());
 }
 
 static bool
@@ -404,7 +400,8 @@ nsXBLProtoImplField::InstallField(JS::Handle<JSObject*> aBoundNode,
 
   // We are going to run script via EvaluateString, so we need a script entry
   // point, but as this is XBL related it does not appear in the HTML spec.
-  AutoEntryScript entryScript(globalObject, true);
+  AutoEntryScript entryScript(globalObject, "XBL <field> initialization", true);
+  entryScript.TakeOwnershipOfErrorReporting();
   JSContext* cx = entryScript.cx();
 
   NS_ASSERTION(!::JS_IsExceptionPending(cx),
@@ -438,6 +435,12 @@ nsXBLProtoImplField::InstallField(JS::Handle<JSObject*> aBoundNode,
                                  scopeObject, options, evalOptions, &result);
   if (NS_FAILED(rv)) {
     return rv;
+  }
+
+  if (rv == NS_SUCCESS_DOM_SCRIPT_EVALUATION_THREW) {
+    // Report the exception now, before we try using the JSContext for
+    // the JS_DefineUCProperty call.
+    entryScript.ReportException();
   }
 
   // Now, enter the node's compartment, wrap the eval result, and define it on

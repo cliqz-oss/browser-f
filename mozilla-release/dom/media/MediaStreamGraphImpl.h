@@ -30,7 +30,8 @@ class AudioOutputObserver;
  * A per-stream update message passed from the media graph thread to the
  * main thread.
  */
-struct StreamUpdate {
+struct StreamUpdate
+{
   int64_t mGraphUpdateIndex;
   nsRefPtr<MediaStream> mStream;
   StreamTime mNextMainThreadCurrentTime;
@@ -41,7 +42,8 @@ struct StreamUpdate {
  * This represents a message passed from the main thread to the graph thread.
  * A ControlMessage always has a weak reference a particular affected stream.
  */
-class ControlMessage {
+class ControlMessage
+{
 public:
   explicit ControlMessage(MediaStream* aStream) : mStream(aStream)
   {
@@ -70,7 +72,8 @@ protected:
   MediaStream* mStream;
 };
 
-class MessageBlock {
+class MessageBlock
+{
 public:
   int64_t mGraphUpdateIndex;
   nsTArray<nsAutoPtr<ControlMessage> > mMessages;
@@ -85,7 +88,8 @@ public:
  * OfflineAudioContext object.
  */
 class MediaStreamGraphImpl : public MediaStreamGraph,
-                             public nsIMemoryReporter {
+                             public nsIMemoryReporter
+{
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIMEMORYREPORTER
@@ -150,7 +154,8 @@ public:
   void Init();
   // The following methods run on the graph thread (or possibly the main thread if
   // mLifecycleState > LIFECYCLE_RUNNING)
-  void AssertOnGraphThreadOrNotRunning() {
+  void AssertOnGraphThreadOrNotRunning() const
+  {
     // either we're on the right thread (and calling CurrentDriver() is safe),
     // or we're going to assert anyways, so don't cross-check CurrentDriver
 #ifdef DEBUG
@@ -173,20 +178,23 @@ public:
   bool OneIteration(GraphTime aFrom, GraphTime aTo,
                     GraphTime aStateFrom, GraphTime aStateEnd);
 
-  bool Running() {
+  bool Running() const
+  {
     mMonitor.AssertCurrentThreadOwns();
     return mLifecycleState == LIFECYCLE_RUNNING;
   }
 
   // Get the message queue, from the current GraphDriver thread.
-  nsTArray<MessageBlock>& MessageQueue() {
+  nsTArray<MessageBlock>& MessageQueue()
+  {
     mMonitor.AssertCurrentThreadOwns();
     return mFrontMessageQueue;
   }
 
   /* This is the end of the current iteration, that is, the current time of the
    * graph. */
-  GraphTime IterationEnd();
+  GraphTime IterationEnd() const;
+
   /**
    * Ensure there is an event posted to the main thread to run RunInStableState.
    * mMonitor must be held.
@@ -221,7 +229,8 @@ public:
    */
   void UpdateGraph(GraphTime aEndBlockingDecisions);
 
-  void SwapMessageQueues() {
+  void SwapMessageQueues()
+  {
     mMonitor.AssertCurrentThreadOwns();
     mFrontMessageQueue.SwapElements(mBackMessageQueue);
   }
@@ -248,6 +257,49 @@ public:
    * Mark aStream and all its inputs (recursively) as consumed.
    */
   static void MarkConsumed(MediaStream* aStream);
+
+  /**
+   * Given the Id of an AudioContext, return the set of all MediaStreams that
+   * are part of this context.
+   */
+  void StreamSetForAudioContext(dom::AudioContext::AudioContextId aAudioContextId,
+                                mozilla::LinkedList<MediaStream>& aStreamSet);
+
+  /**
+   * Called when a suspend/resume/close operation has been completed, on the
+   * graph thread.
+   */
+  void AudioContextOperationCompleted(MediaStream* aStream,
+                                      void* aPromise,
+                                      dom::AudioContextOperation aOperation);
+
+  /**
+   * Apply and AudioContext operation (suspend/resume/closed), on the graph
+   * thread.
+   */
+  void ApplyAudioContextOperationImpl(AudioNodeStream* aStream,
+                                      dom::AudioContextOperation aOperation,
+                                      void* aPromise);
+
+  /*
+   * Move streams from the mStreams to mSuspendedStream if suspending/closing an
+   * AudioContext, or the inverse when resuming an AudioContext.
+   */
+  void MoveStreams(dom::AudioContextOperation aAudioContextOperation,
+                   mozilla::LinkedList<MediaStream>& aStreamSet);
+
+  /*
+   * Reset some state about the streams before suspending them, or resuming
+   * them.
+   */
+  void ResetVisitedStreamState();
+
+  /*
+   * True if a stream is suspended, that is, is not in mStreams, but in
+   * mSuspendedStream.
+   */
+  bool StreamSuspended(MediaStream* aStream);
+
   /**
    * Sort mStreams so that every stream not in a cycle is after any streams
    * it depends on, and every stream in a cycle is marked as being in a cycle.
@@ -261,6 +313,7 @@ public:
    * for all streams.
    */
   void RecomputeBlocking(GraphTime aEndBlockingDecisions);
+
   // The following methods are used to help RecomputeBlocking.
   /**
    * If aStream isn't already in aStreams, add it and recursively call
@@ -319,9 +372,11 @@ public:
    * when we don't know whether it's blocked or not, we assume it's not blocked.
    */
   StreamTime GraphTimeToStreamTimeOptimistic(MediaStream* aStream, GraphTime aTime);
-  enum {
+  enum
+  {
     INCLUDE_TRAILING_BLOCKED_INTERVAL = 0x01
   };
+
   /**
    * Given a stream time aTime, convert it to a graph time taking into
    * account the time during which aStream is scheduled to be blocked.
@@ -368,13 +423,16 @@ public:
   /**
    * Returns true when there are no active streams.
    */
-  bool IsEmpty() { return mStreams.IsEmpty() && mPortCount == 0; }
+  bool IsEmpty() const
+  {
+    return mStreams.IsEmpty() && mSuspendedStreams.IsEmpty() && mPortCount == 0;
+  }
 
   // For use by control messages, on graph thread only.
   /**
    * Identify which graph update index we are currently processing.
    */
-  int64_t GetProcessingGraphUpdateIndex() { return mProcessingGraphUpdateIndex; }
+  int64_t GetProcessingGraphUpdateIndex() const { return mProcessingGraphUpdateIndex; }
   /**
    * Add aStream to the graph and initializes its graph-specific state.
    */
@@ -397,20 +455,22 @@ public:
   }
 
   // Always stereo for now.
-  uint32_t AudioChannelCount() { return 2; }
+  uint32_t AudioChannelCount() const { return 2; }
 
-  double MediaTimeToSeconds(GraphTime aTime)
+  double MediaTimeToSeconds(GraphTime aTime) const
   {
     NS_ASSERTION(0 <= aTime && aTime <= STREAM_TIME_MAX, "Bad time");
     return static_cast<double>(aTime)/GraphRate();
   }
-  GraphTime SecondsToMediaTime(double aS)
+
+  GraphTime SecondsToMediaTime(double aS) const
   {
     NS_ASSERTION(0 <= aS && aS <= TRACK_TICKS_MAX/TRACK_RATE_MAX,
                  "Bad seconds");
     return GraphRate() * aS;
   }
-  GraphTime MillisecondsToMediaTime(int32_t aMS)
+
+  GraphTime MillisecondsToMediaTime(int32_t aMS) const
   {
     return RateConvertTicksRoundDown(GraphRate(), 1000, aMS);
   }
@@ -425,7 +485,8 @@ public:
   /**
    * Not safe to call off the MediaStreamGraph thread unless monitor is held!
    */
-  GraphDriver* CurrentDriver() {
+  GraphDriver* CurrentDriver() const
+  {
     AssertOnGraphThreadOrNotRunning();
     return mDriver;
   }
@@ -443,16 +504,19 @@ public:
    * We can also switch from Revive() (on MainThread), in which case the
    * monitor is held
    */
-  void SetCurrentDriver(GraphDriver* aDriver) {
+  void SetCurrentDriver(GraphDriver* aDriver)
+  {
     AssertOnGraphThreadOrNotRunning();
     mDriver = aDriver;
   }
 
-  Monitor& GetMonitor() {
+  Monitor& GetMonitor()
+  {
     return mMonitor;
   }
 
-  void EnsureNextIteration() {
+  void EnsureNextIteration()
+  {
     mNeedAnotherIteration = true; // atomic
     if (mGraphDriverAsleep) { // atomic
       MonitorAutoLock mon(mMonitor);
@@ -460,7 +524,8 @@ public:
     }
   }
 
-  void EnsureNextIterationLocked() {
+  void EnsureNextIterationLocked()
+  {
     mNeedAnotherIteration = true; // atomic
     if (mGraphDriverAsleep) { // atomic
       CurrentDriver()->WakeUp(); // Might not be the same driver; might have woken already
@@ -487,6 +552,13 @@ public:
    * unnecessary thread-safe refcount changes.
    */
   nsTArray<MediaStream*> mStreams;
+  /**
+   * This stores MediaStreams that are part of suspended AudioContexts.
+   * mStreams and mSuspendStream are disjoint sets: a stream is either suspended
+   * or not suspended. Suspended streams are not ordered in UpdateStreamOrder,
+   * and are therefore not doing any processing.
+   */
+  nsTArray<MediaStream*> mSuspendedStreams;
   /**
    * Streams from mFirstCycleBreaker to the end of mStreams produce output
    * before they receive input.  They correspond to DelayNodes that are in
@@ -539,7 +611,8 @@ public:
   nsTArray<MessageBlock> mBackMessageQueue;
 
   /* True if there will messages to process if we swap the message queues. */
-  bool MessagesQueued() {
+  bool MessagesQueued() const
+  {
     mMonitor.AssertCurrentThreadOwns();
     return !mBackMessageQueue.IsEmpty();
   }
@@ -566,7 +639,8 @@ public:
    * This should be kept in sync with the LifecycleState_str array in
    * MediaStreamGraph.cpp
    */
-  enum LifecycleState {
+  enum LifecycleState
+  {
     // The graph thread hasn't started yet.
     LIFECYCLE_THREAD_NOT_STARTED,
     // RunThread() is running normally.
@@ -658,6 +732,10 @@ public:
 
 private:
   virtual ~MediaStreamGraphImpl();
+
+  void StreamNotifyOutput(MediaStream* aStream);
+
+  void StreamReadyToFinish(MediaStream* aStream);
 
   MOZ_DEFINE_MALLOC_SIZE_OF(MallocSizeOf)
 

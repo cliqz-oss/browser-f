@@ -1,5 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,7 +30,7 @@ BluetoothDaemonSocketModule::ListenCmd(BluetoothSocketType aType,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsAutoPtr<BluetoothDaemonPDU> pdu(new BluetoothDaemonPDU(0x02, 0x01, 0));
+  nsAutoPtr<DaemonSocketPDU> pdu(new DaemonSocketPDU(0x02, 0x01, 0));
 
   nsresult rv = PackPDU(
     aType,
@@ -59,7 +59,7 @@ BluetoothDaemonSocketModule::ConnectCmd(const nsAString& aBdAddr,
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsAutoPtr<BluetoothDaemonPDU> pdu(new BluetoothDaemonPDU(0x02, 0x02, 0));
+  nsAutoPtr<DaemonSocketPDU> pdu(new DaemonSocketPDU(0x02, 0x02, 0));
 
   nsresult rv = PackPDU(
     PackConversion<nsAString, BluetoothAddress>(aBdAddr),
@@ -156,13 +156,13 @@ BluetoothDaemonSocketModule::CloseCmd(BluetoothSocketResultHandler* aRes)
 }
 
 void
-BluetoothDaemonSocketModule::HandleSvc(const BluetoothDaemonPDUHeader& aHeader,
-                                       BluetoothDaemonPDU& aPDU,
+BluetoothDaemonSocketModule::HandleSvc(const DaemonSocketPDUHeader& aHeader,
+                                       DaemonSocketPDU& aPDU,
                                        void* aUserData)
 {
   static void (BluetoothDaemonSocketModule::* const HandleRsp[])(
-    const BluetoothDaemonPDUHeader&,
-    BluetoothDaemonPDU&,
+    const DaemonSocketPDUHeader&,
+    DaemonSocketPDU&,
     BluetoothSocketResultHandler*) = {
     INIT_ARRAY_AT(0x00, &BluetoothDaemonSocketModule::ErrorRsp),
     INIT_ARRAY_AT(0x01, &BluetoothDaemonSocketModule::ListenRsp),
@@ -186,7 +186,7 @@ BluetoothDaemonSocketModule::HandleSvc(const BluetoothDaemonPDUHeader& aHeader,
 }
 
 nsresult
-BluetoothDaemonSocketModule::Send(BluetoothDaemonPDU* aPDU,
+BluetoothDaemonSocketModule::Send(DaemonSocketPDU* aPDU,
                                   BluetoothSocketResultHandler* aRes)
 {
   aRes->AddRef(); // Keep reference for response
@@ -203,8 +203,8 @@ BluetoothDaemonSocketModule::SocketFlags(bool aEncrypt, bool aAuth)
 //
 
 void
-BluetoothDaemonSocketModule::ErrorRsp(const BluetoothDaemonPDUHeader& aHeader,
-                                      BluetoothDaemonPDU& aPDU,
+BluetoothDaemonSocketModule::ErrorRsp(const DaemonSocketPDUHeader& aHeader,
+                                      DaemonSocketPDU& aPDU,
                                       BluetoothSocketResultHandler* aRes)
 {
   ErrorRunnable::Dispatch(
@@ -214,14 +214,14 @@ BluetoothDaemonSocketModule::ErrorRsp(const BluetoothDaemonPDUHeader& aHeader,
 class BluetoothDaemonSocketModule::ListenInitOp final : private PDUInitOp
 {
 public:
-  ListenInitOp(BluetoothDaemonPDU& aPDU)
+  ListenInitOp(DaemonSocketPDU& aPDU)
   : PDUInitOp(aPDU)
   { }
 
   nsresult
   operator () (int& aArg1) const
   {
-    BluetoothDaemonPDU& pdu = GetPDU();
+    DaemonSocketPDU& pdu = GetPDU();
 
     aArg1 = pdu.AcquireFd();
 
@@ -234,8 +234,8 @@ public:
 };
 
 void
-BluetoothDaemonSocketModule::ListenRsp(const BluetoothDaemonPDUHeader& aHeader,
-                                       BluetoothDaemonPDU& aPDU,
+BluetoothDaemonSocketModule::ListenRsp(const DaemonSocketPDUHeader& aHeader,
+                                       DaemonSocketPDU& aPDU,
                                        BluetoothSocketResultHandler* aRes)
 {
   IntResultRunnable::Dispatch(
@@ -274,8 +274,8 @@ public:
 };
 
 void
-BluetoothDaemonSocketModule::ConnectRsp(const BluetoothDaemonPDUHeader& aHeader,
-                                        BluetoothDaemonPDU& aPDU,
+BluetoothDaemonSocketModule::ConnectRsp(const DaemonSocketPDUHeader& aHeader,
+                                        DaemonSocketPDU& aPDU,
                                         BluetoothSocketResultHandler* aRes)
 {
   /* the file descriptor is attached in the PDU's ancillary data */

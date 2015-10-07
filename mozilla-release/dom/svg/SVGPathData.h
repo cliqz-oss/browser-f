@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -134,7 +135,7 @@ public:
   }
 
   bool SetCapacity(uint32_t aSize) {
-    return mData.SetCapacity(aSize);
+    return mData.SetCapacity(aSize, fallible);
   }
 
   void Compact() {
@@ -201,7 +202,7 @@ protected:
    * increased, in which case the list will be left unmodified.
    */
   bool SetLength(uint32_t aLength) {
-    return mData.SetLength(aLength);
+    return mData.SetLength(aLength, fallible);
   }
 
   nsresult SetValueFromString(const nsAString& aValue);

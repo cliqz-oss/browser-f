@@ -9,10 +9,10 @@
 #include <stdint.h>                     // for uint8_t
 #include "gfxColor.h"                   // for gfxRGBA
 #include "mozilla/gfx/Matrix.h"         // for Matrix4x4, Matrix
+#include "mozilla/gfx/Point.h"          // for IntSize
 #include "nsDebug.h"                    // for NS_ERROR
 #include "nsPoint.h"                    // for nsIntPoint
-#include "nsRect.h"                     // for nsIntRect
-#include "nsSize.h"                     // for nsIntSize
+#include "nsRect.h"                     // for mozilla::gfx::IntRect
 
 using namespace mozilla::gfx;
 
@@ -97,7 +97,7 @@ AppendToString(std::stringstream& aStream, const nsIntPoint& p,
 }
 
 void
-AppendToString(std::stringstream& aStream, const nsIntRect& r,
+AppendToString(std::stringstream& aStream, const IntRect& r,
                const char* pfx, const char* sfx)
 {
   aStream << pfx;
@@ -132,7 +132,7 @@ AppendToString(std::stringstream& aStream, const nsIntRegion& r,
 
   nsIntRegionRectIterator it(r);
   aStream << "< ";
-  while (const nsIntRect* sr = it.Next()) {
+  while (const IntRect* sr = it.Next()) {
     AppendToString(aStream, *sr);
     aStream << "; ";
   }
@@ -169,7 +169,7 @@ AppendToString(std::stringstream& aStream, const FrameMetrics& m,
                const char* pfx, const char* sfx, bool detailed)
 {
   aStream << pfx;
-  AppendToString(aStream, m.mCompositionBounds, "{ [cb=");
+  AppendToString(aStream, m.GetCompositionBounds(), "{ [cb=");
   AppendToString(aStream, m.GetScrollableRect(), "] [sr=");
   AppendToString(aStream, m.GetScrollOffset(), "] [s=");
   if (m.GetDoSmoothScroll()) {
@@ -183,13 +183,21 @@ AppendToString(std::stringstream& aStream, const FrameMetrics& m,
     if (m.GetScrollParentId() != FrameMetrics::NULL_SCROLL_ID) {
       AppendToString(aStream, m.GetScrollParentId(), "] [scrollParent=");
     }
+    if (m.IsRootContent()) {
+      aStream << "] [rcd";
+    }
+    if (m.HasClipRect()) {
+      AppendToString(aStream, m.ClipRect(), "] [clip=");
+    }
     AppendToString(aStream, m.GetZoom(), "] [z=", "] }");
   } else {
     AppendToString(aStream, m.GetDisplayPortMargins(), " [dpm=");
     aStream << nsPrintfCString("] um=%d", m.GetUseDisplayPortMargins()).get();
     AppendToString(aStream, m.GetRootCompositionSize(), "] [rcs=");
     AppendToString(aStream, m.GetViewport(), "] [v=");
-    aStream << nsPrintfCString("] [z=(ld=%.3f r=%.3f").get();
+    aStream << nsPrintfCString("] [z=(ld=%.3f r=%.3f",
+            m.GetDevPixelsPerCSSPixel().scale,
+            m.GetPresShellResolution()).get();
     AppendToString(aStream, m.GetCumulativeResolution(), " cr=");
     AppendToString(aStream, m.GetZoom(), " z=");
     AppendToString(aStream, m.GetExtraResolution(), " er=");
@@ -197,8 +205,8 @@ AppendToString(std::stringstream& aStream, const FrameMetrics& m,
             m.GetScrollOffsetUpdated(), m.GetDoSmoothScroll(),
             m.GetScrollGeneration()).get();
     AppendToString(aStream, m.GetScrollParentId(), "] [p=");
-    aStream << nsPrintfCString("] [i=(%ld %lld)] }",
-            m.GetPresShellId(), m.GetScrollId()).get();
+    aStream << nsPrintfCString("] [i=(%ld %lld %d)] }",
+            m.GetPresShellId(), m.GetScrollId(), m.IsRootContent()).get();
   }
   aStream << sfx;
 }
@@ -208,33 +216,51 @@ AppendToString(std::stringstream& aStream, const ScrollableLayerGuid& s,
                const char* pfx, const char* sfx)
 {
   aStream << pfx
-          << nsPrintfCString("{ l=%llu, p=%u, v=%llu }", s.mLayersId, s.mPresShellId, s.mScrollId).get()
+          << nsPrintfCString("{ l=%" PRIu64 ", p=%u, v=%" PRIu64 " }", s.mLayersId, s.mPresShellId, s.mScrollId).get()
           << sfx;
+}
+
+void
+AppendToString(std::stringstream& aStream, const ZoomConstraints& z,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx
+          << nsPrintfCString("{ z=%d dt=%d min=%f max=%f }", z.mAllowZoom, z.mAllowDoubleTapZoom, z.mMinZoom.scale, z.mMaxZoom.scale).get()
+          << sfx;
+}
+
+void
+AppendToString(std::stringstream& aStream, const Matrix& m,
+               const char* pfx, const char* sfx)
+{
+  aStream << pfx;
+  if (m.IsIdentity()) {
+    aStream << "[ I ]";
+  } else {
+    aStream << nsPrintfCString(
+      "[ %g %g; %g %g; %g %g; ]",
+      m._11, m._12, m._21, m._22, m._31, m._32).get();
+  }
+  aStream << sfx;
 }
 
 void
 AppendToString(std::stringstream& aStream, const Matrix4x4& m,
                const char* pfx, const char* sfx)
 {
-  aStream << pfx;
   if (m.Is2D()) {
     Matrix matrix = m.As2D();
-    if (matrix.IsIdentity()) {
-      aStream << "[ I ]";
-      aStream << sfx;
-      return;
-    }
-    aStream << nsPrintfCString(
-      "[ %g %g; %g %g; %g %g; ]",
-      matrix._11, matrix._12, matrix._21, matrix._22, matrix._31, matrix._32).get();
-  } else {
-    aStream << nsPrintfCString(
-      "[ %g %g %g %g; %g %g %g %g; %g %g %g %g; %g %g %g %g; ]",
-      m._11, m._12, m._13, m._14,
-      m._21, m._22, m._23, m._24,
-      m._31, m._32, m._33, m._34,
-      m._41, m._42, m._43, m._44).get();
+    AppendToString(aStream, matrix, pfx, sfx);
+    return;
   }
+
+  aStream << pfx;
+  aStream << nsPrintfCString(
+    "[ %g %g %g %g; %g %g %g %g; %g %g %g %g; %g %g %g %g; ]",
+    m._11, m._12, m._13, m._14,
+    m._21, m._22, m._23, m._24,
+    m._31, m._32, m._33, m._34,
+    m._41, m._42, m._43, m._44).get();
   aStream << sfx;
 }
 

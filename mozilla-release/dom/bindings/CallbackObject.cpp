@@ -1,15 +1,11 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/CallbackObject.h"
 #include "mozilla/dom/BindingUtils.h"
-#include "mozilla/dom/DOMError.h"
-#include "mozilla/dom/DOMErrorBinding.h"
-#include "mozilla/dom/DOMException.h"
-#include "mozilla/dom/DOMExceptionBinding.h"
 #include "jsfriendapi.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIXPConnect.h"
@@ -52,6 +48,7 @@ NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
                                      ErrorResult& aRv,
+                                     const char* aExecutionReason,
                                      ExceptionHandling aExceptionHandling,
                                      JSCompartment* aCompartment,
                                      bool aIsJSImplementedWebIDL)
@@ -131,7 +128,8 @@ CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
       return;
     }
 
-    mAutoEntryScript.emplace(globalObject, mIsMainThread, cx);
+    mAutoEntryScript.emplace(globalObject, aExecutionReason,
+                             mIsMainThread, cx);
     mAutoEntryScript->SetWebIDLCallerPrincipal(webIDLCallerPrincipal);
     nsIGlobalObject* incumbent = aCallback->IncumbentGlobalOrNull();
     if (incumbent) {
@@ -222,8 +220,7 @@ CallbackObject::CallSetup::ShouldRethrowException(JS::Handle<JS::Value> aExcepti
   MOZ_ASSERT(mCompartment);
 
   // Now we only want to throw an exception to the caller if the object that was
-  // thrown is a DOMError or DOMException object in the caller compartment
-  // (which we stored in mCompartment).
+  // thrown is in the caller compartment (which we stored in mCompartment).
 
   if (!aException.isObject()) {
     return false;
@@ -231,14 +228,7 @@ CallbackObject::CallSetup::ShouldRethrowException(JS::Handle<JS::Value> aExcepti
 
   JS::Rooted<JSObject*> obj(mCx, &aException.toObject());
   obj = js::UncheckedUnwrap(obj, /* stopAtOuter = */ false);
-  if (js::GetObjectCompartment(obj) != mCompartment) {
-    return false;
-  }
-
-  DOMError* domError;
-  DOMException* domException;
-  return NS_SUCCEEDED(UNWRAP_OBJECT(DOMError, obj, domError)) ||
-         NS_SUCCEEDED(UNWRAP_OBJECT(DOMException, obj, domException));
+  return js::GetObjectCompartment(obj) == mCompartment;
 }
 
 CallbackObject::CallSetup::~CallSetup()

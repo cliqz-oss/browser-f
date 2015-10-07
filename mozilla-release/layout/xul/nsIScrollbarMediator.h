@@ -10,7 +10,6 @@
 #include "nsCoord.h"
 
 class nsScrollbarFrame;
-class nsIDOMEventTarget;
 class nsIFrame;
 
 class nsIScrollbarMediator : public nsQueryFrame
@@ -78,6 +77,8 @@ public:
    */
   virtual void ScrollbarActivityStarted() const = 0;
   virtual void ScrollbarActivityStopped() const = 0;
+
+  virtual bool IsScrollbarOnRight() const = 0;
 };
 
 #endif

@@ -1,4 +1,6 @@
-/*
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ * vim: set ts=8 sts=4 et sw=4 tw=99:
+ *
  * Copyright (C) 2008 Apple Inc. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,16 +55,8 @@ extern  "C" void sync_instruction_memory(caddr_t v, u_int len);
 #endif
 #endif
 
-#if defined(JS_CODEGEN_MIPS) && defined(__linux__) && !defined(JS_MIPS_SIMULATOR)
+#if defined(JS_CODEGEN_MIPS) && defined(__linux__) && !defined(JS_SIMULATOR_MIPS)
 #include <sys/cachectl.h>
-#endif
-
-#if ENABLE_ASSEMBLER_WX_EXCLUSIVE
-#define PROTECTION_FLAGS_RW (PROT_READ | PROT_WRITE)
-#define PROTECTION_FLAGS_RX (PROT_READ | PROT_EXEC)
-#define INITIAL_PROTECTION_FLAGS PROTECTION_FLAGS_RX
-#else
-#define INITIAL_PROTECTION_FLAGS (PROT_READ | PROT_WRITE | PROT_EXEC)
 #endif
 
 namespace JS {
@@ -177,33 +171,17 @@ namespace jit {
     }
 };
 
-class ExecutableAllocator {
+class ExecutableAllocator
+{
     typedef void (*DestroyCallback)(void* addr, size_t size);
-    enum ProtectionSetting { Writable, Executable };
     DestroyCallback destroyCallback;
 
   public:
+    enum ProtectionSetting { Writable, Executable };
+
     ExecutableAllocator()
       : destroyCallback(nullptr)
     {
-        if (!pageSize) {
-            pageSize = determinePageSize();
-            // On Windows, VirtualAlloc effectively allocates in 64K chunks.
-            // (Technically, it allocates in page chunks, but the starting
-            // address is always a multiple of 64K, so each allocation uses up
-            // 64K of address space.)  So a size less than that would be
-            // pointless.  But it turns out that 64KB is a reasonable size for
-            // all platforms.  (This assumes 4KB pages.) On 64-bit windows,
-            // AllocateExecutableMemory prepends an extra page for structured
-            // exception handling data (see comments in function) onto whatever
-            // is passed in, so subtract one page here.
-#if defined(JS_CPU_X64) && defined(XP_WIN)
-            largeAllocSize = pageSize * 15;
-#else
-            largeAllocSize = pageSize * 16;
-#endif
-        }
-
         MOZ_ASSERT(m_smallPools.empty());
     }
 
@@ -266,6 +244,10 @@ class ExecutableAllocator {
     void setDestroyCallback(DestroyCallback destroyCallback) {
         this->destroyCallback = destroyCallback;
     }
+
+    static void initStatic();
+
+    static bool nonWritableJitCode;
 
   private:
     static size_t pageSize;
@@ -379,27 +361,25 @@ class ExecutableAllocator {
         return pool;
     }
 
-#if ENABLE_ASSEMBLER_WX_EXCLUSIVE
     static void makeWritable(void* start, size_t size)
     {
-        reprotectRegion(start, size, Writable);
+        if (nonWritableJitCode)
+            reprotectRegion(start, size, Writable);
     }
 
     static void makeExecutable(void* start, size_t size)
     {
-        reprotectRegion(start, size, Executable);
+        if (nonWritableJitCode)
+            reprotectRegion(start, size, Executable);
     }
-#else
-    static void makeWritable(void*, size_t) {}
-    static void makeExecutable(void*, size_t) {}
-#endif
 
+    static unsigned initialProtectionFlags(ProtectionSetting protection);
 
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
     static void cacheFlush(void*, size_t)
     {
     }
-#elif defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+#elif defined(JS_SIMULATOR_ARM) || defined(JS_SIMULATOR_MIPS)
     static void cacheFlush(void* code, size_t size)
     {
         js::jit::Simulator::FlushICache(code, size);
@@ -446,9 +426,7 @@ class ExecutableAllocator {
     ExecutableAllocator(const ExecutableAllocator&) = delete;
     void operator=(const ExecutableAllocator&) = delete;
 
-#if ENABLE_ASSEMBLER_WX_EXCLUSIVE
     static void reprotectRegion(void*, size_t, ProtectionSetting);
-#endif
 
     // These are strong references;  they keep pools alive.
     static const size_t maxSmallPools = 4;

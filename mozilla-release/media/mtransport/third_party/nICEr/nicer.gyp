@@ -74,6 +74,8 @@
                 "./src/net/nr_socket.h",
                 #"./src/net/nr_socket_local.c",
                 "./src/net/nr_socket_local.h",
+                "./src/net/nr_socket_multi_tcp.c",
+                "./src/net/nr_socket_multi_tcp.h",
                 "./src/net/transport_addr.c",
                 "./src/net/transport_addr.h",
                 "./src/net/transport_addr_reg.c",
@@ -143,10 +145,9 @@
 
           'conditions' : [
               ## Mac and BSDs
-              [ 'OS == "mac"', {
+              [ 'OS == "mac" or OS == "ios"', {
                 'defines' : [
                     'DARWIN',
-                    'HAVE_XLOCALE',
                 ],
               }],
               [ 'os_bsd == 1', {
@@ -154,7 +155,7 @@
                     'BSD',
                 ],
               }],
-              [ 'OS == "mac" or os_bsd == 1', {
+              [ 'OS == "mac" or OS == "ios" or os_bsd == 1', {
                 'cflags_mozilla': [
                     '-Wall',
                     '-Wno-parentheses',

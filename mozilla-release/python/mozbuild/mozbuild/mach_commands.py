@@ -2,12 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import print_function, unicode_literals
+from __future__ import absolute_import, print_function, unicode_literals
 
-import itertools
+import argparse
+import json
 import logging
 import operator
 import os
+import subprocess
 import sys
 
 import mozpack.path as mozpath
@@ -420,55 +422,9 @@ class Build(MachCommandBase):
                 self.log(logging.INFO, 'ccache',
                          {'msg': ccache_diff.hit_rate_message()}, "{msg}")
 
-        moz_nospam = os.environ.get('MOZ_NOSPAM')
-        if monitor.elapsed > 300 and not moz_nospam:
+        if monitor.elapsed > 300:
             # Display a notification when the build completes.
-            # This could probably be uplifted into the mach core or at least
-            # into a helper API. It is here as an experimentation to see how it
-            # is received.
-            try:
-                if sys.platform.startswith('darwin'):
-                    try:
-                        notifier = which.which('terminal-notifier')
-                    except which.WhichError:
-                        raise Exception('Install terminal-notifier to get '
-                            'a notification when the build finishes.')
-                    self.run_process([notifier, '-title',
-                        'Mozilla Build System', '-group', 'mozbuild',
-                        '-message', 'Build complete'], ensure_exit_code=False)
-                elif sys.platform.startswith('linux'):
-                    try:
-                        import dbus
-                    except ImportError:
-                        raise Exception('Install the python dbus module to '
-                            'get a notification when the build finishes.')
-                    bus = dbus.SessionBus()
-                    notify = bus.get_object('org.freedesktop.Notifications',
-                                            '/org/freedesktop/Notifications')
-                    method = notify.get_dbus_method('Notify',
-                                                    'org.freedesktop.Notifications')
-                    method('Mozilla Build System', 0, '', 'Build complete', '', [], [], -1)
-                elif sys.platform.startswith('win'):
-                    from ctypes import Structure, windll, POINTER, sizeof
-                    from ctypes.wintypes import DWORD, HANDLE, WINFUNCTYPE, BOOL, UINT
-                    class FLASHWINDOW(Structure):
-                        _fields_ = [("cbSize", UINT),
-                                    ("hwnd", HANDLE),
-                                    ("dwFlags", DWORD),
-                                    ("uCount", UINT),
-                                    ("dwTimeout", DWORD)]
-                    FlashWindowExProto = WINFUNCTYPE(BOOL, POINTER(FLASHWINDOW))
-                    FlashWindowEx = FlashWindowExProto(("FlashWindowEx", windll.user32))
-                    FLASHW_CAPTION = 0x01
-                    FLASHW_TRAY = 0x02
-                    FLASHW_TIMERNOFG = 0x0C
-                    params = FLASHWINDOW(sizeof(FLASHWINDOW),
-                                        windll.kernel32.GetConsoleWindow(),
-                                        FLASHW_CAPTION | FLASHW_TRAY | FLASHW_TIMERNOFG, 3, 0)
-                    FlashWindowEx(params)
-            except Exception as e:
-                self.log(logging.WARNING, 'notifier-failed', {'error':
-                    e.message}, 'Notification center failed: {error}')
+            self.notify('Build complete')
 
         if status:
             return status
@@ -613,6 +569,65 @@ class Doctor(MachCommandBase):
         return doctor.check_all()
 
 @CommandProvider
+class Logs(MachCommandBase):
+    """Provide commands to read mach logs."""
+    NO_AUTO_LOG = True
+
+    @Command('show-log', category='post-build',
+        description='Display mach logs')
+    @CommandArgument('log_file', nargs='?', type=argparse.FileType('rb'),
+        help='Filename to read log data from. Defaults to the log of the last '
+             'mach command.')
+    def show_log(self, log_file=None):
+        if not log_file:
+            path = self._get_state_filename('last_log.json')
+            log_file = open(path, 'rb')
+
+        if self.log_manager.terminal:
+            env = dict(os.environ)
+            if 'LESS' not in env:
+                # Sensible default flags if none have been set in the user
+                # environment.
+                env['LESS'] = 'FRX'
+            less = subprocess.Popen(['less'], stdin=subprocess.PIPE, env=env)
+            # Various objects already have a reference to sys.stdout, so we
+            # can't just change it, we need to change the file descriptor under
+            # it to redirect to less's input.
+            # First keep a copy of the sys.stdout file descriptor.
+            output_fd = os.dup(sys.stdout.fileno())
+            os.dup2(less.stdin.fileno(), sys.stdout.fileno())
+
+        startTime = 0
+        for line in log_file:
+            created, action, params = json.loads(line)
+            if not startTime:
+                startTime = created
+                self.log_manager.terminal_handler.formatter.start_time = \
+                    created
+            if 'line' in params:
+                record = logging.makeLogRecord({
+                    'created': created,
+                    'name': self._logger.name,
+                    'levelno': logging.INFO,
+                    'msg': '{line}',
+                    'params': params,
+                    'action': action,
+                })
+                self._logger.handle(record)
+
+        if self.log_manager.terminal:
+            # Close less's input so that it knows that we're done sending data.
+            less.stdin.close()
+            # Since the less's input file descriptor is now also the stdout
+            # file descriptor, we still actually have a non-closed system file
+            # descriptor for less's input. Replacing sys.stdout's file
+            # descriptor with what it was before we replaced it will properly
+            # close less's input.
+            os.dup2(output_fd, sys.stdout.fileno())
+            less.wait()
+
+
+@CommandProvider
 class Warnings(MachCommandBase):
     """Provide commands for inspecting warnings."""
 
@@ -691,7 +706,7 @@ class GTestCommands(MachCommandBase):
 
     @CommandArgumentGroup('debugging')
     @CommandArgument('--debug', action='store_true', group='debugging',
-        help='Enable the debugger. Not specifying a --debugger option will result in the default debugger being used. The following arguments have no effect without this.')
+        help='Enable the debugger. Not specifying a --debugger option will result in the default debugger being used.')
     @CommandArgument('--debugger', default=None, type=str, group='debugging',
         help='Name of debugger to use.')
     @CommandArgument('--debugger-args', default=None, metavar='params', type=str,
@@ -707,7 +722,7 @@ class GTestCommands(MachCommandBase):
         app_path = self.get_binary_path('app')
         args = [app_path, '-unittest'];
 
-        if debug:
+        if debug or debugger or debugger_args:
             args = self.prepend_debugger_args(args, debugger, debugger_args)
 
         cwd = os.path.join(self.topobjdir, '_tests', 'gtest')
@@ -871,7 +886,10 @@ class Package(MachCommandBase):
     @Command('package', category='post-build',
         description='Package the built product for distribution as an APK, DMG, etc.')
     def package(self):
-        return self._run_make(directory=".", target='package', ensure_exit_code=False)
+        ret = self._run_make(directory=".", target='package', ensure_exit_code=False)
+        if ret == 0:
+            self.notify('Packaging complete')
+        return ret
 
 @CommandProvider
 class Install(MachCommandBase):
@@ -880,7 +898,10 @@ class Install(MachCommandBase):
     @Command('install', category='post-build',
         description='Install the package on the machine, or on a device.')
     def install(self):
-        return self._run_make(directory=".", target='install', ensure_exit_code=False)
+        ret = self._run_make(directory=".", target='install', ensure_exit_code=False)
+        if ret == 0:
+            self.notify('Install complete')
+        return ret
 
 @CommandProvider
 class RunProgram(MachCommandBase):
@@ -902,7 +923,7 @@ class RunProgram(MachCommandBase):
 
     @CommandArgumentGroup('debugging')
     @CommandArgument('--debug', action='store_true', group='debugging',
-        help='Enable the debugger. Not specifying a --debugger option will result in the default debugger being used. The following arguments have no effect without this.')
+        help='Enable the debugger. Not specifying a --debugger option will result in the default debugger being used.')
     @CommandArgument('--debugger', default=None, type=str, group='debugging',
         help='Name of debugger to use.')
     @CommandArgument('--debugparams', default=None, metavar='params', type=str,
@@ -961,7 +982,7 @@ class RunProgram(MachCommandBase):
 
         extra_env = {}
 
-        if debug:
+        if debug or debugger or debugparams:
             import mozdebug
             if not debugger:
                 # No debugger name was provided. Look for the default ones on

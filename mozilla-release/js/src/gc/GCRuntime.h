@@ -25,16 +25,14 @@
 namespace js {
 
 class AutoLockGC;
+class VerifyPreTracer;
 
 namespace gc {
 
 typedef Vector<JS::Zone*, 4, SystemAllocPolicy> ZoneVector;
 
-struct FinalizePhase;
 class MarkingValidator;
-struct AutoPrepareForTracing;
 class AutoTraceSession;
-struct ArenasToUpdate;
 struct MovingTracer;
 
 class ChunkPool
@@ -597,12 +595,6 @@ class GCRuntime
     void setParameter(JSGCParamKey key, uint32_t value);
     uint32_t getParameter(JSGCParamKey key, const AutoLockGC& lock);
 
-    bool isHeapBusy() { return heapState != js::Idle; }
-    bool isHeapMajorCollecting() { return heapState == js::MajorCollecting; }
-    bool isHeapMinorCollecting() { return heapState == js::MinorCollecting; }
-    bool isHeapCollecting() { return isHeapMajorCollecting() || isHeapMinorCollecting(); }
-    bool isHeapCompacting() { return isHeapMajorCollecting() && state() == COMPACT; }
-
     bool triggerGC(JS::gcreason::Reason reason);
     void maybeAllocTriggerZoneGC(Zone* zone, const AutoLockGC& lock);
     bool triggerZoneGC(Zone* zone, JS::gcreason::Reason reason);
@@ -617,11 +609,13 @@ class GCRuntime
         gcstats::AutoPhase ap(stats, gcstats::PHASE_EVICT_NURSERY);
         minorGCImpl(reason, nullptr);
     }
+    void clearPostBarrierCallbacks();
     bool gcIfRequested(JSContext* cx = nullptr);
     void gc(JSGCInvocationKind gckind, JS::gcreason::Reason reason);
     void startGC(JSGCInvocationKind gckind, JS::gcreason::Reason reason, int64_t millis = 0);
     void gcSlice(JS::gcreason::Reason reason, int64_t millis = 0);
     void finishGC(JS::gcreason::Reason reason);
+    void abortGC();
     void startDebugGC(JSGCInvocationKind gckind, SliceBudget& budget);
     void debugGCSlice(SliceBudget& budget);
 
@@ -658,9 +652,7 @@ class GCRuntime
     bool parseAndSetZeal(const char* str);
     void setNextScheduled(uint32_t count);
     void verifyPreBarriers();
-    void verifyPostBarriers();
     void maybeVerifyPreBarriers(bool always);
-    void maybeVerifyPostBarriers(bool always);
     bool selectForMarking(JSObject* object);
     void clearSelectedForMarking();
     void setDeterministic(bool enable);
@@ -670,7 +662,8 @@ class GCRuntime
 
   public:
     // Internal public interface
-    js::gc::State state() { return incrementalState; }
+    js::gc::State state() const { return incrementalState; }
+    bool isHeapCompacting() const { return state() == COMPACT; }
     bool isBackgroundSweeping() { return helperState.isBackgroundSweeping(); }
     void waitBackgroundSweepEnd() { helperState.waitBackgroundSweepEnd(); }
     void waitBackgroundSweepOrAllocEnd() {
@@ -779,28 +772,30 @@ class GCRuntime
     JS::Zone* getCurrentZoneGroup() { return currentZoneGroup; }
     void setFoundBlackGrayEdges() { foundBlackGrayEdges = true; }
 
-    uint64_t gcNumber() { return number; }
+    uint64_t gcNumber() const { return number; }
     void incGcNumber() { ++number; }
 
-    uint64_t minorGCCount() { return minorGCNumber; }
+    uint64_t minorGCCount() const { return minorGCNumber; }
     void incMinorGcNumber() { ++minorGCNumber; }
 
-    uint64_t majorGCCount() { return majorGCNumber; }
+    uint64_t majorGCCount() const { return majorGCNumber; }
     void incMajorGcNumber() { ++majorGCNumber; }
 
-    bool isIncrementalGc() { return isIncremental; }
-    bool isFullGc() { return isFull; }
+    int64_t defaultSliceBudget() const { return sliceBudget; }
+
+    bool isIncrementalGc() const { return isIncremental; }
+    bool isFullGc() const { return isFull; }
 
     bool shouldCleanUpEverything() { return cleanUpEverything; }
 
-    bool areGrayBitsValid() { return grayBitsValid; }
+    bool areGrayBitsValid() const { return grayBitsValid; }
     void setGrayBitsInvalid() { grayBitsValid = false; }
 
     bool minorGCRequested() const { return minorGCTriggerReason != JS::gcreason::NO_REASON; }
     bool majorGCRequested() const { return majorGCTriggerReason != JS::gcreason::NO_REASON; }
     bool isGcNeeded() { return minorGCRequested() || majorGCRequested(); }
 
-    bool fullGCForAtomsRequested() { return fullGCForAtomsRequested_; }
+    bool fullGCForAtomsRequested() const { return fullGCForAtomsRequested_; }
 
     double computeHeapGrowthFactor(size_t lastBytes);
     size_t computeTriggerBytes(double growthFactor, size_t lastBytes);
@@ -828,8 +823,6 @@ class GCRuntime
 #ifdef JS_GC_ZEAL
     void startVerifyPreBarriers();
     bool endVerifyPreBarriers();
-    void startVerifyPostBarriers();
-    bool endVerifyPostBarriers();
     void finishVerifier();
     bool isVerifyPreBarriersEnabled() const { return !!verifyPreData; }
 #else
@@ -878,13 +871,10 @@ class GCRuntime
     bool gcIfNeededPerAllocation(JSContext* cx);
     template <typename T>
     static void checkIncrementalZoneState(ExclusiveContext* cx, T* t);
-    template <AllowGC allowGC>
     static void* refillFreeListFromAnyThread(ExclusiveContext* cx, AllocKind thingKind,
                                              size_t thingSize);
-    template <AllowGC allowGC>
     static void* refillFreeListFromMainThread(JSContext* cx, AllocKind thingKind,
                                               size_t thingSize);
-    static void* tryRefillFreeListFromMainThread(JSContext* cx, AllocKind thingKind);
     static void* refillFreeListOffMainThread(ExclusiveContext* cx, AllocKind thingKind);
 
     /*
@@ -1019,8 +1009,7 @@ class GCRuntime
      * Number of the committed arenas in all GC chunks including empty chunks.
      */
     mozilla::Atomic<uint32_t, mozilla::ReleaseAcquire> numArenasFreeCommitted;
-    void* verifyPreData;
-    void* verifyPostData;
+    VerifyPreTracer* verifyPreData;
     bool chunkAllocationSinceLastGC;
     int64_t nextFullGCTime;
     int64_t lastGCTime;
@@ -1175,7 +1164,7 @@ class GCRuntime
      */
     bool interFrameGC;
 
-    /* Default budget for incremental GC slice. See SliceBudget in jsgc.h. */
+    /* Default budget for incremental GC slice. See js/SliceBudget.h. */
     int64_t sliceBudget;
 
     /*
@@ -1218,8 +1207,6 @@ class GCRuntime
     unsigned objectsMarkedInDeadZones;
 
     bool poked;
-
-    volatile js::HeapState heapState;
 
     /*
      * These options control the zealousness of the GC. The fundamental values

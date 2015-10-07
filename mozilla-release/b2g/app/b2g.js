@@ -29,6 +29,7 @@ pref("browser.sessionstore.restore_on_demand", false);
 pref("browser.sessionstore.resume_from_crash", false);
 // No e10s on mulet
 pref("browser.tabs.remote.autostart.1", false);
+pref("browser.tabs.remote.autostart.2", false);
 #endif
 
 // Bug 945235: Prevent all bars to be considered visible:
@@ -87,7 +88,6 @@ pref("network.http.max-persistent-connections-per-proxy", 20);
 pref("network.cookie.cookieBehavior", 0);
 
 // spdy
-pref("network.http.spdy.enabled.http2draft", true);
 pref("network.http.spdy.push-allowance", 32768);
 
 // See bug 545869 for details on why these are set the way they are
@@ -116,7 +116,9 @@ pref("mozilla.widget.force-24bpp", true);
 pref("mozilla.widget.use-buffer-pixmap", true);
 pref("mozilla.widget.disable-native-theme", true);
 pref("layout.reflow.synthMouseMove", false);
+#ifndef MOZ_X11
 pref("layers.enable-tiles", true);
+#endif
 pref("layers.low-precision-buffer", true);
 pref("layers.low-precision-opacity", "0.5");
 pref("layers.progressive-paint", true);
@@ -220,6 +222,10 @@ pref("dom.max_script_run_time", 0);
 pref("dom.max_chrome_script_run_time", 0);
 pref("dom.max_child_script_run_time", 0);
 
+// Temporarily disable support for offsetX/Y to work around Google Maps bug
+// (bug 1150284)
+pref("dom.mouseEvent.offsetXY.enabled", false);
+
 // plugins
 pref("plugin.disable", true);
 pref("dom.ipc.plugins.enabled", true);
@@ -291,7 +297,6 @@ pref("ui.dragThresholdY", 25);
 // Layers Acceleration.  We can only have nice things on gonk, because
 // they're not maintained anywhere else.
 pref("layers.offmainthreadcomposition.enabled", true);
-pref("layers.offmainthreadcomposition.async-animations", true);
 #ifndef MOZ_WIDGET_GONK
 pref("dom.ipc.tabs.disabled", true);
 #else
@@ -317,13 +322,20 @@ pref("media.cache_readahead_limit", 30);
 // Enable/Disable Gonk Decoder Module
 pref("media.fragmented-mp4.gonk.enabled", true);
 #endif
+
+//Encrypted media extensions.
+pref("media.eme.enabled", true);
+pref("media.eme.apiVisible", true);
+
 // The default number of decoded video frames that are enqueued in
 // MediaDecoderReader's mVideoQueue.
 pref("media.video-queue.default-size", 3);
 
 // optimize images' memory usage
-pref("image.decode-only-on-draw.enabled", true);
+pref("image.downscale-during-decode.enabled", true);
+pref("image.decode-only-on-draw.enabled", false);
 pref("image.mem.allow_locking_in_content_processes", true);
+pref("image.decode.retry-on-alloc-failure", true);
 // Limit the surface cache to 1/8 of main memory or 128MB, whichever is smaller.
 // Almost everything that was factored into 'max_decoded_image_kb' is now stored
 // in the surface cache.  1/8 of main memory is 32MB on a 256MB device, which is
@@ -341,22 +353,24 @@ pref("dom.w3c_touch_events.enabled", 1);
 pref("dom.w3c_touch_events.safetyX", 0); // escape borders in units of 1/240"
 pref("dom.w3c_touch_events.safetyY", 120); // escape borders in units of 1/240"
 
+// W3C draft pointer events
+pref("dom.w3c_pointer_events.enabled", false);
+// W3C touch-action css property (related to touch and pointer events)
+pref("layout.css.touch_action.enabled", false);
+
 #ifdef MOZ_SAFE_BROWSING
 // Safe browsing does nothing unless this pref is set
-pref("browser.safebrowsing.enabled", false);
+pref("browser.safebrowsing.enabled", true);
 
 // Prevent loading of pages identified as malware
-pref("browser.safebrowsing.malware.enabled", false);
+pref("browser.safebrowsing.malware.enabled", true);
 
 pref("browser.safebrowsing.debug", false);
 pref("browser.safebrowsing.updateURL", "https://safebrowsing.google.com/safebrowsing/downloads?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2&key=%GOOGLE_API_KEY%");
 pref("browser.safebrowsing.gethashURL", "https://safebrowsing.google.com/safebrowsing/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
-pref("browser.safebrowsing.reportURL", "https://safebrowsing.google.com/safebrowsing/report?");
-pref("browser.safebrowsing.reportGenericURL", "http://%LOCALE%.phish-generic.mozilla.com/?hl=%LOCALE%");
-pref("browser.safebrowsing.reportErrorURL", "http://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%");
-pref("browser.safebrowsing.reportPhishURL", "http://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%");
-pref("browser.safebrowsing.reportMalwareURL", "http://%LOCALE%.malware-report.mozilla.com/?hl=%LOCALE%");
-pref("browser.safebrowsing.reportMalwareErrorURL", "http://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%");
+pref("browser.safebrowsing.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%&url=");
+pref("browser.safebrowsing.reportPhishURL", "https://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%&url=");
+pref("browser.safebrowsing.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%&url=");
 pref("browser.safebrowsing.appRepURL", "https://sb-ssl.google.com/safebrowsing/clientreport/download?key=%GOOGLE_API_KEY%");
 
 pref("browser.safebrowsing.id", "Firefox");
@@ -396,6 +410,11 @@ pref("urlclassifier.max-complete-age", 2700);
 
 // URL for checking the reason for a malware warning.
 pref("browser.safebrowsing.malware.reportURL", "https://safebrowsing.google.com/safebrowsing/diagnostic?client=%NAME%&hl=%LOCALE%&site=");
+
+// Tracking protection
+pref("privacy.trackingprotection.enabled", true);
+pref("privacy.trackingprotection.pbmode.enabled", false);
+
 #endif
 
 // True if this is the first time we are showing about:firstrun
@@ -417,14 +436,9 @@ pref("browser.dom.window.dump.enabled", false);
 
 // Default Content Security Policy to apply to certified apps.
 // If you change this CSP, make sure to update the fast path in nsCSPService.cpp
-pref("security.apps.certified.CSP.default", "default-src *; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline' app://theme.gaiamobile.org");
+pref("security.apps.certified.CSP.default", "default-src * data: blob:; script-src 'self'; object-src 'none'; style-src 'self' 'unsafe-inline' app://theme.gaiamobile.org");
 // Default Content Security Policy to apply to trusted apps.
-pref("security.apps.trusted.CSP.default", "default-src *; object-src 'none'; frame-src 'none'");
-
-// Temporarily force-enable GL compositing.  This is default-disabled
-// deep within the bowels of the widgetry system.  Remove me when GL
-// compositing isn't default disabled in widget/android.
-pref("layers.acceleration.force-enabled", true);
+pref("security.apps.trusted.CSP.default", "default-src * data: blob:; object-src 'none'; frame-src 'none'");
 
 // handle links targeting new windows
 // 1=current window/tab, 2=new window, 3=new tab in most recent window
@@ -710,7 +724,7 @@ pref("dom.ipc.processPriorityManager.temporaryPriorityLockMS", 5000);
 // processes.  We use these different levels to force the low-memory killer to
 // kill processes in a LRU order.
 pref("dom.ipc.processPriorityManager.BACKGROUND.LRUPoolLevels", 5);
-pref("dom.ipc.processPriorityManager.FOREGROUND.LRUPoolLevels", 3);
+pref("dom.ipc.processPriorityManager.BACKGROUND_PERCEIVABLE.LRUPoolLevels", 4);
 
 // Kernel parameters for process priorities.  These affect how processes are
 // killed on low-memory and their relative CPU priorities.
@@ -738,12 +752,8 @@ pref("hal.processPriorityManager.gonk.FOREGROUND_KEYBOARD.OomScoreAdjust", 200);
 pref("hal.processPriorityManager.gonk.FOREGROUND_KEYBOARD.cgroup", "apps");
 
 pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.OomScoreAdjust", 400);
-pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.KillUnderKB", 7168);
+pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.KillUnderKB", 8192);
 pref("hal.processPriorityManager.gonk.BACKGROUND_PERCEIVABLE.cgroup", "apps/bg_perceivable");
-
-pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.OomScoreAdjust", 534);
-pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.KillUnderKB", 8192);
-pref("hal.processPriorityManager.gonk.BACKGROUND_HOMESCREEN.cgroup", "apps/bg_non_interactive");
 
 pref("hal.processPriorityManager.gonk.BACKGROUND.OomScoreAdjust", 667);
 pref("hal.processPriorityManager.gonk.BACKGROUND.KillUnderKB", 20480);
@@ -802,13 +812,11 @@ pref("hal.processPriorityManager.gonk.notifyLowMemUnderKB", 14336);
 // blocked on a poll(), and this pref has no effect.)
 pref("gonk.systemMemoryPressureRecoveryPollMS", 5000);
 
-#ifndef DEBUG
 // Enable pre-launching content processes for improved startup time
 // (hiding latency).
 pref("dom.ipc.processPrelaunch.enabled", true);
 // Wait this long before pre-launching a new subprocess.
 pref("dom.ipc.processPrelaunch.delayMs", 5000);
-#endif
 
 pref("dom.ipc.reuse_parent_app", false);
 
@@ -989,7 +997,7 @@ pref("gfx.canvas.max-size-for-skia-gl", -1);
 pref("gfx.gralloc.fence-with-readpixels", true);
 
 // The url of the page used to display network error details.
-pref("b2g.neterror.url", "app://system.gaiamobile.org/net_error.html");
+pref("b2g.neterror.url", "net_error.html");
 
 // The origin used for the shared themes uri space.
 pref("b2g.theme.origin", "app://theme.gaiamobile.org");
@@ -1005,6 +1013,10 @@ pref("network.proxy.browsing.app_origins", "app://system.gaiamobile.org");
 
 // Enable Web Speech synthesis API
 pref("media.webspeech.synth.enabled", true);
+
+// Enable Web Speech recognition API
+pref("media.webspeech.recognition.enable", true);
+pref("media.webspeech.service.default", "pocketsphinx");
 
 // Downloads API
 pref("dom.mozDownloads.enabled", true);
@@ -1037,6 +1049,7 @@ pref("apz.fling_curve_function_y2", "1.0");
 pref("apz.fling_curve_threshold_inches_per_ms", "0.01");
 pref("apz.fling_friction", "0.0019");
 pref("apz.max_velocity_inches_per_ms", "0.07");
+pref("apz.touch_start_tolerance", "0.1");
 
 // Tweak default displayport values to reduce the risk of running out of
 // memory when zooming in
@@ -1106,6 +1119,9 @@ pref("dom.udpsocket.enabled", true);
 // Enable TV Manager API
 pref("dom.tv.enabled", true);
 
+// Enable Inputport Manager API
+pref("dom.inputport.enabled", true);
+
 pref("dom.mozSettings.SettingsDB.debug.enabled", true);
 pref("dom.mozSettings.SettingsManager.debug.enabled", true);
 pref("dom.mozSettings.SettingsRequestManager.debug.enabled", true);
@@ -1124,23 +1140,16 @@ pref("dom.mozSettings.allowForceReadOnly", false);
 // RequestSync API is enabled by default on B2G.
 pref("dom.requestSync.enabled", true);
 
-// Only enable for kit kat and above devices
-// kit kat == 19, L = 21, 20 is kit-kat for wearables
-// 15 is for the ICS emulators which will fallback to software vsync
-#if ANDROID_VERSION == 19 || ANDROID_VERSION == 21 || ANDROID_VERSION == 15
-pref("gfx.vsync.hw-vsync.enabled", true);
-pref("gfx.vsync.compositor", true);
+// Resample touch events on b2g
 pref("gfx.touch.resample", true);
-#else
-pref("gfx.vsync.hw-vsync.enabled", false);
-pref("gfx.vsync.compositor", false);
-pref("gfx.touch.resample", false);
-#endif
 
-// Bug 1147753 - Weird issues with vsync refresh driver on L devices
-// so disable them on L, but enable on KK and ICS
-#if ANDROID_VERSION == 19 || ANDROID_VERSION == 15
-pref("gfx.vsync.refreshdriver", true);
-#else
-pref("gfx.vsync.refreshdriver", false);
-#endif
+// Comma separated list of activity names that can only be provided by
+// the system app in dev mode.
+pref("dom.activities.developer_mode_only", "import-app");
+
+// mulet apparently loads firefox.js as well as b2g.js, so we have to explicitly
+// disable serviceworkers here to get them disabled in mulet.
+pref("dom.serviceWorkers.enabled", false);
+
+// Retain at most 10 processes' layers buffers
+pref("layers.compositor-lru-size", 10);

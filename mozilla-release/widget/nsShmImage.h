@@ -35,7 +35,8 @@ class QWindow;
 class gfxASurface;
 
 class nsShmImage {
-    NS_INLINE_DECL_REFCOUNTING(nsShmImage)
+    // bug 1168843, compositor thread may create shared memory instances that are destroyed by main thread on shutdown, so this must use thread-safe RC to avoid hitting assertion
+    NS_INLINE_DECL_THREADSAFE_REFCOUNTING(nsShmImage)
 
     typedef mozilla::ipc::SharedMemorySysV SharedMemorySysV;
 
@@ -63,10 +64,8 @@ private:
 public:
     already_AddRefed<gfxASurface> AsSurface();
 
-#if (MOZ_WIDGET_GTK == 2)
-    void Put(GdkWindow* aWindow, GdkRectangle* aRects, GdkRectangle* aEnd);
-#elif (MOZ_WIDGET_GTK == 3)
-    void Put(GdkWindow* aWindow, cairo_rectangle_list_t* aRects);
+#ifdef MOZ_WIDGET_GTK
+    void Put(GdkWindow* aWindow, const nsIntRegion& aRegion);
 #elif defined(MOZ_WIDGET_QT)
     void Put(QWindow* aWindow, QRect& aRect);
 #endif

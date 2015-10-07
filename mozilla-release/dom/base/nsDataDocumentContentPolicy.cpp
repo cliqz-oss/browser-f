@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -9,6 +10,7 @@
  * via XMLHttpRequest).
  */
 
+#include "nsContentUtils.h"
 #include "nsDataDocumentContentPolicy.h"
 #include "nsNetUtil.h"
 #include "nsScriptSecurityManager.h"
@@ -42,6 +44,9 @@ nsDataDocumentContentPolicy::ShouldLoad(uint32_t aContentType,
                                         nsIPrincipal *aRequestPrincipal,
                                         int16_t *aDecision)
 {
+  MOZ_ASSERT(aContentType == nsContentUtils::InternalContentPolicyTypeToExternal(aContentType),
+             "We should only see external content policy types here.");
+
   *aDecision = nsIContentPolicy::ACCEPT;
   // Look for the document.  In most cases, aRequestingContext is a node.
   nsCOMPtr<nsIDocument> doc;
@@ -122,7 +127,8 @@ nsDataDocumentContentPolicy::ShouldLoad(uint32_t aContentType,
       aContentType == nsIContentPolicy::TYPE_SUBDOCUMENT ||
       aContentType == nsIContentPolicy::TYPE_SCRIPT ||
       aContentType == nsIContentPolicy::TYPE_XSLT ||
-      aContentType == nsIContentPolicy::TYPE_FETCH) {
+      aContentType == nsIContentPolicy::TYPE_FETCH ||
+      aContentType == nsIContentPolicy::TYPE_WEB_MANIFEST) {
     *aDecision = nsIContentPolicy::REJECT_TYPE;
   }
 

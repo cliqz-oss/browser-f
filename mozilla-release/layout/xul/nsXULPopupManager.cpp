@@ -471,7 +471,7 @@ nsXULPopupManager::PopupMoved(nsIFrame* aFrame, nsIntPoint aPnt)
 }
 
 void
-nsXULPopupManager::PopupResized(nsIFrame* aFrame, nsIntSize aSize)
+nsXULPopupManager::PopupResized(nsIFrame* aFrame, LayoutDeviceIntSize aSize)
 {
   nsMenuPopupFrame* menuPopupFrame = GetPopupToMoveOrResize(aFrame);
   if (!menuPopupFrame)
@@ -490,8 +490,8 @@ nsXULPopupManager::PopupResized(nsIFrame* aFrame, nsIntSize aSize)
   // as 'width' and 'height' attributes on the popup.
   nsPresContext* presContext = menuPopupFrame->PresContext();
 
-  nsIntSize newCSS(presContext->DevPixelsToIntCSSPixels(aSize.width),
-                   presContext->DevPixelsToIntCSSPixels(aSize.height));
+  CSSIntSize newCSS(presContext->DevPixelsToIntCSSPixels(aSize.width),
+                    presContext->DevPixelsToIntCSSPixels(aSize.height));
 
   nsIContent* popup = menuPopupFrame->GetContent();
   nsAutoString width, height;
@@ -672,7 +672,8 @@ nsXULPopupManager::ShowMenu(nsIContent *aMenu,
 
   // there is no trigger event for menus
   InitTriggerEvent(nullptr, nullptr, nullptr);
-  popupFrame->InitializePopup(menuFrame->GetAnchor(), nullptr, position, 0, 0, true);
+  popupFrame->InitializePopup(menuFrame->GetAnchor(), nullptr, position, 0, 0,
+                              MenuPopupAnchorType_Node, true);
 
   if (aAsynchronous) {
     nsCOMPtr<nsIRunnable> event =
@@ -704,7 +705,7 @@ nsXULPopupManager::ShowPopup(nsIContent* aPopup,
   InitTriggerEvent(aTriggerEvent, aPopup, getter_AddRefs(triggerContent));
 
   popupFrame->InitializePopup(aAnchorContent, triggerContent, aPosition,
-                              aXPos, aYPos, aAttributesOverride);
+                              aXPos, aYPos, MenuPopupAnchorType_Node, aAttributesOverride);
 
   FirePopupShowingEvent(aPopup, aIsContextMenu, aSelectFirstItem);
 }
@@ -723,6 +724,27 @@ nsXULPopupManager::ShowPopupAtScreen(nsIContent* aPopup,
   InitTriggerEvent(aTriggerEvent, aPopup, getter_AddRefs(triggerContent));
 
   popupFrame->InitializePopupAtScreen(triggerContent, aXPos, aYPos, aIsContextMenu);
+  FirePopupShowingEvent(aPopup, aIsContextMenu, false);
+}
+
+void
+nsXULPopupManager::ShowPopupAtScreenRect(nsIContent* aPopup,
+                                         const nsAString& aPosition,
+                                         const nsIntRect& aRect,
+                                         bool aIsContextMenu,
+                                         bool aAttributesOverride,
+                                         nsIDOMEvent* aTriggerEvent)
+{
+  nsMenuPopupFrame* popupFrame = GetPopupFrameForContent(aPopup, true);
+  if (!popupFrame || !MayShowPopup(popupFrame))
+    return;
+
+  nsCOMPtr<nsIContent> triggerContent;
+  InitTriggerEvent(aTriggerEvent, aPopup, getter_AddRefs(triggerContent));
+
+  popupFrame->InitializePopupAtRect(triggerContent, aPosition,
+                                    aRect, aAttributesOverride);
+
   FirePopupShowingEvent(aPopup, aIsContextMenu, false);
 }
 
@@ -1966,7 +1988,7 @@ nsXULPopupManager::HandleShortcutNavigation(nsIDOMKeyEvent* aKeyEvent,
     bool action;
     nsMenuFrame* result = aFrame->FindMenuWithShortcut(aKeyEvent, action);
     if (result) {
-      aFrame->ChangeMenuItem(result, false);
+      aFrame->ChangeMenuItem(result, false, true);
       if (action) {
         WidgetGUIEvent* evt = aKeyEvent->GetInternalNSEvent()->AsGUIEvent();
         nsMenuFrame* menuToOpen = result->Enter(evt);
@@ -2047,7 +2069,7 @@ nsXULPopupManager::HandleKeyboardNavigation(uint32_t aKeyCode)
       nsMenuFrame* nextItem = (theDirection == eNavigationDirection_End) ?
                               GetNextMenuItem(mActiveMenuBar, currentMenu, false) : 
                               GetPreviousMenuItem(mActiveMenuBar, currentMenu, false);
-      mActiveMenuBar->ChangeMenuItem(nextItem, true);
+      mActiveMenuBar->ChangeMenuItem(nextItem, true, true);
       return true;
     }
     else if (NS_DIRECTION_IS_BLOCK(theDirection)) {
@@ -2083,7 +2105,7 @@ nsXULPopupManager::HandleKeyboardNavigationInPopup(nsMenuChainItem* item,
     if (aDir == eNavigationDirection_End) {
       nsMenuFrame* nextItem = GetNextMenuItem(aFrame, nullptr, true);
       if (nextItem) {
-        aFrame->ChangeMenuItem(nextItem, false);
+        aFrame->ChangeMenuItem(nextItem, false, true);
         return true;
       }
     }
@@ -2125,7 +2147,7 @@ nsXULPopupManager::HandleKeyboardNavigationInPopup(nsMenuChainItem* item,
       nextItem = GetPreviousMenuItem(aFrame, nullptr, true);
 
     if (nextItem) {
-      aFrame->ChangeMenuItem(nextItem, false);
+      aFrame->ChangeMenuItem(nextItem, false, true);
       return true;
     }
   }
@@ -2156,6 +2178,7 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
     if (keyCode == nsIDOMKeyEvent::DOM_VK_ESCAPE) {
       HidePopup(aTopVisibleMenuItem->Content(), false, false, false, true);
       aKeyEvent->StopPropagation();
+      aKeyEvent->StopCrossProcessForwarding();
       aKeyEvent->PreventDefault();
     }
     return true;
@@ -2170,6 +2193,13 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
     case nsIDOMKeyEvent::DOM_VK_HOME:
     case nsIDOMKeyEvent::DOM_VK_END:
       HandleKeyboardNavigation(keyCode);
+      break;
+
+    case nsIDOMKeyEvent::DOM_VK_PAGE_DOWN:
+    case nsIDOMKeyEvent::DOM_VK_PAGE_UP:
+      if (aTopVisibleMenuItem) {
+        aTopVisibleMenuItem->Frame()->ChangeByPage(keyCode == nsIDOMKeyEvent::DOM_VK_PAGE_UP);
+      }
       break;
 
     case nsIDOMKeyEvent::DOM_VK_ESCAPE:
@@ -2220,6 +2250,7 @@ nsXULPopupManager::HandleKeyboardEventWithKeyCode(
 
   if (consume) {
     aKeyEvent->StopPropagation();
+    aKeyEvent->StopCrossProcessForwarding();
     aKeyEvent->PreventDefault();
   }
   return true;
@@ -2420,6 +2451,7 @@ nsXULPopupManager::KeyUp(nsIDOMKeyEvent* aKeyEvent)
   }
 
   aKeyEvent->StopPropagation();
+  aKeyEvent->StopCrossProcessForwarding();
   aKeyEvent->PreventDefault();
 
   return NS_OK; // I am consuming event
@@ -2478,6 +2510,7 @@ nsXULPopupManager::KeyDown(nsIDOMKeyEvent* aKeyEvent)
   // Since a menu was open, stop propagation of the event to keep other event
   // listeners from becoming confused.
   aKeyEvent->StopPropagation();
+  aKeyEvent->StopCrossProcessForwarding();
   return NS_OK;
 }
 
@@ -2499,6 +2532,7 @@ nsXULPopupManager::KeyPress(nsIDOMKeyEvent* aKeyEvent)
   HandleShortcutNavigation(keyEvent, nullptr);
   if (consume) {
     aKeyEvent->StopPropagation();
+    aKeyEvent->StopCrossProcessForwarding();
     aKeyEvent->PreventDefault();
   }
 

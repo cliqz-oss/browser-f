@@ -126,13 +126,18 @@ class FunctionContextFlags
     //
     bool definitelyNeedsArgsObj:1;
 
+    bool needsHomeObject:1;
+    bool isDerivedClassConstructor:1;
+
   public:
     FunctionContextFlags()
      :  mightAliasLocals(false),
         hasExtensibleScope(false),
         needsDeclEnvObject(false),
         argumentsHasLocalBinding(false),
-        definitelyNeedsArgsObj(false)
+        definitelyNeedsArgsObj(false),
+        needsHomeObject(false),
+        isDerivedClassConstructor(false)
     { }
 };
 
@@ -195,6 +200,7 @@ class SharedContext
     virtual ObjectBox* toObjectBox() = 0;
     inline bool isFunctionBox() { return toObjectBox() && toObjectBox()->isFunctionBox(); }
     inline FunctionBox* asFunctionBox();
+    inline GlobalSharedContext* asGlobalSharedContext();
 
     bool hasExplicitUseStrict()        const { return anyCxFlags.hasExplicitUseStrict; }
     bool bindingsAccessedDynamically() const { return anyCxFlags.bindingsAccessedDynamically; }
@@ -225,17 +231,84 @@ class SharedContext
     bool isDotVariable(JSAtom* atom) const {
         return atom == context->names().dotGenerator || atom == context->names().dotGenRVal;
     }
+
+    enum class AllowedSyntax {
+        NewTarget,
+        SuperProperty
+    };
+    virtual bool allowSyntax(AllowedSyntax allowed) const = 0;
+    virtual bool inWith() const = 0;
+
+  protected:
+    static bool FunctionAllowsSyntax(JSFunction* func, AllowedSyntax allowed)
+    {
+        MOZ_ASSERT(!func->isArrow());
+
+        switch (allowed) {
+          case AllowedSyntax::NewTarget:
+            // Any function supports new.target
+            return true;
+          case AllowedSyntax::SuperProperty:
+            return func->allowSuperProperty();
+          default:;
+        }
+        MOZ_CRASH("Unknown AllowedSyntax query");
+    }
 };
 
 class GlobalSharedContext : public SharedContext
 {
+  private:
+    Handle<ScopeObject*> topStaticScope_;
+    bool allowNewTarget_;
+    bool allowSuperProperty_;
+    bool inWith_;
+
+    bool computeAllowSyntax(AllowedSyntax allowed) const {
+        StaticScopeIter<CanGC> it(context, topStaticScope_);
+        for (; !it.done(); it++) {
+            if (it.type() == StaticScopeIter<CanGC>::Function &&
+                !it.fun().isArrow())
+            {
+                return FunctionAllowsSyntax(&it.fun(), allowed);
+            }
+        }
+        return false;
+    }
+
+    bool computeInWith() const {
+        for (StaticScopeIter<CanGC> it(context, topStaticScope_); !it.done(); it++) {
+            if (it.type() == StaticScopeIter<CanGC>::With)
+                return true;
+        }
+        return false;
+    }
+
   public:
     GlobalSharedContext(ExclusiveContext* cx,
-                        Directives directives, bool extraWarnings)
-      : SharedContext(cx, directives, extraWarnings)
+                        Directives directives, Handle<ScopeObject*> topStaticScope,
+                        bool extraWarnings)
+      : SharedContext(cx, directives, extraWarnings),
+        topStaticScope_(topStaticScope),
+        allowNewTarget_(computeAllowSyntax(AllowedSyntax::NewTarget)),
+        allowSuperProperty_(computeAllowSyntax(AllowedSyntax::SuperProperty)),
+        inWith_(computeInWith())
     {}
 
-    ObjectBox* toObjectBox() { return nullptr; }
+    ObjectBox* toObjectBox() override { return nullptr; }
+    HandleObject topStaticScope() const { return topStaticScope_; }
+    bool allowSyntax(AllowedSyntax allowSyntax) const override {
+        switch (allowSyntax) {
+          case AllowedSyntax::NewTarget:
+            // Any function supports new.target
+            return allowNewTarget_;
+          case AllowedSyntax::SuperProperty:
+            return allowSuperProperty_;
+          default:;
+        }
+        MOZ_CRASH("Unknown AllowedSyntax query");
+    }
+    bool inWith() const override { return inWith_; }
 };
 
 class FunctionBox : public ObjectBox, public SharedContext
@@ -249,7 +322,7 @@ class FunctionBox : public ObjectBox, public SharedContext
     uint16_t        length;
 
     uint8_t         generatorKindBits_;     /* The GeneratorKind of this function. */
-    bool            inWith:1;               /* some enclosing scope is a with-statement */
+    bool            inWith_:1;              /* some enclosing scope is a with-statement */
     bool            inGenexpLambda:1;       /* lambda from generator expression */
     bool            hasDestructuringArgs:1; /* arguments list contains destructuring expression */
     bool            useAsm:1;               /* see useAsmOrInsideUseAsm */
@@ -267,7 +340,7 @@ class FunctionBox : public ObjectBox, public SharedContext
                 ParseContext<ParseHandler>* pc, Directives directives,
                 bool extraWarnings, GeneratorKind generatorKind);
 
-    ObjectBox* toObjectBox() { return this; }
+    ObjectBox* toObjectBox() override { return this; }
     JSFunction* function() const { return &object->as<JSFunction>(); }
 
     GeneratorKind generatorKind() const { return GeneratorKindFromBits(generatorKindBits_); }
@@ -288,6 +361,8 @@ class FunctionBox : public ObjectBox, public SharedContext
     bool needsDeclEnvObject()       const { return funCxFlags.needsDeclEnvObject; }
     bool argumentsHasLocalBinding() const { return funCxFlags.argumentsHasLocalBinding; }
     bool definitelyNeedsArgsObj()   const { return funCxFlags.definitelyNeedsArgsObj; }
+    bool needsHomeObject()          const { return funCxFlags.needsHomeObject; }
+    bool isDerivedClassConstructor() const { return funCxFlags.isDerivedClassConstructor; }
 
     void setMightAliasLocals()             { funCxFlags.mightAliasLocals         = true; }
     void setHasExtensibleScope()           { funCxFlags.hasExtensibleScope       = true; }
@@ -295,6 +370,10 @@ class FunctionBox : public ObjectBox, public SharedContext
     void setArgumentsHasLocalBinding()     { funCxFlags.argumentsHasLocalBinding = true; }
     void setDefinitelyNeedsArgsObj()       { MOZ_ASSERT(funCxFlags.argumentsHasLocalBinding);
                                              funCxFlags.definitelyNeedsArgsObj   = true; }
+    void setNeedsHomeObject()              { MOZ_ASSERT(function()->allowSuperProperty());
+                                             funCxFlags.needsHomeObject          = true; }
+    void setDerivedClassConstructor()      { MOZ_ASSERT(function()->isClassConstructor());
+                                             funCxFlags.isDerivedClassConstructor = true; }
 
     bool hasDefaults() const {
         return length != function()->nargs() - function()->hasRest();
@@ -321,7 +400,16 @@ class FunctionBox : public ObjectBox, public SharedContext
         return bindings.hasAnyAliasedBindings() ||
                hasExtensibleScope() ||
                needsDeclEnvObject() ||
+               needsHomeObject()    ||
                isGenerator();
+    }
+
+    bool allowSyntax(AllowedSyntax allowed) const override {
+        return FunctionAllowsSyntax(function(), allowed);
+    }
+
+    bool inWith() const override {
+        return inWith_;
     }
 };
 
@@ -331,6 +419,14 @@ SharedContext::asFunctionBox()
     MOZ_ASSERT(isFunctionBox());
     return static_cast<FunctionBox*>(this);
 }
+
+inline GlobalSharedContext*
+SharedContext::asGlobalSharedContext()
+{
+    MOZ_ASSERT(!isFunctionBox());
+    return static_cast<GlobalSharedContext*>(this);
+}
+
 
 // In generators, we treat all locals as aliased so that they get stored on the
 // heap.  This way there is less information to copy off the stack when
@@ -505,21 +601,17 @@ FinishPopStatement(ContextT* ct)
 
 /*
  * Find a lexically scoped variable (one declared by let, catch, or an array
- * comprehension) named by atom, looking in sc's compile-time scopes.
+ * comprehension) named by atom, looking in ct's compile-time scopes.
  *
  * If a WITH statement is reached along the scope stack, return its statement
- * info record, so callers can tell that atom is ambiguous. If slotp is not
- * null, then if atom is found, set *slotp to its stack slot, otherwise to -1.
- * This means that if slotp is not null, all the block objects on the lexical
- * scope chain must have had their depth slots computed by the code generator,
- * so the caller must be under EmitTree.
+ * info record, so callers can tell that atom is ambiguous.
  *
  * In any event, directly return the statement info record in which atom was
  * found. Otherwise return null.
  */
 template <class ContextT>
 typename ContextT::StmtInfo*
-LexicalLookup(ContextT* ct, HandleAtom atom, int* slotp, typename ContextT::StmtInfo* stmt);
+LexicalLookup(ContextT* ct, HandleAtom atom, typename ContextT::StmtInfo* stmt = nullptr);
 
 } // namespace frontend
 

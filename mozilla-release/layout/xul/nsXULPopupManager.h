@@ -10,7 +10,7 @@
 #ifndef nsXULPopupManager_h__
 #define nsXULPopupManager_h__
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "nsIContent.h"
 #include "nsIRollupListener.h"
 #include "nsIDOMEventListener.h"
@@ -24,6 +24,7 @@
 #include "nsStyleConsts.h"
 #include "nsWidgetInitData.h"
 #include "mozilla/Attributes.h"
+#include "Units.h"
 
 // X.h defines KeyPress
 #ifdef KeyPress
@@ -404,6 +405,16 @@ public:
                          bool aIsContextMenu,
                          nsIDOMEvent* aTriggerEvent);
 
+  /* Open a popup anchored at a screen rectangle specified by aRect.
+   * The remaining arguments are similar to ShowPopup.
+   */
+  void ShowPopupAtScreenRect(nsIContent* aPopup,
+                             const nsAString& aPosition,
+                             const nsIntRect& aRect,
+                             bool aIsContextMenu,
+                             bool aAttributesOverride,
+                             nsIDOMEvent* aTriggerEvent);
+
   /**
    * Open a tooltip at a specific screen position specified by aXPos and aYPos,
    * measured in CSS pixels.
@@ -531,9 +542,9 @@ public:
 
   /**
    * Indicate that the popup associated with aView has been resized to the
-   * specified screen width and height.
+   * given device pixel size aSize.
    */
-  void PopupResized(nsIFrame* aFrame, nsIntSize ASize);
+  void PopupResized(nsIFrame* aFrame, mozilla::LayoutDeviceIntSize aSize);
 
   /**
    * Called when a popup frame is destroyed. In this case, just remove the

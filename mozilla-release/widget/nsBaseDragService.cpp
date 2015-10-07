@@ -36,6 +36,9 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/unused.h"
+#include "nsFrameLoader.h"
+#include "TabParent.h"
 
 #include "gfxContext.h"
 #include "gfxPlatform.h"
@@ -51,7 +54,9 @@ using namespace mozilla::image;
 nsBaseDragService::nsBaseDragService()
   : mCanDrop(false), mOnlyChromeDrop(false), mDoingDrag(false),
     mHasImage(false), mUserCancelled(false),
-    mDragAction(DRAGDROP_ACTION_NONE), mTargetSize(0,0),
+    mDragEventDispatchedToChildProcess(false),
+    mDragAction(DRAGDROP_ACTION_NONE),
+    mDragActionFromChildProcess(DRAGDROP_ACTION_UNINITIALIZED), mTargetSize(0,0),
     mImageX(0), mImageY(0), mScreenX(-1), mScreenY(-1), mSuppressLevel(0),
     mInputSource(nsIDOMMouseEvent::MOZ_SOURCE_MOUSE)
 {
@@ -328,6 +333,21 @@ nsBaseDragService::OpenDragPopup()
   }
 }
 
+int32_t
+nsBaseDragService::TakeChildProcessDragAction()
+{
+  // If the last event was dispatched to the child process, use the drag action
+  // assigned from it instead and return it. DRAGDROP_ACTION_UNINITIALIZED is
+  // returned otherwise.
+  int32_t retval = DRAGDROP_ACTION_UNINITIALIZED;
+  if (TakeDragEventDispatchedToChildProcess() &&
+      mDragActionFromChildProcess != DRAGDROP_ACTION_UNINITIALIZED) {
+    retval = mDragActionFromChildProcess;
+  }
+
+  return retval;
+}
+
 //-------------------------------------------------------------------------
 NS_IMETHODIMP
 nsBaseDragService::EndDragSession(bool aDoneDrag)
@@ -346,7 +366,14 @@ nsBaseDragService::EndDragSession(bool aDoneDrag)
     }
   }
 
+  for (uint32_t i = 0; i < mChildProcesses.Length(); ++i) {
+    mozilla::unused << mChildProcesses[i]->SendEndDragSession(aDoneDrag,
+                                                              mUserCancelled);
+  }
+  mChildProcesses.Clear();
+
   mDoingDrag = false;
+  mCanDrop = false;
 
   // release the source we've been holding on to.
   mSourceDocument = nullptr;
@@ -361,6 +388,7 @@ nsBaseDragService::EndDragSession(bool aDoneDrag)
   mImageY = 0;
   mScreenX = -1;
   mScreenY = -1;
+  mEndDragPoint = nsIntPoint(0, 0);
   mInputSource = nsIDOMMouseEvent::MOZ_SOURCE_MOUSE;
 
   return NS_OK;
@@ -456,6 +484,34 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
 
   *aPresContext = presShell->GetPresContext();
 
+  nsCOMPtr<nsIFrameLoaderOwner> flo = do_QueryInterface(dragNode);
+  if (flo) {
+    nsRefPtr<nsFrameLoader> fl = flo->GetFrameLoader();
+    if (fl) {
+      mozilla::dom::TabParent* tp =
+        static_cast<mozilla::dom::TabParent*>(fl->GetRemoteBrowser());
+      if (tp) {
+        int32_t x, y;
+        tp->TakeDragVisualization(*aSurface, x, y);
+        if (*aSurface) {
+          if (mImage) {
+            // Just clear the surface if chrome has overridden it with an image.
+            *aSurface = nullptr;
+          } else {
+            nsIFrame* f = fl->GetOwnerContent()->GetPrimaryFrame();
+            if (f) {
+              aScreenDragRect->x = x;
+              aScreenDragRect->y = y;
+              aScreenDragRect->width = (*aSurface)->GetSize().width;
+              aScreenDragRect->height = (*aSurface)->GetSize().height;
+            }
+            return NS_OK;
+          }
+        }
+      }
+    }
+  }
+
   // convert mouse position to dev pixels of the prescontext
   int32_t sx = aScreenX, sy = aScreenY;
   ConvertToUnscaledDevPixels(*aPresContext, &sx, &sy);
@@ -476,7 +532,7 @@ nsBaseDragService::DrawDrag(nsIDOMNode* aDOMNode,
       if (rootFrame && *aPresContext) {
         nsIntRect dragRect;
         aRegion->GetBoundingBox(&dragRect.x, &dragRect.y, &dragRect.width, &dragRect.height);
-        dragRect = dragRect.ToAppUnits(nsPresContext::AppUnitsPerCSSPixel()).
+        dragRect = ToAppUnits(dragRect, nsPresContext::AppUnitsPerCSSPixel()).
                             ToOutsidePixels((*aPresContext)->AppUnitsPerDevPixel());
 
         nsIntRect screenRect = rootFrame->GetScreenRectExternal();
@@ -612,6 +668,8 @@ nsBaseDragService::DrawDragForImage(nsPresContext* aPresContext,
 
     destSize.width = NSToIntFloor(float(destSize.width) * scale);
     destSize.height = NSToIntFloor(float(destSize.height) * scale);
+    if (destSize.width == 0 || destSize.height == 0)
+      return NS_ERROR_FAILURE;
 
     aScreenDragRect->x = NSToIntFloor(aScreenX - float(mImageX) * scale);
     aScreenDragRect->y = NSToIntFloor(aScreenY - float(mImageY) * scale);
@@ -666,4 +724,35 @@ nsBaseDragService::Unsuppress()
 {
   --mSuppressLevel;
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsBaseDragService::UserCancelled()
+{
+  mUserCancelled = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsBaseDragService::UpdateDragEffect()
+{
+  mDragActionFromChildProcess = mDragAction;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsBaseDragService::DragEventDispatchedToChildProcess()
+{
+  mDragEventDispatchedToChildProcess = true;
+  return NS_OK;
+}
+
+bool
+nsBaseDragService::MaybeAddChildProcess(mozilla::dom::ContentParent* aChild)
+{
+  if (!mChildProcesses.Contains(aChild)) {
+    mChildProcesses.AppendElement(aChild);
+    return true;
+  }
+  return false;
 }

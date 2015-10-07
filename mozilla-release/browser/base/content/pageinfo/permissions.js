@@ -30,7 +30,7 @@ var permissionObserver = {
 
 function onLoadPermission()
 {
-  var uri = gDocument.documentURIObject;
+  var uri = BrowserUtils.makeURIFromCPOW(gDocument.documentURIObject);
   var permTab = document.getElementById("permTab");
   if (SitePermissions.isSupportedURI(uri)) {
     gPermURI = uri;
@@ -205,6 +205,10 @@ function onIndexedDBClear()
   Components.classes["@mozilla.org/dom/quota/manager;1"]
             .getService(nsIQuotaManager)
             .clearStoragesForURI(gPermURI);
+
+  Components.classes["@mozilla.org/serviceworkers/manager;1"]
+            .getService(Components.interfaces.nsIServiceWorkerManager)
+            .removeAndPropagate(gPermURI.host);
 
   SitePermissions.remove(gPermURI, "indexedDB");
   initIndexedDBRow();

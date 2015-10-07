@@ -12,11 +12,13 @@ Cu.import("resource:///modules/devtools/ViewHelpers.jsm");
 Cu.import("resource://gre/modules/devtools/Console.jsm");
 Cu.import("resource:///modules/devtools/gDevTools.jsm");
 
-const require = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools.require;
+const devtools = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools;
+const { require } = devtools;
 const promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
 const EventEmitter = require("devtools/toolkit/event-emitter");
 const { CallWatcherFront } = require("devtools/server/actors/call-watcher");
 const { CanvasFront } = require("devtools/server/actors/canvas");
+
 const Telemetry = require("devtools/shared/telemetry");
 const telemetry = new Telemetry();
 
@@ -36,6 +38,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
 
 XPCOMUtils.defineLazyModuleGetter(this, "DevToolsUtils",
   "resource://gre/modules/devtools/DevToolsUtils.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "NetworkHelper", function() {
+  return require("devtools/toolkit/webconsole/network-helper");
+});
 
 // The panel's window global is an EventEmitter firing the following events:
 const EVENTS = {
@@ -188,30 +194,15 @@ EventEmitter.decorate(this);
 /**
  * DOM query helpers.
  */
-function $(selector, target = document) target.querySelector(selector);
-function $all(selector, target = document) target.querySelectorAll(selector);
-
-/**
- * Helper for getting an nsIURL instance out of a string.
- */
-function nsIURL(url, store = nsIURL.store) {
-  if (store.has(url)) {
-    return store.get(url);
-  }
-  let uri = Services.io.newURI(url, null, null).QueryInterface(Ci.nsIURL);
-  store.set(url, uri);
-  return uri;
-}
-
-// The cache used in the `nsIURL` function.
-nsIURL.store = new Map();
+let $ = (selector, target = document) => target.querySelector(selector);
+let $all = (selector, target = document) => target.querySelectorAll(selector);
 
 /**
  * Gets the fileName part of a string which happens to be an URL.
  */
 function getFileName(url) {
   try {
-    let { fileName } = nsIURL(url);
+    let { fileName } = NetworkHelper.nsIURL(url);
     return fileName || "/";
   } catch (e) {
     // This doesn't look like a url, or nsIURL can't handle it.
@@ -353,33 +344,4 @@ function getThumbnailForCall(thumbnails, index) {
     }
   }
   return CanvasFront.INVALID_SNAPSHOT_IMAGE;
-}
-
-/**
- * Opens/selects the debugger in this toolbox and jumps to the specified
- * file name and line number.
- */
-function viewSourceInDebugger(url, line) {
-  let showSource = ({ DebuggerView }) => {
-    let item = DebuggerView.Sources.getItemForAttachment(a => a.source.url === url);
-    if (item) {
-      DebuggerView.setEditorLocation(item.attachment.source.actor, line, { noDebug: true }).then(() => {
-        window.emit(EVENTS.SOURCE_SHOWN_IN_JS_DEBUGGER);
-      }, () => {
-        window.emit(EVENTS.SOURCE_NOT_FOUND_IN_JS_DEBUGGER);
-      });
-    }
-  }
-
-  // If the Debugger was already open, switch to it and try to show the
-  // source immediately. Otherwise, initialize it and wait for the sources
-  // to be added first.
-  let debuggerAlreadyOpen = gToolbox.getPanel("jsdebugger");
-  gToolbox.selectTool("jsdebugger").then(({ panelWin: dbg }) => {
-    if (debuggerAlreadyOpen) {
-      showSource(dbg);
-    } else {
-      dbg.once(dbg.EVENTS.SOURCES_ADDED, () => showSource(dbg));
-    }
-  });
 }

@@ -9,6 +9,11 @@
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
+<!ENTITY showURLBarSuggestions.label           "Suchvorschläge in Adressleiste anzeigen">
+<!ENTITY showURLBarSuggestions.accesskey       "v">
+
+<!ENTITY redirectWindowsSearch.label "Diese Suchmaschine für die Suche mit Windows verwenden">
+<!ENTITY redirectWindowsSearch.accesskey "v">
 
 <!ENTITY oneClickSearchEngines.label           "Ein-Klick-Suchmaschinen">
 

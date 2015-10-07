@@ -14,14 +14,15 @@
  Exposed=ServiceWorker]
 interface ServiceWorkerGlobalScope : WorkerGlobalScope {
   readonly attribute Clients clients;
-
-  void update();
+  readonly attribute ServiceWorkerRegistration registration;
 
   [Throws]
-  Promise<boolean> unregister();
+  Promise<boolean> skipWaiting();
 
   attribute EventHandler oninstall;
   attribute EventHandler onactivate;
+
+  [Func="mozilla::dom::workers::ServiceWorkerGlobalScope::InterceptionEnabled"]
   attribute EventHandler onfetch;
   attribute EventHandler onbeforeevicted;
   attribute EventHandler onevicted;
@@ -30,4 +31,9 @@ interface ServiceWorkerGlobalScope : WorkerGlobalScope {
   attribute EventHandler onmessage;
 };
 
+// These are from w3c.github.io/push-api/
+partial interface ServiceWorkerGlobalScope {
+  attribute EventHandler onpush;
+  attribute EventHandler onpushsubscriptionchange;
+};
 

@@ -5,7 +5,6 @@
 
 #include "jsapi.h"
 #include "nsIXPConnect.h"
-#include "nsIJSRuntimeService.h"
 #include "nsCOMPtr.h"
 #include "nsIServiceManager.h"
 #include "nsIComponentManager.h"
@@ -107,7 +106,7 @@ nsresult EvaluateAdminConfigScript(const char *js_buffer, size_t length,
 
     nsAutoCString script(js_buffer, length);
     JS::RootedValue v(cx);
-    rv = xpc->EvalInSandboxObject(NS_ConvertASCIItoUTF16(script), filename, cx,
+    rv = xpc->EvalInSandboxObject(NS_ConvertUTF8toUTF16(script), filename, cx,
                                   autoconfigSb, &v);
     NS_ENSURE_SUCCESS(rv, rv);
 

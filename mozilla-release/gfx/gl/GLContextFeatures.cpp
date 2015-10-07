@@ -261,6 +261,18 @@ static const FeatureInfo sFeatureInfoArr[] = {
         }
     },
     {
+        "get_query_object_i64v",
+        GLVersion::GL3_3,
+        GLESVersion::NONE,
+        GLContext::ARB_timer_query,
+        {
+            GLContext::ANGLE_timer_query,
+            GLContext::EXT_disjoint_timer_query,
+            GLContext::EXT_timer_query,
+            GLContext::Extensions_End
+        }
+    },
+    {
         "get_query_object_iv",
         GLVersion::GL2,
         GLESVersion::NONE,
@@ -393,19 +405,46 @@ static const FeatureInfo sFeatureInfoArr[] = {
         }
     },
     {
+        "query_counter",
+        GLVersion::GL3_3,
+        GLESVersion::NONE,
+        GLContext::ARB_timer_query,
+        {
+            GLContext::ANGLE_timer_query,
+            GLContext::EXT_disjoint_timer_query,
+            // EXT_timer_query does NOT support GL_TIMESTAMP retrieval with
+            // QueryCounter.
+            GLContext::Extensions_End
+        }
+    },
+    {
         "query_objects",
         GLVersion::GL2,
         GLESVersion::ES3,
         GLContext::Extension_None,
         {
+            GLContext::ANGLE_timer_query,
+            GLContext::EXT_disjoint_timer_query,
             GLContext::EXT_occlusion_query_boolean,
             GLContext::Extensions_End
         }
         /*
          * XXX_query_objects only provide entry points commonly supported by
-         * ARB_occlusion_query (added in OpenGL 2.0) and EXT_occlusion_query_boolean
-         * (added in OpenGL ES 3.0)
+         * ARB_occlusion_query (added in OpenGL 2.0), EXT_occlusion_query_boolean
+         * (added in OpenGL ES 3.0), and ARB_timer_query (added in OpenGL 3.3)
          */
+    },
+    {
+        "query_time_elapsed",
+        GLVersion::GL3_3,
+        GLESVersion::NONE,
+        GLContext::ARB_timer_query,
+        {
+            GLContext::ANGLE_timer_query,
+            GLContext::EXT_disjoint_timer_query,
+            GLContext::EXT_timer_query,
+            GLContext::Extensions_End
+        }
     },
     {
         "read_buffer",
@@ -487,6 +526,15 @@ static const FeatureInfo sFeatureInfoArr[] = {
         GLContext::Extension_None,
         {
             GLContext::OES_standard_derivatives,
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "sync",
+        GLVersion::GL3_2,
+        GLESVersion::ES3,
+        GLContext::ARB_sync,
+        {
             GLContext::Extensions_End
         }
     },
@@ -600,6 +648,15 @@ static const FeatureInfo sFeatureInfoArr[] = {
              * doesn't guarantee glTexStorage3D, which is required for
              * WebGL 2.
              */
+            GLContext::Extensions_End
+        }
+    },
+    {
+        "texture_swizzle",
+        GLVersion::GL3_3,
+        GLESVersion::ES3,
+        GLContext::ARB_texture_swizzle,
+        {
             GLContext::Extensions_End
         }
     },

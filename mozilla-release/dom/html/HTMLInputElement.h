@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,7 +26,6 @@
 #include "nsTextEditorState.h"
 
 class nsIRadioGroupContainer;
-class nsIRadioGroupVisitor;
 class nsIRadioVisitor;
 
 namespace mozilla {
@@ -36,12 +36,20 @@ class EventChainPreVisitor;
 namespace dom {
 
 class Date;
-class DirPickerFileListBuilderTask;
 class File;
 class FileList;
 
-class UploadLastDir final : public nsIObserver, public nsSupportsWeakReference {
-
+/**
+ * A class we use to create a singleton object that is used to keep track of
+ * the last directory from which the user has picked files (via
+ * <input type=file>) on a per-domain basis. The implementation uses
+ * nsIContentPrefService2/NS_CONTENT_PREF_SERVICE_CONTRACTID to store the last
+ * directory per-domain, and to ensure that whether the directories are
+ * persistently saved (saved across sessions) or not honors whether or not the
+ * page is being viewed in private browsing.
+ */
+class UploadLastDir final : public nsIObserver, public nsSupportsWeakReference
+{
   ~UploadLastDir() {}
 
 public:
@@ -94,11 +102,8 @@ class HTMLInputElement final : public nsGenericHTMLFormElementWithState,
                                public nsITextControlElement,
                                public nsIPhonetic,
                                public nsIDOMNSEditableElement,
-                               public nsITimerCallback,
                                public nsIConstraintValidation
 {
-  friend class DirPickerFileListBuilderTask;
-
 public:
   using nsIConstraintValidation::GetValidationMessage;
   using nsIConstraintValidation::CheckValidity;
@@ -276,14 +281,6 @@ public:
     return mSelectionProperties;
   }
 
-  // nsITimerCallback
-  NS_DECL_NSITIMERCALLBACK
-
-  // Avoid warning about the implementation of nsITimerCallback::Notify hiding
-  // our nsImageLoadingContent base class' implementation of
-  // imgINotificationObserver::Notify:
-  using nsImageLoadingContent::Notify;
-
   // nsIConstraintValidation
   bool     IsTooLong();
   bool     IsValueMissing() const;
@@ -445,15 +442,6 @@ public:
   // XPCOM GetForm() is OK
 
   FileList* GetFiles();
-
-  void OpenDirectoryPicker(ErrorResult& aRv);
-  void CancelDirectoryPickerScanIfRunning();
-
-  void StartProgressEventTimer();
-  void MaybeDispatchProgressEvent(bool aFinalProgress);
-  void DispatchProgressEvent(const nsAString& aType,
-                             bool aLengthComputable,
-                             uint64_t aLoaded, uint64_t aTotal);
 
   // XPCOM GetFormAction() is OK
   void SetFormAction(const nsAString& aValue, ErrorResult& aRv)
@@ -713,9 +701,9 @@ public:
 
   int32_t GetTextLength(ErrorResult& aRv);
 
-  void MozGetFileNameArray(nsTArray< nsString >& aFileNames);
+  void MozGetFileNameArray(nsTArray<nsString>& aFileNames, ErrorResult& aRv);
 
-  void MozSetFileNameArray(const Sequence< nsString >& aFileNames);
+  void MozSetFileNameArray(const Sequence< nsString >& aFileNames, ErrorResult& aRv);
   void MozSetFileArray(const Sequence<OwningNonNull<File>>& aFiles);
 
   HTMLInputElement* GetOwnerNumberControl();
@@ -831,9 +819,14 @@ protected:
                                      uint32_t aLen, uint32_t* aResult);
 
   // Helper method
-  nsresult SetValueInternal(const nsAString& aValue,
-                            bool aUserInput,
-                            bool aSetValueChanged);
+
+  /**
+   * Setting the value.
+   *
+   * @param aValue      String to set.
+   * @param aFlags      See nsTextEditorState::SetValueFlags.
+   */
+  nsresult SetValueInternal(const nsAString& aValue, uint32_t aFlags);
 
   nsresult GetValueInternal(nsAString& aValue) const;
 
@@ -1276,8 +1269,6 @@ protected:
 
   nsRefPtr<FileList>  mFileList;
 
-  nsRefPtr<DirPickerFileListBuilderTask> mDirPickerFileListBuilderTask;
-
   nsString mStaticDocFileList;
   
   /** 
@@ -1295,13 +1286,6 @@ protected:
    * canceled.
    */
   Decimal mRangeThumbDragStartValue;
-
-  /**
-   * Timer that is used when mType == NS_FORM_INPUT_FILE and the user selects a
-   * directory. It is used to fire progress events while the list of files
-   * under that directory tree is built.
-   */
-  nsCOMPtr<nsITimer> mProgressTimer;
 
   /**
    * The selection properties cache for number controls.  This is needed because
@@ -1346,7 +1330,6 @@ protected:
   bool                     mCanShowInvalidUI    : 1;
   bool                     mHasRange            : 1;
   bool                     mIsDraggingRange     : 1;
-  bool                     mProgressTimerIsActive : 1;
   bool                     mNumberControlSpinnerIsSpinning : 1;
   bool                     mNumberControlSpinnerSpinsUp : 1;
   bool                     mPickerRunning : 1;

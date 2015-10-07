@@ -18,19 +18,10 @@ protected:
 
     PLDHashTable mTable;
 
-    void
-    Init()
-    {
-        PL_DHashTableInit(&mTable, PL_DHashGetStubOps(), sizeof(Entry));
-    }
-
-    void
-    Finish() { PL_DHashTableFinish(&mTable); }
-
 public:
-    nsTemplateMap() { Init(); }
+    nsTemplateMap() : mTable(PL_DHashGetStubOps(), sizeof(Entry)) { }
 
-    ~nsTemplateMap() { Finish(); }
+    ~nsTemplateMap() { }
 
     void
     Put(nsIContent* aContent, nsIContent* aTemplate) {
@@ -70,7 +61,7 @@ public:
     }
 
     void
-    Clear() { Finish(); Init(); }
+    Clear() { mTable.Clear(); }
 };
 
 #endif // nsTemplateMap_h__

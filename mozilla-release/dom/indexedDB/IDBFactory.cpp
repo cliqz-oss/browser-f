@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -309,6 +309,7 @@ IDBFactory::CreateForJSInternal(JSContext* aCx,
   if (aPrincipalInfo->type() != PrincipalInfo::TContentPrincipalInfo &&
       aPrincipalInfo->type() != PrincipalInfo::TSystemPrincipalInfo) {
     NS_WARNING("IndexedDB not allowed for this principal!");
+    aPrincipalInfo = nullptr;
     *aFactory = nullptr;
     return NS_OK;
   }
@@ -366,15 +367,14 @@ IDBFactory::AllowedForWindowInternal(nsPIDOMWindow* aWindow,
     return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
   }
 
-  if (nsContentUtils::IsSystemPrincipal(principal)) {
-    principal.forget(aPrincipal);
-    return NS_OK;
+  bool isSystemPrincipal;
+  if (!AllowedForPrincipal(principal, &isSystemPrincipal)) {
+    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
   }
 
-  bool isNullPrincipal;
-  if (NS_WARN_IF(NS_FAILED(principal->GetIsNullPrincipal(&isNullPrincipal))) ||
-      isNullPrincipal) {
-    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
+  if (isSystemPrincipal) {
+    principal.forget(aPrincipal);
+    return NS_OK;
   }
 
   // Whitelist about:home, since it doesn't have a base domain it would not
@@ -421,6 +421,36 @@ IDBFactory::AllowedForWindowInternal(nsPIDOMWindow* aWindow,
 
   principal.forget(aPrincipal);
   return NS_OK;
+}
+
+// static
+bool
+IDBFactory::AllowedForPrincipal(nsIPrincipal* aPrincipal,
+                                bool* aIsSystemPrincipal)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aPrincipal);
+
+  if (NS_WARN_IF(!IndexedDatabaseManager::GetOrCreate())) {
+    return false;
+  }
+
+  if (nsContentUtils::IsSystemPrincipal(aPrincipal)) {
+    if (aIsSystemPrincipal) {
+      *aIsSystemPrincipal = true;
+    }
+    return true;
+  } else if (aIsSystemPrincipal) {
+    *aIsSystemPrincipal = false;
+  }
+
+  bool isNullPrincipal;
+  if (NS_WARN_IF(NS_FAILED(aPrincipal->GetIsNullPrincipal(&isNullPrincipal))) ||
+      isNullPrincipal) {
+    return false;
+  }
+
+  return true;
 }
 
 #ifdef DEBUG
@@ -726,6 +756,11 @@ IDBFactory::OpenInternal(nsIPrincipal* aPrincipal,
     JS::Rooted<JSObject*> scriptOwner(autoJS.cx(), mOwningObject);
 
     request = IDBOpenDBRequest::CreateForJS(this, scriptOwner);
+    if (!request) {
+      MOZ_ASSERT(!NS_IsMainThread());
+      aRv.ThrowUncatchableException();
+      return nullptr;
+    }
   }
 
   MOZ_ASSERT(request);

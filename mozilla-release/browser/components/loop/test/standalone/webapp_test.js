@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop, sinon */
-
-var expect = chai.expect;
-var TestUtils = React.addons.TestUtils;
-
 describe("loop.webapp", function() {
   "use strict";
 
+  var expect = chai.expect;
+  var TestUtils = React.addons.TestUtils;
   var sharedActions = loop.shared.actions;
   var sharedModels = loop.shared.models,
       sharedViews = loop.shared.views,
@@ -40,8 +37,9 @@ describe("loop.webapp", function() {
       send: function() {},
       abort: function() {},
       getResponseHeader: function(header) {
-        if (header === "Content-Type")
+        if (header === "Content-Type") {
           return "audio/ogg";
+        }
       },
       responseType: null,
       response: new ArrayBuffer(10),
@@ -71,10 +69,10 @@ describe("loop.webapp", function() {
       }));
     });
 
-    it("should dispatch a ExtractTokenInfo action with the path",
+    it("should dispatch a ExtractTokenInfo action with the path and hash",
       function() {
         sandbox.stub(loop.shared.utils, "locationData").returns({
-          hash: "",
+          hash: "#fakeKey",
           pathname: "/c/faketoken"
         });
 
@@ -83,7 +81,8 @@ describe("loop.webapp", function() {
       sinon.assert.calledOnce(loop.Dispatcher.prototype.dispatch);
       sinon.assert.calledWithExactly(loop.Dispatcher.prototype.dispatch,
         new sharedActions.ExtractTokenInfo({
-          windowPath: "/c/faketoken"
+          windowPath: "/c/faketoken",
+          windowHash: "#fakeKey"
         }));
     });
   });
@@ -130,11 +129,11 @@ describe("loop.webapp", function() {
     describe("#_setupWebSocket", function() {
       beforeEach(function() {
         conversation.setOutgoingSessionData({
-          sessionId:      "sessionId",
-          sessionToken:   "sessionToken",
-          apiKey:         "apiKey",
-          callId:         "Hello",
-          progressURL:    "http://invalid/url",
+          sessionId: "sessionId",
+          sessionToken: "sessionToken",
+          apiKey: "apiKey",
+          callId: "Hello",
+          progressURL: "http://invalid/url",
           websocketToken: 123
         });
       });
@@ -204,11 +203,11 @@ describe("loop.webapp", function() {
       describe("Websocket Events", function() {
         beforeEach(function() {
           conversation.setOutgoingSessionData({
-            sessionId:      "sessionId",
-            sessionToken:   "sessionToken",
-            apiKey:         "apiKey",
-            callId:         "Hello",
-            progressURL:    "http://progress.example.com",
+            sessionId: "sessionId",
+            sessionToken: "sessionToken",
+            apiKey: "apiKey",
+            callId: "Hello",
+            progressURL: "http://progress.example.com",
             websocketToken: 123
           });
 
@@ -299,12 +298,12 @@ describe("loop.webapp", function() {
 
       beforeEach(function() {
         fakeSessionData = {
-          sessionId:      "sessionId",
-          sessionToken:   "sessionToken",
-          apiKey:         "apiKey",
+          sessionId: "sessionId",
+          sessionToken: "sessionToken",
+          apiKey: "apiKey",
           websocketToken: 123,
-          progressURL:    "fakeUrl",
-          callId:         "fakeCallId"
+          progressURL: "fakeUrl",
+          callId: "fakeCallId"
         };
         conversation.set(fakeSessionData);
         conversation.set("loopToken", "fakeToken");
@@ -587,7 +586,7 @@ describe("loop.webapp", function() {
     });
 
     describe("FailedConversationView", function() {
-      var view, conversation, client, fakeAudio;
+      var view, fakeConversation, fakeClient, fakeAudio;
 
       beforeEach(function() {
         sandbox.stub(window, "XMLHttpRequest").returns(fakeAudioXHR);
@@ -599,20 +598,20 @@ describe("loop.webapp", function() {
         };
         sandbox.stub(window, "Audio").returns(fakeAudio);
 
-        client = new loop.StandaloneClient({
+        fakeClient = new loop.StandaloneClient({
           baseServerUrl: "http://fake.example.com"
         });
-        conversation = new sharedModels.ConversationModel({}, {
+        fakeConversation = new sharedModels.ConversationModel({}, {
           sdk: {}
         });
-        conversation.set("loopToken", "fakeToken");
+        fakeConversation.set("loopToken", "fakeToken");
 
-        sandbox.stub(client, "requestCallUrlInfo");
+        sandbox.stub(fakeClient, "requestCallUrlInfo");
         view = React.addons.TestUtils.renderIntoDocument(
           React.createElement(
             loop.webapp.FailedConversationView, {
-              conversation: conversation,
-              client: client,
+              conversation: fakeConversation,
+              client: fakeClient,
               notifications: notifications
             }));
       });
@@ -1012,8 +1011,9 @@ describe("loop.webapp", function() {
       });
 
       afterEach(function() {
-        if (oldLocalStorageValue !== null)
+        if (oldLocalStorageValue !== null) {
           localStorage.setItem("has-seen-tos", oldLocalStorageValue);
+        }
       });
 
       it("should show the TOS", function() {
@@ -1120,13 +1120,13 @@ describe("loop.webapp", function() {
     });
 
     describe("Setup call", function() {
-      var conversation, setupOutgoingCall, view, requestCallUrlInfo;
+      var fakeConversation, setupOutgoingCall, view, requestCallUrlInfo;
 
       beforeEach(function() {
-        conversation = new loop.webapp.FxOSConversationModel({
+        fakeConversation = new loop.webapp.FxOSConversationModel({
           loopToken: "fakeToken"
         });
-        setupOutgoingCall = sandbox.stub(conversation, "setupOutgoingCall");
+        setupOutgoingCall = sandbox.stub(fakeConversation, "setupOutgoingCall");
 
         var standaloneClientStub = {
           requestCallUrlInfo: function(token, cb) {
@@ -1138,7 +1138,7 @@ describe("loop.webapp", function() {
         view = React.addons.TestUtils.renderIntoDocument(
           React.createElement(
             loop.webapp.StartConversationView, {
-              conversation: conversation,
+              conversation: fakeConversation,
               notifications: notifications,
               client: standaloneClientStub
             }));

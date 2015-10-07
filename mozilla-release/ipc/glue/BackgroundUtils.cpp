@@ -7,7 +7,8 @@
 #include "MainThreadUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
-#include "nsIPrincipal.h"
+#include "mozilla/net/NeckoChannelParams.h"
+#include "nsPrincipal.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
@@ -80,6 +81,31 @@ PrincipalInfoToPrincipal(const PrincipalInfo& aPrincipalInfo,
       return principal.forget();
     }
 
+    case PrincipalInfo::TExpandedPrincipalInfo: {
+      const ExpandedPrincipalInfo& info = aPrincipalInfo.get_ExpandedPrincipalInfo();
+
+      nsTArray< nsCOMPtr<nsIPrincipal> > whitelist;
+      nsCOMPtr<nsIPrincipal> wlPrincipal;
+
+      for (uint32_t i = 0; i < info.whitelist().Length(); i++) {
+        wlPrincipal = PrincipalInfoToPrincipal(info.whitelist()[i], &rv);
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return nullptr;
+        }
+        // append that principal to the whitelist
+        whitelist.AppendElement(wlPrincipal);
+      }
+
+      nsRefPtr<nsExpandedPrincipal> expandedPrincipal = new nsExpandedPrincipal(whitelist);
+      if (!expandedPrincipal) {
+        NS_WARNING("could not instantiate expanded principal");
+        return nullptr;
+      }
+
+      principal = expandedPrincipal;
+      return principal.forget();
+    }
+
     default:
       MOZ_CRASH("Unknown PrincipalInfo type!");
   }
@@ -123,6 +149,32 @@ PrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
     return NS_OK;
   }
 
+  // might be an expanded principal
+  nsCOMPtr<nsIExpandedPrincipal> expanded =
+    do_QueryInterface(aPrincipal);
+
+  if (expanded) {
+    nsTArray<PrincipalInfo> whitelistInfo;
+    PrincipalInfo info;
+
+    nsTArray< nsCOMPtr<nsIPrincipal> >* whitelist;
+    MOZ_ALWAYS_TRUE(NS_SUCCEEDED(expanded->GetWhiteList(&whitelist)));
+
+    for (uint32_t i = 0; i < whitelist->Length(); i++) {
+      rv = PrincipalToPrincipalInfo((*whitelist)[i], &info);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+      // append that spec to the whitelist
+      whitelistInfo.AppendElement(info);
+    }
+
+    *aPrincipalInfo = ExpandedPrincipalInfo(Move(whitelistInfo));
+    return NS_OK;
+  }
+
+  // must be a content principal
+
   nsCOMPtr<nsIURI> uri;
   rv = aPrincipal->GetURI(getter_AddRefs(uri));
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -162,6 +214,67 @@ PrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
   }
 
   *aPrincipalInfo = ContentPrincipalInfo(appId, isInBrowserElement, spec);
+  return NS_OK;
+}
+
+nsresult
+LoadInfoToLoadInfoArgs(nsILoadInfo *aLoadInfo,
+                       mozilla::net::LoadInfoArgs* aLoadInfoArgs)
+{
+  nsresult rv = NS_OK;
+
+  if (aLoadInfo) {
+    rv = PrincipalToPrincipalInfo(aLoadInfo->LoadingPrincipal(),
+                                  &aLoadInfoArgs->requestingPrincipalInfo());
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = PrincipalToPrincipalInfo(aLoadInfo->TriggeringPrincipal(),
+                                  &aLoadInfoArgs->triggeringPrincipalInfo());
+    NS_ENSURE_SUCCESS(rv, rv);
+    aLoadInfoArgs->securityFlags() = aLoadInfo->GetSecurityFlags();
+    aLoadInfoArgs->contentPolicyType() = aLoadInfo->GetContentPolicyType();
+    aLoadInfoArgs->innerWindowID() = aLoadInfo->GetInnerWindowID();
+    aLoadInfoArgs->outerWindowID() = aLoadInfo->GetOuterWindowID();
+    aLoadInfoArgs->parentOuterWindowID() = aLoadInfo->GetParentOuterWindowID();
+    return NS_OK;
+  }
+
+  // use default values if no loadInfo is provided
+  rv = PrincipalToPrincipalInfo(nsContentUtils::GetSystemPrincipal(),
+                                &aLoadInfoArgs->requestingPrincipalInfo());
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = PrincipalToPrincipalInfo(nsContentUtils::GetSystemPrincipal(),
+                                &aLoadInfoArgs->triggeringPrincipalInfo());
+  NS_ENSURE_SUCCESS(rv, rv);
+  aLoadInfoArgs->securityFlags() = nsILoadInfo::SEC_NORMAL;
+  aLoadInfoArgs->contentPolicyType() = nsIContentPolicy::TYPE_OTHER;
+  aLoadInfoArgs->innerWindowID() = 0;
+  aLoadInfoArgs->outerWindowID() = 0;
+  aLoadInfoArgs->parentOuterWindowID() = 0;
+  return NS_OK;
+}
+
+nsresult
+LoadInfoArgsToLoadInfo(const mozilla::net::LoadInfoArgs& aLoadInfoArgs,
+                       nsILoadInfo** outLoadInfo)
+{
+  nsresult rv = NS_OK;
+  nsCOMPtr<nsIPrincipal> requestingPrincipal =
+    PrincipalInfoToPrincipal(aLoadInfoArgs.requestingPrincipalInfo(), &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMPtr<nsIPrincipal> triggeringPrincipal =
+    PrincipalInfoToPrincipal(aLoadInfoArgs.triggeringPrincipalInfo(), &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCOMPtr<nsILoadInfo> loadInfo =
+    new mozilla::LoadInfo(requestingPrincipal,
+                          triggeringPrincipal,
+                          aLoadInfoArgs.securityFlags(),
+                          aLoadInfoArgs.contentPolicyType(),
+                          aLoadInfoArgs.innerWindowID(),
+                          aLoadInfoArgs.outerWindowID(),
+                          aLoadInfoArgs.parentOuterWindowID());
+
+  loadInfo.forget(outLoadInfo);
   return NS_OK;
 }
 

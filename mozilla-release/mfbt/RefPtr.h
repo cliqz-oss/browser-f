@@ -13,6 +13,7 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/Move.h"
 #include "mozilla/RefCountType.h"
 #include "mozilla/TypeTraits.h"
 #if defined(MOZILLA_INTERNAL_API)
@@ -20,6 +21,7 @@
 #endif
 
 #if defined(MOZILLA_INTERNAL_API) && \
+    !defined(MOZILLA_XPCOMRT_API) && \
     (defined(DEBUG) || defined(FORCE_BUILD_REFCNT_LOGGING))
 #define MOZ_REFCOUNTED_LEAK_CHECKING
 #endif
@@ -58,9 +60,7 @@ template<typename T> OutParamRef<T> byRef(RefPtr<T>&);
  * section of your class, where ClassName is the name of your class.
  */
 namespace detail {
-#ifdef DEBUG
 const MozRefCountType DEAD = 0xffffdead;
-#endif
 
 // When building code that gets compiled into Gecko, try to use the
 // trace-refcount leak logging facilities.
@@ -237,6 +237,7 @@ public:
   RefPtr(const RefPtr& aOther) : mPtr(ref(aOther.mPtr)) {}
   MOZ_IMPLICIT RefPtr(const TemporaryRef<T>& aOther) : mPtr(aOther.take()) {}
   MOZ_IMPLICIT RefPtr(already_AddRefed<T>& aOther) : mPtr(aOther.take()) {}
+  MOZ_IMPLICIT RefPtr(already_AddRefed<T>&& aOther) : mPtr(aOther.take()) {}
   MOZ_IMPLICIT RefPtr(T* aVal) : mPtr(ref(aVal)) {}
 
   template<typename U>
@@ -255,6 +256,11 @@ public:
     return *this;
   }
   RefPtr& operator=(already_AddRefed<T>& aOther)
+  {
+    assign(aOther.take());
+    return *this;
+  }
+  RefPtr& operator=(already_AddRefed<T>&& aOther)
   {
     assign(aOther.take());
     return *this;
@@ -283,8 +289,6 @@ public:
   operator T*() const { return mPtr; }
   T* operator->() const MOZ_NO_ADDREF_RELEASE_ON_RETURN { return mPtr; }
   T& operator*() const { return *mPtr; }
-  template<typename U>
-  operator TemporaryRef<U>() { return TemporaryRef<U>(mPtr); }
 
 private:
   void assign(T* aVal)
@@ -326,7 +330,13 @@ class TemporaryRef
   typedef typename RefPtr<T>::DontRef DontRef;
 
 public:
-  MOZ_IMPLICIT TemporaryRef(T* aVal) : mPtr(RefPtr<T>::ref(aVal)) {}
+  // Please see already_AddRefed for a description of what these constructors
+  // do.
+  TemporaryRef() : mPtr(nullptr) {}
+  typedef void (TemporaryRef::* MatchNullptr)(double, float);
+  MOZ_IMPLICIT TemporaryRef(MatchNullptr aRawPtr) : mPtr(nullptr) {}
+  explicit TemporaryRef(T* aVal) : mPtr(RefPtr<T>::ref(aVal)) {}
+
   TemporaryRef(const TemporaryRef& aOther) : mPtr(aOther.take()) {}
 
   template<typename U>
@@ -346,7 +356,6 @@ private:
 
   mutable T* MOZ_OWNING_REF mPtr;
 
-  TemporaryRef() = delete;
   void operator=(const TemporaryRef&) = delete;
 };
 
@@ -396,6 +405,28 @@ OutParamRef<T>
 byRef(RefPtr<T>& aPtr)
 {
   return OutParamRef<T>(aPtr);
+}
+
+/**
+ * Helper function to be able to conveniently write things like:
+ *
+ *   TemporaryRef<T>
+ *   f(...)
+ *   {
+ *     return MakeAndAddRef<T>(...);
+ *   }
+ *
+ * since explicitly constructing TemporaryRef is unsightly.  Having an
+ * explicit construction of TemporaryRef from T* also inhibits a future
+ * auto-conversion from TemporaryRef to already_AddRefed, since the semantics
+ * of TemporaryRef(T*) differ from already_AddRefed(T*).
+ */
+template<typename T, typename... Args>
+TemporaryRef<T>
+MakeAndAddRef(Args&&... aArgs)
+{
+  RefPtr<T> p(new T(Forward<Args>(aArgs)...));
+  return p.forget();
 }
 
 } // namespace mozilla

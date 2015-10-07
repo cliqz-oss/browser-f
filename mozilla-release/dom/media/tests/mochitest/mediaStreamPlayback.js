@@ -32,10 +32,6 @@ MediaStreamPlayback.prototype = {
    *
    * @param {Boolean} isResume specifies if this media element is being resumed
    *                           from a previous run
-   * @param {Function} onSuccess the success callback if the media playback
-   *                             start and stop cycle completes successfully
-   * @param {Function} onError the error callback if the media playback
-   *                           start and stop cycle fails
    */
   playMedia : function(isResume) {
     return this.startMedia(isResume)
@@ -51,9 +47,10 @@ MediaStreamPlayback.prototype = {
   startMedia : function(isResume) {
     var canPlayThroughFired = false;
 
-    // If we're initially running this media, check that the time is zero
+    // If we're playing this media element for the first time,
+    // check that the time is zero.
     if (!isResume) {
-      is(this.mediaStream.currentTime, 0,
+      is(this.mediaElement.currentTime, 0,
          "Before starting the media element, currentTime = 0");
     }
 
@@ -231,6 +228,6 @@ function createHTML(options) {
   return scriptsReady.then(() => realCreateHTML(options));
 }
 
-function runTest(f) {
-  return scriptsReady.then(() => runTestWhenReady(f));
-}
+var runTest = testFunction => scriptsReady
+  .then(() => runTestWhenReady(testFunction))
+  .then(() => finish());

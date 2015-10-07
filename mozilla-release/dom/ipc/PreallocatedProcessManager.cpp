@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set sw=2 ts=8 et ft=cpp : */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,6 +16,10 @@
 
 #ifdef MOZ_NUWA_PROCESS
 #include "ipc/Nuwa.h"
+#endif
+
+#ifdef MOZ_B2G_LOADER
+#include "ProcessUtils.h"
 #endif
 
 // This number is fairly arbitrary ... the intention is to put off
@@ -133,7 +137,14 @@ PreallocatedProcessManagerImpl::Init()
     os->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID,
                     /* weakRef = */ false);
   }
-  RereadPrefs();
+#ifdef MOZ_B2G_LOADER
+  if (!mozilla::ipc::ProcLoaderIsInitialized()) {
+    Disable();
+  } else
+#endif
+  {
+    RereadPrefs();
+  }
 }
 
 NS_IMETHODIMP
@@ -291,7 +302,7 @@ PreallocatedProcessManagerImpl::PublishSpareProcess(ContentParent* aContent)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  if (Preferences::GetBool("dom.ipc.processPriorityManager.testMode")) {
+  if (Preferences::GetBool("dom.ipc.preallocatedProcessManager.testMode")) {
     AutoJSContext cx;
     nsCOMPtr<nsIMessageBroadcaster> ppmm =
       do_GetService("@mozilla.org/parentprocessmessagemanager;1");
@@ -337,7 +348,7 @@ PreallocatedProcessManagerImpl::OnNuwaReady()
   ProcessPriorityManager::SetProcessPriority(mPreallocatedAppProcess,
                                              hal::PROCESS_PRIORITY_MASTER);
   mIsNuwaReady = true;
-  if (Preferences::GetBool("dom.ipc.processPriorityManager.testMode")) {
+  if (Preferences::GetBool("dom.ipc.preallocatedProcessManager.testMode")) {
     AutoJSContext cx;
     nsCOMPtr<nsIMessageBroadcaster> ppmm =
       do_GetService("@mozilla.org/parentprocessmessagemanager;1");

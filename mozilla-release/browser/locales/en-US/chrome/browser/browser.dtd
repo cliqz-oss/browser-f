@@ -275,6 +275,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
   -  application menu item that opens the browser content toolbox UI in the Tools menu.
   -  This toolbox allows to debug the chrome of the content process in multiprocess builds.  -->
 <!ENTITY browserContentToolboxMenu.label     "Browser Content Toolbox">
+<!ENTITY browserContentToolboxMenu.accesskey "x">
 
 <!ENTITY devToolbarCloseButton.tooltiptext "Close Developer Toolbar">
 <!ENTITY devToolbarMenu.label              "Developer Toolbar">
@@ -304,6 +305,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY newNavigatorCmd.accesskey      "N">
 <!ENTITY newPrivateWindow.label     "New Private Window">
 <!ENTITY newPrivateWindow.accesskey "W">
+<!ENTITY newNonRemoteWindow.label   "New Non-e10s Window">
 
 <!ENTITY editMenu.label         "Edit"> 
 <!ENTITY editMenu.accesskey       "E"> 
@@ -423,6 +425,16 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      search providers:  "Search for <used typed keywords> with:" -->
 <!ENTITY searchFor.label              "Search for ">
 <!ENTITY searchWith.label             " with:">
+
+<!-- LOCALIZATION NOTE (search.label, searchAfter.label):
+     This string is used to build the header above the list of one-click search
+     providers when a one off engine has been selected.  The searchAfter text is
+     intentionally left empty for en-US and can be used by other localizations to
+     display a string after the search engine name.  This string will be displayed
+     as:  "Search <selected engine name><searchAfter.label text>" -->
+<!ENTITY search.label                 "Search ">
+<!ENTITY searchAfter.label            "">
+
 <!-- LOCALIZATION NOTE (searchWithHeader.label):
      The wording of this string should be as close as possible to
      searchFor.label and searchWith.label. This string will be used instead of
@@ -661,29 +673,14 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY editBookmark.cancel.label                   "Cancel">
 <!ENTITY editBookmark.removeBookmark.accessKey       "R">
 
-<!ENTITY identity.unverifiedsite2 "This website does not supply identity information.">
-<!ENTITY identity.connectedTo "You are connected to">
-<!-- Localization note (identity.runBy) : This string appears between a
-domain name (above) and an organization name (below). E.g.
+<!ENTITY identity.connectionSecure "Secure Connection">
+<!ENTITY identity.connectionNotSecure "Connection is Not Secure">
+<!ENTITY identity.connectionVerified "&brandShortName; verified that you are securely connected to this site, run by:">
+<!ENTITY identity.connectionInternal "This is a secure &brandShortName; page.">
 
-example.com
-which is run by
-Example Enterprises, Inc.
-
-The layout of the identity dialog prevents combining this into a single string with
-substitution variables.  If it is difficult to translate the sense of the string
-with that structure, consider a translation which ignores the preceding domain and
-just addresses the organization to follow, e.g. "This site is run by " -->
-<!ENTITY identity.runBy "which is run by">
-
-<!ENTITY identity.moreInfoLinkText "More Information…">
+<!ENTITY identity.moreInfoLinkText2 "More Information">
 
 <!ENTITY identity.permissions "Permissions">
-
-<!-- LOCALIZATION NOTE (identity.help.tooltip) : This string should be the
-     localized title of this SUMO article
-     https://support.mozilla.org/kb/how-do-i-tell-if-my-connection-is-secure -->
-<!ENTITY identity.help.tooltip "How do I tell if my connection to a website is secure?">
 
 <!-- Name for the tabs toolbar as spoken by screen readers.
      The word "toolbar" is appended automatically and should not be contained below! -->
@@ -742,7 +739,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY customizeMode.lwthemes.menuManage.accessKey "M">
 <!ENTITY customizeMode.lwthemes.menuGetMore "Get More Themes">
 <!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "G">
-<!ENTITY customizeMode.deveditionTheme.label2 "Use Developer Edition Theme">
 
 <!ENTITY social.chatBar.commandkey "c">
 <!ENTITY social.chatBar.label "Focus chats">
@@ -803,8 +799,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 
 <!ENTITY appMenuSidebars.label         "Sidebars">
 
-<!ENTITY switchToMetroCmd2.label       "Relaunch in &brandShortName; for Windows 8 Touch">
-
 <!-- LOCALIZATION NOTE: (panicButton.view.mainTimeframeDesc, panicButton.view.5min, panicButton.view.2hr, panicButton.view.day):
      The .mainTimeframeDesc string combined with any of the 3 others is meant to form a complete sentence, e.g. "Forget the last: Five minutes".
      Please ensure that this remains the case in the translation. -->
@@ -857,3 +851,10 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- Pre-landed strings for bug 1123519 -->
 <!ENTITY readingList.sidebar.add.label            "Add to Reading List">
 <!ENTITY readingList.sidebar.add.tooltip          "Add this page to your Reading List">
+
+<!-- LOCALIZATION NOTE (saveToPocketCmd.label, saveLinkToPocketCmd.label, pocketMenuitem.label): Pocket is a brand name -->
+<!ENTITY saveToPocketCmd.label     "Save Page to Pocket">
+<!ENTITY saveToPocketCmd.accesskey "k">
+<!ENTITY saveLinkToPocketCmd.label     "Save Link to Pocket">
+<!ENTITY saveLinkToPocketCmd.accesskey "o">
+<!ENTITY pocketMenuitem.label      "View Pocket List">

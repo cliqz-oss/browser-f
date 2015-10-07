@@ -102,12 +102,12 @@
   box-shadow: 0px 2px 10px #ff0;
 }
 
-:-moz-full-screen .pdfViewer .page {
+.pdfPresentationMode:-moz-full-screen .pdfViewer .page {
   margin-bottom: 100%;
   border: 0;
 }
 
-:fullscreen .pdfViewer .page {
+.pdfPresentationMode:fullscreen .pdfViewer .page {
   margin-bottom: 100%;
   border: 0;
 }
@@ -184,7 +184,7 @@ select {
   display: none !important;
 }
 
-#viewerContainer:-moz-full-screen {
+#viewerContainer.pdfPresentationMode:-moz-full-screen {
   top: 0px;
   border-top: 2px solid transparent;
   background-color: #000;
@@ -195,7 +195,7 @@ select {
   -moz-user-select: none;
 }
 
-#viewerContainer:fullscreen {
+#viewerContainer.pdfPresentationMode:fullscreen {
   top: 0px;
   border-top: 2px solid transparent;
   background-color: #000;
@@ -206,24 +206,24 @@ select {
   -moz-user-select: none;
 }
 
-:-moz-full-screen a:not(.internalLink) {
+.pdfPresentationMode:-moz-full-screen a:not(.internalLink) {
   display: none;
 }
 
-:fullscreen a:not(.internalLink) {
+.pdfPresentationMode:fullscreen a:not(.internalLink) {
   display: none;
 }
 
-:-moz-full-screen .textLayer > div {
+.pdfPresentationMode:-moz-full-screen .textLayer > div {
   cursor: none;
 }
 
-:fullscreen .textLayer > div {
+.pdfPresentationMode:fullscreen .textLayer > div {
   cursor: none;
 }
 
-#viewerContainer.presentationControls,
-#viewerContainer.presentationControls .textLayer > div {
+.pdfPresentationMode.pdfPresentationModeControls > *,
+.pdfPresentationMode.pdfPresentationModeControls .textLayer > div {
   cursor: default;
 }
 
@@ -803,7 +803,7 @@ html[dir='rtl'] .dropdownToolbarButton {
 .dropdownToolbarButton {
   width: 120px;
   max-width: 120px;
-  padding: 3px 2px 2px;
+  padding: 0;
   overflow: hidden;
   background: url(images/toolbarButton-menuArrows.png) no-repeat;
 }
@@ -819,7 +819,7 @@ html[dir='rtl'] .dropdownToolbarButton {
   font-size: 12px;
   color: hsl(0,0%,95%);
   margin: 0;
-  padding: 0;
+  padding: 3px 2px 2px;
   border: none;
   background: rgba(0,0,0,0); /* Opera does not support 'transparent' <select> background */
 }
@@ -1172,7 +1172,6 @@ html[dir='rtl'] .verticalToolbarSeparator {
 }
 
 .thumbnailImage {
-  transition-duration: 150ms;
   border: 1px solid transparent;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5), 0 2px 8px rgba(0, 0, 0, 0.3);
   opacity: 0.8;
@@ -1184,7 +1183,6 @@ html[dir='rtl'] .verticalToolbarSeparator {
 .thumbnailSelectionRing {
   border-radius: 2px;
   padding: 7px;
-  transition-duration: 150ms;
 }
 
 a:focus > .thumbnail > .thumbnailSelectionRing > .thumbnailImage,
@@ -1399,10 +1397,6 @@ html[dir='rtl'] .attachmentsItem > button {
 
 .dialog .toolbarField {
   margin: 5px 0;
-}
-.dialog .toolbarField:hover,
-.dialog .toolbarField:focus {
-  border-color: hsla(0,0%,0%,.32) hsla(0,0%,0%,.38) hsla(0,0%,0%,.42);
 }
 
 .dialog .separator {
@@ -1750,10 +1744,14 @@ html[dir='rtl'] #documentPropertiesOverlay .row > * {
   body[data-mozPrintCallback] #printContainer {
     display: block;
   }
-  #printContainer canvas {
+  /* wrapper around (scaled) print canvas elements */
+  #printContainer > div {
     position: relative;
     top: 0;
     left: 0;
+    overflow: hidden;
+  }
+  #printContainer canvas {
     display: block;
   }
 }

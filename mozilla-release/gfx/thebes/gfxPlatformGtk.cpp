@@ -12,8 +12,9 @@
 #include "nsUnicharUtils.h"
 #include "nsUnicodeProperties.h"
 #include "gfx2DGlue.h"
+#include "gfxFcPlatformFontList.h"
 #include "gfxFontconfigUtils.h"
-#include "gfxPangoFonts.h"
+#include "gfxFontconfigFonts.h"
 #include "gfxContext.h"
 #include "gfxUserFontSet.h"
 #include "gfxUtils.h"
@@ -30,6 +31,7 @@
 #include "gfxXlibSurface.h"
 #include "cairo-xlib.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/X11Util.h"
 
 /* Undefine the Status from Xlib since it will conflict with system headers on OSX */
 #if defined(__APPLE__) && defined(Status)
@@ -58,10 +60,15 @@ static cairo_user_data_key_t cairo_gdk_drawable_key;
     bool gfxPlatformGtk::sUseXRender = true;
 #endif
 
+bool gfxPlatformGtk::sUseFcFontList = false;
+
 gfxPlatformGtk::gfxPlatformGtk()
 {
-    if (!sFontconfigUtils)
+    sUseFcFontList = mozilla::Preferences::GetBool("gfx.font_rendering.fontconfig.fontlist.enabled");
+    if (!sUseFcFontList && !sFontconfigUtils) {
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
+    }
+
 #ifdef MOZ_X11
     sUseXRender = (GDK_IS_X11_DISPLAY(gdk_display_get_default())) ? 
                     mozilla::Preferences::GetBool("gfx.xrender.enabled") : false;
@@ -75,19 +82,27 @@ gfxPlatformGtk::gfxPlatformGtk()
 
 gfxPlatformGtk::~gfxPlatformGtk()
 {
-    gfxFontconfigUtils::Shutdown();
-    sFontconfigUtils = nullptr;
+    if (!sUseFcFontList) {
+        gfxFontconfigUtils::Shutdown();
+        sFontconfigUtils = nullptr;
+        gfxPangoFontGroup::Shutdown();
+    }
+}
 
-    gfxPangoFontGroup::Shutdown();
+void
+gfxPlatformGtk::FlushContentDrawing()
+{
+    if (UseXRender()) {
+        XFlush(DefaultXDisplay());
+    }
 }
 
 already_AddRefed<gfxASurface>
-gfxPlatformGtk::CreateOffscreenSurface(const IntSize& size,
-                                       gfxContentType contentType)
+gfxPlatformGtk::CreateOffscreenSurface(const IntSize& aSize,
+                                       gfxImageFormat aFormat)
 {
     nsRefPtr<gfxASurface> newSurface;
     bool needsClear = true;
-    gfxImageFormat imageFormat = OptimalFormatForContent(contentType);
 #ifdef MOZ_X11
     // XXX we really need a different interface here, something that passes
     // in more context, including the display and/or target surface type that
@@ -100,16 +115,16 @@ gfxPlatformGtk::CreateOffscreenSurface(const IntSize& size,
             Screen *screen = gdk_x11_screen_get_xscreen(gdkScreen);
             XRenderPictFormat* xrenderFormat =
                 gfxXlibSurface::FindRenderFormat(DisplayOfScreen(screen),
-                                                 imageFormat);
+                                                 aFormat);
 
             if (xrenderFormat) {
                 newSurface = gfxXlibSurface::Create(screen, xrenderFormat,
-                                                    size);
+                                                    aSize);
             }
         } else {
             // We're not going to use XRender, so we don't need to
             // search for a render format
-            newSurface = new gfxImageSurface(size, imageFormat);
+            newSurface = new gfxImageSurface(aSize, aFormat);
             // The gfxImageSurface ctor zeroes this for us, no need to
             // waste time clearing again
             needsClear = false;
@@ -121,7 +136,7 @@ gfxPlatformGtk::CreateOffscreenSurface(const IntSize& size,
         // We couldn't create a native surface for whatever reason;
         // e.g., no display, no RENDER, bad size, etc.
         // Fall back to image surface for the data.
-        newSurface = new gfxImageSurface(size, imageFormat);
+        newSurface = new gfxImageSurface(aSize, aFormat);
     }
 
     if (newSurface->CairoStatus()) {
@@ -140,19 +155,84 @@ gfxPlatformGtk::GetFontList(nsIAtom *aLangGroup,
                             const nsACString& aGenericFamily,
                             nsTArray<nsString>& aListOfFonts)
 {
-    return sFontconfigUtils->GetFontList(aLangGroup, aGenericFamily,
+    if (sUseFcFontList) {
+        gfxPlatformFontList::PlatformFontList()->GetFontList(aLangGroup,
+                                                             aGenericFamily,
+                                                             aListOfFonts);
+        return NS_OK;
+    }
+
+    return sFontconfigUtils->GetFontList(aLangGroup,
+                                         aGenericFamily,
                                          aListOfFonts);
 }
 
 nsresult
 gfxPlatformGtk::UpdateFontList()
 {
+    if (sUseFcFontList) {
+        gfxPlatformFontList::PlatformFontList()->UpdateFontList();
+        return NS_OK;
+    }
+
     return sFontconfigUtils->UpdateFontList();
+}
+
+// xxx - this is ubuntu centric, need to go through other distros and flesh
+// out a more general list
+static const char kFontDejaVuSans[] = "DejaVu Sans";
+static const char kFontDejaVuSerif[] = "DejaVu Serif";
+static const char kFontFreeSans[] = "FreeSans";
+static const char kFontFreeSerif[] = "FreeSerif";
+static const char kFontTakaoPGothic[] = "TakaoPGothic";
+static const char kFontDroidSansFallback[] = "Droid Sans Fallback";
+static const char kFontWenQuanYiMicroHei[] = "WenQuanYi Micro Hei";
+static const char kFontNanumGothic[] = "NanumGothic";
+
+void
+gfxPlatformGtk::GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
+                                       int32_t aRunScript,
+                                       nsTArray<const char*>& aFontList)
+{
+    aFontList.AppendElement(kFontDejaVuSerif);
+    aFontList.AppendElement(kFontFreeSerif);
+    aFontList.AppendElement(kFontDejaVuSans);
+    aFontList.AppendElement(kFontFreeSans);
+
+    // add fonts for CJK ranges
+    // xxx - this isn't really correct, should use the same CJK font ordering
+    // as the pref font code
+    if (aCh >= 0x3000 &&
+        ((aCh < 0xe000) ||
+         (aCh >= 0xf900 && aCh < 0xfff0) ||
+         ((aCh >> 16) == 2))) {
+        aFontList.AppendElement(kFontTakaoPGothic);
+        aFontList.AppendElement(kFontDroidSansFallback);
+        aFontList.AppendElement(kFontWenQuanYiMicroHei);
+        aFontList.AppendElement(kFontNanumGothic);
+    }
+}
+
+gfxPlatformFontList*
+gfxPlatformGtk::CreatePlatformFontList()
+{
+    gfxPlatformFontList* list = new gfxFcPlatformFontList();
+    if (NS_SUCCEEDED(list->InitFontList())) {
+        return list;
+    }
+    gfxPlatformFontList::Shutdown();
+    return nullptr;
 }
 
 nsresult
 gfxPlatformGtk::GetStandardFamilyName(const nsAString& aFontName, nsAString& aFamilyName)
 {
+    if (sUseFcFontList) {
+        gfxPlatformFontList::PlatformFontList()->
+            GetStandardFamilyName(aFontName, aFamilyName);
+        return NS_OK;
+    }
+
     return sFontconfigUtils->GetStandardFamilyName(aFontName, aFamilyName);
 }
 
@@ -161,6 +241,10 @@ gfxPlatformGtk::CreateFontGroup(const FontFamilyList& aFontFamilyList,
                                 const gfxFontStyle *aStyle,
                                 gfxUserFontSet *aUserFontSet)
 {
+    if (sUseFcFontList) {
+        return new gfxFontGroup(aFontFamilyList, aStyle, aUserFontSet);
+    }
+
     return new gfxPangoFontGroup(aFontFamilyList, aStyle, aUserFontSet);
 }
 
@@ -170,6 +254,11 @@ gfxPlatformGtk::LookupLocalFont(const nsAString& aFontName,
                                 int16_t aStretch,
                                 bool aItalic)
 {
+    if (sUseFcFontList) {
+        gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
+        return pfl->LookupLocalFont(aFontName, aWeight, aStretch, aItalic);
+    }
+
     return gfxPangoFontGroup::NewFontEntry(aFontName, aWeight,
                                            aStretch, aItalic);
 }
@@ -182,6 +271,12 @@ gfxPlatformGtk::MakePlatformFont(const nsAString& aFontName,
                                  const uint8_t* aFontData,
                                  uint32_t aLength)
 {
+    if (sUseFcFontList) {
+        gfxPlatformFontList* pfl = gfxPlatformFontList::PlatformFontList();
+        return pfl->MakePlatformFont(aFontName, aWeight, aStretch, aItalic,
+                                     aFontData, aLength);
+    }
+
     // passing ownership of the font data to the new font entry
     return gfxPangoFontGroup::NewFontEntry(aFontName, aWeight,
                                            aStretch, aItalic,

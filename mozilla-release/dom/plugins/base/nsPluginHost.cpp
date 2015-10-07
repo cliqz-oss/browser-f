@@ -72,6 +72,7 @@
 #include "prprf.h"
 #include "nsThreadUtils.h"
 #include "nsIInputStreamTee.h"
+#include "nsQueryObject.h"
 
 #include "nsDirectoryServiceDefs.h"
 #include "nsAppDirectoryServiceDefs.h"
@@ -91,6 +92,7 @@
 #include "nsIImageLoadingContent.h"
 #include "mozilla/Preferences.h"
 #include "nsVersionComparator.h"
+#include "nsNullPrincipal.h"
 
 #if defined(XP_WIN)
 #include "nsIWindowMediator.h"
@@ -107,6 +109,8 @@
 #if MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
 #endif
+
+#include "npapi.h"
 
 using namespace mozilla;
 using mozilla::TimeStamp;
@@ -280,9 +284,9 @@ nsPluginHost::nsPluginHost()
   nsPluginLogging::gNPPLog = PR_NewLogModule(NPP_LOG_NAME);
   nsPluginLogging::gPluginLog = PR_NewLogModule(PLUGIN_LOG_NAME);
 
-  PR_LOG(nsPluginLogging::gNPNLog, PLUGIN_LOG_ALWAYS,("NPN Logging Active!\n"));
-  PR_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_ALWAYS,("General Plugin Logging Active! (nsPluginHost::ctor)\n"));
-  PR_LOG(nsPluginLogging::gNPPLog, PLUGIN_LOG_ALWAYS,("NPP Logging Active!\n"));
+  MOZ_LOG(nsPluginLogging::gNPNLog, PLUGIN_LOG_ALWAYS,("NPN Logging Active!\n"));
+  MOZ_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_ALWAYS,("General Plugin Logging Active! (nsPluginHost::ctor)\n"));
+  MOZ_LOG(nsPluginLogging::gNPPLog, PLUGIN_LOG_ALWAYS,("NPP Logging Active!\n"));
 
   PLUGIN_LOG(PLUGIN_LOG_ALWAYS,("nsPluginHost::ctor\n"));
   PR_LogFlush();
@@ -555,7 +559,7 @@ nsresult nsPluginHost::PostURL(nsISupports* pluginInst,
 
     nsCOMPtr<nsIStringInputStream> sis = do_CreateInstance("@mozilla.org/io/string-input-stream;1", &rv);
     if (!sis) {
-      NS_Free(dataToPost);
+      free(dataToPost);
       return rv;
     }
 
@@ -785,7 +789,7 @@ nsPluginHost::InstantiatePluginInstance(const nsACString& aMimeType, nsIURI* aUR
   if (aURL)
     aURL->GetAsciiSpec(urlSpec);
 
-  PR_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_NORMAL,
+  MOZ_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_NORMAL,
         ("nsPluginHost::InstantiatePlugin Begin mime=%s, url=%s\n",
          PromiseFlatCString(aMimeType).get(), urlSpec.get()));
 
@@ -848,7 +852,7 @@ nsPluginHost::InstantiatePluginInstance(const nsACString& aMimeType, nsIURI* aUR
   nsAutoCString urlSpec2;
   if (aURL != nullptr) aURL->GetAsciiSpec(urlSpec2);
 
-  PR_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_NORMAL,
+  MOZ_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_NORMAL,
         ("nsPluginHost::InstantiatePlugin Finished mime=%s, rv=%d, url=%s\n",
          PromiseFlatCString(aMimeType).get(), rv, urlSpec2.get()));
 
@@ -926,7 +930,7 @@ nsPluginHost::TrySetUpPluginInstance(const nsACString &aMimeType,
   nsAutoCString urlSpec;
   if (aURL != nullptr) aURL->GetSpec(urlSpec);
 
-  PR_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_NORMAL,
+  MOZ_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_NORMAL,
         ("nsPluginHost::TrySetupPluginInstance Begin mime=%s, owner=%p, url=%s\n",
          PromiseFlatCString(aMimeType).get(), aOwner, urlSpec.get()));
 
@@ -950,6 +954,8 @@ nsPluginHost::TrySetUpPluginInstance(const nsACString &aMimeType,
   nsPluginTag* pluginTag = FindNativePluginForType(aMimeType, true);
 
   NS_ASSERTION(pluginTag, "Must have plugin tag here!");
+
+  plugin->GetLibrary()->SetHasLocalInstance();
 
 #if defined(MOZ_WIDGET_ANDROID) && defined(MOZ_CRASHREPORTER)
   if (pluginTag->mIsFlashPlugin) {
@@ -989,7 +995,7 @@ nsPluginHost::TrySetUpPluginInstance(const nsACString &aMimeType,
   if (aURL)
     aURL->GetSpec(urlSpec2);
 
-  PR_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_BASIC,
+  MOZ_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_BASIC,
         ("nsPluginHost::TrySetupPluginInstance Finished mime=%s, rv=%d, owner=%p, url=%s\n",
          PromiseFlatCString(aMimeType).get(), rv, aOwner, urlSpec2.get()));
 
@@ -1052,7 +1058,6 @@ nsPluginHost::GetBlocklistStateForType(const nsACString &aMimeType,
                                     aExcludeFlags,
                                     getter_AddRefs(tag));
   NS_ENSURE_SUCCESS(rv, rv);
-
   return tag->GetBlocklistState(aState);
 }
 
@@ -1128,7 +1133,7 @@ nsPluginHost::GetPluginTags(uint32_t* aPluginCount, nsIPluginTag*** aResults)
   }
 
   *aResults = static_cast<nsIPluginTag**>
-                         (nsMemory::Alloc(count * sizeof(**aResults)));
+                         (moz_xmalloc(count * sizeof(**aResults)));
   if (!*aResults)
     return NS_ERROR_OUT_OF_MEMORY;
 
@@ -1273,6 +1278,13 @@ nsPluginHost::GetPluginForContentProcess(uint32_t aPluginId, nsNPAPIPlugin** aPl
 
   nsPluginTag* pluginTag = PluginWithId(aPluginId);
   if (pluginTag) {
+    // When setting up a bridge, double check with chrome to see if this plugin
+    // is blocked hard. Note this does not protect against vulnerable plugins
+    // that the user has explicitly allowed. :(
+    if (pluginTag->IsBlocklisted()) {
+      return NS_ERROR_PLUGIN_BLOCKLISTED;
+    }
+
     nsresult rv = EnsurePluginLoaded(pluginTag);
     if (NS_FAILED(rv)) {
       return rv;
@@ -1806,9 +1818,39 @@ struct CompareFilesByTime
 
 } // anonymous namespace
 
+bool
+nsPluginHost::ShouldAddPlugin(nsPluginTag* aPluginTag)
+{
+#if defined(XP_WIN) && (defined(__x86_64__) || defined(_M_X64))
+  // On 64-bit windows, the only plugin we should load is flash. Use library
+  // filename and MIME type to check.
+  if (StringBeginsWith(aPluginTag->mFileName, NS_LITERAL_CSTRING("NPSWF"), nsCaseInsensitiveCStringComparator()) &&
+      (aPluginTag->HasMimeType(NS_LITERAL_CSTRING("application/x-shockwave-flash")) ||
+       aPluginTag->HasMimeType(NS_LITERAL_CSTRING("application/x-shockwave-flash-test")))) {
+    return true;
+  }
+  // Accept the test plugin MIME types, so mochitests still work.
+  if (aPluginTag->HasMimeType(NS_LITERAL_CSTRING("application/x-test")) ||
+      aPluginTag->HasMimeType(NS_LITERAL_CSTRING("application/x-Second-Test")) ||
+      aPluginTag->HasMimeType(NS_LITERAL_CSTRING("application/x-java-test"))) {
+    return true;
+  }
+#ifdef PLUGIN_LOGGING
+  PLUGIN_LOG(PLUGIN_LOG_NORMAL,
+             ("ShouldAddPlugin : Ignoring non-flash plugin library %s\n", aPluginTag->mFileName.get()));
+#endif // PLUGIN_LOGGING
+  return false;
+#else
+  return true;
+#endif // defined(XP_WIN) && (defined(__x86_64__) || defined(_M_X64))
+}
+
 void
 nsPluginHost::AddPluginTag(nsPluginTag* aPluginTag)
 {
+  if (!ShouldAddPlugin(aPluginTag)) {
+    return;
+  }
   aPluginTag->mNext = mPlugins;
   mPlugins = aPluginTag;
 
@@ -2961,8 +3003,13 @@ nsPluginHost::ReadPluginInfo()
       tag->ImportFlagsToPrefs(tagflag);
     }
 
-    PR_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_BASIC,
+    MOZ_LOG(nsPluginLogging::gPluginLog, PLUGIN_LOG_BASIC,
       ("LoadCachedPluginsInfo : Loading Cached plugininfo for %s\n", tag->mFileName.get()));
+
+    if (!ShouldAddPlugin(tag)) {
+      continue;
+    }
+
     tag->mNext = mCachedPlugins;
     mCachedPlugins = tag;
   }
@@ -3121,8 +3168,8 @@ nsresult nsPluginHost::NewPluginURLStream(const nsString& aURL,
     // in this else branch we really don't know where the load is coming
     // from and in fact should use something better than just using
     // a nullPrincipal as the loadingPrincipal.
-    principal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
+    principal = nsNullPrincipal::Create();
+    NS_ENSURE_TRUE(principal, NS_ERROR_FAILURE);
     rv = NS_NewChannel(getter_AddRefs(channel),
                        url,
                        principal,
@@ -3513,7 +3560,7 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     int cntSingleLF = singleLF.Length();
     newBufferLen += cntSingleLF;
 
-    if (!(*outPostData = p = (char*)nsMemory::Alloc(newBufferLen)))
+    if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
       return NS_ERROR_OUT_OF_MEMORY;
 
     // deal with single LF
@@ -3542,11 +3589,11 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     // to keep ContentLenHeader+value followed by data
     uint32_t l = sizeof(ContentLenHeader) + sizeof(CRLFCRLF) + 32;
     newBufferLen = dataLen + l;
-    if (!(*outPostData = p = (char*)nsMemory::Alloc(newBufferLen)))
+    if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
       return NS_ERROR_OUT_OF_MEMORY;
     headersLen = PR_snprintf(p, l,"%s: %ld%s", ContentLenHeader, dataLen, CRLFCRLF);
     if (headersLen == l) { // if PR_snprintf has ate all extra space consider this as an error
-      nsMemory::Free(p);
+      free(p);
       *outPostData = 0;
       return NS_ERROR_FAILURE;
     }
@@ -3646,7 +3693,7 @@ nsPluginHost::CreateTempFileToPost(const char *aPostDataURL, nsIFile **aTmpFile)
         // lets parse it through nsPluginHost::ParsePostBufferToFixHeaders()
         ParsePostBufferToFixHeaders((const char *)buf, br, &parsedBuf, &bw);
         rv = outStream->Write(parsedBuf, bw, &br);
-        nsMemory::Free(parsedBuf);
+        free(parsedBuf);
         if (NS_FAILED(rv) || (bw != br))
           break;
 
@@ -3777,6 +3824,7 @@ nsPluginHost::PluginCrashed(nsNPAPIPlugin* aPlugin,
                             const nsAString& browserDumpID)
 {
   nsPluginTag* crashedPluginTag = TagForPlugin(aPlugin);
+  MOZ_ASSERT(crashedPluginTag);
 
   // Notify the app's observer that a plugin crashed so it can submit
   // a crashreport.
@@ -3786,6 +3834,18 @@ nsPluginHost::PluginCrashed(nsNPAPIPlugin* aPlugin,
   nsCOMPtr<nsIWritablePropertyBag2> propbag =
     do_CreateInstance("@mozilla.org/hash-property-bag;1");
   if (obsService && propbag) {
+    uint32_t runID = 0;
+    PluginLibrary* library = aPlugin->GetLibrary();
+
+    if (!NS_WARN_IF(!library)) {
+      library->GetRunID(&runID);
+    }
+    propbag->SetPropertyAsUint32(NS_LITERAL_STRING("runID"), runID);
+
+    nsCString pluginName;
+    crashedPluginTag->GetName(pluginName);
+    propbag->SetPropertyAsAString(NS_LITERAL_STRING("pluginName"),
+                                   NS_ConvertUTF8toUTF16(pluginName));
     propbag->SetPropertyAsAString(NS_LITERAL_STRING("pluginDumpID"),
                                   pluginDumpID);
     propbag->SetPropertyAsAString(NS_LITERAL_STRING("browserDumpID"),

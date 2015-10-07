@@ -37,6 +37,7 @@
 #include "nsPerformance.h"
 #include "nsINetworkInterceptController.h"
 #include "mozIThirdPartyUtil.h"
+#include "nsStreamUtils.h"
 
 #include <algorithm>
 
@@ -68,6 +69,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mTracingEnabled(true)
   , mTimingEnabled(false)
   , mAllowSpdy(true)
+  , mAllowAltSvc(true)
   , mResponseTimeoutEnabled(true)
   , mAllRedirectsSameOrigin(true)
   , mAllRedirectsPassTimingAllowCheck(true)
@@ -82,6 +84,7 @@ HttpBaseChannel::HttpBaseChannel()
   , mForcePending(false)
   , mCorsIncludeCredentials(false)
   , mCorsMode(nsIHttpChannelInternal::CORS_MODE_NO_CORS)
+  , mOnStartRequestCalled(false)
 {
   LOG(("Creating HttpBaseChannel @%x\n", this));
 
@@ -100,14 +103,7 @@ HttpBaseChannel::~HttpBaseChannel()
 {
   LOG(("Destroying HttpBaseChannel @%x\n", this));
 
-  if (mLoadInfo) {
-    nsCOMPtr<nsIThread> mainThread;
-    NS_GetMainThread(getter_AddRefs(mainThread));
-    
-    nsILoadInfo *forgetableLoadInfo;
-    mLoadInfo.forget(&forgetableLoadInfo);
-    NS_ProxyRelease(mainThread, forgetableLoadInfo, false);
-  }
+  NS_ReleaseOnMainThread(mLoadInfo);
 
   // Make sure we don't leak
   CleanRedirectCacheChainIfNecessary();
@@ -562,6 +558,51 @@ HttpBaseChannel::SetUploadStream(nsIInputStream *stream,
   return NS_OK;
 }
 
+static void
+EnsureStreamBuffered(nsCOMPtr<nsIInputStream>& aStream)
+{
+  if (!NS_InputStreamIsBuffered(aStream)) {
+    nsCOMPtr<nsIInputStream> bufferedStream;
+    nsresult rv = NS_NewBufferedInputStream(getter_AddRefs(bufferedStream),
+                                            aStream,
+                                            4096);
+    NS_ENSURE_SUCCESS_VOID(rv);
+    aStream.swap(bufferedStream);
+  }
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::CloneUploadStream(nsIInputStream** aClonedStream)
+{
+  NS_ENSURE_ARG_POINTER(aClonedStream);
+  *aClonedStream = nullptr;
+
+  if (!mUploadStream) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIInputStream> clonedStream;
+  nsCOMPtr<nsIInputStream> replacementStream;
+  nsresult rv = NS_CloneInputStream(mUploadStream, getter_AddRefs(clonedStream),
+                                    getter_AddRefs(replacementStream));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (replacementStream) {
+    mUploadStream.swap(replacementStream);
+
+    // Ensure that the replacement stream is buffered.
+    EnsureStreamBuffered(mUploadStream);
+  }
+
+  // Ensure that the cloned stream is buffered.
+  EnsureStreamBuffered(clonedStream);
+
+  clonedStream.forget(aClonedStream);
+
+  return NS_OK;
+}
+
+
 //-----------------------------------------------------------------------------
 // HttpBaseChannel::nsIUploadChannel2
 //-----------------------------------------------------------------------------
@@ -898,6 +939,21 @@ HttpBaseChannel::SetRequestMethod(const nsACString& aMethod)
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::GetNetworkInterfaceId(nsACString& aNetworkInterfaceId)
+{
+  aNetworkInterfaceId = mNetworkInterfaceId;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetNetworkInterfaceId(const nsACString& aNetworkInterfaceId)
+{
+  ENSURE_CALLED_BEFORE_CONNECT();
+  mNetworkInterfaceId = aNetworkInterfaceId;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::GetReferrer(nsIURI **referrer)
 {
   NS_ENSURE_ARG_POINTER(referrer);
@@ -1043,7 +1099,7 @@ HttpBaseChannel::SetReferrerWithPolicy(nsIURI *referrer,
     if (NS_FAILED(rv)) return rv;
 
     // It's ok to send referrer for https-to-http scenarios if the referrer
-    // policy is "unsafe-url", "origin", or "origin-when-crossorigin".
+    // policy is "unsafe-url", "origin", or "origin-when-cross-origin".
     if (referrerPolicy != REFERRER_POLICY_UNSAFE_URL &&
 	referrerPolicy != REFERRER_POLICY_ORIGIN_WHEN_XORIGIN &&
         referrerPolicy != REFERRER_POLICY_ORIGIN) {
@@ -1363,13 +1419,46 @@ HttpBaseChannel::SetRedirectionLimit(uint32_t value)
 nsresult
 HttpBaseChannel::OverrideSecurityInfo(nsISupports* aSecurityInfo)
 {
-  MOZ_RELEASE_ASSERT(!mSecurityInfo,
-                     "This can only be called when we don't have a security info object already");
+  MOZ_ASSERT(!mSecurityInfo,
+             "This can only be called when we don't have a security info object already");
   MOZ_RELEASE_ASSERT(aSecurityInfo,
                      "This can only be called with a valid security info object");
-  MOZ_RELEASE_ASSERT(ShouldIntercept(),
-                     "This can only be called on channels that can be intercepted");
+  MOZ_ASSERT(ShouldIntercept(),
+             "This can only be called on channels that can be intercepted");
+  if (mSecurityInfo) {
+    LOG(("HttpBaseChannel::OverrideSecurityInfo mSecurityInfo is null! "
+         "[this=%p]\n", this));
+    return NS_ERROR_UNEXPECTED;
+  }
+  if (!ShouldIntercept()) {
+    LOG(("HttpBaseChannel::OverrideSecurityInfo channel cannot be intercepted! "
+         "[this=%p]\n", this));
+    return NS_ERROR_UNEXPECTED;
+  }
+
   mSecurityInfo = aSecurityInfo;
+  return NS_OK;
+}
+
+nsresult
+HttpBaseChannel::OverrideURI(nsIURI* aRedirectedURI)
+{
+  MOZ_ASSERT(mLoadFlags & LOAD_REPLACE,
+             "This can only happen if the LOAD_REPLACE flag is set");
+  MOZ_ASSERT(ShouldIntercept(),
+             "This can only be called on channels that can be intercepted");
+  if (!(mLoadFlags & LOAD_REPLACE)) {
+    LOG(("HttpBaseChannel::OverrideURI LOAD_REPLACE flag not set! [this=%p]\n",
+         this));
+    return NS_ERROR_UNEXPECTED;
+  }
+  if (!ShouldIntercept()) {
+    LOG(("HttpBaseChannel::OverrideURI channel cannot be intercepted! "
+         "[this=%p]\n", this));
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  mURI = aRedirectedURI;
   return NS_OK;
 }
 
@@ -1800,6 +1889,22 @@ HttpBaseChannel::SetAllowSpdy(bool aAllowSpdy)
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::GetAllowAltSvc(bool *aAllowAltSvc)
+{
+  NS_ENSURE_ARG_POINTER(aAllowAltSvc);
+
+  *aAllowAltSvc = mAllowAltSvc;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::SetAllowAltSvc(bool aAllowAltSvc)
+{
+  mAllowAltSvc = aAllowAltSvc;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::GetApiRedirectToURI(nsIURI ** aResult)
 {
   NS_ENSURE_ARG_POINTER(aResult);
@@ -2053,8 +2158,13 @@ void
 HttpBaseChannel::DoNotifyListener()
 {
   if (mListener) {
+    MOZ_ASSERT(!mOnStartRequestCalled,
+               "We should not call OnStartRequest twice");
+
     nsCOMPtr<nsIStreamListener> listener = mListener;
     listener->OnStartRequest(this, mListenerContext);
+
+    mOnStartRequestCalled = true;
   }
 
   // Make sure mIsPending is set to false. At this moment we are done from
@@ -2170,6 +2280,14 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
     }
   }
 
+  // Preserve any skip-serviceworker-flag if possible.
+  if (mForceNoIntercept) {
+    nsCOMPtr<nsIHttpChannelInternal> httpChan = do_QueryInterface(newChannel);
+    if (httpChan) {
+      httpChan->ForceNoIntercept();
+    }
+  }
+
   // Propagate our loadinfo if needed.
   newChannel->SetLoadInfo(mLoadInfo);
 
@@ -2251,6 +2369,7 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
     // Convey third party cookie and spdy flags.
     httpInternal->SetThirdPartyFlags(mThirdPartyFlags);
     httpInternal->SetAllowSpdy(mAllowSpdy);
+    httpInternal->SetAllowAltSvc(mAllowAltSvc);
 
     // update the DocumentURI indicator since we are being redirected.
     // if this was a top-level document channel, then the new channel
@@ -2271,16 +2390,17 @@ HttpBaseChannel::SetupReplacementChannel(nsIURI       *newURI,
     // Transfer existing redirect information. Add all of our existing
     // redirects to the new channel.
     for (int32_t i = 0; i < mRedirects.Count(); ++i) {
-#ifdef PR_LOGGING
-      nsCOMPtr<nsIURI> uri;
-      mRedirects[i]->GetURI(getter_AddRefs(uri));
-      nsCString spec;
-      if (uri) {
-        uri->GetSpec(spec);
+      if (LOG_ENABLED()) {
+        nsCOMPtr<nsIURI> uri;
+        mRedirects[i]->GetURI(getter_AddRefs(uri));
+        nsCString spec;
+        if (uri) {
+          uri->GetSpec(spec);
+        }
+        LOG(("HttpBaseChannel::SetupReplacementChannel adding redirect \'%s\' "
+             "[this=%p]", spec.get(), this));
       }
-      LOG(("HttpBaseChannel::SetupReplacementChannel adding redirect \'%s\' "
-           "[this=%p]", spec.get(), this));
-#endif
+
       httpInternal->AddRedirect(mRedirects[i]);
     }
 

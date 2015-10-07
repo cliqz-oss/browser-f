@@ -24,6 +24,7 @@
 #include "jit/MIRGraph.h"
 #include "jit/VMFunctions.h"
 #include "vm/Interpreter.h"
+#include "vm/String.h"
 
 #include "vm/Interpreter-inl.h"
 #include "vm/NativeObject-inl.h"
@@ -116,7 +117,9 @@ MResumePoint::writeRecoverData(CompactBufferWriter& writer) const
     // arguments_object.
     MOZ_ASSERT(CountArgSlots(script, fun) < SNAPSHOT_MAX_NARGS + 4);
 
+#ifdef DEBUG
     uint32_t implicit = StartArgSlot(script);
+#endif
     uint32_t formalArgs = CountArgSlots(script, fun);
     uint32_t nallocs = formalArgs + script->nfixed() + exprStack;
 
@@ -1197,14 +1200,12 @@ MNewArray::writeRecoverData(CompactBufferWriter& writer) const
     MOZ_ASSERT(canRecoverOnBailout());
     writer.writeUnsigned(uint32_t(RInstruction::Recover_NewArray));
     writer.writeUnsigned(count());
-    writer.writeByte(uint8_t(allocatingBehaviour()));
     return true;
 }
 
 RNewArray::RNewArray(CompactBufferReader& reader)
 {
     count_ = reader.readUnsigned();
-    allocatingBehaviour_ = AllocatingBehaviour(reader.readByte());
 }
 
 bool
@@ -1212,13 +1213,9 @@ RNewArray::recover(JSContext* cx, SnapshotIterator& iter) const
 {
     RootedObject templateObject(cx, &iter.read().toObject());
     RootedValue result(cx);
-    RootedObjectGroup group(cx);
+    RootedObjectGroup group(cx, templateObject->group());
 
-    // See CodeGenerator::visitNewArrayCallVM
-    if (!templateObject->isSingleton())
-        group = templateObject->group();
-
-    JSObject* resultObject = NewDenseArray(cx, count_, group, allocatingBehaviour_);
+    JSObject* resultObject = NewFullyAllocatedArrayTryUseGroup(cx, group, count_);
     if (!resultObject)
         return false;
 
@@ -1259,24 +1256,20 @@ MCreateThisWithTemplate::writeRecoverData(CompactBufferWriter& writer) const
 {
     MOZ_ASSERT(canRecoverOnBailout());
     writer.writeUnsigned(uint32_t(RInstruction::Recover_CreateThisWithTemplate));
-    writer.writeByte(bool(initialHeap() == gc::TenuredHeap));
     return true;
 }
 
 RCreateThisWithTemplate::RCreateThisWithTemplate(CompactBufferReader& reader)
 {
-    tenuredHeap_ = reader.readByte();
 }
 
 bool
 RCreateThisWithTemplate::recover(JSContext* cx, SnapshotIterator& iter) const
 {
-    RootedPlainObject templateObject(cx, &iter.read().toObject().as<PlainObject>());
+    RootedObject templateObject(cx, &iter.read().toObject());
 
     // See CodeGenerator::visitCreateThisWithTemplate
-    gc::AllocKind allocKind = templateObject->asTenured().getAllocKind();
-    gc::InitialHeap initialHeap = tenuredHeap_ ? gc::TenuredHeap : gc::DefaultHeap;
-    JSObject* resultObject = NativeObject::copy(cx, allocKind, initialHeap, templateObject);
+    JSObject* resultObject = NewObjectOperationWithTemplate(cx, templateObject);
     if (!resultObject)
         return false;
 
@@ -1379,13 +1372,40 @@ RObjectState::RObjectState(CompactBufferReader& reader)
 bool
 RObjectState::recover(JSContext* cx, SnapshotIterator& iter) const
 {
-    RootedNativeObject object(cx, &iter.read().toObject().as<NativeObject>());
-    MOZ_ASSERT(object->slotSpan() == numSlots());
-
+    RootedObject object(cx, &iter.read().toObject());
     RootedValue val(cx);
-    for (size_t i = 0; i < numSlots(); i++) {
-        val = iter.read();
-        object->setSlot(i, val);
+
+    if (object->is<UnboxedPlainObject>()) {
+        const UnboxedLayout& layout = object->as<UnboxedPlainObject>().layout();
+
+        RootedId id(cx);
+        RootedValue receiver(cx, ObjectValue(*object));
+        const UnboxedLayout::PropertyVector& properties = layout.properties();
+        for (size_t i = 0; i < properties.length(); i++) {
+            val = iter.read();
+
+            // This is the default placeholder value of MObjectState, when no
+            // properties are defined yet.
+            if (val.isUndefined())
+                continue;
+
+            id = NameToId(properties[i].name);
+            ObjectOpResult result;
+
+            // SetProperty can only fail due to OOM.
+            if (!SetProperty(cx, object, id, val, receiver, result))
+                return false;
+            if (!result)
+                return result.reportError(cx, object, id);
+        }
+    } else {
+        RootedNativeObject nativeObject(cx, &object->as<NativeObject>());
+        MOZ_ASSERT(nativeObject->slotSpan() == numSlots());
+
+        for (size_t i = 0; i < numSlots(); i++) {
+            val = iter.read();
+            nativeObject->setSlot(i, val);
+        }
     }
 
     val.setObject(*object);

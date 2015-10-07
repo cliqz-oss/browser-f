@@ -2,9 +2,9 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+from __future__ import absolute_import
+
 import os
-import re
-import select
 import signal
 import subprocess
 import sys
@@ -25,8 +25,8 @@ isPosix = os.name == "posix" # includes MacOS X
 if isWin:
     import ctypes, ctypes.wintypes, msvcrt
     from ctypes import sizeof, addressof, c_ulong, byref, WinError, c_longlong
-    import winprocess
-    from qijo import JobObjectAssociateCompletionPortInformation,\
+    from . import winprocess
+    from .qijo import JobObjectAssociateCompletionPortInformation,\
     JOBOBJECT_ASSOCIATE_COMPLETION_PORT, JobObjectExtendedLimitInformation,\
     JOBOBJECT_BASIC_LIMIT_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION, IO_COUNTERS
 
@@ -65,6 +65,7 @@ class ProcessHandlerMixin(object):
 
         MAX_IOCOMPLETION_PORT_NOTIFICATION_DELAY = 180
         MAX_PROCESS_KILL_DELAY = 30
+        TIMEOUT_BEFORE_SIGKILL = 1.0
 
         def __init__(self,
                      args,
@@ -94,6 +95,16 @@ class ProcessHandlerMixin(object):
                 def setpgidfn():
                     os.setpgid(0, 0)
                 preexec_fn = setpgidfn
+
+            if isinstance(env, dict):
+                tmp_env = {}
+                for k, v in env.iteritems():
+                    if isinstance(k, bytes):
+                        k = k.decode(sys.getfilesystemencoding() or 'utf-8', 'replace')
+                    if isinstance(v, bytes):
+                        v = v.decode(sys.getfilesystemencoding() or 'utf-8', 'replace')
+                    tmp_env[k] = v
+                env = tmp_env
 
             try:
                 subprocess.Popen.__init__(self, args, bufsize, executable,
@@ -134,16 +145,32 @@ class ProcessHandlerMixin(object):
                     if err is not None:
                         raise OSError(err)
             else:
-                sig = sig or signal.SIGKILL
-                if not self._ignore_children:
-                    try:
-                        os.killpg(self.pid, sig)
-                    except BaseException, e:
-                        if getattr(e, "errno", None) != 3:
-                            # Error 3 is "no such process", which is ok
-                            print >> sys.stdout, "Could not kill process, could not find pid: %s, assuming it's already dead" % self.pid
+                def send_sig(sig):
+                    if not self._ignore_children:
+                        try:
+                            os.killpg(self.pid, sig)
+                        except BaseException, e:
+                            if getattr(e, "errno", None) != 3:
+                                # Error 3 is "no such process", which is ok
+                                print >> sys.stdout, "Could not kill process, could not find pid: %s, assuming it's already dead" % self.pid
+                    else:
+                        os.kill(self.pid, sig)
+
+                if sig is None and isPosix:
+                    # ask the process for termination and wait a bit
+                    send_sig(signal.SIGTERM)
+                    limit = time.time() + self.TIMEOUT_BEFORE_SIGKILL
+                    while time.time() <= limit:
+                        if self.poll() is not None:
+                            # process terminated nicely
+                            break
+                        time.sleep(0.02)
+                    else:
+                        # process did not terminate - send SIGKILL to force
+                        send_sig(signal.SIGKILL)
                 else:
-                    os.kill(self.pid, sig)
+                    # a signal was explicitly set or not posix
+                    send_sig(sig or signal.SIGKILL)
 
             self.returncode = self.wait()
             self._cleanup()

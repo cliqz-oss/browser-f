@@ -1,5 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,27 +8,40 @@
 #define mozilla_dom_bluetooth_bluedroid_bluetoothdaemoninterface_h__
 
 #include "BluetoothInterface.h"
+#include "mozilla/ipc/DaemonSocketConsumer.h"
+#include "mozilla/ipc/ListenSocketConsumer.h"
+
+namespace mozilla {
+namespace ipc {
+
+class DaemonSocket;
+class ListenSocket;
+
+}
+}
 
 BEGIN_BLUETOOTH_NAMESPACE
 
-class BluetoothDaemonListenSocket;
-class BluetoothDaemonChannel;
 class BluetoothDaemonA2dpInterface;
 class BluetoothDaemonAvrcpInterface;
+class BluetoothDaemonGattInterface;
 class BluetoothDaemonHandsfreeInterface;
 class BluetoothDaemonProtocol;
 class BluetoothDaemonSocketInterface;
 
-class BluetoothDaemonInterface final : public BluetoothInterface
+class BluetoothDaemonInterface final
+  : public BluetoothInterface
+  , public mozilla::ipc::DaemonSocketConsumer
+  , public mozilla::ipc::ListenSocketConsumer
 {
 public:
   class CleanupResultHandler;
   class InitResultHandler;
+  class StartDaemonTask;
 
-  friend class BluetoothDaemonListenSocket;
-  friend class BluetoothDaemonChannel;
   friend class CleanupResultHandler;
   friend class InitResultHandler;
+  friend class StartDaemonTask;
 
   static BluetoothDaemonInterface* GetInstance();
 
@@ -89,7 +102,7 @@ public:
                 const nsAString& aPinCode,
                 BluetoothResultHandler* aRes);
 
-  void SspReply(const nsAString& aBdAddr, const nsAString& aVariant,
+  void SspReply(const nsAString& aBdAddr, BluetoothSspVariant aVariant,
                 bool aAccept, uint32_t aPasskey,
                 BluetoothResultHandler* aRes);
 
@@ -114,6 +127,7 @@ public:
   BluetoothHandsfreeInterface* GetBluetoothHandsfreeInterface() override;
   BluetoothA2dpInterface* GetBluetoothA2dpInterface() override;
   BluetoothAvrcpInterface* GetBluetoothAvrcpInterface() override;
+  BluetoothGattInterface* GetBluetoothGattInterface() override;
 
 protected:
   enum Channel {
@@ -125,22 +139,25 @@ protected:
   BluetoothDaemonInterface();
   ~BluetoothDaemonInterface();
 
-  void OnConnectSuccess(enum Channel aChannel);
-  void OnConnectError(enum Channel aChannel);
-  void OnDisconnect(enum Channel aChannel);
-
   nsresult CreateRandomAddressString(const nsACString& aPrefix,
                                      unsigned long aPostfixLength,
                                      nsACString& aAddress);
+
+  // Methods for |DaemonSocketConsumer| and |ListenSocketConsumer|
+  //
+
+  void OnConnectSuccess(int aIndex) override;
+  void OnConnectError(int aIndex) override;
+  void OnDisconnect(int aIndex) override;
 
 private:
   void DispatchError(BluetoothResultHandler* aRes, BluetoothStatus aStatus);
   void DispatchError(BluetoothResultHandler* aRes, nsresult aRv);
 
   nsCString mListenSocketName;
-  nsRefPtr<BluetoothDaemonListenSocket> mListenSocket;
-  nsRefPtr<BluetoothDaemonChannel> mCmdChannel;
-  nsRefPtr<BluetoothDaemonChannel> mNtfChannel;
+  nsRefPtr<mozilla::ipc::ListenSocket> mListenSocket;
+  nsRefPtr<mozilla::ipc::DaemonSocket> mCmdChannel;
+  nsRefPtr<mozilla::ipc::DaemonSocket> mNtfChannel;
   nsAutoPtr<BluetoothDaemonProtocol> mProtocol;
 
   nsTArray<nsRefPtr<BluetoothResultHandler> > mResultHandlerQ;
@@ -149,6 +166,7 @@ private:
   nsAutoPtr<BluetoothDaemonHandsfreeInterface> mHandsfreeInterface;
   nsAutoPtr<BluetoothDaemonA2dpInterface> mA2dpInterface;
   nsAutoPtr<BluetoothDaemonAvrcpInterface> mAvrcpInterface;
+  nsAutoPtr<BluetoothDaemonGattInterface> mGattInterface;
 };
 
 END_BLUETOOTH_NAMESPACE

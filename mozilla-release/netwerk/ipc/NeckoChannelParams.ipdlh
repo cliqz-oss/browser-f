@@ -15,13 +15,35 @@ include PBackgroundSharedTypes;
 using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
 using RequestHeaderTuples from "mozilla/net/PHttpChannelParams.h";
 using struct nsHttpAtom from "nsHttp.h";
+using class nsHttpResponseHead from "nsHttpResponseHead.h";
 
 namespace mozilla {
 namespace net {
 
 //-----------------------------------------------------------------------------
+// LoadInfo IPDL structs
+//-----------------------------------------------------------------------------
+
+struct LoadInfoArgs
+{
+  PrincipalInfo requestingPrincipalInfo;
+  PrincipalInfo triggeringPrincipalInfo;
+  uint32_t      securityFlags;
+  uint32_t      contentPolicyType;
+  uint64_t      innerWindowID;
+  uint64_t      outerWindowID;
+  uint64_t      parentOuterWindowID;
+};
+
+//-----------------------------------------------------------------------------
 // HTTP IPDL structs
 //-----------------------------------------------------------------------------
+
+union OptionalHttpResponseHead
+{
+  void_t;
+  nsHttpResponseHead;
+};
 
 struct HttpChannelOpenArgs
 {
@@ -52,17 +74,17 @@ struct HttpChannelOpenArgs
   bool                        chooseApplicationCache;
   nsCString                   appCacheClientID;
   bool                        allowSpdy;
+  bool                        allowAltSvc;
   OptionalFileDescriptorSet   fds;
-  PrincipalInfo               requestingPrincipalInfo;
-  PrincipalInfo               triggeringPrincipalInfo;
-  uint32_t                    securityFlags;
-  uint32_t                    contentPolicyType;
-  uint32_t                    innerWindowID;
+  LoadInfoArgs                loadInfo;
+  OptionalHttpResponseHead    synthesizedResponseHead;
+  uint32_t                    cacheKey;
 };
 
 struct HttpChannelConnectArgs
 {
   uint32_t channelId;
+  bool shouldIntercept;
 };
 
 union HttpChannelCreationArgs
@@ -81,11 +103,7 @@ struct FTPChannelOpenArgs
   uint64_t                  startPos;
   nsCString                 entityID;
   OptionalInputStreamParams uploadStream;
-  PrincipalInfo             requestingPrincipalInfo;
-  PrincipalInfo             triggeringPrincipalInfo;
-  uint32_t                  securityFlags;
-  uint32_t                  contentPolicyType;
-  uint32_t                  innerWindowID;
+  LoadInfoArgs              loadInfo;
 };
 
 struct FTPChannelConnectArgs
@@ -119,19 +137,6 @@ struct RtspChannelConnectArgs
 {
   URIParams uri;
   uint32_t channelId;
-};
-
-//-----------------------------------------------------------------------------
-// WS IPDL structs
-//-----------------------------------------------------------------------------
-
-struct WebSocketLoadInfoArgs
-{
-  PrincipalInfo requestingPrincipalInfo;
-  PrincipalInfo triggeringPrincipalInfo;
-  uint32_t      securityFlags;
-  uint32_t      contentPolicyType;
-  uint32_t      innerWindowID;
 };
 
 } // namespace ipc

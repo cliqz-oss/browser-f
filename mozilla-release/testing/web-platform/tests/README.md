@@ -1,16 +1,24 @@
 The Web Platform Tests Project [![IRC chat](https://goo.gl/6nCIks)](http://irc.w3.org/?channels=testing)
 ==============================
 
-These are test suites for 60+ Web-platform specifications, along
-with test-infrastructure code for running the tests.
+The Web Platform Tests Project is a W3C-coordinated attempt to build a
+cross-browser testsuite for the Web-platform stack. Writing tests in a
+way that allows them to be run in all browsers gives browser projects
+confidence that they are shipping software that is compatible with other
+implementations, and that later implementations will be compatible with
+their implementations. This in turn gives Web authors/developers
+confidence that they can actually rely on the Web platform to deliver on
+the promise of working across browsers and devices without needing extra
+layers of abstraction to paper over the gaps left by specification
+editors and implementors.
 
 Running the Tests
 =================
 
 The tests are designed to be run from your local computer. The test
 environment requires Python 2.7+ (but not Python 3.x). You will also
-need a copy of OpenSSL. For users on Windows this is available from
-[the openssl website](https://www.openssl.org/related/binaries.html).
+need a copy of OpenSSL. Users on Windows should read the
+[Windows Notes](#windows-notes) section below.
 
 To get the tests running, you need to set up the test domains in your
 [`hosts` file](http://en.wikipedia.org/wiki/Hosts_%28file%29%23Location_in_the_file_system). The
@@ -62,6 +70,26 @@ like:
 ```
 "ssl": {"openssl": {"binary": "/path/to/openssl"}}
 ```
+
+<span id="windows-notes">Windows Notes</span>
+=============================================
+
+Running wptserve with SSL enabled on Windows typically requires
+installing an OpenSSL distribution.
+[Shining Light](http://slproweb.com/products/Win32OpenSSL.html)
+provide a convenient installer that is known to work, but requires a
+little extra setup.
+
+After installation ensure that the path to OpenSSL is on your `%Path%`
+environment variable.
+
+Then set the path to the default OpenSSL configuration file (usually
+something like `C:\OpenSSL-Win32\bin\openssl.cfg` in the server
+configuration. To do this copy `config.default.json` in the
+web-platform-tests root to `config.json`. Then edit the JSON so that
+the key `ssl/openssl/base_conf_path` has a value that is the path to
+the OpenSSL config file.
+
 
 Test Runner
 ===========

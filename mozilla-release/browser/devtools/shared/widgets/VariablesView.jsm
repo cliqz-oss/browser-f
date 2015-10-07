@@ -12,7 +12,6 @@ const DBG_STRINGS_URI = "chrome://browser/locale/devtools/debugger.properties";
 const LAZY_EMPTY_DELAY = 150; // ms
 const LAZY_EXPAND_DELAY = 50; // ms
 const SCROLL_PAGE_SIZE_DEFAULT = 0;
-const APPEND_PAGE_SIZE_DEFAULT = 500;
 const PAGE_SIZE_SCROLL_HEIGHT_RATIO = 100;
 const PAGE_SIZE_MAX_JUMPS = 30;
 const SEARCH_ACTION_MAX_DELAY = 300; // ms
@@ -247,12 +246,6 @@ VariablesView.prototype = {
   scrollPageSize: SCROLL_PAGE_SIZE_DEFAULT,
 
   /**
-   * The maximum number of elements allowed in a scope, variable or property
-   * that allows pagination when appending children.
-   */
-  appendPageSize: APPEND_PAGE_SIZE_DEFAULT,
-
-  /**
    * Function called each time a variable or property's value is changed via
    * user interaction. If null, then value changes are disabled.
    *
@@ -460,7 +453,7 @@ VariablesView.prototype = {
     searchbox.setAttribute("placeholder", this._searchboxPlaceholder);
     searchbox.setAttribute("type", "search");
     searchbox.setAttribute("flex", "1");
-    searchbox.addEventListener("input", this._onSearchboxInput, false);
+    searchbox.addEventListener("command", this._onSearchboxInput, false);
     searchbox.addEventListener("keypress", this._onSearchboxKeyPress, false);
 
     container.appendChild(searchbox);
@@ -477,7 +470,7 @@ VariablesView.prototype = {
       return;
     }
     this._searchboxContainer.remove();
-    this._searchboxNode.removeEventListener("input", this._onSearchboxInput, false);
+    this._searchboxNode.removeEventListener("command", this._onSearchboxInput, false);
     this._searchboxNode.removeEventListener("keypress", this._onSearchboxKeyPress, false);
 
     this._searchboxContainer = null;
@@ -556,6 +549,25 @@ VariablesView.prototype = {
    *        The variable or property to search for.
    */
   _doSearch: function(aToken) {
+    if (this.controller && this.controller.supportsSearch()) {
+      // Retrieve the main Scope in which we add attributes
+      let scope = this._store[0]._store.get("");
+      if (!aToken) {
+        // Prune the view from old previous content
+        // so that we delete the intermediate search results
+        // we created in previous searches
+        for (let property of scope._store.values()) {
+          property.remove();
+        }
+      }
+      // Retrieve new attributes eventually hidden in splits
+      this.controller.performSearch(scope, aToken);
+      // Filter already displayed attributes
+      if (aToken) {
+        scope._performSearch(aToken.toLowerCase());
+      }
+      return;
+    }
     for (let scope of this._store) {
       switch (aToken) {
         case "":
@@ -1150,7 +1162,7 @@ VariablesView.getterOrSetterEvalMacro = function(aItem, aCurrentString, aPrefix 
         let body = "";
         // If there's a return statement explicitly written, always use the
         // standard function definition syntax
-        if (aCurrentString.contains("return ")) {
+        if (aCurrentString.includes("return ")) {
           body = "{" + aCurrentString + "}";
         }
         // If block syntax is used, use the whole string as the function body.
@@ -1214,7 +1226,6 @@ function Scope(aView, aName, aFlags = {}) {
   // Inherit properties and flags from the parent view. You can override
   // each of these directly onto any scope, variable or property instance.
   this.scrollPageSize = aView.scrollPageSize;
-  this.appendPageSize = aView.appendPageSize;
   this.eval = aView.eval;
   this.switch = aView.switch;
   this.delete = aView.delete;
@@ -1288,7 +1299,7 @@ Scope.prototype = {
    */
   addItem: function(aName = "", aDescriptor = {}, aRelaxed = false) {
     if (this._store.has(aName) && !aRelaxed) {
-      return null;
+      return this._store.get(aName);
     }
 
     let child = this._createChild(aName, aDescriptor);
@@ -1320,81 +1331,12 @@ Scope.prototype = {
    *        Additional options for adding the properties. Supported options:
    *        - sorted: true to sort all the properties before adding them
    *        - callback: function invoked after each item is added
-   * @param string aKeysType [optional]
-   *        Helper argument in the case of paginated items. Can be either
-   *        "just-strings" or "just-numbers". Humans shouldn't use this argument.
    */
-  addItems: function(aItems, aOptions = {}, aKeysType = "") {
+  addItems: function(aItems, aOptions = {}) {
     let names = Object.keys(aItems);
 
-    // Building the view when inspecting an object with a very large number of
-    // properties may take a long time. To avoid blocking the UI, group
-    // the items into several lazily populated pseudo-items.
-    let exceedsThreshold = names.length >= this.appendPageSize;
-    let shouldPaginate = exceedsThreshold && aKeysType != "just-strings";
-    if (shouldPaginate && this.allowPaginate) {
-      // Group the items to append into two separate arrays, one containing
-      // number-like keys, the other one containing string keys.
-      if (aKeysType == "just-numbers") {
-        var numberKeys = names;
-        var stringKeys = [];
-      } else {
-        var numberKeys = [];
-        var stringKeys = [];
-        for (let name of names) {
-          // Be very careful. Avoid Infinity, NaN and non Natural number keys.
-          let coerced = +name;
-          if (Number.isInteger(coerced) && coerced > -1) {
-            numberKeys.push(name);
-          } else {
-            stringKeys.push(name);
-          }
-        }
-      }
-
-      // This object contains a very large number of properties, but they're
-      // almost all strings that can't be coerced to numbers. Don't paginate.
-      if (numberKeys.length < this.appendPageSize) {
-        this.addItems(aItems, aOptions, "just-strings");
-        return;
-      }
-
-      // Slices a section of the { name: descriptor } data properties.
-      let paginate = (aArray, aBegin = 0, aEnd = aArray.length) => {
-        let store = {}
-        for (let i = aBegin; i < aEnd; i++) {
-          let name = aArray[i];
-          store[name] = aItems[name];
-        }
-        return store;
-      };
-
-      // Creates a pseudo-item that populates itself with the data properties
-      // from the corresponding page range.
-      let createRangeExpander = (aArray, aBegin, aEnd, aOptions, aKeyTypes) => {
-        let rangeVar = this.addItem(aArray[aBegin] + Scope.ellipsis + aArray[aEnd - 1]);
-        rangeVar.onexpand = () => {
-          let pageItems = paginate(aArray, aBegin, aEnd);
-          rangeVar.addItems(pageItems, aOptions, aKeyTypes);
-        }
-        rangeVar.showArrow();
-        rangeVar.target.setAttribute("pseudo-item", "");
-      };
-
-      // Divide the number keys into quarters.
-      let page = +Math.round(numberKeys.length / 4).toPrecision(1);
-      createRangeExpander(numberKeys, 0, page, aOptions, "just-numbers");
-      createRangeExpander(numberKeys, page, page * 2, aOptions, "just-numbers");
-      createRangeExpander(numberKeys, page * 2, page * 3, aOptions, "just-numbers");
-      createRangeExpander(numberKeys, page * 3, numberKeys.length, aOptions, "just-numbers");
-
-      // Append all the string keys together.
-      this.addItems(paginate(stringKeys), aOptions, "just-strings");
-      return;
-    }
-
     // Sort all of the properties before adding them, if preferred.
-    if (aOptions.sorted && aKeysType != "just-numbers") {
+    if (aOptions.sorted) {
       names.sort(this._naturalSort);
     }
 
@@ -1536,7 +1478,11 @@ Scope.prototype = {
     this._isExpanded = true;
 
     if (this.onexpand) {
-      this.onexpand(this);
+      // We return onexpand as it sometimes returns a promise
+      // (up to the user of VariableView to do it)
+      // that can indicate when the view is done expanding
+      // and attributes are available. (Mostly used for tests)
+      return this.onexpand(this);
     }
   },
 
@@ -1608,7 +1554,7 @@ Scope.prototype = {
    *
    * @param string a
    * @param string b
-   * @return number 
+   * @return number
    *         -1 if a is less than b, 0 if no change in order, +1 if a is greater than 0
    */
   _naturalSort: function(a,b) {
@@ -1925,8 +1871,8 @@ Scope.prototype = {
       let lowerCaseValue = variable._valueString.toLowerCase();
 
       // Non-matched variables or properties require a corresponding attribute.
-      if (!lowerCaseName.contains(aLowerCaseQuery) &&
-          !lowerCaseValue.contains(aLowerCaseQuery)) {
+      if (!lowerCaseName.includes(aLowerCaseQuery) &&
+          !lowerCaseValue.includes(aLowerCaseQuery)) {
         variable._matched = false;
       }
       // Variable or property is matched.

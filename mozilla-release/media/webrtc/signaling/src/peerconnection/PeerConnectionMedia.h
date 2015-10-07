@@ -15,7 +15,9 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "nsComponentManagerUtils.h"
+#if !defined(MOZILLA_XPCOMRT_API)
 #include "nsIProtocolProxyCallback.h"
+#endif
 
 #ifdef USE_FAKE_MEDIA_STREAMS
 #include "FakeMediaStreams.h"
@@ -27,7 +29,7 @@
 #include "signaling/src/jsep/JsepSession.h"
 #include "AudioSegment.h"
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
 #include "Layers.h"
 #include "VideoUtils.h"
 #include "ImageLayers.h"
@@ -105,7 +107,7 @@ public:
   void DetachTransport_s();
   void DetachMedia_m();
   bool AnyCodecHasPluginID(uint64_t aPluginID);
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
   nsRefPtr<mozilla::dom::VideoStreamTrack> GetVideoTrackByTrackId(const std::string& trackId);
 #endif
 protected:
@@ -134,7 +136,7 @@ public:
                             const std::string& oldTrackId,
                             const std::string& newTrackId);
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
   void UpdateSinkIdentity_m(nsIPrincipal* aPrincipal,
                             const PeerIdentity* aSinkIdentity);
 #endif
@@ -159,7 +161,7 @@ class RemoteSourceStreamInfo : public SourceStreamInfo {
 
   void SyncPipeline(RefPtr<MediaPipelineReceive> aPipeline);
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
   void UpdatePrincipal_m(nsIPrincipal* aPrincipal);
 #endif
 
@@ -243,8 +245,12 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
     return mIceCtx->GetStreamCount();
   }
 
-  // Create and modify transports in response to negotiation events.
-  void UpdateTransports(const JsepSession& session, bool restartGathering);
+  // Ensure ICE transports exist that we might need when offer/answer concludes
+  void EnsureTransports(const JsepSession& aSession);
+
+  // Activate or remove ICE transports at the conclusion of offer/answer,
+  // or when rollback occurs.
+  void ActivateOrRemoveTransports(const JsepSession& aSession);
 
   // Start ICE checks.
   void StartIceChecks(const JsepSession& session);
@@ -296,7 +302,7 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
                         const std::string& newStreamId,
                         const std::string& aNewTrack);
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
   // In cases where the peer isn't yet identified, we disable the pipeline (not
   // the stream, that would potentially affect others), so that it sends
   // black/silence.  Once the peer is identified, re-enable those streams.
@@ -387,10 +393,12 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
   // This passes a candidate:... attribute  and level
   sigslot::signal2<const std::string&, uint16_t> SignalCandidate;
   // This passes address, port, level of the default candidate.
-  sigslot::signal3<const std::string&, uint16_t, uint16_t>
+  sigslot::signal5<const std::string&, uint16_t,
+                   const std::string&, uint16_t, uint16_t>
       SignalEndOfLocalCandidates;
 
  private:
+#if !defined(MOZILLA_XPCOMRT_API)
   class ProtocolProxyQueryHandler : public nsIProtocolProxyCallback {
    public:
     explicit ProtocolProxyQueryHandler(PeerConnectionMedia *pcm) :
@@ -403,9 +411,11 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
     NS_DECL_ISUPPORTS
 
    private:
-      RefPtr<PeerConnectionMedia> pcm_;
-      virtual ~ProtocolProxyQueryHandler() {}
+    void SetProxyOnPcm(nsIProxyInfo& proxyinfo);
+    RefPtr<PeerConnectionMedia> pcm_;
+    virtual ~ProtocolProxyQueryHandler() {}
   };
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
   // Shutdown media transport. Must be called on STS thread.
   void ShutdownMediaTransport_s();
@@ -415,19 +425,22 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
   void SelfDestruct_m();
 
   // Manage ICE transports.
-  void UpdateIceMediaStream_s(size_t aMLine, size_t aComponentCount,
-                              bool aHasAttrs,
-                              const std::string& aUfrag,
-                              const std::string& aPassword,
-                              const std::vector<std::string>& aCandidateList);
+  void EnsureTransport_s(size_t aLevel, size_t aComponentCount);
+  void ActivateOrRemoveTransport_s(
+      size_t aMLine,
+      size_t aComponentCount,
+      const std::string& aUfrag,
+      const std::string& aPassword,
+      const std::vector<std::string>& aCandidateList);
+  void RemoveTransportsAtOrAfter_s(size_t aMLine);
+
   void GatherIfReady();
   void FlushIceCtxOperationQueueIfReady();
   void PerformOrEnqueueIceCtxOperation(nsIRunnable* runnable);
   void EnsureIceGathering_s();
   void StartIceChecks_s(bool aIsControlling,
                         bool aIsIceLite,
-                        const std::vector<std::string>& aIceOptionsList,
-                        const std::vector<size_t>& aComponentCountByLevel);
+                        const std::vector<std::string>& aIceOptionsList);
 
   // Process a trickle ICE candidate.
   void AddIceCandidate_s(const std::string& aCandidate, const std::string& aMid,
@@ -444,6 +457,8 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
                         const std::string &candidate);
   void EndOfLocalCandidates(const std::string& aDefaultAddr,
                             uint16_t aDefaultPort,
+                            const std::string& aDefaultRtcpAddr,
+                            uint16_t aDefaultRtcpPort,
                             uint16_t aMLine);
 
   void IceGatheringStateChange_m(NrIceCtx* ctx,
@@ -453,6 +468,8 @@ class PeerConnectionMedia : public sigslot::has_slots<> {
   void OnCandidateFound_m(const std::string &candidate, uint16_t aMLine);
   void EndOfLocalCandidates_m(const std::string& aDefaultAddr,
                               uint16_t aDefaultPort,
+                              const std::string& aDefaultRtcpAddr,
+                              uint16_t aDefaultRtcpPort,
                               uint16_t aMLine);
   bool IsIceCtxReady() const {
     return mProxyResolveCompleted;

@@ -16,7 +16,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsWidgetsCID.h"
 #include "prerror.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "mozilla/Attributes.h"
 #include "TrackUnionStream.h"
 #include "ImageContainer.h"
@@ -24,10 +24,10 @@
 #include "AudioNodeEngine.h"
 #include "AudioNodeStream.h"
 #include "AudioNodeExternalInputStream.h"
+#include "webaudio/MediaStreamAudioDestinationNode.h"
 #include <algorithm>
 #include "DOMMediaStream.h"
 #include "GeckoProfiler.h"
-#include "mozilla/unused.h"
 #ifdef MOZ_WEBRTC
 #include "AudioOutputObserver.h"
 #endif
@@ -42,21 +42,15 @@ namespace mozilla {
 #undef STREAM_LOG
 #endif
 
-#ifdef PR_LOGGING
 PRLogModuleInfo* gTrackUnionStreamLog;
-#define STREAM_LOG(type, msg) PR_LOG(gTrackUnionStreamLog, type, msg)
-#else
-#define STREAM_LOG(type, msg)
-#endif
+#define STREAM_LOG(type, msg) MOZ_LOG(gTrackUnionStreamLog, type, msg)
 
 TrackUnionStream::TrackUnionStream(DOMMediaStream* aWrapper) :
-  ProcessedMediaStream(aWrapper)
+  ProcessedMediaStream(aWrapper), mNextAvailableTrackID(1)
 {
-#ifdef PR_LOGGING
   if (!gTrackUnionStreamLog) {
     gTrackUnionStreamLog = PR_NewLogModule("TrackUnionStream");
   }
-#endif
 }
 
   void TrackUnionStream::RemoveInput(MediaInputPort* aPort)
@@ -167,23 +161,23 @@ TrackUnionStream::TrackUnionStream(DOMMediaStream* aWrapper) :
   uint32_t TrackUnionStream::AddTrack(MediaInputPort* aPort, StreamBuffer::Track* aTrack,
                     GraphTime aFrom)
   {
-    // Use the ID of the source track if it's not already assigned to a track,
-    // otherwise allocate a new unique ID.
     TrackID id = aTrack->GetID();
-    TrackID maxTrackID = 0;
-    for (uint32_t i = 0; i < mTrackMap.Length(); ++i) {
-      TrackID outID = mTrackMap[i].mOutputTrackID;
-      maxTrackID = std::max(maxTrackID, outID);
-    }
-    // Note: we might have removed it here, but it might still be in the
-    // StreamBuffer if the TrackUnionStream sees its input stream flip from
-    // A to B, where both A and B have a track with the same ID
-    while (1) {
-      // search until we find one not in use here, and not in mBuffer
-      if (!mBuffer.FindTrack(id)) {
-        break;
+    if (id > mNextAvailableTrackID &&
+       mUsedTracks.BinaryIndexOf(id) == mUsedTracks.NoIndex) {
+      // Input id available. Mark it used in mUsedTracks.
+      mUsedTracks.InsertElementSorted(id);
+    } else {
+      // Input id taken, allocate a new one.
+      id = mNextAvailableTrackID;
+
+      // Update mNextAvailableTrackID and prune any mUsedTracks members it now
+      // covers.
+      while (1) {
+        if (!mUsedTracks.RemoveElementSorted(++mNextAvailableTrackID)) {
+          // Not in use. We're done.
+          break;
+        }
       }
-      id = ++maxTrackID;
     }
 
     // Round up the track start time so the track, if anything, starts a
@@ -202,7 +196,7 @@ TrackUnionStream::TrackUnionStream(DOMMediaStream* aWrapper) :
     segment->AppendNullData(outputStart);
     StreamBuffer::Track* track =
       &mBuffer.AddTrack(id, outputStart, segment.forget());
-    STREAM_LOG(PR_LOG_DEBUG, ("TrackUnionStream %p adding track %d for input stream %p track %d, start ticks %lld",
+    STREAM_LOG(LogLevel::Debug, ("TrackUnionStream %p adding track %d for input stream %p track %d, start ticks %lld",
                               this, id, aPort->GetSource(), aTrack->GetID(),
                               (long long)outputStart));
 
@@ -270,17 +264,21 @@ TrackUnionStream::TrackUnionStream(DOMMediaStream* aWrapper) :
       if (interval.mInputIsBlocked) {
         // Maybe the input track ended?
         segment->AppendNullData(ticks);
-        STREAM_LOG(PR_LOG_DEBUG+1, ("TrackUnionStream %p appending %lld ticks of null data to track %d",
+        STREAM_LOG(LogLevel::Verbose, ("TrackUnionStream %p appending %lld ticks of null data to track %d",
                    this, (long long)ticks, outputTrack->GetID()));
       } else if (InMutedCycle()) {
         segment->AppendNullData(ticks);
       } else {
-        MOZ_ASSERT(outputTrack->GetEnd() == GraphTimeToStreamTime(interval.mStart),
-                   "Samples missing");
-        StreamTime inputStart = source->GraphTimeToStreamTime(interval.mStart);
-        segment->AppendSlice(*aInputTrack->GetSegment(),
-                             std::min(inputTrackEndPoint, inputStart),
-                             std::min(inputTrackEndPoint, inputEnd));
+        if (GraphImpl()->StreamSuspended(source)) {
+          segment->AppendNullData(aTo - aFrom);
+        } else {
+          MOZ_ASSERT(outputTrack->GetEnd() == GraphTimeToStreamTime(interval.mStart),
+                     "Samples missing");
+          StreamTime inputStart = source->GraphTimeToStreamTime(interval.mStart);
+          segment->AppendSlice(*aInputTrack->GetSegment(),
+                               std::min(inputTrackEndPoint, inputStart),
+                               std::min(inputTrackEndPoint, inputEnd));
+        }
       }
       ApplyTrackDisabling(outputTrack->GetID(), segment);
       for (uint32_t j = 0; j < mListeners.Length(); ++j) {

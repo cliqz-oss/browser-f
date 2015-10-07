@@ -65,10 +65,19 @@ class nsIDocShell;
 #define MINVALUE_GL_MAX_RENDERBUFFER_SIZE             1024  // Different from the spec, which sets it to 1 on page 164
 #define MINVALUE_GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS  8     // Page 164
 
+/*
+ * WebGL-only GLenums
+ */
+#define LOCAL_GL_BROWSER_DEFAULT_WEBGL                       0x9244
+#define LOCAL_GL_CONTEXT_LOST_WEBGL                          0x9242
+#define LOCAL_GL_MAX_CLIENT_WAIT_TIMEOUT_WEBGL               0x9247
+#define LOCAL_GL_UNPACK_COLORSPACE_CONVERSION_WEBGL          0x9243
+#define LOCAL_GL_UNPACK_FLIP_Y_WEBGL                         0x9240
+#define LOCAL_GL_UNPACK_PREMULTIPLY_ALPHA_WEBGL              0x9241
+
 namespace mozilla {
 
 class WebGLActiveInfo;
-class WebGLContextBoundObject;
 class WebGLContextLossHandler;
 class WebGLBuffer;
 class WebGLExtensionBase;
@@ -84,7 +93,6 @@ class WebGLTexture;
 class WebGLTransformFeedback;
 class WebGLUniformLocation;
 class WebGLVertexArray;
-struct WebGLVertexAttribData;
 
 namespace dom {
 class Element;
@@ -130,6 +138,7 @@ struct WebGLContextOptions
     bool premultipliedAlpha;
     bool antialias;
     bool preserveDrawingBuffer;
+    bool failIfMajorPerformanceCaveat;
 };
 
 // From WebGLContextUtils
@@ -171,6 +180,7 @@ class WebGLContext
     friend class WebGLExtensionCompressedTexturePVRTC;
     friend class WebGLExtensionCompressedTextureS3TC;
     friend class WebGLExtensionDepthTexture;
+    friend class WebGLExtensionDisjointTimerQuery;
     friend class WebGLExtensionDrawBuffers;
     friend class WebGLExtensionLoseContext;
     friend class WebGLExtensionVertexArray;
@@ -311,6 +321,8 @@ public:
     gl::GLContext* GL() const { return gl; }
 
     bool IsPremultAlpha() const { return mOptions.premultipliedAlpha; }
+
+    bool IsPreservingDrawingBuffer() const { return mOptions.preserveDrawingBuffer; }
 
     bool PresentScreenBuffer();
 
@@ -639,6 +651,10 @@ public:
                        GLint yoffset, GLenum format, GLenum type,
                        ElementType& elt, ErrorResult& rv)
     {
+        // TODO: Consolidate all the parameter validation
+        // checks. Instead of spreading out the cheks in multple
+        // places, consolidate into one spot.
+
         if (IsContextLost())
             return;
 
@@ -933,10 +949,12 @@ protected:
     WebGLRefPtr<WebGLBuffer>& GetBufferSlotByTargetIndexed(GLenum target,
                                                            GLuint index);
 
+    GLenum GetCurrentBinding(WebGLBuffer* buffer) const;
+
 // -----------------------------------------------------------------------------
 // Queries (WebGL2ContextQueries.cpp)
 protected:
-    WebGLRefPtr<WebGLQuery>* GetQueryTargetSlot(GLenum target);
+    WebGLRefPtr<WebGLQuery>& GetQuerySlotByTarget(GLenum target);
 
     WebGLRefPtr<WebGLQuery> mActiveOcclusionQuery;
     WebGLRefPtr<WebGLQuery> mActiveTransformFeedbackQuery;
@@ -947,7 +965,7 @@ public:
     void Disable(GLenum cap);
     void Enable(GLenum cap);
     bool GetStencilBits(GLint* out_stencilBits);
-    JS::Value GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv);
+    virtual JS::Value GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv);
 
     void GetParameter(JSContext* cx, GLenum pname,
                       JS::MutableHandle<JS::Value> retval, ErrorResult& rv)
@@ -1310,7 +1328,7 @@ protected:
                          GLenum format, GLenum type, void* data,
                          uint32_t byteLength, js::Scalar::Type jsArrayType,
                          WebGLTexelFormat srcFormat, bool srcPremultiplied);
-    void TexSubImage2D_base(TexImageTarget texImageTarget, GLint level,
+    void TexSubImage2D_base(GLenum texImageTarget, GLint level,
                             GLint xoffset, GLint yoffset, GLsizei width,
                             GLsizei height, GLsizei srcStrideOrZero,
                             GLenum format, GLenum type, void* pixels,
@@ -1384,11 +1402,14 @@ private:
 private:
     // -------------------------------------------------------------------------
     // Context customization points
+    virtual WebGLVertexArray* CreateVertexArrayImpl();
+
     virtual bool ValidateAttribPointerType(bool integerMode, GLenum type, GLsizei* alignment, const char* info) = 0;
     virtual bool ValidateBufferTarget(GLenum target, const char* info) = 0;
     virtual bool ValidateBufferIndexedTarget(GLenum target, const char* info) = 0;
-    virtual bool ValidateBufferForTarget(GLenum target, WebGLBuffer* buffer, const char* info) = 0;
+    virtual bool ValidateBufferForTarget(GLenum target, WebGLBuffer* buffer, const char* info);
     virtual bool ValidateBufferUsageEnum(GLenum usage, const char* info) = 0;
+    virtual bool ValidateQueryTarget(GLenum usage, const char* info) = 0;
     virtual bool ValidateUniformMatrixTranspose(bool transpose, const char* info) = 0;
 
 protected:
@@ -1424,6 +1445,9 @@ protected:
     nsTArray<WebGLRefPtr<WebGLTexture> > mBound2DTextures;
     nsTArray<WebGLRefPtr<WebGLTexture> > mBoundCubeMapTextures;
     nsTArray<WebGLRefPtr<WebGLTexture> > mBound3DTextures;
+    nsTArray<WebGLRefPtr<WebGLSampler> > mBoundSamplers;
+
+    void ResolveTexturesForDraw() const;
 
     WebGLRefPtr<WebGLProgram> mCurrentProgram;
     RefPtr<const webgl::LinkedProgramInfo> mActiveProgramLinkInfo;
@@ -1593,6 +1617,7 @@ public:
     friend class WebGLSampler;
     friend class WebGLShader;
     friend class WebGLSync;
+    friend class WebGLTimerQuery;
     friend class WebGLTransformFeedback;
     friend class WebGLUniformLocation;
     friend class WebGLVertexArray;

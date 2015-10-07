@@ -6,7 +6,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MathAlgorithms.h"
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 #include "nsServiceManagerUtils.h"
 #include "nsExpirationTracker.h"
@@ -886,7 +886,8 @@ gfxFontEntry::SupportsOpenTypeFeature(int32_t aScript, uint32_t aFeatureTag)
                  aFeatureTag == HB_TAG('p','c','a','p') ||
                  aFeatureTag == HB_TAG('c','2','p','c') ||
                  aFeatureTag == HB_TAG('s','u','p','s') ||
-                 aFeatureTag == HB_TAG('s','u','b','s'),
+                 aFeatureTag == HB_TAG('s','u','b','s') ||
+                 aFeatureTag == HB_TAG('v','e','r','t'),
                  "use of unknown feature tag");
 
     // note: graphite feature support uses the last script index
@@ -1476,20 +1477,19 @@ gfxFontFamily::FindFontForChar(GlobalFontMatch *aMatchData)
         if (fe->HasCharacter(aMatchData->mCh)) {
             rank += RANK_MATCHED_CMAP;
             aMatchData->mCount++;
-#ifdef PR_LOGGING
+
             PRLogModuleInfo *log = gfxPlatform::GetLog(eGfxLog_textrun);
 
-            if (MOZ_UNLIKELY(PR_LOG_TEST(log, PR_LOG_DEBUG))) {
+            if (MOZ_UNLIKELY(MOZ_LOG_TEST(log, LogLevel::Debug))) {
                 uint32_t unicodeRange = FindCharUnicodeRange(aMatchData->mCh);
                 uint32_t script = GetScriptCode(aMatchData->mCh);
-                PR_LOG(log, PR_LOG_DEBUG,\
+                MOZ_LOG(log, LogLevel::Debug,\
                        ("(textrun-systemfallback-fonts) char: u+%6.6x "
                         "unicode-range: %d script: %d match: [%s]\n",
                         aMatchData->mCh,
                         unicodeRange, script,
                         NS_ConvertUTF16toUTF8(fe->Name()).get()));
             }
-#endif
         }
 
         aMatchData->mCmapsTested++;
