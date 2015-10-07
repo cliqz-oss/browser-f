@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop, sinon, React, TestUtils */
-
-var expect = chai.expect;
-
 describe("loop.conversation", function() {
   "use strict";
 
+  var expect = chai.expect;
+  var TestUtils = React.addons.TestUtils;
   var sharedModels = loop.shared.models,
       fakeWindow,
       sandbox;
@@ -47,8 +45,11 @@ describe("loop.conversation", function() {
         };
       },
       getAudioBlob: sinon.spy(function(name, callback) {
-        callback(null, new Blob([new ArrayBuffer(10)], {type: 'audio/ogg'}));
-      })
+        callback(null, new Blob([new ArrayBuffer(10)], {type: "audio/ogg"}));
+      }),
+      getSelectedTabMetadata: function(callback) {
+        callback({});
+      }
     };
 
     fakeWindow = {
@@ -137,7 +138,8 @@ describe("loop.conversation", function() {
       return TestUtils.renderIntoDocument(
         React.createElement(loop.conversation.AppControllerView, {
           roomStore: roomStore,
-          dispatcher: dispatcher
+          dispatcher: dispatcher,
+          mozLoop: navigator.mozLoop
         }));
     }
 
@@ -161,7 +163,7 @@ describe("loop.conversation", function() {
       }});
 
       roomStore = new loop.store.RoomStore(dispatcher, {
-        mozLoop: navigator.mozLoop,
+        mozLoop: navigator.mozLoop
       });
       conversationAppStore = new loop.store.ConversationAppStore({
         dispatcher: dispatcher,

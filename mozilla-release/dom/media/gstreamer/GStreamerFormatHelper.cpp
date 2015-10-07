@@ -8,12 +8,17 @@
 #include "nsCharSeparatedTokenizer.h"
 #include "nsString.h"
 #include "GStreamerLoader.h"
+#include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 
 #define ENTRY_FORMAT(entry) entry[0]
 #define ENTRY_CAPS(entry) entry[1]
 
 namespace mozilla {
+
+extern PRLogModuleInfo* gMediaDecoderLog;
+#define LOG(msg, ...) \
+    MOZ_LOG(gMediaDecoderLog, LogLevel::Debug, ("GStreamerFormatHelper " msg, ##__VA_ARGS__))
 
 GStreamerFormatHelper* GStreamerFormatHelper::gInstance = nullptr;
 bool GStreamerFormatHelper::sLoadOK = false;
@@ -236,6 +241,7 @@ GStreamerFormatHelper::IsPluginFeatureBlacklisted(GstPluginFeature *aFeature)
 
   for (unsigned int i = 0; i < G_N_ELEMENTS(sPluginBlacklist); i++) {
     if (!strcmp(factoryName, sPluginBlacklist[i])) {
+      LOG("rejecting disabled plugin %s", factoryName);
       return true;
     }
   }
@@ -279,7 +285,11 @@ static bool SupportsCaps(GstElementFactory *aFactory, GstCaps *aCaps)
       continue;
     }
 
-    if (gst_caps_can_intersect(gst_static_caps_get(&templ->static_caps), aCaps)) {
+    bool supported = gst_caps_can_intersect(caps, aCaps);
+
+    gst_caps_unref(caps);
+
+    if (supported) {
       return true;
     }
   }
@@ -307,11 +317,11 @@ bool GStreamerFormatHelper::HaveElementsToProcessCaps(GstCaps* aCaps) {
       }
     }
 
+    gst_caps_unref(caps);
+
     if (!found) {
       return false;
     }
-
-    gst_caps_unref(caps);
   }
 
   return true;

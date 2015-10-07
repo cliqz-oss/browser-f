@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,11 +14,12 @@
 #include "mozilla/Endian.h"
 #include "mozilla/ModuleUtils.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/dom/File.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "cert.h"
 #include "certdb.h"
 #include "CryptoTask.h"
-#include "nsIDOMFile.h"
+#include "nsIDOMBlob.h"
 #include "nsIWifiService.h"
 #include "nsNetUtil.h"
 #include "nsServiceManagerUtils.h"
@@ -38,7 +40,7 @@ StaticRefPtr<WifiCertService> gWifiCertService;
 class ImportCertTask final: public CryptoTask
 {
 public:
-  ImportCertTask(int32_t aId, nsIDOMBlob* aCertBlob,
+  ImportCertTask(int32_t aId, Blob* aCertBlob,
                  const nsAString& aCertPassword,
                  const nsAString& aCertNickname)
     : mBlob(aCertBlob)
@@ -239,24 +241,26 @@ private:
     NS_ENSURE_ARG_POINTER(mBlob);
 
     static const uint64_t MAX_FILE_SIZE = 16384;
-    uint64_t size;
-    nsresult rv = mBlob->GetSize(&size);
-    if (NS_FAILED(rv)) {
-      return rv;
+
+    ErrorResult rv;
+    uint64_t size = mBlob->GetSize(rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      return rv.StealNSResult();
     }
+
     if (size > MAX_FILE_SIZE) {
       return NS_ERROR_FILE_TOO_BIG;
     }
 
     nsCOMPtr<nsIInputStream> inputStream;
-    rv = mBlob->GetInternalStream(getter_AddRefs(inputStream));
-    if (NS_FAILED(rv)) {
-      return rv;
+    mBlob->GetInternalStream(getter_AddRefs(inputStream), rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      return rv.StealNSResult();
     }
 
     rv = NS_ReadInputStreamToString(inputStream, aBuf, (uint32_t)size);
-    if (NS_FAILED(rv)) {
-      return rv;
+    if (NS_WARN_IF(rv.Failed())) {
+      return rv.StealNSResult();
     }
 
     return NS_OK;
@@ -298,7 +302,7 @@ private:
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDOMBlob> mBlob;
+  nsRefPtr<Blob> mBlob;
   nsString mPassword;
   WifiCertServiceResultOptions mResult;
 };
@@ -459,7 +463,8 @@ WifiCertService::ImportCert(int32_t aId, nsIDOMBlob* aCertBlob,
                             const nsAString& aCertPassword,
                             const nsAString& aCertNickname)
 {
-  RefPtr<CryptoTask> task = new ImportCertTask(aId, aCertBlob, aCertPassword,
+  nsRefPtr<Blob> blob = static_cast<Blob*>(aCertBlob);
+  RefPtr<CryptoTask> task = new ImportCertTask(aId, blob, aCertPassword,
                                                aCertNickname);
   return task->Dispatch("WifiImportCert");
 }

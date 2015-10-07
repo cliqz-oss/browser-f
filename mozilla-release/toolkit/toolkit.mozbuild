@@ -61,9 +61,7 @@ DIRS += [
 if CONFIG['MOZ_WEBRTC']:
     DIRS += [
         '/media/webrtc',
-        '/media/mtransport/third_party',
-        '/media/mtransport/build',
-        '/media/mtransport/standalone',
+        '/media/mtransport',
     ]
 
 if CONFIG['MOZ_OMX_PLUGIN']:
@@ -96,7 +94,6 @@ DIRS += [
     '/dom',
     '/view',
     '/widget',
-    '/content',
     '/editor',
     '/layout',
     '/docshell',
@@ -119,8 +116,6 @@ else:
     DIRS += ['/accessible/ipc']
 
 # toolkit
-
-DIRS += ['/profile']
 
 # This must precede xpfe.
 if CONFIG['MOZ_JPROF']:
@@ -192,5 +187,6 @@ if CONFIG['ENABLE_TESTS']:
     if CONFIG['MOZ_WEBRTC'] and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'gonk':
             DIRS += [
                 '/media/webrtc/signaling/test',
+                '/media/webrtc/signaling/test/standalone',
                 '/media/mtransport/test',
             ]

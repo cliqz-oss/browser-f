@@ -1,5 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -227,7 +227,6 @@ BluetoothHfpManager::Cleanup()
 void
 BluetoothHfpManager::Reset()
 {
-  mFirstCKPD = false;
   // Phone & Device CIND
   ResetCallArray();
   // Clear Sco state
@@ -238,6 +237,9 @@ BluetoothHfpManager::Reset()
 bool
 BluetoothHfpManager::Init()
 {
+  // The function must run at b2g process since it would access SettingsService.
+  MOZ_ASSERT(IsMainProcess());
+
   MOZ_ASSERT(NS_IsMainThread());
 
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
@@ -686,13 +688,14 @@ BluetoothHfpManager::HandleVoiceConnectionChanged(uint32_t aClientId)
   nsString regState;
   voiceInfo->GetState(regState);
 
-  int service = (regState.EqualsLiteral("registered")) ? 1 : 0;
+  BluetoothHandsfreeNetworkState service =
+    (regState.EqualsLiteral("registered")) ? HFP_NETWORK_STATE_AVAILABLE :
+                                             HFP_NETWORK_STATE_NOT_AVAILABLE;
   if (service != mService) {
     // Notify BluetoothRilListener of service change
     mListener->ServiceChanged(aClientId, service);
   }
-  mService = service ? HFP_NETWORK_STATE_AVAILABLE :
-                       HFP_NETWORK_STATE_NOT_AVAILABLE;
+  mService = service;
 
   // Signal
   JS::Rooted<JS::Value> value(nsContentUtils::RootingCxForThread());
@@ -1117,6 +1120,26 @@ BluetoothHfpManager::ToggleCalls()
                              nsITelephonyService::CALL_STATE_CONNECTED;
 }
 
+/*
+ * Reset connection state and audio state to DISCONNECTED to handle backend
+ * error. The state change triggers UI status bar update as ordinary bluetooth
+ * turn-off sequence.
+ */
+void
+BluetoothHfpManager::HandleBackendError()
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mConnectionState != HFP_CONNECTION_STATE_DISCONNECTED) {
+    ConnectionStateNotification(HFP_CONNECTION_STATE_DISCONNECTED,
+      mDeviceAddress);
+  }
+
+  if (mAudioState != HFP_AUDIO_STATE_DISCONNECTED) {
+    AudioStateNotification(HFP_AUDIO_STATE_DISCONNECTED, mDeviceAddress);
+  }
+}
+
 class BluetoothHfpManager::ConnectAudioResultHandler final
   : public BluetoothHandsfreeResultHandler
 {
@@ -1239,6 +1262,7 @@ void
 BluetoothHfpManager::OnDisconnectError()
 {
   MOZ_ASSERT(NS_IsMainThread());
+  NS_ENSURE_TRUE_VOID(mController);
 
   mController->NotifyCompletion(NS_LITERAL_STRING(ERR_CONNECTION_FAILED));
 }
@@ -1289,8 +1313,6 @@ void
 BluetoothHfpManager::OnConnect(const nsAString& aErrorStr)
 {
   MOZ_ASSERT(NS_IsMainThread());
-
-  mFirstCKPD = true;
 
   /**
    * On the one hand, notify the controller that we've done for outbound
@@ -1633,16 +1655,7 @@ BluetoothHfpManager::KeyPressedNotification(const nsAString& aBdAddress)
        * If there's no SCO, set up a SCO link.
        */
       ConnectSco();
-    } else if (mFirstCKPD) {
-      /*
-       * Bluetooth HSP spec 4.2 & 4.3
-       * The SCO link connection may be set up prior to receiving the AT+CKPD=200
-       * command from the HS.
-       *
-       * Once FxOS initiates a SCO connection before receiving the
-       * AT+CKPD=200, we should ignore this key press.
-       */
-     } else {
+    } else {
       /*
        * Bluetooth HSP spec 4.5
        * There are two ways to release SCO: sending CHUP to dialer or closing
@@ -1651,10 +1664,8 @@ BluetoothHfpManager::KeyPressedNotification(const nsAString& aBdAddress)
        */
       NotifyDialer(NS_LITERAL_STRING("CHUP"));
     }
-    mFirstCKPD = false;
   } else {
     // BLDN
-    mDialingRequestProcessed = false;
 
     NotifyDialer(NS_LITERAL_STRING("BLDN"));
 

@@ -83,6 +83,11 @@ InputQueue::ReceiveTouchInput(const nsRefPtr<AsyncPanZoomController>& aTarget,
       haveBehaviors = true;
     } else if (!mInputBlockQueue.IsEmpty() && CurrentBlock()->AsTouchBlock()) {
       haveBehaviors = CurrentTouchBlock()->GetAllowedTouchBehaviors(currentBehaviors);
+      // If the behaviours aren't set, but the main-thread response timer on
+      // the block is expired we still treat it as though it has behaviors,
+      // because in that case we still want to interrupt the fast-fling and
+      // use the default behaviours.
+      haveBehaviors |= CurrentTouchBlock()->IsContentResponseTimerExpired();
     }
 
     block = StartNewTouchBlock(aTarget, aTargetConfirmed, false);
@@ -93,14 +98,14 @@ InputQueue::ReceiveTouchInput(const nsRefPtr<AsyncPanZoomController>& aTarget,
     // else. For now assume this is rare enough that it's not an issue.
     if (block == CurrentBlock() &&
         aEvent.mTouches.Length() == 1 &&
-        block->GetOverscrollHandoffChain()->HasFastMovingApzc() &&
+        block->GetOverscrollHandoffChain()->HasFastFlungApzc() &&
         haveBehaviors) {
       // If we're already in a fast fling, and a single finger goes down, then
       // we want special handling for the touch event, because it shouldn't get
       // delivered to content. Note that we don't set this flag when going
       // from a fast fling to a pinch state (i.e. second finger goes down while
       // the first finger is moving).
-      block->SetDuringFastMotion();
+      block->SetDuringFastFling();
       block->SetConfirmedTargetApzc(aTarget);
       if (gfxPrefs::TouchActionEnabled()) {
         block->SetAllowedTouchBehaviors(currentBehaviors);
@@ -139,7 +144,7 @@ InputQueue::ReceiveTouchInput(const nsRefPtr<AsyncPanZoomController>& aTarget,
   // XXX calling ArePointerEventsConsumable on |target| may be wrong here if
   // the target isn't confirmed and the real target turns out to be something
   // else. For now assume this is rare enough that it's not an issue.
-  if (block->IsDuringFastMotion()) {
+  if (block->IsDuringFastFling()) {
     INPQ_LOG("dropping event due to block %p being in fast motion\n", block);
     result = nsEventStatus_eConsumeNoDefault;
   } else if (target && target->ArePointerEventsConsumable(block, aEvent.AsMultiTouchInput().mTouches.Length())) {
@@ -221,19 +226,26 @@ void
 InputQueue::MaybeRequestContentResponse(const nsRefPtr<AsyncPanZoomController>& aTarget,
                                         CancelableBlockState* aBlock)
 {
-  bool waitForMainThread = !aBlock->IsTargetConfirmed();
+  bool waitForMainThread = false;
+  if (aBlock->IsTargetConfirmed()) {
+    // Content won't prevent-default this, so we can just set the flag directly.
+    INPQ_LOG("not waiting for content response on block %p\n", aBlock);
+    aBlock->SetContentResponse(false);
+  } else {
+    waitForMainThread = true;
+  }
+  if (aBlock->AsTouchBlock() && gfxPrefs::TouchActionEnabled()) {
+    // TODO: once bug 1101628 is fixed, waitForMainThread should only be set
+    // to true if the APZCTM didn't know the touch-action behaviours for this
+    // block.
+    waitForMainThread = true;
+  }
   if (waitForMainThread) {
     // We either don't know for sure if aTarget is the right APZC, or we may
     // need to wait to give content the opportunity to prevent-default the
     // touch events. Either way we schedule a timeout so the main thread stuff
     // can run.
     ScheduleMainThreadTimeout(aTarget, aBlock->GetBlockId());
-  } else {
-    // Content won't prevent-default this, so we can just pretend like we scheduled
-    // a timeout and it expired. Note that we will still receive a ContentReceivedInputBlock
-    // callback for this block, and so we need to make sure we adjust the touch balance.
-    INPQ_LOG("not waiting for content response on block %p\n", aBlock);
-    aBlock->TimeoutContentResponse();
   }
 }
 
@@ -390,8 +402,6 @@ InputQueue::SetConfirmedTargetApzc(uint64_t aInputBlockId, const nsRefPtr<AsyncP
   }
   if (success) {
     ProcessInputBlocks();
-  } else {
-    NS_WARNING("INPQ received useless SetConfirmedTargetApzc");
   }
 }
 
@@ -414,8 +424,6 @@ InputQueue::SetAllowedTouchBehavior(uint64_t aInputBlockId, const nsTArray<Touch
   }
   if (success) {
     ProcessInputBlocks();
-  } else {
-    NS_WARNING("INPQ received useless SetAllowedTouchBehavior");
   }
 }
 

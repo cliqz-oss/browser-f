@@ -55,7 +55,7 @@ already_AddRefed<SpeechSynthesisUtterance>
 SpeechSynthesisUtterance::Constructor(GlobalObject& aGlobal,
                                       ErrorResult& aRv)
 {
-  return Constructor(aGlobal, NS_LITERAL_STRING(""), aRv);
+  return Constructor(aGlobal, EmptyString(), aRv);
 }
 
 already_AddRefed<SpeechSynthesisUtterance>
@@ -145,6 +145,12 @@ void
 SpeechSynthesisUtterance::SetPitch(float aPitch)
 {
   mPitch = aPitch;
+}
+
+void
+SpeechSynthesisUtterance::GetChosenVoiceURI(nsString& aResult) const
+{
+  aResult = mChosenVoiceURI;
 }
 
 void

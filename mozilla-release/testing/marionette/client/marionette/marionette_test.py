@@ -16,8 +16,8 @@ import warnings
 
 
 from marionette_driver.errors import (
-        ErrorCodes, MarionetteException, InstallGeckoError, TimeoutException, InvalidResponseException,
-        JavascriptException, NoSuchElementException, XPathLookupException, NoSuchWindowException,
+        MarionetteException, TimeoutException,
+        JavascriptException, NoSuchElementException, NoSuchWindowException,
         StaleElementException, ScriptTimeoutException, ElementNotVisibleException,
         NoSuchFrameException, InvalidElementStateException, NoAlertPresentException,
         InvalidCookieDomainException, UnableToSetCookieException, InvalidSelectorException,
@@ -474,13 +474,11 @@ setReq.onsuccess = function() {
         for (let i = 0; i < apps.length; i++) {
             let app = apps[i];
             if (app.manifest.name === 'Test Container') {
-                let manager = window.wrappedJSObject.appWindowManager || window.wrappedJSObject.AppWindowManager;
-                if (!manager) {
+                window.wrappedJSObject.Service.request('AppWindowManager:kill', app.origin).then(function() {
+                    marionetteScriptFinished(true);
+                }).catch(function() {
                     marionetteScriptFinished(false);
-                    return;
-                }
-                manager.kill(app.origin);
-                marionetteScriptFinished(true);
+                });
                 return;
             }
         }
@@ -501,6 +499,24 @@ setReq.onerror = function() {
             'css selector',
             'iframe[src*="app://test-container.gaiamobile.org/index.html"]'
         ))
+
+    def setup_SpecialPowers_observer(self):
+        self.marionette.set_context("chrome")
+        self.marionette.execute_script("""
+            let SECURITY_PREF = "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer";
+            Components.utils.import("resource://gre/modules/Services.jsm");
+            Services.prefs.setBoolPref(SECURITY_PREF, true);
+
+            if (!testUtils.hasOwnProperty("specialPowersObserver")) {
+              let loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
+                .getService(Components.interfaces.mozIJSSubScriptLoader);
+              loader.loadSubScript("chrome://specialpowers/content/SpecialPowersObserver.js",
+                testUtils);
+              testUtils.specialPowersObserver = new testUtils.SpecialPowersObserver();
+              testUtils.specialPowersObserver.init();
+              testUtils.specialPowersObserver._loadFrameScript();
+            }
+            """)
 
     def run_js_test(self, filename, marionette=None):
         '''
@@ -537,6 +553,23 @@ setReq.onerror = function() {
             context = context.group(3)
         else:
             context = 'content'
+
+        if 'SpecialPowers' in js:
+            self.setup_SpecialPowers_observer()
+
+            if context == 'content':
+                js = "var SpecialPowers = window.wrappedJSObject.SpecialPowers;\n" + js
+            else:
+                marionette.execute_script("""
+                if (typeof(SpecialPowers) == 'undefined') {
+                  let loader = Components.classes["@mozilla.org/moz/jssubscript-loader;1"]
+                    .getService(Components.interfaces.mozIJSSubScriptLoader);
+                  loader.loadSubScript("chrome://specialpowers/content/specialpowersAPI.js");
+                  loader.loadSubScript("chrome://specialpowers/content/SpecialPowersObserverAPI.js");
+                  loader.loadSubScript("chrome://specialpowers/content/ChromePowers.js");
+                }
+                """)
+
         marionette.set_context(context)
 
         if context != 'chrome':
@@ -555,7 +588,6 @@ setReq.onerror = function() {
             results = marionette.execute_js_script(
                 js,
                 args,
-                special_powers=True,
                 inactivity_timeout=inactivity_timeout,
                 filename=os.path.basename(filename)
             )
@@ -646,6 +678,7 @@ class MarionetteTestCase(CommonTestCase):
     def tearDown(self):
         if not self.marionette.check_for_crash():
            self.marionette.set_context("content")
+           self.marionette.clear_imported_scripts()
            self.marionette.execute_script("log('TEST-END: %s:%s')" %
                                           (self.filepath.replace('\\', '\\\\'), self.methodName))
         self.marionette.test_name = None

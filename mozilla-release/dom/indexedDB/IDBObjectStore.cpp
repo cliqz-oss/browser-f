@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,6 +41,7 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "nsCOMPtr.h"
+#include "nsQueryObject.h"
 #include "ProfilerHelpers.h"
 #include "ReportInternalError.h"
 #include "WorkerPrivate.h"
@@ -61,7 +62,7 @@ struct IDBObjectStore::StructuredCloneWriteInfo
 {
   struct BlobOrFileInfo
   {
-    nsRefPtr<File> mBlob;
+    nsRefPtr<Blob> mBlob;
     nsRefPtr<FileInfo> mFileInfo;
 
     bool
@@ -158,12 +159,12 @@ struct MOZ_STACK_CLASS BlobOrFileData final
   uint64_t size;
   nsString type;
   nsString name;
-  uint64_t lastModifiedDate;
+  int64_t lastModifiedDate;
 
   BlobOrFileData()
     : tag(0)
     , size(0)
-    , lastModifiedDate(UINT64_MAX)
+    , lastModifiedDate(INT64_MAX)
   {
     MOZ_COUNT_CTOR(BlobOrFileData);
   }
@@ -299,15 +300,16 @@ StructuredCloneWriteCallback(JSContext* aCx,
   }
 
   {
-    File* blob = nullptr;
+    Blob* blob = nullptr;
     if (NS_SUCCEEDED(UNWRAP_OBJECT(Blob, aObj, blob))) {
-      uint64_t size;
-      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(blob->GetSize(&size)));
+      ErrorResult rv;
+      uint64_t size = blob->GetSize(rv);
+      MOZ_ASSERT(!rv.Failed());
 
       size = NativeEndian::swapToLittleEndian(size);
 
       nsString type;
-      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(blob->GetType(type)));
+      blob->GetType(type);
 
       NS_ConvertUTF16toUTF8 convType(type);
       uint32_t convTypeLength =
@@ -331,15 +333,16 @@ StructuredCloneWriteCallback(JSContext* aCx,
         return false;
       }
 
-      if (blob->IsFile()) {
-        uint64_t lastModifiedDate;
-        MOZ_ALWAYS_TRUE(NS_SUCCEEDED(
-          blob->GetMozLastModifiedDate(&lastModifiedDate)));
+      nsRefPtr<File> file = blob->ToFile();
+      if (file) {
+        ErrorResult rv;
+        int64_t lastModifiedDate = file->GetLastModified(rv);
+        MOZ_ALWAYS_TRUE(!rv.Failed());
 
         lastModifiedDate = NativeEndian::swapToLittleEndian(lastModifiedDate);
 
         nsString name;
-        MOZ_ALWAYS_TRUE(NS_SUCCEEDED(blob->GetName(name)));
+        file->GetName(name);
 
         NS_ConvertUTF16toUTF8 convName(name);
         uint32_t convNameLength =
@@ -401,11 +404,11 @@ GetAddInfoCallback(JSContext* aCx, void* aClosure)
 }
 
 BlobChild*
-ActorFromRemoteBlob(File* aBlob)
+ActorFromRemoteBlobImpl(BlobImpl* aImpl)
 {
-  MOZ_ASSERT(aBlob);
+  MOZ_ASSERT(aImpl);
 
-  nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryInterface(aBlob->Impl());
+  nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryInterface(aImpl);
   if (remoteBlob) {
     BlobChild* actor = remoteBlob->GetBlobChild();
     MOZ_ASSERT(actor);
@@ -427,13 +430,13 @@ ActorFromRemoteBlob(File* aBlob)
 }
 
 bool
-ResolveMysteryFile(File* aBlob,
+ResolveMysteryFile(BlobImpl* aImpl,
                    const nsString& aName,
                    const nsString& aContentType,
                    uint64_t aSize,
                    uint64_t aLastModifiedDate)
 {
-  BlobChild* actor = ActorFromRemoteBlob(aBlob);
+  BlobChild* actor = ActorFromRemoteBlobImpl(aImpl);
   if (actor) {
     return actor->SetMysteryBlobInfo(aName, aContentType,
                                      aSize, aLastModifiedDate);
@@ -442,11 +445,11 @@ ResolveMysteryFile(File* aBlob,
 }
 
 bool
-ResolveMysteryBlob(File* aBlob,
+ResolveMysteryBlob(BlobImpl* aImpl,
                    const nsString& aContentType,
                    uint64_t aSize)
 {
-  BlobChild* actor = ActorFromRemoteBlob(aBlob);
+  BlobChild* actor = ActorFromRemoteBlobImpl(aImpl);
   if (actor) {
     return actor->SetMysteryBlobInfo(aContentType, aSize);
   }
@@ -540,9 +543,9 @@ ReadBlobOrFile(JSStructuredCloneReader* aReader,
   MOZ_ASSERT(aTag == SCTAG_DOM_FILE ||
              aTag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE);
 
-  uint64_t lastModifiedDate;
+  int64_t lastModifiedDate;
   if (aTag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE) {
-    lastModifiedDate = UINT64_MAX;
+    lastModifiedDate = INT64_MAX;
   } else {
     if (NS_WARN_IF(!JS_ReadBytes(aReader, &lastModifiedDate,
                                 sizeof(lastModifiedDate)))) {
@@ -573,10 +576,12 @@ public:
                            const MutableFileData& aData,
                            JS::MutableHandle<JSObject*> aResult)
   {
-    MOZ_ASSERT(IndexedDatabaseManager::IsMainProcess());
-    MOZ_ASSERT(NS_IsMainThread());
     MOZ_ASSERT(aDatabase);
     MOZ_ASSERT(aFile.mFileInfo);
+
+    if (!IndexedDatabaseManager::IsMainProcess() || !NS_IsMainThread()) {
+      return false;
+    }
 
     nsRefPtr<IDBMutableFile> mutableFile =
       IDBMutableFile::Create(aDatabase,
@@ -585,7 +590,7 @@ public:
                              aFile.mFileInfo.forget());
     MOZ_ASSERT(mutableFile);
 
-    JS::Rooted<JSObject*> result(aCx, mutableFile->WrapObject(aCx, JS::NullPtr()));
+    JS::Rooted<JSObject*> result(aCx, mutableFile->WrapObject(aCx, nullptr));
     if (NS_WARN_IF(!result)) {
       return false;
     }
@@ -604,7 +609,7 @@ public:
     MOZ_ASSERT(aData.tag == SCTAG_DOM_FILE ||
                aData.tag == SCTAG_DOM_FILE_WITHOUT_LASTMODIFIEDDATE ||
                aData.tag == SCTAG_DOM_BLOB);
-    MOZ_ASSERT(aFile.mFile);
+    MOZ_ASSERT(aFile.mBlob);
 
     // It can happen that this IDB is chrome code, so there is no parent, but
     // still we want to set a correct parent for the new File object.
@@ -626,17 +631,18 @@ public:
     }
 
     MOZ_ASSERT(parent);
-    nsRefPtr<File> file = new File(parent, aFile.mFile->Impl());
 
     if (aData.tag == SCTAG_DOM_BLOB) {
-      if (NS_WARN_IF(!ResolveMysteryBlob(aFile.mFile,
+      if (NS_WARN_IF(!ResolveMysteryBlob(aFile.mBlob->Impl(),
                                          aData.type,
                                          aData.size))) {
         return false;
       }
 
+      MOZ_ASSERT(!aFile.mBlob->IsFile());
+
       JS::Rooted<JS::Value> wrappedBlob(aCx);
-      if (!GetOrCreateDOMReflector(aCx, aFile.mFile, &wrappedBlob)) {
+      if (!ToJSValue(aCx, aFile.mBlob, &wrappedBlob)) {
         return false;
       }
 
@@ -644,9 +650,7 @@ public:
       return true;
     }
 
-    MOZ_ASSERT(aFile.mFile->IsFile());
-
-    if (NS_WARN_IF(!ResolveMysteryFile(aFile.mFile,
+    if (NS_WARN_IF(!ResolveMysteryFile(aFile.mBlob->Impl(),
                                        aData.name,
                                        aData.type,
                                        aData.size,
@@ -654,8 +658,12 @@ public:
       return false;
     }
 
+    MOZ_ASSERT(aFile.mBlob->IsFile());
+    nsRefPtr<File> file = aFile.mBlob->ToFile();
+    MOZ_ASSERT(file);
+
     JS::Rooted<JS::Value> wrappedFile(aCx);
-    if (!GetOrCreateDOMReflector(aCx, aFile.mFile, &wrappedFile)) {
+    if (!ToJSValue(aCx, file, &wrappedFile)) {
       return false;
     }
 
@@ -1152,6 +1160,11 @@ IDBObjectStore::AddOrPut(JSContext* aCx,
   MOZ_ASSERT(aCx);
   MOZ_ASSERT_IF(aFromCursor, aOverwrite);
 
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
@@ -1173,7 +1186,8 @@ IDBObjectStore::AddOrPut(JSContext* aCx,
   }
 
   FallibleTArray<uint8_t> cloneData;
-  if (NS_WARN_IF(!cloneData.SetLength(cloneWriteInfo.mCloneBuffer.nbytes()))) {
+  if (NS_WARN_IF(!cloneData.SetLength(cloneWriteInfo.mCloneBuffer.nbytes(),
+                                      fallible))) {
     aRv = NS_ERROR_OUT_OF_MEMORY;
     return nullptr;
   }
@@ -1201,7 +1215,7 @@ IDBObjectStore::AddOrPut(JSContext* aCx,
     const uint32_t count = blobOrFileInfos.Length();
 
     FallibleTArray<DatabaseFileOrMutableFileId> fileActorOrMutableFileIds;
-    if (NS_WARN_IF(!fileActorOrMutableFileIds.SetCapacity(count))) {
+    if (NS_WARN_IF(!fileActorOrMutableFileIds.SetCapacity(count, fallible))) {
       aRv = NS_ERROR_OUT_OF_MEMORY;
       return nullptr;
     }
@@ -1223,14 +1237,17 @@ IDBObjectStore::AddOrPut(JSContext* aCx,
           return nullptr;
         }
 
-        MOZ_ALWAYS_TRUE(fileActorOrMutableFileIds.AppendElement(fileActor));
+        MOZ_ALWAYS_TRUE(fileActorOrMutableFileIds.AppendElement(fileActor,
+                                                                fallible));
       } else {
         const int64_t fileId = blobOrFileInfo.mFileInfo->Id();
         MOZ_ASSERT(fileId > 0);
 
-        MOZ_ALWAYS_TRUE(fileActorOrMutableFileIds.AppendElement(fileId));
+        MOZ_ALWAYS_TRUE(fileActorOrMutableFileIds.AppendElement(fileId,
+                                                                fallible));
 
-        nsRefPtr<FileInfo>* newFileInfo = fileInfosToKeepAlive.AppendElement();
+        nsRefPtr<FileInfo>* newFileInfo =
+          fileInfosToKeepAlive.AppendElement(fallible);
         if (NS_WARN_IF(!newFileInfo)) {
           aRv = NS_ERROR_OUT_OF_MEMORY;
           return nullptr;
@@ -1301,6 +1318,11 @@ IDBObjectStore::GetAllInternal(bool aKeysOnly,
                                ErrorResult& aRv)
 {
   AssertIsOnOwningThread();
+
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
 
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
@@ -1374,6 +1396,11 @@ IDBObjectStore::Clear(ErrorResult& aRv)
 {
   AssertIsOnOwningThread();
 
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
@@ -1410,7 +1437,7 @@ IDBObjectStore::Index(const nsAString& aName, ErrorResult &aRv)
 {
   AssertIsOnOwningThread();
 
-  if (mTransaction->IsFinished()) {
+  if (mTransaction->IsCommittingOrDone() || mDeletedSpec) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return nullptr;
   }
@@ -1560,6 +1587,11 @@ IDBObjectStore::Get(JSContext* aCx,
 {
   AssertIsOnOwningThread();
 
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
@@ -1607,6 +1639,11 @@ IDBObjectStore::DeleteInternal(JSContext* aCx,
                                ErrorResult& aRv)
 {
   AssertIsOnOwningThread();
+
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
 
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
@@ -1701,12 +1738,15 @@ IDBObjectStore::CreateIndexInternal(
 {
   AssertIsOnOwningThread();
 
-  IDBTransaction* transaction = IDBTransaction::GetCurrent();
-
-  if (!transaction ||
-      transaction != mTransaction ||
-      mTransaction->GetMode() != IDBTransaction::VERSION_CHANGE) {
+  if (mTransaction->GetMode() != IDBTransaction::VERSION_CHANGE ||
+      mDeletedSpec) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
+  IDBTransaction* transaction = IDBTransaction::GetCurrent();
+  if (!transaction || transaction != mTransaction) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
 
@@ -1781,12 +1821,15 @@ IDBObjectStore::DeleteIndex(const nsAString& aName, ErrorResult& aRv)
 {
   AssertIsOnOwningThread();
 
-  IDBTransaction* transaction = IDBTransaction::GetCurrent();
-
-  if (!transaction ||
-      transaction != mTransaction ||
-      mTransaction->GetMode() != IDBTransaction::VERSION_CHANGE) {
+  if (mTransaction->GetMode() != IDBTransaction::VERSION_CHANGE ||
+      mDeletedSpec) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return;
+  }
+
+  IDBTransaction* transaction = IDBTransaction::GetCurrent();
+  if (!transaction || transaction != mTransaction) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return;
   }
 
@@ -1854,6 +1897,13 @@ IDBObjectStore::Count(JSContext* aCx,
                       JS::Handle<JS::Value> aKey,
                       ErrorResult& aRv)
 {
+  AssertIsOnOwningThread();
+
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
+
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
@@ -1903,6 +1953,11 @@ IDBObjectStore::OpenCursorInternal(bool aKeysOnly,
                                    ErrorResult& aRv)
 {
   AssertIsOnOwningThread();
+
+  if (mDeletedSpec) {
+    aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
+    return nullptr;
+  }
 
   if (!mTransaction->IsOpen()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);

@@ -5,6 +5,10 @@ allprojects {
         topsrcdir = gradle.mozconfig.topsrcdir
         topobjdir = gradle.mozconfig.topobjdir
     }
+
+    repositories {
+        jcenter()
+    }
 }
 
 buildDir "${topobjdir}/mobile/android/gradle/build"
@@ -12,6 +16,17 @@ buildDir "${topobjdir}/mobile/android/gradle/build"
 buildscript {
     repositories {
         jcenter()
+
+        // For spoon-gradle-plugin SNAPSHOT release.  This needs to go before
+        // the snapshots repository, otherwise we find a remote 1.0.3-SNAPSHOT
+        // that doesn't include nalexander's local changes.
+        maven {
+            url "file://${topsrcdir}/mobile/android/gradle/m2repo"
+        }
+        // For spoon SNAPSHOT releases.
+        maven {
+            url 'https://oss.sonatype.org/content/repositories/snapshots'
+        }
     }
 
     dependencies {
@@ -19,29 +34,28 @@ buildscript {
         // 1.0.0.  There are major issues with the combination of 0.14.4, Gradle
         // 2.2.1, and IntelliJ 14.0.2: see Bug 1120032.
         classpath 'com.android.tools.build:gradle:1.0.0'
+        classpath('com.stanfy.spoon:spoon-gradle-plugin:1.0.3-SNAPSHOT') {
+            // Without these, we get errors linting.
+            exclude module: 'guava'
+        }
     }
 }
 
-repositories {
-    jcenter()
-}
+task generateCodeAndResources(type:Exec) {
+    workingDir "${topobjdir}"
 
-subprojects {
-    task generateCodeAndResources(type:Exec) {
-        workingDir "${topobjdir}"
+    commandLine mozconfig.substs.GMAKE
+    args '-C'
+    args "${topobjdir}/mobile/android/base"
+    args 'gradle-targets'
 
-        commandLine "${topsrcdir}/mach"
-        args 'build'
-        args 'mobile/android/base/gradle-targets'
-
-        // Only show the output if something went wrong.
-        ignoreExitValue = true
-        standardOutput = new ByteArrayOutputStream()
-        errorOutput = standardOutput
-        doLast {
-            if (execResult.exitValue != 0) {
-                throw new GradleException("Process '${commandLine}' finished with non-zero exit value ${execResult.exitValue}:\n\n${standardOutput.toString()}")
-            }
+    // Only show the output if something went wrong.
+    ignoreExitValue = true
+    standardOutput = new ByteArrayOutputStream()
+    errorOutput = standardOutput
+    doLast {
+        if (execResult.exitValue != 0) {
+            throw new GradleException("Process '${commandLine}' finished with non-zero exit value ${execResult.exitValue}:\n\n${standardOutput.toString()}")
         }
     }
 }

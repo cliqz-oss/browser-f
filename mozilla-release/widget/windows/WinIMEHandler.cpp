@@ -174,12 +174,13 @@ IMEHandler::NotifyIME(nsWindow* aWindow,
   if (IsTSFAvailable()) {
     switch (aIMENotification.mMessage) {
       case NOTIFY_IME_OF_SELECTION_CHANGE: {
-        nsresult rv = nsTextStore::OnSelectionChange();
+        nsresult rv = nsTextStore::OnSelectionChange(aIMENotification);
         // If IMM IME is active, we need to notify nsIMM32Handler of updating
         // composition change.  It will adjust candidate window position or
         // composition window position.
         if (IsIMMActive()) {
           nsIMM32Handler::OnUpdateComposition(aWindow);
+          nsIMM32Handler::OnSelectionChange(aWindow, aIMENotification);
         }
         return rv;
       }
@@ -189,6 +190,8 @@ IMEHandler::NotifyIME(nsWindow* aWindow,
         // composition window position.
         if (IsIMMActive()) {
           nsIMM32Handler::OnUpdateComposition(aWindow);
+        } else {
+          nsTextStore::OnUpdateComposition();
         }
         return NS_OK;
       case NOTIFY_IME_OF_TEXT_CHANGE:
@@ -237,6 +240,9 @@ IMEHandler::NotifyIME(nsWindow* aWindow,
     case NOTIFY_IME_OF_POSITION_CHANGE:
     case NOTIFY_IME_OF_COMPOSITION_UPDATE:
       nsIMM32Handler::OnUpdateComposition(aWindow);
+      return NS_OK;
+    case NOTIFY_IME_OF_SELECTION_CHANGE:
+      nsIMM32Handler::OnSelectionChange(aWindow, aIMENotification);
       return NS_OK;
     case NOTIFY_IME_OF_MOUSE_BUTTON_EVENT:
       return nsIMM32Handler::OnMouseButtonEvent(aWindow, aIMENotification);

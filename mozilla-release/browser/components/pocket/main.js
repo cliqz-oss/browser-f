@@ -321,7 +321,7 @@ var pktUI = (function() {
             {
                 variant = pktApi.getSignupAB();
             }
-            var panelId = showPanel("chrome://browser/content/pocket/panels/signup.html?pockethost=" + Services.prefs.getCharPref("browser.pocket.site") + "&fxasignedin=" + fxasignedin + "&variant=" + variant + '&inoverflowmenu=' + inOverflowMenu + "&locale=" + getUILocale(), {
+            var panelId = showPanel("about:pocket-signup?pockethost=" + Services.prefs.getCharPref("browser.pocket.site") + "&fxasignedin=" + fxasignedin + "&variant=" + variant + '&inoverflowmenu=' + inOverflowMenu + "&locale=" + getUILocale(), {
             		onShow: function() {
                     },
         			onHide: panelDidHide,
@@ -349,7 +349,7 @@ var pktUI = (function() {
         	startheight = overflowMenuHeight;
         }
 
-    	var panelId = showPanel("chrome://browser/content/pocket/panels/saved.html?pockethost=" + Services.prefs.getCharPref("browser.pocket.site") + "&premiumStatus=" + (pktApi.isPremiumUser() ? '1' : '0') + '&inoverflowmenu='+inOverflowMenu + "&locale=" + getUILocale(), {
+    	var panelId = showPanel("about:pocket-saved?pockethost=" + Services.prefs.getCharPref("browser.pocket.site") + "&premiumStatus=" + (pktApi.isPremiumUser() ? '1' : '0') + '&inoverflowmenu='+inOverflowMenu + "&locale=" + getUILocale(), {
     		onShow: function() {
                 var saveLinkMessageId = 'saveLink';
 
@@ -611,6 +611,19 @@ var pktUI = (function() {
 				}
 			})
 		});
+
+        var _initL10NMessageId = "initL10N";
+        pktUIMessaging.addMessageListener(_initL10NMessageId, function(panelId, data) {
+            var strings = {};
+            var bundle = Services.strings.createBundle("chrome://browser/locale/browser-pocket.properties");
+            var e = bundle.getSimpleEnumeration();
+            while(e.hasMoreElements()) {
+                var str = e.getNext().QueryInterface(Components.interfaces.nsIPropertyElement);
+                strings[str.key] = str.value;
+            }
+            pktUIMessaging.sendResponseMessageToPanel(panelId, _initL10NMessageId, { strings: strings });
+        });
+
 	}
 
 	// -- Browser Navigation -- //

@@ -29,8 +29,8 @@ public:
     }
 
     virtual already_AddRefed<gfxASurface>
-      CreateOffscreenSurface(const IntSize& size,
-                             gfxContentType contentType) override;
+      CreateOffscreenSurface(const IntSize& aSize,
+                             gfxImageFormat aFormat) override;
 
     virtual mozilla::TemporaryRef<mozilla::gfx::ScaledFont>
       GetScaledFontForFont(mozilla::gfx::DrawTarget* aTarget, gfxFont *aFont) override;
@@ -40,6 +40,13 @@ public:
                                  nsTArray<nsString>& aListOfFonts) override;
 
     virtual nsresult UpdateFontList() override;
+
+    virtual void
+    GetCommonFallbackFonts(uint32_t aCh, uint32_t aNextCh,
+                           int32_t aRunScript,
+                           nsTArray<const char*>& aFontList) override;
+
+    virtual gfxPlatformFontList* CreatePlatformFontList() override;
 
     virtual nsresult GetStandardFamilyName(const nsAString& aFontName,
                                            nsAString& aFamilyName) override;
@@ -75,6 +82,11 @@ public:
     virtual bool IsFontFormatSupported(nsIURI *aFontURI,
                                          uint32_t aFormatFlags) override;
 
+    /**
+     * Calls XFlush if xrender is enabled.
+     */
+    virtual void FlushContentDrawing() override;
+
 #if (MOZ_WIDGET_GTK == 2)
     static void SetGdkDrawable(cairo_surface_t *target,
                                GdkDrawable *drawable);
@@ -96,6 +108,8 @@ public:
 #endif
     }
 
+    static bool UseFcFontList() { return sUseFcFontList; }
+
     bool UseImageOffscreenSurfaces() {
         // We want to turn on image offscreen surfaces ONLY for GTK3 builds
         // since GTK2 theme rendering still requires xlib surfaces per se.
@@ -110,7 +124,7 @@ public:
 
     virtual int GetScreenDepth() const override;
 
-    bool SupportsApzWheelInput() override {
+    bool SupportsApzWheelInput() const override {
       return true;
     }
 
@@ -124,6 +138,10 @@ private:
 #ifdef MOZ_X11
     static bool sUseXRender;
 #endif
+
+    // xxx - this will be removed once the new fontconfig platform font list
+    // replaces gfxPangoFontGroup
+    static bool sUseFcFontList;
 };
 
 #endif /* GFX_PLATFORM_GTK_H */

@@ -40,6 +40,9 @@ Cu.import("resource:///modules/sessionstore/ContentRestore.jsm", this);
 XPCOMUtils.defineLazyGetter(this, 'gContentRestore',
                             () => { return new ContentRestore(this) });
 
+// The current epoch.
+let gCurrentEpoch = 0;
+
 /**
  * Returns a lazy function that will evaluate the given
  * function |fn| only once and cache its return value.
@@ -88,14 +91,8 @@ let EventListener = {
       return;
     }
 
-    // If we're in the process of restoring, this load may signal
-    // the end of the restoration.
-    let epoch = gContentRestore.getRestoreEpoch();
-    if (!epoch) {
-      return;
-    }
-
-    // Restore the form data and scroll position.
+    // Restore the form data and scroll position. If we're not currently
+    // restoring a tab state then this call will simply be a noop.
     gContentRestore.restoreDocument();
   }
 };
@@ -109,6 +106,7 @@ let MessageListener = {
     "SessionStore:restoreHistory",
     "SessionStore:restoreTabContent",
     "SessionStore:resetRestore",
+    "SessionStore:flush",
   ],
 
   init: function () {
@@ -116,6 +114,20 @@ let MessageListener = {
   },
 
   receiveMessage: function ({name, data}) {
+    // The docShell might be gone. Don't process messages,
+    // that will just lead to errors anyway.
+    if (!docShell) {
+      return;
+    }
+
+    // A fresh tab always starts with epoch=0. The parent has the ability to
+    // override that to signal a new era in this tab's life. This enables it
+    // to ignore async messages that were already sent but not yet received
+    // and would otherwise confuse the internal tab state.
+    if (data.epoch && data.epoch != gCurrentEpoch) {
+      gCurrentEpoch = data.epoch;
+    }
+
     switch (name) {
       case "SessionStore:restoreHistory":
         this.restoreHistory(data);
@@ -126,23 +138,21 @@ let MessageListener = {
       case "SessionStore:resetRestore":
         gContentRestore.resetRestore();
         break;
+      case "SessionStore:flush":
+        this.flush(data);
+        break;
       default:
         debug("received unknown message '" + name + "'");
         break;
     }
   },
 
-  restoreHistory({epoch, tabData}) {
-    gContentRestore.restoreHistory(epoch, tabData, {
-      onReload() {
-        // Inform SessionStore.jsm about the reload. It will send
-        // restoreTabContent in response.
-        sendAsyncMessage("SessionStore:reloadPendingTab", {epoch});
-      },
-
-      // Note: The two callbacks passed here will only be used when a load
-      // starts that was not initiated by sessionstore itself. This can happen
-      // when some code calls browser.loadURI() on a pending browser/tab.
+  restoreHistory({epoch, tabData, loadArguments}) {
+    gContentRestore.restoreHistory(tabData, loadArguments, {
+      // Note: The callbacks passed here will only be used when a load starts
+      // that was not initiated by sessionstore itself. This can happen when
+      // some code calls browser.loadURI() or browser.reload() on a pending
+      // browser/tab.
 
       onLoadStarted() {
         // Notify the parent that the tab is no longer pending.
@@ -166,7 +176,7 @@ let MessageListener = {
   },
 
   restoreTabContent({loadArguments}) {
-    let epoch = gContentRestore.getRestoreEpoch();
+    let epoch = gCurrentEpoch;
 
     // We need to pass the value of didStartLoad back to SessionStore.jsm.
     let didStartLoad = gContentRestore.restoreTabContent(loadArguments, () => {
@@ -181,6 +191,11 @@ let MessageListener = {
       // Pretend that the load succeeded so that event handlers fire correctly.
       sendAsyncMessage("SessionStore:restoreTabContentComplete", {epoch});
     }
+  },
+
+  flush({id}) {
+    // Flush the message queue, send the latest updates.
+    MessageQueue.send({flushID: id});
   }
 };
 
@@ -222,7 +237,11 @@ let SyncHandler = {
    * can occur by sending data shortly before flushing synchronously.
    */
   flushAsync: function () {
-    MessageQueue.flushAsync();
+    if (!Services.prefs.getBoolPref("browser.sessionstore.debug")) {
+      throw new Error("flushAsync() must be used for testing, only.");
+    }
+
+    MessageQueue.send();
   }
 };
 
@@ -255,6 +274,9 @@ let SessionHistoryListener = {
     if (!SessionHistory.isEmpty(docShell)) {
       this.collect();
     }
+
+    // Listen for page title changes.
+    addEventListener("DOMTitleChanged", this);
   },
 
   uninit: function () {
@@ -268,6 +290,10 @@ let SessionHistoryListener = {
     if (docShell) {
       MessageQueue.push("history", () => SessionHistory.collect(docShell));
     }
+  },
+
+  handleEvent(event) {
+    this.collect();
   },
 
   onFrameTreeCollected: function () {
@@ -629,6 +655,8 @@ let MessageQueue = {
    * @param options (object)
    *        {id: 123} to override the update ID used to accumulate data to send.
    *        {sync: true} to send data to the parent process synchronously.
+   *        {flushID: 123} to specify that this is a flush
+   *        {isFinal: true} to signal this is the final message sent on unload
    */
   send: function (options = {}) {
     // Looks like we have been called off a timeout after the tab has been
@@ -645,6 +673,7 @@ let MessageQueue = {
 
     let sync = options && options.sync;
     let startID = (options && options.id) || this._id;
+    let flushID = (options && options.flushID) || 0;
 
     // We use sendRpcMessage in the sync case because we may have been called
     // through a CPOW. RPC messages are the only synchronous messages that the
@@ -680,9 +709,9 @@ let MessageQueue = {
 
     // Send all data to the parent process.
     sendMessage("SessionStore:update", {
-      id: this._id,
-      data: data,
-      telemetry: telemetry
+      id: this._id, data, telemetry, flushID,
+      isFinal: options.isFinal || false,
+      epoch: gCurrentEpoch
     });
 
     // Increase our unique message ID.
@@ -706,20 +735,6 @@ let MessageQueue = {
 
     this._data.clear();
     this._lastUpdated.clear();
-  },
-
-  /**
-   * DO NOT USE - DEBUGGING / TESTING ONLY
-   *
-   * This function is used to simulate certain situations where race conditions
-   * can occur by sending data shortly before flushing synchronously.
-   */
-  flushAsync: function () {
-    if (!Services.prefs.getBoolPref("browser.sessionstore.debug")) {
-      throw new Error("flushAsync() must be used for testing, only.");
-    }
-
-    this.send();
   }
 };
 
@@ -759,6 +774,10 @@ function handleRevivedTab() {
 addEventListener("pagehide", handleRevivedTab);
 
 addEventListener("unload", () => {
+  // Upon frameLoader destruction, send a final update message to
+  // the parent and flush all data currently held in the child.
+  MessageQueue.send({isFinal: true});
+
   // If we're browsing from the tab crashed UI to a URI that causes the tab
   // to go remote again, we catch this in the unload event handler, because
   // swapping out the non-remote browser for a remote one in

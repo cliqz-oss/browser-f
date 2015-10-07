@@ -501,6 +501,20 @@ class TransportTestPeer : public sigslot::has_slots<> {
     ASSERT_TRUE(NS_SUCCEEDED(res));
   }
 
+  void SetAlpn(std::string str, bool withDefault, std::string extra = "") {
+    std::set<std::string> alpn;
+    alpn.insert(str); // the one we want to select
+    if (!extra.empty()) {
+      alpn.insert(extra);
+    }
+    nsresult res = dtls_->SetAlpn(alpn, withDefault ? str : "");
+    ASSERT_EQ(NS_OK, res);
+  }
+
+  const std::string& GetAlpn() const {
+    return dtls_->GetNegotiatedAlpn();
+  }
+
   void SetDtlsPeer(TransportTestPeer *peer, int digests, unsigned int damage) {
     unsigned int mask = 1;
 
@@ -619,7 +633,7 @@ class TransportTestPeer : public sigslot::has_slots<> {
     layers->push(dtls_);
 
     test_utils->sts_target()->Dispatch(
-      WrapRunnableRet(flow_, &TransportFlow::PushLayers, layers, &res),
+      WrapRunnableRet(&res, flow_, &TransportFlow::PushLayers, layers),
       NS_DISPATCH_SYNC);
 
     ASSERT_EQ((nsresult)NS_OK, res);
@@ -630,7 +644,7 @@ class TransportTestPeer : public sigslot::has_slots<> {
 
     // Start gathering
     test_utils->sts_target()->Dispatch(
-        WrapRunnableRet(ice_ctx_, &NrIceCtx::StartGathering, &res),
+        WrapRunnableRet(&res, ice_ctx_, &NrIceCtx::StartGathering),
         NS_DISPATCH_SYNC);
     ASSERT_TRUE(NS_SUCCEEDED(res));
   }
@@ -670,23 +684,23 @@ class TransportTestPeer : public sigslot::has_slots<> {
 
     // First send attributes
     test_utils->sts_target()->Dispatch(
-      WrapRunnableRet(peer_->ice_ctx_,
+      WrapRunnableRet(&res, peer_->ice_ctx_,
                       &NrIceCtx::ParseGlobalAttributes,
-                      ice_ctx_->GetGlobalAttributes(), &res),
+                      ice_ctx_->GetGlobalAttributes()),
       NS_DISPATCH_SYNC);
     ASSERT_TRUE(NS_SUCCEEDED(res));
 
     for (size_t i=0; i<streams_.size(); ++i) {
       test_utils->sts_target()->Dispatch(
-        WrapRunnableRet(peer_->streams_[i], &NrIceMediaStream::ParseAttributes,
-                        candidates_[streams_[i]->name()], &res), NS_DISPATCH_SYNC);
+        WrapRunnableRet(&res, peer_->streams_[i], &NrIceMediaStream::ParseAttributes,
+                        candidates_[streams_[i]->name()]), NS_DISPATCH_SYNC);
 
       ASSERT_TRUE(NS_SUCCEEDED(res));
     }
 
     // Start checks on the other peer.
     test_utils->sts_target()->Dispatch(
-      WrapRunnableRet(peer_->ice_ctx_, &NrIceCtx::StartChecks, &res),
+      WrapRunnableRet(&res, peer_->ice_ctx_, &NrIceCtx::StartChecks),
       NS_DISPATCH_SYNC);
     ASSERT_TRUE(NS_SUCCEEDED(res));
   }
@@ -694,7 +708,7 @@ class TransportTestPeer : public sigslot::has_slots<> {
   TransportResult SendPacket(const unsigned char* data, size_t len) {
     TransportResult ret;
     test_utils->sts_target()->Dispatch(
-      WrapRunnableRet(flow_, &TransportFlow::SendPacket, data, len, &ret),
+      WrapRunnableRet(&ret, flow_, &TransportFlow::SendPacket, data, len),
       NS_DISPATCH_SYNC);
 
     return ret;
@@ -741,7 +755,7 @@ class TransportTestPeer : public sigslot::has_slots<> {
     TransportLayer::State tstate;
 
     RUN_ON_THREAD(test_utils->sts_target(),
-                  WrapRunnableRet(flow_, &TransportFlow::state, &tstate));
+                  WrapRunnableRet(&tstate, flow_, &TransportFlow::state));
 
     return tstate;
   }
@@ -760,8 +774,8 @@ class TransportTestPeer : public sigslot::has_slots<> {
     nsresult rv;
     uint16_t cipher;
     RUN_ON_THREAD(test_utils->sts_target(),
-                  WrapRunnableRet(dtls_, &TransportLayerDtls::GetCipherSuite,
-                                  &cipher, &rv));
+                  WrapRunnableRet(&rv, dtls_, &TransportLayerDtls::GetCipherSuite,
+                                  &cipher));
 
     if (NS_FAILED(rv)) {
       return TLS_NULL_WITH_NULL_NULL; // i.e., not good
@@ -773,8 +787,8 @@ class TransportTestPeer : public sigslot::has_slots<> {
     nsresult rv;
     uint16_t cipher;
     RUN_ON_THREAD(test_utils->sts_target(),
-                  WrapRunnableRet(dtls_, &TransportLayerDtls::GetSrtpCipher,
-                                  &cipher, &rv));
+                  WrapRunnableRet(&rv, dtls_, &TransportLayerDtls::GetSrtpCipher,
+                                  &cipher));
     if (NS_FAILED(rv)) {
       return 0; // the SRTP equivalent of TLS_NULL_WITH_NULL_NULL
     }
@@ -854,14 +868,23 @@ class TransportTest : public ::testing::Test {
     p2_->SetDtlsAllowAll();
   }
 
-  void ConnectSocket() {
-    test_utils->sts_target()->Dispatch(
-      WrapRunnable(p1_, &TransportTestPeer::ConnectSocket, p2_),
-      NS_DISPATCH_SYNC);
-    test_utils->sts_target()->Dispatch(
-      WrapRunnable(p2_, &TransportTestPeer::ConnectSocket, p1_),
-      NS_DISPATCH_SYNC);
+  void SetAlpn(std::string first, std::string second,
+               bool withDefaults = true) {
+    if (!first.empty()) {
+      p1_->SetAlpn(first, withDefaults, "bogus");
+    }
+    if (!second.empty()) {
+      p2_->SetAlpn(second, withDefaults);
+    }
+  }
 
+  void CheckAlpn(std::string first, std::string second) {
+    ASSERT_EQ(first, p1_->GetAlpn());
+    ASSERT_EQ(second, p2_->GetAlpn());
+  }
+
+  void ConnectSocket() {
+    ConnectSocketInternal();
     ASSERT_TRUE_WAIT(p1_->connected(), 10000);
     ASSERT_TRUE_WAIT(p2_->connected(), 10000);
 
@@ -870,14 +893,16 @@ class TransportTest : public ::testing::Test {
   }
 
   void ConnectSocketExpectFail() {
-    test_utils->sts_target()->Dispatch(
-      WrapRunnable(p1_, &TransportTestPeer::ConnectSocket, p2_),
-      NS_DISPATCH_SYNC);
-    test_utils->sts_target()->Dispatch(
-      WrapRunnable(p2_, &TransportTestPeer::ConnectSocket, p1_),
-      NS_DISPATCH_SYNC);
+    ConnectSocketInternal();
     ASSERT_TRUE_WAIT(p1_->failed(), 10000);
     ASSERT_TRUE_WAIT(p2_->failed(), 10000);
+  }
+
+  void ConnectSocketExpectState(TransportLayer::State s1,
+                                TransportLayer::State s2) {
+    ConnectSocketInternal();
+    ASSERT_EQ_WAIT(s1, p1_->state(), 10000);
+    ASSERT_EQ_WAIT(s2, p2_->state(), 10000);
   }
 
   void InitIce() {
@@ -908,6 +933,15 @@ class TransportTest : public ::testing::Test {
   }
 
  protected:
+  void ConnectSocketInternal() {
+    test_utils->sts_target()->Dispatch(
+      WrapRunnable(p1_, &TransportTestPeer::ConnectSocket, p2_),
+      NS_DISPATCH_SYNC);
+    test_utils->sts_target()->Dispatch(
+      WrapRunnable(p2_, &TransportTestPeer::ConnectSocket, p1_),
+      NS_DISPATCH_SYNC);
+  }
+
   PRFileDesc *fds_[2];
   TransportTestPeer *p1_;
   TransportTestPeer *p2_;
@@ -953,6 +987,62 @@ TEST_F(TransportTest, TestConnectDestroyFlowsMainThread) {
 TEST_F(TransportTest, TestConnectAllowAll) {
   SetDtlsAllowAll();
   ConnectSocket();
+}
+
+TEST_F(TransportTest, TestConnectAlpn) {
+  SetDtlsPeer();
+  SetAlpn("a", "a");
+  ConnectSocket();
+  CheckAlpn("a", "a");
+}
+
+TEST_F(TransportTest, TestConnectAlpnMismatch) {
+  SetDtlsPeer();
+  SetAlpn("something", "different");
+  ConnectSocketExpectFail();
+}
+
+TEST_F(TransportTest, TestConnectAlpnServerDefault) {
+  SetDtlsPeer();
+  SetAlpn("def", "");
+  // server allows default, client doesn't support
+  ConnectSocket();
+  CheckAlpn("def", "");
+}
+
+TEST_F(TransportTest, TestConnectAlpnClientDefault) {
+  SetDtlsPeer();
+  SetAlpn("", "clientdef");
+  // client allows default, but server will ignore the extension
+  ConnectSocket();
+  CheckAlpn("", "clientdef");
+}
+
+TEST_F(TransportTest, TestConnectClientNoAlpn) {
+  SetDtlsPeer();
+  // Here the server has ALPN, but no default is allowed.
+  // Reminder: p1 == server, p2 == client
+  SetAlpn("server-nodefault", "", false);
+  // The server doesn't see the extension, so negotiates without it.
+  // But then the server is forced to close when it discovers that ALPN wasn't
+  // negotiated; the client sees a close.
+  ConnectSocketExpectState(TransportLayer::TS_ERROR,
+                           TransportLayer::TS_CLOSED);
+}
+
+TEST_F(TransportTest, TestConnectServerNoAlpn) {
+  SetDtlsPeer();
+  SetAlpn("", "client-nodefault", false);
+  // The client aborts; the server doesn't realize this is a problem and just
+  // sees the close.
+  ConnectSocketExpectState(TransportLayer::TS_CLOSED,
+                           TransportLayer::TS_ERROR);
+}
+
+TEST_F(TransportTest, TestConnectNoDigest) {
+  SetDtlsPeer(0, 0);
+
+  ConnectSocketExpectFail();
 }
 
 TEST_F(TransportTest, TestConnectBadDigest) {

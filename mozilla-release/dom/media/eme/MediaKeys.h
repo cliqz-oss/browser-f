@@ -52,7 +52,7 @@ public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(MediaKeys)
 
-  MediaKeys(nsPIDOMWindow* aParentWindow, const nsAString& aKeySystem);
+  MediaKeys(nsPIDOMWindow* aParentWindow, const nsAString& aKeySystem, const nsAString& aCDMVersion);
 
   already_AddRefed<DetailedPromise> Init(ErrorResult& aRv);
 
@@ -83,7 +83,7 @@ public:
 
   // Called once a Init() operation succeeds.
   void OnCDMCreated(PromiseId aId,
-                    const nsACString& aNodeId, const nsACString& aPluginId);
+                    const nsACString& aNodeId, const uint32_t aPluginId);
 
   // Called once the CDM generates a sessionId while servicing a
   // MediaKeySession.generateRequest() or MediaKeySession.load() call,
@@ -136,7 +136,8 @@ private:
   nsRefPtr<HTMLMediaElement> mElement;
 
   nsCOMPtr<nsPIDOMWindow> mParent;
-  nsString mKeySystem;
+  const nsString mKeySystem;
+  const nsString mCDMVersion;
   nsCString mNodeId;
   KeySessionHashMap mKeySessions;
   PromiseHashMap mPromises;

@@ -24,9 +24,9 @@
 <!ENTITY canvasDebuggerUI.emptyNotice1    "Auf die">
 <!ENTITY canvasDebuggerUI.emptyNotice2    "-Schaltfläche klicken, um die Aufrufliste des Frames einer Animation anzuzeigen.">
 
-<!-- LOCALIZATION NOTE (canvasDebuggerUI.reloadNotice1): This is the label shown
-  -  in the call list view while loading a snapshot. -->
-<!ENTITY canvasDebuggerUI.importNotice    "Wird geladen…">
+<!-- LOCALIZATION NOTE (canvasDebuggerUI.waitingNotice): This is the label shown
+  -  in the call list view while recording a snapshot. -->
+<!ENTITY canvasDebuggerUI.waitingNotice   "Animationsroutine wird aufgenommen…">
 
 <!-- LOCALIZATION NOTE (canvasDebuggerUI.recordSnapshot): This string is displayed
   -  on a button that starts a new snapshot. -->

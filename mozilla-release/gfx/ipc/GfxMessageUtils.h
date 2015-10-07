@@ -391,28 +391,6 @@ struct ParamTraits<mozilla::gfx::IntSizeTyped<T> >
   }
 };
 
-template<>
-struct ParamTraits<nsIntRect>
-{
-  typedef nsIntRect paramType;
-
-  static void Write(Message* msg, const paramType& param)
-  {
-    WriteParam(msg, param.x);
-    WriteParam(msg, param.y);
-    WriteParam(msg, param.width);
-    WriteParam(msg, param.height);
-  }
-
-  static bool Read(const Message* msg, void** iter, paramType* result)
-  {
-    return (ReadParam(msg, iter, &result->x) &&
-            ReadParam(msg, iter, &result->y) &&
-            ReadParam(msg, iter, &result->width) &&
-            ReadParam(msg, iter, &result->height));
-  }
-};
-
 template<typename Region, typename Rect, typename Iter>
 struct RegionParamTraits
 {
@@ -444,13 +422,13 @@ struct RegionParamTraits
 
 template<>
 struct ParamTraits<nsIntRegion>
-  : RegionParamTraits<nsIntRegion, nsIntRect, nsIntRegionRectIterator>
+  : RegionParamTraits<nsIntRegion, mozilla::gfx::IntRect, nsIntRegionRectIterator>
 {};
 
 template<>
-struct ParamTraits<nsIntSize>
+struct ParamTraits<mozilla::gfx::IntSize>
 {
-  typedef nsIntSize paramType;
+  typedef mozilla::gfx::IntSize paramType;
 
   static void Write(Message* msg, const paramType& param)
   {
@@ -743,7 +721,7 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
     WriteParam(aMsg, aParam.mZoom);
     WriteParam(aMsg, aParam.mDevPixelsPerCSSPixel);
     WriteParam(aMsg, aParam.mPresShellId);
-    WriteParam(aMsg, aParam.mIsRoot);
+    WriteParam(aMsg, aParam.mIsRootContent);
     WriteParam(aMsg, aParam.mHasScrollgrab);
     WriteParam(aMsg, aParam.mUpdateScrollOffset);
     WriteParam(aMsg, aParam.mScrollGeneration);
@@ -754,6 +732,9 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
     WriteParam(aMsg, aParam.GetLineScrollAmount());
     WriteParam(aMsg, aParam.GetPageScrollAmount());
     WriteParam(aMsg, aParam.AllowVerticalScrollWithWheel());
+    WriteParam(aMsg, aParam.mClipRect);
+    WriteParam(aMsg, aParam.mIsLayersIdRoot);
+    WriteParam(aMsg, aParam.mUsesContainerScrolling);
     WriteParam(aMsg, aParam.GetContentDescription());
   }
 
@@ -785,7 +766,7 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
             ReadParam(aMsg, aIter, &aResult->mZoom) &&
             ReadParam(aMsg, aIter, &aResult->mDevPixelsPerCSSPixel) &&
             ReadParam(aMsg, aIter, &aResult->mPresShellId) &&
-            ReadParam(aMsg, aIter, &aResult->mIsRoot) &&
+            ReadParam(aMsg, aIter, &aResult->mIsRootContent) &&
             ReadParam(aMsg, aIter, &aResult->mHasScrollgrab) &&
             ReadParam(aMsg, aIter, &aResult->mUpdateScrollOffset) &&
             ReadParam(aMsg, aIter, &aResult->mScrollGeneration) &&
@@ -796,6 +777,9 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
             ReadParam(aMsg, aIter, &aResult->mLineScrollAmount) &&
             ReadParam(aMsg, aIter, &aResult->mPageScrollAmount) &&
             ReadParam(aMsg, aIter, &aResult->mAllowVerticalScrollWithWheel) &&
+            ReadParam(aMsg, aIter, &aResult->mClipRect) &&
+            ReadParam(aMsg, aIter, &aResult->mIsLayersIdRoot) &&
+            ReadParam(aMsg, aIter, &aResult->mUsesContainerScrolling) &&
             ReadContentDescription(aMsg, aIter, aResult));
   }
 };

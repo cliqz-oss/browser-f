@@ -630,7 +630,7 @@ nsWindow::Invalidate(const nsIntRect &aRect)
 LayoutDeviceIntPoint
 nsWindow::WidgetToScreenOffset()
 {
-    NS_ENSURE_TRUE(mWidget, nsIntPoint(0,0));
+    NS_ENSURE_TRUE(mWidget, LayoutDeviceIntPoint(0,0));
 
     QPoint origin(0, 0);
     origin = mWidget->mapToGlobal(origin);
@@ -1499,13 +1499,13 @@ void find_first_visible_parent(QWindow* aItem, QWindow*& aVisibleItem)
 NS_IMETHODIMP
 nsWindow::GetScreenBounds(nsIntRect &aRect)
 {
-    aRect = nsIntRect(nsIntPoint(0, 0), mBounds.Size());
+    aRect = gfx::IntRect(gfx::IntPoint(0, 0), mBounds.Size());
     if (mIsTopLevel) {
         QPoint pos = mWidget->position();
         aRect.MoveTo(pos.x(), pos.y());
     }
     else {
-        aRect.MoveTo(WidgetToScreenOffset());
+        aRect.MoveTo(WidgetToScreenOffsetUntyped());
     }
     LOG(("GetScreenBounds %d %d | %d %d | %d %d\n",
          aRect.x, aRect.y,
@@ -1725,7 +1725,7 @@ nsWindow::SetWindowClass(const nsAString &xulWinType)
     }
     class_hint->res_class = ToNewCString(brandName);
     if (!class_hint->res_class) {
-        nsMemory::Free(class_hint->res_name);
+        free(class_hint->res_name);
         XFree(class_hint);
         return NS_ERROR_OUT_OF_MEMORY;
     }
@@ -1753,8 +1753,8 @@ nsWindow::SetWindowClass(const nsAString &xulWinType)
                       class_hint);
     }
 
-    nsMemory::Free(class_hint->res_class);
-    nsMemory::Free(class_hint->res_name);
+    free(class_hint->res_class);
+    free(class_hint->res_name);
     XFree(class_hint);
 #endif
 

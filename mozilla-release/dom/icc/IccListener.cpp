@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -19,15 +21,6 @@ IccListener::IccListener(IccManager* aIccManager, uint32_t aClientId)
   , mIccManager(aIccManager)
 {
   MOZ_ASSERT(mIccManager);
-
-  // TODO: Bug 1114938, Refactor STK in MozIcc.webidl with IPDL.
-  //       Remove the registration to IccProvider.
-  mProvider = do_GetService(NS_RILCONTENTHELPER_CONTRACTID);
-
-  if (!mProvider) {
-    NS_WARNING("Could not acquire nsIIccProvider!");
-    return;
-  }
 
   nsCOMPtr<nsIIccService> iccService = do_GetService(ICC_SERVICE_CONTRACTID);
 
@@ -55,10 +48,6 @@ IccListener::IccListener(IccManager* aIccManager, uint32_t aClientId)
   DebugOnly<nsresult> rv = mHandler->RegisterListener(this);
   NS_WARN_IF_FALSE(NS_SUCCEEDED(rv),
                    "Failed registering icc listener with Icc Handler");
-
-  rv = mProvider->RegisterIccMsg(mClientId, this);
-  NS_WARN_IF_FALSE(NS_SUCCEEDED(rv),
-                   "Failed registering icc messages with provider");
 }
 
 IccListener::~IccListener()
@@ -69,13 +58,6 @@ IccListener::~IccListener()
 void
 IccListener::Shutdown()
 {
-  // TODO: Bug 1114938, Refactor STK in MozIcc.webidl with IPDL.
-  //       Remove the unregistration to IccProvider.
-  if (mProvider) {
-    mProvider->UnregisterIccMsg(mClientId, this);
-    mProvider = nullptr;
-  }
-
   if (mHandler) {
     mHandler->UnregisterListener(this);
     mHandler = nullptr;
@@ -92,13 +74,13 @@ IccListener::Shutdown()
 // nsIIccListener
 
 NS_IMETHODIMP
-IccListener::NotifyStkCommand(const nsAString& aMessage)
+IccListener::NotifyStkCommand(nsIStkProactiveCmd *aStkProactiveCmd)
 {
   if (!mIcc) {
     return NS_OK;
   }
 
-  return mIcc->NotifyStkEvent(NS_LITERAL_STRING("stkcommand"), aMessage);
+  return mIcc->NotifyStkEvent(NS_LITERAL_STRING("stkcommand"), aStkProactiveCmd);
 }
 
 NS_IMETHODIMP

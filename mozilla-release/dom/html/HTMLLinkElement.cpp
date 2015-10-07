@@ -1,5 +1,5 @@
-
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -21,7 +21,6 @@
 #include "nsIDOMEvent.h"
 #include "nsIDOMStyleSheet.h"
 #include "nsINode.h"
-#include "nsISpeculativeConnect.h"
 #include "nsIStyleSheet.h"
 #include "nsIStyleSheetLinkingElement.h"
 #include "nsIURL.h"
@@ -182,6 +181,8 @@ HTMLLinkElement::UnbindFromTree(bool aDeep, bool aNullParent)
   // be under a different xml:base, so forget the cached state now.
   Link::ResetLinkState(false, Link::ElementHasHref());
 
+  // If this is reinserted back into the document it will not be
+  // from the parser.
   nsCOMPtr<nsIDocument> oldDoc = GetUncomposedDoc();
 
   // Check for a ShadowRoot because link elements are inert in a
@@ -311,12 +312,11 @@ HTMLLinkElement::UpdatePreconnect()
     return;
   }
 
-  nsCOMPtr<nsISpeculativeConnect>
-    speculator(do_QueryInterface(nsContentUtils::GetIOService()));
-  if (speculator) {
+  nsIDocument *owner = OwnerDoc();
+  if (owner) {
     nsCOMPtr<nsIURI> uri = GetHrefURI();
     if (uri) {
-      speculator->SpeculativeConnect(uri, nullptr);
+        owner->MaybePreconnect(uri, GetCORSMode());
     }
   }
 }

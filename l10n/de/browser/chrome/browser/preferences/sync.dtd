@@ -16,7 +16,6 @@
 <!-- Manage Account -->
 <!ENTITY manageAccount.label          "Benutzerkonto verwalten">
 <!ENTITY manageAccount.accesskey      "B">
-<!ENTITY viewQuota.label              "Quota anzeigen">
 <!ENTITY changePassword2.label        "Passwort ändern…">
 <!ENTITY myRecoveryKey.label          "Mein Wiederherstellungs-Schlüssel">
 <!ENTITY resetSync2.label             "Sync zurücksetzen…">
@@ -26,8 +25,6 @@
 <!ENTITY syncMy.label               "Synchronisieren:">
 <!ENTITY engine.bookmarks.label     "Lesezeichen">
 <!ENTITY engine.bookmarks.accesskey "L">
-<!ENTITY engine.readinglist.label   "Leseliste">
-<!ENTITY engine.readinglist.accesskey "s">
 <!ENTITY engine.tabs.label          "Tabs">
 <!ENTITY engine.tabs.accesskey      "T">
 <!ENTITY engine.history.label       "Chronik">
@@ -42,6 +39,10 @@
 <!-- Device Settings -->
 <!ENTITY syncDeviceName.label       "Gerätename:">
 <!ENTITY syncDeviceName.accesskey   "G">
+<!ENTITY fxaSyncDeviceName.label       "Gerätename">
+<!ENTITY changeSyncDeviceName.label "Gerät umbenennen…">
+<!ENTITY cancelChangeSyncDeviceName.label "Abbrechen">
+<!ENTITY saveChangeSyncDeviceName.label "Speichern">
 <!ENTITY unlinkDevice.label           "Dieses Gerät trennen">
 
 <!-- Footer stuff -->
@@ -51,14 +52,26 @@
 <!-- Firefox Accounts stuff -->
 <!ENTITY fxaPrivacyNotice.link.label "Datenschutzhinweis">
 <!ENTITY determiningAcctStatus.label     "Kontostatus wird abgefragt…">
+
+<!-- LOCALIZATION NOTE (signedInUnverified.beforename.label,
+signedInUnverified.aftername.label): these two string are used respectively
+before and after the account email address. Localizers can use one of them, or
+both, to better adapt this sentence to their language.
+-->
 <!ENTITY signedInUnverified.beforename.label "">
 <!ENTITY signedInUnverified.aftername.label "wurde nicht verifiziert.">
 
+<!-- LOCALIZATION NOTE (signedInLoginFailure.beforename.label,
+signedInLoginFailure.aftername.label): these two string are used respectively
+before and after the account email address. Localizers can use one of them, or
+both, to better adapt this sentence to their language.
+-->
 <!ENTITY signedInLoginFailure.beforename.label "Melden Sie sich an, um erneut mit">
 <!ENTITY signedInLoginFailure.aftername.label "zu verbinden.">
 
 <!ENTITY notSignedIn.label           "Sie sind nicht angemeldet.">
 <!ENTITY signIn.label                "Anmelden">
+<!ENTITY profilePicture.tooltip      "Profilbild ändern">
 <!ENTITY manage.label                "Verwalten">
 <!ENTITY disconnect.label            "Trennen…">
 <!ENTITY verify.label                "E-Mail-Adresse verifizieren">
@@ -69,3 +82,17 @@
 <!ENTITY welcome.createAccount.label "Konto erstellen">
 
 <!ENTITY welcome.useOldSync.label "Verwenden Sie eine ältere Version von Sync?">
+
+<!ENTITY signedOut.caption            "So haben Sie das Web überall dabei.">
+<!ENTITY signedOut.description        "Synchronisieren Sie Ihre Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen Ihren Geräten.">
+<!ENTITY signedOut.accountBox.title   "Verbinden Sie mit einem &syncBrand.fxAccount.label;">
+<!ENTITY signedOut.accountBox.create  "Konto erstellen">
+<!ENTITY signedOut.accountBox.signin  "Anmelden">
+
+<!ENTITY signedIn.engines.label       "Zwischen allen Geräten synchronisieren:">
+
+<!ENTITY mobilePromo.start            "Laden Sie Firefox für ">
+<!-- LOCALIZATION NOTE (mobilePromo.androidLink): This is a link title that links to https://www.mozilla.org/firefox/android/ -->
+<!ENTITY mobilePromo.androidLink      "Android™">
+<!ENTITY mobilePromo.end              "herunter, um Ihre mobilen Geräte zu synchronisieren.">
+<!ENTITY androidAttribution           "Android ist ein Warenzeichen von Google Inc.">

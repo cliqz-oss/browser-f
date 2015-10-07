@@ -199,7 +199,7 @@ TextureSourceD3D9::InitTextures(DeviceManagerD3D9* aDeviceManager,
     return nullptr;
   }
 
-  return result;
+  return result.forget();
 }
 
 /**
@@ -247,7 +247,7 @@ TextureSourceD3D9::DataToTexture(DeviceManagerD3D9* aDeviceManager,
 
   FinishTextures(aDeviceManager, texture, surface);
 
-  return texture;
+  return texture.forget();
 }
 
 TemporaryRef<IDirect3DTexture9>
@@ -271,7 +271,7 @@ TextureSourceD3D9::TextureToTexture(DeviceManagerD3D9* aDeviceManager,
     return nullptr;
   }
 
-  return texture;
+  return texture.forget();
 }
 
 TemporaryRef<IDirect3DTexture9>
@@ -312,7 +312,7 @@ TextureSourceD3D9::SurfaceToTexture(DeviceManagerD3D9* aDeviceManager,
 
   FinishTextures(aDeviceManager, texture, surface);
 
-  return texture;
+  return texture.forget();
 }
 
 DataTextureSourceD3D9::DataTextureSourceD3D9(gfx::SurfaceFormat aFormat,
@@ -448,7 +448,7 @@ DataTextureSourceD3D9::Update(gfxWindowsSurface* aSurface)
     NS_WARNING("No D3D device to update the texture.");
     return false;
   }
-  mSize = ToIntSize(aSurface->GetSize());
+  mSize = aSurface->GetSize();
 
   uint32_t bpp = 0;
 
@@ -552,10 +552,10 @@ DataTextureSourceD3D9::GetTileRect(uint32_t aTileIndex) const
                  verticalTile < (verticalTiles - 1) ? maxSize : mSize.height % maxSize);
 }
 
-nsIntRect
+IntRect
 DataTextureSourceD3D9::GetTileRect()
 {
-  return ThebesIntRect(GetTileRect(mCurrentTile));
+  return GetTileRect(mCurrentTile);
 }
 
 CairoTextureClientD3D9::CairoTextureClientD3D9(ISurfaceAllocator* aAllocator,
@@ -586,7 +586,7 @@ CairoTextureClientD3D9::CreateSimilar(TextureFlags aFlags, TextureAllocationFlag
     return nullptr;
   }
 
-  return tex;
+  return tex.forget();
 }
 
 bool
@@ -767,6 +767,29 @@ SharedTextureClientD3D9::~SharedTextureClientD3D9()
   MOZ_COUNT_DTOR(SharedTextureClientD3D9);
 }
 
+// static
+TemporaryRef<SharedTextureClientD3D9>
+SharedTextureClientD3D9::Create(ISurfaceAllocator* aAllocator,
+                                gfx::SurfaceFormat aFormat,
+                                TextureFlags aFlags,
+                                IDirect3DTexture9* aTexture,
+                                HANDLE aSharedHandle,
+                                D3DSURFACE_DESC aDesc)
+{
+  RefPtr<SharedTextureClientD3D9> texture =
+    new SharedTextureClientD3D9(aAllocator,
+                                aFormat,
+                                aFlags);
+  MOZ_ASSERT(!texture->mTexture);
+  texture->mTexture = aTexture;
+  texture->mHandle = aSharedHandle;
+  texture->mDesc = aDesc;
+  if (texture->mTexture) {
+    gfxWindowsPlatform::sD3D9SharedTextureUsed += texture->mDesc.Width * texture->mDesc.Height * 4;
+  }
+  return texture.forget();
+}
+
 bool
 SharedTextureClientD3D9::Lock(OpenMode)
 {
@@ -862,7 +885,7 @@ DataTextureSourceD3D9::UpdateFromTexture(IDirect3DTexture9* aTexture,
 
   if (aRegion) {
     nsIntRegionRectIterator iter(*aRegion);
-    const nsIntRect *iterRect;
+    const IntRect *iterRect;
     while ((iterRect = iter.Next())) {
       RECT rect;
       rect.left = iterRect->x;
@@ -891,7 +914,7 @@ DataTextureSourceD3D9::UpdateFromTexture(IDirect3DTexture9* aTexture,
 }
 
 void
-TextureHostD3D9::Updated(const nsIntRegion* aRegion)
+TextureHostD3D9::UpdatedInternal(const nsIntRegion* aRegion)
 {
   MOZ_ASSERT(mTexture);
   if (!mTexture) {

@@ -111,13 +111,14 @@ public:
   // will run on the QuotaManager IO thread.  Note, this Action must
   // be execute synchronously.
   static already_AddRefed<Context>
-  Create(Manager* aManager, Action* aQuotaIOThreadAction);
+  Create(Manager* aManager, nsIThread* aTarget,
+         Action* aInitAction, Context* aOldContext);
 
   // Execute given action on the target once the quota manager has been
   // initialized.
   //
   // Only callable from the thread that created the Context.
-  void Dispatch(nsIEventTarget* aTarget, Action* aAction);
+  void Dispatch(Action* aAction);
 
   // Cancel any Actions running or waiting to run.  This should allow the
   // Context to be released and Listener::RemoveContext() will be called
@@ -125,6 +126,9 @@ public:
   //
   // Only callable from the thread that created the Context.
   void CancelAll();
+
+  // True if CancelAll() has been called.
+  bool IsCanceled() const;
 
   // Like CancelAll(), but also marks the Manager as "invalid".
   void Invalidate();
@@ -148,12 +152,19 @@ public:
     return mQuotaInfo;
   }
 
+  // Tell the Context that some state information has been orphaned in the
+  // data store and won't be cleaned up.  The Context will leave the marker
+  // in place to trigger cleanup the next times its opened.
+  void NoteOrphanedData();
+
 private:
+  class Data;
   class QuotaInitRunnable;
   class ActionRunnable;
 
   enum State
   {
+    STATE_CONTEXT_PREINIT,
     STATE_CONTEXT_INIT,
     STATE_CONTEXT_READY,
     STATE_CONTEXT_CANCELED
@@ -165,17 +176,28 @@ private:
     nsRefPtr<Action> mAction;
   };
 
-  explicit Context(Manager* aManager);
+  Context(Manager* aManager, nsIThread* aTarget);
   ~Context();
-  void DispatchAction(nsIEventTarget* aTarget, Action* aAction);
+  void Init(Action* aInitAction, Context* aOldContext);
+  void Start();
+  void DispatchAction(Action* aAction, bool aDoomData = false);
   void OnQuotaInit(nsresult aRv, const QuotaInfo& aQuotaInfo,
                    nsMainThreadPtrHandle<OfflineStorage>& aOfflineStorage);
 
   already_AddRefed<ThreadsafeHandle>
   CreateThreadsafeHandle();
 
+  void
+  SetNextContext(Context* aNextContext);
+
+  void
+  DoomTargetData();
+
   nsRefPtr<Manager> mManager;
+  nsCOMPtr<nsIThread> mTarget;
+  nsRefPtr<Data> mData;
   State mState;
+  bool mOrphanedData;
   QuotaInfo mQuotaInfo;
   nsRefPtr<QuotaInitRunnable> mInitRunnable;
   nsTArray<PendingAction> mPendingActions;
@@ -191,6 +213,7 @@ private:
   nsRefPtr<ThreadsafeHandle> mThreadsafeHandle;
 
   nsMainThreadPtrHandle<OfflineStorage> mOfflineStorage;
+  nsRefPtr<Context> mNextContext;
 
 public:
   NS_INLINE_DECL_REFCOUNTING(cache::Context)

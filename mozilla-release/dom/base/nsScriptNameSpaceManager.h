@@ -79,11 +79,7 @@ struct nsGlobalNameStruct
   mozilla::dom::ConstructorEnabled* mConstructorEnabled;
 };
 
-
-class nsIScriptContext;
 class nsICategoryManager;
-class GlobalNameMapEntry;
-
 
 class nsScriptNameSpaceManager : public nsIObserver,
                                  public nsSupportsWeakReference,
@@ -240,8 +236,6 @@ private:
 
   PLDHashTable mGlobalNames;
   PLDHashTable mNavigatorNames;
-
-  bool mIsInitialized;
 };
 
 #endif /* nsScriptNameSpaceManager_h__ */

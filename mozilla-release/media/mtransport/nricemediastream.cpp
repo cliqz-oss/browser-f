@@ -144,7 +144,24 @@ static bool ToNrIceCandidate(const nr_ice_candidate& candc,
       return false;
   }
 
+  NrIceCandidate::TcpType tcp_type;
+  switch (cand->tcp_type) {
+    case TCP_TYPE_ACTIVE:
+      tcp_type = NrIceCandidate::ICE_ACTIVE;
+      break;
+    case TCP_TYPE_PASSIVE:
+      tcp_type = NrIceCandidate::ICE_PASSIVE;
+      break;
+    case TCP_TYPE_SO:
+      tcp_type = NrIceCandidate::ICE_SO;
+      break;
+    default:
+      tcp_type = NrIceCandidate::ICE_NONE;
+      break;
+  }
+
   out->type = type;
+  out->tcp_type = tcp_type;
   out->codeword = candc.codeword;
   return true;
 }
@@ -347,11 +364,12 @@ nsresult NrIceMediaStream::GetCandidatePairs(std::vector<NrIceCandidatePair>*
 }
 
 nsresult NrIceMediaStream::GetDefaultCandidate(
+    int component,
     NrIceCandidate* candidate) const {
 
   nr_ice_candidate *cand;
 
-  int r = nr_ice_media_stream_get_default_candidate(stream_, 1, &cand);
+  int r = nr_ice_media_stream_get_default_candidate(stream_, component, &cand);
   if (r) {
     MOZ_MTLOG(ML_ERROR, "Couldn't get default ICE candidate for '"
               << name_ << "'");

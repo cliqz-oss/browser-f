@@ -2,26 +2,24 @@
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /**
- * Tests if the shared PerformanceActorsConnection is only opened once.
+ * Tests if the shared PerformanceFront is only opened once.
  */
 
 let gProfilerConnectionsOpened = 0;
-Services.obs.addObserver(profilerConnectionObserver, "performance-actors-connection-opened", false);
+Services.obs.addObserver(profilerConnectionObserver, "performance-tools-connection-opened", false);
 
-function spawnTest () {
+function* spawnTest() {
   let { target, panel } = yield initPerformance(SIMPLE_URL);
 
   is(gProfilerConnectionsOpened, 1,
     "Only one profiler connection was opened.");
 
-  let sharedConnection = getPerformanceActorsConnection(target);
+  let front = getPerformanceFront(target);
 
-  ok(sharedConnection,
-    "A shared profiler connection for the current toolbox was retrieved.");
-  is(sharedConnection._request, panel.panelWin.gFront._request,
-    "The same shared profiler connection is used by the panel's front.");
+  ok(front, "A front for the current toolbox was retrieved.");
+  is(panel.panelWin.gFront, front, "The same front is used by the panel's front");
 
-  yield sharedConnection.open();
+  yield front.open();
 
   is(gProfilerConnectionsOpened, 1,
     "No additional profiler connections were opened.");
@@ -31,10 +29,10 @@ function spawnTest () {
 }
 
 function profilerConnectionObserver(subject, topic, data) {
-  is(topic, "performance-actors-connection-opened", "The correct topic was observed.");
+  is(topic, "performance-tools-connection-opened", "The correct topic was observed.");
   gProfilerConnectionsOpened++;
 }
 
 registerCleanupFunction(() => {
-  Services.obs.removeObserver(profilerConnectionObserver, "performance-actors-connection-opened");
+  Services.obs.removeObserver(profilerConnectionObserver, "performance-tools-connection-opened");
 });

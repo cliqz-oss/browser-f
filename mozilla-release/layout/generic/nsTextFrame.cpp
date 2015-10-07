@@ -407,7 +407,7 @@ DestroyUserData(void* aUserData)
 {
   TextRunUserData* userData = static_cast<TextRunUserData*>(aUserData);
   if (userData) {
-    nsMemory::Free(userData);
+    free(userData);
   }
 }
 
@@ -619,7 +619,7 @@ struct FlowLengthProperty {
 };
 
 int32_t nsTextFrame::GetInFlowContentLength() {
-  if (!(mState & NS_FRAME_IS_BIDI)) {
+  if (!PresContext()->BidiEnabled()) {
     return mContent->TextLength() - mContentOffset;
   }
 
@@ -631,7 +631,7 @@ int32_t nsTextFrame::GetInFlowContentLength() {
    * mContentOffset but this frame is empty, logically it might be before the
    * start of the cached flow.
    */
-  if (flowLength && 
+  if (flowLength &&
       (flowLength->mStartOffset < mContentOffset ||
        (flowLength->mStartOffset == mContentOffset && GetContentEnd() > mContentOffset)) &&
       flowLength->mEndFlowOffset > mContentOffset) {
@@ -678,7 +678,7 @@ static bool IsSpaceCombiningSequenceTail(const nsTextFragment* aFrag, uint32_t a
 // Check whether aPos is a space for CSS 'word-spacing' purposes
 static bool
 IsCSSWordSpacingSpace(const nsTextFragment* aFrag, uint32_t aPos,
-                      nsIFrame* aFrame, const nsStyleText* aStyleText)
+                      nsTextFrame* aFrame, const nsStyleText* aStyleText)
 {
   NS_ASSERTION(aPos < aFrag->GetLength(), "No text for IsSpace!");
 
@@ -1502,7 +1502,7 @@ void BuildTextRunsScanner::FlushFrames(bool aFlushLineBreaks, bool aSuppressTrai
       AutoFallibleTArray<uint8_t,BIG_TEXT_NODE_SIZE> buffer;
       uint32_t bufferSize = mMaxTextLength*(mDoubleByteText ? 2 : 1);
       if (bufferSize < mMaxTextLength || bufferSize == UINT32_MAX ||
-          !buffer.AppendElements(bufferSize)) {
+          !buffer.AppendElements(bufferSize, fallible)) {
         return;
       }
       textRun = BuildTextRunForFrames(buffer.Elements());
@@ -1896,7 +1896,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
     dummyData.mMappedFlows = &dummyMappedFlow;
   } else {
     userData = static_cast<TextRunUserData*>
-      (nsMemory::Alloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
+      (moz_xmalloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
     userDataToDestroy = userData;
     userData->mMappedFlows = reinterpret_cast<TextRunMappedFlow*>(userData + 1);
   }
@@ -1942,7 +1942,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
     textFlags |= GetSpacingFlags(WordSpacing(f));
     nsTextFrameUtils::CompressionMode compression =
       GetCSSWhitespaceToCompressionMode(f, textStyle);
-    if ((enabledJustification || f->StyleContext()->ShouldSuppressLineBreak()) &&
+    if ((enabledJustification || f->ShouldSuppressLineBreak()) &&
         !textStyle->WhiteSpaceIsSignificant() && !isSVG) {
       textFlags |= gfxTextRunFactory::TEXT_ENABLE_SPACING;
     }
@@ -2050,7 +2050,7 @@ BuildTextRunsScanner::BuildTextRunForFrames(void* aTextBuffer)
         // Need to expand the text. First transform it into a temporary buffer,
         // then expand.
         AutoFallibleTArray<uint8_t,BIG_TEXT_NODE_SIZE> tempBuf;
-        uint8_t* bufStart = tempBuf.AppendElements(contentLength);
+        uint8_t* bufStart = tempBuf.AppendElements(contentLength, fallible);
         if (!bufStart) {
           DestroyUserData(userDataToDestroy);
           return nullptr;
@@ -2268,7 +2268,7 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
   if (bufferSize < mMaxTextLength || bufferSize == UINT32_MAX) {
     return false;
   }
-  void *textPtr = buffer.AppendElements(bufferSize);
+  void *textPtr = buffer.AppendElements(bufferSize, fallible);
   if (!textPtr) {
     return false;
   }
@@ -2290,7 +2290,7 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
     dummyData.mMappedFlows = &dummyMappedFlow;
   } else {
     userData = static_cast<TextRunUserData*>
-      (nsMemory::Alloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
+      (moz_xmalloc(sizeof(TextRunUserData) + mMappedFlows.Length()*sizeof(TextRunMappedFlow)));
     userDataToDestroy = userData;
     userData->mMappedFlows = reinterpret_cast<TextRunMappedFlow*>(userData + 1);
   }
@@ -2341,7 +2341,7 @@ BuildTextRunsScanner::SetupLineBreakerContext(gfxTextRun *aTextRun)
         // Need to expand the text. First transform it into a temporary buffer,
         // then expand.
         AutoFallibleTArray<uint8_t,BIG_TEXT_NODE_SIZE> tempBuf;
-        uint8_t* bufStart = tempBuf.AppendElements(contentLength);
+        uint8_t* bufStart = tempBuf.AppendElements(contentLength, fallible);
         if (!bufStart) {
           DestroyUserData(userDataToDestroy);
           return false;
@@ -2816,9 +2816,9 @@ static int32_t FindChar(const nsTextFragment* frag,
   return -1;
 }
 
-static bool IsChineseOrJapanese(nsIFrame* aFrame)
+static bool IsChineseOrJapanese(nsTextFrame* aFrame)
 {
-  if (aFrame->StyleContext()->ShouldSuppressLineBreak()) {
+  if (aFrame->ShouldSuppressLineBreak()) {
     // Always treat ruby as CJ language so that those characters can
     // be expanded properly even when surrounded by other language.
     return true;
@@ -4629,8 +4629,8 @@ public:
     nsRect newRect = geometry->mBounds;
     nsRect oldRect = GetBounds(aBuilder, &snap);
     if (decorations != geometry->mDecorations ||
-        mLeftEdge != geometry->mLeftEdge ||
-        mRightEdge != geometry->mRightEdge ||
+        mVisIStartEdge != geometry->mVisIStartEdge ||
+        mVisIEndEdge != geometry->mVisIEndEdge ||
         !oldRect.IsEqualInterior(newRect) ||
         !geometry->mBorderRect.IsEqualInterior(GetBorderRect())) {
       aInvalidRegion->Or(oldRect, newRect);
@@ -4672,8 +4672,8 @@ nsDisplayText::Paint(nsDisplayListBuilder* aBuilder,
   ctx->Rectangle(pixelVisible);
   ctx->Clip();
 
-  NS_ASSERTION(mLeftEdge >= 0, "illegal left edge");
-  NS_ASSERTION(mRightEdge >= 0, "illegal right edge");
+  NS_ASSERTION(mVisIStartEdge >= 0, "illegal start edge");
+  NS_ASSERTION(mVisIEndEdge >= 0, "illegal end edge");
   f->PaintText(aCtx, ToReferenceFrame(), extraVisible, *this);
 }
 
@@ -4804,6 +4804,18 @@ LazyGetLineBaselineOffset(nsIFrame* aChildFrame, nsBlockFrame* aBlockFrame)
   }
 }
 
+static bool IsUnderlineRight(nsIFrame* aFrame)
+{
+  nsIAtom* langAtom = aFrame->StyleFont()->mLanguage;
+  if (!langAtom) {
+    return false;
+  }
+  nsAtomString langStr(langAtom);
+  return (StringBeginsWith(langStr, NS_LITERAL_STRING("ja")) ||
+          StringBeginsWith(langStr, NS_LITERAL_STRING("ko"))) &&
+         (langStr.Length() == 2 || langStr[2] == '-');
+}
+
 void
 nsTextFrame::GetTextDecorations(
                     nsPresContext* aPresContext,
@@ -4902,11 +4914,19 @@ nsTextFrame::GetTextDecorations(
         color = nsLayoutUtils::GetColor(f, eCSSProperty_text_decoration_color);
       }
 
-      if (textDecorations & NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE) {
+      bool swapUnderlineAndOverline = vertical && IsUnderlineRight(f);
+      const uint8_t kUnderline =
+        swapUnderlineAndOverline ? NS_STYLE_TEXT_DECORATION_LINE_OVERLINE :
+                                   NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE;
+      const uint8_t kOverline =
+        swapUnderlineAndOverline ? NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE :
+                                   NS_STYLE_TEXT_DECORATION_LINE_OVERLINE;
+
+      if (textDecorations & kUnderline) {
         aDecorations.mUnderlines.AppendElement(
           nsTextFrame::LineDecoration(f, baselineOffset, color, style));
       }
-      if (textDecorations & NS_STYLE_TEXT_DECORATION_LINE_OVERLINE) {
+      if (textDecorations & kOverline) {
         aDecorations.mOverlines.AppendElement(
           nsTextFrame::LineDecoration(f, baselineOffset, color, style));
       }
@@ -5260,7 +5280,7 @@ static void DrawSelectionDecorations(gfxContext* aContext,
     const gfxPoint& aPt, gfxFloat aICoordInFrame, gfxFloat aWidth,
     gfxFloat aAscent, const gfxFont::Metrics& aFontMetrics,
     nsTextFrame::DrawPathCallbacks* aCallbacks,
-    bool aVertical)
+    bool aVertical, uint8_t aDecoration)
 {
   gfxPoint pt(aPt);
   gfxSize size(aWidth,
@@ -5338,8 +5358,10 @@ static void DrawSelectionDecorations(gfxContext* aContext,
   size.height *= relativeSize;
   PaintDecorationLine(aFrame, aContext, aDirtyRect, color, nullptr, pt,
     (aVertical ? (pt.y - aPt.y) : (pt.x - aPt.x)) + aICoordInFrame,
-    size, aAscent, aFontMetrics.underlineOffset,
-    NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE, style, eSelectionDecoration,
+    size, aAscent, 
+    aDecoration == NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE ?
+      aFontMetrics.underlineOffset : aFontMetrics.maxAscent,
+    aDecoration, style, eSelectionDecoration,
     aCallbacks, aVertical, descentLimit);
 }
 
@@ -5537,6 +5559,9 @@ AddHyphenToMetrics(nsTextFrame* aTextFrame, gfxTextRun* aBaseTextRun,
   gfxTextRun::Metrics hyphenMetrics =
     hyphenTextRun->MeasureText(0, hyphenTextRun->GetLength(),
                                aBoundingBoxType, aContext, nullptr);
+  if (aTextFrame->GetWritingMode().IsLineInverted()) {
+    hyphenMetrics.mBoundingBox.y = -hyphenMetrics.mBoundingBox.YMost();
+  }
   aMetrics->CombineWith(hyphenMetrics, aBaseTextRun->IsRightToLeft());
 }
 
@@ -5559,8 +5584,25 @@ nsTextFrame::PaintOneShadow(uint32_t aOffset, uint32_t aLength,
   // This rect is the box which is equivalent to where the shadow will be painted.
   // The origin of aBoundingBox is the text baseline left, so we must translate it by
   // that much in order to make the origin the top-left corner of the text bounding box.
-  gfxRect shadowGfxRect = aBoundingBox +
-    gfxPoint(aFramePt.x + aLeftSideOffset, aTextBaselinePt.y) + shadowOffset;
+  // Note that aLeftSideOffset is line-left, so actually means top offset in
+  // vertical writing modes.
+  gfxRect shadowGfxRect;
+  WritingMode wm = GetWritingMode();
+  if (wm.IsVertical()) {
+    shadowGfxRect = aBoundingBox;
+    if (wm.IsVerticalRL()) {
+      // for vertical-RL, reverse direction of x-coords of bounding box
+      shadowGfxRect.x = -shadowGfxRect.XMost();
+    }
+    shadowGfxRect +=
+      gfxPoint(aTextBaselinePt.x, aFramePt.y + aLeftSideOffset);
+  } else {
+    shadowGfxRect =
+      aBoundingBox + gfxPoint(aFramePt.x + aLeftSideOffset,
+                              aTextBaselinePt.y);
+  }
+  shadowGfxRect += shadowOffset;
+
   nsRect shadowRect(NSToCoordRound(shadowGfxRect.X()),
                     NSToCoordRound(shadowGfxRect.Y()),
                     NSToCoordRound(shadowGfxRect.Width()),
@@ -5621,7 +5663,7 @@ nsTextFrame::PaintTextWithSelectionColors(gfxContext* aCtx,
   // Figure out which selections control the colors to use for each character.
   AutoFallibleTArray<SelectionDetails*,BIG_TEXT_NODE_SIZE> prevailingSelectionsBuffer;
   SelectionDetails** prevailingSelections =
-    prevailingSelectionsBuffer.AppendElements(aContentLength);
+    prevailingSelectionsBuffer.AppendElements(aContentLength, fallible);
   if (!prevailingSelections) {
     return false;
   }
@@ -5724,13 +5766,13 @@ nsTextFrame::PaintTextWithSelectionColors(gfxContext* aCtx,
     nsCSSShadowArray* shadow = textStyle->GetTextShadow();
     GetSelectionTextShadow(this, type, aTextPaintStyle, &shadow);
     if (shadow) {
-      nscoord leftEdge =  iOffset;
+      nscoord startEdge = iOffset;
       if (mTextRun->IsRightToLeft()) {
-        leftEdge -= mTextRun->GetAdvanceWidth(offset, length, &aProvider) +
+        startEdge -= mTextRun->GetAdvanceWidth(offset, length, &aProvider) +
             hyphenWidth;
       }
       PaintShadows(shadow, offset, length, dirtyRect, aFramePt, textBaselinePt,
-          leftEdge, aProvider, foreground, aClipEdges, aCtx);
+          startEdge, aProvider, foreground, aClipEdges, aCtx);
     }
 
     // Draw text segment
@@ -5761,7 +5803,7 @@ nsTextFrame::PaintTextSelectionDecorations(gfxContext* aCtx,
   // Figure out which characters will be decorated for this selection.
   AutoFallibleTArray<SelectionDetails*, BIG_TEXT_NODE_SIZE> selectedCharsBuffer;
   SelectionDetails** selectedChars =
-    selectedCharsBuffer.AppendElements(aContentLength);
+    selectedCharsBuffer.AppendElements(aContentLength, fallible);
   if (!selectedChars) {
     return;
   }
@@ -5784,6 +5826,10 @@ nsTextFrame::PaintTextSelectionDecorations(gfxContext* aCtx,
 
   gfxFont* firstFont = aProvider.GetFontGroup()->GetFirstValidFont();
   bool verticalRun = mTextRun->IsVertical();
+  bool rightUnderline = verticalRun && IsUnderlineRight(this);
+  const uint8_t kDecoration =
+    rightUnderline ? NS_STYLE_TEXT_DECORATION_LINE_OVERLINE :
+                     NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE;
   bool useVerticalMetrics = verticalRun && mTextRun->UseCenterBaseline();
   gfxFont::Metrics
     decorationMetrics(firstFont->GetMetrics(useVerticalMetrics ?
@@ -5830,7 +5876,7 @@ nsTextFrame::PaintTextSelectionDecorations(gfxContext* aCtx,
       DrawSelectionDecorations(aCtx, dirtyRect, aSelectionType, this,
                                aTextPaintStyle, selectedStyle, pt, xInFrame,
                                width, mAscent / app, decorationMetrics,
-                               aCallbacks, verticalRun);
+                               aCallbacks, verticalRun, kDecoration);
     }
     iterator.UpdateWithAdvance(advance);
   }
@@ -5952,9 +5998,10 @@ ComputeTransformedLength(PropertyProvider& aProvider)
 }
 
 bool
-nsTextFrame::MeasureCharClippedText(nscoord aLeftEdge, nscoord aRightEdge,
-                                    nscoord* aSnappedLeftEdge,
-                                    nscoord* aSnappedRightEdge)
+nsTextFrame::MeasureCharClippedText(nscoord aVisIStartEdge,
+                                    nscoord aVisIEndEdge,
+                                    nscoord* aSnappedStartEdge,
+                                    nscoord* aSnappedEndEdge)
 {
   // We need a *reference* rendering context (not one that might have a
   // transform), so we don't have a rendering context argument.
@@ -5969,9 +6016,9 @@ nsTextFrame::MeasureCharClippedText(nscoord aLeftEdge, nscoord aRightEdge,
 
   uint32_t startOffset = provider.GetStart().GetSkippedOffset();
   uint32_t maxLength = ComputeTransformedLength(provider);
-  return MeasureCharClippedText(provider, aLeftEdge, aRightEdge,
+  return MeasureCharClippedText(provider, aVisIStartEdge, aVisIEndEdge,
                                 &startOffset, &maxLength,
-                                aSnappedLeftEdge, aSnappedRightEdge);
+                                aSnappedStartEdge, aSnappedEndEdge);
 }
 
 static uint32_t GetClusterLength(gfxTextRun* aTextRun,
@@ -5994,24 +6041,25 @@ static uint32_t GetClusterLength(gfxTextRun* aTextRun,
 
 bool
 nsTextFrame::MeasureCharClippedText(PropertyProvider& aProvider,
-                                    nscoord aLeftEdge, nscoord aRightEdge,
+                                    nscoord aVisIStartEdge,
+                                    nscoord aVisIEndEdge,
                                     uint32_t* aStartOffset,
                                     uint32_t* aMaxLength,
-                                    nscoord*  aSnappedLeftEdge,
-                                    nscoord*  aSnappedRightEdge)
+                                    nscoord*  aSnappedStartEdge,
+                                    nscoord*  aSnappedEndEdge)
 {
-  *aSnappedLeftEdge = 0;
-  *aSnappedRightEdge = 0;
-  if (aLeftEdge <= 0 && aRightEdge <= 0) {
+  *aSnappedStartEdge = 0;
+  *aSnappedEndEdge = 0;
+  if (aVisIStartEdge <= 0 && aVisIEndEdge <= 0) {
     return true;
   }
 
   uint32_t offset = *aStartOffset;
   uint32_t maxLength = *aMaxLength;
-  const nscoord frameWidth = GetSize().width;
+  const nscoord frameISize = ISize();
   const bool rtl = mTextRun->IsRightToLeft();
   gfxFloat advanceWidth = 0;
-  const nscoord startEdge = rtl ? aRightEdge : aLeftEdge;
+  const nscoord startEdge = rtl ? aVisIEndEdge : aVisIStartEdge;
   if (startEdge > 0) {
     const gfxFloat maxAdvance = gfxFloat(startEdge);
     while (maxLength > 0) {
@@ -6025,14 +6073,14 @@ nsTextFrame::MeasureCharClippedText(PropertyProvider& aProvider,
         break;
       }
     }
-    nscoord* snappedStartEdge = rtl ? aSnappedRightEdge : aSnappedLeftEdge;
+    nscoord* snappedStartEdge = rtl ? aSnappedEndEdge : aSnappedStartEdge;
     *snappedStartEdge = NSToCoordFloor(advanceWidth);
     *aStartOffset = offset;
   }
 
-  const nscoord endEdge = rtl ? aLeftEdge : aRightEdge;
+  const nscoord endEdge = rtl ? aVisIStartEdge : aVisIEndEdge;
   if (endEdge > 0) {
-    const gfxFloat maxAdvance = gfxFloat(frameWidth - endEdge);
+    const gfxFloat maxAdvance = gfxFloat(frameISize - endEdge);
     while (maxLength > 0) {
       uint32_t clusterLength =
         GetClusterLength(mTextRun, offset, maxLength, rtl);
@@ -6047,8 +6095,8 @@ nsTextFrame::MeasureCharClippedText(PropertyProvider& aProvider,
       offset += clusterLength;
     }
     maxLength = offset - *aStartOffset;
-    nscoord* snappedEndEdge = rtl ? aSnappedLeftEdge : aSnappedRightEdge;
-    *snappedEndEdge = NSToCoordFloor(gfxFloat(frameWidth) - advanceWidth);
+    nscoord* snappedEndEdge = rtl ? aSnappedStartEdge : aSnappedEndEdge;
+    *snappedEndEdge = NSToCoordFloor(gfxFloat(frameISize) - advanceWidth);
   }
   *aMaxLength = maxLength;
   return maxLength != 0;
@@ -6073,6 +6121,10 @@ nsTextFrame::PaintShadows(nsCSSShadowArray* aShadow,
   gfxTextRun::Metrics shadowMetrics =
     mTextRun->MeasureText(aOffset, aLength, gfxFont::LOOSE_INK_EXTENTS,
                           nullptr, &aProvider);
+  if (GetWritingMode().IsLineInverted()) {
+    Swap(shadowMetrics.mAscent, shadowMetrics.mDescent);
+    shadowMetrics.mBoundingBox.y = -shadowMetrics.mBoundingBox.YMost();
+  }
   if (GetStateBits() & TEXT_HYPHEN_BREAK) {
     AddHyphenToMetrics(this, mTextRun, &shadowMetrics,
                        gfxFont::LOOSE_INK_EXTENTS, aCtx);
@@ -6094,6 +6146,11 @@ nsTextFrame::PaintShadows(nsCSSShadowArray* aShadow,
       break;
     }
     run++;
+  }
+
+  if (mTextRun->IsVertical()) {
+    Swap(shadowMetrics.mBoundingBox.x, shadowMetrics.mBoundingBox.y);
+    Swap(shadowMetrics.mBoundingBox.width, shadowMetrics.mBoundingBox.height);
   }
 
   for (uint32_t i = aShadow->Length(); i > 0; --i) {
@@ -6122,8 +6179,9 @@ nsTextFrame::PaintText(nsRenderingContext* aRenderingContext, nsPoint aPt,
     return;
 
   PropertyProvider provider(this, iter, nsTextFrame::eInflated);
-  // Trim trailing whitespace
-  provider.InitializeForDisplay(true);
+  // Trim trailing whitespace, unless we're painting a selection highlight,
+  // which should include trailing spaces if present (bug 1146754).
+  provider.InitializeForDisplay(!IsSelected());
 
   gfxContext* ctx = aRenderingContext->ThebesContext();
   const bool rtl = mTextRun->IsRightToLeft();
@@ -6148,18 +6206,18 @@ nsTextFrame::PaintText(nsRenderingContext* aRenderingContext, nsPoint aPt,
   }
   uint32_t startOffset = provider.GetStart().GetSkippedOffset();
   uint32_t maxLength = ComputeTransformedLength(provider);
-  nscoord snappedLeftEdge, snappedRightEdge;
-  if (!MeasureCharClippedText(provider, aItem.mLeftEdge, aItem.mRightEdge,
-         &startOffset, &maxLength, &snappedLeftEdge, &snappedRightEdge)) {
+  nscoord snappedStartEdge, snappedEndEdge;
+  if (!MeasureCharClippedText(provider, aItem.mVisIStartEdge, aItem.mVisIEndEdge,
+         &startOffset, &maxLength, &snappedStartEdge, &snappedEndEdge)) {
     return;
   }
   if (verticalRun) {
-    textBaselinePt.y += rtl ? -snappedRightEdge : snappedLeftEdge;
+    textBaselinePt.y += rtl ? -snappedEndEdge : snappedStartEdge;
   } else {
-    textBaselinePt.x += rtl ? -snappedRightEdge : snappedLeftEdge;
+    textBaselinePt.x += rtl ? -snappedEndEdge : snappedStartEdge;
   }
-  nsCharClipDisplayItem::ClipEdges clipEdges(aItem, snappedLeftEdge,
-                                             snappedRightEdge);
+  nsCharClipDisplayItem::ClipEdges clipEdges(aItem, snappedStartEdge,
+                                             snappedEndEdge);
   nsTextPaintStyle textPaintStyle(this);
   textPaintStyle.SetResolveColors(!aCallbacks);
 
@@ -6183,7 +6241,7 @@ nsTextFrame::PaintText(nsRenderingContext* aRenderingContext, nsPoint aPt,
   if (!aCallbacks) {
     const nsStyleText* textStyle = StyleText();
     PaintShadows(textStyle->mTextShadow, startOffset, maxLength,
-        aDirtyRect, framePt, textBaselinePt, snappedLeftEdge, provider,
+        aDirtyRect, framePt, textBaselinePt, snappedStartEdge, provider,
         foregroundColor, clipEdges, ctx);
   }
 
@@ -6279,8 +6337,9 @@ nsTextFrame::DrawTextRunAndDecorations(
     const nsSize frameSize = GetSize();
     nscoord measure = verticalRun ? frameSize.height : frameSize.width;
 
-    // XXX todo: probably should have a vertical version of this...
-    if (!verticalRun) {
+    if (verticalRun) {
+      aClipEdges.Intersect(&y, &measure);
+    } else {
       aClipEdges.Intersect(&x, &measure);
     }
 
@@ -7423,7 +7482,8 @@ nsTextFrame::AddInlineMinISizeForFlow(nsRenderingContext *aRenderingContext,
   AutoFallibleTArray<bool,BIG_TEXT_NODE_SIZE> hyphBuffer;
   bool *hyphBreakBefore = nullptr;
   if (hyphenating) {
-    hyphBreakBefore = hyphBuffer.AppendElements(flowEndInTextRun - start);
+    hyphBreakBefore = hyphBuffer.AppendElements(flowEndInTextRun - start,
+                                                fallible);
     if (hyphBreakBefore) {
       provider.GetHyphenationBreaks(start, flowEndInTextRun - start,
                                     hyphBreakBefore);
@@ -7592,8 +7652,9 @@ nsTextFrame::AddInlinePrefISizeForFlow(nsRenderingContext *aRenderingContext,
       // XXXldb Shouldn't we be including the newline as part of the
       // segment that it ends rather than part of the segment that it
       // starts?
-      NS_ASSERTION(preformatNewlines,
-                   "We can't be here unless newlines are hard breaks");
+      NS_ASSERTION(preformatNewlines || preformatTabs,
+                   "We can't be here unless newlines are "
+                   "hard breaks or there are tabs");
       preformattedNewline = preformatNewlines && textRun->CharIsNewline(i);
       preformattedTab = preformatTabs && textRun->CharIsTab(i);
       if (!preformattedNewline && !preformattedTab) {
@@ -7737,12 +7798,12 @@ nsTextFrame::ComputeTightBounds(gfxContext* aContext) const
                               ComputeTransformedLength(provider),
                               gfxFont::TIGHT_HINTED_OUTLINE_EXTENTS,
                               aContext, &provider);
+  if (GetWritingMode().IsLineInverted()) {
+    metrics.mBoundingBox.y = -metrics.mBoundingBox.YMost();
+  }
   // mAscent should be the same as metrics.mAscent, but it's what we use to
   // paint so that's the one we'll use.
   nsRect boundingBox = RoundOut(metrics.mBoundingBox);
-  if (GetWritingMode().IsLineInverted()) {
-    boundingBox.y = -boundingBox.YMost();
-  }
   boundingBox += nsPoint(0, mAscent);
   if (mTextRun->IsVertical()) {
     // Swap line-relative textMetrics dimensions to physical coordinates.
@@ -8309,7 +8370,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
                                    (GetStateBits() & TEXT_IS_IN_TOKEN_MATHML);
   gfxBreakPriority breakPriority = aLineLayout.LastOptionalBreakPriority();
   gfxTextRun::SuppressBreak suppressBreak = gfxTextRun::eNoSuppressBreak;
-  if (StyleContext()->ShouldSuppressLineBreak()) {
+  if (ShouldSuppressLineBreak()) {
     suppressBreak = gfxTextRun::eSuppressAllBreaks;
   } else if (!aLineLayout.LineIsBreakable()) {
     suppressBreak = gfxTextRun::eSuppressInitialBreak;
@@ -8331,6 +8392,10 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
       textMetrics.mAscent = gfxFloat(fm->MaxAscent());
       textMetrics.mDescent = gfxFloat(fm->MaxDescent());
     }
+  }
+  if (GetWritingMode().IsLineInverted()) {
+    Swap(textMetrics.mAscent, textMetrics.mDescent);
+    textMetrics.mBoundingBox.y = -textMetrics.mBoundingBox.YMost();
   }
   // The "end" iterator points to the first character after the string mapped
   // by this frame. Basically, its original-string offset is offset+charsFit
@@ -8437,31 +8502,21 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
     finalSize.BSize(wm) = 0;
   } else if (boundingBoxType != gfxFont::LOOSE_INK_EXTENTS) {
     // Use actual text metrics for floating first letter frame.
-    if (wm.IsLineInverted()) {
-      aMetrics.SetBlockStartAscent(NSToCoordCeil(textMetrics.mDescent));
-      finalSize.BSize(wm) = aMetrics.BlockStartAscent() +
-        NSToCoordCeil(textMetrics.mAscent);
-    } else {
-      aMetrics.SetBlockStartAscent(NSToCoordCeil(textMetrics.mAscent));
-      finalSize.BSize(wm) = aMetrics.BlockStartAscent() +
-        NSToCoordCeil(textMetrics.mDescent);
-    }
+    aMetrics.SetBlockStartAscent(NSToCoordCeil(textMetrics.mAscent));
+    finalSize.BSize(wm) = aMetrics.BlockStartAscent() +
+      NSToCoordCeil(textMetrics.mDescent);
   } else {
     // Otherwise, ascent should contain the overline drawable area.
     // And also descent should contain the underline drawable area.
     // nsFontMetrics::GetMaxAscent/GetMaxDescent contains them.
     nsFontMetrics* fm = provider.GetFontMetrics();
-    nscoord fontAscent = fm->MaxAscent();
-    nscoord fontDescent = fm->MaxDescent();
-    if (wm.IsLineInverted()) {
-      aMetrics.SetBlockStartAscent(std::max(NSToCoordCeil(textMetrics.mDescent), fontDescent));
-      nscoord descent = std::max(NSToCoordCeil(textMetrics.mAscent), fontAscent);
-      finalSize.BSize(wm) = aMetrics.BlockStartAscent() + descent;
-    } else {
-      aMetrics.SetBlockStartAscent(std::max(NSToCoordCeil(textMetrics.mAscent), fontAscent));
-      nscoord descent = std::max(NSToCoordCeil(textMetrics.mDescent), fontDescent);
-      finalSize.BSize(wm) = aMetrics.BlockStartAscent() + descent;
-    }
+    nscoord fontAscent =
+      wm.IsLineInverted() ? fm->MaxDescent() : fm->MaxAscent();
+    nscoord fontDescent =
+      wm.IsLineInverted() ? fm->MaxAscent() : fm->MaxDescent();
+    aMetrics.SetBlockStartAscent(std::max(NSToCoordCeil(textMetrics.mAscent), fontAscent));
+    nscoord descent = std::max(NSToCoordCeil(textMetrics.mDescent), fontDescent);
+    finalSize.BSize(wm) = aMetrics.BlockStartAscent() + descent;
   }
   aMetrics.SetSize(wm, finalSize);
 
@@ -8475,14 +8530,18 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
 
   // Handle text that runs outside its normal bounds.
   nsRect boundingBox = RoundOut(textMetrics.mBoundingBox);
-  if (wm.IsLineInverted()) {
-    boundingBox.y = -boundingBox.YMost();
-  }
-  boundingBox += nsPoint(0, mAscent);
   if (mTextRun->IsVertical()) {
     // Swap line-relative textMetrics dimensions to physical coordinates.
     Swap(boundingBox.x, boundingBox.y);
     Swap(boundingBox.width, boundingBox.height);
+    if (GetWritingMode().IsVerticalRL()) {
+      boundingBox.x = -boundingBox.XMost();
+      boundingBox.x += aMetrics.Width() - mAscent;
+    } else {
+      boundingBox.x += mAscent;
+    }
+  } else {
+    boundingBox.y += mAscent;
   }
   aMetrics.SetOverflowAreasToDesiredBounds();
   aMetrics.VisualOverflow().UnionRect(aMetrics.VisualOverflow(), boundingBox);
@@ -8520,7 +8579,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   bool emptyTextAtStartOfLine = atStartOfLine && length == 0;
   if (!breakAfter && charsFit == length && !emptyTextAtStartOfLine &&
       transformedOffset + transformedLength == mTextRun->GetLength() &&
-      !StyleContext()->ShouldSuppressLineBreak() &&
+      !ShouldSuppressLineBreak() &&
       (mTextRun->GetFlags() & nsTextFrameUtils::TEXT_HAS_TRAILING_BREAK)) {
     // We placed all the text in the textrun and we have a break opportunity at
     // the end of the textrun. We need to record it because the following
@@ -8582,7 +8641,7 @@ nsTextFrame::ReflowText(nsLineLayout& aLineLayout, nscoord aAvailableWidth,
   if (!textStyle->WhiteSpaceIsSignificant() &&
       (lineContainer->StyleText()->mTextAlign == NS_STYLE_TEXT_ALIGN_JUSTIFY ||
        lineContainer->StyleText()->mTextAlignLast == NS_STYLE_TEXT_ALIGN_JUSTIFY ||
-       StyleContext()->ShouldSuppressLineBreak()) &&
+       ShouldSuppressLineBreak()) &&
       !lineContainer->IsSVGText()) {
     AddStateBits(TEXT_JUSTIFICATION_ENABLED);
     provider.ComputeJustification(offset, charsFit);
@@ -8696,17 +8755,18 @@ nsTextFrame::RecomputeOverflow(nsIFrame* aBlockFrame)
     return result;
 
   PropertyProvider provider(this, iter, nsTextFrame::eInflated);
-  provider.InitializeForDisplay(true);
+  // Don't trim trailing space, in case we need to paint it as selected.
+  provider.InitializeForDisplay(false);
 
   gfxTextRun::Metrics textMetrics =
     mTextRun->MeasureText(provider.GetStart().GetSkippedOffset(),
                           ComputeTransformedLength(provider),
                           gfxFont::LOOSE_INK_EXTENTS, nullptr,
                           &provider);
-  nsRect boundingBox = RoundOut(textMetrics.mBoundingBox);
   if (GetWritingMode().IsLineInverted()) {
-    boundingBox.y = -boundingBox.YMost();
+    textMetrics.mBoundingBox.y = -textMetrics.mBoundingBox.YMost();
   }
+  nsRect boundingBox = RoundOut(textMetrics.mBoundingBox);
   boundingBox += nsPoint(0, mAscent);
   if (mTextRun->IsVertical()) {
     // Swap line-relative textMetrics dimensions to physical coordinates.
@@ -8961,19 +9021,6 @@ nsTextFrame::AdjustOffsetsForBidi(int32_t aStart, int32_t aEnd)
 
   mContentOffset = aStart;
   SetLength(aEnd - aStart, nullptr, 0);
-
-  /**
-   * After inserting text the caret Bidi level must be set to the level of the
-   * inserted text.This is difficult, because we cannot know what the level is
-   * until after the Bidi algorithm is applied to the whole paragraph.
-   *
-   * So we set the caret Bidi level to UNDEFINED here, and the caret code will
-   * set it correctly later
-   */
-  nsRefPtr<nsFrameSelection> frameSelection = GetFrameSelection();
-  if (frameSelection) {
-    frameSelection->UndefineCaretBidiLevel();
-  }
 }
 
 /**

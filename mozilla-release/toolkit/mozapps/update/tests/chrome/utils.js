@@ -129,6 +129,7 @@ Cu.import("resource://gre/modules/AddonManager.jsm", this);
 Cu.import("resource://gre/modules/Services.jsm", this);
 
 const IS_MACOSX = ("nsILocalFileMac" in Ci);
+const IS_WIN = ("@mozilla.org/windows-registry-key;1" in Cc);
 
 // The tests have to use the pageid instead of the pageIndex due to the
 // app update wizard's access method being random.
@@ -183,6 +184,10 @@ const TEST_ADDONS = [ "appdisabled_1", "appdisabled_2",
 
 const LOG_FUNCTION = info;
 
+const BIN_SUFFIX = (IS_WIN ? ".exe" : "");
+const FILE_UPDATER_BIN = "updater" + (IS_MACOSX ? ".app" : BIN_SUFFIX);
+const FILE_UPDATER_BIN_BAK = FILE_UPDATER_BIN + ".bak";
+
 var gURLData = URL_HOST + "/" + REL_PATH_DATA + "/";
 
 var gTestTimeout = 240000; // 4 minutes
@@ -198,7 +203,6 @@ var gCloseWindowTimeoutCounter = 0;
 // The following vars are for restoring previous preference values (if present)
 // when the test finishes.
 var gAppUpdateEnabled;            // app.update.enabled
-var gAppUpdateMetroEnabled;       // app.update.metro.enabled
 var gAppUpdateServiceEnabled;     // app.update.service.enabled
 var gAppUpdateStagingEnabled;     // app.update.staging.enabled
 var gAppUpdateURLDefault;         // app.update.url (default prefbranch)
@@ -212,6 +216,7 @@ var gPrefToCheck;
 var gDisableNoUpdateAddon = false;
 var gDisableUpdateCompatibilityAddon = false;
 var gDisableUpdateVersionAddon = false;
+var gUseTestUpdater = false;
 
 // Set to true to log additional information for debugging. To log additional
 // information for an individual test set DEBUG_AUS_TEST to true in the test's
@@ -326,9 +331,10 @@ function runTestDefaultWaitForWindowClosed() {
 
     setupFiles();
     setupPrefs();
+    gEnv.set("MOZ_TEST_SKIP_UPDATE_STAGE", "1");
     removeUpdateDirsAndFiles();
     reloadUpdateManagerData();
-    setupAddons(runTest);
+    setupAddons(setupTestUpdater);
   }
 }
 
@@ -354,6 +360,7 @@ function finishTestDefault() {
   verifyTestsRan();
 
   resetPrefs();
+  gEnv.set("MOZ_TEST_SKIP_UPDATE_STAGE", "");
   resetFiles();
   removeUpdateDirsAndFiles();
   reloadUpdateManagerData();
@@ -363,7 +370,7 @@ function finishTestDefault() {
     gDocElem.removeEventListener("pageshow", onPageShowDefault, false);
   }
 
-  finishTestDefaultWaitForWindowClosed();
+  finishTestRestoreUpdaterBackup();
 }
 
 /**
@@ -387,6 +394,28 @@ function finishTestTimeout(aTimer) {
 }
 
 /**
+ * When a test finishes this will repeatedly attempt to restore the real updater
+ * for tests that use the test updater and then call
+ * finishTestDefaultWaitForWindowClosed after the restore is successful.
+ */
+function finishTestRestoreUpdaterBackup() {
+  if (gUseTestUpdater) {
+    try {
+      // Windows debug builds keep the updater file in use for a short period of
+      // time after the updater process exits.
+      restoreUpdaterBackup();
+    } catch (e) {
+      logTestInfo("Attempt to restore the backed up updater failed... " +
+                  "will try again, Exception: " + e);
+      SimpleTest.executeSoon(finishTestRestoreUpdaterBackup);
+      return;
+    }
+  }
+
+  finishTestDefaultWaitForWindowClosed();
+}
+
+/**
  * If an update window is found SimpleTest.executeSoon can callback before the
  * update window is fully closed especially with debug builds. If an update
  * window is found this function will call itself using SimpleTest.executeSoon
@@ -396,6 +425,7 @@ function finishTestTimeout(aTimer) {
 function finishTestDefaultWaitForWindowClosed() {
   gCloseWindowTimeoutCounter++;
   if (gCloseWindowTimeoutCounter > CLOSE_WINDOW_TIMEOUT_MAXCOUNT) {
+    SimpleTest.requestCompleteLog();
     SimpleTest.finish();
     return;
   }
@@ -748,7 +778,7 @@ function checkIncompatbleList() {
   for (let i = 0; i < gIncompatibleListbox.itemCount; i++) {
     let label = gIncompatibleListbox.getItemAtIndex(i).label;
     // Use indexOf since locales can change the text displayed
-    ok(label.indexOf("noupdate") != -1, "Checking that only incompatible " + 
+    ok(label.indexOf("noupdate") != -1, "Checking that only incompatible " +
        "add-ons that don't have an update are listed in the incompatible list");
   }
 }
@@ -889,6 +919,102 @@ function setupFiles() {
 }
 
 /**
+ * For tests that use the test updater restores the backed up real updater if
+ * it exists and tries again on failure since Windows debug builds at times
+ * leave the file in use. After success moveRealUpdater is called to continue
+ * the setup of the test updater. For tests that don't use the test updater
+ * runTest will be called.
+ */
+function setupTestUpdater() {
+  if (!gUseTestUpdater) {
+    runTest();
+    return;
+  }
+
+  try {
+    restoreUpdaterBackup();
+  } catch (e) {
+    logTestInfo("Attempt to restore the backed up updater failed... " +
+                "will try again, Exception: " + e);
+    SimpleTest.executeSoon(setupTestUpdater);
+    return;
+  }
+  moveRealUpdater();
+}
+
+/**
+ * Backs up the real updater and tries again on failure since Windows debug
+ * builds at times leave the file in use. After success it will call
+ * copyTestUpdater to continue the setup of the test updater.
+ */
+function moveRealUpdater() {
+  try {
+    // Move away the real updater
+    let baseAppDir = getAppBaseDir();
+    let updater = baseAppDir.clone();
+    updater.append(FILE_UPDATER_BIN);
+    updater.moveTo(baseAppDir, FILE_UPDATER_BIN_BAK);
+  } catch (e) {
+    logTestInfo("Attempt to move the real updater out of the way failed... " +
+                "will try again, Exception: " + e);
+    SimpleTest.executeSoon(moveRealUpdater);
+    return;
+  }
+
+  copyTestUpdater();
+}
+
+/**
+ * Copies the test updater so it can be used by tests and tries again on failure
+ * since Windows debug builds at times leave the file in use. After success it
+ * will call runTest to continue the test.
+ */
+function copyTestUpdater() {
+  try {
+    // Copy the test updater
+    let baseAppDir = getAppBaseDir();
+    let testUpdaterDir = Services.dirsvc.get("CurWorkD", Ci.nsILocalFile);
+    let relPath = REL_PATH_DATA;
+    let pathParts = relPath.split("/");
+    for (let i = 0; i < pathParts.length; ++i) {
+      testUpdaterDir.append(pathParts[i]);
+    }
+
+    let testUpdater = testUpdaterDir.clone();
+    testUpdater.append(FILE_UPDATER_BIN);
+    testUpdater.copyToFollowingLinks(baseAppDir, FILE_UPDATER_BIN);
+  } catch (e) {
+    logTestInfo("Attempt to copy the test updater failed... " +
+                "will try again, Exception: " + e);
+    SimpleTest.executeSoon(copyTestUpdater);
+    return;
+  }
+
+  runTest();
+}
+
+/**
+ * Restores the updater that was backed up. This is called in setupTestUpdater
+ * before the backup of the real updater is done in case the previous test
+ * failed to restore the updater, in finishTestDefaultWaitForWindowClosed when
+ * the test has finished, and in test_9999_cleanup.xul after all tests have
+ * finished.
+ */
+function restoreUpdaterBackup() {
+  let baseAppDir = getAppBaseDir();
+  let updater = baseAppDir.clone();
+  let updaterBackup = baseAppDir.clone();
+  updater.append(FILE_UPDATER_BIN);
+  updaterBackup.append(FILE_UPDATER_BIN_BAK);
+  if (updaterBackup.exists()) {
+    if (updater.exists()) {
+      updater.remove(true);
+    }
+    updaterBackup.moveTo(baseAppDir, FILE_UPDATER_BIN);
+  }
+}
+
+/**
  * Sets the most common preferences used by tests to values used by the majority
  * of the tests and when necessary saves the preference's original values if
  * present so they can be set back to the original values when the test has
@@ -915,11 +1041,6 @@ function setupPrefs() {
     gAppUpdateEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_ENABLED);
   }
   Services.prefs.setBoolPref(PREF_APP_UPDATE_ENABLED, true);
-
-  if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_METRO_ENABLED)) {
-    gAppUpdateMetroEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_METRO_ENABLED);
-  }
-  Services.prefs.setBoolPref(PREF_APP_UPDATE_METRO_ENABLED, true);
 
   if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_SERVICE_ENABLED)) {
     gAppUpdateServiceEnabled = Services.prefs.getBoolPref(PREF_APP_UPDATE_SERVICE_ENABLED);
@@ -998,12 +1119,6 @@ function resetPrefs() {
     Services.prefs.setBoolPref(PREF_APP_UPDATE_ENABLED, gAppUpdateEnabled);
   } else if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ENABLED)) {
     Services.prefs.clearUserPref(PREF_APP_UPDATE_ENABLED);
-  }
-
-  if (gAppUpdateMetroEnabled !== undefined) {
-    Services.prefs.setBoolPref(PREF_APP_UPDATE_METRO_ENABLED, gAppUpdateMetroEnabled);
-  } else if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_METRO_ENABLED)) {
-    Services.prefs.clearUserPref(PREF_APP_UPDATE_METRO_ENABLED);
   }
 
   if (gAppUpdateServiceEnabled !== undefined) {

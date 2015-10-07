@@ -19,13 +19,6 @@
 
 #include <new>
 
-// helper function for nsTHashtable::Clear()
-PLDHashOperator PL_DHashStubEnumRemove(PLDHashTable* aTable,
-                                       PLDHashEntryHdr* aEntry,
-                                       uint32_t aOrdinal,
-                                       void* aUserArg);
-
-
 /**
  * a base class for templated hashtables.
  *
@@ -86,8 +79,12 @@ class nsTHashtable
 public:
   // Separate constructors instead of default aInitLength parameter since
   // otherwise the default no-arg constructor isn't found.
-  nsTHashtable() { Init(PL_DHASH_DEFAULT_INITIAL_LENGTH); }
-  explicit nsTHashtable(uint32_t aInitLength) { Init(aInitLength); }
+  nsTHashtable()
+    : mTable(Ops(), sizeof(EntryType), PL_DHASH_DEFAULT_INITIAL_LENGTH)
+  {}
+  explicit nsTHashtable(uint32_t aInitLength)
+    : mTable(Ops(), sizeof(EntryType), aInitLength)
+  {}
 
   /**
    * destructor, cleans up and deallocates
@@ -126,9 +123,6 @@ public:
    */
   EntryType* GetEntry(KeyType aKey) const
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
     return static_cast<EntryType*>(
       PL_DHashTableSearch(const_cast<PLDHashTable*>(&mTable),
                           EntryType::KeyToPointer(aKey)));
@@ -149,18 +143,13 @@ public:
    */
   EntryType* PutEntry(KeyType aKey)
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
     return static_cast<EntryType*>  // infallible add
       (PL_DHashTableAdd(&mTable, EntryType::KeyToPointer(aKey)));
   }
 
-  EntryType* PutEntry(KeyType aKey, const fallible_t&) NS_WARN_UNUSED_RESULT
+  MOZ_WARN_UNUSED_RESULT
+  EntryType* PutEntry(KeyType aKey, const fallible_t&)
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
     return static_cast<EntryType*>
       (PL_DHashTableAdd(&mTable, EntryType::KeyToPointer(aKey),
                         mozilla::fallible));
@@ -172,9 +161,6 @@ public:
    */
   void RemoveEntry(KeyType aKey)
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
     PL_DHashTableRemove(&mTable,
                         EntryType::KeyToPointer(aKey));
   }
@@ -213,22 +199,18 @@ public:
    */
   uint32_t EnumerateEntries(Enumerator aEnumFunc, void* aUserArg)
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
     s_EnumArgs args = { aEnumFunc, aUserArg };
     return PL_DHashTableEnumerate(&mTable, s_EnumStub, &args);
   }
 
   /**
-   * remove all entries, return hashtable to "pristine" state ;)
+   * Remove all entries, return hashtable to "pristine" state. It's
+   * conceptually the same as calling the destructor and then re-calling the
+   * constructor.
    */
   void Clear()
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
-    PL_DHashTableEnumerate(&mTable, PL_DHashStubEnumRemove, nullptr);
+    mTable.Clear();
   }
 
   /**
@@ -315,9 +297,6 @@ public:
    */
   void MarkImmutable()
   {
-    NS_ASSERTION(mTable.IsInitialized(),
-                 "nsTHashtable was not initialized properly.");
-
     PL_DHashMarkTableImmutable(&mTable);
   }
 #endif
@@ -377,10 +356,9 @@ private:
   nsTHashtable(nsTHashtable<EntryType>& aToCopy) = delete;
 
   /**
-   * Initialize the table.
-   * @param aInitLength the initial number of buckets in the hashtable
+   * Gets the table's ops.
    */
-  void Init(uint32_t aInitLength);
+  static const PLDHashTableOps* Ops();
 
   /**
    * An implementation of SizeOfEntryExcludingThisFun that calls SizeOfExcludingThis()
@@ -405,24 +383,20 @@ nsTHashtable<EntryType>::nsTHashtable(nsTHashtable<EntryType>&& aOther)
   // aOther shouldn't touch mTable after this, because we've stolen the table's
   // pointers but not overwitten them.
   MOZ_MAKE_MEM_UNDEFINED(&aOther.mTable, sizeof(aOther.mTable));
-
-  // Indicate that aOther is not initialized.  This will make its destructor a
-  // nop, which is what we want.
-  aOther.mTable.SetOps(nullptr);
 }
 
 template<class EntryType>
 nsTHashtable<EntryType>::~nsTHashtable()
 {
-  if (mTable.IsInitialized()) {
-    PL_DHashTableFinish(&mTable);
-  }
 }
 
 template<class EntryType>
-void
-nsTHashtable<EntryType>::Init(uint32_t aInitLength)
+/* static */ const PLDHashTableOps*
+nsTHashtable<EntryType>::Ops()
 {
+  // If this variable is a global variable, we get strange start-up failures on
+  // WindowsCrtPatch.h (see bug 1166598 comment 20). But putting it inside a
+  // function avoids that problem.
   static const PLDHashTableOps sOps =
   {
     s_HashKey,
@@ -431,8 +405,7 @@ nsTHashtable<EntryType>::Init(uint32_t aInitLength)
     s_ClearEntry,
     s_InitEntry
   };
-
-  PL_DHashTableInit(&mTable, &sOps, sizeof(EntryType), aInitLength);
+  return &sOps;
 }
 
 // static

@@ -23,12 +23,15 @@
 <!ENTITY cmd.back.tooltip                     "Eine Seite zurück">
 <!ENTITY cmd.forward.tooltip                  "Eine Seite vor">
 
+<!ENTITY showUnsignedExtensions.button.label  "Einige Erweiterungen konnten nicht verifiziert werden.">
+<!ENTITY showAllExtensions.button.label       "Alle Erweiterungen anzeigen">
+
 <!-- global warnings -->
 <!ENTITY warning.safemode.label                    "Alle Add-ons wurden durch den abgesicherten Modus deaktiviert.">
 <!ENTITY warning.checkcompatibility.label          "Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Sie könnten inkompatible Add-ons haben.">
 <!ENTITY warning.checkcompatibility.enable.label   "Aktivieren">
 <!ENTITY warning.checkcompatibility.enable.tooltip "Addon-Kompatibilitäts-Prüfung aktivieren">
-<!ENTITY warning.updatesecurity.label              "Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Ihre Sicherheit könnte durch Updates kompromittiert worden sein."> 
+<!ENTITY warning.updatesecurity.label              "Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Ihre Sicherheit könnte durch Updates kompromittiert worden sein.">
 <!ENTITY warning.updatesecurity.enable.label       "Aktivieren">
 <!ENTITY warning.updatesecurity.enable.tooltip     "Überprüfung auf Sicherheitsupdates für Add-ons aktivieren">
 
@@ -102,7 +105,8 @@
 <!ENTITY cmd.installAddon.accesskey           "I">
 <!ENTITY cmd.uninstallAddon.label             "Entfernen">
 <!ENTITY cmd.uninstallAddon.accesskey         "n">
-<!ENTITY cmd.debugAddon.label                 "Debugging">
+<!ENTITY cmd.debugAddon.label                 "In Entwicklerwerkzeugen öffnen">
+<!ENTITY cmd.debugAddon.accesskey             "t">
 <!ENTITY cmd.showPreferencesWin.label         "Einstellungen">
 <!ENTITY cmd.showPreferencesWin.tooltip       "Die Einstellungen dieses Add-ons ändern">
 <!ENTITY cmd.showPreferencesUnix.label        "Einstellungen">
@@ -120,10 +124,10 @@
 <!-- LOCALIZATION NOTE (discover.title,discover.description,discover.footer):
      Displayed in the center of the Get Add-ons view, see bug 601143 for mockups. -->
 <!ENTITY discover.title                       "Was sind Add-ons?">
-<!ENTITY discover.description2                "Add-ons sind Anwendungen, mit denen Sie &brandShortName; mit 
-zusätzlichen Funktionen oder einem anderen Stil ausstatten können. Probieren Sie eine zeitsparende Sidebar, eine Wettervorhersage  oder ein Theme, um Ihren ganz persönlichen &brandShortName; 
+<!ENTITY discover.description2                "Add-ons sind Anwendungen, mit denen Sie &brandShortName; mit
+zusätzlichen Funktionen oder einem anderen Stil ausstatten können. Probieren Sie eine zeitsparende Sidebar, eine Wettervorhersage  oder ein Theme, um Ihren ganz persönlichen &brandShortName;
 zu bekommen.">
-<!ENTITY discover.footer                      "Wenn Sie mit dem Internet verbunden sind, wird diese Seite 
+<!ENTITY discover.footer                      "Wenn Sie mit dem Internet verbunden sind, wird diese Seite
 einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 
 <!-- detail view -->
@@ -137,7 +141,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 
 <!ENTITY detail.updateType                    "Automatische Updates">
 <!ENTITY detail.updateDefault.label           "Standard">
-<!ENTITY detail.updateDefault.tooltip         "Updates nur dann automatisch installieren, wenn das der Standard ist"> 
+<!ENTITY detail.updateDefault.tooltip         "Updates nur dann automatisch installieren, wenn das der Standard ist">
 <!ENTITY detail.updateAutomatic.label         "Ein">
 <!ENTITY detail.updateAutomatic.tooltip       "Updates automatisch installieren">
 <!ENTITY detail.updateManual.label            "Aus">
@@ -233,3 +237,17 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY setting.learnmore "Weitere Informationen…">
 
 <!ENTITY cliqz.firefoxAddons "CLIQZ nutzt Add-ons aus dem offiziellen Mozilla Firefox Verzeichnis">
+<!ENTITY disabledUnsigned.heading "Einige Add-ons wurden deaktiviert">
+<!-- LOCALIZATION NOTE (disabledUnsigned.description.start, disabledUnsigned.description.findAddonsLink, disabledUnsigned.description.end):
+     These entities form a sentence, with
+     disabledUnsigned.description.findAddonsLink being a link to an external site. -->
+<!ENTITY disabledUnsigned.description.start "Die folgenden Add-ons wurden nicht für die Verwendung in &brandShortName; verifiziert. Sie können ">
+<!ENTITY disabledUnsigned.description.findAddonsLink "nach Alternativen suchen">
+<!ENTITY disabledUnsigned.description.end " oder die Entwickler bitten, sie verifizieren zu lassen.">
+<!ENTITY disabledUnsigned.learnMore "Erfahren Sie mehr über unsere Aktivitäten, um Ihre Sicherheit online zu erhalten.">
+<!-- LOCALIZATION NOTE (disabledUnsigned.devInfo.start, disabledUnsigned.devInfo.linkToManual, disabledUnsigned.devInfo.end):
+     These entities form a sentence, with disabledUnsigned.devInfo.linkToManual
+     being a link to an external site. -->
+<!ENTITY disabledUnsigned.devInfo.start "An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer ">
+<!ENTITY disabledUnsigned.devInfo.linkToManual "Anleitung">
+<!ENTITY disabledUnsigned.devInfo.end " erfahren.">

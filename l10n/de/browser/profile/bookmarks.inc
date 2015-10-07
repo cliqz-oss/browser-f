@@ -14,7 +14,7 @@
 #define bookmarks_toolbarfolder_description Lesezeichen, die Sie in diesem Ordner ablegen, werden in der Lesezeichen-Symbolleiste angezeigt.
 
 # LOCALIZATION NOTE (getting_started):
-# link title for http://www.mozilla.com/en-US/firefox/central/
+# link title for https://www.mozilla.org/en-US/firefox/central/
 #define getting_started Erste Schritte
 
 # LOCALIZATION NOTE (firefox_heading):
@@ -22,19 +22,19 @@
 #define firefox_heading CLIQZ
 
 # LOCALIZATION NOTE (firefox_help):
-# link title for http://www.mozilla.com/en-US/firefox/help/
+# link title for https://www.mozilla.org/en-US/firefox/help/
 #define firefox_help Hilfe und Anleitungen
 
 # LOCALIZATION NOTE (firefox_customize):
-# link title for http://www.mozilla.com/en-US/firefox/customize/
+# link title for https://www.mozilla.org/en-US/firefox/customize/
 #define firefox_customize Firefox anpassen
 
 # LOCALIZATION NOTE (firefox_community):
-# link title for http://www.mozilla.com/en-US/firefox/community/
+# link title for https://www.mozilla.org/en-US/contribute/
 #define firefox_community Machen Sie mit
 
 # LOCALIZATION NOTE (firefox_about):
-# link title for http://www.mozilla.com/en-US/firefox/about/
+# link title for https://www.mozilla.org/en-US/about/
 #define firefox_about Über uns
 
 #define cliqz_triqz CLIQZ Triqz

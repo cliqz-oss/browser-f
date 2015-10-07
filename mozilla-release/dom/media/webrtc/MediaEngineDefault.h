@@ -23,7 +23,6 @@ namespace mozilla {
 
 namespace layers {
 class ImageContainer;
-class PlanarYCbCrImage;
 }
 
 class MediaEngineDefault;
@@ -37,8 +36,10 @@ class MediaEngineDefaultVideoSource : public nsITimerCallback,
 public:
   MediaEngineDefaultVideoSource();
 
+  virtual void Shutdown() override {};
+
   virtual void GetName(nsAString&) override;
-  virtual void GetUUID(nsAString&) override;
+  virtual void GetUUID(nsACString&) override;
 
   virtual nsresult Allocate(const dom::MediaTrackConstraints &aConstraints,
                             const MediaEnginePrefs &aPrefs) override;
@@ -105,8 +106,10 @@ class MediaEngineDefaultAudioSource : public nsITimerCallback,
 public:
   MediaEngineDefaultAudioSource();
 
+  virtual void Shutdown() override {};
+
   virtual void GetName(nsAString&) override;
-  virtual void GetUUID(nsAString&) override;
+  virtual void GetUUID(nsACString&) override;
 
   virtual nsresult Allocate(const dom::MediaTrackConstraints &aConstraints,
                             const MediaEnginePrefs &aPrefs) override;
@@ -159,15 +162,23 @@ public:
   {}
 
   virtual void EnumerateVideoDevices(dom::MediaSourceEnum,
-                                     nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
+                                     nsTArray<nsRefPtr<MediaEngineVideoSource> >*) override;
   virtual void EnumerateAudioDevices(dom::MediaSourceEnum,
-                                     nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
+                                     nsTArray<nsRefPtr<MediaEngineAudioSource> >*) override;
+  virtual void Shutdown() override {
+    MutexAutoLock lock(mMutex);
+
+    mVSources.Clear();
+    mASources.Clear();
+  };
 
 protected:
   bool mHasFakeTracks;
 
 private:
-  ~MediaEngineDefault() {}
+  ~MediaEngineDefault() {
+    Shutdown();
+  }
 
   Mutex mMutex;
   // protected with mMutex:

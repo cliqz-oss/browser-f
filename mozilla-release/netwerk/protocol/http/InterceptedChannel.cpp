@@ -13,9 +13,13 @@
 #include "nsHttpChannel.h"
 #include "HttpChannelChild.h"
 #include "nsHttpResponseHead.h"
+#include "mozilla/dom/ChannelInfo.h"
 
 namespace mozilla {
 namespace net {
+
+extern bool
+WillRedirect(const nsHttpResponseHead * response);
 
 extern nsresult
 DoAddCacheEntryHeaders(nsHttpChannel *self,
@@ -56,8 +60,11 @@ void
 InterceptedChannelBase::DoNotifyController()
 {
     nsresult rv = mController->ChannelIntercepted(this);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      rv = ResetInterception();
+      NS_WARN_IF_FALSE(NS_SUCCEEDED(rv), "Failed to resume intercepted network request");
+    }
     mController = nullptr;
-    NS_ENSURE_SUCCESS_VOID(rv);
 }
 
 NS_IMETHODIMP
@@ -180,6 +187,13 @@ InterceptedChannelChrome::FinishSynthesizedResponse()
 
   EnsureSynthesizedResponse();
 
+  // If the synthesized response is a redirect, then we want to respect
+  // the encoding of whatever is loaded as a result.
+  if (WillRedirect(mSynthesizedResponseHead.ref())) {
+    nsresult rv = mChannel->SetApplyConversion(mOldApplyConversion);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
   mChannel->MarkIntercepted();
 
   // First we ensure the appropriate metadata is set on the synthesized cache entry
@@ -230,13 +244,13 @@ InterceptedChannelChrome::Cancel()
 }
 
 NS_IMETHODIMP
-InterceptedChannelChrome::SetSecurityInfo(nsISupports* aSecurityInfo)
+InterceptedChannelChrome::SetChannelInfo(dom::ChannelInfo* aChannelInfo)
 {
   if (!mChannel) {
     return NS_ERROR_FAILURE;
   }
 
-  return mChannel->OverrideSecurityInfo(aSecurityInfo);
+  return aChannelInfo->ResurrectInfoOnChannel(mChannel);
 }
 
 InterceptedChannelContent::InterceptedChannelContent(HttpChannelChild* aChannel,
@@ -310,35 +324,11 @@ InterceptedChannelContent::FinishSynthesizedResponse()
 
   EnsureSynthesizedResponse();
 
-  nsresult rv = nsInputStreamPump::Create(getter_AddRefs(mStoragePump), mSynthesizedInput,
-                                          int64_t(-1), int64_t(-1), 0, 0, true);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    mSynthesizedInput->Close();
-    return rv;
-  }
+  mChannel->OverrideWithSynthesizedResponse(mSynthesizedResponseHead.ref(),
+                                            mSynthesizedInput,
+                                            mStreamListener);
 
   mResponseBody = nullptr;
-
-  rv = mStoragePump->AsyncRead(mStreamListener, nullptr);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // Intercepted responses should already be decoded.
-  mChannel->SetApplyConversion(false);
-
-  // In our current implementation, the FetchEvent handler will copy the
-  // response stream completely into the pipe backing the input stream so we
-  // can treat the available as the length of the stream.
-  int64_t streamLength;
-  uint64_t available;
-  rv = mSynthesizedInput->Available(&available);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    streamLength = -1;
-  } else {
-    streamLength = int64_t(available);
-  }
-
-  mChannel->OverrideWithSynthesizedResponse(mSynthesizedResponseHead.ref(), mStoragePump, streamLength);
-
   mChannel = nullptr;
   mStreamListener = nullptr;
   return NS_OK;
@@ -361,13 +351,13 @@ InterceptedChannelContent::Cancel()
 }
 
 NS_IMETHODIMP
-InterceptedChannelContent::SetSecurityInfo(nsISupports* aSecurityInfo)
+InterceptedChannelContent::SetChannelInfo(dom::ChannelInfo* aChannelInfo)
 {
   if (!mChannel) {
     return NS_ERROR_FAILURE;
   }
 
-  return mChannel->OverrideSecurityInfo(aSecurityInfo);
+  return aChannelInfo->ResurrectInfoOnChannel(mChannel);
 }
 
 } // namespace net

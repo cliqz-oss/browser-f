@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const CURRENT_SCHEMA_VERSION = 28;
+const CURRENT_SCHEMA_VERSION = 30;
 const FIRST_UPGRADABLE_SCHEMA_VERSION = 11;
 
 const NS_APP_USER_PROFILE_50_DIR = "ProfD";
@@ -57,12 +57,16 @@ XPCOMUtils.defineLazyGetter(this, "SMALLPNG_DATA_URI", function() {
          "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAA" +
          "AAAA6fptVAAAACklEQVQI12NgAAAAAgAB4iG8MwAAAABJRU5ErkJggg==");
 });
-
-function LOG(aMsg) {
-  aMsg = ("*** PLACES TESTS: " + aMsg);
-  Services.console.logStringMessage(aMsg);
-  print(aMsg);
-}
+XPCOMUtils.defineLazyGetter(this, "SMALLSVG_DATA_URI", function() {
+  return NetUtil.newURI(
+         "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy5" +
+         "3My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxMDAgMTAwIiBmaWxs" +
+         "PSIjNDI0ZTVhIj4NCiAgPGNpcmNsZSBjeD0iNTAiIGN5PSI1MCIgcj0iN" +
+         "DQiIHN0cm9rZT0iIzQyNGU1YSIgc3Ryb2tlLXdpZHRoPSIxMSIgZmlsbD" +
+         "0ibm9uZSIvPg0KICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjI0LjYiIHI9IjY" +
+         "uNCIvPg0KICA8cmVjdCB4PSI0NSIgeT0iMzkuOSIgd2lkdGg9IjEwLjEi" +
+         "IGhlaWdodD0iNDEuOCIvPg0KPC9zdmc%2BDQo%3D");
+});
 
 let gTestDir = do_get_cwd();
 
@@ -118,7 +122,7 @@ function DBConn(aForceNewConnection) {
  * Reads data from the provided inputstream.
  *
  * @return an array of bytes.
- */ 
+ */
 function readInputStreamData(aStream) {
   let bistream = Cc["@mozilla.org/binaryinputstream;1"].
                  createInstance(Ci.nsIBinaryInputStream);
@@ -331,20 +335,6 @@ function visits_in_database(aURI)
 }
 
 /**
- * Removes all bookmarks and checks for correct cleanup
- */
-function remove_all_bookmarks() {
-  let PU = PlacesUtils;
-  // Clear all bookmarks
-  PU.bookmarks.removeFolderChildren(PU.bookmarks.bookmarksMenuFolder);
-  PU.bookmarks.removeFolderChildren(PU.bookmarks.toolbarFolder);
-  PU.bookmarks.removeFolderChildren(PU.bookmarks.unfiledBookmarksFolder);
-  // Check for correct cleanup
-  check_no_bookmarks();
-}
-
-
-/**
  * Checks that we don't have any bookmark
  */
 function check_no_bookmarks() {
@@ -387,16 +377,24 @@ function promiseTopicObserved(aTopic)
 /**
  * Simulates a Places shutdown.
  */
-function shutdownPlaces(aKeepAliveConnection)
-{
+let shutdownPlaces = function() {
+  do_print("shutdownPlaces: starting");
+  let promise = new Promise(resolve => {
+    Services.obs.addObserver(resolve, "places-connection-closed", false);
+  });
   let hs = PlacesUtils.history.QueryInterface(Ci.nsIObserver);
-  hs.observe(null, "profile-change-teardown", null);
-  hs.observe(null, "profile-before-change", null);
-}
+  hs.observe(null, "test-simulate-places-shutdown-phase-1", null);
+  do_print("shutdownPlaces: sent test-simulate-places-shutdown-phase-1");
+  hs.observe(null, "test-simulate-places-shutdown-phase-2", null);
+  do_print("shutdownPlaces: sent test-simulate-places-shutdown-phase-2");
+  return promise.then(() => {
+    do_print("shutdownPlaces: complete");
+  });
+};
 
 const FILENAME_BOOKMARKS_HTML = "bookmarks.html";
 const FILENAME_BOOKMARKS_JSON = "bookmarks-" +
-  (new Date().toLocaleFormat("%Y-%m-%d")) + ".json";
+  (PlacesBackups.toISODateString(new Date())) + ".json";
 
 /**
  * Creates a bookmarks.html file in the profile folder from a given source file.
@@ -508,7 +506,7 @@ function check_JSON_backup(aIsAutomaticBackup) {
     let bookmarksBackupDir = gProfD.clone();
     bookmarksBackupDir.append("bookmarkbackups");
     let files = bookmarksBackupDir.directoryEntries;
-    let backup_date = new Date().toLocaleFormat("%Y-%m-%d");
+    let backup_date = PlacesBackups.toISODateString(new Date());
     while (files.hasMoreElements()) {
       let entry = files.getNext().QueryInterface(Ci.nsIFile);
       if (PlacesBackups.filenamesRegex.test(entry.leafName)) {

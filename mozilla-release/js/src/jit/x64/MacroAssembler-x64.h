@@ -9,7 +9,7 @@
 
 #include "jit/JitFrames.h"
 #include "jit/MoveResolver.h"
-#include "jit/shared/MacroAssembler-x86-shared.h"
+#include "jit/x86-shared/MacroAssembler-x86-shared.h"
 
 namespace js {
 namespace jit {
@@ -502,9 +502,6 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
         movePtr(rhs, ScratchReg);
         cmpPtr(lhs, ScratchReg);
     }
-    void cmpPtr(const Operand& lhs, const ImmMaybeNurseryPtr rhs) {
-        cmpPtr(lhs, noteMaybeNurseryPtr(rhs));
-    }
     void cmpPtr(const Operand& lhs, const ImmWord rhs) {
         if ((intptr_t)rhs.value <= INT32_MAX && (intptr_t)rhs.value >= INT32_MIN) {
             cmpPtr(lhs, Imm32((int32_t)rhs.value));
@@ -560,32 +557,6 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     /////////////////////////////////////////////////////////////////
     // Common interface.
     /////////////////////////////////////////////////////////////////
-    void reserveStack(uint32_t amount) {
-        if (amount) {
-            // On windows, we cannot skip very far down the stack without touching the
-            // memory pages in-between.  This is a corner-case code for situations where the
-            // Ion frame data for a piece of code is very large.  To handle this special case,
-            // for frames over 1k in size we allocate memory on the stack incrementally, touching
-            // it as we go.
-            uint32_t amountLeft = amount;
-            while (amountLeft > 4096) {
-                subq(Imm32(4096), StackPointer);
-                store32(Imm32(0), Address(StackPointer, 0));
-                amountLeft -= 4096;
-            }
-            subq(Imm32(amountLeft), StackPointer);
-        }
-        framePushed_ += amount;
-    }
-    void freeStack(uint32_t amount) {
-        MOZ_ASSERT(amount <= framePushed_);
-        if (amount)
-            addq(Imm32(amount), StackPointer);
-        framePushed_ -= amount;
-    }
-    void freeStack(Register amount) {
-        addq(amount, StackPointer);
-    }
 
     void addPtr(Register src, Register dest) {
         addq(src, dest);
@@ -758,9 +729,6 @@ class MacroAssemblerX64 : public MacroAssemblerX86Shared
     }
     void movePtr(ImmGCPtr imm, Register dest) {
         movq(imm, dest);
-    }
-    void movePtr(ImmMaybeNurseryPtr imm, Register dest) {
-        movePtr(noteMaybeNurseryPtr(imm), dest);
     }
     void loadPtr(AbsoluteAddress address, Register dest) {
         if (X86Encoding::IsAddressImmediate(address.addr)) {

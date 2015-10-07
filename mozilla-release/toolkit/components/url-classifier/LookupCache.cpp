@@ -7,7 +7,7 @@
 #include "HashStore.h"
 #include "nsISeekableStream.h"
 #include "mozilla/Telemetry.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "prprf.h"
 
 // We act as the main entry point for all the real lookups,
@@ -34,13 +34,8 @@
 
 // NSPR_LOG_MODULES=UrlClassifierDbService:5
 extern PRLogModuleInfo *gUrlClassifierDbServiceLog;
-#if defined(PR_LOGGING)
-#define LOG(args) PR_LOG(gUrlClassifierDbServiceLog, PR_LOG_DEBUG, args)
-#define LOG_ENABLED() PR_LOG_TEST(gUrlClassifierDbServiceLog, 4)
-#else
-#define LOG(args)
-#define LOG_ENABLED() (false)
-#endif
+#define LOG(args) MOZ_LOG(gUrlClassifierDbServiceLog, mozilla::LogLevel::Debug, args)
+#define LOG_ENABLED() MOZ_LOG_TEST(gUrlClassifierDbServiceLog, mozilla::LogLevel::Debug)
 
 namespace mozilla {
 namespace safebrowsing {
@@ -172,7 +167,7 @@ LookupCache::Build(AddPrefixArray& aAddPrefixes,
   return NS_OK;
 }
 
-#if defined(DEBUG) && defined(PR_LOGGING)
+#if defined(DEBUG)
 void
 LookupCache::Dump()
 {

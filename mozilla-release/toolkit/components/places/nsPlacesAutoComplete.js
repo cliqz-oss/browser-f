@@ -318,7 +318,7 @@ function nsPlacesAutoComplete()
 
     // Autocomplete often fallbacks to a table scan due to lack of text indices.
     // In such cases a larger cache helps reducing IO.  The default Storage
-    // value is MAX_CACHE_SIZE_BYTES in storage/src/mozStorageConnection.cpp.
+    // value is MAX_CACHE_SIZE_BYTES in storage/mozStorageConnection.cpp.
     let stmt = db.createAsyncStatement("PRAGMA cache_size = -6144"); // 6MiB
     stmt.executeAsync();
     stmt.finalize();
@@ -1497,7 +1497,7 @@ urlInlineComplete.prototype = {
           // If the untrimmed value doesn't preserve the user's input just
           // ignore it and complete to the found host.
           if (untrimmedHost &&
-              !untrimmedHost.toLowerCase().contains(this._originalSearchString.toLowerCase())) {
+              !untrimmedHost.toLowerCase().includes(this._originalSearchString.toLowerCase())) {
             untrimmedHost = null;
           }
 
@@ -1574,7 +1574,7 @@ urlInlineComplete.prototype = {
         // ignore it and complete to the found url.
         let untrimmedURL = prefix + url;
         if (untrimmedURL &&
-            !untrimmedURL.toLowerCase().contains(this._originalSearchString.toLowerCase())) {
+            !untrimmedURL.toLowerCase().includes(this._originalSearchString.toLowerCase())) {
           untrimmedURL = null;
          }
 

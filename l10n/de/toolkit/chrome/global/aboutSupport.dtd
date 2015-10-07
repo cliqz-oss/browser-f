@@ -56,7 +56,12 @@ Windows/Mac use the term "Folder" instead of "Directory" -->
 <!ENTITY aboutSupport.appBasicsUserAgent "User-Agent">
 <!ENTITY aboutSupport.appBasicsMemoryUse "Speicherverwendung">
 
+<!-- LOCALIZATION NOTE the term "Service Workers" should not be translated. -->
+<!ENTITY aboutSupport.appBasicsServiceWorkers "Angemeldete Service-Worker">
+
 <!ENTITY aboutSupport.appBasicsMultiProcessSupport "Fenster mit mehreren Prozessen">
+
+<!ENTITY aboutSupport.appBasicsSafeMode "Abgesicherter Modus">
 
 <!ENTITY aboutSupport.showDir.label "Ordner öffnen">
 <!-- LOCALIZATION NOTE (aboutSupport.showMac.label): This is the Mac-specific

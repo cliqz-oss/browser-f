@@ -82,6 +82,12 @@ BasicCompositor::~BasicCompositor()
   MOZ_COUNT_DTOR(BasicCompositor);
 }
 
+bool
+BasicCompositor::Initialize()
+{
+  return mWidget ? mWidget->InitCompositor(this) : false;
+};
+
 int32_t
 BasicCompositor::GetMaxTextureSize() const
 {
@@ -142,7 +148,7 @@ BasicCompositor::CreateDataTextureSource(TextureFlags aFlags)
 bool
 BasicCompositor::SupportsEffect(EffectTypes aEffect)
 {
-  return static_cast<EffectTypes>(aEffect) != EffectTypes::YCBCR;
+  return aEffect != EffectTypes::YCBCR && aEffect != EffectTypes::COMPONENT_ALPHA;
 }
 
 static void
@@ -323,7 +329,8 @@ BasicCompositor::DrawQuad(const gfx::Rect& aRect,
                           const gfx::Rect& aClipRect,
                           const EffectChain &aEffectChain,
                           gfx::Float aOpacity,
-                          const gfx::Matrix4x4 &aTransform)
+                          const gfx::Matrix4x4& aTransform,
+                          const gfx::Rect& aVisibleRect)
 {
   RefPtr<DrawTarget> buffer = mRenderTarget->mDrawTarget;
 
@@ -455,6 +462,7 @@ BasicCompositor::DrawQuad(const gfx::Rect& aRect,
 #endif
         );
     if (NS_WARN_IF(!temp)) {
+      buffer->PopClip();
       return;
     }
 
@@ -486,9 +494,9 @@ BasicCompositor::BeginFrame(const nsIntRegion& aInvalidRegion,
 
   // Sometimes the invalid region is larger than we want to draw.
   nsIntRegion invalidRegionSafe;
-  invalidRegionSafe.And(aInvalidRegion, gfx::ThebesIntRect(intRect));
+  invalidRegionSafe.And(aInvalidRegion, intRect);
 
-  nsIntRect invalidRect = invalidRegionSafe.GetBounds();
+  IntRect invalidRect = invalidRegionSafe.GetBounds();
   mInvalidRect = IntRect(invalidRect.x, invalidRect.y, invalidRect.width, invalidRect.height);
   mInvalidRegion = invalidRegionSafe;
 
@@ -516,7 +524,7 @@ BasicCompositor::BeginFrame(const nsIntRegion& aInvalidRegion,
   RefPtr<CompositingRenderTarget> target = CreateRenderTarget(mInvalidRect, INIT_MODE_CLEAR);
   if (!target) {
     if (!mTarget) {
-      mWidget->EndRemoteDrawing();
+      mWidget->EndRemoteDrawingInRegion(mDrawTarget, mInvalidRegion);
     }
     return;
   }
@@ -572,13 +580,13 @@ BasicCompositor::EndFrame()
   // to copy the individual rectangles in the region or else we'll draw blank
   // pixels.
   nsIntRegionRectIterator iter(mInvalidRegion);
-  for (const nsIntRect *r = iter.Next(); r; r = iter.Next()) {
+  for (const IntRect *r = iter.Next(); r; r = iter.Next()) {
     dest->CopySurface(source,
                       IntRect(r->x - mInvalidRect.x, r->y - mInvalidRect.y, r->width, r->height),
                       IntPoint(r->x - offset.x, r->y - offset.y));
   }
   if (!mTarget) {
-    mWidget->EndRemoteDrawing();
+    mWidget->EndRemoteDrawingInRegion(mDrawTarget, mInvalidRegion);
   }
 
   mDrawTarget = nullptr;

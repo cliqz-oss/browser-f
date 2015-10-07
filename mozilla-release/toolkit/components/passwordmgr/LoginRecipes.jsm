@@ -33,17 +33,8 @@ function LoginRecipesParent(aOptions = { defaults: true }) {
   if (Services.appinfo.processType != Ci.nsIXULRuntime.PROCESS_TYPE_DEFAULT) {
     throw new Error("LoginRecipesParent should only be used from the main process");
   }
-
-  this._recipesByHost = new Map();
-
-  if (aOptions.defaults) {
-    // XXX: Bug 1134850 will handle reading recipes from a file.
-    this.initializationPromise = this.load(DEFAULT_RECIPES).then(resolve => {
-      return this;
-    });
-  } else {
-    this.initializationPromise = Promise.resolve(this);
-  }
+  this._defaults = aOptions.defaults;
+  this.reset();
 }
 
 LoginRecipesParent.prototype = {
@@ -53,6 +44,11 @@ LoginRecipesParent.prototype = {
    * @type {Promise}
    */
   initializationPromise: null,
+
+  /**
+   * @type {bool} Whether default recipes were loaded at construction time.
+   */
+  _defaults: null,
 
   /**
    * @type {Map} Map of hosts (including non-default port numbers) to Sets of recipes.
@@ -82,6 +78,23 @@ LoginRecipesParent.prototype = {
     }
 
     return Promise.resolve();
+  },
+
+  /**
+   * Reset the set of recipes to the ones from the time of construction.
+   */
+  reset() {
+    log.debug("Resetting recipes with defaults:", this._defaults);
+    this._recipesByHost = new Map();
+
+    if (this._defaults) {
+      // XXX: Bug 1134850 will handle reading recipes from a file.
+      this.initializationPromise = this.load(DEFAULT_RECIPES).then(resolve => {
+        return this;
+      });
+    } else {
+      this.initializationPromise = Promise.resolve(this);
+    }
   },
 
   /**
@@ -150,7 +163,7 @@ LoginRecipesParent.prototype = {
 let LoginRecipesContent = {
   /**
    * @param {Set} aRecipes - Possible recipes that could apply to the form
-   * @param {HTMLFormElement} aForm - We use a form instead of just a URL so we can later apply
+   * @param {FormLike} aForm - We use a form instead of just a URL so we can later apply
    * tests to the page contents.
    * @return {Set} a subset of recipes that apply to the form with the order preserved
    */
@@ -179,7 +192,7 @@ let LoginRecipesContent = {
    * overriding login fields in the form.
    *
    * @param {Set} aRecipes The set of recipes to consider for the form
-   * @param {HTMLFormElement} aForm The form where login fields exist.
+   * @param {FormLike} aForm The form where login fields exist.
    * @return {Object} The recipe that is most applicable for the form.
    */
   getFieldOverrides(aRecipes, aForm) {

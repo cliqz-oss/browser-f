@@ -9,6 +9,8 @@
 
 #include "jsobj.h"
 
+#include "jsfun.h"
+
 #include "builtin/MapObject.h"
 #include "builtin/TypedObject.h"
 #include "gc/Allocator.h"
@@ -26,10 +28,25 @@
 
 #include "vm/TypeInference-inl.h"
 
+namespace js {
+
+// This is needed here for ensureShape() below.
+inline bool
+MaybeConvertUnboxedObjectToNative(ExclusiveContext* cx, JSObject* obj)
+{
+    if (obj->is<UnboxedPlainObject>())
+        return UnboxedPlainObject::convertToNative(cx->asJSContext(), obj);
+    if (obj->is<UnboxedArrayObject>())
+        return UnboxedArrayObject::convertToNative(cx->asJSContext(), obj);
+    return true;
+}
+
+} // namespace js
+
 inline js::Shape*
 JSObject::maybeShape() const
 {
-    if (is<js::UnboxedPlainObject>())
+    if (is<js::UnboxedPlainObject>() || is<js::UnboxedArrayObject>())
         return nullptr;
     return *reinterpret_cast<js::Shape**>(uintptr_t(this) + offsetOfShape());
 }
@@ -37,7 +54,7 @@ JSObject::maybeShape() const
 inline js::Shape*
 JSObject::ensureShape(js::ExclusiveContext* cx)
 {
-    if (is<js::UnboxedPlainObject>() && !js::UnboxedPlainObject::convertToNative(cx->asJSContext(), this))
+    if (!js::MaybeConvertUnboxedObjectToNative(cx, this))
         return nullptr;
     js::Shape* shape = maybeShape();
     MOZ_ASSERT(shape);
@@ -203,19 +220,25 @@ js::DeleteElement(JSContext* cx, HandleObject obj, uint32_t index, ObjectOpResul
 /* * */
 
 inline bool
-JSObject::isQualifiedVarObj()
+JSObject::isQualifiedVarObj() const
 {
     if (is<js::DebugScopeObject>())
         return as<js::DebugScopeObject>().scope().isQualifiedVarObj();
-    return hasAllFlags(js::BaseShape::QUALIFIED_VAROBJ);
+    bool rv = hasAllFlags(js::BaseShape::QUALIFIED_VAROBJ);
+    MOZ_ASSERT_IF(rv,
+                  is<js::GlobalObject>() ||
+                  is<js::CallObject>() ||
+                  is<js::NonSyntacticVariablesObject>() ||
+                  (is<js::DynamicWithObject>() && !as<js::DynamicWithObject>().isSyntactic()));
+    return rv;
 }
 
 inline bool
-JSObject::isUnqualifiedVarObj()
+JSObject::isUnqualifiedVarObj() const
 {
     if (is<js::DebugScopeObject>())
         return as<js::DebugScopeObject>().scope().isUnqualifiedVarObj();
-    return hasAllFlags(js::BaseShape::UNQUALIFIED_VAROBJ);
+    return is<js::GlobalObject>() || is<js::NonSyntacticVariablesObject>();
 }
 
 namespace js {
@@ -246,7 +269,8 @@ SetNewObjectMetadata(ExclusiveContext* cxArg, JSObject* obj)
             // callback, and any reentering of JS via Invoke() etc.
             AutoEnterAnalysis enter(cx);
 
-            cx->compartment()->setNewObjectMetadata(cx, obj);
+            RootedObject hobj(cx, obj);
+            cx->compartment()->setNewObjectMetadata(cx, hobj);
         }
     }
 }
@@ -266,7 +290,9 @@ JSObject::create(js::ExclusiveContext* cx, js::gc::AllocKind kind, js::gc::Initi
                   IsBackgroundFinalized(kind));
     MOZ_ASSERT_IF(group->clasp()->finalize,
                   heap == js::gc::TenuredHeap ||
-                  (group->clasp()->flags & JSCLASS_FINALIZE_FROM_NURSERY));
+                  (group->clasp()->flags & JSCLASS_SKIP_NURSERY_FINALIZE));
+    MOZ_ASSERT_IF(group->hasUnanalyzedPreliminaryObjects(),
+                  heap == js::gc::TenuredHeap);
 
     // Non-native classes cannot have reserved slots or private data, and the
     // objects can't have any fixed slots, for compatibility with
@@ -298,8 +324,13 @@ JSObject::create(js::ExclusiveContext* cx, js::gc::AllocKind kind, js::gc::Initi
         obj->as<js::NativeObject>().initializeSlotRange(0, span);
 
     // JSFunction's fixed slots expect POD-style initialization.
-    if (group->clasp()->isJSFunction())
-        memset(obj->as<JSFunction>().fixedSlots(), 0, sizeof(js::HeapSlot) * GetGCKindSlots(kind));
+    if (group->clasp()->isJSFunction()) {
+        MOZ_ASSERT(kind == js::gc::AllocKind::FUNCTION ||
+                   kind == js::gc::AllocKind::FUNCTION_EXTENDED);
+        size_t size =
+            kind == js::gc::AllocKind::FUNCTION ? sizeof(JSFunction) : sizeof(js::FunctionExtended);
+        memset(obj->as<JSFunction>().fixedSlots(), 0, size - sizeof(js::NativeObject));
+    }
 
     SetNewObjectMetadata(cx, obj);
 
@@ -570,18 +601,7 @@ IsInternalFunctionObject(JSObject* funobj)
     return fun->isLambda() && fun->isInterpreted() && !fun->environment();
 }
 
-class AutoPropertyDescriptorVector : public AutoVectorRooter<PropertyDescriptor>
-{
-  public:
-    explicit AutoPropertyDescriptorVector(JSContext* cx
-                                          MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-        : AutoVectorRooter(cx, DESCVECTOR)
-    {
-        MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    }
-
-    MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-};
+typedef AutoVectorRooter<PropertyDescriptor> AutoPropertyDescriptorVector;
 
 /*
  * Make an object with the specified prototype. If parent is null, it will
@@ -589,23 +609,36 @@ class AutoPropertyDescriptorVector : public AutoVectorRooter<PropertyDescriptor>
  */
 JSObject*
 NewObjectWithGivenTaggedProto(ExclusiveContext* cx, const Class* clasp, Handle<TaggedProto> proto,
-                              gc::AllocKind allocKind, NewObjectKind newKind);
+                              gc::AllocKind allocKind, NewObjectKind newKind,
+                              uint32_t initialShapeFlags = 0);
 
 inline JSObject*
 NewObjectWithGivenTaggedProto(ExclusiveContext* cx, const Class* clasp, Handle<TaggedProto> proto,
-                              NewObjectKind newKind = GenericObject)
+                              NewObjectKind newKind = GenericObject,
+                              uint32_t initialShapeFlags = 0)
 {
     gc::AllocKind allocKind = gc::GetGCObjectKind(clasp);
-    return NewObjectWithGivenTaggedProto(cx, clasp, proto, allocKind, newKind);
+    return NewObjectWithGivenTaggedProto(cx, clasp, proto, allocKind, newKind, initialShapeFlags);
 }
 
 template <typename T>
 inline T*
 NewObjectWithGivenTaggedProto(ExclusiveContext* cx, Handle<TaggedProto> proto,
-                              NewObjectKind newKind = GenericObject)
+                              NewObjectKind newKind = GenericObject,
+                              uint32_t initialShapeFlags = 0)
 {
-    JSObject* obj = NewObjectWithGivenTaggedProto(cx, &T::class_, proto, newKind);
+    JSObject* obj = NewObjectWithGivenTaggedProto(cx, &T::class_, proto, newKind,
+                                                  initialShapeFlags);
     return obj ? &obj->as<T>() : nullptr;
+}
+
+template <typename T>
+inline T*
+NewObjectWithNullTaggedProto(ExclusiveContext* cx, NewObjectKind newKind = GenericObject,
+                             uint32_t initialShapeFlags = 0)
+{
+    Rooted<TaggedProto> nullProto(cx, TaggedProto(nullptr));
+    return NewObjectWithGivenTaggedProto<T>(cx, nullProto, newKind, initialShapeFlags);
 }
 
 inline JSObject*
@@ -641,23 +674,8 @@ NewObjectWithGivenProto(ExclusiveContext* cx, HandleObject proto,
     return obj ? &obj->as<T>() : nullptr;
 }
 
-/*
- * Make an object with the prototype set according to the specified prototype or class:
- *
- * if proto is non-null:
- *   use the specified proto
- * for a built-in class:
- *   use the memoized original value of the class constructor .prototype
- *   property object
- * else if available
- *   the current value of .prototype
- * else
- *   Object.prototype.
- *
- * The class prototype will be fetched from the parent's global. If global is
- * null, the context's active global will be used, and the resulting object's
- * parent will be that global.
- */
+// Make an object with the prototype set according to the cached prototype or
+// Object.prototype.
 JSObject*
 NewObjectWithClassProtoCommon(ExclusiveContext* cx, const Class* clasp, HandleObject proto,
                               gc::AllocKind allocKind, NewObjectKind newKind);
@@ -703,7 +721,7 @@ inline JSObject*
 NewBuiltinClassInstance(ExclusiveContext* cx, const Class* clasp, gc::AllocKind allocKind,
                         NewObjectKind newKind = GenericObject)
 {
-    return NewObjectWithClassProto(cx, clasp, NullPtr(), allocKind, newKind);
+    return NewObjectWithClassProto(cx, clasp, nullptr, allocKind, newKind);
 }
 
 inline JSObject*
@@ -783,11 +801,11 @@ ObjectClassIs(HandleObject obj, ESClassValue classValue, JSContext* cx)
         return Proxy::objectClassIs(obj, classValue, cx);
 
     switch (classValue) {
-      case ESClass_Object: return obj->is<PlainObject>();
+      case ESClass_Object: return obj->is<PlainObject>() || obj->is<UnboxedPlainObject>();
       case ESClass_Array:
       case ESClass_IsArray:
-        // There difference between those is only relevant for proxies.
-        return obj->is<ArrayObject>();
+        // The difference between Array and IsArray is only relevant for proxies.
+        return obj->is<ArrayObject>() || obj->is<UnboxedArrayObject>();
       case ESClass_Number: return obj->is<NumberObject>();
       case ESClass_String: return obj->is<StringObject>();
       case ESClass_Boolean: return obj->is<BooleanObject>();
@@ -814,7 +832,7 @@ IsObjectWithClass(const Value& v, ESClassValue classValue, JSContext* cx)
 inline bool
 IsArray(HandleObject obj, JSContext* cx)
 {
-    if (obj->is<ArrayObject>())
+    if (obj->is<ArrayObject>() || obj->is<UnboxedArrayObject>())
         return true;
 
     return ObjectClassIs(obj, ESClass_IsArray, cx);
@@ -840,47 +858,13 @@ Unbox(JSContext* cx, HandleObject obj, MutableHandleValue vp)
     return true;
 }
 
-static inline unsigned
-ApplyAttributes(unsigned attrs, bool enumerable, bool writable, bool configurable)
-{
-    /*
-     * Respect the fact that some callers may want to preserve existing attributes as much as
-     * possible, or install defaults otherwise.
-     */
-    if (attrs & JSPROP_IGNORE_ENUMERATE) {
-        attrs &= ~JSPROP_IGNORE_ENUMERATE;
-        if (enumerable)
-            attrs |= JSPROP_ENUMERATE;
-        else
-            attrs &= ~JSPROP_ENUMERATE;
-    }
-    if (attrs & JSPROP_IGNORE_READONLY) {
-        attrs &= ~JSPROP_IGNORE_READONLY;
-        // Only update the writability if it's relevant
-        if (!(attrs & (JSPROP_GETTER | JSPROP_SETTER))) {
-            if (!writable)
-                attrs |= JSPROP_READONLY;
-            else
-                attrs &= ~JSPROP_READONLY;
-        }
-    }
-    if (attrs & JSPROP_IGNORE_PERMANENT) {
-        attrs &= ~JSPROP_IGNORE_PERMANENT;
-        if (!configurable)
-            attrs |= JSPROP_PERMANENT;
-        else
-            attrs &= ~JSPROP_PERMANENT;
-    }
-    return attrs;
-}
-
 extern NativeObject*
 InitClass(JSContext* cx, HandleObject obj, HandleObject parent_proto,
           const Class* clasp, JSNative constructor, unsigned nargs,
           const JSPropertySpec* ps, const JSFunctionSpec* fs,
           const JSPropertySpec* static_ps, const JSFunctionSpec* static_fs,
           NativeObject** ctorp = nullptr,
-          gc::AllocKind ctorKind = JSFunction::FinalizeKind);
+          gc::AllocKind ctorKind = gc::AllocKind::FUNCTION);
 
 } /* namespace js */
 

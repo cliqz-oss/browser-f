@@ -35,6 +35,7 @@ chrome.jar:
   content/netError.xhtml               (content/netError.xhtml)
   content/SelectHelper.js              (content/SelectHelper.js)
   content/SelectionHandler.js          (content/SelectionHandler.js)
+  content/ActionBarHandler.js          (content/ActionBarHandler.js)
   content/WebappRT.js                  (content/WebappRT.js)
   content/EmbedRT.js                   (content/EmbedRT.js)
   content/InputWidgetHelper.js         (content/InputWidgetHelper.js)
@@ -60,8 +61,8 @@ chrome.jar:
   content/aboutDevices.js              (content/aboutDevices.js)
 #endif
 #ifdef NIGHTLY_BUILD
-  content/aboutPasswords.xhtml         (content/aboutPasswords.xhtml)
-  content/aboutPasswords.js            (content/aboutPasswords.js)
+  content/aboutLogins.xhtml            (content/aboutLogins.xhtml)
+  content/aboutLogins.js               (content/aboutLogins.js)
   content/WebcompatReporter.js         (content/WebcompatReporter.js)
 #endif
 #ifdef MOZ_PAY

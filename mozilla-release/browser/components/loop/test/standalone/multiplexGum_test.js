@@ -2,18 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*global loop, sinon, it, beforeEach, afterEach, describe*/
-
-var expect = chai.expect;
-
 describe("loop.standaloneMedia._MultiplexGum", function() {
   "use strict";
 
+  var expect = chai.expect;
   var defaultGum =
     navigator.getUserMedia ||
     navigator.mozGetUserMedia ||
     navigator.webkitGetUserMedia ||
-    (window["TBPlugin"] && TBPlugin.getUserMedia);
+    (window.TBPlugin && window.TBPlugin.getUserMedia);
 
   var sandbox;
   var multiplexGum;
@@ -165,7 +162,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
           expect(localStream).to.eql(fakeLocalStream);
         }, null);
 
-        expect(multiplexGum.userMedia).to.have.property('pending', true);
+        expect(multiplexGum.userMedia).to.have.property("pending", true);
 
         multiplexGum.getPermsAndCacheMedia(null, function onSuccess(localStream) {
           calls += 10;
@@ -187,7 +184,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
           expect(error).to.eql(fakeError);
         });
 
-        expect(multiplexGum.userMedia).to.have.property('pending', true);
+        expect(multiplexGum.userMedia).to.have.property("pending", true);
 
         multiplexGum.getPermsAndCacheMedia(null, null, function onError(error) {
           calls += 10;
@@ -209,7 +206,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
           multiplexGum.getPermsAndCacheMedia(null,
             function gPACMSuccess(localStream) {
               expect(localStream).to.eql(fakeLocalStream);
-              expect(multiplexGum.userMedia).to.have.property('pending', false);
+              expect(multiplexGum.userMedia).to.have.property("pending", false);
               expect(multiplexGum.userMedia.successCallbacks.length).to.equal(0);
               if (calledOnce) {
                 sinon.assert.fail("original callback was called twice");
@@ -225,7 +222,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
         return promiseCalledOnce.then(function() {
           defaultGum(null, function gUMSuccess(localStream2) {
             expect(localStream2).to.eql(fakeLocalStream);
-            expect(multiplexGum.userMedia).to.have.property('pending', false);
+            expect(multiplexGum.userMedia).to.have.property("pending", false);
             expect(multiplexGum.userMedia.successCallbacks.length).to.equal(0);
           });
         });
@@ -244,7 +241,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
             reject();
           }, function gPACMError(errString) {
             expect(errString).to.eql(fakeError);
-            expect(multiplexGum.userMedia).to.have.property('pending', false);
+            expect(multiplexGum.userMedia).to.have.property("pending", false);
             if (calledOnce) {
               sinon.assert.fail("original error callback was called twice");
             }
@@ -257,7 +254,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
           defaultGum(null, function() {},
             function gUMError(errString) {
               expect(errString).to.eql(fakeError);
-              expect(multiplexGum.userMedia).to.have.property('pending', false);
+              expect(multiplexGum.userMedia).to.have.property("pending", false);
             });
         });
       });
@@ -292,7 +289,7 @@ describe("loop.standaloneMedia._MultiplexGum", function() {
           localStream: null,
           pending: false,
           errorCallbacks: [],
-          successCallbacks: [],
+          successCallbacks: []
       });
     });
 

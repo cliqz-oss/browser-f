@@ -9,8 +9,8 @@ from mozboot.base import BaseBootstrapper
 
 
 class CentOSBootstrapper(BaseBootstrapper):
-    def __init__(self, version, dist_id):
-        BaseBootstrapper.__init__(self)
+    def __init__(self, version, dist_id, **kwargs):
+        BaseBootstrapper.__init__(self, **kwargs)
 
         self.version = version
         self.dist_id = dist_id
@@ -34,6 +34,7 @@ class CentOSBootstrapper(BaseBootstrapper):
         self.browser_packages = [
             'alsa-lib-devel',
             'dbus-glib-devel',
+            'GConf2-devel',
             'glibc-static',
             'gstreamer-devel',
             'gstreamer-plugins-base-devel',

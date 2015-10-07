@@ -8,7 +8,8 @@
 #include "CSFLog.h"
 #include "prenv.h"
 
-#ifdef PR_LOGGING
+#include "mozilla/Logging.h"
+
 static PRLogModuleInfo*
 GetUserMediaLog()
 {
@@ -17,7 +18,6 @@ GetUserMediaLog()
     sLog = PR_NewLogModule("GetUserMedia");
   return sLog;
 }
-#endif
 
 #include "MediaEngineWebRTC.h"
 #include "ImageContainer.h"
@@ -37,7 +37,7 @@ GetUserMediaLog()
 #endif
 
 #undef LOG
-#define LOG(args) PR_LOG(GetUserMediaLog(), PR_LOG_DEBUG, args)
+#define LOG(args) MOZ_LOG(GetUserMediaLog(), mozilla::LogLevel::Debug, args)
 
 namespace mozilla {
 
@@ -276,10 +276,9 @@ MediaEngineWebRTC::EnumerateVideoDevices(dom::MediaSourceEnum aMediaSource,
     }
   }
 
-  if (mHasTabVideoSource || dom::MediaSourceEnum::Browser == aMediaSource)
+  if (mHasTabVideoSource || dom::MediaSourceEnum::Browser == aMediaSource) {
     aVSources->AppendElement(new MediaEngineTabVideoSource());
-
-  return;
+  }
 #endif
 }
 
@@ -374,15 +373,43 @@ MediaEngineWebRTC::EnumerateAudioDevices(dom::MediaSourceEnum aMediaSource,
   }
 }
 
+static PLDHashOperator
+ClearVideoSource (const nsAString&, // unused
+                  MediaEngineVideoSource* aData,
+                  void *userArg)
+{
+  if (aData) {
+    aData->Shutdown();
+  }
+  return PL_DHASH_NEXT;
+}
+
+static PLDHashOperator
+ClearAudioSource (const nsAString&, // unused
+                  MediaEngineWebRTCAudioSource* aData,
+                  void *userArg)
+{
+  if (aData) {
+    aData->Shutdown();
+  }
+  return PL_DHASH_NEXT;
+}
+
 void
 MediaEngineWebRTC::Shutdown()
 {
   // This is likely paranoia
   MutexAutoLock lock(mMutex);
 
-  // Clear callbacks before we go away since the engines may outlive us
+  LOG(("%s", __FUNCTION__));
+  // Shutdown all the sources, since we may have dangling references to the
+  // sources in nsDOMUserMediaStreams waiting for GC/CC
+  mVideoSources.EnumerateRead(ClearVideoSource, nullptr);
+  mAudioSources.EnumerateRead(ClearAudioSource, nullptr);
   mVideoSources.Clear();
   mAudioSources.Clear();
+
+  // Clear callbacks before we go away since the engines may outlive us
   if (mVideoEngine) {
     mVideoEngine->SetTraceCallback(nullptr);
     webrtc::VideoEngine::Delete(mVideoEngine);

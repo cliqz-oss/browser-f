@@ -31,8 +31,6 @@
 
 #include "mozilla/dom/SpeechRecognitionError.h"
 
-class nsIDOMWindow;
-
 namespace mozilla {
 
 namespace dom {
@@ -40,18 +38,16 @@ namespace dom {
 #define TEST_PREFERENCE_ENABLE "media.webspeech.test.enable"
 #define TEST_PREFERENCE_FAKE_FSM_EVENTS "media.webspeech.test.fake_fsm_events"
 #define TEST_PREFERENCE_FAKE_RECOGNITION_SERVICE "media.webspeech.test.fake_recognition_service"
+#define TEST_PREFERENCE_RECOGNITION_ENABLE "media.webspeech.recognition.enable"
+#define TEST_PREFERENCE_RECOGNITION_FORCE_ENABLE "media.webspeech.recognition.force_enable"
 #define SPEECH_RECOGNITION_TEST_EVENT_REQUEST_TOPIC "SpeechRecognitionTest:RequestEvent"
 #define SPEECH_RECOGNITION_TEST_END_TOPIC "SpeechRecognitionTest:End"
 
 class GlobalObject;
 class SpeechEvent;
 
-#ifdef PR_LOGGING
 PRLogModuleInfo* GetSpeechRecognitionLog();
-#define SR_LOG(...) PR_LOG(GetSpeechRecognitionLog(), PR_LOG_DEBUG, (__VA_ARGS__))
-#else
-#define SR_LOG(...)
-#endif
+#define SR_LOG(...) MOZ_LOG(GetSpeechRecognitionLog(), mozilla::LogLevel::Debug, (__VA_ARGS__))
 
 already_AddRefed<nsISpeechRecognitionService> GetSpeechRecognitionService();
 
@@ -70,6 +66,8 @@ public:
   nsISupports* GetParentObject() const;
 
   virtual JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto) override;
+
+  static bool IsAuthorized(JSContext* aCx, JSObject* aGlobal);
 
   static already_AddRefed<SpeechRecognition>
   Constructor(const GlobalObject& aGlobal, ErrorResult& aRv);

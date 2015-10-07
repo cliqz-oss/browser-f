@@ -31,6 +31,7 @@ nsBaseAppShell::nsBaseAppShell()
   , mSwitchTime(0)
   , mLastNativeEventTime(0)
   , mEventloopNestingState(eEventloopNone)
+  , mRunningSyncSections(false)
   , mRunning(false)
   , mExiting(false)
   , mBlockNativeEvent(false)
@@ -350,6 +351,11 @@ nsBaseAppShell::RunSyncSectionsInternal(bool aStable,
   NS_ASSERTION(NS_IsMainThread(), "Wrong thread!");
   NS_ASSERTION(!mSyncSections.IsEmpty(), "Nothing to do!");
 
+  // We don't support re-entering sync sections. This effectively means that
+  // sync sections may not spin the event loop.
+  MOZ_RELEASE_ASSERT(!mRunningSyncSections);
+  mRunningSyncSections = true;
+
   // We've got synchronous sections. Run all of them that are are awaiting a
   // stable state if aStable is true (i.e. we really are in a stable state).
   // Also run the synchronous sections that are simply waiting for the right
@@ -377,10 +383,12 @@ nsBaseAppShell::RunSyncSectionsInternal(bool aStable,
   }
 
   mSyncSections.SwapElements(pendingSyncSections);
+  mRunningSyncSections = false;
 }
 
 void
-nsBaseAppShell::ScheduleSyncSection(nsIRunnable* aRunnable, bool aStable)
+nsBaseAppShell::ScheduleSyncSection(already_AddRefed<nsIRunnable> aRunnable,
+                                    bool aStable)
 {
   NS_ASSERTION(NS_IsMainThread(), "Should be on main thread.");
 
@@ -437,16 +445,16 @@ nsBaseAppShell::Observe(nsISupports *subject, const char *topic,
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsBaseAppShell::RunInStableState(nsIRunnable* aRunnable)
+void
+nsBaseAppShell::RunInStableState(already_AddRefed<nsIRunnable> aRunnable)
 {
-  ScheduleSyncSection(aRunnable, true);
-  return NS_OK;
+  ScheduleSyncSection(mozilla::Move(aRunnable), true);
 }
 
 NS_IMETHODIMP
 nsBaseAppShell::RunBeforeNextEvent(nsIRunnable* aRunnable)
 {
-  ScheduleSyncSection(aRunnable, false);
+  nsCOMPtr<nsIRunnable> runnable = aRunnable;
+  ScheduleSyncSection(runnable.forget(), false);
   return NS_OK;
 }

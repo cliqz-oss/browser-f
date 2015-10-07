@@ -36,6 +36,8 @@
 #include "mozilla/net/NeckoMessageUtils.h"
 #include "mozilla/Preferences.h"
 #include "nsReadLine.h"
+#include "mozilla/Telemetry.h"
+#include "nsIConsoleService.h"
 
 static nsPermissionManager *gPermissionManager = nullptr;
 
@@ -66,6 +68,18 @@ ChildProcess()
   return nullptr;
 }
 
+static void
+LogToConsole(const nsAString& aMsg)
+{
+  nsCOMPtr<nsIConsoleService> console(do_GetService("@mozilla.org/consoleservice;1"));
+  if (!console) {
+    NS_WARNING("Failed to log message to console.");
+    return;
+  }
+
+  nsAutoString msg(aMsg);
+  console->LogStringMessage(msg.get());
+}
 
 #define ENSURE_NOT_CHILD_PROCESS_(onError) \
   PR_BEGIN_MACRO \
@@ -156,7 +170,7 @@ GetHostForPrincipal(nsIPrincipal* aPrincipal, nsACString& aHost)
   }
 
   // Some entries like "file://" uses the origin.
-  rv = aPrincipal->GetOrigin(getter_Copies(aHost));
+  rv = aPrincipal->GetOriginNoSuffix(aHost);
   if (NS_SUCCEEDED(rv) && !aHost.IsEmpty()) {
     return NS_OK;
   }
@@ -356,10 +370,10 @@ nsPermissionManager::AppClearDataObserverInit()
 ////////////////////////////////////////////////////////////////////////////////
 // nsPermissionManager Implementation
 
-static const char kPermissionsFileName[] = "permissions.sqlite";
+#define PERMISSIONS_FILE_NAME "permissions.sqlite"
 #define HOSTS_SCHEMA_VERSION 4
 
-static const char kHostpermFileName[] = "hostperm.1";
+#define HOSTPERM_FILE_NAME "hostperm.1"
 
 // Default permissions are read from a URL - this is the preference we read
 // to find that URL. If not set, don't use any default permissions.
@@ -370,7 +384,8 @@ static const char kPermissionChangeNotification[] = PERM_CHANGE_NOTIFICATION;
 NS_IMPL_ISUPPORTS(nsPermissionManager, nsIPermissionManager, nsIObserver, nsISupportsWeakReference)
 
 nsPermissionManager::nsPermissionManager()
- : mLargestID(0)
+ : mMemoryOnlyDB(false)
+ , mLargestID(0)
  , mIsShuttingDown(false)
 {
 }
@@ -412,6 +427,10 @@ nsPermissionManager::Init()
 {
   nsresult rv;
 
+  // If the 'permissions.memory_only' pref is set to true, then don't write any
+  // permission settings to disk, but keep them in a memory-only database.
+  mMemoryOnlyDB = mozilla::Preferences::GetBool("permissions.memory_only", false);
+
   mObserverService = do_GetService("@mozilla.org/observer-service;1", &rv);
   if (NS_SUCCEEDED(rv)) {
     mObserverService->AddObserver(this, "profile-before-change", true);
@@ -444,6 +463,23 @@ nsPermissionManager::RefreshPermission() {
 }
 
 nsresult
+nsPermissionManager::OpenDatabase(nsIFile* aPermissionsFile)
+{
+  nsresult rv;
+  nsCOMPtr<mozIStorageService> storage = do_GetService(MOZ_STORAGE_SERVICE_CONTRACTID);
+  if (!storage) {
+    return NS_ERROR_UNEXPECTED;
+  }
+  // cache a connection to the hosts database
+  if (mMemoryOnlyDB) {
+    rv = storage->OpenSpecialDatabase("memory", getter_AddRefs(mDBConn));
+  } else {
+    rv = storage->OpenDatabase(aPermissionsFile, getter_AddRefs(mDBConn));
+  }
+  return rv;
+}
+
+nsresult
 nsPermissionManager::InitDB(bool aRemoveFile)
 {
   nsCOMPtr<nsIFile> permissionsFile;
@@ -453,7 +489,7 @@ nsPermissionManager::InitDB(bool aRemoveFile)
   }
   NS_ENSURE_SUCCESS(rv, NS_ERROR_UNEXPECTED);
 
-  rv = permissionsFile->AppendNative(NS_LITERAL_CSTRING(kPermissionsFileName));
+  rv = permissionsFile->AppendNative(NS_LITERAL_CSTRING(PERMISSIONS_FILE_NAME));
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aRemoveFile) {
@@ -466,35 +502,55 @@ nsPermissionManager::InitDB(bool aRemoveFile)
     }
   }
 
-  nsCOMPtr<mozIStorageService> storage = do_GetService(MOZ_STORAGE_SERVICE_CONTRACTID);
-  if (!storage)
-    return NS_ERROR_UNEXPECTED;
+  rv = OpenDatabase(permissionsFile);
+  if (rv == NS_ERROR_FILE_CORRUPTED) {
+    LogToConsole(NS_LITERAL_STRING("permissions.sqlite is corrupted! Try again!"));
 
-  // cache a connection to the hosts database
-  rv = storage->OpenDatabase(permissionsFile, getter_AddRefs(mDBConn));
-  NS_ENSURE_SUCCESS(rv, rv);
+    // Add telemetry probe
+    mozilla::Telemetry::Accumulate(mozilla::Telemetry::PERMISSIONS_SQL_CORRUPTED, 1);
+
+    // delete corrupted permissions.sqlite and try again
+    rv = permissionsFile->Remove(false);
+    NS_ENSURE_SUCCESS(rv, rv);
+    LogToConsole(NS_LITERAL_STRING("Corrupted permissions.sqlite has been removed."));
+
+    rv = OpenDatabase(permissionsFile);
+    NS_ENSURE_SUCCESS(rv, rv);
+    LogToConsole(NS_LITERAL_STRING("OpenDatabase to permissions.sqlite is successful!"));
+  } else if (NS_FAILED(rv)) {
+    return rv;
+  }
 
   bool ready;
   mDBConn->GetConnectionReady(&ready);
   if (!ready) {
+    LogToConsole(NS_LITERAL_STRING("Fail to get connection to permissions.sqlite! Try again!"));
+
     // delete and try again
     rv = permissionsFile->Remove(false);
     NS_ENSURE_SUCCESS(rv, rv);
+    LogToConsole(NS_LITERAL_STRING("Defective permissions.sqlite has been removed."));
 
-    rv = storage->OpenDatabase(permissionsFile, getter_AddRefs(mDBConn));
+    // Add telemetry probe
+    mozilla::Telemetry::Accumulate(mozilla::Telemetry::DEFECTIVE_PERMISSIONS_SQL_REMOVED, 1);
+
+    rv = OpenDatabase(permissionsFile);
     NS_ENSURE_SUCCESS(rv, rv);
+    LogToConsole(NS_LITERAL_STRING("OpenDatabase to permissions.sqlite is successful!"));
 
     mDBConn->GetConnectionReady(&ready);
     if (!ready)
       return NS_ERROR_UNEXPECTED;
   }
 
+  LogToConsole(NS_LITERAL_STRING("Get a connection to permissions.sqlite."));
+
   bool tableExists = false;
   mDBConn->TableExists(NS_LITERAL_CSTRING("moz_hosts"), &tableExists);
   if (!tableExists) {
     rv = CreateTable();
     NS_ENSURE_SUCCESS(rv, rv);
-
+    LogToConsole(NS_LITERAL_STRING("DB table(moz_hosts) is created!"));
   } else {
     // table already exists; check the schema version before reading
     int32_t dbSchemaVersion;
@@ -588,9 +644,6 @@ nsPermissionManager::InitDB(bool aRemoveFile)
       break;
     }
   }
-
-  // make operations on the table asynchronous, for performance
-  mDBConn->ExecuteSimpleSQL(NS_LITERAL_CSTRING("PRAGMA synchronous = OFF"));
 
   // cache frequently used statements (for insertion, deletion, and updating)
   rv = mDBConn->CreateAsyncStatement(NS_LITERAL_CSTRING(
@@ -1861,7 +1914,7 @@ nsPermissionManager::Import()
   rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR, getter_AddRefs(permissionsFile));
   if (NS_FAILED(rv)) return rv;
 
-  rv = permissionsFile->AppendNative(NS_LITERAL_CSTRING(kHostpermFileName));
+  rv = permissionsFile->AppendNative(NS_LITERAL_CSTRING(HOSTPERM_FILE_NAME));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIInputStream> fileInputStream;

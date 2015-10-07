@@ -4,7 +4,7 @@
 ///////////////////
 //
 // Whitelisting this test.
-// As part of bug 1077403, the leaking uncaught rejection should be fixed. 
+// As part of bug 1077403, the leaking uncaught rejection should be fixed.
 //
 thisTestLeaksUncaughtRejectionsAndShouldBeFixed("Error: Shader Editor is still waiting for a WebGL context to be created.");
 
@@ -40,7 +40,7 @@ const { DebuggerClient } =
  */
 
 function runTools(target) {
-  return Task.spawn(function() {
+  return Task.spawn(function*() {
     let toolIds = gDevTools.getToolDefinitionArray()
                            .filter(def => def.isTargetSupported(target))
                            .map(def => def.id);
@@ -48,6 +48,11 @@ function runTools(target) {
     let toolbox;
     for (let index = 0; index < toolIds.length; index++) {
       let toolId = toolIds[index];
+
+      // FIXME Bug 1175850 - Enable storage inspector tests after upgrading for E10S
+      if (toolId === "storage") {
+        continue;
+      }
 
       info("About to open " + index + "/" + toolId);
       toolbox = yield gDevTools.showToolbox(target, toolId, "window");
@@ -96,7 +101,7 @@ function getTarget(client) {
 }
 
 function test() {
-  Task.spawn(function() {
+  Task.spawn(function*() {
     toggleAllTools(true);
     yield addTab("about:blank");
 
@@ -114,8 +119,12 @@ function test() {
         // Bug 1056342: Profiler fails today because of framerate actor, but
         // this appears more complex to rework, so leave it for that bug to
         // resolve.
-        if (actor.contains("framerateActor")) {
+        if (actor.includes("framerateActor")) {
           todo(false, "Front for " + actor + " still held in pool!");
+          continue;
+        }
+        // gcliActor is for the commandline which is separate to the toolbox
+        if (actor.includes("gcliActor")) {
           continue;
         }
         ok(false, "Front for " + actor + " still held in pool!");

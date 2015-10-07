@@ -48,6 +48,7 @@
 #include "nsIMemoryReporter.h"
 #include "nsIParentalControlsService.h"
 #include "nsINetworkLinkService.h"
+#include "nsHttpChannelAuthProvider.h"
 
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/ipc/URIUtils.h"
@@ -181,18 +182,18 @@ nsHttpHandler::nsHttpHandler()
     , mParentalControlEnabled(false)
     , mTelemetryEnabled(false)
     , mAllowExperiments(true)
+    , mDebugObservations(false)
     , mHandlerActive(false)
     , mEnableSpdy(false)
     , mSpdyV31(true)
-    , mHttp2DraftEnabled(true)
     , mHttp2Enabled(true)
     , mUseH2Deps(true)
     , mEnforceHttp2TlsProfile(true)
     , mCoalesceSpdy(true)
     , mSpdyPersistentSettings(false)
     , mAllowPush(true)
-    , mEnableAltSvc(true)
-    , mEnableAltSvcOE(true)
+    , mEnableAltSvc(false)
+    , mEnableAltSvcOE(false)
     , mSpdySendingChunkSize(ASpdySession::kSendingChunkSize)
     , mSpdySendBufferSize(ASpdySession::kTCPSendBufferSize)
     , mSpdyPushAllowance(32768)
@@ -213,9 +214,7 @@ nsHttpHandler::nsHttpHandler()
     , mTCPKeepaliveLongLivedIdleTimeS(600)
     , mEnforceH1Framing(FRAMECHECK_BARELY)
 {
-#if defined(PR_LOGGING)
     gHttpLog = PR_NewLogModule("nsHttp");
-#endif
 
     LOG(("Creating nsHttpHandler [this=%p].\n", this));
 
@@ -286,6 +285,14 @@ nsHttpHandler::Init()
         PrefsChanged(prefBranch, nullptr);
     }
 
+    rv = Preferences::AddBoolVarCache(&mPackagedAppsEnabled,
+        "network.http.enable-packaged-apps", false);
+    if (NS_FAILED(rv)) {
+        mPackagedAppsEnabled = false;
+    }
+
+    nsHttpChannelAuthProvider::InitializePrefs();
+
     mMisc.AssignLiteral("rv:" MOZILLA_UAVERSION);
 
     mCompatFirefox.AssignLiteral("Firefox/" MOZILLA_UAVERSION);
@@ -348,6 +355,8 @@ nsHttpHandler::Init()
     nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
     mObserverService = new nsMainThreadPtrHolder<nsIObserverService>(obsService);
     if (mObserverService) {
+        // register the handler object as a weak callback as we don't need to worry
+        // about shutdown ordering.
         mObserverService->AddObserver(this, "profile-change-net-teardown", true);
         mObserverService->AddObserver(this, "profile-change-net-restore", true);
         mObserverService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, true);
@@ -355,8 +364,10 @@ nsHttpHandler::Init()
         mObserverService->AddObserver(this, "net:prune-dead-connections", true);
         mObserverService->AddObserver(this, "net:failed-to-process-uri-content", true);
         mObserverService->AddObserver(this, "last-pb-context-exited", true);
+        mObserverService->AddObserver(this, "webapps-clear-data", true);
         mObserverService->AddObserver(this, "browser:purge-session-history", true);
-        mObserverService->AddObserver(this, NS_NETWORK_LINK_TOPIC, false);
+        mObserverService->AddObserver(this, NS_NETWORK_LINK_TOPIC, true);
+        mObserverService->AddObserver(this, "application-background", true);
     }
 
     MakeNewRequestTokenBucket();
@@ -378,8 +389,7 @@ nsHttpHandler::MakeNewRequestTokenBucket()
         return;
 
     nsRefPtr<EventTokenBucket> tokenBucket =
-        new EventTokenBucket(RequestTokenBucketHz(),
-                                           RequestTokenBucketBurst());
+        new EventTokenBucket(RequestTokenBucketHz(), RequestTokenBucketBurst());
     mConnMgr->UpdateRequestTokenBucket(tokenBucket);
 }
 
@@ -699,14 +709,32 @@ nsHttpHandler::InitUserAgentComponents()
     );
 #endif
 
-   // Add the `Mobile` or `Tablet` token when running on device or in the
-   // b2g desktop simulator.
+
 #if defined(ANDROID) || defined(FXOS_SIMULATOR)
     nsCOMPtr<nsIPropertyBag2> infoService = do_GetService("@mozilla.org/system-info;1");
     MOZ_ASSERT(infoService, "Could not find a system info service");
-
+    nsresult rv;
+    // Add the Android version number to the Fennec platform identifier.
+#if defined MOZ_WIDGET_ANDROID
+    nsAutoString androidVersion;
+    rv = infoService->GetPropertyAsAString(
+        NS_LITERAL_STRING("release_version"), androidVersion);
+    if (NS_SUCCEEDED(rv)) {
+      mPlatform += " ";
+      // If the 2nd character is a ".", we know the major version is a single
+      // digit. If we're running on a version below 4 we pretend to be on
+      // Android KitKat (4.4) to work around scripts sniffing for low versions.
+      if (androidVersion[1] == 46 && androidVersion[0] < 52) {
+        mPlatform += "4.4";
+      } else {
+        mPlatform += NS_LossyConvertUTF16toASCII(androidVersion);
+      }
+    }
+#endif
+    // Add the `Mobile` or `Tablet` token when running on device or in the
+    // b2g desktop simulator.
     bool isTablet;
-    nsresult rv = infoService->GetPropertyAsBool(NS_LITERAL_STRING("tablet"), &isTablet);
+    rv = infoService->GetPropertyAsBool(NS_LITERAL_STRING("tablet"), &isTablet);
     if (NS_SUCCEEDED(rv) && isTablet)
         mCompatDevice.AssignLiteral("Tablet");
     else
@@ -1192,12 +1220,6 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
             mSpdyV31 = cVar;
     }
 
-    if (PREF_CHANGED(HTTP_PREF("spdy.enabled.http2draft"))) {
-        rv = prefs->GetBoolPref(HTTP_PREF("spdy.enabled.http2draft"), &cVar);
-        if (NS_SUCCEEDED(rv))
-            mHttp2DraftEnabled = cVar;
-    }
-
     if (PREF_CHANGED(HTTP_PREF("spdy.enabled.http2"))) {
         rv = prefs->GetBoolPref(HTTP_PREF("spdy.enabled.http2"), &cVar);
         if (NS_SUCCEEDED(rv))
@@ -1268,7 +1290,7 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
     }
 
     if (PREF_CHANGED(HTTP_PREF("altsvc.enabled"))) {
-        rv = prefs->GetBoolPref(HTTP_PREF("atsvc.enabled"),
+        rv = prefs->GetBoolPref(HTTP_PREF("altsvc.enabled"),
                                 &cVar);
         if (NS_SUCCEEDED(rv))
             mEnableAltSvc = cVar;
@@ -1276,7 +1298,7 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
 
 
     if (PREF_CHANGED(HTTP_PREF("altsvc.oe"))) {
-        rv = prefs->GetBoolPref(HTTP_PREF("atsvc.oe"),
+        rv = prefs->GetBoolPref(HTTP_PREF("altsvc.oe"),
                                 &cVar);
         if (NS_SUCCEEDED(rv))
             mEnableAltSvcOE = cVar;
@@ -1418,6 +1440,15 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         }
     }
 
+    // network.http.debug-observations
+    if (PREF_CHANGED("network.http.debug-observations")) {
+        cVar = false;
+        rv = prefs->GetBoolPref("network.http.debug-observations", &cVar);
+        if (NS_SUCCEEDED(rv)) {
+            mDebugObservations = cVar;
+        }
+    }
+
     //
     // Test HTTP Pipelining (bug796192)
     // If experiments are allowed and pipelining is Off,
@@ -1448,23 +1479,20 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
             }
         }
     }
-    if (requestTokenBucketUpdated) {
-        MakeNewRequestTokenBucket();
-    }
 
     if (PREF_CHANGED(HTTP_PREF("pacing.requests.enabled"))) {
-        rv = prefs->GetBoolPref(HTTP_PREF("pacing.requests.enabled"),
-                                &cVar);
-        if (NS_SUCCEEDED(rv)){
-            requestTokenBucketUpdated = true;
+        rv = prefs->GetBoolPref(HTTP_PREF("pacing.requests.enabled"), &cVar);
+        if (NS_SUCCEEDED(rv)) {
             mRequestTokenBucketEnabled = cVar;
+            requestTokenBucketUpdated = true;
         }
     }
-
     if (PREF_CHANGED(HTTP_PREF("pacing.requests.min-parallelism"))) {
         rv = prefs->GetIntPref(HTTP_PREF("pacing.requests.min-parallelism"), &val);
-        if (NS_SUCCEEDED(rv))
+        if (NS_SUCCEEDED(rv)) {
             mRequestTokenBucketMinParallelism = static_cast<uint16_t>(clamped(val, 1, 1024));
+            requestTokenBucketUpdated = true;
+        }
     }
     if (PREF_CHANGED(HTTP_PREF("pacing.requests.hz"))) {
         rv = prefs->GetIntPref(HTTP_PREF("pacing.requests.hz"), &val);
@@ -1481,9 +1509,7 @@ nsHttpHandler::PrefsChanged(nsIPrefBranch *prefs, const char *pref)
         }
     }
     if (requestTokenBucketUpdated) {
-        mRequestTokenBucket =
-            new EventTokenBucket(RequestTokenBucketHz(),
-                                 RequestTokenBucketBurst());
+        MakeNewRequestTokenBucket();
     }
 
     // Keepalive values for initial and idle connections.
@@ -1988,6 +2014,10 @@ nsHttpHandler::Observe(nsISupports *subject,
         if (mConnMgr) {
             mConnMgr->ClearAltServiceMappings();
         }
+    } else if (!strcmp(topic, "webapps-clear-data")) {
+        if (mConnMgr) {
+            mConnMgr->ClearAltServiceMappings();
+        }
     } else if (!strcmp(topic, "browser:purge-session-history")) {
         if (mConnMgr) {
             if (gSocketTransportService) {
@@ -2006,6 +2036,12 @@ nsHttpHandler::Observe(nsISupports *subject,
                 mConnMgr->VerifyTraffic();
             }
         }
+    } else if (!strcmp(topic, "application-background")) {
+        // going to the background on android means we should close
+        // down idle connections for power conservation
+        if (mConnMgr) {
+            mConnMgr->DoShiftReloadConnectionCleanup(nullptr);
+        }
     }
 
     return NS_OK;
@@ -2013,19 +2049,31 @@ nsHttpHandler::Observe(nsISupports *subject,
 
 // nsISpeculativeConnect
 
-NS_IMETHODIMP
-nsHttpHandler::SpeculativeConnect(nsIURI *aURI,
-                                  nsIInterfaceRequestor *aCallbacks)
+nsresult
+nsHttpHandler::SpeculativeConnectInternal(nsIURI *aURI,
+                                          nsIInterfaceRequestor *aCallbacks,
+                                          bool anonymous)
 {
     if (IsNeckoChild()) {
         ipc::URIParams params;
         SerializeURI(aURI, params);
-        gNeckoChild->SendSpeculativeConnect(params);
+        gNeckoChild->SendSpeculativeConnect(params, anonymous);
         return NS_OK;
     }
 
     if (!mHandlerActive)
         return NS_OK;
+
+    MOZ_ASSERT(NS_IsMainThread());
+    if (mDebugObservations && mObserverService) {
+        // this is basically used for test coverage of an otherwise 'hintable' feature
+        nsAutoCString spec;
+        aURI->GetSpec(spec);
+        spec.Append(anonymous ? NS_LITERAL_CSTRING("[A]") : NS_LITERAL_CSTRING("[.]"));
+        mObserverService->NotifyObservers(nullptr,
+                                          "speculative-connect-request",
+                                          NS_ConvertUTF8toUTF16(spec).get());
+    }
 
     nsISiteSecurityService* sss = gHttpHandler->GetSSService();
     bool isStsHost = false;
@@ -2083,8 +2131,23 @@ nsHttpHandler::SpeculativeConnect(nsIURI *aURI,
 
     nsHttpConnectionInfo *ci =
         new nsHttpConnectionInfo(host, port, EmptyCString(), username, nullptr, usingSSL);
+    ci->SetAnonymous(anonymous);
 
     return SpeculativeConnect(ci, aCallbacks);
+}
+
+NS_IMETHODIMP
+nsHttpHandler::SpeculativeConnect(nsIURI *aURI,
+                                  nsIInterfaceRequestor *aCallbacks)
+{
+    return SpeculativeConnectInternal(aURI, aCallbacks, false);
+}
+
+NS_IMETHODIMP
+nsHttpHandler::SpeculativeAnonymousConnect(nsIURI *aURI,
+                                           nsIInterfaceRequestor *aCallbacks)
+{
+    return SpeculativeConnectInternal(aURI, aCallbacks, true);
 }
 
 void

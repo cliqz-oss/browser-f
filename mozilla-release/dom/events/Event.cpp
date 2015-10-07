@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -63,7 +64,7 @@ Event::ConstructorInit(EventTarget* aOwner,
                        WidgetEvent* aEvent)
 {
   SetOwner(aOwner);
-  mIsMainThreadEvent = mOwner || NS_IsMainThread();
+  mIsMainThreadEvent = NS_IsMainThread();
 
   if (mIsMainThreadEvent && !sReturnHighResTimeStampIsSet) {
     Preferences::AddBoolVarCache(&sReturnHighResTimeStamp,
@@ -481,6 +482,13 @@ Event::StopImmediatePropagation()
 }
 
 NS_IMETHODIMP
+Event::StopCrossProcessForwarding()
+{
+  mEvent->mFlags.mNoCrossProcessBoundaryForwarding = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 Event::GetIsTrusted(bool* aIsTrusted)
 {
   *aIsTrusted = IsTrusted();
@@ -858,7 +866,7 @@ void
 Event::PopupAllowedEventsChanged()
 {
   if (sPopupAllowedEvents) {
-    nsMemory::Free(sPopupAllowedEvents);
+    free(sPopupAllowedEvents);
   }
 
   nsAdoptingCString str = Preferences::GetCString("dom.popup_allowed_events");
@@ -873,7 +881,7 @@ void
 Event::Shutdown()
 {
   if (sPopupAllowedEvents) {
-    nsMemory::Free(sPopupAllowedEvents);
+    free(sPopupAllowedEvents);
   }
 }
 
@@ -882,6 +890,13 @@ Event::GetScreenCoords(nsPresContext* aPresContext,
                        WidgetEvent* aEvent,
                        LayoutDeviceIntPoint aPoint)
 {
+  if (!nsContentUtils::IsCallerChrome() &&
+      nsContentUtils::ResistFingerprinting()) {
+    // When resisting fingerprinting, return client coordinates instead.
+    CSSIntPoint clientCoords = GetClientCoords(aPresContext, aEvent, aPoint, CSSIntPoint(0, 0));
+    return LayoutDeviceIntPoint(clientCoords.x, clientCoords.y);
+  }
+
   if (EventStateManager::sIsPointerLocked) {
     return EventStateManager::sLastScreenPoint;
   }

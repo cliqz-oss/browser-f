@@ -46,6 +46,8 @@
 #include "MediaTrackConstraints.h"
 #include "VideoUtils.h"
 #include "Latency.h"
+#include "nsProxyRelease.h"
+#include "nsNullPrincipal.h"
 
 // For PR_snprintf
 #include "prprf.h"
@@ -101,7 +103,6 @@ namespace mozilla {
 #undef LOG
 #endif
 
-#ifdef PR_LOGGING
 PRLogModuleInfo*
 GetMediaManagerLog()
 {
@@ -110,11 +111,9 @@ GetMediaManagerLog()
     sLog = PR_NewLogModule("MediaManager");
   return sLog;
 }
-#define LOG(msg) PR_LOG(GetMediaManagerLog(), PR_LOG_DEBUG, msg)
-#else
-#define LOG(msg)
-#endif
+#define LOG(msg) MOZ_LOG(GetMediaManagerLog(), mozilla::LogLevel::Debug, msg)
 
+using dom::File;
 using dom::MediaStreamConstraints;
 using dom::MediaTrackConstraintSet;
 using dom::MediaTrackConstraints;
@@ -124,6 +123,11 @@ using dom::Sequence;
 using dom::OwningBooleanOrMediaTrackConstraints;
 using dom::SupportedAudioConstraints;
 using dom::SupportedVideoConstraints;
+using media::Pledge;
+using media::NewRunnableFrom;
+using media::NewTaskFrom;
+
+static Atomic<bool> sInShutdown;
 
 static bool
 HostInDomain(const nsCString &aHost, const nsCString &aPattern)
@@ -266,177 +270,6 @@ private:
   nsRefPtr<MediaManager> mManager; // get ref to this when creating the runnable
 };
 
-/**
- * Invoke the "onSuccess" callback in content. The callback will take a
- * DOMBlob in the case of {picture:true}, and a MediaStream in the case of
- * {audio:true} or {video:true}. There is a constructor available for each
- * form. Do this only on the main thread.
- */
-class SuccessCallbackRunnable : public nsRunnable
-{
-public:
-  SuccessCallbackRunnable(
-    nsCOMPtr<nsIDOMGetUserMediaSuccessCallback>& aOnSuccess,
-    nsCOMPtr<nsIDOMGetUserMediaErrorCallback>& aOnFailure,
-    nsIDOMFile* aFile, uint64_t aWindowID)
-    : mFile(aFile)
-    , mWindowID(aWindowID)
-    , mManager(MediaManager::GetInstance())
-  {
-    mOnSuccess.swap(aOnSuccess);
-    mOnFailure.swap(aOnFailure);
-  }
-
-  NS_IMETHOD
-  Run()
-  {
-    // Only run if the window is still active.
-    NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
-
-    nsCOMPtr<nsIDOMGetUserMediaSuccessCallback> onSuccess = mOnSuccess.forget();
-    nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure = mOnFailure.forget();
-
-    if (!(mManager->IsWindowStillActive(mWindowID))) {
-      return NS_OK;
-    }
-    // This is safe since we're on main-thread, and the windowlist can only
-    // be invalidated from the main-thread (see OnNavigation)
-    onSuccess->OnSuccess(mFile);
-    return NS_OK;
-  }
-
-private:
-  nsCOMPtr<nsIDOMGetUserMediaSuccessCallback> mOnSuccess;
-  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> mOnFailure;
-  nsCOMPtr<nsIDOMFile> mFile;
-  uint64_t mWindowID;
-  nsRefPtr<MediaManager> mManager; // get ref to this when creating the runnable
-};
-
-/**
- * Invoke the GetUserMediaDevices success callback. Wrapped in a runnable
- * so that it may be called on the main thread. The error callback is also
- * passed so it can be released correctly.
- */
-class DeviceSuccessCallbackRunnable: public nsRunnable
-{
-public:
-  DeviceSuccessCallbackRunnable(
-    uint64_t aWindowID,
-    nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback>& aOnSuccess,
-    nsCOMPtr<nsIDOMGetUserMediaErrorCallback>& aOnFailure,
-    nsTArray<nsRefPtr<MediaDevice>>* aDevices)
-    : mDevices(aDevices)
-    , mWindowID(aWindowID)
-    , mManager(MediaManager::GetInstance())
-  {
-    mOnSuccess.swap(aOnSuccess);
-    mOnFailure.swap(aOnFailure);
-  }
-
-  nsresult
-  AnonymizeId(nsAString& aId, const nsACString& aOriginKey)
-  {
-    nsresult rv;
-    nsCOMPtr<nsIKeyObjectFactory> factory =
-      do_GetService("@mozilla.org/security/keyobjectfactory;1", &rv);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-    nsCString rawKey;
-    rv = Base64Decode(aOriginKey, rawKey);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-    nsCOMPtr<nsIKeyObject> key;
-    rv = factory->KeyFromString(nsIKeyObject::HMAC, rawKey, getter_AddRefs(key));
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-
-    nsCOMPtr<nsICryptoHMAC> hasher =
-      do_CreateInstance(NS_CRYPTO_HMAC_CONTRACTID, &rv);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-    rv = hasher->Init(nsICryptoHMAC::SHA256, key);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-    NS_ConvertUTF16toUTF8 id(aId);
-    rv = hasher->Update(reinterpret_cast<const uint8_t*> (id.get()), id.Length());
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-    nsCString mac;
-    rv = hasher->Finish(true, mac);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-
-    aId = NS_ConvertUTF8toUTF16(mac);
-    return NS_OK;
-  }
-
-  NS_IMETHOD
-  Run()
-  {
-    NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
-
-    // Only run if window is still on our active list.
-    if (!mManager->IsWindowStillActive(mWindowID)) {
-      return NS_OK;
-    }
-
-    nsCOMPtr<nsIWritableVariant> devices =
-      do_CreateInstance("@mozilla.org/variant;1");
-
-    size_t len = mDevices->Length();
-    if (len == 0) {
-      // XXX
-      // We should in the future return an empty array, and dynamically add
-      // devices to the dropdowns if things are hotplugged while the
-      // requester is up.
-      nsGlobalWindow* window = nsGlobalWindow::GetInnerWindowWithId(mWindowID);
-      if (window) {
-        nsRefPtr<MediaStreamError> error = new MediaStreamError(window,
-            NS_LITERAL_STRING("NotFoundError"));
-        mOnFailure->OnError(error);
-      }
-      return NS_OK;
-    }
-
-    nsTArray<nsIMediaDevice*> tmp(len);
-    for (auto& device : *mDevices) {
-      if (!mOriginKey.IsEmpty()) {
-        nsString id;
-        device->GetId(id);
-        AnonymizeId(id, mOriginKey);
-        device->SetId(id);
-      }
-      tmp.AppendElement(device);
-    }
-
-    devices->SetAsArray(nsIDataType::VTYPE_INTERFACE,
-                        &NS_GET_IID(nsIMediaDevice),
-                        mDevices->Length(),
-                        const_cast<void*>(
-                          static_cast<const void*>(tmp.Elements())
-                        ));
-
-    mOnSuccess->OnSuccess(devices);
-    return NS_OK;
-  }
-
-  nsCString mOriginKey;
-private:
-  nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> mOnSuccess;
-  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> mOnFailure;
-  nsAutoPtr<nsTArray<nsRefPtr<MediaDevice>>> mDevices;
-  uint64_t mWindowID;
-  nsRefPtr<MediaManager> mManager;
-};
-
 // Handle removing GetUserMediaCallbackMediaStreamListener from main thread
 class GetUserMediaListenerRemove: public nsRunnable
 {
@@ -466,44 +299,15 @@ protected:
 NS_IMPL_ISUPPORTS(MediaDevice, nsIMediaDevice)
 
 MediaDevice::MediaDevice(MediaEngineSource* aSource)
-  : mHasFacingMode(false)
-  , mSource(aSource) {
+  : mSource(aSource) {
   mSource->GetName(mName);
-  mSource->GetUUID(mID);
+  nsCString id;
+  mSource->GetUUID(id);
+  CopyUTF8toUTF16(id, mID);
 }
 
 VideoDevice::VideoDevice(MediaEngineVideoSource* aSource)
   : MediaDevice(aSource) {
-#if defined(MOZ_B2G_CAMERA) && defined(MOZ_WIDGET_GONK)
-  if (mName.EqualsLiteral("back")) {
-    mHasFacingMode = true;
-    mFacingMode = dom::VideoFacingModeEnum::Environment;
-  } else if (mName.EqualsLiteral("front")) {
-    mHasFacingMode = true;
-    mFacingMode = dom::VideoFacingModeEnum::User;
-  }
-#endif // MOZ_B2G_CAMERA
-#if defined(ANDROID) && !defined(MOZ_WIDGET_GONK)
-  // Names are generated. Example: "Camera 0, Facing back, Orientation 90"
-  //
-  // See media/webrtc/trunk/webrtc/modules/video_capture/android/java/src/org/
-  // webrtc/videoengine/VideoCaptureDeviceInfoAndroid.java
-
-  if (mName.Find(NS_LITERAL_STRING("Facing back")) != kNotFound) {
-    mHasFacingMode = true;
-    mFacingMode = dom::VideoFacingModeEnum::Environment;
-  } else if (mName.Find(NS_LITERAL_STRING("Facing front")) != kNotFound) {
-    mHasFacingMode = true;
-    mFacingMode = dom::VideoFacingModeEnum::User;
-  }
-#endif // ANDROID
-#ifdef XP_MACOSX
-  // Kludge to test user-facing cameras on OSX.
-  if (mName.Find(NS_LITERAL_STRING("Face")) != -1) {
-    mHasFacingMode = true;
-    mFacingMode = dom::VideoFacingModeEnum::User;
-  }
-#endif
   mMediaSource = aSource->GetMediaSource();
 }
 
@@ -518,63 +322,16 @@ uint32_t
 VideoDevice::GetBestFitnessDistance(
     const nsTArray<const MediaTrackConstraintSet*>& aConstraintSets)
 {
-  // TODO: Minimal kludge to fix plain and ideal facingMode regression, for
-  // smooth landing and uplift. Proper cleanup is forthcoming (1037389).
-  uint64_t distance = 0;
-
   // Interrogate device-inherent properties first.
-  for (size_t i = 0; i < aConstraintSets.Length(); i++) {
-    auto& c = *aConstraintSets[i];
-    if (!c.mFacingMode.IsConstrainDOMStringParameters() ||
-        c.mFacingMode.GetAsConstrainDOMStringParameters().mIdeal.WasPassed() ||
-        c.mFacingMode.GetAsConstrainDOMStringParameters().mExact.WasPassed()) {
-      nsString deviceFacingMode;
-      GetFacingMode(deviceFacingMode);
-      if (c.mFacingMode.IsString()) {
-        if (c.mFacingMode.GetAsString() != deviceFacingMode) {
-          if (i == 0) {
-            distance = 1000;
-          }
-        }
-      } else if (c.mFacingMode.IsStringSequence()) {
-        if (!c.mFacingMode.GetAsStringSequence().Contains(deviceFacingMode)) {
-          if (i == 0) {
-            distance = 1000;
-          }
-        }
-      } else if (c.mFacingMode.GetAsConstrainDOMStringParameters().mExact.WasPassed()) {
-        auto& exact = c.mFacingMode.GetAsConstrainDOMStringParameters().mExact.Value();
-        if (exact.IsString()) {
-          if (exact.GetAsString() != deviceFacingMode) {
-            return UINT32_MAX;
-          }
-        } else if (!exact.GetAsStringSequence().Contains(deviceFacingMode)) {
-          return UINT32_MAX;
-        }
-      } else if (c.mFacingMode.GetAsConstrainDOMStringParameters().mIdeal.WasPassed()) {
-        auto& ideal = c.mFacingMode.GetAsConstrainDOMStringParameters().mIdeal.Value();
-        if (ideal.IsString()) {
-          if (ideal.GetAsString() != deviceFacingMode) {
-            if (i == 0) {
-              distance = 1000;
-            }
-          }
-        } else if (!ideal.GetAsStringSequence().Contains(deviceFacingMode)) {
-          if (i == 0) {
-            distance = 1000;
-          }
-        }
-      }
-    }
+  for (const auto& constraint : aConstraintSets) {
     nsString s;
     GetMediaSource(s);
-    if (s != c.mMediaSource) {
+    if (s != constraint->mMediaSource) {
       return UINT32_MAX;
     }
   }
   // Forward request to underlying object to interrogate per-mode capabilities.
-  distance += uint64_t(GetSource()->GetBestFitnessDistance(aConstraintSets));
-  return uint32_t(std::min(distance, uint64_t(UINT32_MAX)));
+  return GetSource()->GetBestFitnessDistance(aConstraintSets);
 }
 
 AudioDevice::AudioDevice(MediaEngineAudioSource* aSource)
@@ -626,18 +383,6 @@ void
 MediaDevice::SetId(const nsAString& aID)
 {
   mID.Assign(aID);
-}
-
-NS_IMETHODIMP
-MediaDevice::GetFacingMode(nsAString& aFacingMode)
-{
-  if (mHasFacingMode) {
-    aFacingMode.Assign(NS_ConvertUTF8toUTF16(
-        dom::VideoFacingModeEnumValues::strings[uint32_t(mFacingMode)].value));
-  } else {
-    aFacingMode.Truncate(0);
-  }
-  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -982,7 +727,7 @@ public:
     nsRefPtr<nsDOMUserMediaStream> trackunion =
       nsDOMUserMediaStream::CreateTrackUnionStream(window, mListener,
                                                    mAudioSource, mVideoSource);
-    if (!trackunion) {
+    if (!trackunion || sInShutdown) {
       nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure = mOnFailure.forget();
       LOG(("Returning error for getUserMedia() - no stream"));
 
@@ -990,7 +735,8 @@ public:
       if (window) {
         nsRefPtr<MediaStreamError> error = new MediaStreamError(window,
             NS_LITERAL_STRING("InternalError"),
-            NS_LITERAL_STRING("No stream."));
+            sInShutdown ? NS_LITERAL_STRING("In shutdown") :
+                          NS_LITERAL_STRING("No stream."));
         onFailure->OnError(error);
       }
       return NS_OK;
@@ -1019,7 +765,7 @@ public:
 
     nsCOMPtr<nsIPrincipal> principal;
     if (mPeerIdentity) {
-      principal = do_CreateInstance("@mozilla.org/nullprincipal;1");
+      principal = nsNullPrincipal::Create();
       trackunion->SetPeerIdentity(mPeerIdentity.forget());
     } else {
       principal = window->GetExtantDoc()->NodePrincipal();
@@ -1045,7 +791,7 @@ public:
     // because that can take a while.
     // Pass ownership of trackunion to the MediaOperationTask
     // to ensure it's kept alive until the MediaOperationTask runs (at least).
-    MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
+    MediaManager::PostTask(FROM_HERE,
       new MediaOperationTask(MEDIA_START, mListener, trackunion,
                              tracksAvailableCallback,
                              mAudioSource, mVideoSource, false, mWindowID,
@@ -1339,6 +1085,11 @@ public:
   {
     MOZ_ASSERT(mOnSuccess);
     MOZ_ASSERT(mOnFailure);
+
+    if (!IsOn(mConstraints.mVideo) && !IsOn(mConstraints.mAudio)) {
+      Fail(NS_LITERAL_STRING("NotSupportedError"));
+      return NS_ERROR_FAILURE;
+    }
     if (IsOn(mConstraints.mVideo)) {
       nsTArray<nsRefPtr<VideoDevice>> sources;
       GetSources(backend, GetInvariant(mConstraints.mVideo),
@@ -1362,6 +1113,11 @@ public:
       // Pick the first available device.
       mAudioDevice = sources[0];
       LOG(("Selected audio device"));
+    }
+
+    if (!mAudioDevice && !mVideoDevice) {
+      Fail(NS_LITERAL_STRING("NotFoundError"));
+      return NS_ERROR_FAILURE;
     }
 
     return NS_OK;
@@ -1454,128 +1210,76 @@ private:
 };
 #endif
 
-class SanitizeDeviceIdsTask : public Task
-{
-public:
-  explicit SanitizeDeviceIdsTask(int64_t aSinceWhen)
-  : mSinceWhen(aSinceWhen) {}
+// TODO: Remove once upgraded to GCC 4.8+ on linux. Bogus error on static func:
+// error: 'this' was not captured for this lambda function
 
-  void // NS_IMETHOD
-  Run()
-  {
-    MOZ_ASSERT(!NS_IsMainThread());
-    nsRefPtr<media::ChildPledge<bool>> p =
-        mozilla::media::SanitizeOriginKeys(mSinceWhen); // we fire and forget
-  }
-private:
-  int64_t mSinceWhen;
-};
+static auto& MediaManager_GetInstance = MediaManager::GetInstance;
+static auto& MediaManager_ToJSArray = MediaManager::ToJSArray;
+static auto& MediaManager_AnonymizeDevices = MediaManager::AnonymizeDevices;
 
 /**
- * Similar to GetUserMediaTask, but used for the chrome-only
- * GetUserMediaDevices function. Enumerates a list of audio & video devices,
- * wraps them up in nsIMediaDevice objects and returns it to the success
- * callback.
- *
- * All code in this class runs on the MediaManager thread.
+ * EnumerateRawDevices - Enumerate a list of audio & video devices that
+ * satisfy passed-in constraints. List contains raw id's.
  */
-class GetUserMediaDevicesTask : public Task
+
+already_AddRefed<MediaManager::PledgeSourceSet>
+MediaManager::EnumerateRawDevices(uint64_t aWindowId,
+                                  const MediaStreamConstraints& aConstraints)
 {
-public:
-  GetUserMediaDevicesTask(
-    const MediaStreamConstraints& aConstraints,
-    already_AddRefed<nsIGetUserMediaDevicesSuccessCallback> aOnSuccess,
-    already_AddRefed<nsIDOMGetUserMediaErrorCallback> aOnFailure,
-    uint64_t aWindowId, nsACString& aAudioLoopbackDev,
-    nsACString& aVideoLoopbackDev, bool aPrivileged, const nsACString& aOrigin,
-    bool aInPrivateBrowsing, bool aUseFakeDevices)
-    : mConstraints(aConstraints)
-    , mOnSuccess(aOnSuccess)
-    , mOnFailure(aOnFailure)
-    , mManager(MediaManager::GetInstance())
-    , mWindowId(aWindowId)
-    , mLoopbackAudioDevice(aAudioLoopbackDev)
-    , mLoopbackVideoDevice(aVideoLoopbackDev)
-    , mPrivileged(aPrivileged)
-    , mOrigin(aOrigin)
-    , mInPrivateBrowsing(aInPrivateBrowsing)
-    , mUseFakeDevices(aUseFakeDevices) {}
+  MOZ_ASSERT(NS_IsMainThread());
+  nsRefPtr<PledgeSourceSet> p = new PledgeSourceSet();
+  uint32_t id = mOutstandingPledges.Append(*p);
 
-  void // NS_IMETHOD
-  Run()
-  {
-    MOZ_ASSERT(!NS_IsMainThread());
+  // Check if the preference for using audio/video loopback devices is
+  // enabled. This is currently used for automated media tests only.
+  auto audioLoopDev = Preferences::GetCString("media.audio_loopback_dev");
+  auto videoLoopDev = Preferences::GetCString("media.video_loopback_dev");
+  bool fake = Preferences::GetBool("media.navigator.streams.fake", false);
 
+  MediaManager::PostTask(FROM_HERE, NewTaskFrom([id, aConstraints, aWindowId,
+                                                 audioLoopDev,  videoLoopDev,
+                                                 fake]() mutable {
     nsRefPtr<MediaEngine> backend;
-    if (mConstraints.mFake || mUseFakeDevices)
-      backend = new MediaEngineDefault(mConstraints.mFakeTracks);
-    else
-      backend = mManager->GetBackend(mWindowId);
-
-    typedef nsTArray<nsRefPtr<MediaDevice>> SourceSet;
+    if (aConstraints.mFake || fake) {
+      backend = new MediaEngineDefault(aConstraints.mFakeTracks);
+    } else {
+      nsRefPtr<MediaManager> manager = MediaManager_GetInstance();
+      backend = manager->GetBackend(aWindowId);
+    }
 
     ScopedDeletePtr<SourceSet> result(new SourceSet);
-    if (IsOn(mConstraints.mVideo)) {
+    if (IsOn(aConstraints.mVideo)) {
       nsTArray<nsRefPtr<VideoDevice>> sources;
-      GetSources(backend, GetInvariant(mConstraints.mVideo),
-                 &MediaEngine::EnumerateVideoDevices, sources,
-                 mLoopbackVideoDevice.get());
+      GetSources(backend, GetInvariant(aConstraints.mVideo),
+                 &MediaEngine::EnumerateVideoDevices, sources, videoLoopDev);
       for (auto& source : sources) {
         result->AppendElement(source);
       }
     }
-    if (IsOn(mConstraints.mAudio)) {
+    if (IsOn(aConstraints.mAudio)) {
       nsTArray<nsRefPtr<AudioDevice>> sources;
-      GetSources(backend, GetInvariant(mConstraints.mAudio),
-                 &MediaEngine::EnumerateAudioDevices, sources,
-                 mLoopbackAudioDevice.get());
+      GetSources(backend, GetInvariant(aConstraints.mAudio),
+                 &MediaEngine::EnumerateAudioDevices, sources, audioLoopDev);
       for (auto& source : sources) {
         result->AppendElement(source);
       }
     }
-    // In the case of failure with this newly allocated runnable, we
-    // intentionally leak the runnable, because we've pawned mOnSuccess and
-    // mOnFailure onto it which are main thread objects unsafe to release here.
-    DeviceSuccessCallbackRunnable* runnable =
-        new DeviceSuccessCallbackRunnable(mWindowId, mOnSuccess, mOnFailure,
-                                          result.forget());
-    if (mPrivileged) {
-      NS_DispatchToMainThread(runnable);
-    } else {
-      // Get persistent origin-unique uuid to anonymize deviceIds back on main.
-      //
-      // GetOriginKey is an async API that returns a pledge (as promise-like
-      // pattern). We use .Then() to pass in a lambda to run back on this
-      // thread once GetOriginKey resolves asynchronously . The "runnable"
-      // pointer is "captured" (passed by value) into the lambda.
-      nsRefPtr<media::ChildPledge<nsCString>> p =
-          media::GetOriginKey(mOrigin, mInPrivateBrowsing);
-      p->Then([runnable](nsCString result) mutable {
-        runnable->mOriginKey = result;
-        NS_DispatchToMainThread(runnable);
-      });
-    }
-    // One of the Runnables have taken these.
-    MOZ_ASSERT(!mOnSuccess && !mOnFailure);
-  }
-
-private:
-  MediaStreamConstraints mConstraints;
-  nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> mOnSuccess;
-  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> mOnFailure;
-  nsRefPtr<MediaManager> mManager;
-  uint64_t mWindowId;
-  const nsString mCallId;
-  // Audio & Video loopback devices to be used based on
-  // the preference settings. This is currently used for
-  // automated media tests only.
-  nsCString mLoopbackAudioDevice;
-  nsCString mLoopbackVideoDevice;
-  bool mPrivileged;
-  nsCString mOrigin;
-  bool mInPrivateBrowsing;
-  bool mUseFakeDevices;
-};
+    SourceSet* handoff = result.forget();
+    NS_DispatchToMainThread(NewRunnableFrom([id, handoff]() mutable {
+      ScopedDeletePtr<SourceSet> result(handoff);
+      nsRefPtr<MediaManager> mgr = MediaManager_GetInstance();
+      if (!mgr) {
+        return NS_OK;
+      }
+      nsRefPtr<PledgeSourceSet> p = mgr->mOutstandingPledges.Remove(id);
+      if (p) {
+        p->Resolve(result.forget());
+      }
+      return NS_OK;
+    }));
+  }));
+  return p.forget();
+}
 
 MediaManager::MediaManager()
   : mMediaThread(nullptr)
@@ -1585,7 +1289,6 @@ MediaManager::MediaManager()
   mPrefs.mHeight = 0; // adaptive default
   mPrefs.mFPS    = MediaEngine::DEFAULT_VIDEO_FPS;
   mPrefs.mMinFPS = MediaEngine::DEFAULT_VIDEO_MIN_FPS;
-
   nsresult rv;
   nsCOMPtr<nsIPrefService> prefs = do_GetService("@mozilla.org/preferences-service;1", &rv);
   if (NS_SUCCEEDED(rv)) {
@@ -1641,7 +1344,7 @@ MediaManager::Get() {
 
     nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
     if (obs) {
-      obs->AddObserver(sSingleton, "xpcom-shutdown", false);
+      obs->AddObserver(sSingleton, "xpcom-will-shutdown", false);
       obs->AddObserver(sSingleton, "getUserMedia:response:allow", false);
       obs->AddObserver(sSingleton, "getUserMedia:response:deny", false);
       obs->AddObserver(sSingleton, "getUserMedia:revoke", false);
@@ -1672,13 +1375,27 @@ MediaManager::GetInstance()
   return service.forget();
 }
 
-/* static */
-MessageLoop*
-MediaManager::GetMessageLoop()
+media::Parent<media::NonE10s>*
+MediaManager::GetNonE10sParent()
 {
+  if (!mNonE10sParent) {
+    mNonE10sParent = new media::Parent<media::NonE10s>(true);
+  }
+  return mNonE10sParent;
+}
+
+/* static */
+void
+MediaManager::PostTask(const tracked_objects::Location& from_here, Task* task)
+{
+  if (sInShutdown) {
+    // Can't safely delete task here since it may have items with specific
+    // thread-release requirements.
+    return;
+  }
   NS_ASSERTION(Get(), "MediaManager singleton?");
   NS_ASSERTION(Get()->mMediaThread, "No thread yet");
-  return Get()->mMediaThread->message_loop();
+  Get()->mMediaThread->message_loop()->PostTask(from_here, task);
 }
 
 /* static */ nsresult
@@ -1749,21 +1466,19 @@ MediaManager::NotifyRecordingStatusChange(nsPIDOMWindow* aWindow,
  * for handling all incoming getUserMedia calls from every window.
  */
 nsresult
-MediaManager::GetUserMedia(
-  nsPIDOMWindow* aWindow, const MediaStreamConstraints& aConstraints,
-  nsIDOMGetUserMediaSuccessCallback* aOnSuccess,
-  nsIDOMGetUserMediaErrorCallback* aOnFailure)
+MediaManager::GetUserMedia(nsPIDOMWindow* aWindow,
+                           const MediaStreamConstraints& aConstraints,
+                           nsIDOMGetUserMediaSuccessCallback* aOnSuccess,
+                           nsIDOMGetUserMediaErrorCallback* aOnFailure)
 {
-  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
-
-  NS_ENSURE_TRUE(aWindow, NS_ERROR_NULL_POINTER);
-  NS_ENSURE_TRUE(aOnFailure, NS_ERROR_NULL_POINTER);
-  NS_ENSURE_TRUE(aOnSuccess, NS_ERROR_NULL_POINTER);
-
-  bool privileged = nsContentUtils::IsCallerChrome();
-
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aWindow);
+  MOZ_ASSERT(aOnFailure);
+  MOZ_ASSERT(aOnSuccess);
   nsCOMPtr<nsIDOMGetUserMediaSuccessCallback> onSuccess(aOnSuccess);
   nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure(aOnFailure);
+
+  bool privileged = nsContentUtils::IsCallerChrome();
 
   MediaStreamConstraints c(aConstraints); // copy
 
@@ -1811,6 +1526,9 @@ MediaManager::GetUserMedia(
     // Stream from default device from WebRTC backend.
     task = new GetUserMediaTask(c, onSuccess.forget(),
       onFailure.forget(), windowID, listener, mPrefs);
+  }
+  if (sInShutdown) {
+    return task->Denied(NS_LITERAL_STRING("In shutdown"));
   }
 
   nsIURI* docURI = aWindow->GetDocumentURI();
@@ -1918,7 +1636,7 @@ MediaManager::GetUserMedia(
   // XXX No full support for picture in Desktop yet (needs proper UI)
   if (privileged ||
       (fake && !Preferences::GetBool("media.navigator.permission.fake"))) {
-    MediaManager::GetMessageLoop()->PostTask(FROM_HERE, task.forget());
+    MediaManager::PostTask(FROM_HERE, task.forget());
   } else {
     bool isHTTPS = false;
     if (docURI) {
@@ -1991,47 +1709,144 @@ MediaManager::GetUserMedia(
   return NS_OK;
 }
 
-nsresult
-MediaManager::GetUserMediaDevices(nsPIDOMWindow* aWindow,
-  const MediaStreamConstraints& aConstraints,
-  nsIGetUserMediaDevicesSuccessCallback* aOnSuccess,
-  nsIDOMGetUserMediaErrorCallback* aOnFailure,
-  uint64_t aInnerWindowID,
-  bool aPrivileged)
+/* static */ void
+MediaManager::AnonymizeDevices(SourceSet& aDevices, const nsACString& aOriginKey)
 {
-  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
+  if (!aOriginKey.IsEmpty()) {
+    for (auto& device : aDevices) {
+      nsString id;
+      device->GetId(id);
+      AnonymizeId(id, aOriginKey);
+      device->SetId(id);
+    }
+  }
+}
 
-  NS_ENSURE_TRUE(aOnFailure, NS_ERROR_NULL_POINTER);
-  NS_ENSURE_TRUE(aOnSuccess, NS_ERROR_NULL_POINTER);
+/* static */ nsresult
+MediaManager::AnonymizeId(nsAString& aId, const nsACString& aOriginKey)
+{
+  MOZ_ASSERT(NS_IsMainThread());
 
-  nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> onSuccess(aOnSuccess);
-  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure(aOnFailure);
+  nsresult rv;
+  nsCOMPtr<nsIKeyObjectFactory> factory =
+    do_GetService("@mozilla.org/security/keyobjectfactory;1", &rv);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  nsCString rawKey;
+  rv = Base64Decode(aOriginKey, rawKey);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  nsCOMPtr<nsIKeyObject> key;
+  rv = factory->KeyFromString(nsIKeyObject::HMAC, rawKey, getter_AddRefs(key));
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
 
-  // Check if the preference for using loopback devices is enabled.
-  nsAdoptingCString loopbackAudioDevice =
-    Preferences::GetCString("media.audio_loopback_dev");
-  nsAdoptingCString loopbackVideoDevice =
-    Preferences::GetCString("media.video_loopback_dev");
-  bool useFakeStreams =
-    Preferences::GetBool("media.navigator.streams.fake", false);
+  nsCOMPtr<nsICryptoHMAC> hasher =
+    do_CreateInstance(NS_CRYPTO_HMAC_CONTRACTID, &rv);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  rv = hasher->Init(nsICryptoHMAC::SHA256, key);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  NS_ConvertUTF16toUTF8 id(aId);
+  rv = hasher->Update(reinterpret_cast<const uint8_t*> (id.get()), id.Length());
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  nsCString mac;
+  rv = hasher->Finish(true, mac);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  aId = NS_ConvertUTF8toUTF16(mac);
+  return NS_OK;
+}
+
+/* static */
+already_AddRefed<nsIWritableVariant>
+MediaManager::ToJSArray(SourceSet& aDevices)
+{
+  nsCOMPtr<nsIWritableVariant> var = do_CreateInstance("@mozilla.org/variant;1");
+  size_t len = aDevices.Length();
+  if (len) {
+    nsTArray<nsIMediaDevice*> tmp(len);
+    for (auto& device : aDevices) {
+      tmp.AppendElement(device);
+    }
+    auto* elements = static_cast<const void*>(tmp.Elements());
+    nsresult rv = var->SetAsArray(nsIDataType::VTYPE_INTERFACE,
+                                  &NS_GET_IID(nsIMediaDevice), len,
+                                  const_cast<void*>(elements));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return nullptr;
+    }
+  } else {
+    var->SetAsEmptyArray(); // because SetAsArray() fails on zero length arrays.
+  }
+  return var.forget();
+}
+
+already_AddRefed<MediaManager::PledgeSourceSet>
+MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
+                                   const MediaStreamConstraints& aConstraints)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  // This function returns a pledge, a promise-like object with the future result
+  nsRefPtr<PledgeSourceSet> pledge = new PledgeSourceSet();
+  uint32_t id = mOutstandingPledges.Append(*pledge);
+
+  // To get a device list anonymized for a particular origin, we must:
+  // 1. Get an origin-key (for either regular or private browsing)
+  // 2. Get the raw devices list
+  // 3. Anonymize the raw list with the origin-key.
 
   nsCString origin;
-  nsPrincipal::GetOriginForURI(aWindow->GetDocumentURI(),
-                               getter_Copies(origin));
-  bool inPrivateBrowsing;
+  bool privateBrowsing;
   {
-    nsCOMPtr<nsIDocument> doc = aWindow->GetDoc();
-    nsCOMPtr<nsILoadContext> loadContext = doc->GetLoadContext();
-    inPrivateBrowsing = loadContext && loadContext->UsePrivateBrowsing();
-  }
-  MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
-    new GetUserMediaDevicesTask(
-      aConstraints, onSuccess.forget(), onFailure.forget(),
-      (aInnerWindowID ? aInnerWindowID : aWindow->WindowID()),
-      loopbackAudioDevice, loopbackVideoDevice, aPrivileged, origin,
-      inPrivateBrowsing, useFakeStreams));
+    nsPIDOMWindow *window = static_cast<nsPIDOMWindow*>
+        (nsGlobalWindow::GetInnerWindowWithId(aWindowId));
+    nsPrincipal::GetOriginForURI(window->GetDocumentURI(), origin);
 
-  return NS_OK;
+    nsCOMPtr<nsIDocument> doc = window->GetDoc();
+    nsCOMPtr<nsILoadContext> loadContext = doc->GetLoadContext();
+    privateBrowsing = loadContext && loadContext->UsePrivateBrowsing();
+  }
+  // GetOriginKey is an async API that returns a pledge (a promise-like
+  // pattern). We use .Then() to pass in a lambda to run back on this same
+  // thread later once GetOriginKey resolves. Needed variables are "captured"
+  // (passed by value) safely into the lambda.
+
+  nsRefPtr<Pledge<nsCString>> p = media::GetOriginKey(origin, privateBrowsing);
+  p->Then([id, aWindowId, aConstraints](const nsCString& aOriginKey) mutable {
+    MOZ_ASSERT(NS_IsMainThread());
+    nsRefPtr<MediaManager> mgr = MediaManager_GetInstance();
+
+    nsRefPtr<PledgeSourceSet> p = mgr->EnumerateRawDevices(aWindowId, aConstraints);
+    p->Then([id, aWindowId, aOriginKey](SourceSet*& aDevices) mutable {
+      ScopedDeletePtr<SourceSet> devices(aDevices); // secondary result
+
+      // Only run if window is still on our active list.
+      nsRefPtr<MediaManager> mgr = MediaManager_GetInstance();
+      if (!mgr) {
+        return NS_OK;
+      }
+      nsRefPtr<PledgeSourceSet> p = mgr->mOutstandingPledges.Remove(id);
+      if (!p || !mgr->IsWindowStillActive(aWindowId)) {
+        return NS_OK;
+      }
+      MediaManager_AnonymizeDevices(*devices, aOriginKey);
+      p->Resolve(devices.forget());
+      return NS_OK;
+    });
+  });
+  return pledge.forget();
 }
 
 nsresult
@@ -2039,14 +1854,68 @@ MediaManager::EnumerateDevices(nsPIDOMWindow* aWindow,
                                nsIGetUserMediaDevicesSuccessCallback* aOnSuccess,
                                nsIDOMGetUserMediaErrorCallback* aOnFailure)
 {
-  NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ENSURE_TRUE(!sInShutdown, NS_ERROR_FAILURE);
+  nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> onSuccess(aOnSuccess);
+  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure(aOnFailure);
+  uint64_t windowId = aWindow->WindowID();
+
+  AddWindowID(windowId);
 
   MediaStreamConstraints c;
   c.mVideo.SetAsBoolean() = true;
   c.mAudio.SetAsBoolean() = true;
 
-  AddWindowID(aWindow->WindowID());
-  return GetUserMediaDevices(aWindow, c, aOnSuccess, aOnFailure, 0, false);
+  nsRefPtr<PledgeSourceSet> p = EnumerateDevicesImpl(windowId, c);
+  p->Then([onSuccess](SourceSet*& aDevices) mutable {
+    ScopedDeletePtr<SourceSet> devices(aDevices); // grab result
+    nsCOMPtr<nsIWritableVariant> array = MediaManager_ToJSArray(*devices);
+    onSuccess->OnSuccess(array);
+  }, [onFailure](MediaStreamError& reason) mutable {
+    onFailure->OnError(&reason);
+  });
+  return NS_OK;
+}
+
+/*
+ * GetUserMediaDevices - called by the UI-part of getUserMedia from chrome JS.
+ */
+
+nsresult
+MediaManager::GetUserMediaDevices(nsPIDOMWindow* aWindow,
+                                  const MediaStreamConstraints& aConstraints,
+                                  nsIGetUserMediaDevicesSuccessCallback* aOnSuccess,
+                                  nsIDOMGetUserMediaErrorCallback* aOnFailure,
+                                  uint64_t aWindowId)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+  nsCOMPtr<nsIGetUserMediaDevicesSuccessCallback> onSuccess(aOnSuccess);
+  nsCOMPtr<nsIDOMGetUserMediaErrorCallback> onFailure(aOnFailure);
+  if (!aWindowId) {
+    aWindowId = aWindow->WindowID();
+  }
+
+  nsRefPtr<PledgeSourceSet> p = EnumerateDevicesImpl(aWindowId, aConstraints);
+  p->Then([aWindowId, onSuccess, onFailure](SourceSet*& aDevices) mutable {
+    ScopedDeletePtr<SourceSet> devices(aDevices); // grab result
+
+    if (devices->Length()) {
+      nsCOMPtr<nsIWritableVariant> array = MediaManager_ToJSArray(*devices);
+      onSuccess->OnSuccess(array);
+    } else {
+      nsRefPtr<nsGlobalWindow> window = nsGlobalWindow::GetInnerWindowWithId(aWindowId);
+      if (!window) {
+        return NS_ERROR_UNEXPECTED;
+      }
+      nsRefPtr<MediaStreamError> reason =
+          new MediaStreamError(window, NS_LITERAL_STRING("NotFoundError"));
+      onFailure->OnError(reason);
+    }
+    return NS_OK;
+  }, [onFailure](MediaStreamError& reason) mutable {
+    onFailure->OnError(&reason);
+  });
+  return NS_OK;
 }
 
 MediaEngine*
@@ -2057,6 +1926,7 @@ MediaManager::GetBackend(uint64_t aWindowId)
   // This IS called off main-thread.
   MutexAutoLock lock(mMutex);
   if (!mBackend) {
+    MOZ_RELEASE_ASSERT(!sInShutdown);  // we should never create a new backend in shutdown
 #if defined(MOZ_WEBRTC)
     mBackend = new MediaEngineWebRTC(mPrefs);
 #else
@@ -2232,8 +2102,10 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       LOG(("%s: %dx%d @%dfps (min %d)", __FUNCTION__,
            mPrefs.mWidth, mPrefs.mHeight, mPrefs.mFPS, mPrefs.mMinFPS));
     }
-  } else if (!strcmp(aTopic, "xpcom-shutdown")) {
-    obs->RemoveObserver(this, "xpcom-shutdown");
+  } else if (!strcmp(aTopic, "xpcom-will-shutdown")) {
+    sInShutdown = true;
+
+    obs->RemoveObserver(this, "xpcom-will-shutdown");
     obs->RemoveObserver(this, "getUserMedia:response:allow");
     obs->RemoveObserver(this, "getUserMedia:response:deny");
     obs->RemoveObserver(this, "getUserMedia:revoke");
@@ -2246,22 +2118,43 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       prefs->RemoveObserver("media.navigator.video.default_minfps", this);
     }
 
+    // Close off any remaining active windows.
+    GetActiveWindows()->Clear();
+    mActiveCallbacks.Clear();
+    mCallIds.Clear();
+    {
+      MutexAutoLock lock(mMutex);
+      if (mBackend) {
+        mBackend->Shutdown(); // ok to invoke multiple times
+      }
+    }
+
     // Because mMediaThread is not an nsThread, we must dispatch to it so it can
     // clean up BackgroundChild. Continue stopping thread once this is done.
 
     class ShutdownTask : public Task
     {
     public:
-      explicit ShutdownTask(nsRunnable* aReply) : mReply(aReply) {}
+      ShutdownTask(TemporaryRef<MediaEngine> aBackend,
+                   nsRunnable* aReply)
+        : mReply(aReply)
+        , mBackend(aBackend) {}
     private:
       virtual void
       Run()
       {
+        LOG(("MediaManager Thread Shutdown"));
         MOZ_ASSERT(MediaManager::IsInMediaThread());
         mozilla::ipc::BackgroundChild::CloseForCurrentThread();
-        NS_DispatchToMainThread(mReply);
+        // must explicitly do this before dispatching the reply, since the reply may kill us with Stop()
+        mBackend = nullptr; // last reference, will invoke Shutdown() again
+
+        if (NS_FAILED(NS_DispatchToMainThread(mReply))) {
+          LOG(("Will leak thread: DispatchToMainthread of reply runnable failed in MediaManager shutdown"));
+        }
       }
       nsRefPtr<nsRunnable> mReply;
+      RefPtr<MediaEngine> mBackend;
     };
 
     // Post ShutdownTask to execute on mMediaThread and pass in a lambda
@@ -2271,20 +2164,25 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
     // This is safe since this is guaranteed to be here since sSingleton isn't
     // cleared until the lambda function clears it.
 
-    MediaManager::GetMessageLoop()->PostTask(FROM_HERE, new ShutdownTask(
-        media::CallbackRunnable::New([this]() mutable {
-      // Close off any remaining active windows.
+    // note that this == sSingleton
+    nsRefPtr<MediaManager> that(sSingleton);
+    // Release the backend (and call Shutdown()) from within the MediaManager thread
+    RefPtr<MediaEngine> temp;
+    {
       MutexAutoLock lock(mMutex);
-      GetActiveWindows()->Clear();
-      mActiveCallbacks.Clear();
-      mCallIds.Clear();
-      LOG(("Releasing MediaManager singleton and thread"));
-      // Note: won't be released immediately as the Observer has a ref to us
-      sSingleton = nullptr;
+      temp = mBackend.forget();
+    }
+    // Don't use MediaManager::PostTask() because we're sInShutdown=true here!
+    mMediaThread->message_loop()->PostTask(FROM_HERE, new ShutdownTask(
+        temp.forget(),
+        media::NewRunnableFrom([this, that]() mutable {
+      LOG(("MediaManager shutdown lambda running, releasing MediaManager singleton and thread"));
       if (mMediaThread) {
         mMediaThread->Stop();
       }
-      mBackend = nullptr;
+      // we hold a ref to 'that' which is the same as sSingleton
+      sSingleton = nullptr;
+
       return NS_OK;
     })));
     return NS_OK;
@@ -2329,8 +2227,11 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       }
     }
 
+    if (sInShutdown) {
+      return task->Denied(NS_LITERAL_STRING("In shutdown"));
+    }
     // Reuse the same thread to save memory.
-    MediaManager::GetMessageLoop()->PostTask(FROM_HERE, task.forget());
+    MediaManager::PostTask(FROM_HERE, task.forget());
     return NS_OK;
 
   } else if (!strcmp(aTopic, "getUserMedia:response:deny")) {
@@ -2528,8 +2429,7 @@ MediaManager::SanitizeDeviceIds(int64_t aSinceWhen)
   NS_ASSERTION(NS_IsMainThread(), "Only call on main thread");
   LOG(("%s: sinceWhen = %llu", __FUNCTION__, aSinceWhen));
 
-  MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
-    new SanitizeDeviceIdsTask(aSinceWhen));
+  media::SanitizeOriginKeys(aSinceWhen); // we fire and forget
   return NS_OK;
 }
 
@@ -2646,12 +2546,10 @@ GetUserMediaCallbackMediaStreamListener::AudioConfig(bool aEchoOn,
 {
   if (mAudioSource) {
 #ifdef MOZ_WEBRTC
-    mMediaThread->message_loop()->PostTask(FROM_HERE,
+    MediaManager::PostTask(FROM_HERE,
       NewRunnableMethod(mAudioSource.get(), &MediaEngineSource::Config,
                         aEchoOn, aEcho, aAgcOn, aAGC, aNoiseOn,
                         aNoise, aPlayoutDelay));
-#else
-    unused << mMediaThread;
 #endif
   }
 }
@@ -2664,7 +2562,7 @@ GetUserMediaCallbackMediaStreamListener::Invalidate()
   // thread.
   // Pass a ref to us (which is threadsafe) so it can query us for the
   // source stream info.
-  MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
+  MediaManager::PostTask(FROM_HERE,
     new MediaOperationTask(MEDIA_STOP,
                            this, nullptr, nullptr,
                            mAudioSource, mVideoSource,
@@ -2682,7 +2580,7 @@ GetUserMediaCallbackMediaStreamListener::StopScreenWindowSharing()
        mVideoSource->GetMediaSource() == dom::MediaSourceEnum::Application ||
        mVideoSource->GetMediaSource() == dom::MediaSourceEnum::Window)) {
     // Stop the whole stream if there's no audio; just the video track if we have both
-    MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
+    MediaManager::PostTask(FROM_HERE,
       new MediaOperationTask(mAudioSource ? MEDIA_STOP_TRACK : MEDIA_STOP,
                              this, nullptr, nullptr,
                              nullptr, mVideoSource,
@@ -2700,7 +2598,7 @@ GetUserMediaCallbackMediaStreamListener::StopTrack(TrackID aID, bool aIsAudio)
   {
     // XXX to support multiple tracks of a type in a stream, this should key off
     // the TrackID and not just the type
-    MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
+    MediaManager::PostTask(FROM_HERE,
       new MediaOperationTask(MEDIA_STOP_TRACK,
                              this, nullptr, nullptr,
                              aIsAudio  ? mAudioSource : nullptr,
@@ -2726,7 +2624,7 @@ void
 GetUserMediaCallbackMediaStreamListener::NotifyDirectListeners(MediaStreamGraph* aGraph,
                                                                bool aHasListeners)
 {
-  MediaManager::GetMessageLoop()->PostTask(FROM_HERE,
+  MediaManager::PostTask(FROM_HERE,
     new MediaOperationTask(MEDIA_DIRECT_LISTENERS,
                            this, nullptr, nullptr,
                            mAudioSource, mVideoSource,

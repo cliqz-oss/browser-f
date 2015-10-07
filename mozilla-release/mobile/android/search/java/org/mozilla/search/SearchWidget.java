@@ -11,7 +11,7 @@ import org.mozilla.gecko.R;
 import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 
-import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.PendingIntent;
 import android.appwidget.AppWidgetManager;
 import android.appwidget.AppWidgetProvider;
@@ -32,7 +32,7 @@ public class SearchWidget extends AppWidgetProvider {
     final public static String ACTION_LAUNCH_SEARCH = "org.mozilla.widget.LAUNCH_SEARCH";
     final public static String ACTION_LAUNCH_NEW_TAB = "org.mozilla.widget.LAUNCH_NEW_TAB";
 
-    @SuppressLint("NewApi")
+    @TargetApi(16)
     @Override
     public void onUpdate(final Context context, final AppWidgetManager manager, final int[] ids) {
         for (int id : ids) {
@@ -48,7 +48,7 @@ public class SearchWidget extends AppWidgetProvider {
         super.onUpdate(context, manager, ids);
     }
 
-    @SuppressLint("NewApi")
+    @TargetApi(16)
     @Override
     public void onAppWidgetOptionsChanged(final Context context,
                                           final AppWidgetManager manager,
@@ -68,7 +68,7 @@ public class SearchWidget extends AppWidgetProvider {
             case ACTION_LAUNCH_BROWSER:
                 redirect = buildRedirectIntent(Intent.ACTION_MAIN,
                                                AppConstants.ANDROID_PACKAGE_NAME,
-                                               AppConstants.BROWSER_INTENT_CLASS_NAME,
+                                               AppConstants.MOZ_ANDROID_BROWSER_INTENT_CLASS,
                                                intent);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LAUNCH,
                                       TelemetryContract.Method.WIDGET, "browser");
@@ -76,7 +76,7 @@ public class SearchWidget extends AppWidgetProvider {
             case ACTION_LAUNCH_NEW_TAB:
                 redirect = buildRedirectIntent(Intent.ACTION_VIEW,
                                                AppConstants.ANDROID_PACKAGE_NAME,
-                                               AppConstants.BROWSER_INTENT_CLASS_NAME,
+                                               AppConstants.MOZ_ANDROID_BROWSER_INTENT_CLASS,
                                                intent);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LAUNCH,
                                       TelemetryContract.Method.WIDGET, "new-tab");
@@ -84,7 +84,7 @@ public class SearchWidget extends AppWidgetProvider {
             case ACTION_LAUNCH_SEARCH:
                 redirect = buildRedirectIntent(Intent.ACTION_VIEW,
                                                AppConstants.ANDROID_PACKAGE_NAME,
-                                               AppConstants.SEARCH_INTENT_CLASS_NAME,
+                                               AppConstants.MOZ_ANDROID_SEARCH_INTENT_CLASS,
                                                intent);
                 Telemetry.sendUIEvent(TelemetryContract.Event.LAUNCH,
                                       TelemetryContract.Method.WIDGET, "search");

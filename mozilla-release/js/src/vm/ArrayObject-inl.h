@@ -12,6 +12,9 @@
 #include "gc/GCTrace.h"
 #include "vm/String.h"
 
+#include "jsgcinlines.h"
+#include "jsobjinlines.h"
+
 #include "vm/TypeInference-inl.h"
 
 namespace js {
@@ -38,6 +41,8 @@ ArrayObject::createArrayInternal(ExclusiveContext* cx, gc::AllocKind kind, gc::I
     MOZ_ASSERT(group->clasp() == shape->getObjectClass());
     MOZ_ASSERT(group->clasp() == &ArrayObject::class_);
     MOZ_ASSERT_IF(group->clasp()->finalize, heap == gc::TenuredHeap);
+    MOZ_ASSERT_IF(group->hasUnanalyzedPreliminaryObjects(),
+                  heap == js::gc::TenuredHeap);
 
     // Arrays can use their fixed slots to store elements, so can't have shapes
     // which allow named properties to be stored in the fixed slots.
@@ -81,25 +86,6 @@ ArrayObject::createArray(ExclusiveContext* cx, gc::AllocKind kind, gc::InitialHe
 
     obj->setFixedElements();
     new (obj->getElementsHeader()) ObjectElements(capacity, length);
-
-    return finishCreateArray(obj, shape);
-}
-
-/* static */ inline ArrayObject*
-ArrayObject::createArray(ExclusiveContext* cx, gc::InitialHeap heap,
-                         HandleShape shape, HandleObjectGroup group,
-                         HeapSlot* elements)
-{
-    // Use the smallest allocation kind for the array, as it can't have any
-    // fixed slots (see the assert in createArrayInternal) and will not be using
-    // its fixed elements.
-    gc::AllocKind kind = gc::AllocKind::OBJECT0_BACKGROUND;
-
-    ArrayObject* obj = createArrayInternal(cx, kind, heap, shape, group);
-    if (!obj)
-        return nullptr;
-
-    obj->elements_ = elements;
 
     return finishCreateArray(obj, shape);
 }

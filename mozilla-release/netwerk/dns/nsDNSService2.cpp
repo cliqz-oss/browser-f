@@ -34,9 +34,10 @@
 #include "nsINetworkLinkService.h"
 
 #include "mozilla/Attributes.h"
-#include "mozilla/VisualEventTracer.h"
 #include "mozilla/net/NeckoCommon.h"
+#if !defined(MOZILLA_XPCOMRT_API)
 #include "mozilla/net/ChildDNSService.h"
+#endif // !defined(MOZILLA_XPCOMRT_API)
 #include "mozilla/net/DNSListenerProxy.h"
 #include "mozilla/Services.h"
 
@@ -347,8 +348,6 @@ nsDNSAsyncRequest::OnLookupComplete(nsHostResolver *resolver,
             status = NS_ERROR_OUT_OF_MEMORY;
     }
 
-    MOZ_EVENT_TRACER_DONE(this, "net::dns::lookup");
-
     mListener->OnLookupComplete(this, rec, status);
     mListener = nullptr;
 
@@ -502,9 +501,11 @@ static nsDNSService *gDNSService;
 nsIDNSService*
 nsDNSService::GetXPCOMSingleton()
 {
+#if !defined(MOZILLA_XPCOMRT_API)
     if (IsNeckoChild()) {
         return ChildDNSService::GetSingleton();
     }
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     return GetSingleton();
 }
@@ -640,7 +641,9 @@ nsDNSService::Init()
         }
     }
 
+#if !defined(MOZILLA_XPCOMRT_API)
     RegisterWeakMemoryReporter(this);
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     return rv;
 }
@@ -648,7 +651,9 @@ nsDNSService::Init()
 NS_IMETHODIMP
 nsDNSService::Shutdown()
 {
+#if !defined(MOZILLA_XPCOMRT_API)
     UnregisterWeakMemoryReporter(this);
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     nsRefPtr<nsHostResolver> res;
     {
@@ -656,8 +661,17 @@ nsDNSService::Shutdown()
         res = mResolver;
         mResolver = nullptr;
     }
-    if (res)
+    if (res) {
         res->Shutdown();
+    }
+
+    nsCOMPtr<nsIObserverService> observerService =
+        mozilla::services::GetObserverService();
+    if (observerService) {
+        observerService->RemoveObserver(this, NS_NETWORK_LINK_TOPIC);
+        observerService->RemoveObserver(this, "last-pb-context-exited");
+    }
+
     return NS_OK;
 }
 
@@ -782,9 +796,6 @@ nsDNSService::AsyncResolveExtended(const nsACString  &aHostname,
     if (!req)
         return NS_ERROR_OUT_OF_MEMORY;
     NS_ADDREF(*result = req);
-
-    MOZ_EVENT_TRACER_NAME_OBJECT(req, aHostname.BeginReading());
-    MOZ_EVENT_TRACER_WAIT(req, "net::dns::lookup");
 
     // addref for resolver; will be released when OnLookupComplete is called.
     NS_ADDREF(req);

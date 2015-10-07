@@ -11,13 +11,12 @@
 #include "MediaData.h"
 #include "MediaPromise.h"
 #include "MediaQueue.h"
+#include "MediaTimer.h"
 #include "AudioCompactor.h"
+#include "Intervals.h"
+#include "TimeUnits.h"
 
 namespace mozilla {
-
-namespace dom {
-class TimeRanges;
-}
 
 class MediaDecoderReader;
 class SharedDecoderManager;
@@ -82,7 +81,13 @@ public:
 
   // The caller must ensure that Shutdown() is called before aDecoder is
   // destroyed.
-  explicit MediaDecoderReader(AbstractMediaDecoder* aDecoder);
+  explicit MediaDecoderReader(AbstractMediaDecoder* aDecoder, MediaTaskQueue* aBorrowedTaskQueue = nullptr);
+
+  // Does any spinup that needs to happen on this task queue. This runs on a
+  // different thread than Init, and there should not be ordering dependencies
+  // between the two (even though in practice, Init will always run first right
+  // now thanks to the tail dispatcher).
+  void InitializationTask();
 
   // Initializes the reader, returns NS_OK on success, or NS_ERROR_FAILURE
   // on failure.
@@ -110,18 +115,9 @@ public:
   // thread.
   virtual nsRefPtr<ShutdownPromise> Shutdown();
 
-  MediaTaskQueue* EnsureTaskQueue();
-
   virtual bool OnTaskQueue()
   {
-    return !GetTaskQueue() || GetTaskQueue()->IsCurrentThreadIn();
-  }
-
-  void SetBorrowedTaskQueue(MediaTaskQueue* aTaskQueue)
-  {
-    MOZ_ASSERT(!mTaskQueue && aTaskQueue);
-    mTaskQueue = aTaskQueue;
-    mTaskQueueIsBorrowed = true;
+    return TaskQueue()->IsCurrentThreadIn();
   }
 
   // Resets all state related to decoding, emptying all buffers etc.
@@ -167,20 +163,17 @@ public:
   virtual bool HasAudio() = 0;
   virtual bool HasVideo() = 0;
 
-  // The ReadMetadata API is unfortunately synchronous. We should fix that at
-  // some point, but for now we can make things a bit better by using a
-  // promise-y API on top of a synchronous call.
-  nsRefPtr<MetadataPromise> CallReadMetadata();
-
-  // A function that is called before ReadMetadata() call.
-  virtual void PreReadMetadata() {};
+  // The default implementation of AsyncReadMetadata is implemented in terms of
+  // synchronous ReadMetadata() calls. Implementations may also
+  // override AsyncReadMetadata to create a more proper async implementation.
+  virtual nsRefPtr<MetadataPromise> AsyncReadMetadata();
 
   // Read header data for all bitstreams in the file. Fills aInfo with
   // the data required to present the media, and optionally fills *aTags
   // with tag metadata from the file.
   // Returns NS_OK on success, or NS_ERROR_FAILURE on failure.
   virtual nsresult ReadMetadata(MediaInfo* aInfo,
-                                MetadataTags** aTags) = 0;
+                                MetadataTags** aTags) { MOZ_CRASH(); }
 
   // Fills aInfo with the latest cached data required to present the media,
   // ReadUpdatedMetadata will always be called once ReadMetadata has succeeded.
@@ -212,8 +205,10 @@ public:
     mIgnoreAudioOutputFormat = true;
   }
 
-  // Populates aBuffered with the time ranges which are buffered. This function
-  // is called on the main, decode, and state machine threads.
+  // Populates aBuffered with the time ranges which are buffered. This may only
+  // be called on the decode task queue, and should only be used internally by
+  // UpdateBuffered - mBuffered (or mirrors of it) should be used for everything
+  // else.
   //
   // This base implementation in MediaDecoderReader estimates the time ranges
   // buffered by interpolating the cached byte ranges with the duration
@@ -226,9 +221,13 @@ public:
   // The OggReader relies on this base implementation not performing I/O,
   // since in FirefoxOS we can't do I/O on the main thread, where this is
   // called.
-  virtual nsresult GetBuffered(dom::TimeRanges* aBuffered);
+  virtual media::TimeIntervals GetBuffered();
 
-  virtual int64_t ComputeStartTime(const VideoData* aVideo, const AudioData* aAudio);
+  // Recomputes mBuffered.
+  virtual void UpdateBuffered();
+
+  // MediaSourceReader opts out of the start-time-guessing mechanism.
+  virtual bool ForceZeroStartTime() const { return false; }
 
   // The MediaDecoderStateMachine uses various heuristics that assume that
   // raw media data is arriving sequentially from a network channel. This
@@ -247,9 +246,40 @@ public:
   virtual size_t SizeOfVideoQueueInFrames();
   virtual size_t SizeOfAudioQueueInFrames();
 
-  // Only used by WebMReader and MediaOmxReader for now, so stub here rather
-  // than in every reader than inherits from MediaDecoderReader.
-  virtual void NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset) {}
+protected:
+  friend class TrackBuffer;
+  virtual void NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset) { }
+
+  void NotifyDataArrived(const media::Interval<int64_t>& aInfo)
+  {
+    MOZ_ASSERT(OnTaskQueue());
+    NS_ENSURE_TRUE_VOID(!mShutdown);
+    NotifyDataArrivedInternal(aInfo.Length(), aInfo.mStart);
+    UpdateBuffered();
+  }
+
+  // Invokes NotifyDataArrived while throttling the calls to occur at most every mThrottleDuration ms.
+  void ThrottledNotifyDataArrived(const media::Interval<int64_t>& aInterval);
+  void DoThrottledNotify();
+
+public:
+  // In situations where these notifications come from stochastic network
+  // activity, we can save significant recomputation by throttling the delivery
+  // of these updates to the reader implementation. We don't want to do this
+  // throttling when the update comes from MSE code, since that code needs the
+  // updates to be observable immediately, and is generally less
+  // trigger-happy with notifications anyway.
+  void DispatchNotifyDataArrived(uint32_t aLength, int64_t aOffset, bool aThrottleUpdates)
+  {
+    RefPtr<nsRunnable> r =
+      NS_NewRunnableMethodWithArg<media::Interval<int64_t>>(this, aThrottleUpdates ? &MediaDecoderReader::ThrottledNotifyDataArrived
+                                                                                   : &MediaDecoderReader::NotifyDataArrived,
+                                                            media::Interval<int64_t>(aOffset, aOffset + aLength));
+    TaskQueue()->Dispatch(r.forget(), AbstractThread::DontAssertDispatchSuccess);
+  }
+
+  // Notify the reader that data from the resource was evicted (MediaSource only)
+  virtual void NotifyDataRemoved() {}
   virtual int64_t GetEvictionOffset(double aTime) { return -1; }
 
   virtual MediaQueue<AudioData>& AudioQueue() { return mAudioQueue; }
@@ -268,9 +298,22 @@ public:
   // Indicates if the media is seekable.
   // ReadMetada should be called before calling this method.
   virtual bool IsMediaSeekable() = 0;
-  void SetStartTime(int64_t aStartTime);
 
-  MediaTaskQueue* GetTaskQueue() {
+  void DispatchSetStartTime(int64_t aStartTime)
+  {
+    nsRefPtr<MediaDecoderReader> self = this;
+    nsCOMPtr<nsIRunnable> r =
+      NS_NewRunnableFunction([self, aStartTime] () -> void
+    {
+      MOZ_ASSERT(self->OnTaskQueue());
+      MOZ_ASSERT(!self->HaveStartTime());
+      self->mStartTime.emplace(aStartTime);
+      self->UpdateBuffered();
+    });
+    TaskQueue()->Dispatch(r.forget());
+  }
+
+  MediaTaskQueue* TaskQueue() {
     return mTaskQueue;
   }
 
@@ -324,8 +367,32 @@ protected:
   // Reference to the owning decoder object.
   AbstractMediaDecoder* mDecoder;
 
+  // Decode task queue.
+  nsRefPtr<MediaTaskQueue> mTaskQueue;
+
+  // State-watching manager.
+  WatchManager<MediaDecoderReader> mWatchManager;
+
+  // MediaTimer.
+  nsRefPtr<MediaTimer> mTimer;
+
+  // Buffered range.
+  Canonical<media::TimeIntervals> mBuffered;
+public:
+  AbstractCanonical<media::TimeIntervals>* CanonicalBuffered() { return &mBuffered; }
+protected:
+
   // Stores presentation info required for playback.
   MediaInfo mInfo;
+
+  // Duration, mirrored from the state machine task queue.
+  Mirror<media::NullableTimeUnit> mDuration;
+
+  // State for ThrottledNotifyDataArrived.
+  MediaPromiseRequestHolder<MediaTimerPromise> mThrottledNotify;
+  const TimeDuration mThrottleDuration;
+  TimeStamp mLastThrottledNotify;
+  Maybe<media::Interval<int64_t>> mThrottledInterval;
 
   // Whether we should accept media that we know we can't play
   // directly, because they have a number of channel higher than
@@ -335,8 +402,16 @@ protected:
   // The start time of the media, in microseconds. This is the presentation
   // time of the first frame decoded from the media. This is initialized to -1,
   // and then set to a value >= by MediaDecoderStateMachine::SetStartTime(),
-  // after which point it never changes.
-  int64_t mStartTime;
+  // after which point it never changes (though SetStartTime may be called
+  // multiple times with the same value).
+  //
+  // This is an ugly breach of abstractions - it's currently necessary for the
+  // readers to return the correct value of GetBuffered. We should refactor
+  // things such that all GetBuffered calls go through the MDSM, which would
+  // offset the range accordingly.
+  Maybe<int64_t> mStartTime;
+  bool HaveStartTime() { MOZ_ASSERT(OnTaskQueue()); return mStartTime.isSome(); }
+  int64_t StartTime() { MOZ_ASSERT(HaveStartTime()); return mStartTime.ref(); }
 
   // This is a quick-and-dirty way for DecodeAudioData implementations to
   // communicate the presence of a decoding error to RequestAudioData. We should
@@ -351,7 +426,6 @@ private:
   MediaPromiseHolder<AudioDataPromise> mBaseAudioPromise;
   MediaPromiseHolder<VideoDataPromise> mBaseVideoPromise;
 
-  nsRefPtr<MediaTaskQueue> mTaskQueue;
   bool mTaskQueueIsBorrowed;
 
   // Flags whether a the next audio/video sample comes after a "gap" or

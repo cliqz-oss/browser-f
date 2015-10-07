@@ -14,6 +14,10 @@
 #include "gfx2DGlue.h"
 #include "SharedSurfaceGralloc.h"
 
+#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
+#include <ui/Fence.h>
+#endif
+
 namespace mozilla {
 namespace layers {
 
@@ -56,17 +60,7 @@ GrallocTextureClientOGL::CreateSimilar(TextureFlags aFlags,
     return nullptr;
   }
 
-  return tex;
-}
-
-void
-GrallocTextureClientOGL::InitWith(MaybeMagicGrallocBufferHandle aHandle, gfx::IntSize aSize)
-{
-  MOZ_ASSERT(!IsAllocated());
-  MOZ_ASSERT(IsValid());
-  mGrallocHandle = aHandle;
-  mGraphicBuffer = GetGraphicBufferFrom(aHandle);
-  mSize = aSize;
+  return tex.forget();
 }
 
 bool
@@ -101,7 +95,8 @@ GrallocTextureClientOGL::WaitForBufferOwnership(bool aWaitReleaseFence)
 
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
    if (mReleaseFenceHandle.IsValid()) {
-     android::sp<Fence> fence = mReleaseFenceHandle.mFence;
+     nsRefPtr<FenceHandle::FdObj> fdObj = mReleaseFenceHandle.GetAndResetFdObj();
+     android::sp<Fence> fence = new Fence(fdObj->GetAndResetFd());
 #if ANDROID_VERSION == 17
      fence->waitForever(1000, "GrallocTextureClientOGL::Lock");
      // 1000 is what Android uses. It is a warning timeout in ms.
@@ -140,14 +135,10 @@ GrallocTextureClientOGL::Lock(OpenMode aMode)
     usage |= GRALLOC_USAGE_SW_WRITE_OFTEN;
   }
 #if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 21
-  android::sp<Fence> fence = android::Fence::NO_FENCE;
-  if (mReleaseFenceHandle.IsValid()) {
-    fence = mReleaseFenceHandle.mFence;
-  }
-  mReleaseFenceHandle = FenceHandle();
+  nsRefPtr<FenceHandle::FdObj> fdObj = mReleaseFenceHandle.GetAndResetFdObj();
   int32_t rv = mGraphicBuffer->lockAsync(usage,
                                          reinterpret_cast<void**>(&mMappedBuffer),
-                                         fence->dup());
+                                         fdObj->GetAndResetFd());
 #else
   int32_t rv = mGraphicBuffer->lock(usage,
                                     reinterpret_cast<void**>(&mMappedBuffer));

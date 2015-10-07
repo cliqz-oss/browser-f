@@ -29,7 +29,6 @@ loader.loadSubScript("chrome://marionette/content/frame-manager.js");
 const logger = Log.repository.getLogger("Marionette");
 
 this.EXPORTED_SYMBOLS = ["MarionetteServer"];
-const SPECIAL_POWERS_PREF = "security.turn_off_all_security_so_that_viruses_can_take_over_this_computer";
 const CONTENT_LISTENER_PREF = "marionette.contentListener";
 
 /**
@@ -51,20 +50,6 @@ this.MarionetteServer = function(port, forceLocal) {
   this.conns = {};
   this.nextConnId = 0;
   this.alive = false;
-};
-
-/**
- * Initialises the Marionette server by loading in the special powers
- * which is required to provide some automation-only features.
- */
-MarionetteServer.prototype.init = function() {
-  // SpecialPowers requires insecure automation-only features that we put behind a pref
-  Services.prefs.setBoolPref(SPECIAL_POWERS_PREF, true);
-  let specialpowers = {};
-  loader.loadSubScript(
-    "chrome://specialpowers/content/SpecialPowersObserver.js", specialpowers);
-  specialpowers.specialPowersObserver = new specialpowers.SpecialPowersObserver();
-  specialpowers.specialPowersObserver.init();
 };
 
 /**
@@ -115,7 +100,6 @@ MarionetteServer.prototype.start = function() {
   if (this.alive) {
     return;
   }
-  this.init();
   let flags = Ci.nsIServerSocket.KeepWhenOffline;
   if (this.forceLocal) {
     flags |= Ci.nsIServerSocket.LoopbackOnly;

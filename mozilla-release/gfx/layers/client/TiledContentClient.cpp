@@ -24,11 +24,9 @@
 #include "TextureClientPool.h"
 #include "nsDebug.h"                    // for NS_ASSERTION
 #include "nsISupportsImpl.h"            // for gfxContext::AddRef, etc
-#include "nsSize.h"                     // for nsIntSize
 #include "gfxReusableSharedImageSurfaceWrapper.h"
 #include "nsExpirationTracker.h"        // for nsExpirationTracker
 #include "nsMathUtils.h"               // for NS_lroundf
-#include "gfx2DGlue.h"
 #include "LayersLogging.h"
 #include "UnitTransforms.h"             // for TransformTo
 #include "mozilla/UniquePtr.h"
@@ -318,23 +316,31 @@ ClientTiledLayerBuffer::GetContentType(SurfaceMode* aMode) const
 
   if (mode == SurfaceMode::SURFACE_COMPONENT_ALPHA) {
 #if defined(MOZ_GFX_OPTIMIZE_MOBILE) || defined(MOZ_WIDGET_GONK)
-     mode = SurfaceMode::SURFACE_SINGLE_CHANNEL_ALPHA;
-  }
+    mode = SurfaceMode::SURFACE_SINGLE_CHANNEL_ALPHA;
 #else
-      if (!mPaintedLayer->GetParent() ||
-          !mPaintedLayer->GetParent()->SupportsComponentAlphaChildren() ||
-          !gfxPrefs::TiledDrawTargetEnabled()) {
-        mode = SurfaceMode::SURFACE_SINGLE_CHANNEL_ALPHA;
-      } else {
-        content = gfxContentType::COLOR;
-      }
+    if (!mPaintedLayer->GetParent() ||
+        !mPaintedLayer->GetParent()->SupportsComponentAlphaChildren() ||
+        !gfxPrefs::TiledDrawTargetEnabled()) {
+      mode = SurfaceMode::SURFACE_SINGLE_CHANNEL_ALPHA;
+    } else {
+      content = gfxContentType::COLOR;
+    }
+#endif
   } else if (mode == SurfaceMode::SURFACE_OPAQUE) {
+#if defined(MOZ_GFX_OPTIMIZE_MOBILE) || defined(MOZ_WIDGET_GONK)
+    if (mResolution != 1) {
+      // If we're in low-res mode, drawing can sample from outside the visible
+      // region. Make sure that we only sample transparency if that happens.
+      mode = SurfaceMode::SURFACE_SINGLE_CHANNEL_ALPHA;
+      content = gfxContentType::COLOR_ALPHA;
+    }
+#else
     if (mPaintedLayer->MayResample()) {
       mode = SurfaceMode::SURFACE_SINGLE_CHANNEL_ALPHA;
       content = gfxContentType::COLOR_ALPHA;
     }
-  }
 #endif
+  }
 
   if (aMode) {
     *aMode = mode;
@@ -366,7 +372,7 @@ int32_t
 gfxMemorySharedReadLock::ReadUnlock()
 {
   int32_t readCount = PR_ATOMIC_DECREMENT(&mReadCount);
-  NS_ASSERTION(readCount >= 0, "ReadUnlock called without ReadLock.");
+  MOZ_ASSERT(readCount >= 0);
 
   return readCount;
 }
@@ -416,7 +422,7 @@ gfxShmSharedReadLock::ReadUnlock() {
   }
   ShmReadLockInfo* info = GetShmReadLockInfoPtr();
   int32_t readCount = PR_ATOMIC_DECREMENT(&info->readCount);
-  NS_ASSERTION(readCount >= 0, "ReadUnlock called without a ReadLock.");
+  MOZ_ASSERT(readCount >= 0);
   if (readCount <= 0) {
     mAllocator->FreeShmemSection(mShmemSection);
   }
@@ -512,6 +518,7 @@ TileClient::TileClient(const TileClient& o)
   mBackLock = o.mBackLock;
   mFrontLock = o.mFrontLock;
   mCompositableClient = o.mCompositableClient;
+  mUpdateRect = o.mUpdateRect;
 #ifdef GFX_TILEDLAYER_DEBUG_OVERLAY
   mLastUpdate = o.mLastUpdate;
 #endif
@@ -531,6 +538,7 @@ TileClient::operator=(const TileClient& o)
   mBackLock = o.mBackLock;
   mFrontLock = o.mFrontLock;
   mCompositableClient = o.mCompositableClient;
+  mUpdateRect = o.mUpdateRect;
 #ifdef GFX_TILEDLAYER_DEBUG_OVERLAY
   mLastUpdate = o.mLastUpdate;
 #endif
@@ -590,17 +598,19 @@ CopyFrontToBack(TextureClient* aFront,
                 const gfx::IntRect& aRectToCopy)
 {
   if (!aFront->Lock(OpenMode::OPEN_READ)) {
-    NS_WARNING("Failed to lock the tile's front buffer");
+    gfxCriticalError() << "[Tiling:Client] Failed to lock the tile's front buffer";
     return false;
   }
 
   if (!aBack->Lock(OpenMode::OPEN_READ_WRITE)) {
-    NS_WARNING("Failed to lock the tile's back buffer");
+    gfxCriticalError() << "[Tiling:Client] Failed to lock the tile's back buffer";
     return false;
   }
 
   gfx::IntPoint rectToCopyTopLeft = aRectToCopy.TopLeft();
   aFront->CopyToTextureClient(aBack, &aRectToCopy, &rectToCopyTopLeft);
+
+  aFront->Unlock();
   return true;
 }
 
@@ -610,7 +620,7 @@ TileClient::ValidateBackBufferFromFront(const nsIntRegion& aDirtyRegion,
 {
   if (mBackBuffer && mFrontBuffer) {
     gfx::IntSize tileSize = mFrontBuffer->GetSize();
-    const nsIntRect tileRect = nsIntRect(0, 0, tileSize.width, tileSize.height);
+    const IntRect tileRect = IntRect(0, 0, tileSize.width, tileSize.height);
 
     if (aDirtyRegion.Contains(tileRect)) {
       // The dirty region means that we no longer need the front buffer, so
@@ -632,7 +642,7 @@ TileClient::ValidateBackBufferFromFront(const nsIntRegion& aDirtyRegion,
       // Copy the bounding rect of regionToCopy. As tiles are quite small, it
       // is unlikely that we'd save much by copying each individual rect of the
       // region, but we can reevaluate this if it becomes an issue.
-      const nsIntRect rectToCopy = regionToCopy.GetBounds();
+      const IntRect rectToCopy = regionToCopy.GetBounds();
       gfx::IntRect gfxRectToCopy(rectToCopy.x, rectToCopy.y, rectToCopy.width, rectToCopy.height);
       CopyFrontToBack(mFrontBuffer, mBackBuffer, gfxRectToCopy);
 
@@ -697,9 +707,9 @@ TileClient::DiscardBackBuffer()
        mManager->ReportClientLost(*mBackBufferOnWhite);
      }
     } else {
-      mManager->ReturnTextureClient(*mBackBuffer);
+      mManager->ReturnTextureClientDeferred(*mBackBuffer);
       if (mBackBufferOnWhite) {
-        mManager->ReturnTextureClient(*mBackBufferOnWhite);
+        mManager->ReturnTextureClientDeferred(*mBackBufferOnWhite);
       }
     }
     mBackLock->ReadUnlock();
@@ -782,7 +792,7 @@ TileClient::GetBackBuffer(const nsIntRegion& aDirtyRegion,
     MOZ_ASSERT(mBackLock->IsValid());
 
     *aCreatedTextureClient = true;
-    mInvalidBack = nsIntRect(0, 0, mBackBuffer->GetSize().width, mBackBuffer->GetSize().height);
+    mInvalidBack = IntRect(0, 0, mBackBuffer->GetSize().width, mBackBuffer->GetSize().height);
   }
 
   ValidateBackBufferFromFront(aDirtyRegion, aAddPaintedRegion);
@@ -808,20 +818,14 @@ TileClient::GetTileDescriptor()
   if (mFrontLock->GetType() == gfxSharedReadLock::TYPE_MEMORY) {
     return TexturedTileDescriptor(nullptr, mFrontBuffer->GetIPDLActor(),
                                   mFrontBufferOnWhite ? MaybeTexture(mFrontBufferOnWhite->GetIPDLActor()) : MaybeTexture(null_t()),
+                                  mUpdateRect,
                                   TileLock(uintptr_t(mFrontLock.get())));
   } else {
     gfxShmSharedReadLock *lock = static_cast<gfxShmSharedReadLock*>(mFrontLock.get());
     return TexturedTileDescriptor(nullptr, mFrontBuffer->GetIPDLActor(),
                                   mFrontBufferOnWhite ? MaybeTexture(mFrontBufferOnWhite->GetIPDLActor()) : MaybeTexture(null_t()),
+                                  mUpdateRect,
                                   TileLock(lock->GetShmemSection()));
-  }
-}
-
-void
-ClientTiledLayerBuffer::ReadUnlock() {
-  for (size_t i = 0; i < mRetainedTiles.Length(); i++) {
-    if (mRetainedTiles[i].IsPlaceholderTile()) continue;
-    mRetainedTiles[i].ReadUnlock();
   }
 }
 
@@ -865,9 +869,12 @@ ClientTiledLayerBuffer::GetSurfaceDescriptorTiles()
       tileDesc = mRetainedTiles[i].GetTileDescriptor();
     }
     tiles.AppendElement(tileDesc);
+    mRetainedTiles[i].mUpdateRect = IntRect();
   }
   return SurfaceDescriptorTiles(mValidRegion, mPaintedRegion,
-                                tiles, mRetainedWidth, mRetainedHeight,
+                                tiles,
+                                mTiles.mFirst.x, mTiles.mFirst.y,
+                                mTiles.mSize.width, mTiles.mSize.height,
                                 mResolution, mFrameResolution.xScale,
                                 mFrameResolution.yScale);
 }
@@ -894,20 +901,17 @@ ClientTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
   if (!gfxPrefs::TiledDrawTargetEnabled()) {
     nsRefPtr<gfxContext> ctxt;
 
-    const nsIntRect bounds = aPaintRegion.GetBounds();
+    const IntRect bounds = aPaintRegion.GetBounds();
     {
       PROFILER_LABEL("ClientTiledLayerBuffer", "PaintThebesSingleBufferAlloc",
         js::ProfileEntry::Category::GRAPHICS);
-
-      gfxImageFormat format =
-        gfxPlatform::GetPlatform()->OptimalFormatForContent(
-          GetContentType());
 
       mSinglePaintDrawTarget =
         gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
           gfx::IntSize(ceilf(bounds.width * mResolution),
                        ceilf(bounds.height * mResolution)),
-          gfx::ImageFormatToSurfaceFormat(format));
+          gfxPlatform::GetPlatform()->Optimal2DFormatForContent(
+            GetContentType()));
 
       if (!mSinglePaintDrawTarget) {
         return;
@@ -935,12 +939,12 @@ ClientTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
 
 #ifdef GFX_TILEDLAYER_PREF_WARNINGS
   if (PR_IntervalNow() - start > 30) {
-    const nsIntRect bounds = aPaintRegion.GetBounds();
+    const IntRect bounds = aPaintRegion.GetBounds();
     printf_stderr("Time to draw %i: %i, %i, %i, %i\n", PR_IntervalNow() - start, bounds.x, bounds.y, bounds.width, bounds.height);
     if (aPaintRegion.IsComplex()) {
       printf_stderr("Complex region\n");
       nsIntRegionRectIterator it(aPaintRegion);
-      for (const nsIntRect* rect = it.Next(); rect != nullptr; rect = it.Next()) {
+      for (const IntRect* rect = it.Next(); rect != nullptr; rect = it.Next()) {
         printf_stderr(" rect %i, %i, %i, %i\n", rect->x, rect->y, rect->width, rect->height);
       }
     }
@@ -956,7 +960,7 @@ ClientTiledLayerBuffer::PaintThebes(const nsIntRegion& aNewValidRegion,
 
 #ifdef GFX_TILEDLAYER_PREF_WARNINGS
   if (PR_IntervalNow() - start > 10) {
-    const nsIntRect bounds = aPaintRegion.GetBounds();
+    const IntRect bounds = aPaintRegion.GetBounds();
     printf_stderr("Time to tile %i: %i, %i, %i, %i\n", PR_IntervalNow() - start, bounds.x, bounds.y, bounds.width, bounds.height);
   }
 #endif
@@ -1128,12 +1132,14 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
                         &createdTextureClient, extraPainted,
                         &backBufferOnWhite);
 
+  aTile.mUpdateRect = offsetScaledDirtyRegion.GetBounds().Union(extraPainted.GetBounds());
+
   extraPainted.MoveBy(aTileOrigin);
   extraPainted.And(extraPainted, mNewValidRegion);
   mPaintedRegion.Or(mPaintedRegion, extraPainted);
 
   if (!backBuffer) {
-    NS_WARNING("Failed to allocate a tile TextureClient");
+    gfxCriticalError() << "[Tiling:Client] Failed to allocate a TextureClient";
     aTile.DiscardBackBuffer();
     aTile.DiscardFrontBuffer();
     return TileClient();
@@ -1142,7 +1148,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
   // the back buffer may have been already locked in ValidateBackBufferFromFront
   if (!backBuffer->IsLocked()) {
     if (!backBuffer->Lock(OpenMode::OPEN_READ_WRITE)) {
-      NS_WARNING("Failed to lock a tile TextureClient");
+      gfxCriticalError() << "[Tiling:Client] Failed to lock a tile";
       aTile.DiscardBackBuffer();
       aTile.DiscardFrontBuffer();
       return TileClient();
@@ -1151,7 +1157,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
 
   if (backBufferOnWhite && !backBufferOnWhite->IsLocked()) {
     if (!backBufferOnWhite->Lock(OpenMode::OPEN_READ_WRITE)) {
-      NS_WARNING("Failed to lock tile TextureClient for updating.");
+      gfxCriticalError() << "[Tiling:Client] Failed to lock a tile";
       aTile.DiscardBackBuffer();
       aTile.DiscardFrontBuffer();
       return TileClient();
@@ -1161,13 +1167,13 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
   if (usingTiledDrawTarget) {
     if (createdTextureClient) {
       if (!mCompositableClient->AddTextureClient(backBuffer)) {
-        NS_WARNING("Failed to add tile TextureClient.");
+        gfxCriticalError() << "[Tiling:Client] Failed to connect a TextureClient (a)";
         aTile.DiscardFrontBuffer();
         aTile.DiscardBackBuffer();
         return aTile;
       }
       if (backBufferOnWhite && !mCompositableClient->AddTextureClient(backBufferOnWhite)) {
-        NS_WARNING("Failed to add tile TextureClient.");
+        gfxCriticalError() << "[Tiling:Client] Failed to connect a TextureClient (b)";
         aTile.DiscardFrontBuffer();
         aTile.DiscardBackBuffer();
         return aTile;
@@ -1196,7 +1202,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
     mTilingOrigin.y = std::min(mTilingOrigin.y, moz2DTile.mTileOrigin.y);
 
     nsIntRegionRectIterator it(aDirtyRegion);
-    for (const nsIntRect* dirtyRect = it.Next(); dirtyRect != nullptr; dirtyRect = it.Next()) {
+    for (const IntRect* dirtyRect = it.Next(); dirtyRect != nullptr; dirtyRect = it.Next()) {
       gfx::Rect drawRect(dirtyRect->x - aTileOrigin.x,
                          dirtyRect->y - aTileOrigin.y,
                          dirtyRect->width,
@@ -1205,7 +1211,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
 
       // Mark the newly updated area as invalid in the front buffer
       aTile.mInvalidFront.Or(aTile.mInvalidFront,
-        nsIntRect(NS_lroundf(drawRect.x), NS_lroundf(drawRect.y),
+        IntRect(NS_lroundf(drawRect.x), NS_lroundf(drawRect.y),
                   drawRect.width, drawRect.height));
 
       if (mode == SurfaceMode::SURFACE_COMPONENT_ALPHA) {
@@ -1239,7 +1245,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
   // XXX Perhaps we should just copy the bounding rectangle here?
   RefPtr<gfx::SourceSurface> source = mSinglePaintDrawTarget->Snapshot();
   nsIntRegionRectIterator it(aDirtyRegion);
-  for (const nsIntRect* dirtyRect = it.Next(); dirtyRect != nullptr; dirtyRect = it.Next()) {
+  for (const IntRect* dirtyRect = it.Next(); dirtyRect != nullptr; dirtyRect = it.Next()) {
 #ifdef GFX_TILEDLAYER_PREF_WARNINGS
     printf_stderr(" break into subdirtyRect %i, %i, %i, %i\n",
                   dirtyRect->x, dirtyRect->y, dirtyRect->width, dirtyRect->height);
@@ -1258,14 +1264,14 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
     drawTarget->CopySurface(source, copyRect, copyTarget);
 
     // Mark the newly updated area as invalid in the front buffer
-    aTile.mInvalidFront.Or(aTile.mInvalidFront, nsIntRect(copyTarget.x, copyTarget.y, copyRect.width, copyRect.height));
+    aTile.mInvalidFront.Or(aTile.mInvalidFront, IntRect(copyTarget.x, copyTarget.y, copyRect.width, copyRect.height));
   }
 
   // only worry about padding when not doing low-res
   // because it simplifies the math and the artifacts
   // won't be noticable
   if (mResolution == 1) {
-    nsIntRect unscaledTile = nsIntRect(aTileOrigin.x,
+    IntRect unscaledTile = IntRect(aTileOrigin.x,
                                        aTileOrigin.y,
                                        GetTileSize().width,
                                        GetTileSize().height);
@@ -1293,7 +1299,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
   drawTarget = nullptr;
 
   nsIntRegion tileRegion =
-    nsIntRect(aTileOrigin.x, aTileOrigin.y,
+    IntRect(aTileOrigin.x, aTileOrigin.y,
               GetScaledTileSize().width, GetScaledTileSize().height);
   // Intersect this area with the portion that's invalid.
   tileRegion.SubOut(GetValidRegion());
@@ -1304,7 +1310,7 @@ ClientTiledLayerBuffer::ValidateTile(TileClient aTile,
 
   if (createdTextureClient) {
     if (!mCompositableClient->AddTextureClient(backBuffer)) {
-      NS_WARNING("Failed to add tile TextureClient.");
+      gfxCriticalError() << "[Tiling:Client] Failed to connect a TextureClient (c)";
       aTile.DiscardFrontBuffer();
       aTile.DiscardBackBuffer();
       return aTile;
@@ -1342,7 +1348,7 @@ GetCompositorSideCompositionBounds(const LayerMetricsWrapper& aScrollAncestor,
 {
   Matrix4x4 transform = aTransformToCompBounds * Matrix4x4(aAPZTransform);
   return TransformTo<LayerPixel>(transform.Inverse(),
-            aScrollAncestor.Metrics().mCompositionBounds);
+            aScrollAncestor.Metrics().GetCompositionBounds());
 }
 
 bool
@@ -1437,7 +1443,7 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
   // make the progressive paint more visible to the user while scrolling.
   // On B2G uploads are cheaper and we value coherency more, especially outside
   // the browser, so we always use the entire user-visible area.
-  nsIntRect coherentUpdateRect(LayerIntRect::ToUntyped(RoundedOut(
+  IntRect coherentUpdateRect(LayerIntRect::ToUntyped(RoundedOut(
 #ifdef MOZ_WIDGET_ANDROID
     transformedCompositionBounds.Intersect(aPaintData->mCompositionBounds)
 #else
@@ -1473,7 +1479,7 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
   // The following code decides what order to draw tiles in, based on the
   // current scroll direction of the primary scrollable layer.
   NS_ASSERTION(!aRegionToPaint.IsEmpty(), "Unexpectedly empty paint region!");
-  nsIntRect paintBounds = aRegionToPaint.GetBounds();
+  IntRect paintBounds = aRegionToPaint.GetBounds();
 
   int startX, incX, startY, incY;
   gfx::IntSize scaledTileSize = GetScaledTileSize();
@@ -1494,7 +1500,7 @@ ClientTiledLayerBuffer::ComputeProgressiveUpdateRegion(const nsIntRegion& aInval
   }
 
   // Find a tile to draw.
-  nsIntRect tileBounds(startX, startY, scaledTileSize.width, scaledTileSize.height);
+  IntRect tileBounds(startX, startY, scaledTileSize.width, scaledTileSize.height);
   int32_t scrollDiffX = aPaintData->mScrollOffset.x - aPaintData->mLastScrollOffset.x;
   int32_t scrollDiffY = aPaintData->mScrollOffset.y - aPaintData->mLastScrollOffset.y;
   // This loop will always terminate, as there is at least one tile area
@@ -1615,5 +1621,5 @@ TiledContentClient::Dump(std::stringstream& aStream,
   mTiledBuffer.Dump(aStream, aPrefix, aDumpHtml);
 }
 
-}
-}
+} // namespace layers
+} // namespace mozilla

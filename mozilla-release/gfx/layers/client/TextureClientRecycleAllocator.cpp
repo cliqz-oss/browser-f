@@ -74,6 +74,11 @@ public:
     return mSurfaceAllocator->IsSameProcess();
   }
 
+  virtual MessageLoop * GetMessageLoop() const override
+  {
+    return mSurfaceAllocator->GetMessageLoop();
+  }
+
 protected:
   // ISurfaceAllocator
   virtual bool IsOnCompositorSide() const override
@@ -193,7 +198,8 @@ TextureClientRecycleAllocatorImp::CreateOrRecycleForDrawing(
     mInUseClients[textureHolder->GetTextureClient()] = textureHolder;
   }
   textureHolder->GetTextureClient()->SetRecycleCallback(TextureClientRecycleAllocatorImp::RecycleCallback, this);
-  return textureHolder->GetTextureClient();
+  RefPtr<TextureClient> client(textureHolder->GetTextureClient());
+  return client.forget();
 }
 
 void
@@ -229,6 +235,7 @@ TextureClientRecycleAllocatorImp::RecycleCallbackImp(TextureClient* aClient)
 /* static */ void
 TextureClientRecycleAllocatorImp::RecycleCallback(TextureClient* aClient, void* aClosure)
 {
+  MOZ_ASSERT(aClient && !aClient->IsDead());
   TextureClientRecycleAllocatorImp* recycleAllocator = static_cast<TextureClientRecycleAllocatorImp*>(aClosure);
   recycleAllocator->RecycleCallbackImp(aClient);
 }
