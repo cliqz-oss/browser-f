@@ -91,7 +91,7 @@ needs-focus == data:text/plain, about:blank
 
 # Sanity check of viewport+displayport overrides
 skip-if(!browserIsRemote) != test-displayport-2.html test-displayport-ref.html # bug 593168
-skip-if(!browserIsRemote) fails-if(OSX&&layersGPUAccelerated) fuzzy-if(layersOMTC,1,1390) random-if(Android&&AndroidVersion<15) random-if(B2G||B2GDT||Mulet) == 647192-1.html 647192-1-ref.html # Initial mulet triage: parity with B2G/B2G Desktop
+skip-if(!browserIsRemote) fails-if(OSX&&layersGPUAccelerated) fuzzy-if(layersOMTC,1,1390) random-if(Android&&AndroidVersion<15) random-if(B2G||B2GDT||Mulet) random-if(transparentScrollbars) == 647192-1.html 647192-1-ref.html # Initial mulet triage: parity with B2G/B2G Desktop
 skip-if(!browserIsRemote||((B2G&&browserIsRemote)||Mulet)) == 656041-1.html 656041-1-ref.html # Initial mulet triage: parity with B2G/B2G Desktop
 skip-if(!browserIsRemote||layersOMTC) == test-displayport-bg.html test-displayport-ref.html # bug 694706
 
@@ -166,6 +166,9 @@ default-preferences pref(layers.low-precision-buffer,false)
 skip-if(!asyncPanZoom||!browserIsRemote) != async-scroll-1b.html async-scroll-1-ref.html
 default-preferences
 
+skip-if(!asyncPanZoom) != async-zoom-1.html async-zoom-1-ref.html
+fuzzy(112,1197) skip-if(!asyncPanZoom) == async-zoom-2.html async-zoom-2-ref.html
+
 # reftest-opaque-layer
 == reftest-opaque-layer-pass.html reftest-opaque-layer-pass.html
 != reftest-opaque-layer-pass.html about:blank
@@ -181,8 +184,8 @@ fails != reftest-opaque-layer-fail.html about:blank
 fails != about:blank reftest-opaque-layer-fail.html
 
 # reftest-opaque-layer and reftest-wait
-skip-if(Mulet) == reftest-opaque-layer-wait-pass.html reftest-opaque-layer-pass.html # TC: Bug 1144079 - Re-enable Mulet mochitests and reftests taskcluster-specific disables.
-skip-if(Mulet) != reftest-opaque-layer-wait-pass.html about:blank # TC: Bug 1144079 - Re-enable Mulet mochitests and reftests taskcluster-specific disables.
+== reftest-opaque-layer-wait-pass.html reftest-opaque-layer-pass.html
+!= reftest-opaque-layer-wait-pass.html about:blank
 fails == reftest-opaque-layer-wait-fail.html reftest-opaque-layer-fail.html
 fails != reftest-opaque-layer-wait-fail.html about:blank
 

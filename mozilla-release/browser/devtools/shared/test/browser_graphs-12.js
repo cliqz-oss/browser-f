@@ -3,7 +3,9 @@
 
 // Tests that canvas graphs can have their selection linked.
 
-let {LineGraphWidget, BarGraphWidget, CanvasGraphUtils} = Cu.import("resource:///modules/devtools/Graphs.jsm", {});
+let LineGraphWidget = devtools.require("devtools/shared/widgets/LineGraphWidget");
+let BarGraphWidget = devtools.require("devtools/shared/widgets/BarGraphWidget");
+let {CanvasGraphUtils} = devtools.require("devtools/shared/widgets/Graphs");
 let {Promise} = devtools.require("resource://gre/modules/Promise.jsm");
 
 add_task(function*() {
@@ -135,19 +137,19 @@ function testGraphs(graph1, graph2) {
 function hover(graph, x, y = 1) {
   x /= window.devicePixelRatio;
   y /= window.devicePixelRatio;
-  graph._onMouseMove({ clientX: x, clientY: y });
+  graph._onMouseMove({ testX: x, testY: y });
 }
 
 function dragStart(graph, x, y = 1) {
   x /= window.devicePixelRatio;
   y /= window.devicePixelRatio;
-  graph._onMouseMove({ clientX: x, clientY: y });
-  graph._onMouseDown({ clientX: x, clientY: y });
+  graph._onMouseMove({ testX: x, testY: y });
+  graph._onMouseDown({ testX: x, testY: y });
 }
 
 function dragStop(graph, x, y = 1) {
   x /= window.devicePixelRatio;
   y /= window.devicePixelRatio;
-  graph._onMouseMove({ clientX: x, clientY: y });
-  graph._onMouseUp({ clientX: x, clientY: y });
+  graph._onMouseMove({ testX: x, testY: y });
+  graph._onMouseUp({ testX: x, testY: y });
 }

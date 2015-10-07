@@ -15,11 +15,8 @@ contains the code for converting executed mozbuild files into these data
 structures.
 """
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
-import os
-
-from collections import OrderedDict
 from mozbuild.util import (
     shell_quote,
     StrictOrderingOnAppendList,
@@ -160,17 +157,19 @@ class XPIDLFile(ContextDerived):
     """Describes an XPIDL file to be compiled."""
 
     __slots__ = (
+        'add_to_manifest',
         'basename',
         'install_target',
         'source_path',
     )
 
-    def __init__(self, context, source, module):
+    def __init__(self, context, source, module, add_to_manifest):
         ContextDerived.__init__(self, context)
 
         self.source_path = source
         self.basename = mozpath.basename(source)
         self.module = module
+        self.add_to_manifest = add_to_manifest
 
         self.install_target = context['FINAL_TARGET']
 
@@ -247,6 +246,20 @@ class Resources(ContextDerived):
         if defines:
             defs.update(defines)
         self.defines = defs
+
+class BrandingFiles(ContextDerived):
+    """Sandbox container object for BRANDING_FILES, which is a
+    HierarchicalStringList.
+
+    We need an object derived from ContextDerived for use in the backend, so
+    this object fills that role. It just has a reference to the underlying
+    HierarchicalStringList, which is created when parsing BRANDING_FILES.
+    """
+    __slots__ = ('files')
+
+    def __init__(self, sandbox, files):
+        ContextDerived.__init__(self, sandbox)
+        self.files = files
 
 class JsPreferenceFile(ContextDerived):
     """Context derived container object for a Javascript preference file.
@@ -488,12 +501,14 @@ class StaticLibrary(Library):
     """Context derived container object for a static library"""
     __slots__ = (
         'link_into',
+        'no_expand_lib',
     )
 
     def __init__(self, context, basename, real_name=None, is_sdk=False,
-        link_into=None):
+        link_into=None, no_expand_lib=False):
         Library.__init__(self, context, basename, real_name, is_sdk)
         self.link_into = link_into
+        self.no_expand_lib = no_expand_lib
 
 
 class SharedLibrary(Library):
@@ -826,7 +841,7 @@ class InstallationTarget(ContextDerived):
         self.xpiname = context.get('XPI_NAME', '')
         self.subdir = context.get('DIST_SUBDIR', '')
         self.target = context['FINAL_TARGET']
-        self.enabled = not context.get('NO_DIST_INSTALL', False)
+        self.enabled = context['DIST_INSTALL'] is not False
 
     def is_custom(self):
         """Returns whether or not the target is not derived from the default
@@ -844,6 +859,22 @@ class FinalTargetFiles(ContextDerived):
     We need an object derived from ContextDerived for use in the backend, so
     this object fills that role. It just has a reference to the underlying
     HierarchicalStringList, which is created when parsing FINAL_TARGET_FILES.
+    """
+    __slots__ = ('files', 'target')
+
+    def __init__(self, sandbox, files, target):
+        ContextDerived.__init__(self, sandbox)
+        self.files = files
+        self.target = target
+
+
+class DistFiles(ContextDerived):
+    """Sandbox container object for FINAL_TARGET_FILES, which is a
+    HierarchicalStringList.
+
+    We need an object derived from ContextDerived for use in the backend, so
+    this object fills that role. It just has a reference to the underlying
+    HierarchicalStringList, which is created when parsing DIST_FILES.
     """
     __slots__ = ('files', 'target')
 

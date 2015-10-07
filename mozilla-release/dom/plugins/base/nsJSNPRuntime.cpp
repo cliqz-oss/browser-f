@@ -18,8 +18,8 @@
 #include "nsDOMJSUtils.h"
 #include "nsJSUtils.h"
 #include "nsIDocument.h"
-#include "nsIJSRuntimeService.h"
 #include "nsIXPConnect.h"
+#include "xpcpublic.h"
 #include "nsIDOMElement.h"
 #include "prmem.h"
 #include "nsIContent.h"
@@ -83,15 +83,14 @@ static JSObjWrapperTable sJSObjWrappers;
 static bool sJSObjWrappersAccessible = false;
 
 // Hash of NPObject wrappers that wrap NPObjects as JSObjects.
-static PLDHashTable sNPObjWrappers;
+static PLDHashTable* sNPObjWrappers;
 
 // Global wrapper count. This includes JSObject wrappers *and*
 // NPObject wrappers. When this count goes to zero, there are no more
 // wrappers and we can kill off hash tables etc.
 static int32_t sWrapperCount;
 
-// The runtime service used to register/unregister GC callbacks.
-nsCOMPtr<nsIJSRuntimeService> sCallbackRuntime;
+static bool sCallbackIsRegistered = false;
 
 static nsTArray<NPObject*>* sDelayedReleases;
 
@@ -163,7 +162,7 @@ NPClass nsJSObjWrapper::sJSObjWrapperNPClass =
   };
 
 static bool
-NPObjWrapper_AddProperty(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JS::MutableHandle<JS::Value> vp);
+NPObjWrapper_AddProperty(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JS::Handle<JS::Value> v);
 
 static bool
 NPObjWrapper_DelProperty(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id,
@@ -177,7 +176,8 @@ static bool
 NPObjWrapper_GetProperty(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JS::MutableHandle<JS::Value> vp);
 
 static bool
-NPObjWrapper_Enumerate(JSContext *cx, JS::Handle<JSObject*> obj, JS::AutoIdVector &properties);
+NPObjWrapper_Enumerate(JSContext *cx, JS::Handle<JSObject*> obj, JS::AutoIdVector &properties,
+                       bool enumerableOnly);
 
 static bool
 NPObjWrapper_Resolve(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id,
@@ -213,6 +213,7 @@ const static js::Class sNPObjectJSWrapperClass =
     NPObjWrapper_SetProperty,
     nullptr,
     NPObjWrapper_Resolve,
+    nullptr,                                                /* mayResolve */
     NPObjWrapper_Convert,
     NPObjWrapper_Finalize,
     NPObjWrapper_Call,
@@ -265,7 +266,7 @@ static const JSClass sNPObjectMemberClass =
   {
     "NPObject Ambiguous Member class", JSCLASS_HAS_PRIVATE | JSCLASS_IMPLEMENTS_BARRIERS,
     nullptr, nullptr, nullptr, nullptr,
-    nullptr, nullptr, NPObjectMember_Convert,
+    nullptr, nullptr, nullptr, NPObjectMember_Convert,
     NPObjectMember_Finalize, NPObjectMember_Call,
     nullptr, nullptr, NPObjectMember_Trace
   };
@@ -318,18 +319,11 @@ DelayedReleaseGCCallback(JSGCStatus status)
 static bool
 RegisterGCCallbacks()
 {
-  if (sCallbackRuntime) {
+  if (sCallbackIsRegistered) {
     return true;
   }
 
-  static const char rtsvc_id[] = "@mozilla.org/js/xpc/RuntimeService;1";
-  nsCOMPtr<nsIJSRuntimeService> rtsvc(do_GetService(rtsvc_id));
-  if (!rtsvc) {
-    return false;
-  }
-
-  JSRuntime *jsRuntime = nullptr;
-  rtsvc->GetRuntime(&jsRuntime);
+  JSRuntime *jsRuntime = xpc::GetJSRuntime();
   MOZ_ASSERT(jsRuntime != nullptr);
 
   // Register a callback to trace wrapped JSObjects.
@@ -339,30 +333,29 @@ RegisterGCCallbacks()
 
   // Register our GC callback to perform delayed destruction of finalized
   // NPObjects.
-  rtsvc->RegisterGCCallback(DelayedReleaseGCCallback);
+  xpc::AddGCCallback(DelayedReleaseGCCallback);
 
-  // Set runtime pointer to indicate that callbacks have been registered.
-  sCallbackRuntime = rtsvc;
+  sCallbackIsRegistered = true;
+
   return true;
 }
 
 static void
 UnregisterGCCallbacks()
 {
-  MOZ_ASSERT(sCallbackRuntime);
+  MOZ_ASSERT(sCallbackIsRegistered);
 
-  JSRuntime *jsRuntime = nullptr;
-  sCallbackRuntime->GetRuntime(&jsRuntime);
+  JSRuntime *jsRuntime = xpc::GetJSRuntime();
   MOZ_ASSERT(jsRuntime != nullptr);
 
   // Remove tracing callback.
   JS_RemoveExtraGCRootsTracer(jsRuntime, TraceJSObjWrappers, nullptr);
 
   // Remove delayed destruction callback.
-  sCallbackRuntime->UnregisterGCCallback(DelayedReleaseGCCallback);
-
-  // Unset runtime pointer to indicate callbacks are no longer registered.
-  sCallbackRuntime = nullptr;
+  if (sCallbackIsRegistered) {
+    xpc::RemoveGCCallback(DelayedReleaseGCCallback);
+    sCallbackIsRegistered = false;
+  }
 }
 
 static bool
@@ -400,23 +393,24 @@ DestroyJSObjWrapperTable()
 static bool
 CreateNPObjWrapperTable()
 {
-  MOZ_ASSERT(!sNPObjWrappers.IsInitialized());
+  MOZ_ASSERT(!sNPObjWrappers);
 
   if (!RegisterGCCallbacks()) {
     return false;
   }
 
-  PL_DHashTableInit(&sNPObjWrappers, PL_DHashGetStubOps(),
-                    sizeof(NPObjWrapperHashEntry));
+  sNPObjWrappers =
+    new PLDHashTable(PL_DHashGetStubOps(), sizeof(NPObjWrapperHashEntry));
   return true;
 }
 
 static void
 DestroyNPObjWrapperTable()
 {
-  MOZ_ASSERT(sNPObjWrappers.EntryCount() == 0);
+  MOZ_ASSERT(sNPObjWrappers->EntryCount() == 0);
 
-  PL_DHashTableFinish(&sNPObjWrappers);
+  delete sNPObjWrappers;
+  sNPObjWrappers = nullptr;
 }
 
 static void
@@ -435,7 +429,7 @@ OnWrapperDestroyed()
       DestroyJSObjWrapperTable();
     }
 
-    if (sNPObjWrappers.IsInitialized()) {
+    if (sNPObjWrappers) {
       // No more wrappers, and our hash was initialized. Finish the
       // hash to prevent leaking it.
       DestroyNPObjWrapperTable();
@@ -773,7 +767,7 @@ doInvoke(NPObject *npobj, NPIdentifier method, const NPVariant *args,
 
   // We're about to run script via JS_CallFunctionValue, so we need an
   // AutoEntryScript. NPAPI plugins are Gecko-specific and not in any spec.
-  dom::AutoEntryScript aes(globalObject);
+  dom::AutoEntryScript aes(globalObject, "NPAPI doInvoke");
   JSContext *cx = aes.cx();
 
   if (!npobj || !result) {
@@ -901,7 +895,7 @@ nsJSObjWrapper::NP_GetProperty(NPObject *npobj, NPIdentifier id,
 
   // We're about to run script via JS_CallFunctionValue, so we need an
   // AutoEntryScript. NPAPI plugins are Gecko-specific and not in any spec.
-  dom::AutoEntryScript aes(globalObject);
+  dom::AutoEntryScript aes(globalObject, "NPAPI get");
   JSContext *cx = aes.cx();
 
   if (!npobj) {
@@ -935,7 +929,7 @@ nsJSObjWrapper::NP_SetProperty(NPObject *npobj, NPIdentifier npid,
 
   // We're about to run script via JS_CallFunctionValue, so we need an
   // AutoEntryScript. NPAPI plugins are Gecko-specific and not in any spec.
-  dom::AutoEntryScript aes(globalObject);
+  dom::AutoEntryScript aes(globalObject, "NPAPI set");
   JSContext *cx = aes.cx();
 
   if (!npobj) {
@@ -1250,7 +1244,7 @@ GetNPObject(JSContext *cx, JSObject *obj)
 // Does not actually add a property because this is always followed by a
 // SetProperty call.
 static bool
-NPObjWrapper_AddProperty(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JS::MutableHandle<JS::Value> vp)
+NPObjWrapper_AddProperty(JSContext *cx, JS::Handle<JSObject*> obj, JS::Handle<jsid> id, JS::Handle<JS::Value> v)
 {
   NPObject *npobj = GetNPObject(cx, obj);
 
@@ -1622,7 +1616,7 @@ CallNPMethod(JSContext *cx, unsigned argc, JS::Value *vp)
 
 static bool
 NPObjWrapper_Enumerate(JSContext *cx, JS::Handle<JSObject*> obj,
-                       JS::AutoIdVector &properties)
+                       JS::AutoIdVector &properties, bool enumerableOnly)
 {
   NPObject *npobj = GetNPObject(cx, obj);
   if (!npobj || !npobj->_class) {
@@ -1760,8 +1754,8 @@ NPObjWrapper_Finalize(js::FreeOp *fop, JSObject *obj)
 {
   NPObject *npobj = (NPObject *)::JS_GetPrivate(obj);
   if (npobj) {
-    if (sNPObjWrappers.IsInitialized()) {
-      PL_DHashTableRemove(&sNPObjWrappers, npobj);
+    if (sNPObjWrappers) {
+      PL_DHashTableRemove(sNPObjWrappers, npobj);
     }
   }
 
@@ -1776,7 +1770,7 @@ NPObjWrapper_ObjectMoved(JSObject *obj, const JSObject *old)
   // The wrapper JSObject has been moved, so we need to update the entry in the
   // sNPObjWrappers hash table, if present.
 
-  if (!sNPObjWrappers.IsInitialized()) {
+  if (!sNPObjWrappers) {
     return;
   }
 
@@ -1789,7 +1783,7 @@ NPObjWrapper_ObjectMoved(JSObject *obj, const JSObject *old)
   JS::AutoSuppressGCAnalysis nogc;
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableSearch(&sNPObjWrappers, npobj));
+    (PL_DHashTableSearch(sNPObjWrappers, npobj));
   MOZ_ASSERT(entry && entry->mJSObj);
   MOZ_ASSERT(entry->mJSObj == old);
   entry->mJSObj = obj;
@@ -1835,14 +1829,14 @@ nsNPObjWrapper::OnDestroy(NPObject *npobj)
     return;
   }
 
-  if (!sNPObjWrappers.IsInitialized()) {
+  if (!sNPObjWrappers) {
     // No hash yet (or any more), no used wrappers available.
 
     return;
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableSearch(&sNPObjWrappers, npobj));
+    (PL_DHashTableSearch(sNPObjWrappers, npobj));
 
   if (entry && entry->mJSObj) {
     // Found a live NPObject wrapper, null out its JSObjects' private
@@ -1851,7 +1845,7 @@ nsNPObjWrapper::OnDestroy(NPObject *npobj)
     ::JS_SetPrivate(entry->mJSObj, nullptr);
 
     // Remove the npobj from the hash now that it went away.
-    PL_DHashTableRawRemove(&sNPObjWrappers, entry);
+    PL_DHashTableRawRemove(sNPObjWrappers, entry);
 
     // The finalize hook will call OnWrapperDestroyed().
   }
@@ -1885,7 +1879,7 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
     return nullptr;
   }
 
-  if (!sNPObjWrappers.IsInitialized()) {
+  if (!sNPObjWrappers) {
     // No hash yet (or any more), initialize it.
     if (!CreateNPObjWrapperTable()) {
       return nullptr;
@@ -1893,7 +1887,7 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableAdd(&sNPObjWrappers, npobj, fallible));
+    (PL_DHashTableAdd(sNPObjWrappers, npobj, fallible));
 
   if (!entry) {
     // Out of memory
@@ -1915,24 +1909,24 @@ nsNPObjWrapper::GetNewOrUsed(NPP npp, JSContext *cx, NPObject *npobj)
   entry->mNPObj = npobj;
   entry->mNpp = npp;
 
-  uint32_t generation = sNPObjWrappers.Generation();
+  uint32_t generation = sNPObjWrappers->Generation();
 
   // No existing JSObject, create one.
 
   JS::Rooted<JSObject*> obj(cx, ::JS_NewObject(cx, js::Jsvalify(&sNPObjectJSWrapperClass)));
 
-  if (generation != sNPObjWrappers.Generation()) {
+  if (generation != sNPObjWrappers->Generation()) {
       // Reload entry if the JS_NewObject call caused a GC and reallocated
       // the table (see bug 445229). This is guaranteed to succeed.
 
-      NS_ASSERTION(PL_DHashTableSearch(&sNPObjWrappers, npobj),
+      NS_ASSERTION(PL_DHashTableSearch(sNPObjWrappers, npobj),
                    "Hashtable didn't find what we just added?");
   }
 
   if (!obj) {
     // OOM? Remove the stale entry from the hash.
 
-    PL_DHashTableRawRemove(&sNPObjWrappers, entry);
+    PL_DHashTableRawRemove(sNPObjWrappers, entry);
 
     return nullptr;
   }
@@ -1966,10 +1960,10 @@ NPObjWrapperPluginDestroyedCallback(PLDHashTable *table, PLDHashEntryHdr *hdr,
   NppAndCx *nppcx = reinterpret_cast<NppAndCx *>(arg);
 
   if (entry->mNpp == nppcx->npp) {
-    // Prevent invalidate() and deallocate() from touching the hash
-    // we're enumerating.
-    const PLDHashTableOps *ops = table->Ops();
-    table->SetOps(nullptr);
+    // HACK: temporarily hide the hash we're enumerating so that invalidate()
+    // and deallocate() don't touch it.
+    PLDHashTable *tmp = static_cast<PLDHashTable*>(table);
+    sNPObjWrappers = nullptr;
 
     NPObject *npobj = entry->mNPObj;
 
@@ -1997,7 +1991,7 @@ NPObjWrapperPluginDestroyedCallback(PLDHashTable *table, PLDHashEntryHdr *hdr,
 
     ::JS_SetPrivate(entry->mJSObj, nullptr);
 
-    table->SetOps(ops);
+    sNPObjWrappers = tmp;
 
     if (sDelayedReleases && sDelayedReleases->RemoveElement(npobj)) {
       OnWrapperDestroyed();
@@ -2038,9 +2032,9 @@ nsJSNPRuntime::OnPluginDestroy(NPP npp)
   // Use the safe JSContext here as we're not always able to find the
   // JSContext associated with the NPP any more.
   AutoSafeJSContext cx;
-  if (sNPObjWrappers.IsInitialized()) {
+  if (sNPObjWrappers) {
     NppAndCx nppcx = { npp, cx };
-    PL_DHashTableEnumerate(&sNPObjWrappers,
+    PL_DHashTableEnumerate(sNPObjWrappers,
                            NPObjWrapperPluginDestroyedCallback, &nppcx);
   }
 }
@@ -2073,7 +2067,7 @@ LookupNPP(NPObject *npobj)
   }
 
   NPObjWrapperHashEntry *entry = static_cast<NPObjWrapperHashEntry *>
-    (PL_DHashTableAdd(&sNPObjWrappers, npobj, fallible));
+    (PL_DHashTableAdd(sNPObjWrappers, npobj, fallible));
 
   if (!entry) {
     return nullptr;

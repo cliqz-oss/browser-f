@@ -16,6 +16,7 @@
 #include "jscntxt.h"
 
 #include "gc/Barrier.h"
+#include "vm/ReceiverGuard.h"
 #include "vm/Stack.h"
 
 /*
@@ -34,9 +35,9 @@ struct NativeIterator
     HeapPtrFlatString* props_array;
     HeapPtrFlatString* props_cursor;
     HeapPtrFlatString* props_end;
-    Shape** shapes_array;
-    uint32_t shapes_length;
-    uint32_t shapes_key;
+    HeapReceiverGuard* guard_array;
+    uint32_t guard_length;
+    uint32_t guard_key;
     uint32_t flags;
 
   private:
@@ -102,7 +103,7 @@ struct NativeIterator
         prev_ = nullptr;
     }
 
-    static NativeIterator* allocateSentinel(JSContext* cx);
+    static NativeIterator* allocateSentinel(JSContext* maybecx);
     static NativeIterator* allocateIterator(JSContext* cx, uint32_t slength,
                                             const js::AutoIdVector& props);
     void init(JSObject* obj, JSObject* iterObj, unsigned flags, uint32_t slength, uint32_t key);
@@ -191,9 +192,6 @@ SuppressDeletedProperty(JSContext* cx, HandleObject obj, jsid id);
 
 extern bool
 SuppressDeletedElement(JSContext* cx, HandleObject obj, uint32_t index);
-
-extern bool
-SuppressDeletedElements(JSContext* cx, HandleObject obj, uint32_t begin, uint32_t end);
 
 /*
  * IteratorMore() returns the next iteration value. If no value is available,

@@ -466,7 +466,9 @@ EventDispatcher::Dispatch(nsISupports* aTarget,
       nsPIDOMWindow* win = doc ? doc->GetInnerWindow() : nullptr;
       // If we can't dispatch the event to chrome, do nothing.
       EventTarget* piTarget = win ? win->GetParentTarget() : nullptr;
-      NS_ENSURE_TRUE(piTarget, NS_OK);
+      if (!piTarget) {
+        return NS_OK;
+      }
 
       // Set the target to be the original dispatch target,
       aEvent->target = target;
@@ -858,13 +860,6 @@ EventDispatcher::CreateEvent(EventTarget* aOwner,
   }
   if (aEventType.LowerCaseEqualsLiteral("scrollareaevent"))
     return NS_NewDOMScrollAreaEvent(aDOMEvent, aOwner, aPresContext, nullptr);
-  if (aEventType.LowerCaseEqualsLiteral("closeevent")) {
-    CloseEventInit init;
-    nsRefPtr<CloseEvent> event =
-      CloseEvent::Constructor(aOwner, EmptyString(), init);
-    event.forget(aDOMEvent);
-    return NS_OK;
-  }
   // XXXkhuey Chrome supports popstateevent here, even though it provides no
   // initPopStateEvent method.  This is nuts ... but copying it is unlikely to
   // break the web.

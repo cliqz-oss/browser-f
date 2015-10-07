@@ -95,6 +95,7 @@ function close(panel) {
   // when quitting the host application while a panel is visible.  To suppress
   // these errors, check for "hidePopup" in panel before calling it.
   // It's not clear if there's an issue or it's expected behavior.
+  // See Bug 1151796.
 
   return panel.hidePopup && panel.hidePopup();
 }
@@ -128,7 +129,7 @@ function display(panel, options, anchor) {
 
     let viewportRect = document.defaultView.gBrowser.getBoundingClientRect();
 
-    ({x, y, width, height}) = calculateRegion(options, viewportRect);
+    ({x, y, width, height} = calculateRegion(options, viewportRect));
   }
   else {
     // The XUL Panel has an arrow, so the margin needs to be reset
@@ -144,7 +145,7 @@ function display(panel, options, anchor) {
     // chrome browser window, and therefore there is no need for this check.
     if (CustomizableUI) {
       let node = anchor;
-      ({anchor}) = CustomizableUI.getWidget(anchor.id).forWindow(window);
+      ({anchor} = CustomizableUI.getWidget(anchor.id).forWindow(window));
 
       // if `node` is not the `anchor` itself, it means the widget is
       // positioned in a panel, therefore we have to hide it before show

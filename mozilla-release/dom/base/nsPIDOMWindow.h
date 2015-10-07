@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -25,7 +25,6 @@ class nsIContent;
 class nsIDocShell;
 class nsIDocument;
 class nsIIdleObserver;
-class nsIPrincipal;
 class nsIScriptTimeoutHandler;
 class nsIURI;
 class nsPerformance;
@@ -63,8 +62,8 @@ enum UIStateChangeType
 };
 
 #define NS_PIDOMWINDOW_IID \
-{ 0x2485d4d7, 0xf7cb, 0x481e, \
-  { 0x9c, 0x89, 0xb2, 0xa8, 0x12, 0x67, 0x7f, 0x97 } }
+{ 0x0df7578f, 0x31d4, 0x4391, \
+  { 0x98, 0xd4, 0xf3, 0x7d, 0x51, 0x8e, 0xa4, 0x37 } }
 
 class nsPIDOMWindow : public nsIDOMWindowInternal
 {
@@ -464,16 +463,29 @@ public:
 
   /**
    * Moves the top-level window into fullscreen mode if aIsFullScreen is true,
-   * otherwise exits fullscreen. If aRequireTrust is true, this method only
-   * changes window state in a context trusted for write.
+   * otherwise exits fullscreen. If aFullscreenMode is true, this method is
+   * called for fullscreen mode instead of DOM fullscreen, which means it can
+   * only change window state in a context trusted for write.
    *
    * If aHMD is not null, the window is made full screen on the given VR HMD
    * device instead of its currrent display.
    *
    * Outer windows only.
    */
-  virtual nsresult SetFullScreenInternal(bool aIsFullScreen, bool aRequireTrust,
+  virtual nsresult SetFullScreenInternal(bool aIsFullscreen, bool aFullscreenMode,
                                          mozilla::gfx::VRHMDInfo *aHMD = nullptr) = 0;
+
+  /**
+   * This function should be called when the fullscreen state is flipped.
+   * If no widget is involved the fullscreen change, this method is called
+   * by SetFullScreenInternal, otherwise, it is called when the widget
+   * finishes its change to or from fullscreen.
+   *
+   * @param aIsFullscreen indicates whether the widget is in fullscreen.
+   *
+   * Outer windows only.
+   */
+  virtual void FinishFullscreenChange(bool aIsFullscreen) = 0;
 
   /**
    * Call this to check whether some node (this window, its document,
@@ -698,7 +710,7 @@ public:
                         const nsAString& aPopupWindowFeatures) = 0;
 
   // Inner windows only.
-  void AddAudioContext(mozilla::dom::AudioContext* aAudioContext);
+  bool AddAudioContext(mozilla::dom::AudioContext* aAudioContext);
   void RemoveAudioContext(mozilla::dom::AudioContext* aAudioContext);
   void MuteAudioContexts();
   void UnmuteAudioContexts();

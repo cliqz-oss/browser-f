@@ -2,14 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*jshint newcap:false*/
-/*global loop, sinon */
-
-var expect = chai.expect;
-var TestUtils = React.addons.TestUtils;
-
 describe("loop.contacts", function() {
   "use strict";
+
+  var expect = chai.expect;
+  var TestUtils = React.addons.TestUtils;
 
   var fakeAddContactButtonText = "Fake Add Contact";
   var fakeEditContactButtonText = "Fake Edit Contact";
@@ -32,7 +29,7 @@ describe("loop.contacts", function() {
     category: ["google"],
     published: 1406798311748,
     updated: 1406798311748
-  },{
+  }, {
     id: 2,
     _guid: 2,
     name: ["Bob Banana"],
@@ -118,7 +115,7 @@ describe("loop.contacts", function() {
     };
 
     fakeWindow = {
-      close: sandbox.stub(),
+      close: sandbox.stub()
     };
     loop.shared.mixins.setRootObject(fakeWindow);
 
@@ -149,7 +146,8 @@ describe("loop.contacts", function() {
     it("should show the gravatars promo box", function() {
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
 
       var promo = listView.getDOMNode().querySelector(".contacts-gravatar-promo");
@@ -169,7 +167,8 @@ describe("loop.contacts", function() {
       };
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
 
       var promo = listView.getDOMNode().querySelector(".contacts-gravatar-promo");
@@ -181,7 +180,8 @@ describe("loop.contacts", function() {
     it("should hide the gravatars promo box when the 'use' button is clicked", function() {
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
 
       React.addons.TestUtils.Simulate.click(listView.getDOMNode().querySelector(
@@ -196,7 +196,8 @@ describe("loop.contacts", function() {
     it("should should set the prefs correctly when the 'use' button is clicked", function() {
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
 
       React.addons.TestUtils.Simulate.click(listView.getDOMNode().querySelector(
@@ -210,7 +211,8 @@ describe("loop.contacts", function() {
     it("should hide the gravatars promo box when the 'close' button is clicked", function() {
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
 
       React.addons.TestUtils.Simulate.click(listView.getDOMNode().querySelector(
@@ -223,7 +225,8 @@ describe("loop.contacts", function() {
     it("should set prefs correctly when the 'close' button is clicked", function() {
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
 
       React.addons.TestUtils.Simulate.click(listView.getDOMNode().querySelector(
@@ -245,7 +248,8 @@ describe("loop.contacts", function() {
 
       listView = TestUtils.renderIntoDocument(
         React.createElement(loop.contacts.ContactsList, {
-          notifications: notifications
+          notifications: notifications,
+          startForm: function() {}
         }));
     });
 
@@ -302,8 +306,10 @@ describe("loop.contacts", function() {
 
         beforeEach(function() {
           view = TestUtils.renderIntoDocument(
-            React.createElement(
-              loop.contacts.ContactDetailsForm, {mode: "add"}));
+            React.createElement(loop.contacts.ContactDetailsForm, {
+              mode: "add",
+              selectTab: function() {}
+            }));
         });
 
         it("should render 'add' header", function() {
@@ -412,8 +418,10 @@ describe("loop.contacts", function() {
 
         beforeEach(function() {
           view = TestUtils.renderIntoDocument(
-            React.createElement(
-              loop.contacts.ContactDetailsForm, {mode: "edit"}));
+            React.createElement(loop.contacts.ContactDetailsForm, {
+              mode: "edit",
+              selectTab: function() {}
+            }));
         });
 
         it("should render 'edit' header", function() {
@@ -476,7 +484,7 @@ describe("loop.contacts", function() {
           var contact = {fakeField: [{value: "foobar"}]};
           loop.contacts._setPreferred(contact, "fakeField", "");
 
-          expect(contact["fakeField"][0].value).to.eql("");
+          expect(contact.fakeField[0].value).to.eql("");
        });
 
     it("should set the value on the object if the new value is empty," +
@@ -484,7 +492,7 @@ describe("loop.contacts", function() {
           var contact = {fakeField: [{value: "foobar"}]};
           loop.contacts._setPreferred(contact, "fakeField", "barbaz");
 
-          expect(contact["fakeField"][0].value).to.eql("barbaz");
+          expect(contact.fakeField[0].value).to.eql("barbaz");
        });
   });
 });

@@ -338,7 +338,9 @@ public:
         struct Key {
             nsCOMPtr<nsIURI>        mURI;
             nsCOMPtr<nsIPrincipal>  mPrincipal; // use nullptr with data: URLs
-            gfxFontEntry*           mFontEntry;
+            // The font entry MUST notify the cache when it is destroyed
+            // (by calling ForgetFont()).
+            gfxFontEntry* MOZ_NON_OWNING_REF mFontEntry;
             uint32_t                mCRC32;
             uint32_t                mLength;
             bool                    mPrivate;
@@ -450,8 +452,8 @@ public:
 
             // The "real" font entry corresponding to this downloaded font.
             // The font entry MUST notify the cache when it is destroyed
-            // (by calling Forget()).
-            gfxFontEntry*          mFontEntry;
+            // (by calling ForgetFont()).
+            gfxFontEntry* MOZ_NON_OWNING_REF mFontEntry;
 
             // Whether this font was loaded from a private window.
             bool                   mPrivate;
@@ -467,9 +469,7 @@ public:
         mLocalRulesUsed = true;
     }
 
-#ifdef PR_LOGGING
     static PRLogModuleInfo* GetUserFontsLog();
-#endif
 
 protected:
     // Protected destructor, to discourage deletion outside of Release():
@@ -611,14 +611,14 @@ protected:
     // returns true if platform font creation sucessful (or local()
     // reference was next in line)
     // Ownership of aFontData is passed in here; the font set must
-    // ensure that it is eventually deleted with NS_Free().
+    // ensure that it is eventually deleted with free().
     bool FontDataDownloadComplete(const uint8_t* aFontData, uint32_t aLength,
                                   nsresult aDownloadStatus);
 
     // helper method for creating a platform font
     // returns true if platform font creation successful
     // Ownership of aFontData is passed in here; the font must
-    // ensure that it is eventually deleted with NS_Free().
+    // ensure that it is eventually deleted with free().
     bool LoadPlatformFont(const uint8_t* aFontData, uint32_t& aLength);
 
     // store metadata and src details for current src into aFontEntry
@@ -651,7 +651,9 @@ protected:
     nsRefPtr<gfxFontEntry>   mPlatformFontEntry;
     nsTArray<gfxFontFaceSrc> mSrcList;
     uint32_t                 mSrcIndex; // index of loading src item
-    nsFontFaceLoader*        mLoader; // current loader for this entry, if any
+    // This field is managed by the nsFontFaceLoader. In the destructor and Cancel()
+    // methods of nsFontFaceLoader this reference is nulled out.
+    nsFontFaceLoader* MOZ_NON_OWNING_REF mLoader; // current loader for this entry, if any
     gfxUserFontSet*          mFontSet; // font-set to which the userfont entry belongs
     nsCOMPtr<nsIPrincipal>   mPrincipal;
 };

@@ -8,13 +8,13 @@
 
 #include "nsBlockReflowState.h"
 
-#include "mozilla/DebugOnly.h"
-
+#include "LayoutLogging.h"
 #include "nsBlockFrame.h"
 #include "nsLineLayout.h"
 #include "nsPresContext.h"
 #include "nsIFrameInlines.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/DebugOnly.h"
 #include "mozilla/Preferences.h"
 #include <algorithm>
 
@@ -112,10 +112,10 @@ nsBlockReflowState::nsBlockReflowState(const nsHTMLReflowState& aReflowState,
 
   mNextInFlow = static_cast<nsBlockFrame*>(mBlock->GetNextInFlow());
 
-  NS_WARN_IF_FALSE(NS_UNCONSTRAINEDSIZE != aReflowState.ComputedISize(),
-                   "have unconstrained width; this should only result from "
-                   "very large sizes, not attempts at intrinsic width "
-                   "calculation");
+  LAYOUT_WARN_IF_FALSE(NS_UNCONSTRAINEDSIZE != aReflowState.ComputedISize(),
+                       "have unconstrained width; this should only result "
+                       "from very large sizes, not attempts at intrinsic "
+                       "width calculation");
   mContentArea.ISize(wm) = aReflowState.ComputedISize();
 
   // Compute content area height. Unlike the width, if we have a
@@ -182,7 +182,7 @@ nsBlockReflowState::ComputeReplacedBlockOffsetsForFloats(
   } else {
     LogicalMargin frameMargin(wm);
     nsCSSOffsetState os(aFrame, mReflowState.rendContext,
-                        mContentArea.ISize(wm));
+                        wm, mContentArea.ISize(wm));
     frameMargin =
       os.ComputedLogicalMargin().ConvertTo(wm, aFrame->GetWritingMode());
 
@@ -209,7 +209,8 @@ GetBEndMarginClone(nsIFrame* aFrame,
 {
   if (aFrame->StyleBorder()->mBoxDecorationBreak ==
         NS_STYLE_BOX_DECORATION_BREAK_CLONE) {
-    nsCSSOffsetState os(aFrame, aRenderingContext, aContentArea.Width(aWritingMode));
+    nsCSSOffsetState os(aFrame, aRenderingContext, aWritingMode,
+                        aContentArea.ISize(aWritingMode));
     return os.ComputedLogicalMargin().
                 ConvertTo(aWritingMode,
                           aFrame->GetWritingMode()).BEnd(aWritingMode);
@@ -642,6 +643,11 @@ nsBlockReflowState::CanPlaceFloat(nscoord aFloatISize,
       aFloatISize;
 }
 
+// Return the inline-size that the float (including margins) will take up
+// in the writing mode of the containing block. If this returns
+// NS_UNCONSTRAINEDSIZE, we're dealing with an orthogonal block that
+// has block-size:auto, and we'll need to actually reflow it to find out
+// how much inline-size it will occupy in the containing block's mode.
 static nscoord
 FloatMarginISize(const nsHTMLReflowState& aCBReflowState,
                  nscoord aFloatAvailableISize,
@@ -663,9 +669,17 @@ FloatMarginISize(const nsHTMLReflowState& aCBReflowState,
               aFloatOffsetState.ComputedLogicalPadding().Size(wm),
               nsIFrame::ComputeSizeFlags::eShrinkWrap);
 
-  return floatSize.ISize(wm) +
-         aFloatOffsetState.ComputedLogicalMargin().IStartEnd(wm) +
-         aFloatOffsetState.ComputedLogicalBorderPadding().IStartEnd(wm);
+  WritingMode cbwm = aCBReflowState.GetWritingMode();
+  nscoord floatISize = floatSize.ConvertTo(cbwm, wm).ISize(cbwm);
+  if (floatISize == NS_UNCONSTRAINEDSIZE) {
+    return NS_UNCONSTRAINEDSIZE; // reflow is needed to get the true size
+  }
+
+  return floatISize +
+         aFloatOffsetState.ComputedLogicalMargin().Size(wm).
+           ConvertTo(cbwm, wm).ISize(cbwm) +
+         aFloatOffsetState.ComputedLogicalBorderPadding().Size(wm).
+           ConvertTo(cbwm, wm).ISize(cbwm);
 }
 
 bool
@@ -708,7 +722,7 @@ nsBlockReflowState::FlowAndPlaceFloat(nsIFrame* aFloat)
                "Float frame has wrong parent");
 
   nsCSSOffsetState offsets(aFloat, mReflowState.rendContext,
-                           mReflowState.ComputedWidth());
+                           wm, mReflowState.ComputedISize());
 
   nscoord floatMarginISize = FloatMarginISize(mReflowState,
                                               adjustedAvailableSpace.ISize(wm),
@@ -721,14 +735,20 @@ nsBlockReflowState::FlowAndPlaceFloat(nsIFrame* aFloat)
   // If it's a floating first-letter, we need to reflow it before we
   // know how wide it is (since we don't compute which letters are part
   // of the first letter until reflow!).
-  bool isLetter = aFloat->GetType() == nsGkAtoms::letterFrame;
-  if (isLetter) {
+  // We also need to do this early reflow if FloatMarginISize returned
+  // an unconstrained inline-size, which can occur if the float had an
+  // orthogonal writing mode and 'auto' block-size (in its mode).
+  bool earlyFloatReflow =
+    aFloat->GetType() == nsGkAtoms::letterFrame ||
+    floatMarginISize == NS_UNCONSTRAINEDSIZE;
+  if (earlyFloatReflow) {
     mBlock->ReflowFloat(*this, adjustedAvailableSpace, aFloat, floatMargin,
                         floatOffsets, false, reflowStatus);
     floatMarginISize = aFloat->ISize(wm) + floatMargin.IStartEnd(wm);
     NS_ASSERTION(NS_FRAME_IS_COMPLETE(reflowStatus),
-                 "letter frames shouldn't break, and if they do now, "
-                 "then they're breaking at the wrong point");
+                 "letter frames and orthogonal floats with auto block-size "
+                 "shouldn't break, and if they do now, then they're breaking "
+                 "at the wrong point");
   }
 
   // Find a place to place the float. The CSS2 spec doesn't want
@@ -830,7 +850,17 @@ nsBlockReflowState::FlowAndPlaceFloat(nsIFrame* aFloat)
   // LineLeft() and LineRight() here, because we would only have to
   // convert the result back into this block's writing mode.
   LogicalPoint floatPos(wm);
-  if ((NS_STYLE_FLOAT_LEFT == floatDisplay->mFloats) == wm.IsBidiLTR()) {
+  bool leftFloat = NS_STYLE_FLOAT_LEFT == floatDisplay->mFloats;
+
+  if (wm.IsVertical()) {
+    // IStart and IEnd should use the ContainerHeight in vertical modes
+    // with rtl direction. Since they don't yet (bug 1131451), we'll
+    // just put left floats at the top of the line and right floats at
+    // bottom.
+    floatPos.I(wm) = leftFloat
+                      ? floatAvailableSpace.mRect.Y(wm)
+                      : floatAvailableSpace.mRect.YMost(wm) - floatMarginISize;
+  } else if (leftFloat == wm.IsBidiLTR()) {
     floatPos.I(wm) = floatAvailableSpace.mRect.IStart(wm);
   }
   else {
@@ -853,7 +883,7 @@ nsBlockReflowState::FlowAndPlaceFloat(nsIFrame* aFloat)
 
   // Reflow the float after computing its vertical position so it knows
   // where to break.
-  if (!isLetter) {
+  if (!earlyFloatReflow) {
     bool pushedDown = mBCoord != saveBCoord;
     mBlock->ReflowFloat(*this, adjustedAvailableSpace, aFloat, floatMargin,
                         floatOffsets, pushedDown, reflowStatus);

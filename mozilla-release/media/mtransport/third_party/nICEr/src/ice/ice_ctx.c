@@ -54,6 +54,7 @@ static char *RCSSTRING __UNUSED__="$Id: ice_ctx.c,v 1.2 2008/04/28 17:59:01 ekr 
 #include "nr_crypto.h"
 #include "async_timer.h"
 #include "util.h"
+#include "nr_socket_local.h"
 
 
 int LOG_ICE = 0;
@@ -65,6 +66,14 @@ static int nr_ice_fetch_turn_servers(int ct, nr_ice_turn_server **out);
 #endif /* USE_TURN */
 static void nr_ice_ctx_destroy_cb(NR_SOCKET s, int how, void *cb_arg);
 static int nr_ice_ctx_pair_new_trickle_candidates(nr_ice_ctx *ctx, nr_ice_candidate *cand);
+static int no_op(void **obj) {
+  return 0;
+}
+
+static nr_socket_factory_vtbl default_socket_factory_vtbl = {
+  nr_socket_local_create,
+  no_op
+};
 
 int nr_ice_fetch_stun_servers(int ct, nr_ice_stun_server **out)
   {
@@ -229,6 +238,12 @@ int nr_ice_ctx_set_turn_tcp_socket_wrapper(nr_ice_ctx *ctx, nr_socket_wrapper_fa
     return(_status);
   }
 
+void nr_ice_ctx_set_socket_factory(nr_ice_ctx *ctx, nr_socket_factory *factory)
+  {
+    nr_socket_factory_destroy(&ctx->socket_factory);
+    ctx->socket_factory = factory;
+  }
+
 #ifdef USE_TURN
 int nr_ice_fetch_turn_servers(int ct, nr_ice_turn_server **out)
   {
@@ -300,7 +315,7 @@ int nr_ice_fetch_turn_servers(int ct, nr_ice_turn_server **out)
   }
 #endif /* USE_TURN */
 
-#define MAXADDRS 100 // Ridiculously high
+#define MAXADDRS 100 /* Ridiculously high */
 int nr_ice_ctx_create(char *label, UINT4 flags, nr_ice_ctx **ctxp)
   {
     nr_ice_ctx *ctx=0;
@@ -334,10 +349,10 @@ int nr_ice_ctx_create(char *label, UINT4 flags, nr_ice_ctx **ctxp)
       ctx->stun_server_ct=0;
     }
 
-    /* 255 is the max for our priority algorithm */
-    if(ctx->stun_server_ct>255){
-      r_log(LOG_ICE,LOG_WARNING,"ICE(%s): Too many STUN servers specified: max=255", ctx->label);
-      ctx->stun_server_ct=255;
+    /* 31 is the max for our priority algorithm */
+    if(ctx->stun_server_ct>31){
+      r_log(LOG_ICE,LOG_WARNING,"ICE(%s): Too many STUN servers specified: max=31", ctx->label);
+      ctx->stun_server_ct=31;
     }
 
     if(ctx->stun_server_ct>0){
@@ -362,10 +377,10 @@ int nr_ice_ctx_create(char *label, UINT4 flags, nr_ice_ctx **ctxp)
     ctx->local_addrs=0;
     ctx->local_addr_ct=0;
 
-    /* 255 is the max for our priority algorithm */
-    if((ctx->stun_server_ct+ctx->turn_server_ct)>255){
-      r_log(LOG_ICE,LOG_WARNING,"ICE(%s): Too many STUN/TURN servers specified: max=255", ctx->label);
-      ctx->turn_server_ct=255-ctx->stun_server_ct;
+    /* 31 is the max for our priority algorithm */
+    if((ctx->stun_server_ct+ctx->turn_server_ct)>31){
+      r_log(LOG_ICE,LOG_WARNING,"ICE(%s): Too many STUN/TURN servers specified: max=31", ctx->label);
+      ctx->turn_server_ct=31-ctx->stun_server_ct;
     }
 
 #ifdef USE_TURN
@@ -380,6 +395,17 @@ int nr_ice_ctx_create(char *label, UINT4 flags, nr_ice_ctx **ctxp)
 
 
     ctx->Ta = 20;
+
+    if (r=nr_socket_factory_create_int(NULL, &default_socket_factory_vtbl, &ctx->socket_factory))
+      ABORT(r);
+
+    if ((r=NR_reg_get_string((char *)NR_ICE_REG_PREF_FORCE_INTERFACE_NAME, ctx->force_net_interface, sizeof(ctx->force_net_interface)))) {
+      if (r == R_NOT_FOUND) {
+        ctx->force_net_interface[0] = 0;
+      } else {
+        ABORT(r);
+      }
+    }
 
     STAILQ_INIT(&ctx->streams);
     STAILQ_INIT(&ctx->sockets);
@@ -439,6 +465,7 @@ static void nr_ice_ctx_destroy_cb(NR_SOCKET s, int how, void *cb_arg)
     nr_resolver_destroy(&ctx->resolver);
     nr_interface_prioritizer_destroy(&ctx->interface_prioritizer);
     nr_socket_wrapper_factory_destroy(&ctx->turn_tcp_socket_wrapper);
+    nr_socket_factory_destroy(&ctx->socket_factory);
 
     RFREE(ctx);
   }
@@ -472,7 +499,7 @@ void nr_ice_gather_finished_cb(NR_SOCKET s, int h, void *cb_arg)
 
     ctx->uninitialized_candidates--;
 
-    // Avoid the need for yet another initialization function
+    /* Avoid the need for yet another initialization function */
     if (cand->state == NR_ICE_CAND_STATE_INITIALIZING && cand->type == HOST)
       cand->state = NR_ICE_CAND_STATE_INITIALIZED;
 
@@ -544,6 +571,23 @@ int nr_ice_gather(nr_ice_ctx *ctx, NR_async_cb done_cb, void *cb_arg)
       if(r=nr_stun_find_local_addresses(addrs,MAXADDRS,&addr_ct)) {
         r_log(LOG_ICE,LOG_ERR,"ICE(%s): unable to find local addresses",ctx->label);
         ABORT(r);
+      }
+
+      if (ctx->force_net_interface[0]) {
+        /* Limit us to only addresses on a single interface */
+        int force_addr_ct = 0;
+        for(i=0;i<addr_ct;i++){
+          if (!strcmp(addrs[i].addr.ifname, ctx->force_net_interface)) {
+            // copy it down in the array, if needed
+            if (i != force_addr_ct) {
+              if (r=nr_local_addr_copy(&addrs[force_addr_ct], &addrs[i])) {
+                ABORT(r);
+              }
+            }
+            force_addr_ct++;
+          }
+        }
+        addr_ct = force_addr_ct;
       }
 
       /* Sort interfaces by preference */
@@ -676,8 +720,6 @@ static int nr_ice_random_string(char *str, int len)
     needed=len/2;
 
     if(needed>sizeof(bytes)) ABORT(R_BAD_ARGS);
-
-    //memset(bytes,0,needed);
 
     if(r=nr_crypto_random_bytes(bytes,needed))
       ABORT(r);

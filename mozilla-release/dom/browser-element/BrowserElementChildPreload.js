@@ -50,9 +50,6 @@ function sendSyncMsg(msg, data) {
 let CERTIFICATE_ERROR_PAGE_PREF = 'security.alternate_certificate_error_page';
 
 const OBSERVED_EVENTS = [
-  'fullscreen-origin-change',
-  'ask-parent-to-exit-fullscreen',
-  'ask-parent-to-rollback-fullscreen',
   'xpcom-shutdown',
   'activity-done'
 ];
@@ -147,6 +144,21 @@ BrowserElementChild.prototype = {
                      /* useCapture = */ true,
                      /* wantsUntrusted = */ false);
 
+    addEventListener("MozDOMFullscreen:Request",
+                     this._mozRequestedDOMFullscreen.bind(this),
+                     /* useCapture = */ true,
+                     /* wantsUntrusted = */ false);
+
+    addEventListener("MozDOMFullscreen:NewOrigin",
+                     this._mozFullscreenOriginChange.bind(this),
+                     /* useCapture = */ true,
+                     /* wantsUntrusted = */ false);
+
+    addEventListener("MozDOMFullscreen:Exit",
+                     this._mozExitDomFullscreen.bind(this),
+                     /* useCapture = */ true,
+                     /* wantsUntrusted = */ false);
+
     addEventListener('DOMMetaAdded',
                      this._metaChangedHandler.bind(this),
                      /* useCapture = */ true,
@@ -170,6 +182,11 @@ BrowserElementChild.prototype = {
     addEventListener('scrollviewchange',
                      this._ScrollViewChangeHandler.bind(this),
                      /* useCapture = */ true,
+                     /* wantsUntrusted = */ false);
+
+    addEventListener('click',
+                     this._ClickHandler.bind(this),
+                     /* useCapture = */ false,
                      /* wantsUntrusted = */ false);
 
     // This listens to unload events from our message manager, but /not/ from
@@ -207,11 +224,15 @@ BrowserElementChild.prototype = {
       "unblock-modal-prompt": this._recvStopWaiting,
       "fire-ctx-callback": this._recvFireCtxCallback,
       "owner-visibility-change": this._recvOwnerVisibilityChange,
+      "entered-fullscreen": this._recvEnteredFullscreen,
       "exit-fullscreen": this._recvExitFullscreen.bind(this),
       "activate-next-paint-listener": this._activateNextPaintListener.bind(this),
       "set-input-method-active": this._recvSetInputMethodActive.bind(this),
       "deactivate-next-paint-listener": this._deactivateNextPaintListener.bind(this),
-      "do-command": this._recvDoCommand
+      "do-command": this._recvDoCommand,
+      "find-all": this._recvFindAll.bind(this),
+      "find-next": this._recvFindNext.bind(this),
+      "clear-match": this._recvClearMatch.bind(this),
     }
 
     addMessageListener("browser-element-api:call", function(aMessage) {
@@ -254,15 +275,6 @@ BrowserElementChild.prototype = {
     if (topic == 'activity-done' && docShell !== subject)
       return;
     switch (topic) {
-      case 'fullscreen-origin-change':
-        sendAsyncMsg('fullscreen-origin-change', { _payload_: data });
-        break;
-      case 'ask-parent-to-exit-fullscreen':
-        sendAsyncMsg('exit-fullscreen');
-        break;
-      case 'ask-parent-to-rollback-fullscreen':
-        sendAsyncMsg('rollback-fullscreen');
-        break;
       case 'activity-done':
         sendAsyncMsg('activitydone', { success: (data == 'activity-success') });
         break;
@@ -281,6 +293,12 @@ BrowserElementChild.prototype = {
     OBSERVED_EVENTS.forEach((aTopic) => {
       Services.obs.removeObserver(this, aTopic);
     });
+  },
+
+  get _windowUtils() {
+    return content.document.defaultView
+                  .QueryInterface(Ci.nsIInterfaceRequestor)
+                  .getInterface(Ci.nsIDOMWindowUtils);
   },
 
   _tryGetInnerWindowID: function(win) {
@@ -426,11 +444,18 @@ BrowserElementChild.prototype = {
     win.modalDepth--;
   },
 
+  _recvEnteredFullscreen: function() {
+    if (!this._windowUtils.handleFullscreenRequests() &&
+        !content.document.mozFullScreen) {
+      // If we don't actually have any pending fullscreen request
+      // to handle, neither we have been in fullscreen, tell the
+      // parent to just exit.
+      sendAsyncMsg("exit-dom-fullscreen");
+    }
+  },
+
   _recvExitFullscreen: function() {
-    var utils = content.document.defaultView
-                       .QueryInterface(Ci.nsIInterfaceRequestor)
-                       .getInterface(Ci.nsIDOMWindowUtils);
-    utils.exitFullscreen();
+    this._windowUtils.exitFullscreen();
   },
 
   _titleChangedHandler: function(e) {
@@ -522,7 +547,9 @@ BrowserElementChild.prototype = {
     debug('Got metaChanged: (' + e.target.name + ') ' + e.target.content);
 
     let handlers = {
-      'theme-color': this._themeColorChangedHandler,
+      'viewmode': this._genericMetaHandler.bind(null, 'viewmode'),
+      'theme-color': this._genericMetaHandler.bind(null, 'theme-color'),
+      'theme-group': this._genericMetaHandler.bind(null, 'theme-group'),
       'application-name': this._applicationNameChangedHandler
     };
 
@@ -577,6 +604,30 @@ BrowserElementChild.prototype = {
       state: e.state,
     };
     sendAsyncMsg('scrollviewchange', detail);
+  },
+
+  _ClickHandler: function(e) {
+
+    let isHTMLLink = node =>
+      ((node instanceof Ci.nsIDOMHTMLAnchorElement && node.href) ||
+       (node instanceof Ci.nsIDOMHTMLAreaElement && node.href) ||
+        node instanceof Ci.nsIDOMHTMLLinkElement);
+
+    // Open in a new tab if middle click or ctrl/cmd-click,
+    // and e.target is a link or inside a link.
+    if ((Services.appinfo.OS == 'Darwin' && e.metaKey) ||
+        (Services.appinfo.OS != 'Darwin' && e.ctrlKey) ||
+         e.button == 1) {
+
+      let node = e.target;
+      while (node && !isHTMLLink(node)) {
+        node = node.parentNode;
+      }
+
+      if (node) {
+        sendAsyncMsg('opentab', {url: node.href});
+      }
+    }
   },
 
   _selectionStateChangedHandler: function(e) {
@@ -670,9 +721,9 @@ BrowserElementChild.prototype = {
     sendAsyncMsg('selectionstatechanged', detail);
   },
 
-  _themeColorChangedHandler: function(eventType, target) {
+  _genericMetaHandler: function(name, eventType, target) {
     let meta = {
-      name: 'theme-color',
+      name: name,
       content: target.content,
       type: eventType.replace('DOMMeta', '').toLowerCase()
     };
@@ -927,6 +978,20 @@ BrowserElementChild.prototype = {
     });
   },
 
+  _mozRequestedDOMFullscreen: function(e) {
+    sendAsyncMsg("requested-dom-fullscreen");
+  },
+
+  _mozFullscreenOriginChange: function(e) {
+    sendAsyncMsg("fullscreen-origin-change", {
+      originNoSuffix: e.target.nodePrincipal.originNoSuffix
+    });
+  },
+
+  _mozExitDomFullscreen: function(e) {
+    sendAsyncMsg("exit-dom-fullscreen");
+  },
+
   _getContentDimensions: function() {
     return {
       width: content.document.body.scrollWidth,
@@ -1085,7 +1150,7 @@ BrowserElementChild.prototype = {
 
   _updateVisibility: function() {
     var visible = this._forcedVisible && this._ownerVisible;
-    if (docShell.isActive !== visible) {
+    if (docShell && docShell.isActive !== visible) {
       docShell.isActive = visible;
       sendAsyncMsg('visibilitychange', {visible: visible});
     }
@@ -1167,6 +1232,57 @@ BrowserElementChild.prototype = {
       this._selectionStateChangedTarget = null;
       docShell.doCommand(COMMAND_MAP[data.json.command]);
     }
+  },
+
+  _initFinder: function() {
+    if (!this._finder) {
+      try {
+        this._findLimit = Services.prefs.getIntPref("accessibility.typeaheadfind.matchesCountLimit");
+      } catch (e) {
+        // Pref not available, assume 0, no match counting.
+        this._findLimit = 0;
+      }
+
+      let {Finder} = Components.utils.import("resource://gre/modules/Finder.jsm", {});
+      this._finder = new Finder(docShell);
+      this._finder.addResultListener({
+        onMatchesCountResult: (data) => {
+          sendAsyncMsg('findchange', {
+            active: true,
+            searchString: this._finder.searchString,
+            searchLimit: this._findLimit,
+            activeMatchOrdinal: data.current,
+            numberOfMatches: data.total
+          });
+        }
+      });
+    }
+  },
+
+  _recvFindAll: function(data) {
+    this._initFinder();
+    let searchString = data.json.searchString;
+    this._finder.caseSensitive = data.json.caseSensitive;
+    this._finder.fastFind(searchString, false, false);
+    this._finder.requestMatchesCount(searchString, this._findLimit, false);
+  },
+
+  _recvFindNext: function(data) {
+    if (!this._finder) {
+      debug("findNext() called before findAll()");
+      return;
+    }
+    this._finder.findAgain(data.json.backward, false, false);
+    this._finder.requestMatchesCount(this._finder.searchString, this._findLimit, false);
+  },
+
+  _recvClearMatch: function(data) {
+    if (!this._finder) {
+      debug("clearMach() called before findAll()");
+      return;
+    }
+    this._finder.removeSelection();
+    sendAsyncMsg('findchange', {active: false});
   },
 
   _recvSetInputMethodActive: function(data) {
@@ -1275,6 +1391,9 @@ BrowserElementChild.prototype = {
           case Cr.NS_ERROR_MALWARE_URI :
             sendAsyncMsg('error', { type: 'malwareBlocked' });
             return;
+          case Cr.NS_ERROR_UNWANTED_URI :
+            sendAsyncMsg('error', { type: 'unwantedBlocked' });
+            return;
 
           case Cr.NS_ERROR_OFFLINE :
             sendAsyncMsg('error', { type: 'offline' });
@@ -1363,6 +1482,12 @@ BrowserElementChild.prototype = {
       }
       else if (state & Ci.nsIWebProgressListener.STATE_IS_INSECURE) {
         stateDesc = 'insecure';
+      }
+      else if (state & Ci.nsIWebProgressListener.STATE_LOADED_TRACKING_CONTENT) {
+        stateDesc = 'loaded_tracking_content';
+      }
+      else if (state & Ci.nsIWebProgressListener.STATE_BLOCKED_TRACKING_CONTENT) {
+        stateDesc = 'blocked_tracking_content';
       }
       else {
         debug("Unexpected securitychange state!");

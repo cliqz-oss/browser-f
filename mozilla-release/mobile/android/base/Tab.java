@@ -23,6 +23,7 @@ import org.mozilla.gecko.favicons.OnFaviconLoadedListener;
 import org.mozilla.gecko.favicons.RemoteFavicon;
 import org.mozilla.gecko.gfx.BitmapUtils;
 import org.mozilla.gecko.gfx.Layer;
+import org.mozilla.gecko.mozglue.RobocopTarget;
 import org.mozilla.gecko.toolbar.BrowserToolbar.TabEditingState;
 import org.mozilla.gecko.util.ThreadUtils;
 
@@ -36,6 +37,7 @@ import android.text.TextUtils;
 import android.util.Log;
 import android.view.View;
 import android.widget.Toast;
+import org.mozilla.gecko.widget.SiteLogins;
 
 public class Tab {
     private static final String LOGTAG = "GeckoTab";
@@ -50,12 +52,14 @@ public class Tab {
     private String mTitle;
     private Bitmap mFavicon;
     private String mFaviconUrl;
+    private String mApplicationId; // Intended to be null after explicit user action.
 
     // The set of all available Favicons for this tab, sorted by attractiveness.
     final TreeSet<RemoteFavicon> mAvailableFavicons = new TreeSet<>();
     private boolean mHasFeeds;
     private boolean mHasOpenSearch;
     private final SiteIdentity mSiteIdentity;
+    private SiteLogins mSiteLogins;
     private BitmapDrawable mThumbnail;
     private final int mParentId;
     private final boolean mExternal;
@@ -143,6 +147,7 @@ public class Tab {
         Tabs.getInstance().notifyListeners(this, Tabs.TabEvents.CLOSED);
     }
 
+    @RobocopTarget
     public int getId() {
         return mId;
     }
@@ -192,6 +197,14 @@ public class Tab {
 
     public Bitmap getFavicon() {
         return mFavicon;
+    }
+
+    protected String getApplicationId() {
+        return mApplicationId;
+    }
+
+    protected void setApplicationId(final String applicationId) {
+        mApplicationId = applicationId;
     }
 
     public BitmapDrawable getThumbnail() {
@@ -269,6 +282,10 @@ public class Tab {
 
     public SiteIdentity getSiteIdentity() {
         return mSiteIdentity;
+    }
+
+    public SiteLogins getSiteLogins() {
+        return mSiteLogins;
     }
 
     public boolean isBookmark() {
@@ -485,6 +502,10 @@ public class Tab {
         mSiteIdentity.update(identityData);
     }
 
+    public void setSiteLogins(SiteLogins siteLogins) {
+        mSiteLogins = siteLogins;
+    }
+
     void updateBookmark() {
         if (getURL() == null) {
             return;
@@ -561,12 +582,7 @@ public class Tab {
                 }
 
                 mDB.getReadingListAccessor().addBasicReadingListItem(getContentResolver(), url, mTitle);
-                ThreadUtils.postToUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(mAppContext, R.string.reading_list_added, Toast.LENGTH_SHORT).show();
-                    }
-                });
+                Tabs.getInstance().notifyListeners(Tab.this, Tabs.TabEvents.READING_LIST_ADDED);
             }
         });
     }
@@ -579,25 +595,13 @@ public class Tab {
                 if (url == null) {
                     return;
                 }
-
+                if (AboutPages.isAboutReader(url)) {
+                    url = ReaderModeUtils.getUrlFromAboutReader(url);
+                }
                 mDB.getReadingListAccessor().removeReadingListItemWithURL(getContentResolver(), url);
-                ThreadUtils.postToUiThread(new Runnable() {
-                    @Override
-                    public void run() {
-                        Toast.makeText(mAppContext, R.string.reading_list_removed, Toast.LENGTH_SHORT).show();
-                    }
-                });
+                Tabs.getInstance().notifyListeners(Tab.this, Tabs.TabEvents.READING_LIST_REMOVED);
             }
         });
-    }
-
-    public void toggleReaderMode() {
-        if (AboutPages.isAboutReader(mUrl)) {
-            Tabs.getInstance().loadUrl(ReaderModeUtils.getUrlFromAboutReader(mUrl));
-        } else {
-            mEnteringReaderMode = true;
-            Tabs.getInstance().loadUrl(ReaderModeUtils.getAboutReaderForUrl(mUrl, mId));
-        }
     }
 
     public boolean isEnteringReaderMode() {
@@ -680,6 +684,7 @@ public class Tab {
         setHasFeeds(false);
         setHasOpenSearch(false);
         mSiteIdentity.reset();
+        setSiteLogins(null);
         setZoomConstraints(new ZoomConstraints(true));
         setHasTouchListeners(false);
         setBackgroundColor(DEFAULT_BACKGROUND_COLOR);

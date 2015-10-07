@@ -19,6 +19,10 @@ class MediaBuffer;
 };
 
 namespace mozilla {
+namespace gl {
+class SharedSurface;
+}
+
 namespace layers {
 
 /**
@@ -59,8 +63,6 @@ public:
   virtual void SetRemoveFromCompositableTracker(AsyncTransactionTracker* aTracker) override;
 
   virtual void WaitForBufferOwnership(bool aWaitReleaseFence = true) override;
-
-  void InitWith(MaybeMagicGrallocBufferHandle aDesc, gfx::IntSize aSize);
 
   void SetTextureFlags(TextureFlags aFlags) { AddFlags(aFlags); }
 

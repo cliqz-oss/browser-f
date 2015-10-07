@@ -18,7 +18,7 @@
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nscore.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 #define UNIMPLEMENTED() { /* Logging this is too spammy to do by default */ }
 
@@ -27,7 +27,7 @@ class nsIStreamListener;
 namespace mozilla {
 
 class MediaDecoder;
-class LargeDataBuffer;
+class MediaByteBuffer;
 
 namespace dom {
 
@@ -46,9 +46,7 @@ public:
   virtual already_AddRefed<MediaResource> CloneData(MediaDecoder* aDecoder) override { UNIMPLEMENTED(); return nullptr; }
   virtual void SetReadMode(MediaCacheStream::ReadMode aMode) override { UNIMPLEMENTED(); }
   virtual void SetPlaybackRate(uint32_t aBytesPerSecond) override { UNIMPLEMENTED(); }
-  virtual nsresult Read(char* aBuffer, uint32_t aCount, uint32_t* aBytes) override;
   virtual nsresult ReadAt(int64_t aOffset, char* aBuffer, uint32_t aCount, uint32_t* aBytes) override;
-  virtual nsresult Seek(int32_t aWhence, int64_t aOffset) override;
   virtual int64_t Tell() override { return mOffset; }
   virtual void Pin() override { UNIMPLEMENTED(); }
   virtual void Unpin() override { UNIMPLEMENTED(); }
@@ -103,7 +101,7 @@ public:
   }
 
   // Used by SourceBuffer.
-  void AppendData(LargeDataBuffer* aData);
+  void AppendData(MediaByteBuffer* aData);
   void Ended();
   bool IsEnded()
   {
@@ -112,10 +110,11 @@ public:
   }
   // Remove data from resource if it holds more than the threshold
   // number of bytes. Returns amount evicted.
-  uint32_t EvictData(uint64_t aPlaybackOffset, uint32_t aThreshold);
+  uint32_t EvictData(uint64_t aPlaybackOffset, uint32_t aThreshold,
+                     ErrorResult& aRv);
 
   // Remove data from resource before the given offset.
-  void EvictBefore(uint64_t aOffset);
+  void EvictBefore(uint64_t aOffset, ErrorResult& aRv);
 
   // Remove all data from the resource
   uint32_t EvictAll();

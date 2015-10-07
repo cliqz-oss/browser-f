@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -10,11 +12,11 @@
 #include "mozilla/dom/NfcOptionsBinding.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/RootedDictionary.h"
+#include "mozilla/ipc/NfcConnector.h"
 #include "mozilla/unused.h"
 #include "nsAutoPtr.h"
 #include "nsString.h"
 #include "nsXULAppAPI.h"
-#include "NfcGonkMessage.h"
 #include "NfcOptions.h"
 
 #define NS_NFCSERVICE_CID \
@@ -25,11 +27,35 @@ using namespace android;
 using namespace mozilla::dom;
 using namespace mozilla::ipc;
 
-static const nsLiteralString SEOriginString[] = {
-  NS_LITERAL_STRING("SIM"),
-  NS_LITERAL_STRING("eSE"),
-  NS_LITERAL_STRING("ASSD")
+namespace {
+
+class SendNfcSocketDataTask final : public nsRunnable
+{
+public:
+  SendNfcSocketDataTask(StreamSocket* aSocket, UnixSocketRawData* aRawData)
+    : mSocket(aSocket)
+    , mRawData(aRawData)
+  { }
+
+  NS_IMETHOD Run()
+  {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    if (!mSocket || mSocket->GetConnectionStatus() != SOCKET_CONNECTED) {
+      // Probably shutting down.
+      return NS_OK;
+    }
+
+    mSocket->SendSocketData(mRawData.forget());
+    return NS_OK;
+  }
+
+private:
+  nsRefPtr<StreamSocket> mSocket;
+  nsAutoPtr<UnixSocketRawData> mRawData;
 };
+
+} // anonymous namespace
 
 namespace mozilla {
 
@@ -45,11 +71,15 @@ assertIsNfcServiceThread()
 }
 
 // Runnable used to call Marshall on the NFC thread.
-class NfcCommandRunnable : public nsRunnable
+class NfcCommandRunnable final : public nsRunnable
 {
 public:
-  NfcCommandRunnable(NfcMessageHandler* aHandler, NfcConsumer* aConsumer, CommandOptions aOptions)
-    : mHandler(aHandler), mConsumer(aConsumer), mOptions(aOptions)
+  NfcCommandRunnable(NfcMessageHandler* aHandler,
+                     NfcService* aService,
+                     CommandOptions aOptions)
+    : mHandler(aHandler)
+    , mService(aService)
+    , mOptions(aOptions)
   {
     MOZ_ASSERT(NS_IsMainThread());
   }
@@ -64,13 +94,13 @@ public:
     parcel.setDataPosition(0);
     uint32_t sizeBE = htonl(parcel.dataSize() - sizeof(int));
     parcel.writeInt32(sizeBE);
-    mConsumer->PostToNfcDaemon(parcel.data(), parcel.dataSize());
+    mService->PostToNfcDaemon(parcel.data(), parcel.dataSize());
     return NS_OK;
   }
 
 private:
    NfcMessageHandler* mHandler;
-   NfcConsumer* mConsumer;
+   NfcService* mService;
    CommandOptions mOptions;
 };
 
@@ -131,14 +161,15 @@ public:
       int length = mEvent.mTechList.Length();
       event.mTechList.Construct();
 
-      if (!event.mTechList.Value().SetCapacity(length)) {
+      if (!event.mTechList.Value().SetCapacity(length, fallible)) {
         return NS_ERROR_FAILURE;
       }
 
       for (int i = 0; i < length; i++) {
         NFCTechType tech = static_cast<NFCTechType>(mEvent.mTechList[i]);
         MOZ_ASSERT(tech < NFCTechType::EndGuard_);
-        *event.mTechList.Value().AppendElement() = tech;
+        // FIXME: Make this infallible after bug 968520 is done.
+        *event.mTechList.Value().AppendElement(fallible) = tech;
       }
     }
 
@@ -150,13 +181,15 @@ public:
     if (mEvent.mRecords.Length() > 0) {
       int length = mEvent.mRecords.Length();
       event.mRecords.Construct();
-      if (!event.mRecords.Value().SetCapacity(length)) {
+      if (!event.mRecords.Value().SetCapacity(length, fallible)) {
         return NS_ERROR_FAILURE;
       }
 
       for (int i = 0; i < length; i++) {
         NDEFRecordStruct& recordStruct = mEvent.mRecords[i];
-        MozNDEFRecordOptions& record = *event.mRecords.Value().AppendElement();
+        // FIXME: Make this infallible after bug 968520 is done.
+        MozNDEFRecordOptions& record =
+          *event.mRecords.Value().AppendElement(fallible);
 
         record.mTnf = recordStruct.mTnf;
         MOZ_ASSERT(record.mTnf < TNF::EndGuard_);
@@ -191,10 +224,10 @@ public:
 
     // HCI Event Transaction parameters.
     if (mEvent.mOriginType != -1) {
-      MOZ_ASSERT(mEvent.mOriginType < SecureElementOrigin::OriginEndGuard);
+      MOZ_ASSERT(static_cast<HCIEventOrigin>(mEvent.mOriginType) < HCIEventOrigin::EndGuard_);
 
       event.mOrigin.Construct();
-      event.mOrigin.Value().Assign(SEOriginString[mEvent.mOriginType]);
+      event.mOrigin.Value().AssignASCII(HCIEventOriginValues::strings[mEvent.mOriginType].value);
       event.mOrigin.Value().AppendInt(mEvent.mOriginIndex, 16 /* radix */);
     }
 
@@ -229,7 +262,7 @@ private:
 class NfcEventRunnable : public nsRunnable
 {
 public:
-  NfcEventRunnable(NfcMessageHandler* aHandler, UnixSocketRawData* aData)
+  NfcEventRunnable(NfcMessageHandler* aHandler, UnixSocketBuffer* aData)
     : mHandler(aHandler), mData(aData)
   {
     MOZ_ASSERT(NS_IsMainThread());
@@ -262,7 +295,7 @@ public:
 
 private:
   NfcMessageHandler* mHandler;
-  nsAutoPtr<UnixSocketRawData> mData;
+  nsAutoPtr<UnixSocketBuffer> mData;
 };
 
 NfcService::NfcService()
@@ -311,25 +344,25 @@ NfcService::Start(nsINfcGonkEventListener* aListener)
 
   mListener = aListener;
   mHandler = new NfcMessageHandler();
-  mConsumer = new NfcConsumer(this);
+  mStreamSocket = new StreamSocket(this, STREAM_SOCKET);
 
   mListenSocketName = BASE_SOCKET_NAME;
 
-  mListenSocket = new NfcListenSocket(this);
-
-  bool success = mListenSocket->Listen(new NfcConnector(), mConsumer);
-  if (!success) {
-    mConsumer = nullptr;
-    return NS_ERROR_FAILURE;
+  mListenSocket = new ListenSocket(this, LISTEN_SOCKET);
+  nsresult rv = mListenSocket->Listen(new NfcConnector(mListenSocketName),
+                                      mStreamSocket);
+  if (NS_FAILED(rv)) {
+    mStreamSocket = nullptr;
+    return rv;
   }
 
-  nsresult rv = NS_NewNamedThread("NfcThread", getter_AddRefs(mThread));
+  rv = NS_NewNamedThread("NfcThread", getter_AddRefs(mThread));
   if (NS_FAILED(rv)) {
     NS_WARNING("Can't create Nfc worker thread.");
     mListenSocket->Close();
     mListenSocket = nullptr;
-    mConsumer->Shutdown();
-    mConsumer = nullptr;
+    mStreamSocket->Close();
+    mStreamSocket = nullptr;
     return NS_ERROR_FAILURE;
   }
 
@@ -348,11 +381,22 @@ NfcService::Shutdown()
 
   mListenSocket->Close();
   mListenSocket = nullptr;
-
-  mConsumer->Shutdown();
-  mConsumer = nullptr;
+  mStreamSocket->Close();
+  mStreamSocket = nullptr;
 
   return NS_OK;
+}
+
+bool
+NfcService::PostToNfcDaemon(const uint8_t* aData, size_t aSize)
+{
+  MOZ_ASSERT(!NS_IsMainThread());
+
+  UnixSocketRawData* raw = new UnixSocketRawData(aData, aSize);
+  nsRefPtr<SendNfcSocketDataTask> task =
+    new SendNfcSocketDataTask(mStreamSocket, raw);
+  NS_DispatchToMainThread(task);
+  return true;
 }
 
 NS_IMETHODIMP
@@ -369,7 +413,8 @@ NfcService::SendCommand(JS::HandleValue aOptions, JSContext* aCx)
 
   // Dispatch the command to the NFC thread.
   CommandOptions commandOptions(options);
-  nsCOMPtr<nsIRunnable> runnable = new NfcCommandRunnable(mHandler, mConsumer, commandOptions);
+  nsCOMPtr<nsIRunnable> runnable = new NfcCommandRunnable(mHandler, this,
+                                                          commandOptions);
   mThread->Dispatch(runnable, nsIEventTarget::DISPATCH_NORMAL);
   return NS_OK;
 }
@@ -389,22 +434,26 @@ NfcService::DispatchNfcEvent(const mozilla::dom::NfcEventOptions& aOptions)
   mListener->OnEvent(val);
 }
 
+// |StreamSocketConsumer|, |ListenSocketConsumer|
+
 void
-NfcService::ReceiveSocketData(nsAutoPtr<UnixSocketRawData>& aData)
+NfcService::ReceiveSocketData(
+  int aIndex, nsAutoPtr<mozilla::ipc::UnixSocketBuffer>& aBuffer)
 {
   MOZ_ASSERT(mHandler);
-  nsCOMPtr<nsIRunnable> runnable = new NfcEventRunnable(mHandler, aData.forget());
+  nsCOMPtr<nsIRunnable> runnable =
+    new NfcEventRunnable(mHandler, aBuffer.forget());
   mThread->Dispatch(runnable, nsIEventTarget::DISPATCH_NORMAL);
 }
 
 void
-NfcService::OnConnectSuccess(enum SocketType aSocketType)
+NfcService::OnConnectSuccess(int aIndex)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  switch (aSocketType) {
+  switch (aIndex) {
     case LISTEN_SOCKET: {
-        nsCString value("nfcd:-a ");
+        nsCString value("nfcd:-S -a ");
         value.Append(mListenSocketName);
         if (NS_WARN_IF(property_set("ctl.start", value.get()) < 0)) {
           OnConnectError(STREAM_SOCKET);
@@ -418,7 +467,7 @@ NfcService::OnConnectSuccess(enum SocketType aSocketType)
 }
 
 void
-NfcService::OnConnectError(enum SocketType aSocketType)
+NfcService::OnConnectError(int aIndex)
 {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -426,7 +475,7 @@ NfcService::OnConnectError(enum SocketType aSocketType)
 }
 
 void
-NfcService::OnDisconnect(enum SocketType aSocketType)
+NfcService::OnDisconnect(int aIndex)
 {
   MOZ_ASSERT(NS_IsMainThread());
 }

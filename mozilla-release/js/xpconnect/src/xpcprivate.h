@@ -112,7 +112,6 @@
 #include "nsIXPConnect.h"
 #include "nsIInterfaceInfo.h"
 #include "nsIXPCScriptable.h"
-#include "nsIJSRuntimeService.h"
 #include "nsIObserver.h"
 #include "nsWeakReference.h"
 #include "nsCOMPtr.h"
@@ -192,7 +191,6 @@
 /***************************************************************************/
 // data declarations...
 extern const char XPC_CONTEXT_STACK_CONTRACTID[];
-extern const char XPC_RUNTIME_CONTRACTID[];
 extern const char XPC_EXCEPTION_CONTRACTID[];
 extern const char XPC_CONSOLE_CONTRACTID[];
 extern const char XPC_SCRIPT_ERROR_CONTRACTID[];
@@ -245,15 +243,13 @@ static inline bool IS_WN_REFLECTOR(JSObject* obj)
 
 class nsXPConnect final : public nsIXPConnect,
                           public nsIThreadObserver,
-                          public nsSupportsWeakReference,
-                          public nsIJSRuntimeService
+                          public nsSupportsWeakReference
 {
 public:
     // all the interface method declarations...
     NS_DECL_ISUPPORTS
     NS_DECL_NSIXPCONNECT
     NS_DECL_NSITHREADOBSERVER
-    NS_DECL_NSIJSRUNTIMESERVICE
 
     // non-interface implementation
 public:
@@ -539,7 +535,6 @@ public:
         IDX_STACK                   ,
         IDX_MESSAGE                 ,
         IDX_LASTINDEX               ,
-        IDX_SOURCE                  ,
         IDX_TOTAL_COUNT // just a count of the above
     };
 
@@ -603,13 +598,13 @@ public:
 
     void AddGCCallback(xpcGCCallback cb);
     void RemoveGCCallback(xpcGCCallback cb);
-    void AddContextCallback(xpcContextCallback cb);
-    void RemoveContextCallback(xpcContextCallback cb);
 
-    static JSContext* DefaultJSContextCallback(JSRuntime* rt);
+    struct EnvironmentPreparer : public js::ScriptEnvironmentPreparer {
+        bool invoke(JS::HandleObject scope, Closure& closure) override;
+    };
+    EnvironmentPreparer mEnvironmentPreparer;
+
     static void ActivityCallback(void* arg, bool active);
-    static void CTypesActivityCallback(JSContext* cx,
-                                       js::CTypesActivityType type);
     static bool InterruptCallback(JSContext* cx);
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
@@ -628,6 +623,7 @@ public:
     void OnProcessNextEvent() {
         mSlowScriptCheckpoint = mozilla::TimeStamp::NowLoRes();
         mSlowScriptSecondHalf = false;
+        js::ResetStopwatches(Get()->Runtime());
     }
     void OnAfterProcessNextEvent() {
         mSlowScriptCheckpoint = mozilla::TimeStamp();
@@ -668,7 +664,6 @@ private:
     XPCRootSetElem* mWrappedJSRoots;
     XPCRootSetElem* mObjectHolderRoots;
     nsTArray<xpcGCCallback> extraGCCallbacks;
-    nsTArray<xpcContextCallback> extraContextCallbacks;
     nsRefPtr<WatchdogManager> mWatchdogManager;
     JS::GCSliceCallback mPrevGCSliceCallback;
     JS::PersistentRootedObject mUnprivilegedJunkScope;
@@ -820,8 +815,8 @@ public:
 
     XPCCallContext(XPCContext::LangType callerLanguage,
                    JSContext* cx,
-                   JS::HandleObject obj    = JS::NullPtr(),
-                   JS::HandleObject funobj = JS::NullPtr(),
+                   JS::HandleObject obj    = nullptr,
+                   JS::HandleObject funobj = nullptr,
                    JS::HandleId id         = JSID_VOIDHANDLE,
                    unsigned argc           = NO_ARGS,
                    jsval* argv             = nullptr,
@@ -1016,6 +1011,17 @@ static inline bool IS_PROTO_CLASS(const js::Class* clazz)
            clazz == &XPC_WN_ModsAllowed_NoCall_Proto_JSClass;
 }
 
+typedef js::HashSet<size_t,
+                    js::DefaultHasher<size_t>,
+                    js::SystemAllocPolicy> InterpositionWhitelist;
+
+struct InterpositionWhitelistPair {
+    nsIAddonInterposition* interposition;
+    InterpositionWhitelist whitelist;
+};
+
+typedef nsTArray<InterpositionWhitelistPair> InterpositionWhitelistArray;
+
 /***************************************************************************/
 // XPCWrappedNativeScope is one-to-one with a JS global object.
 
@@ -1165,9 +1171,6 @@ public:
                         js::PointerHasher<JSAddonId*, 3>,
                         js::SystemAllocPolicy> InterpositionMap;
 
-    static bool SetAddonInterposition(JSAddonId* addonId,
-                                      nsIAddonInterposition* interp);
-
     // Gets the appropriate scope object for XBL in this scope. The context
     // must be same-compartment with the global upon entering, and the scope
     // object is wrapped into the compartment of the global.
@@ -1188,6 +1191,17 @@ public:
     bool HasInterposition() { return mInterposition; }
     nsCOMPtr<nsIAddonInterposition> GetInterposition();
 
+    static bool SetAddonInterposition(JSContext* cx,
+                                      JSAddonId* addonId,
+                                      nsIAddonInterposition* interp);
+
+    static InterpositionWhitelist* GetInterpositionWhitelist(nsIAddonInterposition* interposition);
+    static bool UpdateInterpositionWhitelist(JSContext* cx,
+                                             nsIAddonInterposition* interposition);
+
+    void SetAddonCallInterposition() { mHasCallInterpositions = true; }
+    bool HasCallInterposition() { return mHasCallInterpositions; };
+
 protected:
     virtual ~XPCWrappedNativeScope();
 
@@ -1206,6 +1220,8 @@ private:
     static XPCWrappedNativeScope* gDyingScopes;
 
     static InterpositionMap*         gInterpositionMap;
+
+    static InterpositionWhitelistArray* gInterpositionWhitelists;
 
     XPCJSRuntime*                    mRuntime;
     Native2WrappedNativeMap*         mWrappedNativeMap;
@@ -1226,9 +1242,13 @@ private:
     // Lazily created sandboxes for addon code.
     nsTArray<JS::ObjectPtr>          mAddonScopes;
 
-    // This is a service that will be use to interpose on all calls out of this
-    // scope. If it's null, no interposition is done.
+    // This is a service that will be use to interpose on some property accesses on
+    // objects from other scope, for add-on compatibility reasons.
     nsCOMPtr<nsIAddonInterposition>  mInterposition;
+
+    // If this flag is set, we intercept function calls on vanilla JS function objects
+    // from this scope if the caller scope has mInterposition set.
+    bool mHasCallInterpositions;
 
     nsAutoPtr<DOMExpandoSet> mDOMExpandoSet;
 
@@ -1278,7 +1298,7 @@ public:
                           jsval* pval)
         {MOZ_ASSERT(IsConstant(),
                     "Only call this if you're sure this is a constant!");
-         return Resolve(ccx, iface, JS::NullPtr(), pval);}
+         return Resolve(ccx, iface, nullptr, pval);}
 
     bool NewFunctionObject(XPCCallContext& ccx, XPCNativeInterface* iface,
                            JS::HandleObject parent, jsval* pval);
@@ -1698,7 +1718,7 @@ public:
          MOZ_COUNT_CTOR(XPCNativeScriptableShared);}
 
     ~XPCNativeScriptableShared()
-        {if (mJSClass.base.name)nsMemory::Free((void*)mJSClass.base.name);
+        {if (mJSClass.base.name)free((void*)mJSClass.base.name);
          MOZ_COUNT_DTOR(XPCNativeScriptableShared);}
 
     char* TransferNameOwnership()
@@ -2379,7 +2399,7 @@ private:
                                uint16_t methodIndex,
                                uint8_t paramIndex,
                                nsXPTCMiniVariant* params,
-                               uint32_t* result);
+                               uint32_t* result) const;
 
     bool GetInterfaceTypeFromParam(JSContext* cx,
                                    const XPTMethodDescriptor* method,
@@ -2387,14 +2407,17 @@ private:
                                    uint16_t methodIndex,
                                    const nsXPTType& type,
                                    nsXPTCMiniVariant* params,
-                                   nsID* result);
+                                   nsID* result) const;
 
-    void CleanupPointerArray(const nsXPTType& datum_type,
-                             uint32_t array_count,
-                             void** arrayp);
+    static void CleanupPointerArray(const nsXPTType& datum_type,
+                                    uint32_t array_count,
+                                    void** arrayp);
 
-    void CleanupPointerTypeObject(const nsXPTType& type,
-                                  void** pp);
+    static void CleanupPointerTypeObject(const nsXPTType& type,
+                                         void** pp);
+
+    void CleanupOutparams(JSContext* cx, uint16_t methodIndex, const nsXPTMethodInfo* info,
+                          nsXPTCMiniVariant* nativeParams, bool inOutOnly, uint8_t n) const;
 
 private:
     XPCJSRuntime* mRuntime;
@@ -2488,7 +2511,6 @@ public:
     }
 
     void TraceJS(JSTracer* trc);
-    static void GetTraceName(JSTracer* trc, char* buf, size_t bufsize);
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 
@@ -2527,7 +2549,6 @@ public:
 
 public:
     void TraceJS(JSTracer* trc);
-    static void GetTraceName(JSTracer* trc, char* buf, size_t bufsize);
 
     explicit XPCJSObjectHolder(JSObject* obj);
 
@@ -2837,14 +2858,8 @@ struct XPCJSContextInfo {
 };
 
 namespace xpc {
-
-// These functions are used in a few places where a callback model makes it
-// impossible to push a JSContext using one of our stack-scoped classes. We
-// depend on those stack-scoped classes to maintain nsIScriptContext
-// invariants, so these functions may only be used of the context is not
-// associated with an nsJSContext/nsIScriptContext.
-bool PushJSContextNoScriptContext(JSContext* aCx);
-void PopJSContextNoScriptContext();
+bool PushNullJSContext();
+void PopNullJSContext();
 
 } /* namespace xpc */
 
@@ -2885,8 +2900,8 @@ public:
 
 private:
     friend class mozilla::dom::danger::AutoCxPusher;
-    friend bool xpc::PushJSContextNoScriptContext(JSContext* aCx);
-    friend void xpc::PopJSContextNoScriptContext();
+    friend bool xpc::PushNullJSContext();
+    friend void xpc::PopNullJSContext();
 
     // We make these private so that stack manipulation can only happen
     // through one of the above friends.
@@ -3335,7 +3350,6 @@ public:
     virtual ~XPCTraceableVariant();
 
     void TraceJS(JSTracer* trc);
-    static void GetTraceName(JSTracer* trc, char* buf, size_t bufsize);
 };
 
 /***************************************************************************/
@@ -3396,6 +3410,7 @@ struct GlobalProperties {
     bool File : 1;
     bool crypto : 1;
     bool rtcIdentityProvider : 1;
+    bool fetch : 1;
 };
 
 // Infallible.
@@ -3441,6 +3456,7 @@ public:
         , addonId(cx)
         , writeToGlobalPrototype(false)
         , sameZoneAs(cx)
+        , freshZone(false)
         , invisibleToDebugger(false)
         , discardSource(false)
         , metadata(cx)
@@ -3456,6 +3472,7 @@ public:
     JS::RootedString addonId;
     bool writeToGlobalPrototype;
     JS::RootedObject sameZoneAs;
+    bool freshZone;
     bool invisibleToDebugger;
     bool discardSource;
     GlobalProperties globalProperties;
@@ -3505,7 +3522,7 @@ public:
     { }
 
     JSObject* ToJSObject(JSContext* cx) {
-        JS::RootedObject obj(cx, JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr()));
+        JS::RootedObject obj(cx, JS_NewObjectWithGivenProto(cx, nullptr, nullptr));
         if (!obj)
             return nullptr;
 
@@ -3648,7 +3665,6 @@ public:
         , skipWriteToGlobalPrototype(false)
         , universalXPConnectEnabled(false)
         , forcePermissiveCOWs(false)
-        , CPOWTime(0)
         , skipCOWCallableChecks(false)
         , scriptability(c)
         , scope(nullptr)
@@ -3701,9 +3717,6 @@ public:
     //
     // Using it in production is inherently unsafe.
     bool forcePermissiveCOWs;
-
-    // A running count of how much time we've spent processing CPOWs.
-    PRIntervalTime               CPOWTime;
 
     // Disables the XPConnect security checks that deny access to callables and
     // accessor descriptors on COWs. Do not use this unless you are bholley.

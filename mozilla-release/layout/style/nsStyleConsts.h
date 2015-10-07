@@ -147,9 +147,10 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_BOX_ORIENT_VERTICAL   1
 
 // orient
-#define NS_STYLE_ORIENT_HORIZONTAL 0
-#define NS_STYLE_ORIENT_VERTICAL   1
-#define NS_STYLE_ORIENT_AUTO       2
+#define NS_STYLE_ORIENT_INLINE     0
+#define NS_STYLE_ORIENT_BLOCK      1
+#define NS_STYLE_ORIENT_HORIZONTAL 2
+#define NS_STYLE_ORIENT_VERTICAL   3
 
 #define NS_RADIUS_FARTHEST_SIDE 0
 #define NS_RADIUS_CLOSEST_SIDE  1
@@ -442,6 +443,19 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_DISPLAY_RUBY_TEXT              36
 #define NS_STYLE_DISPLAY_RUBY_TEXT_CONTAINER    37
 #define NS_STYLE_DISPLAY_CONTENTS               38
+
+// See nsStyleDisplay
+// If these are re-ordered, nsComputedDOMStyle::DoGetContain() and
+// nsCSSValue::AppendToString() must be updated.
+#define NS_STYLE_CONTAIN_NONE                   0
+#define NS_STYLE_CONTAIN_STRICT                 0x1
+#define NS_STYLE_CONTAIN_LAYOUT                 0x2
+#define NS_STYLE_CONTAIN_STYLE                  0x4
+#define NS_STYLE_CONTAIN_PAINT                  0x8
+// NS_STYLE_CONTAIN_ALL_BITS does not correspond to a keyword.
+#define NS_STYLE_CONTAIN_ALL_BITS               (NS_STYLE_CONTAIN_LAYOUT | \
+                                                 NS_STYLE_CONTAIN_STYLE  | \
+                                                 NS_STYLE_CONTAIN_PAINT)
 
 // See nsStylePosition
 #define NS_STYLE_ALIGN_CONTENT_FLEX_START       0
@@ -744,6 +758,7 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 // is never present in stylesheets or computed data.
 #define NS_STYLE_TEXT_ALIGN_MOZ_CENTER_OR_INHERIT 11
 #define NS_STYLE_TEXT_ALIGN_TRUE                  12
+#define NS_STYLE_TEXT_ALIGN_MATCH_PARENT          13
 // Note: make sure that the largest NS_STYLE_TEXT_ALIGN_* value is smaller than
 // the smallest NS_STYLE_VERTICAL_ALIGN_* value below!
 
@@ -788,6 +803,11 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_TOUCH_ACTION_MANIPULATION    (1 << 4)
 
 // See nsStyleDisplay
+#define NS_STYLE_TRANSFORM_BOX_BORDER_BOX                0
+#define NS_STYLE_TRANSFORM_BOX_FILL_BOX                  1
+#define NS_STYLE_TRANSFORM_BOX_VIEW_BOX                  2
+
+// See nsStyleDisplay
 #define NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE         0
 #define NS_STYLE_TRANSITION_TIMING_FUNCTION_LINEAR       1
 #define NS_STYLE_TRANSITION_TIMING_FUNCTION_EASE_IN      2
@@ -800,15 +820,15 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 // Note: these values pickup after the text-align values because there
 // are a few html cases where an object can have both types of
 // alignment applied with a single attribute
-#define NS_STYLE_VERTICAL_ALIGN_BASELINE             13
-#define NS_STYLE_VERTICAL_ALIGN_SUB                  14
-#define NS_STYLE_VERTICAL_ALIGN_SUPER                15
-#define NS_STYLE_VERTICAL_ALIGN_TOP                  16
-#define NS_STYLE_VERTICAL_ALIGN_TEXT_TOP             17
-#define NS_STYLE_VERTICAL_ALIGN_MIDDLE               18
-#define NS_STYLE_VERTICAL_ALIGN_TEXT_BOTTOM          19
-#define NS_STYLE_VERTICAL_ALIGN_BOTTOM               20
-#define NS_STYLE_VERTICAL_ALIGN_MIDDLE_WITH_BASELINE 21
+#define NS_STYLE_VERTICAL_ALIGN_BASELINE             14
+#define NS_STYLE_VERTICAL_ALIGN_SUB                  15
+#define NS_STYLE_VERTICAL_ALIGN_SUPER                16
+#define NS_STYLE_VERTICAL_ALIGN_TOP                  17
+#define NS_STYLE_VERTICAL_ALIGN_TEXT_TOP             18
+#define NS_STYLE_VERTICAL_ALIGN_MIDDLE               19
+#define NS_STYLE_VERTICAL_ALIGN_TEXT_BOTTOM          20
+#define NS_STYLE_VERTICAL_ALIGN_BOTTOM               21
+#define NS_STYLE_VERTICAL_ALIGN_MIDDLE_WITH_BASELINE 22
 
 // See nsStyleVisibility
 #define NS_STYLE_VISIBILITY_HIDDEN              0

@@ -5,7 +5,6 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "AndroidMediaReader.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/dom/TimeRanges.h"
 #include "mozilla/gfx/Point.h"
 #include "MediaResource.h"
 #include "VideoUtils.h"
@@ -19,6 +18,7 @@
 namespace mozilla {
 
 using namespace mozilla::gfx;
+using namespace mozilla::media;
 
 typedef mozilla::layers::Image Image;
 typedef mozilla::layers::PlanarYCbCrImage PlanarYCbCrImage;
@@ -56,8 +56,7 @@ nsresult AndroidMediaReader::ReadMetadata(MediaInfo* aInfo,
   int64_t durationUs;
   mPlugin->GetDuration(mPlugin, &durationUs);
   if (durationUs) {
-    ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-    mDecoder->SetMediaDuration(durationUs);
+    mInfo.mMetadataDuration.emplace(TimeUnit::FromMicroseconds(durationUs));
   }
 
   if (mPlugin->HasVideo(mPlugin)) {
@@ -74,7 +73,7 @@ nsresult AndroidMediaReader::ReadMetadata(MediaInfo* aInfo,
     }
 
     // Video track's frame sizes will not overflow. Activate the video track.
-    mHasVideo = mInfo.mVideo.mHasVideo = true;
+    mHasVideo = true;
     mInfo.mVideo.mDisplay = displaySize;
     mPicture = pictureRect;
     mInitialFrame = frameSize;
@@ -89,7 +88,7 @@ nsresult AndroidMediaReader::ReadMetadata(MediaInfo* aInfo,
   if (mPlugin->HasAudio(mPlugin)) {
     int32_t numChannels, sampleRate;
     mPlugin->GetAudioParameters(mPlugin, &numChannels, &sampleRate);
-    mHasAudio = mInfo.mAudio.mHasAudio = true;
+    mHasAudio = true;
     mInfo.mAudio.mChannels = numChannels;
     mInfo.mAudio.mRate = sampleRate;
   }
@@ -174,7 +173,7 @@ bool AndroidMediaReader::DecodeVideoFrame(bool &aKeyframeSkip,
 
     currentImage = bufferCallback.GetImage();
     int64_t pos = mDecoder->GetResource()->Tell();
-    IntRect picture = ToIntRect(mPicture);
+    IntRect picture = mPicture;
 
     nsRefPtr<VideoData> v;
     if (currentImage) {

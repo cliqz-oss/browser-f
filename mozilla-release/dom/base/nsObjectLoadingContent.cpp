@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-// vim:set et cin sw=2 sts=2:
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -20,6 +20,7 @@
 #include "nsIDOMHTMLObjectElement.h"
 #include "nsIDOMHTMLAppletElement.h"
 #include "nsIExternalProtocolHandler.h"
+#include "nsIHttpChannelInternal.h"
 #include "nsIObjectFrame.h"
 #include "nsIPermissionManager.h"
 #include "nsPluginHost.h"
@@ -38,12 +39,13 @@
 #include "nsIBlocklistService.h"
 #include "nsIAsyncVerifyRedirectCallback.h"
 #include "nsIAppShell.h"
+#include "nsIXULRuntime.h"
 
 #include "nsError.h"
 
 // Util headers
 #include "prenv.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 #include "nsAutoPtr.h"
 #include "nsCURILoader.h"
@@ -105,7 +107,6 @@ static const char *kPrefJavaMIME = "plugin.java.mime";
 using namespace mozilla;
 using namespace mozilla::dom;
 
-#ifdef PR_LOGGING
 static PRLogModuleInfo*
 GetObjectLog()
 {
@@ -114,10 +115,9 @@ GetObjectLog()
     sLog = PR_NewLogModule("objlc");
   return sLog;
 }
-#endif
 
-#define LOG(args) PR_LOG(GetObjectLog(), PR_LOG_DEBUG, args)
-#define LOG_ENABLED() PR_LOG_TEST(GetObjectLog(), PR_LOG_DEBUG)
+#define LOG(args) MOZ_LOG(GetObjectLog(), mozilla::LogLevel::Debug, args)
+#define LOG_ENABLED() MOZ_LOG_TEST(GetObjectLog(), mozilla::LogLevel::Debug)
 
 static bool
 IsJavaMIME(const nsACString & aMIMEType)
@@ -552,6 +552,11 @@ IsPluginEnabledByExtension(nsIURI* uri, nsCString& mimeType)
     return false;
   }
 
+  // Disables any native PDF plugins, when internal PDF viewer is enabled.
+  if (ext.EqualsIgnoreCase("pdf") && nsContentUtils::IsPDFJSEnabled()) {
+    return false;
+  }
+
   nsRefPtr<nsPluginHost> pluginHost = nsPluginHost::GetInst();
 
   if (!pluginHost) {
@@ -698,6 +703,8 @@ nsObjectLoadingContent::UnbindFromTree(bool aDeep, bool aNullParent)
 nsObjectLoadingContent::nsObjectLoadingContent()
   : mType(eType_Loading)
   , mFallbackType(eFallbackAlternate)
+  , mRunID(0)
+  , mHasRunID(false)
   , mChannelLoaded(false)
   , mInstantiating(false)
   , mNetworkCreated(true)
@@ -811,6 +818,17 @@ nsObjectLoadingContent::InstantiatePluginInstance(bool aIsLoading)
   }
 
   mInstanceOwner = newOwner;
+
+  if (mInstanceOwner) {
+    nsRefPtr<nsNPAPIPluginInstance> inst;
+    rv = mInstanceOwner->GetInstance(getter_AddRefs(inst));
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    rv = inst->GetRunID(&mRunID);
+    mHasRunID = NS_SUCCEEDED(rv);
+  }
 
   // Ensure the frame did not change during instantiation re-entry (common).
   // HasNewFrame would not have mInstanceOwner yet, so the new frame would be
@@ -2497,6 +2515,13 @@ nsObjectLoadingContent::OpenChannel()
     scriptChannel->SetExecutionPolicy(nsIScriptChannel::EXECUTE_NORMAL);
   }
 
+  nsCOMPtr<nsIHttpChannelInternal> internalChannel = do_QueryInterface(httpChan);
+  if (internalChannel) {
+    // Bug 1168676. object/embed tags are not allowed to be intercepted by
+    // ServiceWorkers.
+    internalChannel->ForceNoIntercept();
+  }
+
   // AsyncOpen can fail if a file does not exist.
   rv = chan->AsyncOpen(shim, nullptr);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -2650,6 +2675,13 @@ nsObjectLoadingContent::GetTypeOfContent(const nsCString& aMIMEType)
 
   if ((caps & eSupportImages) && IsSupportedImage(aMIMEType)) {
     return eType_Image;
+  }
+
+  // Faking support of the PDF content as a document for EMBED tags
+  // when internal PDF viewer is enabled.
+  if (aMIMEType.LowerCaseEqualsLiteral("application/pdf") &&
+      nsContentUtils::IsPDFJSEnabled()) {
+    return eType_Document;
   }
 
   // SVGs load as documents, but are their own capability
@@ -3144,6 +3176,24 @@ nsObjectLoadingContent::CancelPlayPreview()
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsObjectLoadingContent::GetRunID(uint32_t* aRunID)
+{
+  if (NS_WARN_IF(!nsContentUtils::IsCallerChrome())) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if (NS_WARN_IF(!aRunID)) {
+    return NS_ERROR_INVALID_POINTER;
+  }
+  if (!mHasRunID) {
+    // The plugin instance must not have a run ID, so we must
+    // be running the plugin in-process.
+    return NS_ERROR_NOT_IMPLEMENTED;
+  }
+  *aRunID = mRunID;
+  return NS_OK;
+}
+
 static bool sPrefsInitialized;
 static uint32_t sSessionTimeoutMinutes;
 static uint32_t sPersistentTimeoutDays;
@@ -3159,6 +3209,14 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
     Preferences::AddUintVarCache(&sPersistentTimeoutDays,
                                  "plugin.persistentPermissionAlways.intervalInDays", 90);
     sPrefsInitialized = true;
+  }
+
+  if (XRE_GetProcessType() == GeckoProcessType_Default &&
+      BrowserTabsRemoteAutostart()) {
+    // Plugins running OOP from the chrome process along with plugins running
+    // OOP from the content process will hang. Let's prevent that situation.
+    aReason = eFallbackDisabled;
+    return false;
   }
 
   nsRefPtr<nsPluginHost> pluginHost = nsPluginHost::GetInst();
@@ -3215,8 +3273,9 @@ nsObjectLoadingContent::ShouldPlay(FallbackType &aReason, bool aIgnoreCurrentTyp
   }
 
   // Before we check permissions, get the blocklist state of this plugin to set
-  // the fallback reason correctly.
-  uint32_t blocklistState = nsIBlocklistService::STATE_NOT_BLOCKED;
+  // the fallback reason correctly. In the content process this will involve
+  // an ipc call to chrome.
+  uint32_t blocklistState = nsIBlocklistService::STATE_BLOCKED;
   pluginHost->GetBlocklistStateForType(mContentType,
                                        nsPluginHost::eExcludeNone,
                                        &blocklistState);
@@ -3621,6 +3680,14 @@ nsObjectLoadingContent::DoResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
   if (NS_FAILED(rv)) {
     return mozilla::dom::Throw(aCx, rv);
   }
+  return true;
+}
+
+/* static */
+bool
+nsObjectLoadingContent::MayResolve(jsid aId)
+{
+  // We can resolve anything, really.
   return true;
 }
 

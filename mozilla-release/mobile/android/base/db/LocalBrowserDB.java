@@ -483,7 +483,7 @@ public class LocalBrowserDB implements BrowserDB {
         }
 
         final String bitmapPath = GeckoJarReader.getJarURL(context, context.getString(faviconId));
-        final InputStream iStream = GeckoJarReader.getStream(bitmapPath);
+        final InputStream iStream = GeckoJarReader.getStream(context, bitmapPath);
 
         return IOUtils.readFully(iStream, DEFAULT_FAVICON_BUFFER_SIZE);
     }
@@ -720,9 +720,12 @@ public class LocalBrowserDB implements BrowserDB {
     }
 
     @Override
-    public void clearHistory(ContentResolver cr) {
-        cr.delete(mHistoryUriWithProfile, null, null);
-        cr.delete(mSearchHistoryUri, null, null);
+    public void clearHistory(ContentResolver cr, boolean clearSearchHistory) {
+        if (clearSearchHistory) {
+            cr.delete(mSearchHistoryUri, null, null);
+        } else {
+            cr.delete(mHistoryUriWithProfile, null, null);
+        }
     }
 
     @Override
@@ -936,9 +939,34 @@ public class LocalBrowserDB implements BrowserDB {
 
     @Override
     @RobocopTarget
-    public void addBookmark(ContentResolver cr, String title, String uri) {
+    public boolean addBookmark(ContentResolver cr, String title, String uri) {
         long folderId = getFolderIdFromGuid(cr, Bookmarks.MOBILE_FOLDER_GUID);
+        if (isBookmarkForUrlInFolder(cr, uri, folderId)) {
+            // Bookmark added already.
+            return false;
+        }
+
+        // Add a new bookmark.
         addBookmarkItem(cr, title, uri, folderId);
+        return true;
+    }
+
+    private boolean isBookmarkForUrlInFolder(ContentResolver cr, String uri, long folderId) {
+        final Cursor c = cr.query(bookmarksUriWithLimit(1),
+                                  new String[] { Bookmarks._ID },
+                                  Bookmarks.URL + " = ? AND " + Bookmarks.PARENT + " = ? AND " + Bookmarks.IS_DELETED + " == 0",
+                                  new String[] { uri, String.valueOf(folderId) },
+                                  Bookmarks.URL);
+
+        if (c == null) {
+            return false;
+        }
+
+        try {
+            return c.getCount() > 0;
+        } finally {
+            c.close();
+        }
     }
 
     @Override

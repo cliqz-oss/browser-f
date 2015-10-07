@@ -278,7 +278,7 @@ Assembler::TraceJumpRelocations(JSTracer* trc, JitCode* code, CompactBufferReade
     RelocationIterator iter(reader);
     while (iter.read()) {
         JitCode* child = CodeFromJump((Instruction*)(code->raw() + iter.offset()));
-        MarkJitCodeUnbarriered(trc, &child, "rel32");
+        TraceManuallyBarrieredEdge(trc, &child, "rel32");
     }
 }
 
@@ -288,14 +288,9 @@ TraceOneDataRelocation(JSTracer* trc, Instruction* inst)
     void* ptr = (void*)Assembler::ExtractLuiOriValue(inst, inst->next());
     void* prior = ptr;
 
-    // The low bit shouldn't be set. If it is, we probably got a dummy
-    // pointer inserted by CodeGenerator::visitNurseryObject, but we
-    // shouldn't be able to trigger GC before those are patched to their
-    // real values.
-    MOZ_ASSERT(!(uintptr_t(ptr) & 0x1));
-
     // No barrier needed since these are constants.
-    gc::MarkGCThingUnbarriered(trc, reinterpret_cast<void**>(&ptr), "ion-masm-ptr");
+    TraceManuallyBarrieredGenericPointerEdge(trc, reinterpret_cast<gc::Cell**>(&ptr),
+                                                 "ion-masm-ptr");
     if (ptr != prior) {
         Assembler::UpdateLuiOriValue(inst, inst->next(), uint32_t(ptr));
         AutoFlushICache::flush(uintptr_t(inst), 8);
@@ -329,43 +324,6 @@ Assembler::TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReade
 }
 
 void
-Assembler::FixupNurseryObjects(JSContext* cx, JitCode* code, CompactBufferReader& reader,
-                               const ObjectVector& nurseryObjects)
-{
-    MOZ_ASSERT(!nurseryObjects.empty());
-
-    uint8_t* buffer = code->raw();
-    bool hasNurseryPointers = false;
-
-    while (reader.more()) {
-        size_t offset = reader.readUnsigned();
-        Instruction* inst = (Instruction*)(buffer + offset);
-
-        void* ptr = (void*)Assembler::ExtractLuiOriValue(inst, inst->next());
-        uintptr_t word = uintptr_t(ptr);
-
-        if (!(word & 0x1))
-            continue;
-
-        uint32_t index = word >> 1;
-        JSObject* obj = nurseryObjects[index];
-
-        Assembler::UpdateLuiOriValue(inst, inst->next(), uint32_t(obj));
-        AutoFlushICache::flush(uintptr_t(inst), 8);
-
-        // Either all objects are still in the nursery, or all objects are
-        // tenured.
-        MOZ_ASSERT_IF(hasNurseryPointers, IsInsideNursery(obj));
-
-        if (!hasNurseryPointers && IsInsideNursery(obj))
-            hasNurseryPointers = true;
-    }
-
-    if (hasNurseryPointers)
-        cx->runtime()->gc.storeBuffer.putWholeCellFromMainThread(code);
-}
-
-void
 Assembler::copyJumpRelocationTable(uint8_t* dest)
 {
     if (jumpRelocations_.length())
@@ -393,7 +351,7 @@ Assembler::trace(JSTracer* trc)
         RelativePatch& rp = jumps_[i];
         if (rp.kind == Relocation::JITCODE) {
             JitCode* code = JitCode::FromExecutable((uint8_t*)rp.target);
-            MarkJitCodeUnbarriered(trc, &code, "masmrel32");
+            TraceManuallyBarrieredEdge(trc, &code, "masmrel32");
             MOZ_ASSERT(code == JitCode::FromExecutable((uint8_t*)rp.target));
         }
     }

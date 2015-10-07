@@ -24,7 +24,6 @@
 #endif
 
 class nsIInputStream;
-struct nsIntRect;
 class nsPluginDOMContextMenuListener;
 class nsPluginFrame;
 class nsDisplayListBuilder;
@@ -41,7 +40,6 @@ class PuppetWidget;
 using mozilla::widget::PuppetWidget;
 
 #ifdef MOZ_X11
-class gfxXlibSurface;
 #ifdef MOZ_WIDGET_QT
 #include "gfxQtNativeRenderer.h"
 #else
@@ -64,11 +62,6 @@ public:
   NS_IMETHOD GetURL(const char *aURL, const char *aTarget,
                     nsIInputStream *aPostStream, 
                     void *aHeadersData, uint32_t aHeadersDataLen) override;
-  
-  NS_IMETHOD ShowStatus(const char16_t *aStatusMsg) override;
-  
-  // This can go away, just leaving it here to avoid changing the interface.
-  NPError    ShowNativeContextMenu(NPMenu* menu, void* event) override;
   
   NPBool     ConvertPoint(double sourceX, double sourceY, NPCoordinateSpace sourceSpace,
                           double *destX, double *destY, NPCoordinateSpace destSpace) override;
@@ -118,6 +111,11 @@ public:
   void ReleasePluginPort(void* pluginPort);
 
   nsEventStatus ProcessEvent(const mozilla::WidgetGUIEvent& anEvent);
+
+#if defined(XP_WIN)
+  void SetWidgetWindowAsParent(HWND aWindowToAdopt);
+  nsresult SetNetscapeWindowAsParent(HWND aWindowToAdopt);
+#endif
   
 #ifdef XP_MACOSX
   enum { ePluginPaintEnable, ePluginPaintDisable };
@@ -279,6 +277,10 @@ private:
   bool mFullScreen;
   void* mJavaView;
 #endif 
+
+#if defined(XP_WIN)
+  nsIWidget* GetContainingWidgetIfOffset();
+#endif
  
   nsPluginNativeWindow       *mPluginWindow;
   nsRefPtr<nsNPAPIPluginInstance> mInstance;

@@ -265,8 +265,18 @@ Proxy::hasOwn(JSContext* cx, HandleObject proxy, HandleId id, bool* bp)
     return handler->hasOwn(cx, proxy, id, bp);
 }
 
+static Value
+OuterizeValue(JSContext* cx, HandleValue v)
+{
+    if (v.isObject()) {
+        RootedObject obj(cx, &v.toObject());
+        return ObjectValue(*GetOuterObject(cx, obj));
+    }
+    return v;
+}
+
 bool
-Proxy::get(JSContext* cx, HandleObject proxy, HandleObject receiver, HandleId id,
+Proxy::get(JSContext* cx, HandleObject proxy, HandleObject receiver_, HandleId id,
            MutableHandleValue vp)
 {
     JS_CHECK_RECURSION(cx, return false);
@@ -275,6 +285,11 @@ Proxy::get(JSContext* cx, HandleObject proxy, HandleObject receiver, HandleId id
     AutoEnterPolicy policy(cx, handler, proxy, id, BaseProxyHandler::GET, true);
     if (!policy.allowed())
         return policy.returnValue();
+
+    // Outerize the receiver. Proxy handlers shouldn't have to know about
+    // the Window/WindowProxy distinction.
+    RootedObject receiver(cx, GetOuterObject(cx, receiver_));
+
     bool own;
     if (!handler->hasPrototype()) {
         own = true;
@@ -307,7 +322,7 @@ Proxy::callProp(JSContext* cx, HandleObject proxy, HandleObject receiver, Handle
 }
 
 bool
-Proxy::set(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v, HandleValue receiver,
+Proxy::set(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v, HandleValue receiver_,
            ObjectOpResult& result)
 {
     JS_CHECK_RECURSION(cx, return false);
@@ -318,6 +333,10 @@ Proxy::set(JSContext* cx, HandleObject proxy, HandleId id, HandleValue v, Handle
             return false;
         return result.succeed();
     }
+
+    // Outerize the receiver. Proxy handlers shouldn't have to know about
+    // the Window/WindowProxy distinction.
+    RootedValue receiver(cx, OuterizeValue(cx, receiver_));
 
     // Special case. See the comment on BaseProxyHandler::mHasPrototype.
     if (handler->hasPrototype())
@@ -613,7 +632,7 @@ ProxyObject::trace(JSTracer* trc, JSObject* obj)
 {
     ProxyObject* proxy = &obj->as<ProxyObject>();
 
-    MarkShape(trc, &proxy->shape, "ProxyObject_shape");
+    TraceEdge(trc, &proxy->shape, "ProxyObject_shape");
 
 #ifdef DEBUG
     if (trc->runtime()->gc.isStrictProxyCheckingEnabled() && proxy->is<WrapperObject>()) {
@@ -633,15 +652,15 @@ ProxyObject::trace(JSTracer* trc, JSObject* obj)
 
     // Note: If you add new slots here, make sure to change
     // nuke() to cope.
-    MarkCrossCompartmentSlot(trc, obj, proxy->slotOfPrivate(), "private");
-    MarkValue(trc, proxy->slotOfExtra(0), "extra0");
+    TraceCrossCompartmentEdge(trc, obj, proxy->slotOfPrivate(), "private");
+    TraceEdge(trc, proxy->slotOfExtra(0), "extra0");
 
     /*
      * The GC can use the second reserved slot to link the cross compartment
      * wrappers into a linked list, in which case we don't want to trace it.
      */
     if (!proxy->is<CrossCompartmentWrapperObject>())
-        MarkValue(trc, proxy->slotOfExtra(1), "extra1");
+        TraceEdge(trc, proxy->slotOfExtra(1), "extra1");
 
     Proxy::trace(trc, obj);
 }
@@ -774,10 +793,8 @@ js::InitProxyClass(JSContext* cx, HandleObject obj)
 
     if (!JS_DefineFunctions(cx, ctor, static_methods))
         return nullptr;
-    if (!JS_DefineProperty(cx, obj, "Proxy", ctor, 0,
-                           JS_STUBGETTER, JS_STUBSETTER)) {
+    if (!JS_DefineProperty(cx, obj, "Proxy", ctor, JSPROP_RESOLVING, JS_STUBGETTER, JS_STUBSETTER))
         return nullptr;
-    }
 
     global->setConstructor(JSProto_Proxy, ObjectValue(*ctor));
     return ctor;

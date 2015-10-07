@@ -11,8 +11,7 @@
 
 const TEST_URI = "data:text/html;charset=utf8,<p>hello world from bug 866950";
 
-function test()
-{
+function test() {
   requestLongerTimeout(2);
 
   let webconsole, browserconsole;
@@ -30,7 +29,8 @@ function test()
     // Cause an exception in a script loaded with the addon-sdk loader.
     let toolbox = gDevTools.getToolbox(webconsole.target);
     let oldPanels = toolbox._toolPanels;
-    toolbox._toolPanels = {}; // non-iterable
+    // non-iterable
+    toolbox._toolPanels = {};
 
     function fixToolbox() {
       toolbox._toolPanels = oldPanels;
@@ -67,8 +67,8 @@ function test()
     let viewSource = browserconsole.viewSource;
     let URL = null;
     let clickPromise = promise.defer();
-    browserconsole.viewSource = (aURL) => {
-      info("browserconsole.viewSource() was invoked: " + aURL);
+    browserconsole.viewSourceInDebugger = (aURL) => {
+      info("browserconsole.viewSourceInDebugger() was invoked: " + aURL);
       URL = aURL;
       clickPromise.resolve(null);
     };
@@ -85,6 +85,6 @@ function test()
     isnot(URL.indexOf("toolbox.js"), -1, "we have the expected view source URL");
     is(URL.indexOf("->"), -1, "no -> in the URL given to view-source");
 
-    browserconsole.viewSource = viewSource;
+    browserconsole.viewSourceInDebugger = viewSource;
   }
 }

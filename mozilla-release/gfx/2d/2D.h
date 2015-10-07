@@ -10,6 +10,7 @@
 #include "Point.h"
 #include "Rect.h"
 #include "Matrix.h"
+#include "Quaternion.h"
 #include "UserData.h"
 
 // GenericRefCountedBase allows us to hold on to refcounted objects of any type
@@ -43,7 +44,6 @@ struct ID2D1Device;
 struct IDWriteRenderingParams;
 
 class GrContext;
-struct GrGLInterface;
 
 struct CGContext;
 typedef struct CGContext *CGContextRef;
@@ -393,6 +393,52 @@ public:
     READ,
     WRITE,
     READ_WRITE
+  };
+
+  /**
+   * This is a scoped version of Map(). Map() is called in the constructor and
+   * Unmap() in the destructor. Use this for automatic unmapping of your data
+   * surfaces.
+   *
+   * Use IsMapped() to verify whether Map() succeeded or not.
+   */
+  class ScopedMap {
+  public:
+    explicit ScopedMap(DataSourceSurface* aSurface, MapType aType)
+      : mSurface(aSurface)
+      , mIsMapped(aSurface->Map(aType, &mMap)) {}
+
+    virtual ~ScopedMap()
+    {
+      if (mIsMapped) {
+        mSurface->Unmap();
+      }
+    }
+
+    uint8_t* GetData()
+    {
+      MOZ_ASSERT(mIsMapped);
+      return mMap.mData;
+    }
+
+    int32_t GetStride()
+    {
+      MOZ_ASSERT(mIsMapped);
+      return mMap.mStride;
+    }
+
+    MappedSurface* GetMappedSurface()
+    {
+      MOZ_ASSERT(mIsMapped);
+      return &mMap;
+    }
+
+    bool IsMapped() { return mIsMapped; }
+
+  private:
+    RefPtr<DataSourceSurface> mSurface;
+    MappedSurface mMap;
+    bool mIsMapped;
   };
 
   virtual SurfaceType GetType() const override { return SurfaceType::DATA; }

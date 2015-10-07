@@ -7,6 +7,8 @@
 #ifndef mozilla_CycleCollectedJSRuntime_h__
 #define mozilla_CycleCollectedJSRuntime_h__
 
+#include <queue>
+
 #include "mozilla/DeferredFinalize.h"
 #include "mozilla/MemoryReporting.h"
 #include "jsapi.h"
@@ -100,6 +102,7 @@ struct CycleCollectorResults
   {
     mForcedGC = false;
     mMergedZones = false;
+    mAnyManual = false;
     mVisitedRefCounted = 0;
     mVisitedGCed = 0;
     mFreedRefCounted = 0;
@@ -112,6 +115,7 @@ struct CycleCollectorResults
 
   bool mForcedGC;
   bool mMergedZones;
+  bool mAnyManual; // true if any slice of the CC was manually triggered, or at shutdown.
   uint32_t mVisitedRefCounted;
   uint32_t mVisitedGCed;
   uint32_t mFreedRefCounted;
@@ -194,6 +198,8 @@ private:
   static void TraceBlackJS(JSTracer* aTracer, void* aData);
   static void TraceGrayJS(JSTracer* aTracer, void* aData);
   static void GCCallback(JSRuntime* aRuntime, JSGCStatus aStatus, void* aData);
+  static void GCSliceCallback(JSRuntime* aRuntime, JS::GCProgress aProgress,
+                              const JS::GCDescription& aDesc);
   static void OutOfMemoryCallback(JSContext* aContext, void* aData);
   static void LargeAllocationFailureCallback(void* aData);
   static bool ContextCallback(JSContext* aCx, unsigned aOperation,
@@ -202,6 +208,7 @@ private:
   virtual void TraceNativeBlackRoots(JSTracer* aTracer) { };
   void TraceNativeGrayRoots(JSTracer* aTracer);
 
+public:
   enum DeferredFinalizeType {
     FinalizeIncrementally,
     FinalizeNow,
@@ -209,7 +216,6 @@ private:
 
   void FinalizeDeferredThings(DeferredFinalizeType aType);
 
-public:
   // Two conditions, JSOutOfMemory and JSLargeAllocationFailure, are noted in
   // crash reports. Here are the values that can appear in the reports:
   enum class OOMState : uint32_t {
@@ -217,7 +223,7 @@ public:
     OK,
 
     // We are currently reporting the given condition.
-    // 
+    //
     // Suppose a crash report contains "JSLargeAllocationFailure:
     // Reporting". This means we crashed while executing memory-pressure
     // observers, trying to shake loose some memory. The large allocation in
@@ -259,7 +265,7 @@ public:
   already_AddRefed<nsIException> GetPendingException() const;
   void SetPendingException(nsIException* aException);
 
-  nsTArray<nsCOMPtr<nsIRunnable>>& GetPromiseMicroTaskQueue();
+  std::queue<nsCOMPtr<nsIRunnable>>& GetPromiseMicroTaskQueue();
 
   nsCycleCollectionParticipant* GCThingParticipant();
   nsCycleCollectionParticipant* ZoneParticipant();
@@ -292,12 +298,23 @@ public:
   // isn't one.
   static CycleCollectedJSRuntime* Get();
 
+  // Storage for watching rejected promises waiting for some client to
+  // consume their rejection.
+  // We store values as `nsISupports` to avoid adding compile-time dependencies
+  // from xpcom to dom/promise, but they can really only have a single concrete
+  // type.
+  nsTArray<nsCOMPtr<nsISupports /* Promise */>> mUncaughtRejections;
+  nsTArray<nsCOMPtr<nsISupports /* Promise */ >> mConsumedRejections;
+  nsTArray<nsCOMPtr<nsISupports /* UncaughtRejectionObserver */ >> mUncaughtRejectionObservers;
+
 private:
   JSGCThingParticipant mGCThingCycleCollectorGlobal;
 
   JSZoneParticipant mJSZoneCycleCollectorGlobal;
 
   JSRuntime* mJSRuntime;
+
+  JS::GCSliceCallback mPrevGCSliceCallback;
 
   nsDataHashtable<nsPtrHashKey<void>, nsScriptObjectTracer*> mJSHolders;
 
@@ -309,7 +326,7 @@ private:
 
   nsCOMPtr<nsIException> mPendingException;
 
-  nsTArray<nsCOMPtr<nsIRunnable>> mPromiseMicroTaskQueue;
+  std::queue<nsCOMPtr<nsIRunnable>> mPromiseMicroTaskQueue;
 
   OOMState mOutOfMemoryState;
   OOMState mLargeAllocationFailureState;
@@ -317,10 +334,10 @@ private:
 
 void TraceScriptHolder(nsISupports* aHolder, JSTracer* aTracer);
 
-// Returns true if the JSGCTraceKind is one the cycle collector cares about.
-inline bool AddToCCKind(JSGCTraceKind aKind)
+// Returns true if the JS::TraceKind is one the cycle collector cares about.
+inline bool AddToCCKind(JS::TraceKind aKind)
 {
-  return aKind == JSTRACE_OBJECT || aKind == JSTRACE_SCRIPT;
+  return aKind == JS::TraceKind::Object || aKind == JS::TraceKind::Script;
 }
 
 } // namespace mozilla

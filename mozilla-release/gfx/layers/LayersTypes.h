@@ -7,7 +7,7 @@
 #define GFX_LAYERSTYPES_H
 
 #include <stdint.h>                     // for uint32_t
-#include "nsPoint.h"                    // for nsIntPoint
+#include "mozilla/gfx/Point.h"          // for IntPoint
 #include "nsRegion.h"
 
 #include "mozilla/TypedEnumBits.h"
@@ -15,21 +15,15 @@
 #ifdef MOZ_WIDGET_GONK
 #include <ui/GraphicBuffer.h>
 #endif
-#if defined(DEBUG) || defined(PR_LOGGING)
-#  include <stdio.h>            // FILE
-#  include "prlog.h"            // for PR_LOG
-#  ifndef MOZ_LAYERS_HAVE_LOG
-#    define MOZ_LAYERS_HAVE_LOG
-#  endif
-#  define MOZ_LAYERS_LOG(_args)                             \
-  PR_LOG(LayerManager::GetLog(), PR_LOG_DEBUG, _args)
-#  define MOZ_LAYERS_LOG_IF_SHADOWABLE(layer, _args)         \
-  do { if (layer->AsShadowableLayer()) { PR_LOG(LayerManager::GetLog(), PR_LOG_DEBUG, _args); } } while (0)
-#else
-struct PRLogModuleInfo;
-#  define MOZ_LAYERS_LOG(_args)
-#  define MOZ_LAYERS_LOG_IF_SHADOWABLE(layer, _args)
-#endif  // if defined(DEBUG) || defined(PR_LOGGING)
+#include <stdio.h>            // FILE
+#include "mozilla/Logging.h"            // for PR_LOG
+#ifndef MOZ_LAYERS_HAVE_LOG
+#  define MOZ_LAYERS_HAVE_LOG
+#endif
+#define MOZ_LAYERS_LOG(_args)                             \
+  MOZ_LOG(LayerManager::GetLog(), LogLevel::Debug, _args)
+#define MOZ_LAYERS_LOG_IF_SHADOWABLE(layer, _args)         \
+  do { if (layer->AsShadowableLayer()) { MOZ_LOG(LayerManager::GetLog(), LogLevel::Debug, _args); } } while (0)
 
 #define INVALID_OVERLAY -1
 
@@ -50,7 +44,6 @@ enum class LayersBackend : int8_t {
   LAYERS_BASIC,
   LAYERS_OPENGL,
   LAYERS_D3D9,
-  LAYERS_D3D10,
   LAYERS_D3D11,
   LAYERS_CLIENT,
   LAYERS_LAST
@@ -104,7 +97,7 @@ struct LayerRenderState {
 
 #ifdef MOZ_WIDGET_GONK
   LayerRenderState(android::GraphicBuffer* aSurface,
-                   const nsIntSize& aSize,
+                   const gfx::IntSize& aSize,
                    LayerRenderStateFlags aFlags,
                    TextureHost* aTexture)
     : mFlags(aFlags)
@@ -145,7 +138,7 @@ struct LayerRenderState {
   android::sp<android::GraphicBuffer> mSurface;
   int32_t mOverlayId;
   // size of mSurface
-  nsIntSize mSize;
+  gfx::IntSize mSize;
   TextureHost* mTexture;
 #endif
 };
@@ -211,6 +204,21 @@ struct EventRegions {
   {
     mHitRegion.Sub(aMinuend.mHitRegion, aSubtrahend);
     mDispatchToContentHitRegion.Sub(aMinuend.mDispatchToContentHitRegion, aSubtrahend);
+  }
+
+  void ApplyTranslationAndScale(float aXTrans, float aYTrans, float aXScale, float aYScale)
+  {
+    mHitRegion.ScaleRoundOut(aXScale, aYScale);
+    mDispatchToContentHitRegion.ScaleRoundOut(aXScale, aYScale);
+    mNoActionRegion.ScaleRoundOut(aXScale, aYScale);
+    mHorizontalPanRegion.ScaleRoundOut(aXScale, aYScale);
+    mVerticalPanRegion.ScaleRoundOut(aXScale, aYScale);
+
+    mHitRegion.MoveBy(aXTrans, aYTrans);
+    mDispatchToContentHitRegion.MoveBy(aXTrans, aYTrans);
+    mNoActionRegion.MoveBy(aXTrans, aYTrans);
+    mHorizontalPanRegion.MoveBy(aXTrans, aYTrans);
+    mVerticalPanRegion.MoveBy(aXTrans, aYTrans);
   }
 
   void Transform(const gfx3DMatrix& aTransform)

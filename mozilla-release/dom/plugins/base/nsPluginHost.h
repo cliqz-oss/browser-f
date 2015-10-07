@@ -11,7 +11,6 @@
 #include "nsCOMPtr.h"
 #include "prlink.h"
 #include "prclist.h"
-#include "npapi.h"
 #include "nsIPluginTag.h"
 #include "nsPluginsDir.h"
 #include "nsPluginDirServiceProvider.h"
@@ -30,6 +29,7 @@
 #include "nsCRT.h"
 
 #ifdef XP_WIN
+#include <minwindef.h>
 #include "nsIWindowsRegKey.h"
 #endif
 
@@ -41,7 +41,6 @@ class PluginTag;
 } // namespace plugins
 
 class nsNPAPIPlugin;
-class nsIComponentManager;
 class nsIFile;
 class nsIChannel;
 class nsPluginNativeWindow;
@@ -53,6 +52,10 @@ class nsNPAPIPluginStreamListener;
 class nsIPluginInstanceOwner;
 class nsIInputStream;
 class nsIStreamListener;
+#ifndef npapi_h_
+struct _NPP;
+typedef _NPP* NPP;
+#endif
 
 class nsInvalidPluginTag : public nsISupports
 {
@@ -329,6 +332,10 @@ private:
   // from the chrome process.
   uint32_t ChromeEpochForContent();
   void SetChromeEpochForContent(uint32_t aEpoch);
+
+  // On certain platforms, we only want to load certain plugins. This function
+  // centralizes loading rules.
+  bool ShouldAddPlugin(nsPluginTag* aPluginTag);
 
   nsRefPtr<nsPluginTag> mPlugins;
   nsRefPtr<nsPluginTag> mCachedPlugins;

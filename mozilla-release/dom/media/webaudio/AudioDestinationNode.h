@@ -51,6 +51,9 @@ public:
   virtual void SetChannelCount(uint32_t aChannelCount,
                                ErrorResult& aRv) override;
 
+  // Returns the stream or null after unlink.
+  AudioNodeStream* Stream() { return mStream; }
+
   void Mute();
   void Unmute();
 
@@ -64,7 +67,7 @@ public:
   AudioChannel MozAudioChannelType() const;
   void SetMozAudioChannelType(AudioChannel aValue, ErrorResult& aRv);
 
-  virtual void NotifyMainThreadStateChanged() override;
+  virtual void NotifyMainThreadStreamFinished() override;
   void FireOfflineCompletionEvent();
 
   // An amount that should be added to the MediaStream's current time to
@@ -109,7 +112,6 @@ private:
   // Audio Channel Type.
   AudioChannel mAudioChannel;
   bool mIsOffline;
-  bool mHasFinished;
   bool mAudioChannelAgentPlaying;
 
   TimeStamp mStartedBlockingDueToBeingOnlyNode;

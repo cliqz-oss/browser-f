@@ -1,5 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -8,12 +8,14 @@
 
 #include "nsIDocument.h"
 #include "nsIServiceWorkerManager.h"
+#include "nsNetUtil.h"
 #include "nsPIDOMWindow.h"
 #include "mozilla/Services.h"
 
 #include "nsCycleCollectionParticipant.h"
 #include "nsServiceManagerUtils.h"
 
+#include "mozilla/dom/Navigator.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/ServiceWorkerContainerBinding.h"
 #include "mozilla/dom/workers/bindings/ServiceWorker.h"
@@ -32,6 +34,25 @@ NS_IMPL_RELEASE_INHERITED(ServiceWorkerContainer, DOMEventTargetHelper)
 NS_IMPL_CYCLE_COLLECTION_INHERITED(ServiceWorkerContainer, DOMEventTargetHelper,
                                    mControllerWorker, mReadyPromise)
 
+/* static */ bool
+ServiceWorkerContainer::IsEnabled(JSContext* aCx, JSObject* aGlobal)
+{
+  MOZ_ASSERT(NS_IsMainThread());
+
+  JS::Rooted<JSObject*> global(aCx, aGlobal);
+  nsCOMPtr<nsPIDOMWindow> window = Navigator::GetWindowFromGlobal(global);
+  if (!window) {
+    return false;
+  }
+
+  nsIDocument* doc = window->GetExtantDoc();
+  if (!doc || nsContentUtils::IsInPrivateBrowsing(doc)) {
+    return false;
+  }
+
+  return Preferences::GetBool("dom.serviceWorkers.enabled", false);
+}
+
 ServiceWorkerContainer::ServiceWorkerContainer(nsPIDOMWindow* aWindow)
   : DOMEventTargetHelper(aWindow)
 {
@@ -47,6 +68,13 @@ ServiceWorkerContainer::DisconnectFromOwner()
 {
   RemoveReadyPromise();
   DOMEventTargetHelper::DisconnectFromOwner();
+}
+
+void
+ServiceWorkerContainer::ControllerChanged(ErrorResult& aRv)
+{
+  mControllerWorker = nullptr;
+  aRv = DispatchTrustedEvent(NS_LITERAL_STRING("controllerchange"));
 }
 
 void
@@ -224,7 +252,8 @@ ServiceWorkerContainer::GetScopeForUrl(const nsAString& aUrl,
     return;
   }
 
-  aRv = swm->GetScopeForUrl(aUrl, aScope);
+  aRv = swm->GetScopeForUrl(GetOwner()->GetExtantDoc()->NodePrincipal(),
+                            aUrl, aScope);
 }
 
 } // namespace dom

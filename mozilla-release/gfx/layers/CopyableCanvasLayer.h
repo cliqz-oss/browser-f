@@ -21,9 +21,12 @@
 #include "nsISupportsImpl.h"            // for MOZ_COUNT_CTOR, etc
 
 namespace mozilla {
-namespace layers {
 
-class CanvasClientWebGL;
+namespace gl {
+class SharedSurface;
+}
+
+namespace layers {
 
 /**
  * A shared CanvasLayer implementation that supports copying
@@ -50,7 +53,7 @@ protected:
   RefPtr<gfx::SourceSurface> mSurface;
   nsRefPtr<gl::GLContext> mGLContext;
   GLuint mCanvasFrontbufferTexID;
-  mozilla::RefPtr<mozilla::gfx::DrawTarget> mDrawTarget;
+  RefPtr<PersistentBufferProvider> mBufferProvider;
 
   UniquePtr<gl::SharedSurface> mGLFrontbuffer;
 

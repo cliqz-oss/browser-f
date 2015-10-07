@@ -18,6 +18,7 @@
 #include "nsUnicharUtils.h"
 #include "prtime.h"
 #include "prprf.h"
+#include "nsQueryObject.h"
 
 #include "nsCycleCollectionParticipant.h"
 
@@ -2013,7 +2014,7 @@ nsNavHistoryQueryResultNode::GetQueries(uint32_t* queryCount,
   NS_ASSERTION(mQueries.Count() > 0, "Must have >= 1 query");
 
   *queries = static_cast<nsINavHistoryQuery**>
-                        (nsMemory::Alloc(mQueries.Count() * sizeof(nsINavHistoryQuery*)));
+                        (moz_xmalloc(mQueries.Count() * sizeof(nsINavHistoryQuery*)));
   NS_ENSURE_TRUE(*queries, NS_ERROR_OUT_OF_MEMORY);
 
   for (int32_t i = 0; i < mQueries.Count(); ++i)
@@ -2766,7 +2767,7 @@ nsNavHistoryQueryResultNode::NotifyIfTagsChanged(nsIURI* aURI)
   nsCOMArray<nsNavHistoryResultNode> matches;
   RecursiveFindURIs(onlyOneEntry, this, spec, &matches);
 
-  if (matches.Count() == 0 && mHasSearchTerms && !mRemovingURI) {
+  if (matches.Count() == 0 && mHasSearchTerms) {
     // A new tag has been added, it's possible it matches our query.
     NS_ENSURE_TRUE(history, NS_ERROR_OUT_OF_MEMORY);
     rv = history->URIToResultNode(aURI, mOptions, getter_AddRefs(node));
@@ -2837,7 +2838,6 @@ nsNavHistoryQueryResultNode::OnItemRemoved(int64_t aItemId,
                                            const nsACString& aGUID,
                                            const nsACString& aParentGUID)
 {
-  mRemovingURI = aURI;
   if (aItemType == nsINavBookmarksService::TYPE_BOOKMARK &&
       mLiveUpdate != QUERYUPDATE_SIMPLE && mLiveUpdate != QUERYUPDATE_TIME) {
     nsresult rv = Refresh();
@@ -3108,7 +3108,7 @@ nsNavHistoryFolderResultNode::GetUri(nsACString& aURI)
   for (uint32_t queryIndex = 0; queryIndex < queryCount; ++queryIndex) {
     NS_RELEASE(queries[queryIndex]);
   }
-  nsMemory::Free(queries);
+  free(queries);
   return rv;
 }
 
@@ -3133,7 +3133,7 @@ nsNavHistoryFolderResultNode::GetQueries(uint32_t* queryCount,
 
   // make array of our 1 query
   *queries = static_cast<nsINavHistoryQuery**>
-                        (nsMemory::Alloc(sizeof(nsINavHistoryQuery*)));
+                        (moz_xmalloc(sizeof(nsINavHistoryQuery*)));
   if (!*queries)
     return NS_ERROR_OUT_OF_MEMORY;
   NS_ADDREF((*queries)[0] = query);
@@ -3610,12 +3610,14 @@ nsNavHistoryFolderResultNode::OnItemRemoved(int64_t aItemId,
                                             const nsACString& aGUID,
                                             const nsACString& aParentGUID)
 {
-  // If this folder is a folder shortcut, we should never be notified for the
-  // removal of the shortcut (the parent node would be).
-  MOZ_ASSERT(mItemId == mTargetFolderItemId || aItemId != mItemId);
+  // Folder shortcuts should not be notified removal of the target folder.
+  MOZ_ASSERT_IF(mItemId != mTargetFolderItemId, aItemId != mTargetFolderItemId);
+  // Concrete folders should not be notified their own removal.
+  // Note aItemId may equal mItemId for recursive folder shortcuts.
+  MOZ_ASSERT_IF(mItemId == mTargetFolderItemId, aItemId != mItemId);
 
   // In any case though, here we only care about the children removal.
-  if (mTargetFolderItemId == aItemId)
+  if (mTargetFolderItemId == aItemId || mItemId == aItemId)
     return NS_OK;
 
   MOZ_ASSERT(aParentFolder == mTargetFolderItemId, "Got wrong bookmark update");
@@ -3975,15 +3977,14 @@ TraverseBookmarkFolderObservers(nsTrimInt64HashKey::KeyType aKey,
 }
 
 static void
-traverseResultObservers(nsMaybeWeakPtrArray<nsINavHistoryResultObserver> aObservers,
+traverseResultObservers(nsMaybeWeakPtrArray<nsINavHistoryResultObserver>& aObservers,
                         void *aClosure)
 {
   nsCycleCollectionTraversalCallback* cb =
     static_cast<nsCycleCollectionTraversalCallback*>(aClosure);
   for (uint32_t i = 0; i < aObservers.Length(); ++i) {
     NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*cb, "mResultObservers value[i]");
-    const nsCOMPtr<nsINavHistoryResultObserver> &obs = aObservers.ElementAt(i);
-    cb->NoteXPCOMChild(obs);
+    cb->NoteXPCOMChild(aObservers.ElementAt(i).GetRawValue());
   }
 }
 

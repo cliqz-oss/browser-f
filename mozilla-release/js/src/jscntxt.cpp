@@ -86,8 +86,7 @@ js::TraceCycleDetectionSet(JSTracer* trc, js::ObjectSet& set)
 {
     for (js::ObjectSet::Enum e(set); !e.empty(); e.popFront()) {
         JSObject* key = e.front();
-        trc->setTracingLocation((void*)&e.front());
-        MarkObjectRoot(trc, &key, "cycle detector table entry");
+        TraceRoot(trc, &key, "cycle detector table entry");
         if (key != e.front())
             e.rekeyFront(key);
     }
@@ -234,7 +233,7 @@ ReportError(JSContext* cx, const char* message, JSErrorReport* reportp,
          * The AutoJSAPI error reporter only allows warnings to be reported so
          * just ignore this error rather than try to report it.
          */
-        if (cx->options().autoJSAPIOwnsErrorReporting())
+        if (cx->options().autoJSAPIOwnsErrorReporting() && !JSREPORT_IS_WARNING(reportp->flags))
             return;
     }
 
@@ -254,14 +253,18 @@ PopulateReportBlame(JSContext* cx, JSErrorReport* report)
 {
     /*
      * Walk stack until we find a frame that is associated with a non-builtin
-     * rather than a builtin frame.
+     * rather than a builtin frame and which we're allowed to know about.
      */
-    NonBuiltinFrameIter iter(cx);
+    NonBuiltinFrameIter iter(cx, cx->compartment()->principals());
     if (iter.done())
         return;
 
     report->filename = iter.scriptFilename();
     report->lineno = iter.computeLine(&report->column);
+    // XXX: Make the column 1-based as in other browsers, instead of 0-based
+    // which is how SpiderMonkey stores it internally. This will be
+    // unnecessary once bug 1144340 is fixed.
+    report->column++;
     report->isMuted = iter.mutedErrors();
 }
 
@@ -555,10 +558,10 @@ js::PrintError(JSContext* cx, FILE* file, const char* message, JSErrorReport* re
  * Returns true if the expansion succeeds (can fail if out of memory).
  */
 bool
-js::ExpandErrorArguments(ExclusiveContext* cx, JSErrorCallback callback,
-                         void* userRef, const unsigned errorNumber,
-                         char** messagep, JSErrorReport* reportp,
-                         ErrorArgumentsType argumentsType, va_list ap)
+js::ExpandErrorArgumentsVA(ExclusiveContext* cx, JSErrorCallback callback,
+                           void* userRef, const unsigned errorNumber,
+                           char** messagep, JSErrorReport* reportp,
+                           ErrorArgumentsType argumentsType, va_list ap)
 {
     const JSErrorFormatString* efs;
     int i;
@@ -620,7 +623,9 @@ js::ExpandErrorArguments(ExclusiveContext* cx, JSErrorCallback callback,
          */
         if (argCount > 0) {
             if (efs->format) {
-                char16_t* buffer, *fmt, *out;
+                char16_t* buffer;
+                char16_t* fmt;
+                char16_t* out;
                 int expandedArgs = 0;
                 size_t expandedLength;
                 size_t len = strlen(efs->format);
@@ -638,6 +643,7 @@ js::ExpandErrorArguments(ExclusiveContext* cx, JSErrorCallback callback,
                 */
                 reportp->ucmessage = out = cx->pod_malloc<char16_t>(expandedLength + 1);
                 if (!out) {
+                    ReportOutOfMemory(cx);
                     js_free(buffer);
                     goto error;
                 }
@@ -736,8 +742,8 @@ js::ReportErrorNumberVA(JSContext* cx, unsigned flags, JSErrorCallback callback,
     report.errorNumber = errorNumber;
     PopulateReportBlame(cx, &report);
 
-    if (!ExpandErrorArguments(cx, callback, userRef, errorNumber,
-                              &message, &report, argumentsType, ap)) {
+    if (!ExpandErrorArgumentsVA(cx, callback, userRef, errorNumber,
+                                &message, &report, argumentsType, ap)) {
         return false;
     }
 
@@ -746,7 +752,7 @@ js::ReportErrorNumberVA(JSContext* cx, unsigned flags, JSErrorCallback callback,
     js_free(message);
     if (report.messageArgs) {
         /*
-         * ExpandErrorArguments owns its messageArgs only if it had to
+         * ExpandErrorArgumentsVA owns its messageArgs only if it had to
          * inflate the arguments (from regular |char*|s).
          */
         if (argumentsType == ArgumentsAreASCII) {
@@ -759,6 +765,20 @@ js::ReportErrorNumberVA(JSContext* cx, unsigned flags, JSErrorCallback callback,
     js_free((void*)report.ucmessage);
 
     return warning;
+}
+
+static bool
+ExpandErrorArguments(ExclusiveContext* cx, JSErrorCallback callback,
+                     void* userRef, const unsigned errorNumber,
+                     char** messagep, JSErrorReport* reportp,
+                     ErrorArgumentsType argumentsType, ...)
+{
+    va_list ap;
+    va_start(ap, argumentsType);
+    bool expanded = js::ExpandErrorArgumentsVA(cx, callback, userRef, errorNumber,
+                                               messagep, reportp, argumentsType, ap);
+    va_end(ap);
+    return expanded;
 }
 
 bool
@@ -777,9 +797,8 @@ js::ReportErrorNumberUCArray(JSContext* cx, unsigned flags, JSErrorCallback call
     report.messageArgs = args;
 
     char* message;
-    va_list dummy;
     if (!ExpandErrorArguments(cx, callback, userRef, errorNumber,
-                              &message, &report, ArgumentsAreUnicode, dummy)) {
+                              &message, &report, ArgumentsAreUnicode)) {
         return false;
     }
 
@@ -977,6 +996,12 @@ JSContext::isThrowingOutOfMemory()
 }
 
 bool
+JSContext::isClosingGenerator()
+{
+    return throwing && unwrappedException_.isMagic(JS_GENERATOR_CLOSING);
+}
+
+bool
 JSContext::saveFrameChain()
 {
     if (!savedFrameChains_.append(SavedFrameChain(compartment(), enterCompartmentDepth_)))
@@ -1113,7 +1138,7 @@ JSContext::mark(JSTracer* trc)
 
     /* Mark other roots-by-definition in the JSContext. */
     if (isExceptionPending())
-        MarkValueRoot(trc, &unwrappedException_, "unwrapped exception");
+        TraceRoot(trc, &unwrappedException_, "unwrapped exception");
 
     TraceCycleDetectionSet(trc, cycleDetectorSet);
 
@@ -1124,7 +1149,7 @@ JSContext::mark(JSTracer* trc)
 void*
 ExclusiveContext::stackLimitAddressForJitCode(StackKind kind)
 {
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+#ifdef JS_SIMULATOR
     return runtime_->addressOfSimulatorStackLimit();
 #else
     return stackLimitAddress(kind);

@@ -22,7 +22,9 @@ let modules = {
     privileged: true,
     hide: true
   },
-  get firefox() this.fennec,
+  get firefox() {
+    return this.fennec
+  },
 
   // about:blank has some bad loading behavior we can avoid, if we use an alias
   empty: {
@@ -88,8 +90,8 @@ if (AppConstants.MOZ_DEVICES) {
   };
 }
 if (AppConstants.NIGHTLY_BUILD) {
-  modules['passwords'] = {
-    uri: "chrome://browser/content/aboutPasswords.xhtml",
+  modules['logins'] = {
+    uri: "chrome://browser/content/aboutLogins.xhtml",
     privileged: true
   };
 }

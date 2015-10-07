@@ -9,8 +9,9 @@ this.EXPORTED_SYMBOLS = ["DirectoryLinksProvider"];
 const Ci = Components.interfaces;
 const Cc = Components.classes;
 const Cu = Components.utils;
-const XMLHttpRequest =
-  Components.Constructor("@mozilla.org/xmlextras/xmlhttprequest;1", "nsIXMLHttpRequest");
+const ParserUtils =  Cc["@mozilla.org/parserutils;1"].getService(Ci.nsIParserUtils);
+
+Cu.importGlobalProperties(["XMLHttpRequest"]);
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
@@ -27,9 +28,22 @@ XPCOMUtils.defineLazyModuleGetter(this, "Promise",
   "resource://gre/modules/Promise.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UpdateChannel",
   "resource://gre/modules/UpdateChannel.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "eTLD",
+  "@mozilla.org/network/effective-tld-service;1",
+  "nsIEffectiveTLDService");
 XPCOMUtils.defineLazyGetter(this, "gTextDecoder", () => {
   return new TextDecoder();
 });
+XPCOMUtils.defineLazyGetter(this, "gCryptoHash", function () {
+  return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
+});
+XPCOMUtils.defineLazyGetter(this, "gUnicodeConverter", function () {
+  let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
+                    .createInstance(Ci.nsIScriptableUnicodeConverter);
+  converter.charset = 'utf8';
+  return converter;
+});
+
 
 // The filename where directory links are stored locally
 const DIRECTORY_LINKS_FILE = "directoryLinks.json";
@@ -50,39 +64,14 @@ const PREF_DIRECTORY_PING = "browser.newtabpage.directory.ping";
 // The preference that tells if newtab is enhanced
 const PREF_NEWTAB_ENHANCED = "browser.newtabpage.enhanced";
 
-// Only allow explicitly approved frecent sites with display name
-const ALLOWED_FRECENT_SITES = new Map([
-  [ 'airdroid.com,android-developers.blogspot.com,android.com,androidandme.com,androidapplications.com,androidapps.com,androidauthority.com,androidcentral.com,androidcommunity.com,androidfilehost.com,androidforums.com,androidguys.com,androidheadlines.com,androidpit.com,androidpolice.com,androidspin.com,androidtapp.com,androinica.com,droid-life.com,droidforums.net,droidviews.com,droidxforums.com,forum.xda-developers.com,phandroid.com,play.google.com,shopandroid.com,talkandroid.com,theandroidsoul.com,thedroidguy.com,videodroid.org',
-    'Technology' ],
-  [ 'assurancewireless.com,att.com,attsavings.com,boostmobile.com,budgetmobile.com,consumercellular.com,credomobile.com,gosmartmobile.com,h2owirelessnow.com,lycamobile.com,lycamobile.us,metropcs.com,myfamilymobile.com,polarmobile.com,qlinkwireless.com,republicwireless.com,sprint.com,straighttalk.com,t-mobile.com,tracfonewireless.com,verizonwireless.com,virginmobile.com,virginmobile.com.au,virginmobileusa.com,vodafone.co.uk,vodafone.com,vzwshop.com',
-    'Mobile Phone' ],
-  [ 'addons.mozilla.org,air.mozilla.org,blog.mozilla.org,bugzilla.mozilla.org,developer.mozilla.org,etherpad.mozilla.org,forums.mozillazine.org,hacks.mozilla.org,hg.mozilla.org,mozilla.org,planet.mozilla.org,quality.mozilla.org,support.mozilla.org,treeherder.mozilla.org,wiki.mozilla.org',
-    'Mozilla' ],
-  [ '3dprint.com,4sysops.com,access-programmers.co.uk,accountingweb.com,addictivetips.com,adweek.com,afterdawn.com,akihabaranews.com,anandtech.com,appsrumors.com,arstechnica.com,belkin.com,besttechinfo.com,betanews.com,bgr.com,botcrawl.com,breakingmuscle.com,canonrumors.com,cheap-phones.com,chip.de,chip.eu,cio.com,citeworld.com,cleanpcremove.com,cnet.com,commentcamarche.net,computer.org,computerhope.com,computershopper.com,computerweekly.com,contextures.com,coolest-gadgets.com,crn.com,csoonline.com,daniweb.com,data.com,datacenterknowledge.com,ddj.com,devicemag.com,digitaltrends.com,dottech.org,dpreview.com,dslreports.com,edugeek.net,eetimes.com,engadget.com,epic.com,eurekalert.org,eweek.com,experts-exchange.com,extremetech.com,fosshub.com,freesoftwaremagazine.com,funkyspacemonkey.com,futuremark.com,gadgetreview.com,ghacks.net,gizmodo.co.uk,gizmodo.com,globalsecurity.org,greenbot.com,gunup.com,guru3d.com,head-fi.org,hexus.net,hothardware.com,howtoforge.com,idg.com.au,idigitaltimes.com,idownloadblog.com,ihackmyi.com,ilounge.com,infomine.com,informationweek.com,intellireview.com,intomobile.com,iphonehacks.com,ismashphone.com,isource.com,it168.com,itechpost.com,itpro.co.uk,itworld.com,jailbreaknation.com,kioskea.net,laptoping.com,laptopmag.com,lightreading.com,livescience.com,malwaretips.com,mediaroom.com,mobilemag.com,modmyi.com,modmymobile.com,mophie.com,mozillazine.org,neoseeker.com,neowin.net,newscientist.com,newsoxy.com,nextadvisor.com,notebookcheck.com,notebookreview.com,nvidia.com,nwc.com,orafaq.com,osdir.com,osxdaily.com,our-hometown.com,pcadvisor.co.uk,pchome.net,pcmag.com,pconline.com.cn,pcpop.com,pcpro.co.uk,pcreview.co.uk,pcrisk.com,pcwelt.de,phonerebel.com,phonescoop.com,physorg.com,pocket-lint.com,post-theory.com,prnewswire.co.uk,prnewswire.com,programming4.us,quickpwn.com,readwrite.com,redmondpie.com,redorbit.com,reviewed.com,safer-networking.org,sciencedaily.com,sciencenews.org,scientificamerican.com,scientificblogging.com,sciverse.com,servicerow.com,sinfuliphone.com,singularityhub.com,slashdot.org,slashgear.com,softonic.com,softonic.com.br,softonic.fr,sophos.com,space.com,sparkfun.com,speedguide.net,stuff.tv,techdailynews.net,techdirt.com,techeblog.com,techhive.com,techie-buzz.com,technewsworld.com,techniqueworld.com,technobuffalo.com,technologyreview.com,technologytell.com,techpowerup.com,techpp.com,techrepublic.com,techshout.com,techweb.com,techworld.com,techworld.com.au,techworldtweets.com,telecomfile.com,tgdaily.com,theinquirer.net,thenextweb.com,theregister.co.uk,thermofisher.com,theverge.com,thewindowsclub.com,tomsguide.com,tomshardware.com,tomsitpro.com,toptenreviews.com,trustedreviews.com,tuaw.com,tweaktown.com,ubergizmo.com,unwiredview.com,venturebeat.com,wccftech.com,webmonkey.com,webpronews.com,windows7codecs.com,windowscentral.com,windowsitpro.com,windowstechies.com,winsupersite.com,wired.co.uk,wired.com,wp-themes.com,xda-developers.com,xml.com,zdnet.com,zmescience.com,zol.com.cn',
-    'Technology' ],
-  [ '9to5mac.com,appadvice.com,apple.com,appleinsider.com,appleturns.com,appsafari.com,cultofmac.com,everymac.com,insanelymac.com,iphoneunlockspot.com,isource.com,itunes.apple.com,lowendmac.com,mac-forums.com,macdailynews.com,macenstein.com,macgasm.net,macintouch.com,maclife.com,macnews.com,macnn.com,macobserver.com,macosx.com,macpaw.com,macrumors.com,macsales.com,macstories.net,macupdate.com,macuser.co.uk,macworld.co.uk,macworld.com,maxiapple.com,spymac.com,theapplelounge.com',
-    'Technology' ],
-  [ 'alistapart.com,answers.microsoft.com,backpack.openbadges.org,blog.chromium.org,caniuse.com,codefirefox.com,codepen.io,css-tricks.com,css3generator.com,cssdeck.com,csswizardry.com,devdocs.io,docs.angularjs.org,ghacks.net,github.com,html5demos.com,html5rocks.com,html5test.com,iojs.org,khanacademy.org,l10n.mozilla.org,learn.jquery.com,marketplace.firefox.com,mozilla-hispano.org,mozillians.org,news.ycombinator.com,npmjs.com,packagecontrol.io,quirksmode.org,readwrite.com,reps.mozilla.org,smashingmagazine.com,stackoverflow.com,status.modern.ie,teamtreehouse.com,tutorialspoint.com,udacity.com,validator.w3.org,w3.org,w3cschool.cc,w3schools.com,whatcanidoformozilla.org',
-    'Web Development' ],
-  [ 'classroom.google.com,codecademy.com,elearning.ut.ac.id,khanacademy.org,learn.jquery.com,teamtreehouse.com,tutorialspoint.com,udacity.com,w3cschool.cc,w3schools.com',
-    'Web Education' ],
-  [ 'abebooks.co.uk,abebooks.com,alibris.com,allaboutcircuits.com,allyoucanbooks.com,answersingenesis.org,artnet.com,audiobooks.com,barnesandnoble.com,barnesandnobleinc.com,bartleby.com,betterworldbooks.com,biggerbooks.com,bncollege.com,bookbyte.com,bookdepository.com,bookfinder.com,bookrenter.com,booksamillion.com,booksite.com,boundless.com,brookstone.com,btol.com,calibre-ebook.com,campusbookrentals.com,casadellibro.com,cbomc.com,cengagebrain.com,chapters.indigo.ca,christianbook.com,ciscopress.com,coursesmart.com,cqpress.com,crafterschoice.com,crossings.com,cshlp.org,deseretbook.com,directtextbook.com,discountmags.com,doubledaybookclub.com,doubledaylargeprint.com,doverpublications.com,ebooks.com,ecampus.com,fellabooks.net,fictionwise.com,flatworldknowledge.com,grolier.com,harpercollins.com,hayhouse.com,historybookclub.com,hpb.com,hpbmarketplace.com,interweave.com,iseeme.com,katiekazoo.com,knetbooks.com,learnoutloud.com,librarything.com,literaryguild.com,lulu.com,lww.com,macmillan.com,magazines.com,mbsdirect.net,militarybookclub.com,mypearsonstore.com,mysteryguild.com,netplaces.com,noble.com,novelguide.com,onespirit.com,oxfordjournals.org,paperbackswap.com,papy.co.jp,peachpit.com,penguin.com,penguingroup.com,pimsleur.com,powells.com,qpb.com,quepublishing.com,reviews.com,rhapsodybookclub.com,rodalestore.com,royalsocietypublishing.org,sagepub.com,scrubsmag.com,sfbc.com,simonandschuster.com,simonandschuster.net,simpletruths.com,teach12.net,textbooks.com,textbookx.com,thegoodcook.com,thriftbooks.com,tlsbooks.com,toshibabookplace.com,tumblebooks.com,urbookdownload.com,valorebooks.com,valuemags.com,wwnorton.com,zoobooks.com',
-    'Literature' ],
-  [ 'aceshowbiz.com,aintitcoolnews.com,askkissy.com,askmen.com,atraf.co.il,audioboom.com,beamly.com,blippitt.com,bollywoodlife.com,bossip.com,buzzlamp.com,celebdirtylaundry.com,celebfocus.com,celebitchy.com,celebrity-gossip.net,celebrityabout.com,celebwild.com,chisms.net,concertboom.com,crushable.com,cultbox.co.uk,dailyentertainmentnews.com,dayscafe.com,deadline.com,deathandtaxesmag.com,diaryofahollywoodstreetking.com,digitalspy.com,egotastic.com,empirenews.net,enelbrasero.com,everydaycelebs.com,ew.com,extratv.com,facade.com,fanaru.com,fhm.com,geektyrant.com,glamourpage.com,heatworld.com,hlntv.com,hollyscoop.com,hollywoodreporter.com,hollywoodtuna.com,hypable.com,infotransfer.net,insideedition.com,interaksyon.com,jezebel.com,justjared.com,justjaredjr.com,komando.com,koreaboo.com,maxgo.com,maxim.com,maxviral.com,mediatakeout.com,mosthappy.com,moviestalk.com,my.ology.com,ngoisao.net,nofilmschool.com,nolocreo.com,octane.tv,ouchpress.com,people.com,peopleenespanol.com,perezhilton.com,pinkisthenewblog.com,platotv.tv,playbill.com,playbillvault.com,playgroundmag.net,popeater.com,popnhop.com,popsugar.co.uk,popsugar.com,purepeople.com,radaronline.com,rantchic.com,reshareworthy.com,rinkworks.com,ripbird.com,sara-freder.com,screenjunkies.com,soapcentral.com,soapoperadigest.com,sobadsogood.com,splitsider.com,starcasm.net,starpulse.com,straightfromthea.com,stupidcelebrities.net,stupiddope.com,tbn.org,theawesomedaily.com,theawl.com,thefrisky.com,thefw.com,theresacaputo.com,thezooom.com,tvnotas.com.mx,twanatells.com,vanswarpedtour.com,vietgiaitri.com,viral.buzz,vulture.com,wakavision.com,worthytales.net,wwtdd.com,younghollywood.com',
-    'Entertainment News' ],
-  [ '247wallst.com,4-traders.com,advfn.com,agweb.com,allbusiness.com,barchart.com,barrons.com,beckershospitalreview.com,benzinga.com,bizjournals.com,bizsugar.com,bloomberg.com,bloomberglaw.com,business-standard.com,businessinsider.com,businessinsider.com.au,businesspundit.com,businessweek.com,businesswire.com,cboe.com,cheatsheet.com,chicagobusiness.com,cjonline.com,cnbc.com,cnnmoney.com,cqrcengage.com,dailyfinance.com,dailyfx.com,dealbreaker.com,djindexes.com,dowjones.com,easierstreetdaily.com,economist.com,economyandmarkets.com,economywatch.com,edweek.org,eleconomista.es,entrepreneur.com,etfdailynews.com,etfdb.com,ewallstreeter.com,fastcolabs.com,fastcompany.com,financeformulas.net,financialpost.com,flife.de,forbes.com,forexpros.com,fortune.com,foxbusiness.com,ft.com,ftpress.com,fx-exchange.com,hbr.org,howdofinance.com,ibtimes.com,inc.com,investopedia.com,investors.com,investorwords.com,journalofaccountancy.com,kiplinger.com,lendingandcredit.net,lfb.org,mainstreet.com,markettraders.com,marketwatch.com,maxkeiser.com,minyanville.com,ml.com,moneycontrol.com,moneymappress.com,moneynews.com,moneysavingexpert.com,morningstar.com,mortgagenewsdaily.com,motleyfool.com,mt.co.kr,nber.org,nyse.com,oilprice.com,pewsocialtrends.org,principal.com,qz.com,rantfinance.com,realclearmarkets.com,recode.net,reuters.ca,reuters.co.in,reuters.co.uk,reuters.com,rttnews.com,seekingalpha.com,smallbiztrends.com,streetinsider.com,thecheapinvestor.com,theeconomiccollapseblog.com,themoneyconverter.com,thestreet.com,tickertech.com,tradingeconomics.com,updown.com,valuewalk.com,wikinvest.com,wsj.com,zacks.com',
-    'Financial News' ],
-  [ '10tv.com,8newsnow.com,9news.com,abc.net.au,abc7.com,abc7chicago.com,abcnews.go.com,aclu.org,activistpost.com,ajc.com,al.com,alan.com,alarab.net,aljazeera.com,americanthinker.com,app.com,aristeguinoticias.com,azcentral.com,baltimoresun.com,becomingminimalist.com,beforeitsnews.com,bigstory.ap.org,blackamericaweb.com,bloomberg.com,bloombergview.com,boston.com,bostonherald.com,breitbart.com,buffalonews.com,c-span.org,canada.com,cbs46.com,cbsnews.com,chicagotribune.com,chron.com,citizensvoice.com,citylab.com,cleveland.com,cnn.com,coed.com,countercurrentnews.com,courant.com,ctvnews.ca,dailyherald.com,dailynews.com,dallasnews.com,delawareonline.com,democratandchronicle.com,democraticunderground.com,democrats.org,denverpost.com,desmoinesregister.com,dispatch.com,elcomercio.pe,english.aljazeera.net,examiner.com,farsnews.com,firstcoastnews.com,firstpost.com,firsttoknow.com,foreignpolicy.com,foxnews.com,freebeacon.com,freep.com,fresnobee.com,gazette.com,global.nytimes.com,heraldtribune.com,hindustantimes.com,hngn.com,humanevents.com,huzlers.com,indiatimes.com,indystar.com,irishtimes.com,jacksonville.com,jpost.com,jsonline.com,kansascity.com,kctv5.com,kentucky.com,kickerdaily.com,king5.com,kmov.com,knoxnews.com,kpho.com,kvue.com,kwqc.com,kxan.com,lainformacion.com,latimes.com,ldnews.com,lex18.com,linternaute.com,livemint.com,lostateminor.com,m24.ru,macleans.ca,manchestereveningnews.co.uk,marinecorpstimes.com,masslive.com,mavikocaeli.com.tr,mcall.com,medium.com,mentalfloss.com,mercurynews.com,metro.us,miamiherald.com,militarytimes.com,mk.ru,mlive.com,mondotimes.com,montrealgazette.com,msnbc.com,msnewsnow.com,mynews13.com,mysanantonio.com,mysuncoast.com,nbclosangeles.com,nbcnewyork.com,nbcphiladelphia.com,ndtv.com,newindianexpress.com,news.cincinnati.com,news.google.com,news.msn.com,news.yahoo.com,news10.net,news8000.com,newsday.com,newsdaymarketing.net,newsen.com,newsmax.com,newsobserver.com,newsok.com,newsru.ua,newstatesman.com,newszoom.com,nj.com,nola.com,northjersey.com,nouvelobs.com,npr.org,nwfdailynews.com,nwitimes.com,nydailynews.com,nytimes.com,observer.com,ocregister.com,okcfox.com,omaha.com,onenewspage.com,ontheissues.org,oregonlive.com,orlandosentinel.com,palmbeachpost.com,pe.com,pennlive.com,philly.com,pilotonline.com,polar.com,post-gazette.com,postandcourier.com,presstelegram.com,presstv.ir,propublica.org,providencejournal.com,realclearpolitics.com,recorderonline.com,reporterdock.com,reporterherald.com,respublica.al,reuters.com,rg.ru,roanoke.com,sacbee.com,scmp.com,scnow.com,sdpnoticias.com,seattletimes.com,semana.com,sfgate.com,sharepowered.com,sinembargo.mx,slate.com,sltrib.com,sotomayortv.com,sourcewatch.org,spectator.co.uk,squaremirror.com,star-telegram.com,staradvertiser.com,startribune.com,statesman.com,stltoday.com,streetwise.co,stuff.co.nz,success.com,suffolknewsherald.com,sun-sentinel.com,sunnewsnetwork.ca,suntimes.com,supernewschannel.com,surenews.com,svoboda.org,syracuse.com,tampabay.com,tbd.com,telegram.com,telegraph.co.uk,tennessean.com,the-open-mind.com,theadvocate.com,theage.com.au,theatlantic.com,thebarefootwriter.com,theblaze.com,thecalifornian.com,thedailysheeple.com,thefix.com,theintelligencer.net,thelocal.com,thenational.ae,thenewstribune.com,theparisreview.org,thereporter.com,therepublic.com,thestar.com,thetelegram.com,thetimes.co.uk,theuspatriot.com,time.com,timescall.com,timesdispatch.com,timesleaderonline.com,timesofisrael.com,toledoblade.com,toprightnews.com,townhall.com,tpnn.com,trendolizer.com,triblive.com,tribune.com.pk,tricities.com,troymessenger.com,trueactivist.com,truthandaction.org,tsn.ua,tulsaworld.com,twincities.com,upi.com,usatoday.com,utsandiego.com,vagazette.com,viralwomen.com,vitalworldnews.com,voasomali.com,vox.com,washingtonexaminer.com,washingtonpost.com,watchdog.org,wave3.com,wavy.com,wbay.com,wbtw.com,wcpo.com,wctrib.com,wdtn.com,weeklystandard.com,westernjournalism.com,wfsb.com,wgrz.com,whas11.com,winonadailynews.com,wishtv.com,wistv.com,wkbn.com,wkow.com,wlfi.com,wmtw.com,wmur.com,wopular.com,world-top-news.com,worldnews.com,wplol.us,wpsdlocal6.com,wptz.com,wric.com,wsmv.com,wthitv.com,wthr.com,wtnh.com,wtol.com,wtsp.com,wvec.com,wwlp.com,wwltv.com,wyff4.com,yonhapnews.co.kr,yourbreakingnews.com',
-    'News' ],
-  [ '2k.com,360game.vn,4399.com,a10.com,activision.com,addictinggames.com,alawar.com,alienwarearena.com,anagrammer.com,andkon.com,aq.com,arcadeprehacks.com,arcadeyum.com,arcgames.com,archeagegame.com,armorgames.com,askmrrobot.com,battle.net,battlefieldheroes.com,bigfishgames.com,bigpoint.com,bioware.com,bluesnews.com,boardgamegeek.com,bollyheaven.com,bubblebox.com,bukkit.org,bungie.net,buycraft.net,callofduty.com,candystand.com,cda.pl,challonge.com,championselect.net,cheapassgamer.com,cheatcc.com,cheatengine.org,cheathappens.com,chess.com,civfanatics.com,clashofclans-tools.com,clashofclansbuilder.com,comdotgame.com,commonsensemedia.org,coolrom.com,crazygames.com,csgolounge.com,curse.com,d20pfsrd.com,destructoid.com,diablofans.com,diablowiki.net,didigames.com,dota2.com,dota2lounge.com,dressupgames.com,dulfy.net,ebog.com,elderscrollsonline.com,elitedangerous.com,elitepvpers.com,emuparadise.me,enjoydressup.com,escapegames24.com,escapistmagazine.com,eventhubs.com,eveonline.com,farming-simulator.com,feed-the-beast.com,flashgames247.com,flightrising.com,flipline.com,flonga.com,freegames.ws,freeonlinegames.com,fresh-hotel.org,friv.com,friv.today,fullypcgames.net,funny-games.biz,funtrivia.com,futhead.com,g2a.com,gamasutra.com,game-debate.com,game-oldies.com,game321.com,gamebaby.com,gamebaby.net,gamebanana.com,gamefaqs.com,gamefly.com,gamefront.com,gamegape.com,gamehouse.com,gameinformer.com,gamejolt.com,gamemazing.com,gamemeteor.com,gamerankings.com,gamersgate.com,games-msn.com,games-workshop.com,games.com,games2girls.com,gamesbox.com,gamesfreak.net,gametop.com,gametracker.com,gametrailers.com,gamezhero.com,gbatemp.net,geforce.com,gematsu.com,giantbomb.com,girl.me,girlsgames123.com,girlsplay.com,gog.com,gogames.me,gonintendo.com,goodgamestudios.com,gosugamers.net,greenmangaming.com,gtaforums.com,gtainside.com,guildwars2.com,hackedarcadegames.com,hearthpwn.com,hirezstudios.com,hitbox.tv,hltv.org,howrse.com,icy-veins.com,indiedb.com,jayisgames.com,jigzone.com,joystiq.com,juegosdechicas.com,kabam.com,kbhgames.com,kerbalspaceprogram.com,king.com,kixeye.com,kizi.com,kogama.com,kongregate.com,kotaku.com,lolcounter.com,lolking.net,lolnexus.com,lolpro.com,lolskill.net,lootcrate.com,lumosity.com,mafa.com,mangafox.me,mangapark.com,mariowiki.com,maxgames.com,megagames.com,metacritic.com,mindjolt.com,minecraft.net,minecraftforum.net,minecraftservers.org,minecraftskins.com,mineplex.com,miniclip.com,mmo-champion.com,mmobomb.com,mmohuts.com,mmorpg.com,mmosite.com,mobafire.com,moddb.com,modxvm.com,mojang.com,moshimonsters.com,mousebreaker.com,moviestarplanet.com,mtgsalvation.com,muchgames.com,myonlinearcade.com,myplaycity.com,myrealgames.com,mythicspoiler.com,n4g.com,newgrounds.com,nexon.net,nexusmods.com,ninjakiwi.com,nintendo.com,nintendoeverything.com,nintendolife.com,nitrome.com,nosteam.ro,notdoppler.com,noxxic.com,operationsports.com,origin.com,ownedcore.com,pacogames.com,pathofexile.com,pcgamer.com,pch.com,pcsx2.net,penny-arcade.com,planetminecraft.com,plarium.com,playdota.com,playpink.com,playsides.com,playstationlifestyle.net,playstationtrophies.org,pog.com,pokemon.com,polygon.com,popcap.com,primarygames.com,probuilds.net,ps3hax.net,psnprofiles.com,psu.com,qq.com,r2games.com,resourcepack.net,retrogamer.com,rewardtv.com,riotgames.com,robertsspaceindustries.com,roblox.com,robocraftgame.com,rockpapershotgun.com,rockstargames.com,roosterteeth.com,runescape.com,schoolofdragons.com,screwattack.com,scufgaming.com,segmentnext.com,shacknews.com,shockwave.com,shoryuken.com,siliconera.com,silvergames.com,skydaz.com,smashbros.com,solomid.net,starcitygames.com,starsue.net,steamcommunity.com,steamgifts.com,strategywiki.org,supercheats.com,surrenderat20.net,swtor.com,tankionline.com,tcgplayer.com,teamfortress.com,teamliquid.net,tetrisfriends.com,thesims3.com,thesimsresource.com,thetechgame.com,topg.org,totaljerkface.com,toucharcade.com,transformice.com,trueachievements.com,twcenter.net,twitch.tv,twoplayergames.org,unity3d.com,vg247.com,vgchartz.com,videogamesblogger.com,warframe.com,warlight.net,warthunder.com,watchcartoononline.com,websudoku.com,wildstar-online.com,wildtangent.com,wineverygame.com,wizards.com,worldofsolitaire.com,worldoftanks.com,wowhead.com,wowprogress.com,wowwiki.com,xbox.com,xbox360iso.com,xboxachievements.com,xfire.com,xtremetop100.com,y8.com,yoyogames.com,zybez.net,zynga.com',
-    'Video Game' ],
-]);
-
 // Only allow link urls that are http(s)
 const ALLOWED_LINK_SCHEMES = new Set(["http", "https"]);
 
 // Only allow link image urls that are https or data
 const ALLOWED_IMAGE_SCHEMES = new Set(["https", "data"]);
+
+// Only allow urls to Mozilla's CDN or empty (for data URIs)
+const ALLOWED_URL_BASE = new Set(["mozilla.net", ""]);
 
 // The frecency of a directory link
 const DIRECTORY_FRECENCY = 1000;
@@ -90,17 +79,31 @@ const DIRECTORY_FRECENCY = 1000;
 // The frecency of a suggested link
 const SUGGESTED_FRECENCY = Infinity;
 
-// Default number of times to show a link
-const DEFAULT_FREQUENCY_CAP = 5;
+// The filename where frequency cap data stored locally
+const FREQUENCY_CAP_FILE = "frequencyCap.json";
+
+// Default settings for daily and total frequency caps
+const DEFAULT_DAILY_FREQUENCY_CAP = 3;
+const DEFAULT_TOTAL_FREQUENCY_CAP = 10;
+
+// Default timeDelta to prune unused frequency cap objects
+// currently set to 10 days in milliseconds
+const DEFAULT_PRUNE_TIME_DELTA = 10*24*60*60*1000;
 
 // The min number of visible (not blocked) history tiles to have before showing suggested tiles
 const MIN_VISIBLE_HISTORY_TILES = 8;
+
+// The max number of visible (not blocked) history tiles to test for inadjacency
+const MAX_VISIBLE_HISTORY_TILES = 15;
 
 // Divide frecency by this amount for pings
 const PING_SCORE_DIVISOR = 10000;
 
 // Allowed ping actions remotely stored as columns: case-insensitive [a-z0-9_]
 const PING_ACTIONS = ["block", "click", "pin", "sponsored", "sponsored_link", "unpin", "view"];
+
+// Location of inadjacent sites json
+const INADJACENCY_SOURCE = "chrome://browser/content/newtab/newTab.inadjacent.json";
 
 /**
  * Singleton that serves as the provider of directory links.
@@ -125,19 +128,36 @@ let DirectoryLinksProvider = {
   _enhancedLinks: new Map(),
 
   /**
-   * A mapping from site to remaining number of views
-   */
-  _frequencyCaps: new Map(),
-
-  /**
    * A mapping from site to a list of suggested link objects
    */
   _suggestedLinks: new Map(),
 
   /**
+   * Frequency Cap object - maintains daily and total tile counts, and frequency cap settings
+   */
+  _frequencyCaps: {},
+
+  /**
    * A set of top sites that we can provide suggested links for
    */
   _topSitesWithSuggestedLinks: new Set(),
+
+  /**
+   * lookup Set of inadjacent domains
+   */
+  _inadjacentSites: new Set(),
+
+  /**
+   * This flag is set if there is a suggested tile configured to avoid
+   * inadjacent sites in new tab
+   */
+  _avoidInadjacentSites: false,
+
+  /**
+   * This flag is set if _avoidInadjacentSites is true and there is
+   * an inadjacent site in the new tab
+   */
+  _newTabHasInadjacentSite: false,
 
   get _observedPrefs() Object.freeze({
     enhanced: PREF_NEWTAB_ENHANCED,
@@ -150,6 +170,7 @@ let DirectoryLinksProvider = {
     if (!this.__linksURL) {
       try {
         this.__linksURL = Services.prefs.getCharPref(this._observedPrefs["linksURL"]);
+        this.__linksURLModified = Services.prefs.prefHasUserValue(this._observedPrefs["linksURL"]);
       }
       catch (e) {
         Cu.reportError("Error fetching directory links url from prefs: " + e);
@@ -243,13 +264,15 @@ let DirectoryLinksProvider = {
   },
 
   _cacheSuggestedLinks: function(link) {
-    if (!link.frecent_sites || "sponsored" == link.type) {
-      // Don't cache links that don't have the expected 'frecent_sites' or are sponsored.
+    // Don't cache links that don't have the expected 'frecent_sites'
+    if (!link.frecent_sites) {
       return;
     }
+
     for (let suggestedSite of link.frecent_sites) {
       let suggestedMap = this._suggestedLinks.get(suggestedSite) || new Map();
       suggestedMap.set(link.url, link);
+      this._setupStartEndTime(link);
       this._suggestedLinks.set(suggestedSite, suggestedMap);
     }
   },
@@ -259,22 +282,26 @@ let DirectoryLinksProvider = {
     uri = uri.replace("%LOCALE%", this.locale);
     uri = uri.replace("%CHANNEL%", UpdateChannel.get());
 
-    let deferred = Promise.defer();
-    let xmlHttp = new XMLHttpRequest();
+    return this._downloadJsonData(uri).then(json => {
+      return OS.File.writeAtomic(this._directoryFilePath, json, {tmpPath: this._directoryFilePath + ".tmp"});
+    });
+  },
 
-    let self = this;
+  /**
+   * Downloads a links with json content
+   * @param download uri
+   * @return promise resolved to json string, "{}" returned if status != 200
+   */
+  _downloadJsonData: function DirectoryLinksProvider__downloadJsonData(uri) {
+    let deferred = Promise.defer();
+    let xmlHttp = this._newXHR();
+
     xmlHttp.onload = function(aResponse) {
       let json = this.responseText;
       if (this.status && this.status != 200) {
         json = "{}";
       }
-      OS.File.writeAtomic(self._directoryFilePath, json, {tmpPath: self._directoryFilePath + ".tmp"})
-        .then(() => {
-          deferred.resolve();
-        },
-        () => {
-          deferred.reject("Error writing uri data in profD.");
-        });
+      deferred.resolve(json);
     };
 
     xmlHttp.onerror = function(e) {
@@ -338,6 +365,13 @@ let DirectoryLinksProvider = {
   },
 
   /**
+   * Create a new XMLHttpRequest that is anonymous, i.e., doesn't send cookies
+   */
+  _newXHR() {
+    return new XMLHttpRequest({mozAnon: true});
+  },
+
+  /**
    * Reads directory links file and parses its content
    * @return a promise resolved to an object with keys 'directory' and 'suggested',
    *         each containing a valid list of links,
@@ -366,6 +400,97 @@ let DirectoryLinksProvider = {
   },
 
   /**
+   * Translates link.time_limits to UTC miliseconds and sets
+   * link.startTime and link.endTime properties in link object
+   */
+  _setupStartEndTime: function DirectoryLinksProvider_setupStartEndTime(link) {
+    // set start/end limits. Use ISO_8601 format: '2014-01-10T20:20:20.600Z'
+    // (details here http://en.wikipedia.org/wiki/ISO_8601)
+    // Note that if timezone is missing, FX will interpret as local time
+    // meaning that the server can sepecify any time, but if the capmaign
+    // needs to start at same time across multiple timezones, the server
+    // omits timezone indicator
+    if (!link.time_limits) {
+      return;
+    }
+
+    let parsedTime;
+    if (link.time_limits.start) {
+      parsedTime = Date.parse(link.time_limits.start);
+      if (parsedTime && !isNaN(parsedTime)) {
+        link.startTime = parsedTime;
+      }
+    }
+    if (link.time_limits.end) {
+      parsedTime = Date.parse(link.time_limits.end);
+      if (parsedTime && !isNaN(parsedTime)) {
+        link.endTime = parsedTime;
+      }
+    }
+  },
+
+  /*
+   * Handles campaign timeout
+   */
+  _onCampaignTimeout: function DirectoryLinksProvider_onCampaignTimeout() {
+    // _campaignTimeoutID is invalid here, so just set it to null
+    this._campaignTimeoutID = null;
+    this._updateSuggestedTile();
+  },
+
+  /*
+   * Clears capmpaign timeout
+   */
+  _clearCampaignTimeout: function DirectoryLinksProvider_clearCampaignTimeout() {
+    if (this._campaignTimeoutID) {
+      clearTimeout(this._campaignTimeoutID);
+      this._campaignTimeoutID = null;
+    }
+  },
+
+  /**
+   * Setup capmpaign timeout to recompute suggested tiles upon
+   * reaching soonest start or end time for the campaign
+   * @param timeout in milliseconds
+   */
+  _setupCampaignTimeCheck: function DirectoryLinksProvider_setupCampaignTimeCheck(timeout) {
+    // sanity check
+    if (!timeout || timeout <= 0) {
+      return;
+    }
+    this._clearCampaignTimeout();
+    // setup next timeout
+    this._campaignTimeoutID = setTimeout(this._onCampaignTimeout.bind(this), timeout);
+  },
+
+  /**
+   * Test link for campaign time limits: checks if link falls within start/end time
+   * and returns an object containing a use flag and the timeoutDate milliseconds
+   * when the link has to be re-checked for campaign start-ready or end-reach
+   * @param link
+   * @return object {use: true or false, timeoutDate: milliseconds or null}
+   */
+  _testLinkForCampaignTimeLimits: function DirectoryLinksProvider_testLinkForCampaignTimeLimits(link) {
+    let currentTime = Date.now();
+    // test for start time first
+    if (link.startTime && link.startTime > currentTime) {
+      // not yet ready for start
+      return {use: false, timeoutDate: link.startTime};
+    }
+    // otherwise check for end time
+    if (link.endTime) {
+      // passed end time
+      if (link.endTime <= currentTime) {
+        return {use: false};
+      }
+      // otherwise link is still ok, but we need to set timeoutDate
+      return {use: true, timeoutDate: link.endTime};
+    }
+    // if we are here, the link is ok and no timeoutDate needed
+    return {use: true};
+  },
+
+  /**
    * Report some action on a newtab page (view, click)
    * @param sites Array of sites shown on newtab page
    * @param action String of the behavior to report
@@ -378,7 +503,7 @@ let DirectoryLinksProvider = {
       sites.slice(0, triggeringSiteIndex + 1).forEach(site => {
         let {targetedSite, url} = site.link;
         if (targetedSite) {
-          this._decreaseFrequencyCap(url, 1);
+          this._addFrequencyCapView(url);
         }
       });
     }
@@ -386,7 +511,7 @@ let DirectoryLinksProvider = {
     else if (action == "click") {
       let {targetedSite, url} = sites[triggeringSiteIndex].link;
       if (targetedSite) {
-        this._decreaseFrequencyCap(url, DEFAULT_FREQUENCY_CAP);
+        this._setFrequencyCapClick(url);
       }
     }
 
@@ -437,12 +562,16 @@ let DirectoryLinksProvider = {
     }
 
     // Package the data to be sent with the ping
-    let ping = new XMLHttpRequest();
+    let ping = this._newXHR();
     ping.open("POST", pingEndPoint + (action == "view" ? "view" : "click"));
     ping.send(JSON.stringify(data));
 
-    // Use this as an opportunity to potentially fetch new links
-    return this._fetchAndCacheLinksIfNecessary();
+    return Task.spawn(function* () {
+      // since we updated views/clicks we need write _frequencyCaps to disk
+      yield this._writeFrequencyCapFile();
+      // Use this as an opportunity to potentially fetch new links
+      yield this._fetchAndCacheLinksIfNecessary();
+    }.bind(this));
   },
 
   /**
@@ -455,29 +584,42 @@ let DirectoryLinksProvider = {
   },
 
   /**
-   * Get the display name of an allowed frecent sites. Returns undefined for a
-   * unallowed frecent sites.
+   * Check if a url's scheme is in a Set of allowed schemes and if the base
+   * domain is allowed.
+   * @param url to check
+   * @param allowed Set of allowed schemes
+   * @param checkBase boolean to check the base domain
    */
-  getFrecentSitesName(sites) {
-    return ALLOWED_FRECENT_SITES.get(sites.join(","));
-  },
-
-  /**
-   * Check if a url's scheme is in a Set of allowed schemes
-   */
-  isURLAllowed: function DirectoryLinksProvider_isURLAllowed(url, allowed) {
+  isURLAllowed(url, allowed, checkBase) {
     // Assume no url is an allowed url
     if (!url) {
       return true;
     }
 
-    let scheme = "";
+    let scheme = "", base = "";
     try {
       // A malformed url will not be allowed
-      scheme = Services.io.newURI(url, null, null).scheme;
+      let uri = Services.io.newURI(url, null, null);
+      scheme = uri.scheme;
+
+      // URIs without base domains will be allowed
+      base = Services.eTLD.getBaseDomain(uri);
     }
     catch(ex) {}
-    return allowed.has(scheme);
+    // Require a scheme match and the base only if desired
+    return allowed.has(scheme) && (!checkBase || ALLOWED_URL_BASE.has(base));
+  },
+
+  _escapeChars(text) {
+    let charMap = {
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#039;'
+    };
+
+    return text.replace(/[&<>"']/g, (character) => charMap[character]);
   },
 
   /**
@@ -488,30 +630,41 @@ let DirectoryLinksProvider = {
     this._readDirectoryLinksFile().then(rawLinks => {
       // Reset the cache of suggested tiles and enhanced images for this new set of links
       this._enhancedLinks.clear();
-      this._frequencyCaps.clear();
       this._suggestedLinks.clear();
+      this._clearCampaignTimeout();
+      this._avoidInadjacentSites = false;
 
+      // Only check base domain for images when using the default pref
+      let checkBase = !this.__linksURLModified;
       let validityFilter = function(link) {
         // Make sure the link url is allowed and images too if they exist
-        return this.isURLAllowed(link.url, ALLOWED_LINK_SCHEMES) &&
-               this.isURLAllowed(link.imageURI, ALLOWED_IMAGE_SCHEMES) &&
-               this.isURLAllowed(link.enhancedImageURI, ALLOWED_IMAGE_SCHEMES);
+        return this.isURLAllowed(link.url, ALLOWED_LINK_SCHEMES, false) &&
+               this.isURLAllowed(link.imageURI, ALLOWED_IMAGE_SCHEMES, checkBase) &&
+               this.isURLAllowed(link.enhancedImageURI, ALLOWED_IMAGE_SCHEMES, checkBase);
       }.bind(this);
 
       rawLinks.suggested.filter(validityFilter).forEach((link, position) => {
-        // Only allow suggested links with approved frecent sites
-        let name = this.getFrecentSitesName(link.frecent_sites);
-        if (name == undefined) {
+        // Suggested sites should always have an adgroup name.
+        if (!link.adgroup_name) {
           return;
         }
 
-        link.targetedName = name;
+        let sanitizeFlags = ParserUtils.SanitizerCidEmbedsOnly |
+          ParserUtils.SanitizerDropForms |
+          ParserUtils.SanitizerDropNonCSSPresentation;
+
+        link.explanation = this._escapeChars(link.explanation ? ParserUtils.convertToPlainText(link.explanation, sanitizeFlags, 0) : "");
+        link.targetedName = this._escapeChars(ParserUtils.convertToPlainText(link.adgroup_name, sanitizeFlags, 0));
         link.lastVisitDate = rawLinks.suggested.length - position;
+        // check if link wants to avoid inadjacent sites
+        if (link.check_inadjacency) {
+          this._avoidInadjacentSites = true;
+        }
 
         // We cache suggested tiles here but do not push any of them in the links list yet.
         // The decision for which suggested tile to include will be made separately.
         this._cacheSuggestedLinks(link);
-        this._frequencyCaps.set(link.url, DEFAULT_FREQUENCY_CAP);
+        this._updateFrequencyCapSettings(link);
       });
 
       rawLinks.enhanced.filter(validityFilter).forEach((link, position) => {
@@ -532,6 +685,11 @@ let DirectoryLinksProvider = {
       // Allow for one link suggestion on top of the default directory links
       this.maxNumLinks = links.length + 1;
 
+      // prune frequency caps of outdated urls
+      this._pruneFrequencyCapUrls();
+      // write frequency caps object to disk asynchronously
+      this._writeFrequencyCapFile();
+
       return links;
     }).catch(ex => {
       Cu.reportError(ex);
@@ -549,6 +707,11 @@ let DirectoryLinksProvider = {
     this._directoryFilePath = OS.Path.join(OS.Constants.Path.localProfileDir, DIRECTORY_LINKS_FILE);
     this._lastDownloadMS = 0;
 
+    // setup frequency cap file path
+    this._frequencyCapFilePath = OS.Path.join(OS.Constants.Path.localProfileDir, FREQUENCY_CAP_FILE);
+    // setup inadjacent sites URL
+    this._inadjacentSitesUrl = INADJACENCY_SOURCE;
+
     NewTabUtils.placesProvider.addObserver(this);
     NewTabUtils.links.addObserver(this);
 
@@ -559,8 +722,12 @@ let DirectoryLinksProvider = {
         let fileInfo = yield OS.File.stat(this._directoryFilePath);
         this._lastDownloadMS = Date.parse(fileInfo.lastModificationDate);
       }
+      // read frequency cap file
+      yield this._readFrequencyCapFile();
       // fetch directory on startup without force
       yield this._fetchAndCacheLinksIfNecessary();
+      // fecth inadjacent sites on startup
+      yield this._loadInadjacentSites();
     }.bind(this));
   },
 
@@ -593,12 +760,35 @@ let DirectoryLinksProvider = {
       this._topSitesWithSuggestedLinks.add(changedLinkSite);
       return true;
     }
+
+    // always run _updateSuggestedTile if aLink is inadjacent
+    // and there are tiles configured to avoid it
+    if (this._avoidInadjacentSites && this._isInadjacentLink(aLink)) {
+      return true;
+    }
+
     return false;
   },
 
   _populatePlacesLinks: function () {
     NewTabUtils.links.populateProviderCache(NewTabUtils.placesProvider, () => {
       this._handleManyLinksChanged();
+    });
+  },
+
+  onDeleteURI: function(aProvider, aLink) {
+    let {url} = aLink;
+    // remove clicked flag for that url and
+    // call observer upon disk write completion
+    this._removeTileClick(url).then(() => {
+      this._callObservers("onDeleteURI", url);
+    });
+  },
+
+  onClearHistory: function() {
+    // remove all clicked flags and call observers upon file write
+    this._removeAllTileClicks().then(() => {
+      this._callObservers("onClearHistory");
     });
   },
 
@@ -618,28 +808,19 @@ let DirectoryLinksProvider = {
     }, 0);
   },
 
-  /**
-   * Record for a url that some number of views have been used
-   * @param url String url of the suggested link
-   * @param amount Number of equivalent views to decrease
-   */
-  _decreaseFrequencyCap(url, amount) {
-    let remainingViews = this._frequencyCaps.get(url) - amount;
-    this._frequencyCaps.set(url, remainingViews);
-
-    // Reached the number of views, so pick a new one.
-    if (remainingViews <= 0) {
-      this._updateSuggestedTile();
-    }
-  },
-
   _getCurrentTopSiteCount: function() {
     let visibleTopSiteCount = 0;
-    for (let link of NewTabUtils.links.getLinks().slice(0, MIN_VISIBLE_HISTORY_TILES)) {
+    let newTabLinks = NewTabUtils.links.getLinks();
+    for (let link of newTabLinks.slice(0, MIN_VISIBLE_HISTORY_TILES)) {
+      // compute visibleTopSiteCount for suggested tiles
       if (link && (link.type == "history" || link.type == "enhanced")) {
         visibleTopSiteCount++;
       }
     }
+    // since newTabLinks are available, set _newTabHasInadjacentSite here
+    // note that _shouldUpdateSuggestedTile is called by _updateSuggestedTile
+    this._newTabHasInadjacentSite = this._avoidInadjacentSites && this._checkForInadjacentSites(newTabLinks);
+
     return visibleTopSiteCount;
   },
 
@@ -705,13 +886,31 @@ let DirectoryLinksProvider = {
     // want to count each suggested link once (based on url), thus possibleLinks is a map
     // from url to suggestedLink. Thus, each link has an equal chance of being chosen at
     // random from flattenedLinks if it appears only once.
+    let nextTimeout;
     let possibleLinks = new Map();
     let targetedSites = new Map();
     this._topSitesWithSuggestedLinks.forEach(topSiteWithSuggestedLink => {
       let suggestedLinksMap = this._suggestedLinks.get(topSiteWithSuggestedLink);
       suggestedLinksMap.forEach((suggestedLink, url) => {
         // Skip this link if we've shown it too many times already
-        if (this._frequencyCaps.get(url) <= 0) {
+        if (!this._testFrequencyCapLimits(url)) {
+          return;
+        }
+
+        // as we iterate suggestedLinks, check for campaign start/end
+        // time limits, and set nextTimeout to the closest timestamp
+        let {use, timeoutDate} = this._testLinkForCampaignTimeLimits(suggestedLink);
+        // update nextTimeout is necessary
+        if (timeoutDate && (!nextTimeout || nextTimeout > timeoutDate)) {
+          nextTimeout = timeoutDate;
+        }
+        // Skip link if it falls outside campaign time limits
+        if (!use) {
+          return;
+        }
+
+        // Skip link if it avoids inadjacent sites and newtab has one
+        if (suggestedLink.check_inadjacency && this._newTabHasInadjacentSite) {
           return;
         }
 
@@ -725,6 +924,11 @@ let DirectoryLinksProvider = {
         targetedSites.get(url).push(topSiteWithSuggestedLink);
       })
     });
+
+    // setup timeout check for starting or ending campaigns
+    if (nextTimeout) {
+      this._setupCampaignTimeCheck(nextTimeout - Date.now());
+    }
 
     // We might have run out of possible links to show
     let numLinks = possibleLinks.size;
@@ -750,6 +954,269 @@ let DirectoryLinksProvider = {
     }, chosenSuggestedLink));
     return chosenSuggestedLink;
    },
+
+  /**
+   * Loads inadjacent sites
+   * @return a promise resolved when lookup Set for sites is built
+   */
+  _loadInadjacentSites: function DirectoryLinksProvider_loadInadjacentSites() {
+    return this._downloadJsonData(this._inadjacentSitesUrl).then(jsonString => {
+      let jsonObject = {};
+      try {
+        jsonObject = JSON.parse(jsonString);
+      }
+      catch (e) {
+        Cu.reportError(e);
+      }
+
+      this._inadjacentSites = new Set(jsonObject.domains);
+    });
+  },
+
+  /**
+   * Genegrates hash suitable for looking up inadjacent site
+   * @param value to hsh
+   * @return hased value, base64-ed
+   */
+  _generateHash: function DirectoryLinksProvider_generateHash(value) {
+    let byteArr = gUnicodeConverter.convertToByteArray(value);
+    gCryptoHash.init(gCryptoHash.MD5);
+    gCryptoHash.update(byteArr, byteArr.length);
+    return gCryptoHash.finish(true);
+  },
+
+  /**
+   * Checks if link belongs to inadjacent domain
+   * @param link to check
+   * @return true for inadjacent domains, false otherwise
+   */
+  _isInadjacentLink: function DirectoryLinksProvider_isInadjacentLink(link) {
+    let baseDomain = link.baseDomain || NewTabUtils.extractSite(link.url || "");
+    if (!baseDomain) {
+        return false;
+    }
+    // check if hashed domain is inadjacent
+    return this._inadjacentSites.has(this._generateHash(baseDomain));
+  },
+
+  /**
+   * Checks if new tab has inadjacent site
+   * @param new tab links (or nothing, in which case NewTabUtils.links.getLinks() is called
+   * @return true if new tab shows has inadjacent site
+   */
+  _checkForInadjacentSites: function DirectoryLinksProvider_checkForInadjacentSites(newTabLink) {
+    let links = newTabLink || NewTabUtils.links.getLinks();
+    for (let link of links.slice(0, MAX_VISIBLE_HISTORY_TILES)) {
+      // check links against inadjacent list - specifically include ALL link types
+      if (this._isInadjacentLink(link)) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  /**
+   * Reads json file, parses its content, and returns resulting object
+   * @param json file path
+   * @param json object to return in case file read or parse fails
+   * @return a promise resolved to a valid object or undefined upon error
+   */
+  _readJsonFile: Task.async(function* (filePath, nullObject) {
+    let jsonObj;
+    try {
+      let binaryData = yield OS.File.read(filePath);
+      let json = gTextDecoder.decode(binaryData);
+      jsonObj = JSON.parse(json);
+    }
+    catch (e) {}
+    return jsonObj || nullObject;
+  }),
+
+  /**
+   * Loads frequency cap object from file and parses its content
+   * @return a promise resolved upon load completion
+   *         on error or non-exstent file _frequencyCaps is set to empty object
+   */
+  _readFrequencyCapFile: Task.async(function* () {
+    // set _frequencyCaps object to file's content or empty object
+    this._frequencyCaps = yield this._readJsonFile(this._frequencyCapFilePath, {});
+  }),
+
+  /**
+   * Saves frequency cap object to file
+   * @return a promise resolved upon file i/o completion
+   */
+  _writeFrequencyCapFile: function DirectoryLinksProvider_writeFrequencyCapFile() {
+    let json = JSON.stringify(this._frequencyCaps || {});
+    return OS.File.writeAtomic(this._frequencyCapFilePath, json, {tmpPath: this._frequencyCapFilePath + ".tmp"});
+  },
+
+  /**
+   * Clears frequency cap object and writes empty json to file
+   * @return a promise resolved upon file i/o completion
+   */
+  _clearFrequencyCap: function DirectoryLinksProvider_clearFrequencyCap() {
+    this._frequencyCaps = {};
+    return this._writeFrequencyCapFile();
+  },
+
+  /**
+   * updates frequency cap configuration for a link
+   */
+  _updateFrequencyCapSettings: function DirectoryLinksProvider_updateFrequencyCapSettings(link) {
+    let capsObject = this._frequencyCaps[link.url];
+    if (!capsObject) {
+      // create an object with empty counts
+      capsObject = {
+        dailyViews: 0,
+        totalViews: 0,
+        lastShownDate: 0,
+      };
+      this._frequencyCaps[link.url] = capsObject;
+    }
+    // set last updated timestamp
+    capsObject.lastUpdated = Date.now();
+    // check for link configuration
+    if (link.frequency_caps) {
+      capsObject.dailyCap = link.frequency_caps.daily || DEFAULT_DAILY_FREQUENCY_CAP;
+      capsObject.totalCap = link.frequency_caps.total || DEFAULT_TOTAL_FREQUENCY_CAP;
+    }
+    else {
+      // fallback to defaults
+      capsObject.dailyCap = DEFAULT_DAILY_FREQUENCY_CAP;
+      capsObject.totalCap = DEFAULT_TOTAL_FREQUENCY_CAP;
+    }
+  },
+
+  /**
+   * Prunes frequency cap objects for outdated links
+   * @param timeDetla milliseconds
+   *        all cap objects with lastUpdated less than (now() - timeDelta)
+   *        will be removed. This is done to remove frequency cap objects
+   *        for unused tile urls
+   */
+  _pruneFrequencyCapUrls: function DirectoryLinksProvider_pruneFrequencyCapUrls(timeDelta = DEFAULT_PRUNE_TIME_DELTA) {
+    let timeThreshold = Date.now() - timeDelta;
+    Object.keys(this._frequencyCaps).forEach(url => {
+      if (this._frequencyCaps[url].lastUpdated <= timeThreshold) {
+        delete this._frequencyCaps[url];
+      }
+    });
+  },
+
+  /**
+   * Checks if supplied timestamp happened today
+   * @param timestamp in milliseconds
+   * @return true if the timestamp was made today, false otherwise
+   */
+  _wasToday: function DirectoryLinksProvider_wasToday(timestamp) {
+    let showOn = new Date(timestamp);
+    let today = new Date();
+    // call timestamps identical if both day and month are same
+    return showOn.getDate() == today.getDate() &&
+           showOn.getMonth() == today.getMonth() &&
+           showOn.getYear() == today.getYear();
+  },
+
+  /**
+   * adds some number of views for a url
+   * @param url String url of the suggested link
+   */
+  _addFrequencyCapView: function DirectoryLinksProvider_addFrequencyCapView(url) {
+    let capObject = this._frequencyCaps[url];
+    // sanity check
+    if (!capObject) {
+      return;
+    }
+
+    // if the day is new: reset the daily counter and lastShownDate
+    if (!this._wasToday(capObject.lastShownDate)) {
+      capObject.dailyViews = 0;
+      // update lastShownDate
+      capObject.lastShownDate = Date.now();
+    }
+
+    // bump both dialy and total counters
+    capObject.totalViews++;
+    capObject.dailyViews++;
+
+    // if any of the caps is reached - update suggested tiles
+    if (capObject.totalViews >= capObject.totalCap ||
+        capObject.dailyViews >= capObject.dailyCap) {
+      this._updateSuggestedTile();
+    }
+  },
+
+  /**
+   * Sets clicked flag for link url
+   * @param url String url of the suggested link
+   */
+  _setFrequencyCapClick: function DirectoryLinksProvider_reportFrequencyCapClick(url) {
+    let capObject = this._frequencyCaps[url];
+    // sanity check
+    if (!capObject) {
+      return;
+    }
+    capObject.clicked = true;
+    // and update suggested tiles, since current tile became invalid
+    this._updateSuggestedTile();
+  },
+
+  /**
+   * Tests frequency cap limits for link url
+   * @param url String url of the suggested link
+   * @return true if link is viewable, false otherwise
+   */
+  _testFrequencyCapLimits: function DirectoryLinksProvider_testFrequencyCapLimits(url) {
+    let capObject = this._frequencyCaps[url];
+    // sanity check: if url is missing - do not show this tile
+    if (!capObject) {
+      return false;
+    }
+
+    // check for clicked set or total views reached
+    if (capObject.clicked || capObject.totalViews >= capObject.totalCap) {
+      return false;
+    }
+
+    // otherwise check if link is over daily views limit
+    if (this._wasToday(capObject.lastShownDate) &&
+        capObject.dailyViews >= capObject.dailyCap) {
+      return false;
+    }
+
+    // we passed all cap tests: return true
+    return true;
+  },
+
+  /**
+   * Removes clicked flag from frequency cap entry for tile landing url
+   * @param url String url of the suggested link
+   * @return promise resolved upon disk write completion
+   */
+  _removeTileClick: function DirectoryLinksProvider_removeTileClick(url = "") {
+    // remove trailing slash, to accomodate Places sending site urls ending with '/'
+    let noTrailingSlashUrl = url.replace(/\/$/,"");
+    let capObject = this._frequencyCaps[url] || this._frequencyCaps[noTrailingSlashUrl];
+    // return resolved promise if capObject is not found
+    if (!capObject) {
+      return Promise.resolve();
+    }
+    // otherwise remove clicked flag
+    delete capObject.clicked;
+    return this._writeFrequencyCapFile();
+  },
+
+  /**
+   * Removes all clicked flags from frequency cap object
+   * @return promise resolved upon disk write completion
+   */
+  _removeAllTileClicks: function DirectoryLinksProvider_removeAllTileClicks() {
+    Object.keys(this._frequencyCaps).forEach(url => {
+      delete this._frequencyCaps[url].clicked;
+    });
+    return this._writeFrequencyCapFile();
+  },
 
   /**
    * Return the object to its pre-init state

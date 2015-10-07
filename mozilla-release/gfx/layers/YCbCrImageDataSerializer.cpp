@@ -5,12 +5,12 @@
 
 #include "mozilla/layers/YCbCrImageDataSerializer.h"
 #include <string.h>                     // for memcpy
-#include "gfx2DGlue.h"                  // for ToIntSize
 #include "mozilla/gfx/2D.h"             // for DataSourceSurface, Factory
 #include "mozilla/gfx/BaseSize.h"       // for BaseSize
 #include "mozilla/gfx/Logging.h"        // for gfxDebug
 #include "mozilla/gfx/Types.h"
 #include "mozilla/mozalloc.h"           // for operator delete
+#include "nsDebug.h"                    // for NS_WARN_IF
 #include "yuv_convert.h"                // for ConvertYCbCrToRGB32, etc
 
 #define MOZ_ALIGN_WORD(x) (((x) + 3) & ~3)

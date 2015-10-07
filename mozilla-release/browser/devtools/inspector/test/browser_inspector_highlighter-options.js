@@ -73,13 +73,13 @@ const TEST_DATA = [
       let {d} = yield getHighlighterRegionPath("margin", toolbox.highlighter);
       ok(!d, "margin region is hidden");
 
-      ({d}) = yield getHighlighterRegionPath("border", toolbox.highlighter);
+      ({d} = yield getHighlighterRegionPath("border", toolbox.highlighter));
       ok(!d, "border region is hidden");
 
-      ({d}) = yield getHighlighterRegionPath("padding", toolbox.highlighter);
+      ({d} = yield getHighlighterRegionPath("padding", toolbox.highlighter));
       ok(!d, "padding region is hidden");
 
-      ({d}) = yield getHighlighterRegionPath("content", toolbox.highlighter);
+      ({d} = yield getHighlighterRegionPath("content", toolbox.highlighter));
       ok(d, "content region is shown");
     }
   },
@@ -90,13 +90,13 @@ const TEST_DATA = [
       let {d} = yield getHighlighterRegionPath("margin", toolbox.highlighter);
       ok(d, "margin region is shown");
 
-      ({d}) = yield getHighlighterRegionPath("border", toolbox.highlighter);
+      ({d} = yield getHighlighterRegionPath("border", toolbox.highlighter));
       ok(!d, "border region is hidden");
 
-      ({d}) = yield getHighlighterRegionPath("padding", toolbox.highlighter);
+      ({d} = yield getHighlighterRegionPath("padding", toolbox.highlighter));
       ok(!d, "padding region is hidden");
 
-      ({d}) = yield getHighlighterRegionPath("content", toolbox.highlighter);
+      ({d} = yield getHighlighterRegionPath("content", toolbox.highlighter));
       ok(!d, "content region is hidden");
     }
   },
@@ -142,6 +142,46 @@ const TEST_DATA = [
       is(Math.floor(rightX1), points[1][0], "Right guide's x1 is correct");
       is(Math.floor(bottomY1), points[2][1], "Bottom guide's y1 is correct");
       is(Math.ceil(leftX1), points[3][0], "Left guide's x1 is correct");
+    }
+  },
+  {
+    desc: "When showOnly is used, other regions can be faded",
+    options: {showOnly: "margin", onlyRegionArea: true},
+    checkHighlighter: function*(toolbox) {
+      let h = toolbox.highlighter;
+
+      for (let region of ["margin", "border", "padding", "content"]) {
+        let {d} = yield getHighlighterRegionPath(region, h);
+        ok(d, "Region " + region + " is shown (it has a d attribute)");
+
+        let faded = yield getHighlighterNodeAttribute(h,
+                          "box-model-" + region, "faded");
+        if (region === "margin") {
+          ok(!faded, "The margin region is not faded");
+        } else {
+          is(faded, "true", "Region " + region + " is faded");
+        }
+      }
+    }
+  },
+  {
+    desc: "When showOnly is used, other regions can be faded (2)",
+    options: {showOnly: "padding", onlyRegionArea: true},
+    checkHighlighter: function*(toolbox) {
+      let h = toolbox.highlighter;
+
+      for (let region of ["margin", "border", "padding", "content"]) {
+        let {d} = yield getHighlighterRegionPath(region, h);
+        ok(d, "Region " + region + " is shown (it has a d attribute)");
+
+        let faded = yield getHighlighterNodeAttribute(h,
+                          "box-model-" + region, "faded");
+        if (region === "padding") {
+          ok(!faded, "The padding region is not faded");
+        } else {
+          is(faded, "true", "Region " + region + " is faded");
+        }
+      }
     }
   }
 ];

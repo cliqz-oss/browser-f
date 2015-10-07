@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
-
 var loop = loop || {};
 loop.shared = loop.shared || {};
 loop.shared.actions = (function() {
@@ -43,7 +41,8 @@ loop.shared.actions = (function() {
      * Extract the token information and type for the standalone window
      */
     ExtractTokenInfo: Action.define("extractTokenInfo", {
-      windowPath: String
+      windowPath: String,
+      windowHash: String
     }),
 
     /**
@@ -65,6 +64,7 @@ loop.shared.actions = (function() {
      * token.
      */
     FetchServerData: Action.define("fetchServerData", {
+      // cryptoKey: String - Optional.
       token: String,
       windowType: String
     }),
@@ -166,19 +166,38 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Used to notify that the session has a data channel available.
+     */
+    DataChannelsAvailable: Action.define("dataChannelsAvailable", {
+      available: Boolean
+    }),
+
+    /**
+     * Used to send a message to the other peer.
+     */
+    SendTextChatMessage: Action.define("sendTextChatMessage", {
+      contentType: String,
+      message: String,
+      sentTimestamp: String
+    }),
+
+    /**
+     * Notifies that a message has been received from the other peer.
+     */
+    ReceivedTextChatMessage: Action.define("receivedTextChatMessage", {
+      contentType: String,
+      message: String,
+      receivedTimestamp: String
+      // sentTimestamp: String (optional)
+    }),
+
+    /**
      * Used by the ongoing views to notify stores about the elements
      * required for the sdk.
      */
     SetupStreamElements: Action.define("setupStreamElements", {
       // The configuration for the publisher/subscribe options
-      publisherConfig: Object,
-      // The local stream element
-      getLocalElementFunc: Function,
-      // The screen share element; optional until all conversation
-      // types support it.
-      // getScreenShareElementFunc: Function,
-      // The remote stream element
-      getRemoteElementFunc: Function
+      publisherConfig: Object
     }),
 
     /**
@@ -198,8 +217,45 @@ loop.shared.actions = (function() {
      * dispatched when a stream connects for the first time.
      */
     VideoDimensionsChanged: Action.define("videoDimensionsChanged", {
+      isLocal: Boolean,
       videoType: String,
       dimensions: Object
+    }),
+
+    /**
+     * Video has been enabled from the remote sender.
+     *
+     * XXX somewhat tangled up with remote video muting semantics; see bug
+     * 1171969
+     *
+     * @note if/when we want to untangle this, we'll may want to include the
+     *       reason provided by the SDK and documented hereI:
+     *       https://tokbox.com/opentok/libraries/client/js/reference/VideoEnabledChangedEvent.html
+     */
+    RemoteVideoEnabled: Action.define("remoteVideoEnabled", {
+      /* The SDK video object that the views will be copying the remote
+         stream from. */
+      srcVideoObject: Object
+    }),
+
+    /**
+     * Video has been disabled by the remote sender.
+     *
+     *  @see RemoteVideoEnabled
+     */
+    RemoteVideoDisabled: Action.define("remoteVideoDisabled", {
+    }),
+
+    /**
+     * Video from the local camera has been enabled.
+     *
+     * XXX we should implement a LocalVideoDisabled action to cleanly prevent
+     * leakage; see bug 1171978 for details
+     */
+    LocalVideoEnabled: Action.define("localVideoEnabled", {
+      /* The SDK video object that the views will be copying the remote
+         stream from. */
+      srcVideoObject: Object
     }),
 
     /**
@@ -227,7 +283,7 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Used to notifiy that screen sharing is active or not.
+     * Used to notify that screen sharing is active or not.
      */
     ScreenSharingState: Action.define("screenSharingState", {
       // One of loop.shared.utils.SCREEN_SHARE_STATES.
@@ -236,9 +292,12 @@ loop.shared.actions = (function() {
 
     /**
      * Used to notify that a shared screen is being received (or not).
+     *
+     * XXX this should be split into multiple actions to make the code clearer.
      */
     ReceivingScreenShare: Action.define("receivingScreenShare", {
       receiving: Boolean
+      // srcVideoObject: Object (only present if receiving is true)
     }),
 
     /**
@@ -250,6 +309,8 @@ loop.shared.actions = (function() {
       // (eg. "Conversation {{conversationLabel}}").
       nameTemplate: String,
       roomOwner: String
+      // See https://wiki.mozilla.org/Loop/Architecture/Context#Format_of_context.value
+      // urls: Object - Optional
     }),
 
     /**
@@ -325,20 +386,28 @@ loop.shared.actions = (function() {
     }),
 
     /**
-     * Renames a room.
+     * Updates the context data attached to a room.
      * XXX: should move to some roomActions module - refs bug 1079284
      */
-    RenameRoom: Action.define("renameRoom", {
+    UpdateRoomContext: Action.define("updateRoomContext", {
       roomToken: String,
       newRoomName: String
+      // newRoomDescription: String, Optional.
+      // newRoomThumbnail: String, Optional.
+      // newRoomURL: String Optional.
     }),
 
     /**
-     * Renaming a room error.
-     * XXX: should move to some roomActions module - refs bug 1079284
+     * Updating the context data attached to a room error.
      */
-    RenameRoomError: Action.define("renameRoomError", {
+    UpdateRoomContextError: Action.define("updateRoomContextError", {
       error: [Error, Object]
+    }),
+
+    /**
+     * Updating the context data attached to a room finished successfully.
+     */
+    UpdateRoomContextDone: Action.define("updateRoomContextDone", {
     }),
 
     /**
@@ -346,6 +415,7 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     CopyRoomUrl: Action.define("copyRoomUrl", {
+      from: String,
       roomUrl: String
     }),
 
@@ -354,7 +424,9 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     EmailRoomUrl: Action.define("emailRoomUrl", {
+      from: String,
       roomUrl: String
+      // roomDescription: String, Optional.
     }),
 
     /**
@@ -364,13 +436,6 @@ loop.shared.actions = (function() {
     ShareRoomUrl: Action.define("shareRoomUrl", {
       provider: Object,
       roomUrl: String
-    }),
-
-    /**
-     * Add the Social Share button to the browser toolbar.
-     * XXX: should move to some roomActions module - refs bug 1079284
-     */
-    AddSocialShareButton: Action.define("addSocialShareButton", {
     }),
 
     /**
@@ -396,11 +461,12 @@ loop.shared.actions = (function() {
      * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
      */
     SetupRoomInfo: Action.define("setupRoomInfo", {
+      // roomContextUrls: Array - Optional.
+      // roomDescription: String - Optional.
       // roomName: String - Optional.
       roomOwner: String,
       roomToken: String,
       roomUrl: String,
-      socialShareButtonAvailable: Boolean,
       socialShareProviders: Array
     }),
 
@@ -411,9 +477,12 @@ loop.shared.actions = (function() {
      * @see https://wiki.mozilla.org/Loop/Architecture/Rooms#GET_.2Frooms.2F.7Btoken.7D
      */
     UpdateRoomInfo: Action.define("updateRoomInfo", {
+      // description: String - Optional.
       // roomName: String - Optional.
       roomOwner: String,
       roomUrl: String
+      // urls: Array - Optional.
+      // See https://wiki.mozilla.org/Loop/Architecture/Context#Format_of_context.value
     }),
 
     /**
@@ -421,7 +490,6 @@ loop.shared.actions = (function() {
      * XXX: should move to some roomActions module - refs bug 1079284
      */
     UpdateSocialShareInfo: Action.define("updateSocialShareInfo", {
-      socialShareButtonAvailable: Boolean,
       socialShareProviders: Array
     }),
 
@@ -459,6 +527,17 @@ loop.shared.actions = (function() {
     }),
 
     /**
+     * Used to record a link click for metrics purposes.
+     */
+    RecordClick: Action.define("recordClick", {
+      // Note: for ToS and Privacy links, this should be the link, for
+      // other links this should be a generic description so that we don't
+      // record what users are clicking, just the information about the fact
+      // they clicked the link in that spot (e.g. "Shared URL").
+      linkInfo: String
+    }),
+
+    /**
      * Requires detailed information on sad feedback.
      */
     RequireFeedbackDetails: Action.define("requireFeedbackDetails", {
@@ -478,6 +557,18 @@ loop.shared.actions = (function() {
      */
     SendFeedbackError: Action.define("sendFeedbackError", {
       error: Error
+    }),
+
+    /**
+     * Used to inform of the current session, publisher and connection
+     * status.
+     */
+    ConnectionStatus: Action.define("connectionStatus", {
+      event: String,
+      state: String,
+      connections: Number,
+      sendStreams: Number,
+      recvStreams: Number
     })
   };
 })();

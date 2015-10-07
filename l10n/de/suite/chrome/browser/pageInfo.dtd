@@ -31,7 +31,7 @@
 <!ENTITY  generalReferrer       "Verweisende URL:">
 <!ENTITY  generalSource         "Cache-Quelle:">
 <!ENTITY  generalModified       "Modifiziert:">
-<!ENTITY  generalEncoding       "Kodierung:">
+<!ENTITY  generalEncoding2      "Textkodierung:">
 <!ENTITY  generalMetaName       "Name">
 <!ENTITY  generalMetaContent    "Inhalt">
 <!ENTITY  generalSecurityDetails           "Details">

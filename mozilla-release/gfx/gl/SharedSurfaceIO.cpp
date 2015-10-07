@@ -6,8 +6,9 @@
 #include "SharedSurfaceIO.h"
 
 #include "GLContextCGL.h"
-#include "mozilla/gfx/MacIOSurface.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/gfx/MacIOSurface.h"
+#include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor, etc
 #include "ScopedGLHelpers.h"
 
 namespace mozilla {
@@ -54,6 +55,16 @@ SharedSurface_IOSurface::CopyTexImage2D(GLenum target, GLint level, GLenum inter
     if (width == 0 || height == 0)
         return false;
 
+    switch (internalformat) {
+    case LOCAL_GL_ALPHA:
+    case LOCAL_GL_LUMINANCE:
+    case LOCAL_GL_LUMINANCE_ALPHA:
+        break;
+
+    default:
+        return false;
+    }
+
     MOZ_ASSERT(mGL->IsCurrent());
 
     ScopedTexture destTex(mGL);
@@ -89,23 +100,22 @@ SharedSurface_IOSurface::ReadPixels(GLint x, GLint y, GLsizei width, GLsizei hei
     // from that.
     MOZ_ASSERT(mGL->IsCurrent());
 
-
     ScopedTexture destTex(mGL);
     {
         ScopedFramebufferForTexture srcFB(mGL, ProdTexture(), ProdTextureTarget());
 
         ScopedBindFramebuffer bindFB(mGL, srcFB.FB());
         ScopedBindTexture bindTex(mGL, destTex.Texture());
-        mGL->fCopyTexImage2D(LOCAL_GL_TEXTURE_2D, 0,
-                             mHasAlpha ? LOCAL_GL_RGBA : LOCAL_GL_RGB,
-                             x, y,
-                             width, height, 0);
+        mGL->raw_fCopyTexImage2D(LOCAL_GL_TEXTURE_2D, 0,
+                                 mHasAlpha ? LOCAL_GL_RGBA : LOCAL_GL_RGB,
+                                 x, y,
+                                 width, height, 0);
     }
 
     ScopedFramebufferForTexture destFB(mGL, destTex.Texture());
 
     ScopedBindFramebuffer bindFB(mGL, destFB.FB());
-    mGL->fReadPixels(0, 0, width, height, format, type, pixels);
+    mGL->raw_fReadPixels(0, 0, width, height, format, type, pixels);
     return true;
 }
 
@@ -143,7 +153,8 @@ SharedSurface_IOSurface::SharedSurface_IOSurface(const RefPtr<MacIOSurface>& ioS
                   AttachmentType::GLTexture,
                   gl,
                   size,
-                  hasAlpha)
+                  hasAlpha,
+                  true)
   , mIOSurf(ioSurf)
 {
     gl->MakeCurrent();
@@ -161,18 +172,29 @@ SharedSurface_IOSurface::~SharedSurface_IOSurface()
     }
 }
 
+bool
+SharedSurface_IOSurface::ToSurfaceDescriptor(layers::SurfaceDescriptor* const out_descriptor)
+{
+    bool isOpaque = !mHasAlpha;
+    *out_descriptor = layers::SurfaceDescriptorMacIOSurface(mIOSurf->GetIOSurfaceID(),
+                                                            mIOSurf->GetContentsScaleFactor(),
+                                                            isOpaque);
+    return true;
+}
+
 ////////////////////////////////////////////////////////////////////////
 // SurfaceFactory_IOSurface
 
 /*static*/ UniquePtr<SurfaceFactory_IOSurface>
-SurfaceFactory_IOSurface::Create(GLContext* gl,
-                                 const SurfaceCaps& caps)
+SurfaceFactory_IOSurface::Create(GLContext* gl, const SurfaceCaps& caps,
+                                 const RefPtr<layers::ISurfaceAllocator>& allocator,
+                                 const layers::TextureFlags& flags)
 {
     gfx::IntSize maxDims(MacIOSurface::GetMaxWidth(),
                          MacIOSurface::GetMaxHeight());
 
     typedef SurfaceFactory_IOSurface ptrT;
-    UniquePtr<ptrT> ret( new ptrT(gl, caps, maxDims) );
+    UniquePtr<ptrT> ret( new ptrT(gl, caps, allocator, flags, maxDims) );
     return Move(ret);
 }
 

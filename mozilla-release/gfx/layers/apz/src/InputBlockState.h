@@ -38,7 +38,7 @@ public:
   virtual ~InputBlockState()
   {}
 
-  bool SetConfirmedTargetApzc(const nsRefPtr<AsyncPanZoomController>& aTargetApzc);
+  virtual bool SetConfirmedTargetApzc(const nsRefPtr<AsyncPanZoomController>& aTargetApzc);
   const nsRefPtr<AsyncPanZoomController>& GetTargetApzc() const;
   const nsRefPtr<const OverscrollHandoffChain>& GetOverscrollHandoffChain() const;
   uint64_t GetBlockId() const;
@@ -92,13 +92,18 @@ public:
    * @return false if this block has already received a response from
    *         web content, true if not.
    */
-  bool SetContentResponse(bool aPreventDefault);
+  virtual bool SetContentResponse(bool aPreventDefault);
 
   /**
    * Record that content didn't respond in time.
    * @return false if this block already timed out, true if not.
    */
   bool TimeoutContentResponse();
+
+  /**
+   * Checks if the content response timer has already expired.
+   */
+  bool IsContentResponseTimerExpired() const;
 
   /**
    * @return true iff web content cancelled this block of events.
@@ -161,12 +166,14 @@ public:
                   bool aTargetConfirmed,
                   const ScrollWheelInput& aEvent);
 
+  bool SetContentResponse(bool aPreventDefault) override;
   bool IsReadyForHandling() const override;
   bool HasEvents() const override;
   void DropEvents() override;
   void HandleEvents() override;
   bool MustStayActive() override;
   const char* Type() override;
+  bool SetConfirmedTargetApzc(const nsRefPtr<AsyncPanZoomController>& aTargetApzc) override;
 
   void AddEvent(const ScrollWheelInput& aEvent);
 
@@ -291,19 +298,19 @@ public:
 
   /**
    * Sets a flag that indicates this input block occurred while the APZ was
-   * in a state of fast motion. This affects gestures that may be produced
+   * in a state of fast flinging. This affects gestures that may be produced
    * from input events in this block.
    */
-  void SetDuringFastMotion();
+  void SetDuringFastFling();
   /**
-   * @return true iff SetDuringFastMotion was called on this block.
+   * @return true iff SetDuringFastFling was called on this block.
    */
-  bool IsDuringFastMotion() const;
+  bool IsDuringFastFling() const;
   /**
    * Set the single-tap-occurred flag that indicates that this touch block
    * triggered a single tap event.
    * @return true if the flag was set. This may not happen if, for example,
-   *         SetDuringFastMotion was previously called.
+   *         SetDuringFastFling was previously called.
    */
   bool SetSingleTapOccurred();
   /**
@@ -343,7 +350,7 @@ public:
 private:
   nsTArray<TouchBehaviorFlags> mAllowedTouchBehaviors;
   bool mAllowedTouchBehaviorSet;
-  bool mDuringFastMotion;
+  bool mDuringFastFling;
   bool mSingleTapOccurred;
   nsTArray<MultiTouchInput> mEvents;
 };

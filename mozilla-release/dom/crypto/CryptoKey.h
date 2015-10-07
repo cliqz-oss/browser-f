@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set ts=2 sw=2 sts=2 et cindent: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -116,6 +116,7 @@ public:
   nsresult SetType(const nsString& aType);
   void SetType(KeyType aType);
   void SetExtractable(bool aExtractable);
+  nsresult AddPublicKeyData(SECKEYPublicKey* point);
   void ClearUsages();
   nsresult AddUsage(const nsString& aUsage);
   nsresult AddUsageIntersecting(const nsString& aUsage, uint32_t aUsageMask);
@@ -155,7 +156,7 @@ public:
 
   static SECKEYPublicKey* PublicKeyFromSpki(CryptoBuffer& aKeyData,
                                             const nsNSSShutDownPreventionLock& /*proofOfLock*/);
-  static nsresult PublicKeyToSpki(SECKEYPublicKey* aPrivKey,
+  static nsresult PublicKeyToSpki(SECKEYPublicKey* aPubKey,
                                   CryptoBuffer& aRetVal,
                                   const nsNSSShutDownPreventionLock& /*proofOfLock*/);
 
@@ -167,7 +168,7 @@ public:
 
   static SECKEYPublicKey* PublicKeyFromJwk(const JsonWebKey& aKeyData,
                                            const nsNSSShutDownPreventionLock& /*proofOfLock*/);
-  static nsresult PublicKeyToJwk(SECKEYPublicKey* aPrivKey,
+  static nsresult PublicKeyToJwk(SECKEYPublicKey* aPubKey,
                                  JsonWebKey& aRetVal,
                                  const nsNSSShutDownPreventionLock& /*proofOfLock*/);
 
@@ -176,6 +177,13 @@ public:
                                              const CryptoBuffer& aGenerator,
                                              const nsNSSShutDownPreventionLock& /*proofOfLock*/);
   static nsresult PublicDhKeyToRaw(SECKEYPublicKey* aPubKey,
+                                   CryptoBuffer& aRetVal,
+                                   const nsNSSShutDownPreventionLock& /*proofOfLock*/);
+
+  static SECKEYPublicKey* PublicECKeyFromRaw(CryptoBuffer& aKeyData,
+                                             const nsString& aNamedCurve,
+                                             const nsNSSShutDownPreventionLock& /*proofOfLock*/);
+  static nsresult PublicECKeyToRaw(SECKEYPublicKey* aPubKey,
                                    CryptoBuffer& aRetVal,
                                    const nsNSSShutDownPreventionLock& /*proofOfLock*/);
 

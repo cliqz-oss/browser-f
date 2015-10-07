@@ -14,11 +14,13 @@
 #include "jit/JitSpewer.h"
 #include "jit/Linker.h"
 #include "jit/mips/Bailouts-mips.h"
-#include "jit/mips/BaselineHelpers-mips.h"
+#include "jit/mips/SharedICHelpers-mips.h"
 #ifdef JS_ION_PERF
 # include "jit/PerfSpewer.h"
 #endif
 #include "jit/VMFunctions.h"
+
+#include "jit/MacroAssembler-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -193,7 +195,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, EnterJitType type)
     CodeLabel returnLabel;
     if (type == EnterJitBaseline) {
         // Handle OSR.
-        GeneralRegisterSet regs(GeneralRegisterSet::All());
+        AllocatableGeneralRegisterSet regs(GeneralRegisterSet::All());
         regs.take(OsrFrameReg);
         regs.take(BaselineFrameReg);
         regs.take(reg_code);
@@ -694,7 +696,7 @@ JitRuntime::generateVMWrapper(JSContext* cx, const VMFunction& f)
 
     MacroAssembler masm(cx);
 
-    GeneralRegisterSet regs = GeneralRegisterSet(Register::Codes::WrapperMask);
+    AllocatableGeneralRegisterSet regs(GeneralRegisterSet(Register::Codes::WrapperMask));
 
     static_assert((Register::Codes::VolatileMask & ~Register::Codes::WrapperMask) == 0,
                   "Wrapper register set should be a superset of Volatile register set.");
@@ -895,12 +897,12 @@ JitRuntime::generatePreBarrier(JSContext* cx, MIRType type)
 {
     MacroAssembler masm(cx);
 
-    RegisterSet save;
+    LiveRegisterSet save;
     if (cx->runtime()->jitSupportsFloatingPoint) {
-        save = RegisterSet(GeneralRegisterSet(Registers::VolatileMask),
+        save.set() = RegisterSet(GeneralRegisterSet(Registers::VolatileMask),
                            FloatRegisterSet(FloatRegisters::VolatileMask));
     } else {
-        save = RegisterSet(GeneralRegisterSet(Registers::VolatileMask),
+        save.set() = RegisterSet(GeneralRegisterSet(Registers::VolatileMask),
                            FloatRegisterSet());
     }
     masm.PushRegsInMask(save);
@@ -945,7 +947,7 @@ JitRuntime::generateDebugTrapHandler(JSContext* cx)
     // Enter a stub frame and call the HandleDebugTrap VM function. Ensure
     // the stub frame has a nullptr ICStub pointer, since this pointer is
     // marked during GC.
-    masm.movePtr(ImmPtr(nullptr), BaselineStubReg);
+    masm.movePtr(ImmPtr(nullptr), ICStubReg);
     EmitEnterStubFrame(masm, scratch2);
 
     JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(HandleDebugTrapInfo);
@@ -1322,7 +1324,7 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext* cx)
     masm.bind(&handle_IonAccessorIC);
     {
         // scratch2 := StackPointer + Descriptor.size + JitFrameLayout::Size()
-        masm.ma_addu(StackPointer, scratch1, scratch2);
+        masm.ma_addu(scratch2, StackPointer, scratch1);
         masm.addPtr(Imm32(JitFrameLayout::Size()), scratch2);
 
         // scratch3 := AccFrame-Descriptor.Size
@@ -1346,7 +1348,7 @@ JitRuntime::generateProfilerExitFrameTailStub(JSContext* cx)
 
         // lastProfilingFrame := AccessorFrame + AccFrame-Descriptor.Size +
         //                       IonAccessorICFrameLayout::Size()
-        masm.ma_addu(scratch2, scratch3, scratch1);
+        masm.ma_addu(scratch1, scratch2, scratch3);
         masm.addPtr(Imm32(IonAccessorICFrameLayout::Size()), scratch1);
         masm.storePtr(scratch1, lastProfilingFrame);
         masm.ret();

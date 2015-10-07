@@ -23,9 +23,14 @@ ParseNode::checkListConsistency()
     ParseNode** tail;
     uint32_t count = 0;
     if (pn_head) {
-        ParseNode* pn, *last;
-        for (pn = last = pn_head; pn; last = pn, pn = pn->pn_next, count++)
-            ;
+        ParseNode* last = pn_head;
+        ParseNode* pn = last;
+        while (pn) {
+            last = pn;
+            pn = pn->pn_next;
+            count++;
+        }
+
         tail = &last->pn_next;
     } else {
         tail = &pn_head;
@@ -209,18 +214,26 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_EXPORT_BATCH_SPEC:
       case PNK_OBJECT_PROPERTY_NAME:
       case PNK_FRESHENBLOCK:
+      case PNK_SUPERPROP:
+      case PNK_NEWTARGET:
         MOZ_ASSERT(pn->isArity(PN_NULLARY));
         MOZ_ASSERT(!pn->isUsed(), "handle non-trivial cases separately");
         MOZ_ASSERT(!pn->isDefn(), "handle non-trivial cases separately");
         return PushResult::Recyclable;
 
       // Nodes with a single non-null child.
-      case PNK_TYPEOF:
+      case PNK_TYPEOFNAME:
+      case PNK_TYPEOFEXPR:
       case PNK_VOID:
       case PNK_NOT:
       case PNK_BITNOT:
       case PNK_THROW:
-      case PNK_DELETE:
+      case PNK_DELETENAME:
+      case PNK_DELETEPROP:
+      case PNK_DELETESUPERPROP:
+      case PNK_DELETEELEM:
+      case PNK_DELETESUPERELEM:
+      case PNK_DELETEEXPR:
       case PNK_POS:
       case PNK_NEG:
       case PNK_PREINCREMENT:
@@ -232,6 +245,8 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_SPREAD:
       case PNK_MUTATEPROTO:
       case PNK_EXPORT:
+      case PNK_EXPORT_DEFAULT:
+      case PNK_SUPERELEM:
         return PushUnaryNodeChild(pn, stack);
 
       // Nodes with a single nullable child.
@@ -259,7 +274,6 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_MODASSIGN:
       // ...and a few others.
       case PNK_ELEM:
-      case PNK_LETEXPR:
       case PNK_IMPORT_SPEC:
       case PNK_EXPORT_SPEC:
       case PNK_COLON:
@@ -481,7 +495,6 @@ PushNodeChildren(ParseNode* pn, NodeStack* stack)
       case PNK_STATEMENTLIST:
       case PNK_IMPORT_SPEC_LIST:
       case PNK_EXPORT_SPEC_LIST:
-      case PNK_SEQ:
       case PNK_ARGSBODY:
       case PNK_CLASSMETHODLIST:
         return PushListNodeChildren(pn, stack);
@@ -792,7 +805,9 @@ Parser<FullParseHandler>::cloneLeftHandSide(ParseNode* opn)
             ParseNode* pn2;
             if (opn->isKind(PNK_OBJECT)) {
                 if (opn2->isKind(PNK_MUTATEPROTO)) {
-                    ParseNode* target = cloneLeftHandSide(opn2->pn_kid);
+                    ParseNode* target = opn2->pn_kid->isKind(PNK_ASSIGN)
+                                        ? cloneDestructuringDefault(opn2->pn_kid)
+                                        : cloneLeftHandSide(opn2->pn_kid);
                     if (!target)
                         return nullptr;
                     pn2 = handler.new_<UnaryNode>(PNK_MUTATEPROTO, JSOP_NOP, opn2->pn_pos, target);
@@ -803,12 +818,9 @@ Parser<FullParseHandler>::cloneLeftHandSide(ParseNode* opn)
                     ParseNode* tag = cloneParseTree(opn2->pn_left);
                     if (!tag)
                         return nullptr;
-                    ParseNode* target;
-                    if (opn2->pn_right->isKind(PNK_ASSIGN)) {
-                        target = cloneDestructuringDefault(opn2->pn_right);
-                    } else {
-                        target = cloneLeftHandSide(opn2->pn_right);
-                    }
+                    ParseNode* target = opn2->pn_right->isKind(PNK_ASSIGN)
+                                        ? cloneDestructuringDefault(opn2->pn_right)
+                                        : cloneLeftHandSide(opn2->pn_right);
                     if (!target)
                         return nullptr;
 
@@ -1063,6 +1075,11 @@ NameNode::dump(int indent)
 
         if (!pn_atom) {
             fprintf(stderr, "#<null name>");
+        } else if (getOp() == JSOP_GETARG && pn_atom->length() == 0) {
+            // Dump destructuring parameter.
+            fprintf(stderr, "(#<zero-length name> ");
+            DumpParseTree(expr(), indent + 21);
+            fputc(')', stderr);
         } else {
             JS::AutoCheckCannotGC nogc;
             if (pn_atom->hasLatin1Chars())
@@ -1123,7 +1140,7 @@ ObjectBox::trace(JSTracer* trc)
 {
     ObjectBox* box = this;
     while (box) {
-        MarkObjectRoot(trc, &box->object, "parser.object");
+        TraceRoot(trc, &box->object, "parser.object");
         if (box->isFunctionBox())
             box->asFunctionBox()->bindings.trace(trc);
         box = box->traceLink;

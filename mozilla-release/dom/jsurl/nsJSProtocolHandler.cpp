@@ -249,8 +249,13 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel,
 
     // New script entry point required, due to the "Create a script" step of
     // http://www.whatwg.org/specs/web-apps/current-work/#javascript-protocol
-    AutoEntryScript entryScript(innerGlobal, true,
+    nsAutoMicroTask mt;
+    AutoEntryScript entryScript(innerGlobal, "javascript: URI", true,
                                 scriptContext->GetNativeContext());
+    // We want to make sure we report any exceptions that happen before we
+    // return, since whatever happens inside our execution shouldn't affect any
+    // other scripts that might happen to be running.
+    entryScript.TakeOwnershipOfErrorReporting();
     JSContext* cx = entryScript.cx();
     JS::Rooted<JSObject*> globalJSObject(cx, innerGlobal->GetGlobalJSObject());
     NS_ENSURE_TRUE(globalJSObject, NS_ERROR_UNEXPECTED);
@@ -278,20 +283,13 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel,
     rv = nsJSUtils::EvaluateString(cx, NS_ConvertUTF8toUTF16(script),
                                    globalJSObject, options, evalOptions, &v);
 
-    // If there's an error on cx as a result of that call, report
-    // it now -- either we're just running under the event loop,
-    // so we shouldn't propagate JS exceptions out of here, or we
-    // can't be sure that our caller is JS (and if it's not we'll
-    // lose the error), or it might be JS that then proceeds to
-    // cause an error of its own (which will also make us lose
-    // this error).
-    ::JS_ReportPendingException(cx);
-
     if (NS_FAILED(rv) || !(v.isString() || v.isUndefined())) {
         return NS_ERROR_MALFORMED_URI;
     } else if (v.isUndefined()) {
         return NS_ERROR_DOM_RETVAL_UNDEFINED;
     } else {
+        MOZ_ASSERT(rv != NS_SUCCESS_DOM_SCRIPT_EVALUATION_THREW,
+                   "How did we get a non-undefined return value?");
         nsAutoJSString result;
         if (!result.init(cx, v)) {
             return NS_ERROR_OUT_OF_MEMORY;
@@ -430,9 +428,8 @@ nsresult nsJSChannel::Init(nsIURI *aURI)
     // and the underlying Input Stream will not be created...
     nsCOMPtr<nsIChannel> channel;
 
-    nsCOMPtr<nsIPrincipal> nullPrincipal =
-      do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIPrincipal> nullPrincipal = nsNullPrincipal::Create();
+    NS_ENSURE_TRUE(nullPrincipal, NS_ERROR_FAILURE);
 
     // If the resultant script evaluation actually does return a value, we
     // treat it as html.
@@ -1214,27 +1211,24 @@ nsJSProtocolHandler::NewChannel2(nsIURI* uri,
                                  nsIChannel** result)
 {
     nsresult rv;
-    nsJSChannel * channel;
 
     NS_ENSURE_ARG_POINTER(uri);
 
-    channel = new nsJSChannel();
+    nsRefPtr<nsJSChannel> channel = new nsJSChannel();
     if (!channel) {
         return NS_ERROR_OUT_OF_MEMORY;
     }
-    NS_ADDREF(channel);
 
     rv = channel->Init(uri);
+    NS_ENSURE_SUCCESS(rv, rv);
 
     // set the loadInfo on the new channel
     rv = channel->SetLoadInfo(aLoadInfo);
     NS_ENSURE_SUCCESS(rv, rv);
 
     if (NS_SUCCEEDED(rv)) {
-        *result = channel;
-        NS_ADDREF(*result);
+        channel.forget(result);
     }
-    NS_RELEASE(channel);
     return rv;
 }
 

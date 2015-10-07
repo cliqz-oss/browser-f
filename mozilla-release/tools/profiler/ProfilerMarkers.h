@@ -6,17 +6,17 @@
 #ifndef PROFILER_MARKERS_H
 #define PROFILER_MARKERS_H
 
-#include "JSStreamWriter.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Attributes.h"
-#include "nsAutoPtr.h"
-#include "Units.h"    // For ScreenIntPoint
 
 namespace mozilla {
 namespace layers {
 class Layer;
 } // layers
 } // mozilla
+
+class SpliceableJSONWriter;
+class UniqueStacks;
 
 /**
  * This is an abstract object that can be implied to supply
@@ -49,9 +49,8 @@ public:
   /**
    * Called from the main thread
    */
-  void StreamPayload(JSStreamWriter& b) {
-    return streamPayload(b);
-  }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) = 0;
 
   mozilla::TimeStamp GetStartTime() const { return mStartTime; }
 
@@ -59,13 +58,8 @@ protected:
   /**
    * Called from the main thread
    */
-  void streamCommonProps(const char* aMarkerType, JSStreamWriter& b);
-
-  /**
-   * Called from the main thread
-   */
-  virtual void
-  streamPayload(JSStreamWriter& b) = 0;
+  void streamCommonProps(const char* aMarkerType, SpliceableJSONWriter& aWriter,
+                         UniqueStacks& aUniqueStacks);
 
   void SetStack(ProfilerBacktrace* aStack) { mStack = aStack; }
 
@@ -84,12 +78,8 @@ public:
   const char *GetCategory() const { return mCategory; }
   TracingMetadata GetMetaData() const { return mMetaData; }
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) { return streamPayloadImp(b); }
-
-private:
-  void streamPayloadImp(JSStreamWriter& b);
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
   const char *mCategory;
@@ -97,19 +87,17 @@ private:
 };
 
 
+#ifndef SPS_STANDALONE
 #include "gfxASurface.h"
 class ProfilerMarkerImagePayload : public ProfilerMarkerPayload
 {
 public:
   explicit ProfilerMarkerImagePayload(gfxASurface *aImg);
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) { return streamPayloadImp(b); }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
-  void streamPayloadImp(JSStreamWriter& b);
-
   nsRefPtr<gfxASurface> mImg;
 };
 
@@ -121,13 +109,10 @@ public:
                   ProfilerBacktrace* aStack);
   ~IOMarkerPayload();
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) { return streamPayloadImp(b); }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
-  void streamPayloadImp(JSStreamWriter& b);
-
   const char* mSource;
   char* mFilename;
 };
@@ -142,15 +127,15 @@ public:
   LayerTranslationPayload(mozilla::layers::Layer* aLayer,
                           mozilla::gfx::Point aPoint);
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) { return streamPayloadImpl(b); }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
-  void streamPayloadImpl(JSStreamWriter& b);
   mozilla::layers::Layer* mLayer;
   mozilla::gfx::Point mPoint;
 };
+
+#include "Units.h"    // For ScreenIntPoint
 
 /**
  * Tracks when touch events are processed by gecko, not when
@@ -162,12 +147,10 @@ public:
   explicit TouchDataPayload(const mozilla::ScreenIntPoint& aPoint);
   virtual ~TouchDataPayload() {}
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) { return streamPayloadImpl(b); }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
-  void streamPayloadImpl(JSStreamWriter& b);
   mozilla::ScreenIntPoint mPoint;
 };
 
@@ -180,12 +163,10 @@ public:
   explicit VsyncPayload(mozilla::TimeStamp aVsyncTimestamp);
   virtual ~VsyncPayload() {}
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) { return streamPayloadImpl(b); }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
-  void streamPayloadImpl(JSStreamWriter& b);
   mozilla::TimeStamp mVsyncTimestamp;
 };
 
@@ -198,17 +179,15 @@ public:
                    uint64_t aGpuTimeEnd);
   ~GPUMarkerPayload() {}
 
-protected:
-  virtual void
-  streamPayload(JSStreamWriter& b) override { return streamPayloadImp(b); }
+  virtual void StreamPayload(SpliceableJSONWriter& aWriter,
+                             UniqueStacks& aUniqueStacks) override;
 
 private:
-  void streamPayloadImp(JSStreamWriter& b);
-
   mozilla::TimeStamp mCpuTimeStart;
   mozilla::TimeStamp mCpuTimeEnd;
   uint64_t mGpuTimeStart;
   uint64_t mGpuTimeEnd;
 };
+#endif
 
 #endif // PROFILER_MARKERS_H

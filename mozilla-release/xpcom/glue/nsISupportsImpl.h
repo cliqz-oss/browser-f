@@ -29,6 +29,7 @@
 #include "mozilla/Likely.h"
 #include "mozilla/MacroArgs.h"
 #include "mozilla/MacroForEach.h"
+#include "mozilla/TypeTraits.h"
 
 namespace mozilla {
 template <typename T>
@@ -62,9 +63,7 @@ struct HasDangerousPublicDestructor
   namespace mozilla {
     struct IsDestructibleFallbackImpl
     {
-      template<typename T> static T&& Declval();
-
-      template<typename T, typename = decltype(Declval<T>().~T())>
+      template<typename T, typename = decltype(DeclVal<T>().~T())>
       static TrueType Test(int);
 
       template<typename>
@@ -144,7 +143,7 @@ private:
 
 // Macros for reference-count and constructor logging
 
-#ifdef NS_BUILD_REFCNT_LOGGING
+#if defined(NS_BUILD_REFCNT_LOGGING) && !defined(MOZILLA_XPCOMRT_API)
 
 #define NS_LOG_ADDREF(_p, _rc, _type, _size) \
   NS_LogAddRef((_p), (_rc), (_type), (uint32_t) (_size))
@@ -181,6 +180,11 @@ do {                                                              \
   NS_LogCtor((void*)this, #_type, sizeof(*this) - sizeof(_base)); \
 } while (0)
 
+#define MOZ_LOG_CTOR(_ptr, _name, _size) \
+do {                                     \
+  NS_LogCtor((void*)_ptr, _name, _size); \
+} while (0)
+
 #define MOZ_COUNT_DTOR(_type)                                 \
 do {                                                          \
   MOZ_ASSERT_CLASSNAME(_type);                                \
@@ -192,6 +196,11 @@ do {                                                              \
   MOZ_ASSERT_CLASSNAME(_type);                                    \
   MOZ_ASSERT_CLASSNAME(_base);                                    \
   NS_LogDtor((void*)this, #_type, sizeof(*this) - sizeof(_base)); \
+} while (0)
+
+#define MOZ_LOG_DTOR(_ptr, _name, _size) \
+do {                                     \
+  NS_LogDtor((void*)_ptr, _name, _size); \
 } while (0)
 
 /* nsCOMPtr.h allows these macros to be defined by clients
@@ -211,8 +220,10 @@ do {                                                              \
 #define NS_LOG_RELEASE(_p, _rc, _type)
 #define MOZ_COUNT_CTOR(_type)
 #define MOZ_COUNT_CTOR_INHERITED(_type, _base)
+#define MOZ_LOG_CTOR(_ptr, _name, _size)
 #define MOZ_COUNT_DTOR(_type)
 #define MOZ_COUNT_DTOR_INHERITED(_type, _base)
+#define MOZ_LOG_DTOR(_ptr, _name, _size)
 
 #endif /* NS_BUILD_REFCNT_LOGGING */
 
@@ -1105,13 +1116,6 @@ NS_IMETHODIMP                                                                 \
 _class::GetClassID(nsCID** _classID)                                          \
 {                                                                             \
   *_classID = nullptr;                                                        \
-  return NS_OK;                                                               \
-}                                                                             \
-                                                                              \
-NS_IMETHODIMP                                                                 \
-_class::GetImplementationLanguage(uint32_t* _language)                        \
-{                                                                             \
-  *_language = nsIProgrammingLanguage::CPLUSPLUS;                             \
   return NS_OK;                                                               \
 }                                                                             \
                                                                               \

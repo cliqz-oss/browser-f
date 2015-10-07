@@ -11,7 +11,7 @@ random-if(!cocoaWidget) == font-size-adjust-02.html font-size-adjust-02-ref.html
 # in the "obvious" way, but it is unclear what the behavior should really be;
 # see bug #366138 for some (inconclusive) discussion
 # == font-size-adjust-03.html font-size-adjust-03-ref.html
-skip-if(Mulet) == justification-1.html justification-1-ref.html # TC: Bug 1144079 - Re-enable Mulet mochitests and reftests taskcluster-specific disables.
+== justification-1.html justification-1-ref.html
 == justification-2a.html justification-2-ref.html
 == justification-2b.html justification-2-ref.html
 == justification-2c.html justification-2-ref.html
@@ -24,7 +24,9 @@ HTTP(..) load ligature-with-space-1.html
 == line-editing-1c.html line-editing-1-ref.html
 == line-editing-1d.html line-editing-1-ref.html
 == line-editing-1e.html line-editing-1-ref.html
-fails-if(cocoaWidget||winWidget) HTTP(..) == lineheight-metrics-1.html lineheight-metrics-1-ref.html # bug 657864
+fails-if(cocoaWidget||(winWidget&&!/^Windows\x20NT\x205\.1/.test(http.oscpu)&&layersGPUAccelerated)) HTTP(..) == lineheight-metrics-1.html lineheight-metrics-1-ref.html # bug 657864
+HTTP(..) == lineheight-metrics-2a.html lineheight-metrics-2-ref.html
+HTTP(..) == lineheight-metrics-2b.html lineheight-metrics-2-ref.html
 == lineheight-percentage-1.html lineheight-percentage-1-ref.html
 skip-if(B2G||Mulet) == long-1.html long-ref.html # Initial mulet triage: parity with B2G/B2G Desktop
 fuzzy-if(Android,255,42) == pre-line-1.html pre-line-1-ref.html
@@ -45,7 +47,7 @@ fuzzy-if(Android,255,42) == pre-line-1.html pre-line-1-ref.html
 # Cairo's FreeType and GDI backends snap glyphs to pixels, while Mac (usually)
 # and D2D have subpixel positioning.  The tests for pixel-snapping assume that
 # 1 CSS pixel == 1 device pixel
-skip-if(Mulet) fails-if(Android) skip-if(d2d||cocoaWidget) == subpixel-glyphs-x-1a.html subpixel-glyphs-x-1b.html # TC: Bug 1144079 - Re-enable Mulet mochitests and reftests taskcluster-specific disables.
+fails-if(Android) skip-if(d2d||cocoaWidget) == subpixel-glyphs-x-1a.html subpixel-glyphs-x-1b.html
 # Platforms with subpixel positioning already have inconsistent glyphs by
 # design, but that is considered more tolerable because they are subpixel
 # inconsistencies.  On those platforms we just test that glyph positions are
@@ -54,8 +56,8 @@ skip-if(Mulet) fails-if(Android) skip-if(d2d||cocoaWidget) == subpixel-glyphs-x-
 skip-if(!(d2d||cocoaWidget)) random-if(d2d) != subpixel-glyphs-x-2a.html subpixel-glyphs-x-2b.html
 skip-if(B2G||Mulet) HTTP(..) == subpixel-glyphs-x-3a.html subpixel-glyphs-x-3b.html # Initial mulet triage: parity with B2G/B2G Desktop
 # No platforms do subpixel positioning vertically
-skip-if(Mulet) fuzzy-if(Android,19,2) == subpixel-glyphs-y-1a.html subpixel-glyphs-y-1b.html # TC: Bug 1144079 - Re-enable Mulet mochitests and reftests taskcluster-specific disables.
-skip-if(Mulet) fuzzy-if((Android||B2G),231,653) == subpixel-lineheight-1a.html subpixel-lineheight-1b.html # TC: Bug 1144079 - Re-enable Mulet mochitests and reftests taskcluster-specific disables.
+fuzzy-if(Android,19,2) == subpixel-glyphs-y-1a.html subpixel-glyphs-y-1b.html
+fuzzy-if((Android||B2G),231,653) == subpixel-lineheight-1a.html subpixel-lineheight-1b.html
 == swash-1.html swash-1-ref.html
 HTTP(..) != synthetic-bold-metrics-01.html synthetic-bold-metrics-01-notref.html
 HTTP(..) == synthetic-bold-papyrus-01.html synthetic-bold-papyrus-01-ref.html
@@ -143,7 +145,7 @@ HTTP(..) == zwnj-02.xhtml zwnj-02-ref.xhtml # HTTP(..) for ../filters.svg
 == 449555-1.html 449555-1-ref.html
 == 467722.html 467722-ref.html
 skip-if(B2G||Mulet) HTTP(..) == 475092-sub.html 475092-ref.html # Initial mulet triage: parity with B2G/B2G Desktop
-fails-if(!winWidget&&!gtk2Widget) skip-if(B2G||Mulet) HTTP(..) == 475092-pos.html 475092-sub.html # bug 482596 # Initial mulet triage: parity with B2G/B2G Desktop
+fails-if(!winWidget&&!gtkWidget) skip-if(B2G||Mulet) HTTP(..) == 475092-pos.html 475092-sub.html # bug 482596 # Initial mulet triage: parity with B2G/B2G Desktop
 == 476378-soft-hyphen-fallback.html 476378-soft-hyphen-fallback-ref.html
 # Test for bug 484954
 == rgba-text.html rgba-text-ref.html
@@ -172,6 +174,7 @@ skip-if(B2G||Mulet) == 726392-3.html 726392-3-ref.html # Initial mulet triage: p
 == 745555-1.html 745555-1-ref.html
 == 745555-2.html 745555-2-ref.html
 == 820255.html 820255-ref.html
+HTTP(..) != 1170688.html 1170688-ref.html
 
 # ensure emoji chars don't render blank (bug 715798, bug 779042);
 # should at least render hexboxes if there's no font support
@@ -182,8 +185,8 @@ skip-if(B2G||Mulet) == 726392-3.html 726392-3-ref.html # Initial mulet triage: p
 == emoji-03.html emoji-03-ref.html
 # the next two will fail on OS X 10.6 and on Windows prior to 8.1 because no color emoji font is present,
 # and also on Linux/Android/B2G platforms until we have color emoji fonts there
-fails-if(OSX==1006||/^Windows\x20NT\x20(5|6\.[0-2])/.test(http.oscpu)||gtk2Widget||Android||B2G) != emoji-03.html emoji-03-notref.html
-fails-if(OSX==1006||/^Windows\x20NT\x20(5|6\.[0-2])/.test(http.oscpu)||gtk2Widget||Android||B2G) == emoji-04.html emoji-04-ref.html
+fails-if(OSX==1006||/^Windows\x20NT\x20(5|6\.[0-2])/.test(http.oscpu)||gtkWidget||Android||B2G) != emoji-03.html emoji-03-notref.html
+fails-if(OSX==1006||/^Windows\x20NT\x20(5|6\.[0-2])/.test(http.oscpu)||gtkWidget||Android||B2G) == emoji-04.html emoji-04-ref.html
 != emoji-05.html emoji-05-notref.html
 
 # check that Graphite shaping (bug 631479) is working

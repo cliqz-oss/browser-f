@@ -12,6 +12,7 @@
 
 #include "nsCoord.h"
 #include "ScrollbarStyles.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/gfx/Point.h"
 #include "nsIScrollbarMediator.h"
 #include "Units.h"
@@ -417,7 +418,6 @@ public:
   virtual void ComputeFrameMetrics(mozilla::layers::Layer* aLayer,
                                    nsIFrame* aContainerReferenceFrame,
                                    const ContainerLayerParameters& aParameters,
-                                   nsRect* aOutClipRect,
                                    nsTArray<FrameMetrics>* aOutput) const = 0;
 
   /**
@@ -432,6 +432,11 @@ public:
 
   virtual void SetTransformingByAPZ(bool aTransforming) = 0;
   virtual bool IsTransformingByAPZ() const = 0;
+
+  /**
+   * Whether or not this frame uses containerful scrolling.
+   */
+  virtual bool UsesContainerScrolling() const = 0;
 };
 
 #endif

@@ -11,72 +11,31 @@
 #include "nsJSPrincipals.h"
 #include "nsTArray.h"
 #include "nsAutoPtr.h"
+#include "nsIContentSecurityPolicy.h"
 #include "nsIProtocolHandler.h"
 #include "nsNetUtil.h"
 #include "nsScriptSecurityManager.h"
+#include "mozilla/BasePrincipal.h"
 
-class nsIObjectInputStream;
-class nsIObjectOutputStream;
-
-class nsBasePrincipal : public nsJSPrincipals
+class nsPrincipal final : public mozilla::BasePrincipal
 {
 public:
-  nsBasePrincipal();
-
-protected:
-  virtual ~nsBasePrincipal();
-
-public:
-  NS_IMETHOD_(MozExternalRefCountType) AddRef(void);
-  NS_IMETHOD_(MozExternalRefCountType) Release(void);
-  NS_IMETHOD GetCsp(nsIContentSecurityPolicy** aCsp);
-  NS_IMETHOD SetCsp(nsIContentSecurityPolicy* aCsp);
-public:
-
-  static const char sInvalid[];
-
-protected:
-
-#ifdef DEBUG
-  virtual void dumpImpl() = 0;
-#endif
-
-  nsCOMPtr<nsIContentSecurityPolicy> mCSP;
-};
-
-class nsPrincipal final : public nsBasePrincipal
-{
-public:
-  NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSISERIALIZABLE
-  NS_IMETHOD Equals(nsIPrincipal* other, bool* _retval) override;
-  NS_IMETHOD EqualsConsideringDomain(nsIPrincipal* other, bool* _retval) override;
+  NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
   NS_IMETHOD GetHashValue(uint32_t* aHashValue) override;
   NS_IMETHOD GetURI(nsIURI** aURI) override;
   NS_IMETHOD GetDomain(nsIURI** aDomain) override;
   NS_IMETHOD SetDomain(nsIURI* aDomain) override;
-  NS_IMETHOD GetOrigin(char** aOrigin) override;
-  NS_IMETHOD Subsumes(nsIPrincipal* other, bool* _retval) override;
-  NS_IMETHOD SubsumesConsideringDomain(nsIPrincipal* other, bool* _retval) override;
   NS_IMETHOD CheckMayLoad(nsIURI* uri, bool report, bool allowIfInheritsPrincipal) override;
-  NS_IMETHOD GetJarPrefix(nsACString& aJarPrefix) override;
-  NS_IMETHOD GetAppStatus(uint16_t* aAppStatus) override;
-  NS_IMETHOD GetAppId(uint32_t* aAppStatus) override;
-  NS_IMETHOD GetIsInBrowserElement(bool* aIsInBrowserElement) override;
-  NS_IMETHOD GetUnknownAppId(bool* aUnknownAppId) override;
-  NS_IMETHOD GetIsNullPrincipal(bool* aIsNullPrincipal) override;
   NS_IMETHOD GetBaseDomain(nsACString& aBaseDomain) override;
   virtual bool IsOnCSSUnprefixingWhitelist() override;
-#ifdef DEBUG
-  virtual void dumpImpl() override;
-#endif
+  bool IsCodebasePrincipal() const override { return true; }
+  nsresult GetOriginInternal(nsACString& aOrigin) override;
 
   nsPrincipal();
 
   // Init() must be called before the principal is in a usable state.
-  nsresult Init(nsIURI* aCodebase,
-                uint32_t aAppId,
-                bool aInMozBrowser);
+  nsresult Init(nsIURI* aCodebase, const mozilla::OriginAttributes& aOriginAttributes);
 
   virtual void GetScriptLocation(nsACString& aStr) override;
   void SetURI(nsIURI* aURI);
@@ -101,7 +60,7 @@ public:
   /**
    * Computes the puny-encoded origin of aURI.
    */
-  static nsresult GetOriginForURI(nsIURI* aURI, char **aOrigin);
+  static nsresult GetOriginForURI(nsIURI* aURI, nsACString& aOrigin);
 
   /**
    * Called at startup to setup static data, e.g. about:config pref-observers.
@@ -110,8 +69,6 @@ public:
 
   nsCOMPtr<nsIURI> mDomain;
   nsCOMPtr<nsIURI> mCodebase;
-  uint32_t mAppId;
-  bool mInMozBrowser;
   // If mCodebaseImmutable is true, mCodebase is non-null and immutable
   bool mCodebaseImmutable;
   bool mDomainImmutable;
@@ -121,47 +78,33 @@ public:
 protected:
   virtual ~nsPrincipal();
 
-  /**
-   * Returns the app status of the principal based on mAppId and mInMozBrowser.
-   */
-  uint16_t GetAppStatus();
+  bool SubsumesInternal(nsIPrincipal* aOther, DocumentDomainConsideration aConsideration) override;
 };
 
-class nsExpandedPrincipal : public nsIExpandedPrincipal, public nsBasePrincipal
+class nsExpandedPrincipal : public nsIExpandedPrincipal, public mozilla::BasePrincipal
 {
 public:
   explicit nsExpandedPrincipal(nsTArray< nsCOMPtr<nsIPrincipal> > &aWhiteList);
 
-protected:
-  virtual ~nsExpandedPrincipal();
-
-public:
-  NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIEXPANDEDPRINCIPAL
   NS_DECL_NSISERIALIZABLE
-  NS_IMETHOD Equals(nsIPrincipal* other, bool* _retval) override;
-  NS_IMETHOD EqualsConsideringDomain(nsIPrincipal* other, bool* _retval) override;
+  NS_IMETHODIMP_(MozExternalRefCountType) AddRef() override { return nsJSPrincipals::AddRef(); };
+  NS_IMETHODIMP_(MozExternalRefCountType) Release() override { return nsJSPrincipals::Release(); };
+  NS_IMETHOD QueryInterface(REFNSIID aIID, void** aInstancePtr) override;
   NS_IMETHOD GetHashValue(uint32_t* aHashValue) override;
   NS_IMETHOD GetURI(nsIURI** aURI) override;
   NS_IMETHOD GetDomain(nsIURI** aDomain) override;
   NS_IMETHOD SetDomain(nsIURI* aDomain) override;
-  NS_IMETHOD GetOrigin(char** aOrigin) override;
-  NS_IMETHOD Subsumes(nsIPrincipal* other, bool* _retval) override;
-  NS_IMETHOD SubsumesConsideringDomain(nsIPrincipal* other, bool* _retval) override;
   NS_IMETHOD CheckMayLoad(nsIURI* uri, bool report, bool allowIfInheritsPrincipal) override;
-  NS_IMETHOD GetJarPrefix(nsACString& aJarPrefix) override;
-  NS_IMETHOD GetAppStatus(uint16_t* aAppStatus) override;
-  NS_IMETHOD GetAppId(uint32_t* aAppStatus) override;
-  NS_IMETHOD GetIsInBrowserElement(bool* aIsInBrowserElement) override;
-  NS_IMETHOD GetUnknownAppId(bool* aUnknownAppId) override;
-  NS_IMETHOD GetIsNullPrincipal(bool* aIsNullPrincipal) override;
   NS_IMETHOD GetBaseDomain(nsACString& aBaseDomain) override;
   virtual bool IsOnCSSUnprefixingWhitelist() override;
-#ifdef DEBUG
-  virtual void dumpImpl() override;
-#endif
-  
   virtual void GetScriptLocation(nsACString &aStr) override;
+  nsresult GetOriginInternal(nsACString& aOrigin) override;
+
+protected:
+  virtual ~nsExpandedPrincipal();
+
+  bool SubsumesInternal(nsIPrincipal* aOther, DocumentDomainConsideration aConsideration) override;
 
 private:
   nsTArray< nsCOMPtr<nsIPrincipal> > mPrincipals;
@@ -169,12 +112,12 @@ private:
 
 #define NS_PRINCIPAL_CONTRACTID "@mozilla.org/principal;1"
 #define NS_PRINCIPAL_CID \
-  { 0x09b7e598, 0x490d, 0x423f, \
-    { 0xa8, 0xa6, 0x2e, 0x6c, 0x4e, 0xc8, 0x77, 0x50 }}
+  { 0xb7c8505e, 0xc56d, 0x4191, \
+    { 0xa1, 0x5e, 0x5d, 0xcb, 0x88, 0x9b, 0xa0, 0x94 }}
 
 #define NS_EXPANDEDPRINCIPAL_CONTRACTID "@mozilla.org/expandedprincipal;1"
 #define NS_EXPANDEDPRINCIPAL_CID \
-  { 0xb33a3807, 0xb76c, 0x44e5, \
-    { 0xb9, 0x9d, 0x95, 0x7e, 0xe9, 0xba, 0x6e, 0x39 }}
+  { 0x38539471, 0x68cc, 0x4a6f, \
+    { 0x81, 0x20, 0xdb, 0xd5, 0x4a, 0x22, 0x0a, 0x13 }}
 
 #endif // nsPrincipal_h__

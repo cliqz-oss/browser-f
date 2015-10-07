@@ -9,7 +9,7 @@
 const TAB_URL = EXAMPLE_URL + "doc_frame-parameters.html";
 
 function test() {
-  Task.spawn(function() {
+  Task.spawn(function*() {
     let [tab,, panel] = yield initDebugger(TAB_URL);
     let win = panel.panelWin;
     let bubble = win.DebuggerView.VariableBubble;
@@ -25,7 +25,7 @@ function test() {
 
       is(tooltip.querySelector(".devtools-tooltip-simple-text").textContent, textContent,
         "The inspected property's value is correct.");
-      ok(tooltip.querySelector(".devtools-tooltip-simple-text").className.contains(className),
+      ok(tooltip.querySelector(".devtools-tooltip-simple-text").className.includes(className),
         "The inspected property's value is colorized correctly.");
     }
 

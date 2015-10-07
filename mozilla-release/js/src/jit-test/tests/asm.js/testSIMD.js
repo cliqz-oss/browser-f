@@ -1,4 +1,5 @@
 load(libdir + "asm.js");
+load(libdir + "asserts.js");
 var heap = new ArrayBuffer(0x10000);
 
 // Set to true to see more JS debugging spew
@@ -608,37 +609,34 @@ CheckF4(F32MAXNUM, 'var x=f4(0,0,-0,-0); var y=f4(0,-0,0,-0); x=max(x,y)', [0,0,
 CheckF4(F32MAXNUM + FROUND + 'var NaN = glob.NaN;', 'var x=f4(0,0,0,0); var y=f4(0,0,0,0); var n=f32(0); n=f32(NaN); x=f4(n,0.,n,0.); y=f4(n,n,0.,0.); x=max(x,y)', [NaN, 0, 0, 0]);
 
 // With
-const WXF = 'var w = f4.withX;';
-const WYF = 'var w = f4.withY;';
-const WZF = 'var w = f4.withZ;';
-const WWF = 'var w = f4.withW;';
+const RLF = 'var r = f4.replaceLane;';
 
-assertAsmTypeFail('glob', USE_ASM + F32 + WXF + "function f() {var x = f4(1,2,3,4); x = w(x, 1);} return f");
-assertAsmTypeFail('glob', USE_ASM + F32 + WXF + "function f() {var x = f4(1,2,3,4); x = w(x, x);} return f");
-assertAsmTypeFail('glob', USE_ASM + F32 + WXF + FROUND + "function f() {var x = f4(1,2,3,4); x = w(1, f32(1));} return f");
-assertAsmTypeFail('glob', USE_ASM + F32 + WXF + FROUND + "function f() {var x = f4(1,2,3,4); x = w(1., f32(1));} return f");
-assertAsmTypeFail('glob', USE_ASM + F32 + WXF + FROUND + "function f() {var x = f4(1,2,3,4); x = w(f32(1), f32(1));} return f");
-assertAsmTypeFail('glob', USE_ASM + I32 + F32 + WXF + FROUND + "function f() {var x = f4(1,2,3,4); var y = i4(1,2,3,4); x = w(y, f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + "function f() {var x = f4(1,2,3,4); x = r(x, 0, 1);} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + "function f() {var x = f4(1,2,3,4); x = r(x, 0, x);} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); x = r(x, 4, f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); x = r(x, f32(0), f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); x = r(1, 0, f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); x = r(1, 0., f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); x = r(f32(1), 0, f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); var l = 0; x = r(x, l, f32(1));} return f");
+assertAsmTypeFail('glob', USE_ASM + I32 + F32 + RLF + FROUND + "function f() {var x = f4(1,2,3,4); var y = i4(1,2,3,4); x = r(y, 0, f32(1));} return f");
 
-CheckF4(WXF + FROUND, 'var x = f4(1,2,3,4); x = w(x, f32(13.37));', [Math.fround(13.37), 2, 3, 4]);
-CheckF4(WYF + FROUND, 'var x = f4(1,2,3,4); x = w(x, f32(13.37));', [1, Math.fround(13.37), 3, 4]);
-CheckF4(WZF + FROUND, 'var x = f4(1,2,3,4); x = w(x, f32(13.37));', [1, 2, Math.fround(13.37), 4]);
-CheckF4(WWF + FROUND, 'var x = f4(1,2,3,4); x = w(x, f32(13.37));', [1, 2, 3, Math.fround(13.37)]);
-CheckF4(WWF + FROUND, 'var x = f4(1,2,3,4); x = w(x, f32(13.37) + f32(6.63));', [1, 2, 3, Math.fround(Math.fround(13.37) + Math.fround(6.63))]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 0, f32(13.37));', [Math.fround(13.37), 2, 3, 4]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 1, f32(13.37));', [1, Math.fround(13.37), 3, 4]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 2, f32(13.37));', [1, 2, Math.fround(13.37), 4]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 3, f32(13.37));', [1, 2, 3, Math.fround(13.37)]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 3, f32(13.37) + f32(6.63));', [1, 2, 3, Math.fround(Math.fround(13.37) + Math.fround(6.63))]);
 
-CheckF4(WXF + FROUND, 'var x = f4(1,2,3,4); x = w(x, 13.37);', [Math.fround(13.37), 2, 3, 4]);
-CheckF4(WYF + FROUND, 'var x = f4(1,2,3,4); x = w(x, 13.37);', [1, Math.fround(13.37), 3, 4]);
-CheckF4(WZF + FROUND, 'var x = f4(1,2,3,4); x = w(x, 13.37);', [1, 2, Math.fround(13.37), 4]);
-CheckF4(WWF + FROUND, 'var x = f4(1,2,3,4); x = w(x, 13.37);', [1, 2, 3, Math.fround(13.37)]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 0, 13.37);', [Math.fround(13.37), 2, 3, 4]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 1, 13.37);', [1, Math.fround(13.37), 3, 4]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 2, 13.37);', [1, 2, Math.fround(13.37), 4]);
+CheckF4(RLF + FROUND, 'var x = f4(1,2,3,4); x = r(x, 3, 13.37);', [1, 2, 3, Math.fround(13.37)]);
 
-const WXI = 'var w = i4.withX;';
-const WYI = 'var w = i4.withY;';
-const WZI = 'var w = i4.withZ;';
-const WWI = 'var w = i4.withW;';
-CheckI4(WXI, 'var x = i4(1,2,3,4); x = w(x, 42);', [42, 2, 3, 4]);
-CheckI4(WYI, 'var x = i4(1,2,3,4); x = w(x, 42);', [1, 42, 3, 4]);
-CheckI4(WZI, 'var x = i4(1,2,3,4); x = w(x, 42);', [1, 2, 42, 4]);
-CheckI4(WWI, 'var x = i4(1,2,3,4); x = w(x, 42);', [1, 2, 3, 42]);
+const RLI = 'var r = i4.replaceLane;';
+CheckI4(RLI, 'var x = i4(1,2,3,4); x = r(x, 0, 42);', [42, 2, 3, 4]);
+CheckI4(RLI, 'var x = i4(1,2,3,4); x = r(x, 1, 42);', [1, 42, 3, 4]);
+CheckI4(RLI, 'var x = i4(1,2,3,4); x = r(x, 2, 42);', [1, 2, 42, 4]);
+CheckI4(RLI, 'var x = i4(1,2,3,4); x = r(x, 3, 42);', [1, 2, 3, 42]);
 
 // Comparisons
 // True yields all bits set to 1 (i.e as an int32, 0xFFFFFFFF === -1), false
@@ -729,14 +727,19 @@ var f = asmLink(asmCompile('glob', USE_ASM + I32 + F32 + CF32 + CI32 + CVTIF + '
 assertEqX4(f(SIMD.int32x4(1,2,3,4)), [1, 2, 3, 4]);
 assertEqX4(f(SIMD.int32x4(0,INT32_MIN,INT32_MAX,-1)), [0, Math.fround(INT32_MIN), Math.fround(INT32_MAX), -1]);
 
-// TODO amend tests once int32x4.fromFloat32x4 is fully specified, when float
-// values can't be converted into an int32 without overflowing.  In these
-// tests, we assume x86/x64, so a conversion which failed will return the
-// undefined int32 value. See also bug 1068028.
-const UNDEFINED_INT32 = 0x80000000 | 0;
 var f = asmLink(asmCompile('glob', USE_ASM + I32 + CI32 + F32 + CF32 + CVTFI + 'function f(x){x=cf4(x); var y=i4(0,0,0,0); y=cvt(x); return ci4(y);} return f'), this);
 assertEqX4(f(SIMD.float32x4(1,2,3,4)), [1, 2, 3, 4]);
-assertEqX4(f(SIMD.float32x4(NaN,Infinity,-Infinity,-0)), [UNDEFINED_INT32, UNDEFINED_INT32, UNDEFINED_INT32, 0]);
+// Test that INT32_MIN (exactly representable as an float32) and the first
+// integer representable as an float32 can be converted.
+assertEqX4(f(SIMD.float32x4(INT32_MIN, INT32_MAX - 64, -0, 0)), [INT32_MIN, INT32_MAX - 64, 0, 0].map(Math.fround));
+// Test boundaries: first integer less than INT32_MIN and representable as a float32
+assertThrowsInstanceOf(() => f(SIMD.float32x4(INT32_MIN - 129, 0, 0, 0)), RangeError);
+// INT_MAX + 1
+assertThrowsInstanceOf(() => f(SIMD.float32x4(Math.pow(2, 31), 0, 0, 0)), RangeError);
+// Special values
+assertThrowsInstanceOf(() => f(SIMD.float32x4(NaN, 0, 0, 0)), RangeError);
+assertThrowsInstanceOf(() => f(SIMD.float32x4(Infinity, 0, 0, 0)), RangeError);
+assertThrowsInstanceOf(() => f(SIMD.float32x4(-Infinity, 0, 0, 0)), RangeError);
 
 // Cast operators
 const CVTIFB = 'var cvt=f4.fromInt32x4Bits;';
@@ -1313,4 +1316,3 @@ asmLink(asmCompile('glob', 'ffi', code), this, assertEqFFI)();
     print('Error:', e)
     throw e;
 }
-

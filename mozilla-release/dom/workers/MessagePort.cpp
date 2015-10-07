@@ -1,4 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,6 +17,7 @@
 
 using mozilla::dom::EventHandlerNonNull;
 using mozilla::dom::MessagePortBase;
+using mozilla::dom::MessagePortIdentifier;
 using mozilla::dom::Optional;
 using mozilla::dom::Sequence;
 using mozilla::dom::AutoNoJSAPI;
@@ -95,9 +97,9 @@ MessagePort::~MessagePort()
 }
 
 void
-MessagePort::PostMessageMoz(JSContext* aCx, JS::Handle<JS::Value> aMessage,
-                            const Optional<Sequence<JS::Value>>& aTransferable,
-                            ErrorResult& aRv)
+MessagePort::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
+                         const Optional<Sequence<JS::Value>>& aTransferable,
+                         ErrorResult& aRv)
 {
   AssertCorrectThread();
 
@@ -197,11 +199,11 @@ MessagePort::SetOnmessage(EventHandlerNonNull* aCallback)
   Start();
 }
 
-already_AddRefed<MessagePortBase>
-MessagePort::Clone()
+bool
+MessagePort::CloneAndDisentangle(MessagePortIdentifier& aIdentifier)
 {
   NS_WARNING("Haven't implemented structured clone for these ports yet!");
-  return nullptr;
+  return false;
 }
 
 void
@@ -280,7 +282,7 @@ MessagePort::PreHandleEvent(EventChainPreVisitor& aVisitor)
 
     if (IsClosed()) {
       preventDispatch = true;
-    } else if (NS_IsMainThread() && mSharedWorker->IsSuspended()) {
+    } else if (NS_IsMainThread() && mSharedWorker->IsFrozen()) {
       mSharedWorker->QueueEvent(event);
       preventDispatch = true;
     } else if (!mStarted) {

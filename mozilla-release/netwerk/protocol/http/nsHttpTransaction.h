@@ -16,6 +16,7 @@
 #include "nsIInterfaceRequestor.h"
 #include "TimingStruct.h"
 #include "Http2Push.h"
+#include "mozilla/net/DNS.h"
 
 #ifdef MOZ_WIDGET_GONK
 #include "nsINetworkManager.h"
@@ -272,6 +273,7 @@ private:
     Atomic<uint32_t>                mCapsToClear;
 
     nsHttpVersion                   mHttpVersion;
+    uint16_t                        mHttpResponseCode;
 
     // state flags, all logically boolean, but not packed together into a
     // bitfield so as to avoid bitfield-induced races.  See bug 560579.
@@ -440,6 +442,13 @@ public:
 
 private:
     nsRefPtr<ASpdySession> mTunnelProvider;
+
+public:
+    void GetNetworkAddresses(NetAddr &self, NetAddr &peer);
+
+private:
+    NetAddr                         mSelfAddr;
+    NetAddr                         mPeerAddr;
 };
 
 }} // namespace mozilla::net

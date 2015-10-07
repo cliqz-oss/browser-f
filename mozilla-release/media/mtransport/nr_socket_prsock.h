@@ -59,15 +59,18 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include "nsIEventTarget.h"
 #include "nsIUDPSocketChild.h"
 #include "nsProxyRelease.h"
+#include "nsThreadUtils.h"
 
 #include "databuffer.h"
 #include "m_cpp_utils.h"
 #include "mozilla/ReentrantMonitor.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/ClearOnShutdown.h"
 
 // Stub declaration for nICEr type
 typedef struct nr_socket_vtbl_ nr_socket_vtbl;
+typedef struct nr_socket_ nr_socket;
 
 namespace mozilla {
 
@@ -96,6 +99,8 @@ public:
   virtual int connect(nr_transport_addr *addr) = 0;
   virtual int write(const void *msg, size_t len, size_t *written) = 0;
   virtual int read(void* buf, size_t maxlen, size_t *len) = 0;
+  virtual int listen(int backlog) = 0;
+  virtual int accept(nr_transport_addr *addrp, nr_socket **sockp) = 0;
 
    // Implementations of the async_event APIs
   virtual int async_wait(int how, NR_async_cb cb, void *cb_arg,
@@ -114,6 +119,9 @@ public:
 
   static TimeStamp short_term_violation_time();
   static TimeStamp long_term_violation_time();
+  const nr_transport_addr& my_addr() const {
+    return my_addr_;
+  }
 
 protected:
   void fire_callback(int how);
@@ -160,8 +168,10 @@ public:
   virtual int connect(nr_transport_addr *addr) override;
   virtual int write(const void *msg, size_t len, size_t *written) override;
   virtual int read(void* buf, size_t maxlen, size_t *len) override;
+  virtual int listen(int backlog) override;
+  virtual int accept(nr_transport_addr *addrp, nr_socket **sockp) override;
 
-private:
+protected:
   virtual ~NrSocket() {
     if (fd_)
       PR_Close(fd_);
@@ -211,7 +221,7 @@ public:
   NS_IMETHODIMP CallListenerOpened();
   NS_IMETHODIMP CallListenerClosed();
 
-  explicit NrSocketIpc(const nsCOMPtr<nsIEventTarget> &main_thread);
+  NrSocketIpc();
 
   // Implementations of the NrSocketBase APIs
   virtual int create(nr_transport_addr *addr) override;
@@ -225,16 +235,24 @@ public:
   virtual int connect(nr_transport_addr *addr) override;
   virtual int write(const void *msg, size_t len, size_t *written) override;
   virtual int read(void* buf, size_t maxlen, size_t *len) override;
+  virtual int listen(int backlog) override;
+  virtual int accept(nr_transport_addr *addrp, nr_socket **sockp) override;
 
 private:
-  virtual ~NrSocketIpc() {};
+  virtual ~NrSocketIpc();
 
   DISALLOW_COPY_ASSIGN(NrSocketIpc);
 
-  // Main thread executors of the NrSocketBase APIs
-  void create_m(const nsACString &host, const uint16_t port);
-  void sendto_m(const net::NetAddr &addr, nsAutoPtr<DataBuffer> buf);
-  void close_m();
+  static nsIThread* GetIOThreadAndAddUse_s();
+
+  // Main or private thread executors of the NrSocketBase APIs
+  void create_i(const nsACString &host, const uint16_t port);
+  void sendto_i(const net::NetAddr &addr, nsAutoPtr<DataBuffer> buf);
+  void close_i();
+#if defined(MOZILLA_INTERNAL_API) && !defined(MOZILLA_XPCOMRT_API)
+  static void release_child_i(nsIUDPSocketChild* aChild, nsCOMPtr<nsIEventTarget> ststhread);
+  static void release_use_s();
+#endif
   // STS thread executor
   void recv_callback_s(RefPtr<nr_udp_message> msg);
 
@@ -242,9 +260,9 @@ private:
   NrSocketIpcState state_;
   std::queue<RefPtr<nr_udp_message> > received_msgs_;
 
-  nsMainThreadPtrHandle<nsIUDPSocketChild> socket_child_;
+  nsRefPtr<nsIUDPSocketChild> socket_child_; // only accessed from the io_thread
   nsCOMPtr<nsIEventTarget> sts_thread_;
-  const nsCOMPtr<nsIEventTarget> main_thread_;
+  const nsCOMPtr<nsIEventTarget> io_thread_;
   ReentrantMonitor monitor_;
 };
 

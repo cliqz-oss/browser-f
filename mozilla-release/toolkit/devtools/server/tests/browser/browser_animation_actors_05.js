@@ -34,13 +34,17 @@ add_task(function*() {
   let onAllEventsReceived = new Promise(resolve => {
     let expected = 5;
     let previousState = player.initialState;
-    let onNewState = (e, state) => {
+    let onNewState = state => {
       ok(state.currentTime !== previousState.currentTime,
         "The time has changed since the last update");
       expected --;
       previousState = state;
       if (expected === 0) {
         player.off(player.AUTO_REFRESH_EVENT, onNewState);
+
+        info("Stop the auto-refresh");
+        player.stopAutoRefresh();
+
         resolve();
       }
     };
@@ -48,9 +52,6 @@ add_task(function*() {
   });
 
   yield onAllEventsReceived;
-
-  info("Stop the auto-refresh");
-  player.stopAutoRefresh();
 
   yield closeDebuggerClient(client);
   gBrowser.removeCurrentTab();

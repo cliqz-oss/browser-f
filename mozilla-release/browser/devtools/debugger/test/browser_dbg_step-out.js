@@ -40,12 +40,12 @@ function testNormalReturn() {
       gDebugger);
   });
 
-  sendMouseClickToTab(gTab, content.document.getElementById("return"));
+  generateMouseClickInTab(gTab, "content.document.getElementById('return')");
 }
 
 function testReturnWithException() {
   waitForCaretAndScopes(gPanel, 24).then(() => {
-    waitForCaretAndScopes(gPanel, 27).then(() => {
+    waitForCaretAndScopes(gPanel, 26).then(() => {
       let innerScope = gVars.getScopeAtIndex(0);
       let exceptionVar = innerScope.get("<exception>");
 
@@ -62,7 +62,7 @@ function testReturnWithException() {
       gDebugger);
   });
 
-  sendMouseClickToTab(gTab, content.document.getElementById("throw"));
+  generateMouseClickInTab(gTab, "content.document.getElementById('throw')");
 }
 
 function resumeDebuggee() {

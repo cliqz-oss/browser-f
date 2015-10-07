@@ -17,18 +17,11 @@ let chromeGlobal = this;
   const { dumpn } = DevToolsUtils;
   const { DebuggerServer, ActorPool } = Cu.import("resource://gre/modules/devtools/dbg-server.jsm", {});
 
-  if (!DebuggerServer.childID) {
-    DebuggerServer.childID = 1;
-  }
-
+  // Note that this frame script may be evaluated in non-e10s build
+  // In such case, DebuggerServer is already going to be initialized.
   if (!DebuggerServer.initialized) {
     DebuggerServer.init();
-
-    // message manager helpers provided for actor module parent/child message exchange
-    DebuggerServer.parentMessageManager = {
-      sendSyncMessage: sendSyncMessage,
-      addMessageListener: addMessageListener
-    };
+    DebuggerServer.isInChildProcess = true;
   }
 
   // In case of apps being loaded in parent process, DebuggerServer is already
@@ -44,17 +37,17 @@ let chromeGlobal = this;
 
     let mm = msg.target;
     let prefix = msg.data.prefix;
-    let id = DebuggerServer.childID++;
 
     let conn = DebuggerServer.connectToParent(prefix, mm);
-    connections.set(id, conn);
+    conn.parentMessageManager = mm;
+    connections.set(prefix, conn);
 
-    let actor = new DebuggerServer.ContentActor(conn, chromeGlobal);
+    let actor = new DebuggerServer.ContentActor(conn, chromeGlobal, prefix);
     let actorPool = new ActorPool(conn);
     actorPool.addActor(actor);
     conn.addActorPool(actorPool);
 
-    sendAsyncMessage("debug:actor", {actor: actor.form(), childID: id});
+    sendAsyncMessage("debug:actor", {actor: actor.form(), prefix: prefix});
   });
 
   addMessageListener("debug:connect", onConnect);
@@ -95,11 +88,11 @@ let chromeGlobal = this;
     // Call DebuggerServerConnection.close to destroy all child actors
     // (It should end up calling DebuggerServerConnection.onClosed
     // that would actually cleanup all actor pools)
-    let childID = msg.data.childID;
-    let conn = connections.get(childID);
+    let prefix = msg.data.prefix;
+    let conn = connections.get(prefix);
     if (conn) {
       conn.close();
-      connections.delete(childID);
+      connections.delete(prefix);
     }
   });
   addMessageListener("debug:disconnect", onDisconnect);

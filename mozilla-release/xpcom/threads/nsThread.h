@@ -16,7 +16,6 @@
 #include "nsTObserverArray.h"
 #include "mozilla/Attributes.h"
 #include "nsAutoPtr.h"
-#include "mozilla/ReentrantMonitor.h"
 
 // A native thread
 class nsThread
@@ -65,14 +64,6 @@ public:
 
   static nsresult
   SetMainThreadObserver(nsIThreadObserver* aObserver);
-
-#ifdef MOZ_NUWA_PROCESS
-  void SetWorking();
-  void SetIdle();
-  mozilla::ReentrantMonitor& ThreadStatusMonitor() {
-    return mThreadStatusMonitor;
-  }
-#endif
 
 protected:
   static nsIThreadObserver* sMainThreadObserver;
@@ -182,7 +173,7 @@ protected:
 
   int32_t   mPriority;
   PRThread* mThread;
-  uint32_t  mRunningEvent;  // counter
+  uint32_t  mNestedEventLoopDepth;
   uint32_t  mStackSize;
 
   struct nsThreadShutdownContext* mShutdownContext;
@@ -191,12 +182,6 @@ protected:
   // Set to true when events posted to this thread will never run.
   bool mEventsAreDoomed;
   MainThreadFlag mIsMainThread;
-#ifdef MOZ_NUWA_PROCESS
-  mozilla::ReentrantMonitor mThreadStatusMonitor;
-  // The actual type is defined in nsThreadManager.h which is not exposed to
-  // file out of thread module.
-  void* mThreadStatusInfo;
-#endif
 };
 
 //-----------------------------------------------------------------------------

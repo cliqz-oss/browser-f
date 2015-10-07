@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
-
 var loop = loop || {};
 loop.StandaloneClient = (function($) {
   "use strict";
@@ -111,10 +109,10 @@ loop.StandaloneClient = (function($) {
       }
 
       var req = $.ajax({
-        url:         this.settings.baseServerUrl + "/calls/" + loopToken,
-        method:      "POST",
+        url: this.settings.baseServerUrl + "/calls/" + loopToken,
+        method: "POST",
         contentType: "application/json",
-        dataType:    "json",
+        dataType: "json",
         data: JSON.stringify({callType: callType, channel: "standalone"})
       });
 
@@ -128,7 +126,7 @@ loop.StandaloneClient = (function($) {
       }.bind(this));
 
       req.fail(this._failureHandler.bind(this, cb));
-    },
+    }
   };
 
   return StandaloneClient;

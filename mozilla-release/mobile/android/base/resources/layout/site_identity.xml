@@ -11,16 +11,17 @@
     <LinearLayout android:layout_width="match_parent"
                   android:layout_height="wrap_content"
                   android:orientation="horizontal"
-                  android:padding="@dimen/doorhanger_padding">
+                  android:padding="@dimen/doorhanger_section_padding_small">
 
         <ImageView android:id="@+id/larry"
-                   android:layout_width="wrap_content"
-                   android:layout_height="wrap_content"
+                   android:layout_width="@dimen/doorhanger_icon_size"
+                   android:layout_height="@dimen/doorhanger_icon_size"
                    android:src="@drawable/larry"
-                   android:paddingRight="@dimen/doorhanger_padding"/>
+                   android:paddingRight="@dimen/doorhanger_section_padding_small"/>
 
-        <FrameLayout android:layout_width="0dip"
+        <LinearLayout android:layout_width="0dp"
                      android:layout_height="wrap_content"
+                     android:orientation="vertical"
                      android:layout_weight="1.0">
 
             <include layout="@layout/site_identity_unknown" />
@@ -28,46 +29,64 @@
             <LinearLayout android:id="@+id/site_identity_known_container"
                           android:layout_width="match_parent"
                           android:layout_height="wrap_content"
+                          android:visibility="gone"
                           android:orientation="vertical">
+
+                <TextView android:id="@+id/site_identity_title"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:layout_marginBottom="@dimen/doorhanger_subsection_padding"
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium.Light"/>
+
+                <TextView android:id="@+id/site_identity_encrypted"
+                          android:layout_width="match_parent"
+                          android:layout_height="wrap_content"
+                          android:layout_marginBottom="@dimen/doorhanger_section_padding_small"
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium.Bold"
+                          android:textColor="@color/affirmative_green"
+                          android:text="@string/identity_encrypted"/>
 
                 <TextView android:layout_width="wrap_content"
                           android:layout_height="wrap_content"
-                          android:textSize="14sp"
-                          android:textColor="@color/placeholder_active_grey"
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium.Light"
                           android:text="@string/identity_connected_to"/>
 
                 <TextView android:id="@+id/host"
                           android:layout_width="wrap_content"
                           android:layout_height="wrap_content"
-                          android:textSize="20sp"
-                          android:textColor="@color/placeholder_active_grey"
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium"
                           android:textStyle="bold"/>
 
                 <TextView android:id="@+id/owner_label"
                           android:layout_width="wrap_content"
                           android:layout_height="wrap_content"
-                          android:textSize="14sp"
-                          android:textColor="@color/placeholder_active_grey"
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium.Light"
                           android:text="@string/identity_run_by"
-                          android:paddingTop="12dip"/>
+                          android:layout_marginTop="@dimen/doorhanger_section_padding_small"/>
 
                 <TextView android:id="@+id/owner"
                           android:layout_width="wrap_content"
                           android:layout_height="wrap_content"
-                          android:textColor="@color/placeholder_active_grey"
-                          android:textSize="16sp"
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium"
                           android:textStyle="bold"/>
 
                 <TextView android:id="@+id/verifier"
                           android:layout_width="wrap_content"
                           android:layout_height="wrap_content"
-                          android:textSize="14sp"
-                          android:textColor="@color/placeholder_active_grey"
-                          android:paddingTop="12dip"/>
+                          android:textAppearance="@style/TextAppearance.DoorHanger.Medium.Light"
+                          android:layout_marginTop="@dimen/doorhanger_section_padding_small"/>
 
             </LinearLayout>
-
-         </FrameLayout>
+            <TextView android:id="@+id/site_settings_link"
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:textAppearance="@style/TextAppearance.DoorHanger.Medium"
+                      android:textColor="@color/link_blue"
+                      android:layout_marginTop="@dimen/doorhanger_section_padding_large"
+                      android:layout_marginBottom="@dimen/doorhanger_section_padding_small"
+                      android:text="@string/contextmenu_site_settings"
+                      android:visibility="gone"/>
+         </LinearLayout>
     </LinearLayout>
 
     <View android:id="@+id/divider_doorhanger"

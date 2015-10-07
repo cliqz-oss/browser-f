@@ -231,7 +231,7 @@
  <nc:subheadings>
   <rdf:Seq>
   <rdf:li><rdf:Description ID="mail-doc-attach-file" nc:name="Einen anhang zu einer Nachricht hinzuf&#252;gen" nc:link="mailnews_using_mail.xhtml#attaching_a_file_or_web_page"/></rdf:li>
-  <rdf:li><rdf:Description ID="mail-doc-attach-view" nc:name="Anh%#228;nge ansehen und &#246;ffnen" nc:link="mailnews_using_mail.xhtml#viewing_and_opening_attachments"/></rdf:li>
+  <rdf:li><rdf:Description ID="mail-doc-attach-view" nc:name="Anh&#228;nge ansehen und &#246;ffnen" nc:link="mailnews_using_mail.xhtml#viewing_and_opening_attachments"/></rdf:li>
   <rdf:li><rdf:Description ID="mail-doc-attach-save" nc:name="Anh&#228;nge abspeichern" nc:link="mailnews_using_mail.xhtml#saving_attachments"/></rdf:li>
   </rdf:Seq>
  </nc:subheadings>

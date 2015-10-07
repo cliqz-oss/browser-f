@@ -10,6 +10,7 @@
 
 namespace mozilla {
 
+class ErrorResult;
 class WebGLSampler;
 class WebGLSync;
 class WebGLTransformFeedback;
@@ -44,8 +45,9 @@ public:
 
     void CopyBufferSubData(GLenum readTarget, GLenum writeTarget,
                            GLintptr readOffset, GLintptr writeOffset, GLsizeiptr size);
-    void GetBufferSubData(GLenum target, GLintptr offset, const dom::ArrayBuffer& returnedData);
-    void GetBufferSubData(GLenum target, GLintptr offset, const dom::ArrayBufferView& returnedData);
+    void GetBufferSubData(GLenum target, GLintptr offset,
+                          const dom::Nullable<dom::ArrayBuffer>& maybeData);
+
 
     // -------------------------------------------------------------------------
     // Framebuffer objects - WebGL2ContextFramebuffers.cpp
@@ -55,9 +57,10 @@ public:
                          GLbitfield mask, GLenum filter);
     void FramebufferTextureLayer(GLenum target, GLenum attachment, GLuint texture, GLint level, GLint layer);
     void GetInternalformatParameter(JSContext*, GLenum target, GLenum internalformat, GLenum pname, JS::MutableHandleValue retval);
-    void InvalidateFramebuffer(GLenum target, const dom::Sequence<GLenum>& attachments);
+    void InvalidateFramebuffer(GLenum target, const dom::Sequence<GLenum>& attachments,
+                               ErrorResult& aRv);
     void InvalidateSubFramebuffer (GLenum target, const dom::Sequence<GLenum>& attachments, GLint x, GLint y,
-                                   GLsizei width, GLsizei height);
+                                   GLsizei width, GLsizei height, ErrorResult& aRv);
     void ReadBuffer(GLenum mode);
     void RenderbufferStorageMultisample(GLenum target, GLsizei samples, GLenum internalformat,
                                         GLsizei width, GLsizei height);
@@ -321,6 +324,7 @@ public:
     void BindBufferBase(GLenum target, GLuint index, WebGLBuffer* buffer);
     void BindBufferRange(GLenum target, GLuint index, WebGLBuffer* buffer, GLintptr offset, GLsizeiptr size);
 */
+    virtual JS::Value GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv) override;
     void GetIndexedParameter(GLenum target, GLuint index,
                              dom::Nullable<dom::OwningWebGLBufferOrLongLong>& retval);
     void GetUniformIndices(WebGLProgram* program,
@@ -355,17 +359,20 @@ private:
 
     JS::Value GetTexParameterInternal(const TexTarget& target, GLenum pname) override;
 
+    void UpdateBoundQuery(GLenum target, WebGLQuery* query);
+
     bool ValidateSizedInternalFormat(GLenum internalFormat, const char* info);
     bool ValidateTexStorage(GLenum target, GLsizei levels, GLenum internalformat,
                                 GLsizei width, GLsizei height, GLsizei depth,
                                 const char* info);
 
+    // CreateVertexArrayImpl is assumed to be infallible.
+    virtual WebGLVertexArray* CreateVertexArrayImpl() override;
     virtual bool ValidateAttribPointerType(bool integerMode, GLenum type, GLsizei* alignment, const char* info) override;
     virtual bool ValidateBufferTarget(GLenum target, const char* info) override;
     virtual bool ValidateBufferIndexedTarget(GLenum target, const char* info) override;
-    virtual bool ValidateBufferForTarget(GLenum target, WebGLBuffer* buffer, const char* info) override;
     virtual bool ValidateBufferUsageEnum(GLenum usage, const char* info) override;
-
+    virtual bool ValidateQueryTarget(GLenum target, const char* info) override;
     virtual bool ValidateUniformMatrixTranspose(bool transpose, const char* info) override;
 };
 

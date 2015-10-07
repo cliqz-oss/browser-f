@@ -38,10 +38,6 @@ struct ITfDocumentMgr;
 struct ITfDisplayAttributeMgr;
 struct ITfCategoryMgr;
 class nsWindow;
-#ifdef MOZ_METRO
-class MetroWidget;
-#endif
-class TSFStaticSink;
 
 namespace mozilla {
 namespace widget {
@@ -145,11 +141,11 @@ public:
       sEnabledTextStore->OnTextChangeInternal(aIMENotification) : NS_OK;
   }
 
-  static nsresult OnSelectionChange(void)
+  static nsresult OnSelectionChange(const IMENotification& aIMENotification)
   {
     NS_ASSERTION(IsInTSFMode(), "Not in TSF mode, shouldn't be called");
     return sEnabledTextStore ?
-      sEnabledTextStore->OnSelectionChangeInternal() : NS_OK;
+      sEnabledTextStore->OnSelectionChangeInternal(aIMENotification) : NS_OK;
   }
 
   static nsresult OnLayoutChange()
@@ -157,6 +153,13 @@ public:
     NS_ASSERTION(IsInTSFMode(), "Not in TSF mode, shouldn't be called");
     return sEnabledTextStore ?
       sEnabledTextStore->OnLayoutChangeInternal() : NS_OK;
+  }
+
+  static nsresult OnUpdateComposition()
+  {
+    NS_ASSERTION(IsInTSFMode(), "Not in TSF mode, shouldn't be called");
+    return sEnabledTextStore ?
+      sEnabledTextStore->OnUpdateCompositionInternal() : NS_OK;
   }
 
   static nsresult OnMouseButtonEvent(const IMENotification& aIMENotification)
@@ -262,7 +265,7 @@ protected:
                                          TS_TEXTCHANGE* aTextChange);
   void     CommitCompositionInternal(bool);
   nsresult OnTextChangeInternal(const IMENotification& aIMENotification);
-  nsresult OnSelectionChangeInternal(void);
+  nsresult OnSelectionChangeInternal(const IMENotification& aIMENotification);
   nsresult OnMouseButtonEventInternal(const IMENotification& aIMENotification);
   HRESULT  GetDisplayAttribute(ITfProperty* aProperty,
                                ITfRange* aRange,
@@ -283,11 +286,25 @@ protected:
   HRESULT  RecordCompositionUpdateAction();
   HRESULT  RecordCompositionEndAction();
 
+  // DispatchEvent() dispatches the event and if it may not be handled
+  // synchronously, this makes the instance not notify TSF of pending
+  // notifications until next notification from content.
+  void     DispatchEvent(mozilla::WidgetGUIEvent& aEvent);
+  void     OnLayoutInformationAvaliable();
+
   // FlushPendingActions() performs pending actions recorded in mPendingActions
   // and clear it.
   void     FlushPendingActions();
+  // MaybeFlushPendingNotifications() performs pending notifications to TSF.
+  void     MaybeFlushPendingNotifications();
 
   nsresult OnLayoutChangeInternal();
+  nsresult OnUpdateCompositionInternal();
+
+  void     NotifyTSFOfTextChange(const TS_TEXTCHANGE& aTextChange);
+  void     NotifyTSFOfSelectionChange();
+  bool     NotifyTSFOfLayoutChange(bool aFlush);
+
   HRESULT  HandleRequestAttrs(DWORD aFlags,
                               ULONG aFilterCount,
                               const TS_ATTRID* aFilterAttrs);
@@ -297,7 +314,7 @@ protected:
   // application.  Otherwise, this does nothing.
   void     CreateNativeCaret();
 
-  // Holds the pointer to our current win32 or metro widget
+  // Holds the pointer to our current win32 widget
   nsRefPtr<nsWindowBase>       mWidget;
   // Document manager for the currently focused editor
   nsRefPtr<ITfDocumentMgr>     mDocumentMgr;
@@ -607,6 +624,8 @@ protected:
       mText = aText;
       if (mComposition.IsComposing()) {
         mLastCompositionString = mComposition.mString;
+      } else {
+        mLastCompositionString.Truncate();
       }
       mMinTextModifiedOffset = NOT_MODIFIED;
       mInitialized = true;
@@ -627,6 +646,16 @@ protected:
     {
       MOZ_ASSERT(mInitialized);
       return mText;
+    }
+    const nsString& LastCompositionString() const
+    {
+      MOZ_ASSERT(mInitialized);
+      return mLastCompositionString;
+    }
+    uint32_t MinTextModifiedOffset() const
+    {
+      MOZ_ASSERT(mInitialized);
+      return mMinTextModifiedOffset;
     }
 
     // Returns true if layout of the character at the aOffset has not been
@@ -764,6 +793,14 @@ protected:
   bool                         mPendingDestroy;
   // While there is native caret, this is true.  Otherwise, false.
   bool                         mNativeCaretIsCreated;
+  // While the instance is dispatching events, the event may not be handled
+  // synchronously in e10s mode.  So, in such case, in strictly speaking,
+  // we shouldn't query layout information.  However, TS_E_NOLAYOUT bugs of
+  // ITextStoreAPC::GetTextExt() blocks us to behave ideally.
+  // For preventing it to be called, we should put off notifying TSF of
+  // anything until layout information becomes available.
+  bool                         mDeferNotifyingTSF;
+
 
   // TSF thread manager object for the current application
   static mozilla::StaticRefPtr<ITfThreadMgr> sThreadMgr;
@@ -798,6 +835,8 @@ protected:
   static bool sDoNotReturnNoLayoutErrorToEasyChangjei;
   static bool sDoNotReturnNoLayoutErrorToGoogleJaInputAtFirstChar;
   static bool sDoNotReturnNoLayoutErrorToGoogleJaInputAtCaret;
+  static bool sHackQueryInsertForMSSimplifiedTIP;
+  static bool sHackQueryInsertForMSTraditionalTIP;
 };
 
 #endif /*NSTEXTSTORE_H_*/

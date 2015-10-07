@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
-
 var loop = loop || {};
 loop.FeedbackAPIClient = (function($, _) {
   "use strict";
@@ -92,10 +90,10 @@ loop.FeedbackAPIClient = (function($, _) {
      */
     send: function(fields, cb) {
       var req = $.ajax({
-        url:         this.baseUrl,
-        method:      "POST",
+        url: this.baseUrl,
+        method: "POST",
         contentType: "application/json",
-        dataType:    "json",
+        dataType: "json",
         data: JSON.stringify(this._createPayload(fields))
       });
 

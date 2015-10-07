@@ -16,7 +16,7 @@
 #include "nspr.h"
 #include "srtp.h"
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
 #include "VideoSegment.h"
 #include "Layers.h"
 #include "ImageTypes.h"
@@ -38,11 +38,12 @@
 #include "transportlayerice.h"
 #include "runnable_utils.h"
 #include "libyuv/convert.h"
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
 #include "mozilla/PeerIdentity.h"
 #endif
 #include "mozilla/gfx/Point.h"
 #include "mozilla/gfx/Types.h"
+#include "mozilla/UniquePtr.h"
 
 #include "logging.h"
 
@@ -641,7 +642,7 @@ void MediaPipelineTransmit::AttachToTrack(const std::string& track_id) {
 #endif
 }
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
 void MediaPipelineTransmit::UpdateSinkIdentity_m(nsIPrincipal* principal,
                                                  const PeerIdentity* sinkIdentity) {
   ASSERT_ON_THREAD(main_thread_);
@@ -686,6 +687,8 @@ nsresult MediaPipelineTransmit::ReplaceTrack(DOMMediaStream *domstream,
   }
   domstream_ = domstream; // Detach clears it
   stream_ = domstream->GetStream();
+  // Unsets the track id after RemoveListener() takes effect.
+  listener_->UnsetTrackId(stream_->GraphImpl());
   track_id_ = track_id;
   AttachToTrack(track_id);
   return NS_OK;
@@ -748,109 +751,103 @@ nsresult MediaPipeline::PipelineTransport::SendRtpPacket(
     const void *data, int len) {
 
     nsAutoPtr<DataBuffer> buf(new DataBuffer(static_cast<const uint8_t *>(data),
-                                             len));
+                                             len, len + SRTP_MAX_EXPANSION));
 
     RUN_ON_THREAD(sts_thread_,
                   WrapRunnable(
                       RefPtr<MediaPipeline::PipelineTransport>(this),
-                      &MediaPipeline::PipelineTransport::SendRtpPacket_s,
-                      buf),
+                      &MediaPipeline::PipelineTransport::SendRtpRtcpPacket_s,
+                      buf, true),
                   NS_DISPATCH_NORMAL);
 
     return NS_OK;
 }
 
-nsresult MediaPipeline::PipelineTransport::SendRtpPacket_s(
-    nsAutoPtr<DataBuffer> data) {
-  ASSERT_ON_THREAD(sts_thread_);
-  if (!pipeline_)
-    return NS_OK;  // Detached
+nsresult MediaPipeline::PipelineTransport::SendRtpRtcpPacket_s(
+    nsAutoPtr<DataBuffer> data,
+    bool is_rtp) {
 
-  if (!pipeline_->rtp_.send_srtp_) {
-    MOZ_MTLOG(ML_DEBUG, "Couldn't write RTP packet; SRTP not set up yet");
+  ASSERT_ON_THREAD(sts_thread_);
+  if (!pipeline_) {
+    return NS_OK;  // Detached
+  }
+  TransportInfo& transport = is_rtp ? pipeline_->rtp_ : pipeline_->rtcp_;
+
+  if (!transport.send_srtp_) {
+    MOZ_MTLOG(ML_DEBUG, "Couldn't write RTP/RTCP packet; SRTP not set up yet");
     return NS_OK;
   }
 
-  MOZ_ASSERT(pipeline_->rtp_.transport_);
-  NS_ENSURE_TRUE(pipeline_->rtp_.transport_, NS_ERROR_NULL_POINTER);
+  MOZ_ASSERT(transport.transport_);
+  NS_ENSURE_TRUE(transport.transport_, NS_ERROR_NULL_POINTER);
 
-  // libsrtp enciphers in place, so we need a new, big enough
-  // buffer.
-  // XXX. allocates and deletes one buffer per packet sent.
-  // Bug 822129
-  int max_len = data->len() + SRTP_MAX_EXPANSION;
-  ScopedDeletePtr<unsigned char> inner_data(
-      new unsigned char[max_len]);
-  memcpy(inner_data, data->data(), data->len());
+  // libsrtp enciphers in place, so we need a big enough buffer.
+  MOZ_ASSERT(data->capacity() >= data->len() + SRTP_MAX_EXPANSION);
 
   int out_len;
-  nsresult res = pipeline_->rtp_.send_srtp_->ProtectRtp(inner_data,
-                                                        data->len(),
-                                                        max_len,
-                                                        &out_len);
-  if (!NS_SUCCEEDED(res))
+  nsresult res;
+  if (is_rtp) {
+    res = transport.send_srtp_->ProtectRtp(data->data(),
+                                           data->len(),
+                                           data->capacity(),
+                                           &out_len);
+  } else {
+    res = transport.send_srtp_->ProtectRtcp(data->data(),
+                                            data->len(),
+                                            data->capacity(),
+                                            &out_len);
+  }
+  if (!NS_SUCCEEDED(res)) {
     return res;
+  }
 
-  MOZ_MTLOG(ML_DEBUG, pipeline_->description_ << " sending RTP packet.");
-  pipeline_->increment_rtp_packets_sent(out_len);
-  return pipeline_->SendPacket(pipeline_->rtp_.transport_, inner_data,
-                               out_len);
+  // paranoia; don't have uninitialized bytes included in data->len()
+  data->SetLength(out_len);
+
+  MOZ_MTLOG(ML_DEBUG, pipeline_->description_ << " sending " <<
+            (is_rtp ? "RTP" : "RTCP") << " packet");
+  if (is_rtp) {
+    pipeline_->increment_rtp_packets_sent(out_len);
+  } else {
+    pipeline_->increment_rtcp_packets_sent();
+  }
+  return pipeline_->SendPacket(transport.transport_, data->data(), out_len);
 }
 
 nsresult MediaPipeline::PipelineTransport::SendRtcpPacket(
     const void *data, int len) {
 
     nsAutoPtr<DataBuffer> buf(new DataBuffer(static_cast<const uint8_t *>(data),
-                                             len));
+                                             len, len + SRTP_MAX_EXPANSION));
 
     RUN_ON_THREAD(sts_thread_,
                   WrapRunnable(
                       RefPtr<MediaPipeline::PipelineTransport>(this),
-                      &MediaPipeline::PipelineTransport::SendRtcpPacket_s,
-                      buf),
+                      &MediaPipeline::PipelineTransport::SendRtpRtcpPacket_s,
+                      buf, false),
                   NS_DISPATCH_NORMAL);
 
     return NS_OK;
 }
 
-nsresult MediaPipeline::PipelineTransport::SendRtcpPacket_s(
-    nsAutoPtr<DataBuffer> data) {
-  ASSERT_ON_THREAD(sts_thread_);
-  if (!pipeline_)
-    return NS_OK;  // Detached
-
-  if (!pipeline_->rtcp_.send_srtp_) {
-    MOZ_MTLOG(ML_DEBUG, "Couldn't write RTCP packet; SRTCP not set up yet");
-    return NS_OK;
-  }
-
-  MOZ_ASSERT(pipeline_->rtcp_.transport_);
-  NS_ENSURE_TRUE(pipeline_->rtcp_.transport_, NS_ERROR_NULL_POINTER);
-
-  // libsrtp enciphers in place, so we need a new, big enough
-  // buffer.
-  // XXX. allocates and deletes one buffer per packet sent.
-  // Bug 822129.
-  int max_len = data->len() + SRTP_MAX_EXPANSION;
-  ScopedDeletePtr<unsigned char> inner_data(
-      new unsigned char[max_len]);
-  memcpy(inner_data, data->data(), data->len());
-
-  int out_len;
-  nsresult res = pipeline_->rtcp_.send_srtp_->ProtectRtcp(inner_data,
-                                                          data->len(),
-                                                          max_len,
-                                                          &out_len);
-
-  if (!NS_SUCCEEDED(res))
-    return res;
-
-  MOZ_MTLOG(ML_DEBUG, pipeline_->description_ << " sending RTCP packet.");
-  pipeline_->increment_rtcp_packets_sent();
-  return pipeline_->SendPacket(pipeline_->rtcp_.transport_, inner_data,
-                               out_len);
+void MediaPipelineTransmit::PipelineListener::
+UnsetTrackId(MediaStreamGraphImpl* graph) {
+#ifndef USE_FAKE_MEDIA_STREAMS
+  class Message : public ControlMessage {
+  public:
+    explicit Message(PipelineListener* listener) :
+      ControlMessage(nullptr), listener_(listener) {}
+    virtual void Run() override
+    {
+      listener_->UnsetTrackIdImpl();
+    }
+    nsRefPtr<PipelineListener> listener_;
+  };
+  graph->AppendMessage(new Message(this));
+#else
+  UnsetTrackIdImpl();
+#endif
 }
-
 // Called if we're attached with AddDirectListener()
 void MediaPipelineTransmit::PipelineListener::
 NotifyRealtimeData(MediaStreamGraph* graph, TrackID tid,
@@ -929,7 +926,7 @@ NewData(MediaStreamGraph* graph, TrackID tid,
       iter.Next();
     }
   } else if (media.GetType() == MediaSegment::VIDEO) {
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
     VideoSegment* video = const_cast<VideoSegment *>(
         static_cast<const VideoSegment *>(&media));
 
@@ -971,9 +968,8 @@ void MediaPipelineTransmit::PipelineListener::ProcessAudioChunk(
         memset(samples, 0, chunk.mDuration * sizeof(samples[0]));
         break;
       default:
-        MOZ_ASSERT(PR_FALSE);
+        MOZ_ASSERT_UNREACHABLE("Unexpected AudioSampleFormat");
         return;
-        break;
     }
   } else {
     // This means silence.
@@ -1042,7 +1038,7 @@ void MediaPipelineTransmit::PipelineListener::ProcessAudioChunk(
 
 }
 
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
 void MediaPipelineTransmit::PipelineListener::ProcessVideoChunk(
     VideoSessionConduit* conduit,
     VideoChunk& chunk) {
@@ -1162,51 +1158,68 @@ void MediaPipelineTransmit::PipelineListener::ProcessVideoChunk(
     MOZ_MTLOG(ML_DEBUG, "Sending a video frame");
     // Not much for us to do with an error
     conduit->SendVideoFrame(y, I420SIZE(width, height), width, height, mozilla::kVideoI420, 0);
-  } else if(format == ImageFormat::CAIRO_SURFACE) {
-    layers::CairoImage* rgb =
-    const_cast<layers::CairoImage *>(
-          static_cast<const layers::CairoImage *>(img));
+  } else {
+    RefPtr<gfx::SourceSurface> surf = img->GetAsSourceSurface();
+    if (!surf) {
+      MOZ_MTLOG(ML_ERROR, "Getting surface from image failed");
+      return;
+    }
 
-    gfx::IntSize size = rgb->GetSize();
+    RefPtr<gfx::DataSourceSurface> data = surf->GetDataSurface();
+    if (!data) {
+      MOZ_MTLOG(ML_ERROR, "Getting data surface from image failed");
+      return;
+    }
+
+    gfx::IntSize size = img->GetSize();
     int half_width = (size.width + 1) >> 1;
     int half_height = (size.height + 1) >> 1;
     int c_size = half_width * half_height;
     int buffer_size = YSIZE(size.width, size.height) + 2 * c_size;
-    uint8* yuv = (uint8*) malloc(buffer_size); // fallible
-    if (!yuv)
+    UniquePtr<uint8[]> yuv_scoped(new (fallible) uint8[buffer_size]);
+    if (!yuv_scoped)
       return;
+    uint8* yuv = yuv_scoped.get();
 
-    int cb_offset = YSIZE(size.width, size.height);
-    int cr_offset = cb_offset + c_size;
-    RefPtr<gfx::SourceSurface> tempSurf = rgb->GetAsSourceSurface();
-    RefPtr<gfx::DataSourceSurface> surf = tempSurf->GetDataSurface();
+    {
+      DataSourceSurface::ScopedMap map(data, DataSourceSurface::READ);
+      if (!map.IsMapped()) {
+        MOZ_MTLOG(ML_ERROR, "Reading DataSourceSurface failed");
+        return;
+      }
 
-    switch (surf->GetFormat()) {
-      case gfx::SurfaceFormat::B8G8R8A8:
-      case gfx::SurfaceFormat::B8G8R8X8:
-        libyuv::ARGBToI420(static_cast<uint8*>(surf->GetData()), surf->Stride(),
-                           yuv, size.width,
-                           yuv + cb_offset, half_width,
-                           yuv + cr_offset, half_width,
-                           size.width, size.height);
-        break;
-      case gfx::SurfaceFormat::R5G6B5:
-        libyuv::RGB565ToI420(static_cast<uint8*>(surf->GetData()), surf->Stride(),
-                             yuv, size.width,
-                             yuv + cb_offset, half_width,
-                             yuv + cr_offset, half_width,
-                             size.width, size.height);
-        break;
-      default:
-        MOZ_MTLOG(ML_ERROR, "Unsupported RGB video format");
-        MOZ_ASSERT(PR_FALSE);
+      int rv;
+      int cb_offset = YSIZE(size.width, size.height);
+      int cr_offset = cb_offset + c_size;
+      switch (surf->GetFormat()) {
+        case gfx::SurfaceFormat::B8G8R8A8:
+        case gfx::SurfaceFormat::B8G8R8X8:
+          rv = libyuv::ARGBToI420(static_cast<uint8*>(map.GetData()),
+                                  map.GetStride(),
+                                  yuv, size.width,
+                                  yuv + cb_offset, half_width,
+                                  yuv + cr_offset, half_width,
+                                  size.width, size.height);
+          break;
+        case gfx::SurfaceFormat::R5G6B5:
+          rv = libyuv::RGB565ToI420(static_cast<uint8*>(map.GetData()),
+                                    map.GetStride(),
+                                    yuv, size.width,
+                                    yuv + cb_offset, half_width,
+                                    yuv + cr_offset, half_width,
+                                    size.width, size.height);
+          break;
+        default:
+          MOZ_MTLOG(ML_ERROR, "Unsupported RGB video format");
+          MOZ_ASSERT(PR_FALSE);
+          return;
+      }
+      if (rv != 0) {
+        MOZ_MTLOG(ML_ERROR, "RGB to I420 conversion failed");
+        return;
+      }
     }
     conduit->SendVideoFrame(yuv, buffer_size, size.width, size.height, mozilla::kVideoI420, 0);
-    free(yuv);
-  } else {
-    MOZ_MTLOG(ML_ERROR, "Unsupported video format");
-    MOZ_ASSERT(PR_FALSE);
-    return;
   }
 }
 #endif
@@ -1232,7 +1245,7 @@ static void AddTrackAndListener(MediaStream* source,
                                 const RefPtr<TrackAddedCallback>& completed,
                                 bool queue_track) {
   // This both adds the listener and the track
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
   class Message : public ControlMessage {
    public:
     Message(MediaStream* stream, TrackID track, TrackRate rate,
@@ -1394,7 +1407,7 @@ nsresult MediaPipelineReceiveVideo::Init() {
   description_ += track_id_;
   description_ += "]";
 
-#ifdef MOZILLA_INTERNAL_API
+#if defined(MOZILLA_INTERNAL_API)
   listener_->AddSelf(new VideoSegment());
 #endif
 
@@ -1410,12 +1423,14 @@ MediaPipelineReceiveVideo::PipelineListener::PipelineListener(
   : GenericReceiveListener(source, track_id, source->GraphRate(), queue_track),
     width_(640),
     height_(480),
-#ifdef MOZILLA_INTERNAL_API
+#if defined(MOZILLA_XPCOMRT_API)
+    image_(new mozilla::SimpleImageBuffer),
+#elif defined(MOZILLA_INTERNAL_API)
     image_container_(),
     image_(),
 #endif
     monitor_("Video PipelineListener") {
-#ifdef MOZILLA_INTERNAL_API
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
   image_container_ = layers::LayerManager::CreateImageContainer();
 #endif
 }
@@ -1426,9 +1441,16 @@ void MediaPipelineReceiveVideo::PipelineListener::RenderVideoFrame(
     uint32_t time_stamp,
     int64_t render_time,
     const RefPtr<layers::Image>& video_image) {
+
 #ifdef MOZILLA_INTERNAL_API
   ReentrantMonitorAutoEnter enter(monitor_);
+#endif // MOZILLA_INTERNAL_API
 
+#if defined(MOZILLA_XPCOMRT_API)
+  if (buffer) {
+    image_->SetImage(buffer, buffer_size, width_, height_);
+  }
+#elif defined(MOZILLA_INTERNAL_API)
   if (buffer) {
     // Create a video frame using |buffer|.
 #ifdef MOZ_WIDGET_GONK
@@ -1471,10 +1493,15 @@ void MediaPipelineReceiveVideo::PipelineListener::
 NotifyPull(MediaStreamGraph* graph, StreamTime desired_time) {
   ReentrantMonitorAutoEnter enter(monitor_);
 
-#ifdef MOZILLA_INTERNAL_API
+#if defined(MOZILLA_XPCOMRT_API)
+  nsRefPtr<SimpleImageBuffer> image = image_;
+#elif defined(MOZILLA_INTERNAL_API)
   nsRefPtr<layers::Image> image = image_;
   // our constructor sets track_rate_ to the graph rate
   MOZ_ASSERT(track_rate_ == source_->GraphRate());
+#endif
+
+#if defined(MOZILLA_INTERNAL_API)
   StreamTime delta = desired_time - played_ticks_;
 
   // Don't append if we've already provided a frame that supposedly
@@ -1491,6 +1518,12 @@ NotifyPull(MediaStreamGraph* graph, StreamTime desired_time) {
       return;
     }
   }
+#endif
+#if defined(MOZILLA_XPCOMRT_API)
+  // Clear the image without deleting the memory.
+  // This prevents image_ from being used if it
+  // does not have new content during the next NotifyPull.
+  image_->SetImage(nullptr, 0, 0, 0);
 #endif
 }
 

@@ -23,11 +23,24 @@ namespace cache {
 using mozilla::dom::quota::FileInputStream;
 using mozilla::dom::quota::FileOutputStream;
 using mozilla::dom::quota::PERSISTENCE_TYPE_DEFAULT;
-using mozilla::unused;
+
+namespace {
+
+enum BodyFileType
+{
+  BODY_FILE_FINAL,
+  BODY_FILE_TMP
+};
+
+nsresult
+BodyIdToFile(nsIFile* aBaseDir, const nsID& aId, BodyFileType aType,
+             nsIFile** aBodyFileOut);
+
+} // anonymous namespace
 
 // static
 nsresult
-FileUtils::BodyCreateDir(nsIFile* aBaseDir)
+BodyCreateDir(nsIFile* aBaseDir)
 {
   MOZ_ASSERT(aBaseDir);
 
@@ -49,7 +62,7 @@ FileUtils::BodyCreateDir(nsIFile* aBaseDir)
 
 // static
 nsresult
-FileUtils::BodyDeleteDir(nsIFile* aBaseDir)
+BodyDeleteDir(nsIFile* aBaseDir)
 {
   MOZ_ASSERT(aBaseDir);
 
@@ -72,8 +85,7 @@ FileUtils::BodyDeleteDir(nsIFile* aBaseDir)
 
 // static
 nsresult
-FileUtils::BodyGetCacheDir(nsIFile* aBaseDir, const nsID& aId,
-                           nsIFile** aCacheDirOut)
+BodyGetCacheDir(nsIFile* aBaseDir, const nsID& aId, nsIFile** aCacheDirOut)
 {
   MOZ_ASSERT(aBaseDir);
   MOZ_ASSERT(aCacheDirOut);
@@ -107,11 +119,11 @@ FileUtils::BodyGetCacheDir(nsIFile* aBaseDir, const nsID& aId,
 
 // static
 nsresult
-FileUtils::BodyStartWriteStream(const QuotaInfo& aQuotaInfo,
-                                nsIFile* aBaseDir, nsIInputStream* aSource,
-                                void* aClosure,
-                                nsAsyncCopyCallbackFun aCallback, nsID* aIdOut,
-                                nsISupports** aCopyContextOut)
+BodyStartWriteStream(const QuotaInfo& aQuotaInfo,
+                     nsIFile* aBaseDir, nsIInputStream* aSource,
+                     void* aClosure,
+                     nsAsyncCopyCallbackFun aCallback, nsID* aIdOut,
+                     nsISupports** aCopyContextOut)
 {
   MOZ_ASSERT(aBaseDir);
   MOZ_ASSERT(aSource);
@@ -168,7 +180,7 @@ FileUtils::BodyStartWriteStream(const QuotaInfo& aQuotaInfo,
 
 // static
 void
-FileUtils::BodyCancelWrite(nsIFile* aBaseDir, nsISupports* aCopyContext)
+BodyCancelWrite(nsIFile* aBaseDir, nsISupports* aCopyContext)
 {
   MOZ_ASSERT(aBaseDir);
   MOZ_ASSERT(aCopyContext);
@@ -182,7 +194,7 @@ FileUtils::BodyCancelWrite(nsIFile* aBaseDir, nsISupports* aCopyContext)
 
 // static
 nsresult
-FileUtils::BodyFinalizeWrite(nsIFile* aBaseDir, const nsID& aId)
+BodyFinalizeWrite(nsIFile* aBaseDir, const nsID& aId)
 {
   MOZ_ASSERT(aBaseDir);
 
@@ -206,8 +218,8 @@ FileUtils::BodyFinalizeWrite(nsIFile* aBaseDir, const nsID& aId)
 
 // static
 nsresult
-FileUtils::BodyOpen(const QuotaInfo& aQuotaInfo, nsIFile* aBaseDir,
-                    const nsID& aId, nsIInputStream** aStreamOut)
+BodyOpen(const QuotaInfo& aQuotaInfo, nsIFile* aBaseDir, const nsID& aId,
+         nsIInputStream** aStreamOut)
 {
   MOZ_ASSERT(aBaseDir);
   MOZ_ASSERT(aStreamOut);
@@ -234,7 +246,7 @@ FileUtils::BodyOpen(const QuotaInfo& aQuotaInfo, nsIFile* aBaseDir,
 
 // static
 nsresult
-FileUtils::BodyDeleteFiles(nsIFile* aBaseDir, const nsTArray<nsID>& aIdList)
+BodyDeleteFiles(nsIFile* aBaseDir, const nsTArray<nsID>& aIdList)
 {
   nsresult rv = NS_OK;
 
@@ -273,10 +285,11 @@ FileUtils::BodyDeleteFiles(nsIFile* aBaseDir, const nsTArray<nsID>& aIdList)
   return NS_OK;
 }
 
-// static
+namespace {
+
 nsresult
-FileUtils::BodyIdToFile(nsIFile* aBaseDir, const nsID& aId,
-                        BodyFileType aType, nsIFile** aBodyFileOut)
+BodyIdToFile(nsIFile* aBaseDir, const nsID& aId, BodyFileType aType,
+             nsIFile** aBodyFileOut)
 {
   MOZ_ASSERT(aBaseDir);
   MOZ_ASSERT(aBodyFileOut);
@@ -302,6 +315,184 @@ FileUtils::BodyIdToFile(nsIFile* aBaseDir, const nsID& aId,
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
 
   return rv;
+}
+
+} // anonymous namespace
+
+nsresult
+BodyDeleteOrphanedFiles(nsIFile* aBaseDir, nsTArray<nsID>& aKnownBodyIdList)
+{
+  MOZ_ASSERT(aBaseDir);
+
+  // body files are stored in a directory structure like:
+  //
+  //  /morgue/01/{01fdddb2-884d-4c3d-95ba-0c8062f6c325}.final
+  //  /morgue/02/{02fdddb2-884d-4c3d-95ba-0c8062f6c325}.tmp
+
+  nsCOMPtr<nsIFile> dir;
+  nsresult rv = aBaseDir->Clone(getter_AddRefs(dir));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  // Add the root morgue directory
+  rv = dir->Append(NS_LITERAL_STRING("morgue"));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  nsCOMPtr<nsISimpleEnumerator> entries;
+  rv = dir->GetDirectoryEntries(getter_AddRefs(entries));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  // Iterate over all the intermediate morgue subdirs
+  bool hasMore = false;
+  while (NS_SUCCEEDED(rv = entries->HasMoreElements(&hasMore)) && hasMore) {
+    nsCOMPtr<nsISupports> entry;
+    rv = entries->GetNext(getter_AddRefs(entry));
+    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+    nsCOMPtr<nsIFile> subdir = do_QueryInterface(entry);
+
+    bool isDir = false;
+    rv = subdir->IsDirectory(&isDir);
+    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+    // If a file got in here somehow, try to remove it and move on
+    if (NS_WARN_IF(!isDir)) {
+      rv = subdir->Remove(false /* recursive */);
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+      continue;
+    }
+
+    nsCOMPtr<nsISimpleEnumerator> subEntries;
+    rv = subdir->GetDirectoryEntries(getter_AddRefs(subEntries));
+    if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+    // Now iterate over all the files in the subdir
+    bool subHasMore = false;
+    while(NS_SUCCEEDED(rv = subEntries->HasMoreElements(&subHasMore)) &&
+          subHasMore) {
+      nsCOMPtr<nsISupports> subEntry;
+      rv = subEntries->GetNext(getter_AddRefs(subEntry));
+      if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+      nsCOMPtr<nsIFile> file = do_QueryInterface(subEntry);
+
+      nsAutoCString leafName;
+      rv = file->GetNativeLeafName(leafName);
+      if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+      // Delete all tmp files regardless of known bodies.  These are
+      // all considered orphans.
+      if (StringEndsWith(leafName, NS_LITERAL_CSTRING(".tmp"))) {
+        // remove recursively in case its somehow a directory
+        rv = file->Remove(true /* recursive */);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+        continue;
+      }
+
+      nsCString suffix(NS_LITERAL_CSTRING(".final"));
+
+      // Otherwise, it must be a .final file.  If its not, then just
+      // skip it.
+      if (NS_WARN_IF(!StringEndsWith(leafName, suffix) ||
+                     leafName.Length() != NSID_LENGTH - 1 + suffix.Length())) {
+        continue;
+      }
+
+      // Finally, parse the uuid out of the name.  If its fails to parse,
+      // the ignore the file.
+      nsID id;
+      if (NS_WARN_IF(!id.Parse(leafName.BeginReading()))) {
+        continue;
+      }
+
+      if (!aKnownBodyIdList.Contains(id)) {
+        // remove recursively in case its somehow a directory
+        rv = file->Remove(true /* recursive */);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+      }
+    }
+  }
+
+  return rv;
+}
+
+namespace {
+
+nsresult
+GetMarkerFileHandle(const QuotaInfo& aQuotaInfo, nsIFile** aFileOut)
+{
+  MOZ_ASSERT(aFileOut);
+
+  nsCOMPtr<nsIFile> marker;
+  nsresult rv = aQuotaInfo.mDir->Clone(getter_AddRefs(marker));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = marker->Append(NS_LITERAL_STRING("cache"));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = marker->Append(NS_LITERAL_STRING("context_open.marker"));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  marker.forget(aFileOut);
+
+  return rv;
+}
+
+} // anonymous namespace
+
+nsresult
+CreateMarkerFile(const QuotaInfo& aQuotaInfo)
+{
+  nsCOMPtr<nsIFile> marker;
+  nsresult rv = GetMarkerFileHandle(aQuotaInfo, getter_AddRefs(marker));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = marker->Create(nsIFile::NORMAL_FILE_TYPE, 0644);
+  if (rv == NS_ERROR_FILE_ALREADY_EXISTS) {
+    rv = NS_OK;
+  }
+
+  // Note, we don't need to fsync here.  We only care about actually
+  // writing the marker if later modifications to the Cache are
+  // actually flushed to the disk.  If the OS crashes before the marker
+  // is written then we are ensured no other changes to the Cache were
+  // flushed either.
+
+  return rv;
+}
+
+nsresult
+DeleteMarkerFile(const QuotaInfo& aQuotaInfo)
+{
+  nsCOMPtr<nsIFile> marker;
+  nsresult rv = GetMarkerFileHandle(aQuotaInfo, getter_AddRefs(marker));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
+
+  rv = marker->Remove(/* recursive = */ false);
+  if (rv == NS_ERROR_FILE_NOT_FOUND ||
+      rv == NS_ERROR_FILE_TARGET_DOES_NOT_EXIST) {
+    rv = NS_OK;
+  }
+
+  // Again, no fsync is necessary.  If the OS crashes before the file
+  // removal is flushed, then the Cache will search for stale data on
+  // startup.  This will cause the next Cache access to be a bit slow, but
+  // it seems appropriate after an OS crash.
+
+  return NS_OK;
+}
+
+bool
+MarkerFileExists(const QuotaInfo& aQuotaInfo)
+{
+  nsCOMPtr<nsIFile> marker;
+  nsresult rv = GetMarkerFileHandle(aQuotaInfo, getter_AddRefs(marker));
+  if (NS_WARN_IF(NS_FAILED(rv))) { return false; }
+
+  bool exists = false;
+  rv = marker->Exists(&exists);
+  if (NS_WARN_IF(NS_FAILED(rv))) { return false; }
+
+  return exists;
 }
 
 } // namespace cache

@@ -31,9 +31,13 @@
 #include "nsExceptionHandler.h"
 #endif
 
+class nsIProfileSaveEvent;
 class nsPluginTag;
 
 namespace mozilla {
+#ifdef MOZ_ENABLE_PROFILER_SPS
+class ProfileGatherer;
+#endif
 namespace dom {
 class PCrashReporterParent;
 class CrashReporterParent;
@@ -93,7 +97,7 @@ protected:
     DeallocPPluginInstanceParent(PPluginInstanceParent* aActor) override;
 
 public:
-    explicit PluginModuleParent(bool aIsChrome);
+    explicit PluginModuleParent(bool aIsChrome, bool aAllowAsyncInit);
     virtual ~PluginModuleParent();
 
     bool RemovePendingSurrogate(const nsRefPtr<PluginAsyncSurrogate>& aSurrogate);
@@ -127,6 +131,13 @@ public:
     nsCString GetHistogramKey() const {
         return mPluginName + mPluginVersion;
     }
+
+    virtual nsresult GetRunID(uint32_t* aRunID) override;
+    virtual void SetHasLocalInstance() override {
+        mHadLocalInstance = true;
+    }
+
+    int GetQuirks() { return mQuirks; }
 
 protected:
     virtual mozilla::ipc::RacyInterruptPolicy
@@ -188,6 +199,8 @@ protected:
     virtual void UpdatePluginTimeout() {}
 
     virtual bool RecvNotifyContentModuleDestroyed() override { return true; }
+
+    virtual bool RecvProfile(const nsCString& aProfile) override { return true; }
 
     void SetPluginFuncs(NPPluginFuncs* aFuncs);
 
@@ -264,6 +277,11 @@ protected:
 
     void InitAsyncSurrogates();
 
+private:
+    nsCString mPluginFilename;
+    int mQuirks;
+    void InitQuirksModes(const nsCString& aMimeType);
+
 protected:
     void NotifyFlashHang();
     void NotifyPluginCrashed();
@@ -276,6 +294,7 @@ protected:
 
     bool mIsChrome;
     bool mShutdown;
+    bool mHadLocalInstance;
     bool mClearSiteDataSupported;
     bool mGetSitesWithDataSupported;
     NPNetscapeFuncs* mNPNIface;
@@ -308,14 +327,15 @@ protected:
     bool              mIsNPShutdownPending;
     nsTArray<nsRefPtr<PluginAsyncSurrogate>> mSurrogateInstances;
     nsresult          mAsyncNewRv;
+    uint32_t          mRunID;
 };
 
 class PluginModuleContentParent : public PluginModuleParent
 {
   public:
-    explicit PluginModuleContentParent();
+    explicit PluginModuleContentParent(bool aAllowAsyncInit);
 
-    static PluginLibrary* LoadModule(uint32_t aPluginId);
+    static PluginLibrary* LoadModule(uint32_t aPluginId, nsPluginTag* aPluginTag);
 
     static PluginModuleContentParent* Initialize(mozilla::ipc::Transport* aTransport,
                                                  base::ProcessId aOtherProcess);
@@ -366,7 +386,19 @@ class PluginModuleChromeParent
 
     virtual ~PluginModuleChromeParent();
 
-    void TerminateChildProcess(MessageLoop* aMsgLoop);
+    /*
+     * Terminates the plugin process associated with this plugin module. Also
+     * generates appropriate crash reports. Takes ownership of the file
+     * associated with aBrowserDumpId on success.
+     *
+     * @param aMsgLoop the main message pump associated with the module
+     *   protocol.
+     * @param aBrowserDumpId (optional) previously taken browser dump id. If
+     *   provided TerminateChildProcess will use this browser dump file in
+     *   generating a multi-process crash report. If not provided a browser
+     *   dump will be taken at the time of this call.
+     */
+    void TerminateChildProcess(MessageLoop* aMsgLoop, const nsAString& aBrowserDumpId);
 
 #ifdef XP_WIN
     /**
@@ -397,6 +429,14 @@ class PluginModuleChromeParent
     void OnExitedCall() override;
     void OnEnteredSyncSend() override;
     void OnExitedSyncSend() override;
+
+#ifdef  MOZ_ENABLE_PROFILER_SPS
+    void GatherAsyncProfile(mozilla::ProfileGatherer* aGatherer);
+    void GatheredAsyncProfile(nsIProfileSaveEvent* aSaveEvent);
+#endif
+
+    virtual bool
+    RecvProfile(const nsCString& aProfile) override;
 
 private:
     virtual void
@@ -440,7 +480,9 @@ private:
     virtual void ActorDestroy(ActorDestroyReason why) override;
 
     // aFilePath is UTF8, not native!
-    explicit PluginModuleChromeParent(const char* aFilePath, uint32_t aPluginId);
+    explicit PluginModuleChromeParent(const char* aFilePath, uint32_t aPluginId,
+                                      int32_t aSandboxLevel,
+                                      bool aAllowAsyncInit);
 
     CrashReporterParent* CrashReporter();
 
@@ -480,6 +522,7 @@ private:
     PluginHangUIParent *mHangUIParent;
     bool mHangUIEnabled;
     bool mIsTimerReset;
+    int32_t mSandboxLevel;
 #ifdef MOZ_CRASHREPORTER
     /**
      * This mutex protects the crash reporter when the Plugin Hang UI event
@@ -553,6 +596,10 @@ private:
     NPError             mAsyncInitError;
     dom::ContentParent* mContentParent;
     nsCOMPtr<nsIObserver> mOfflineObserver;
+#ifdef MOZ_ENABLE_PROFILER_SPS
+    nsRefPtr<mozilla::ProfileGatherer> mGatherer;
+#endif
+    nsCString mProfile;
     bool mIsBlocklisted;
     static bool sInstantiated;
 };

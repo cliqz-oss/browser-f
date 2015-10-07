@@ -8,13 +8,11 @@
 
 #include "mozilla/LinkedList.h"
 #include "nsWrapperCache.h"
-#include "WebGLBindableName.h"
 #include "WebGLObjectModel.h"
 #include "WebGLStrongTypes.h"
 
 namespace mozilla {
 
-class WebGLFramebufferAttachable;
 class WebGLRenderbuffer;
 class WebGLTexture;
 
@@ -24,12 +22,13 @@ namespace gl {
 
 class WebGLFramebuffer final
     : public nsWrapperCache
-    , public WebGLBindableName<FBTarget>
     , public WebGLRefCountedObject<WebGLFramebuffer>
     , public LinkedListElement<WebGLFramebuffer>
     , public WebGLContextBoundObject
     , public SupportsWeakPtr<WebGLFramebuffer>
 {
+    friend class WebGLContext;
+
 public:
     MOZ_DECLARE_WEAKREFERENCE_TYPENAME(WebGLFramebuffer)
 
@@ -54,7 +53,6 @@ public:
         }
 
         bool IsDefined() const;
-
         bool IsDeleteRequested() const;
 
         TexInternalFormat EffectiveInternalFormat() const;
@@ -100,6 +98,8 @@ public:
                                 FBAttachment attachmentLoc) const;
     };
 
+    const GLuint mGLName;
+
 private:
     mutable GLenum mStatus;
 
@@ -111,6 +111,15 @@ private:
     AttachPoint mStencilAttachment;
     AttachPoint mDepthStencilAttachment;
     nsTArray<AttachPoint> mMoreColorAttachments;
+
+#ifdef ANDROID
+    // Bug 1140459: Some drivers (including our test slaves!) don't
+    // give reasonable answers for IsRenderbuffer, maybe others.
+    // This shows up on Android 2.3 emulator.
+    //
+    // So we track the `is a Framebuffer` state ourselves.
+    bool mIsFB;
+#endif
 
 public:
     WebGLFramebuffer(WebGLContext* webgl, GLuint fbo);

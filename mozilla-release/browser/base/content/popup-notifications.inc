@@ -57,9 +57,26 @@
     <popupnotification id="password-notification" hidden="true">
       <popupnotificationcontent orient="vertical">
         <textbox id="password-notification-username"/>
-        <textbox id="password-notification-password" type="password"/>
+        <textbox id="password-notification-password" type="password" show-content=""/>
       </popupnotificationcontent>
     </popupnotification>
+
+    <stack id="login-fill-doorhanger" hidden="true">
+      <vbox id="login-fill-mainview">
+        <description id="login-fill-testing"
+                     value="Thanks for testing the login fill doorhanger!"/>
+        <textbox id="login-fill-filter"/>
+        <richlistbox id="login-fill-list"/>
+      </vbox>
+      <vbox id="login-fill-clickcapturer"/>
+      <vbox id="login-fill-details">
+        <textbox id="login-fill-username" readonly="true"/>
+        <textbox id="login-fill-password" type="password" disabled="true"/>
+        <hbox>
+          <button id="login-fill-use" label="Use in form"/>
+        </hbox>
+      </vbox>
+    </stack>
 
 #ifdef E10S_TESTING_ONLY
     <popupnotification id="enable-e10s-notification" hidden="true">

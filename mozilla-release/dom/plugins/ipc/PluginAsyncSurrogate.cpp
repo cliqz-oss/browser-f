@@ -562,8 +562,12 @@ PluginAsyncSurrogate::NotifyAsyncInitFailed()
       PendingNewStreamCall& curPendingCall = mPendingNewStreamCalls[i];
       DestroyAsyncStream(curPendingCall.mStream);
     }
-    mPendingNewStreamCalls.Clear();
   }
+  mPendingNewStreamCalls.Clear();
+
+  // Make sure that any WaitForInit calls on this surrogate will fail, or else
+  // we'll be perma-blocked
+  mInitCancelled = true;
 
   nsNPAPIPluginInstance* inst =
     static_cast<nsNPAPIPluginInstance*>(mInstance->ndata);
@@ -571,8 +575,9 @@ PluginAsyncSurrogate::NotifyAsyncInitFailed()
       return;
   }
   nsPluginInstanceOwner* owner = inst->GetOwner();
-  MOZ_ASSERT(owner);
-  owner->NotifyHostAsyncInitFailed();
+  if (owner) {
+    owner->NotifyHostAsyncInitFailed();
+  }
 }
 
 // static

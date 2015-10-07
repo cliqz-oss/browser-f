@@ -22,11 +22,6 @@
             xmlns:xul="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
             title="&newtab.pageTitle;">
 
-  <xul:panel id="newtab-intro-panel" orient="vertical" type="arrow"
-             noautohide="true" hidden="true">
-    <h1>&newtab.intro.header;</h1>
-  </xul:panel>
-
   <xul:panel id="newtab-search-panel" orient="vertical" type="arrow"
              noautohide="true" hidden="true">
     <xul:hbox id="newtab-search-manage">
@@ -34,18 +29,53 @@
     </xul:hbox>
   </xul:panel>
 
-  <xul:panel id="newtab-customize-panel" orient="vertical" type="arrow"
-             noautohide="true" hidden="true">
-    <xul:hbox id="newtab-customize-enhanced" class="newtab-customize-panel-item">
-      <xul:label>&newtab.customize.suggested;</xul:label>
-    </xul:hbox>
-    <xul:hbox id="newtab-customize-classic" class="newtab-customize-panel-item">
-      <xul:label>&newtab.customize.topsites;</xul:label>
-    </xul:hbox>
-    <xul:hbox id="newtab-customize-blank" class="newtab-customize-panel-item">
-      <xul:label>&newtab.customize.blank2;</xul:label>
-    </xul:hbox>
-  </xul:panel>
+  <div class="newtab-customize-panel-container">
+    <div id="newtab-customize-panel" orient="vertical">
+        <div id="newtab-customize-panel-anchor"></div>
+        <div id="newtab-customize-title" class="newtab-customize-panel-item">
+            <label>&newtab.customize.cog.title2;</label>
+        </div>
+
+        <div class="newtab-customize-complex-option">
+            <div id="newtab-customize-classic" class="newtab-customize-panel-superitem newtab-customize-panel-item selectable">
+                <label>&newtab.customize.classic;</label>
+            </div>
+            <div id="newtab-customize-enhanced" class="newtab-customize-panel-subitem">
+                <label class="checkbox"></label>
+                <label>&newtab.customize.cog.enhanced;</label>
+            </div>
+        </div>
+        <div id="newtab-customize-blank" class="newtab-customize-panel-item selectable">
+            <label>&newtab.customize.blank2;</label>
+        </div>
+        <div id="newtab-customize-learn" class="newtab-customize-panel-item">
+            <label>&newtab.customize.cog.learn;</label>
+        </div>
+    </div>
+  </div>
+
+  <div id="newtab-customize-overlay"></div>
+
+  <div id="newtab-intro-mask">
+    <div id="newtab-intro-modal">
+      <div id="newtab-intro-header"/>
+      <div id="newtab-intro-body">
+        <div id="newtab-intro-content">
+          <div id="newtab-intro-text">
+            <p/><p/>
+          </div>
+        </div>
+        <div id="newtab-intro-buttons">
+          <input id="newtab-intro-button" type="button" default="true" onclick="gIntro._exitIntro()"/>
+        </div>
+      </div>
+      <div id="newtab-intro-footer">
+        <ul>
+          <li id="newtab-intro-link"/>
+        </ul>
+      </div>
+    </div>
+  </div>
 
   <div id="newtab-scrollbox">
 
@@ -91,9 +121,6 @@
       <div id="newtab-margin-bottom"/>
 
     </div>
-
-    <div id="newtab-intro-what">&newtab.customize.what;</div>
-
     <input id="newtab-customize-button" type="button" title="&newtab.customize.title;"/>
   </div>
 

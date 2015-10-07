@@ -36,6 +36,7 @@
 #include "gfxWindowsPlatform.h"
 #include <d3d10_1.h>
 #include "D3D9SurfaceImage.h"
+#include "D3D11ShareHandleImage.h"
 #endif
 
 namespace mozilla {
@@ -94,6 +95,10 @@ ImageFactory::CreateImage(ImageFormat aFormat,
   }
 #endif
 #ifdef XP_WIN
+  if (aFormat == ImageFormat::D3D11_SHARE_HANDLE_TEXTURE) {
+    img = new D3D11ShareHandleImage();
+    return img.forget();
+  }
   if (aFormat == ImageFormat::D3D9_RGB32_TEXTURE) {
     img = new D3D9SurfaceImage();
     return img.forget();
@@ -133,7 +138,7 @@ BufferRecycleBin::GetBuffer(uint32_t aSize)
   return result;
 }
 
-ImageContainer::ImageContainer(int flag)
+ImageContainer::ImageContainer(ImageContainer::Mode flag)
 : mReentrantMonitor("ImageContainer.mReentrantMonitor"),
   mPaintCount(0),
   mPreviousImagePainted(false),
@@ -142,11 +147,24 @@ ImageContainer::ImageContainer(int flag)
   mCompositionNotifySink(nullptr),
   mImageClient(nullptr)
 {
-  if (flag == ENABLE_ASYNC && ImageBridgeChild::IsCreated()) {
+  if (ImageBridgeChild::IsCreated()) {
     // the refcount of this ImageClient is 1. we don't use a RefPtr here because the refcount
     // of this class must be done on the ImageBridge thread.
-    mImageClient = ImageBridgeChild::GetSingleton()->CreateImageClient(CompositableType::IMAGE).take();
-    MOZ_ASSERT(mImageClient);
+    switch(flag) {
+      case SYNCHRONOUS:
+        break;
+      case ASYNCHRONOUS:
+        mImageClient = ImageBridgeChild::GetSingleton()->CreateImageClient(CompositableType::IMAGE).take();
+        MOZ_ASSERT(mImageClient);
+        break;
+      case ASYNCHRONOUS_OVERLAY:
+        mImageClient = ImageBridgeChild::GetSingleton()->CreateImageClient(CompositableType::IMAGE_OVERLAY).take();
+        MOZ_ASSERT(mImageClient);
+        break;
+      default:
+        MOZ_ASSERT(false, "This flag is invalid.");
+        break;
+    }
   }
 }
 
@@ -453,7 +471,8 @@ TemporaryRef<gfx::SourceSurface>
 PlanarYCbCrImage::GetAsSourceSurface()
 {
   if (mSourceSurface) {
-    return mSourceSurface.get();
+    RefPtr<gfx::SourceSurface> surface(mSourceSurface);
+    return surface.forget();
   }
 
   gfx::IntSize size(mSize);
@@ -470,7 +489,12 @@ PlanarYCbCrImage::GetAsSourceSurface()
     return nullptr;
   }
 
-  gfx::ConvertYCbCrToRGB(mData, format, size, surface->GetData(), surface->Stride());
+  DataSourceSurface::ScopedMap mapping(surface, DataSourceSurface::WRITE);
+  if (NS_WARN_IF(!mapping.IsMapped())) {
+    return nullptr;
+  }
+
+  gfx::ConvertYCbCrToRGB(mData, format, size, mapping.GetData(), mapping.GetStride());
 
   mSourceSurface = surface;
 

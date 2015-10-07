@@ -12,10 +12,14 @@
 #include <stdarg.h>
 #include "mozilla/ThreadLocal.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/GuardObjects.h"
+#include "mozilla/UniquePtr.h"
+#ifndef SPS_STANDALONE
 #include "nscore.h"
+#include "nsISupports.h"
+#endif
 #include "GeckoProfilerFunc.h"
 #include "PseudoStack.h"
-#include "nsISupports.h"
 #include "ProfilerBacktrace.h"
 
 #ifdef MOZ_TASK_TRACER
@@ -35,7 +39,6 @@
 #endif
 
 class TableTicker;
-class JSCustomObject;
 
 namespace mozilla {
 class TimeStamp;
@@ -143,16 +146,25 @@ void profiler_set_frame_number(int frameNumber)
 }
 
 static inline
-char* profiler_get_profile()
+mozilla::UniquePtr<char[]> profiler_get_profile(double aSinceTime = 0)
 {
-  return mozilla_sampler_get_profile();
+  return mozilla_sampler_get_profile(aSinceTime);
+}
+
+#ifndef SPS_STANDALONE
+static inline
+JSObject* profiler_get_profile_jsobject(JSContext* aCx, double aSinceTime = 0)
+{
+  return mozilla_sampler_get_profile_data(aCx, aSinceTime);
 }
 
 static inline
-JSObject* profiler_get_profile_jsobject(JSContext* aCx)
+void profiler_get_profile_jsobject_async(double aSinceTime = 0,
+                                         mozilla::dom::Promise* aPromise = 0)
 {
-  return mozilla_sampler_get_profile_data(aCx);
+  mozilla_sampler_get_profile_data_async(aSinceTime, aPromise);
 }
+#endif
 
 static inline
 void profiler_save_profile_to_file(const char* aFilename)
@@ -164,6 +176,13 @@ static inline
 const char** profiler_get_features()
 {
   return mozilla_sampler_get_features();
+}
+
+static inline
+void profiler_get_buffer_info(uint32_t *aCurrentPosition, uint32_t *aTotalSize,
+                              uint32_t *aGeneration)
+{
+  return mozilla_sampler_get_buffer_info(aCurrentPosition, aTotalSize, aGeneration);
 }
 
 static inline
@@ -202,6 +221,7 @@ void profiler_sleep_end()
   mozilla_sampler_sleep_end();
 }
 
+#ifndef SPS_STANDALONE
 static inline
 void profiler_js_operation_callback()
 {
@@ -212,6 +232,7 @@ void profiler_js_operation_callback()
 
   stack->jsOperationCallback();
 }
+#endif
 
 static inline
 double profiler_time()
@@ -264,6 +285,10 @@ static inline void profiler_tracing(const char* aCategory, const char* aInfo,
   mozilla_sampler_tracing(aCategory, aInfo, aMetaData);
 }
 
+#define SAMPLER_APPEND_LINE_NUMBER_PASTE(id, line) id ## line
+#define SAMPLER_APPEND_LINE_NUMBER_EXPAND(id, line) SAMPLER_APPEND_LINE_NUMBER_PASTE(id, line)
+#define SAMPLER_APPEND_LINE_NUMBER(id) SAMPLER_APPEND_LINE_NUMBER_EXPAND(id, __LINE__)
+
 // Uncomment this to turn on systrace or build with
 // ac_add_options --enable-systace
 //#define MOZ_USE_SYSTRACE
@@ -285,7 +310,7 @@ static inline void profiler_tracing(const char* aCategory, const char* aInfo,
 // atrace_end with defined HAVE_ANDROID_OS again. Then there is no build-break.
 # undef _LIBS_CUTILS_TRACE_H
 # include <utils/Trace.h>
-# define MOZ_PLATFORM_TRACING(name) ATRACE_NAME(name);
+# define MOZ_PLATFORM_TRACING(name) android::ScopedTrace SAMPLER_APPEND_LINE_NUMBER(scopedTrace)(ATRACE_TAG, name);
 # ifdef REMOVE_HAVE_ANDROID_OS
 #  undef HAVE_ANDROID_OS
 #  undef REMOVE_HAVE_ANDROID_OS
@@ -296,10 +321,6 @@ static inline void profiler_tracing(const char* aCategory, const char* aInfo,
 
 // we want the class and function name but can't easily get that using preprocessor macros
 // __func__ doesn't have the class name and __PRETTY_FUNCTION__ has the parameters
-
-#define SAMPLER_APPEND_LINE_NUMBER_PASTE(id, line) id ## line
-#define SAMPLER_APPEND_LINE_NUMBER_EXPAND(id, line) SAMPLER_APPEND_LINE_NUMBER_PASTE(id, line)
-#define SAMPLER_APPEND_LINE_NUMBER(id) SAMPLER_APPEND_LINE_NUMBER_EXPAND(id, __LINE__)
 
 #define PROFILER_LABEL(name_space, info, category) MOZ_PLATFORM_TRACING(name_space "::" info) mozilla::SamplerStackFrameRAII SAMPLER_APPEND_LINE_NUMBER(sampler_raii)(name_space "::" info, category, __LINE__)
 #define PROFILER_LABEL_FUNC(category) MOZ_PLATFORM_TRACING(SAMPLE_FUNCTION_NAME) mozilla::SamplerStackFrameRAII SAMPLER_APPEND_LINE_NUMBER(sampler_raii)(SAMPLE_FUNCTION_NAME, category, __LINE__)
@@ -355,6 +376,28 @@ static inline void profiler_tracing(const char* aCategory, const char* aInfo,
 #define PROFILE_DEFAULT_FEATURE_COUNT 0
 
 namespace mozilla {
+
+class MOZ_STACK_CLASS GeckoProfilerTracingRAII {
+public:
+  GeckoProfilerTracingRAII(const char* aCategory, const char* aInfo,
+                           mozilla::UniquePtr<ProfilerBacktrace> aBacktrace
+                           MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
+    : mCategory(aCategory)
+    , mInfo(aInfo)
+  {
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+    profiler_tracing(mCategory, mInfo, aBacktrace.release(), TRACING_INTERVAL_START);
+  }
+
+  ~GeckoProfilerTracingRAII() {
+    profiler_tracing(mCategory, mInfo, TRACING_INTERVAL_END);
+  }
+
+protected:
+  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
+  const char* mCategory;
+  const char* mInfo;
+};
 
 class MOZ_STACK_CLASS SamplerStackFrameRAII {
 public:
