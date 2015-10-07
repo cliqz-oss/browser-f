@@ -11,8 +11,10 @@
 #include "nsLookAndFeel.h"
 #include "nsCRT.h"
 #include "nsFont.h"
+#include "mozilla/dom/ContentChild.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/widget/WidgetMessageUtils.h"
 
 #include "gfxPlatform.h"
 #include "qcms.h"
@@ -453,6 +455,15 @@ nsXPLookAndFeel::Init()
   if (NS_SUCCEEDED(Preferences::GetBool("ui.use_native_colors", &val))) {
     sUseNativeColors = val;
   }
+
+  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+    mozilla::dom::ContentChild* cc =
+      mozilla::dom::ContentChild::GetSingleton();
+
+    nsTArray<LookAndFeelInt> lookAndFeelIntCache;
+    cc->SendGetLookAndFeelCache(lookAndFeelIntCache);
+    LookAndFeel::SetIntCache(lookAndFeelIntCache);
+  }
 }
 
 nsXPLookAndFeel::~nsXPLookAndFeel()
@@ -703,6 +714,12 @@ nsXPLookAndFeel::RefreshImpl()
     sCachedColorBits[i] = 0;
 }
 
+nsTArray<LookAndFeelInt>
+nsXPLookAndFeel::GetIntCacheImpl()
+{
+  return nsTArray<LookAndFeelInt>();
+}
+
 namespace mozilla {
 
 // static
@@ -761,6 +778,20 @@ void
 LookAndFeel::Refresh()
 {
   nsLookAndFeel::GetInstance()->RefreshImpl();
+}
+
+// static
+nsTArray<LookAndFeelInt>
+LookAndFeel::GetIntCache()
+{
+  return nsLookAndFeel::GetInstance()->GetIntCacheImpl();
+}
+
+// static
+void
+LookAndFeel::SetIntCache(const nsTArray<LookAndFeelInt>& aLookAndFeelIntCache)
+{
+  return nsLookAndFeel::GetInstance()->SetIntCacheImpl(aLookAndFeelIntCache);
 }
 
 } // namespace mozilla

@@ -242,8 +242,7 @@ nsSVGMaskFrame::GetMaskForMaskedFrame(gfxContext* aContext,
 
   bool resultOverflows;
   IntSize maskSurfaceSize =
-    ToIntSize(nsSVGUtils::ConvertToSurfaceSize(maskSurfaceRect.Size(),
-                                               &resultOverflows));
+    nsSVGUtils::ConvertToSurfaceSize(maskSurfaceRect.Size(), &resultOverflows);
 
   if (resultOverflows || maskSurfaceSize.IsEmpty()) {
     // XXXjwatt we should return an empty surface so we don't paint aMaskedFrame!
@@ -333,7 +332,7 @@ nsSVGMaskFrame::GetMaskForMaskedFrame(gfxContext* aContext,
   }
 
   *aMaskTransform = ToMatrix(maskSurfaceMatrix);
-  return destMaskSurface;
+  return destMaskSurface.forget();
 }
 
 nsresult

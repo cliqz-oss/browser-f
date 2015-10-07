@@ -22,7 +22,8 @@ policies and contribution forms [3].
             "normal":10000,
             "long":60000
         },
-        test_timeout:null
+        test_timeout:null,
+        message_events: ["start", "test_state", "result", "completion"]
     };
 
     var xhtml_ns = "http://www.w3.org/1999/xhtml";
@@ -64,6 +65,40 @@ policies and contribution forms [3].
         this.output_handler = null;
         this.all_loaded = false;
         var this_obj = this;
+        this.message_events = [];
+
+        this.message_functions = {
+            start: [add_start_callback, remove_start_callback,
+                    function (properties) {
+                        this_obj._dispatch("start_callback", [properties],
+                                           {type: "start", properties: properties});
+                    }],
+
+            test_state: [add_test_state_callback, remove_test_state_callback,
+                         function(test) {
+                             this_obj._dispatch("test_state_callback", [test],
+                                                {type: "test_state",
+                                                 test: test.structured_clone()});
+                         }],
+            result: [add_result_callback, remove_result_callback,
+                     function (test) {
+                         this_obj.output_handler.show_status();
+                         this_obj._dispatch("result_callback", [test],
+                                            {type: "result",
+                                             test: test.structured_clone()});
+                     }],
+            completion: [add_completion_callback, remove_completion_callback,
+                         function (tests, harness_status) {
+                             var cloned_tests = map(tests, function(test) {
+                                 return test.structured_clone();
+                             });
+                             this_obj._dispatch("completion_callback", [tests, harness_status],
+                                                {type: "complete",
+                                                 tests: cloned_tests,
+                                                 status: harness_status.structured_clone()});
+                         }]
+        }
+
         on_event(window, 'load', function() {
             this_obj.all_loaded = true;
         });
@@ -71,13 +106,22 @@ policies and contribution forms [3].
 
     WindowTestEnvironment.prototype._dispatch = function(selector, callback_args, message_arg) {
         this._forEach_windows(
-                function(w, is_same_origin) {
-                    if (is_same_origin && selector in w) {
+                function(w, same_origin) {
+                    if (same_origin) {
                         try {
-                            w[selector].apply(undefined, callback_args);
-                        } catch (e) {
-                            if (debug) {
-                                throw e;
+                            var has_selector = selector in w;
+                        } catch(e) {
+                            // If document.domain was set at some point same_origin can be
+                            // wrong and the above will fail.
+                            has_selector = false;
+                        }
+                        if (has_selector) {
+                            try {
+                                w[selector].apply(undefined, callback_args);
+                            } catch (e) {
+                                if (debug) {
+                                    throw e;
+                                }
                             }
                         }
                     }
@@ -141,29 +185,38 @@ policies and contribution forms [3].
         this.output_handler = output;
 
         var this_obj = this;
+
         add_start_callback(function (properties) {
             this_obj.output_handler.init(properties);
-            this_obj._dispatch("start_callback", [properties],
-                           { type: "start", properties: properties });
         });
+
         add_test_state_callback(function(test) {
             this_obj.output_handler.show_status();
-            this_obj._dispatch("test_state_callback", [test],
-                               { type: "test_state", test: test.structured_clone() });
         });
+
         add_result_callback(function (test) {
             this_obj.output_handler.show_status();
-            this_obj._dispatch("result_callback", [test],
-                               { type: "result", test: test.structured_clone() });
         });
+
         add_completion_callback(function (tests, harness_status) {
             this_obj.output_handler.show_results(tests, harness_status);
-            var cloned_tests = map(tests, function(test) { return test.structured_clone(); });
-            this_obj._dispatch("completion_callback", [tests, harness_status],
-                               { type: "complete", tests: cloned_tests,
-                                 status: harness_status.structured_clone() });
         });
+        this.setup_messages(settings.message_events);
     };
+
+    WindowTestEnvironment.prototype.setup_messages = function(new_events) {
+        var this_obj = this;
+        forEach(settings.message_events, function(x) {
+            var current_dispatch = this_obj.message_events.indexOf(x) !== -1;
+            var new_dispatch = new_events.indexOf(x) !== -1;
+            if (!current_dispatch && new_dispatch) {
+                this_obj.message_functions[x][0](this_obj.message_functions[x][2]);
+            } else if (current_dispatch && !new_dispatch) {
+                this_obj.message_functions[x][1](this_obj.message_functions[x][2]);
+            }
+        });
+        this.message_events = new_events;
+    }
 
     WindowTestEnvironment.prototype.next_default_test_name = function() {
         //Don't use document.title to work around an Opera bug in XHTML documents
@@ -176,6 +229,9 @@ policies and contribution forms [3].
 
     WindowTestEnvironment.prototype.on_new_harness_properties = function(properties) {
         this.output_handler.setup(properties);
+        if (properties.hasOwnProperty("message_events")) {
+            this.setup_messages(properties.message_events);
+        }
     };
 
     WindowTestEnvironment.prototype.add_on_loaded_callback = function(callback) {
@@ -359,8 +415,20 @@ policies and contribution forms [3].
         self.addEventListener("message",
                 function(event) {
                     if (event.data.type && event.data.type === "connect") {
-                        this_obj._add_message_port(event.ports[0]);
-                        event.ports[0].start();
+                        if (event.ports && event.ports[0]) {
+                            // If a MessageChannel was passed, then use it to
+                            // send results back to the main window.  This
+                            // allows the tests to work even if the browser
+                            // does not fully support MessageEvent.source in
+                            // ServiceWorkers yet.
+                            this_obj._add_message_port(event.ports[0]);
+                            event.ports[0].start();
+                        } else {
+                            // If there is no MessageChannel, then attempt to
+                            // use the MessageEvent.source to send results
+                            // back to the main window.
+                            this_obj._add_message_port(event.source);
+                        }
                     }
                 });
 
@@ -469,6 +537,74 @@ policies and contribution forms [3].
             assert_throws(expected, function() { throw e });
         });
     }
+
+    /**
+     * This constructor helper allows DOM events to be handled using Promises,
+     * which can make it a lot easier to test a very specific series of events,
+     * including ensuring that unexpected events are not fired at any point.
+     */
+    function EventWatcher(test, watchedNode, eventTypes)
+    {
+        if (typeof eventTypes == 'string') {
+            eventTypes = [eventTypes];
+        }
+
+        var waitingFor = null;
+
+        var eventHandler = test.step_func(function(evt) {
+            assert_true(!!waitingFor,
+                        'Not expecting event, but got ' + evt.type + ' event');
+            assert_equals(evt.type, waitingFor.types[0],
+                          'Expected ' + waitingFor.types[0] + ' event, but got ' +
+                          evt.type + ' event instead');
+            if (waitingFor.types.length > 1) {
+                // Pop first event from array
+                waitingFor.types.shift();
+                return;
+            }
+            // We need to null out waitingFor before calling the resolve function
+            // since the Promise's resolve handlers may call wait_for() which will
+            // need to set waitingFor.
+            var resolveFunc = waitingFor.resolve;
+            waitingFor = null;
+            resolveFunc(evt);
+        });
+
+        for (var i = 0; i < eventTypes.length; i++) {
+            watchedNode.addEventListener(eventTypes[i], eventHandler);
+        }
+
+        /**
+         * Returns a Promise that will resolve after the specified event or
+         * series of events has occured.
+         */
+        this.wait_for = function(types) {
+            if (waitingFor) {
+                return Promise.reject('Already waiting for an event or events');
+            }
+            if (typeof types == 'string') {
+                types = [types];
+            }
+            return new Promise(function(resolve, reject) {
+                waitingFor = {
+                    types: types,
+                    resolve: resolve,
+                    reject: reject
+                };
+            });
+        };
+
+        function stop_watching() {
+            for (var i = 0; i < eventTypes.length; i++) {
+                watchedNode.removeEventListener(eventTypes[i], eventHandler);
+            }
+        };
+
+        test.add_cleanup(stop_watching);
+
+        return this;
+    }
+    expose(EventWatcher, 'EventWatcher');
 
     function setup(func_or_properties, maybe_properties)
     {
@@ -1359,13 +1495,13 @@ policies and contribution forms [3].
     RemoteTest.prototype.structured_clone = function() {
         var clone = {};
         Object.keys(this).forEach(
-                function(key) {
+                (function(key) {
                     if (typeof(this[key]) === "object") {
                         clone[key] = merge({}, this[key]);
                     } else {
                         clone[key] = this[key];
                     }
-                });
+                }).bind(this));
         clone.phases = merge({}, this.phases);
         return clone;
     };
@@ -1399,15 +1535,24 @@ policies and contribution forms [3].
         var message_port;
 
         if (is_service_worker(worker)) {
-            // The ServiceWorker's implicit MessagePort is currently not
-            // reliably accessible from the ServiceWorkerGlobalScope due to
-            // Blink setting MessageEvent.source to null for messages sent via
-            // ServiceWorker.postMessage(). Until that's resolved, create an
-            // explicit MessageChannel and pass one end to the worker.
-            var message_channel = new MessageChannel();
-            message_port = message_channel.port1;
-            message_port.start();
-            worker.postMessage({type: "connect"}, [message_channel.port2]);
+            if (window.MessageChannel) {
+                // The ServiceWorker's implicit MessagePort is currently not
+                // reliably accessible from the ServiceWorkerGlobalScope due to
+                // Blink setting MessageEvent.source to null for messages sent
+                // via ServiceWorker.postMessage(). Until that's resolved,
+                // create an explicit MessageChannel and pass one end to the
+                // worker.
+                var message_channel = new MessageChannel();
+                message_port = message_channel.port1;
+                message_port.start();
+                worker.postMessage({type: "connect"}, [message_channel.port2]);
+            } else {
+                // If MessageChannel is not available, then try the
+                // ServiceWorker.postMessage() approach using MessageEvent.source
+                // on the other end.
+                message_port = navigator.serviceWorker;
+                worker.postMessage({type: "connect"});
+            }
         } else if (is_shared_worker(worker)) {
             message_port = worker.port;
         } else {
@@ -1436,7 +1581,7 @@ policies and contribution forms [3].
             status: {
                 status: tests.status.ERROR,
                 message: "Error in worker" + filename + ": " + message,
-                stack: e.stack
+                stack: error.stack
             }
         });
         error.preventDefault();
@@ -1760,20 +1905,41 @@ policies and contribution forms [3].
         tests.test_state_callbacks.push(callback);
     }
 
-    function add_result_callback(callback)
-    {
+    function add_result_callback(callback) {
         tests.test_done_callbacks.push(callback);
     }
 
-    function add_completion_callback(callback)
-    {
-       tests.all_done_callbacks.push(callback);
+    function add_completion_callback(callback) {
+        tests.all_done_callbacks.push(callback);
     }
 
     expose(add_start_callback, 'add_start_callback');
     expose(add_test_state_callback, 'add_test_state_callback');
     expose(add_result_callback, 'add_result_callback');
     expose(add_completion_callback, 'add_completion_callback');
+
+    function remove(array, item) {
+        var index = array.indexOf(item);
+        if (index > -1) {
+            array.splice(index, 1);
+        }
+    }
+
+    function remove_start_callback(callback) {
+        remove(tests.start_callbacks, callback);
+    }
+
+    function remove_test_state_callback(callback) {
+        remove(tests.test_state_callbacks, callback);
+    }
+
+    function remove_result_callback(callback) {
+        remove(tests.test_done_callbacks, callback);
+    }
+
+    function remove_completion_callback(callback) {
+       remove(tests.all_done_callbacks, callback);
+    }
 
     /*
      * Output listener
@@ -2258,7 +2424,15 @@ policies and contribution forms [3].
     AssertionError.prototype = Object.create(Error.prototype);
 
     AssertionError.prototype.get_stack = function() {
-        var lines = new Error().stack.split("\n");
+        var stack = new Error().stack;
+        if (!stack) {
+            try {
+                throw new Error();
+            } catch (e) {
+                stack = e.stack;
+            }
+        }
+        var lines = stack.split("\n");
         var rv = [];
         var re = /\/resources\/testharness\.js/;
         var i = 0;

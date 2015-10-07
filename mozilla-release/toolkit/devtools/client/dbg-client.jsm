@@ -51,6 +51,7 @@ Object.defineProperty(this, "WebConsoleClient", {
 });
 
 Components.utils.import("resource://gre/modules/devtools/DevToolsUtils.jsm");
+this.executeSoon = DevToolsUtils.executeSoon;
 this.makeInfallible = DevToolsUtils.makeInfallible;
 this.values = DevToolsUtils.values;
 
@@ -188,7 +189,7 @@ function eventSource(aProto) {
     let name = arguments[0];
     let listeners = this._getListeners(name).slice(0);
 
-    for each (let listener in listeners) {
+    for (let listener of listeners) {
       try {
         listener.apply(null, arguments);
       } catch (e) {
@@ -223,7 +224,6 @@ const UnsolicitedNotifications = {
   "networkEventUpdate": "networkEventUpdate",
   "newGlobal": "newGlobal",
   "newScript": "newScript",
-  "newSource": "newSource",
   "tabDetached": "tabDetached",
   "tabListChanged": "tabListChanged",
   "reflowActivity": "reflowActivity",
@@ -505,6 +505,29 @@ DebuggerClient.prototype = {
     });
   },
 
+  attachWorker: function DC_attachWorker(aWorkerActor, aOnResponse = noop) {
+    let workerClient = this._clients.get(aWorkerActor);
+    if (workerClient !== undefined) {
+      executeSoon(() => aOnResponse({
+        from: workerClient.actor,
+        type: "attached",
+        isFrozen: workerClient.isFrozen
+      }, workerClient));
+      return;
+    }
+
+    this.request({ to: aWorkerActor, type: "attach" }, (aResponse) => {
+      if (aResponse.error) {
+        aOnResponse(aResponse, null);
+        return;
+      }
+
+      let workerClient = new WorkerClient(this, aResponse);
+      this.registerClient(workerClient);
+      aOnResponse(aResponse, workerClient);
+    });
+  },
+
   /**
    * Attach to an addon actor.
    *
@@ -716,6 +739,7 @@ DebuggerClient.prototype = {
 
     let request = new Request(aRequest);
     request.format = "json";
+    request.stack = Components.stack;
     if (aOnResponse) {
       request.on("json-reply", aOnResponse);
     }
@@ -987,15 +1011,19 @@ DebuggerClient.prototype = {
         typeof this._clients.get(aPacket.from)._onThreadState == "function") {
       this._clients.get(aPacket.from)._onThreadState(aPacket);
     }
-    // On navigation the server resumes, so the client must resume as well.
-    // We achieve that by generating a fake resumption packet that triggers
-    // the client's thread state change listeners.
-    if (aPacket.type == UnsolicitedNotifications.tabNavigated &&
-        this._clients.has(aPacket.from) &&
-        this._clients.get(aPacket.from).thread) {
-      let thread = this._clients.get(aPacket.from).thread;
-      let resumption = { from: thread._actor, type: "resumed" };
-      thread._onThreadState(resumption);
+
+    // TODO: Bug 1151156 - Remove once Gecko 40 is on b2g-stable.
+    if (!this.traits.noNeedToFakeResumptionOnNavigation) {
+      // On navigation the server resumes, so the client must resume as well.
+      // We achieve that by generating a fake resumption packet that triggers
+      // the client's thread state change listeners.
+      if (aPacket.type == UnsolicitedNotifications.tabNavigated &&
+          this._clients.has(aPacket.from) &&
+          this._clients.get(aPacket.from).thread) {
+        let thread = this._clients.get(aPacket.from).thread;
+        let resumption = { from: thread._actor, type: "resumed" };
+        thread._onThreadState(resumption);
+      }
     }
 
     // Only try to notify listeners on events, not responses to requests
@@ -1005,7 +1033,13 @@ DebuggerClient.prototype = {
     }
 
     if (activeRequest) {
-      activeRequest.emit("json-reply", aPacket);
+      let emitReply = () => activeRequest.emit("json-reply", aPacket);
+      if (activeRequest.stack) {
+        Cu.callFunctionWithAsyncStack(emitReply, activeRequest.stack,
+                                      "DevTools RDP");
+      } else {
+        emitReply();
+      }
     }
   },
 
@@ -1214,7 +1248,7 @@ function TabClient(aClient, aForm) {
   this.thread = null;
   this.request = this.client.request;
   this.traits = aForm.traits || {};
-  this.events = [];
+  this.events = ["workerListChanged"];
 }
 
 TabClient.prototype = {
@@ -1317,9 +1351,113 @@ TabClient.prototype = {
   }, {
     telemetry: "RECONFIGURETAB"
   }),
+
+  listWorkers: DebuggerClient.requester({
+    type: "listWorkers"
+  }, {
+    telemetry: "LISTWORKERS"
+  }),
+
+  attachWorker: function (aWorkerActor, aOnResponse) {
+    this.client.attachWorker(aWorkerActor, aOnResponse);
+  }
 };
 
 eventSource(TabClient.prototype);
+
+function WorkerClient(aClient, aForm) {
+  this.client = aClient;
+  this._actor = aForm.from;
+  this._isClosed = false;
+  this._isFrozen = aForm.isFrozen;
+  this._url = aForm.url;
+
+  this._onClose = this._onClose.bind(this);
+  this._onFreeze = this._onFreeze.bind(this);
+  this._onThaw = this._onThaw.bind(this);
+
+  this.addListener("close", this._onClose);
+  this.addListener("freeze", this._onFreeze);
+  this.addListener("thaw", this._onThaw);
+}
+
+WorkerClient.prototype = {
+  get _transport() {
+    return this.client._transport;
+  },
+
+  get request() {
+    return this.client.request;
+  },
+
+  get actor() {
+    return this._actor;
+  },
+
+  get url() {
+    return this._url;
+  },
+
+  get isClosed() {
+    return this._isClosed;
+  },
+
+  get isFrozen() {
+    return this._isFrozen;
+  },
+
+  detach: DebuggerClient.requester({ type: "detach" }, {
+    after: function (aResponse) {
+      this.client.unregisterClient(this);
+      return aResponse;
+    },
+
+    telemetry: "WORKERDETACH"
+  }),
+
+  attachThread: function(aOptions = {}, aOnResponse = noop) {
+    if (this.thread) {
+      DevToolsUtils.executeSoon(() => aOnResponse({
+        type: "connected",
+        threadActor: this.thread._actor,
+      }, this.thread));
+      return;
+    }
+
+    this.request({
+      to: this._actor,
+      type: "connect",
+      options: aOptions,
+    }, (aResponse) => {
+      if (!aResponse.error) {
+        this.thread = new ThreadClient(this, aResponse.threadActor);
+        this.client.registerClient(this.thread);
+      }
+      aOnResponse(aResponse, this.thread);
+    });
+  },
+
+  _onClose: function () {
+    this.removeListener("close", this._onClose);
+    this.removeListener("freeze", this._onFreeze);
+    this.removeListener("thaw", this._onThaw);
+
+    this.client.unregisterClient(this);
+    this._closed = true;
+  },
+
+  _onFreeze: function () {
+    this._isFrozen = true;
+  },
+
+  _onThaw: function () {
+    this._isFrozen = false;
+  },
+
+  events: ["close", "freeze", "thaw"]
+};
+
+eventSource(WorkerClient.prototype);
 
 function AddonClient(aClient, aActor) {
   this._client = aClient;
@@ -1491,7 +1629,6 @@ function ThreadClient(aClient, aActor) {
   this._pauseGrips = {};
   this._threadGrips = {};
   this.request = this.client.request;
-  this.events = [];
 }
 
 ThreadClient.prototype = {
@@ -1973,8 +2110,8 @@ ThreadClient.prototype = {
    *        The property name of the grip cache we want to clear.
    */
   _clearObjectClients: function (aGripCacheName) {
-    for each (let grip in this[aGripCacheName]) {
-      grip.valid = false;
+    for (let id in this[aGripCacheName]) {
+      this[aGripCacheName][id].valid = false;
     }
     this[aGripCacheName] = {};
   },
@@ -2038,7 +2175,9 @@ ThreadClient.prototype = {
     actors: args(0)
   }, {
     telemetry: "PROTOTYPESANDPROPERTIES"
-  })
+  }),
+
+  events: ["newSource"]
 };
 
 eventSource(ThreadClient.prototype);
@@ -2164,9 +2303,15 @@ ObjectClient.prototype = {
 
   valid: true,
 
-  get isFrozen() this._grip.frozen,
-  get isSealed() this._grip.sealed,
-  get isExtensible() this._grip.extensible,
+  get isFrozen() {
+    return this._grip.frozen;
+  },
+  get isSealed() {
+    return this._grip.sealed;
+  },
+  get isExtensible() {
+    return this._grip.extensible;
+  },
 
   getDefinitionSite: DebuggerClient.requester({
     type: "definitionSite"
@@ -2223,6 +2368,39 @@ ObjectClient.prototype = {
   }),
 
   /**
+   * Request a PropertyIteratorClient instance to ease listing
+   * properties for this object.
+   *
+   * @param options Object
+   *        A dictionary object with various boolean attributes:
+   *        - ignoreSafeGetters Boolean
+   *          If true, do not iterate over safe getters.
+   *        - ignoreIndexedProperties Boolean
+   *          If true, filters out Array items.
+   *          e.g. properties names between `0` and `object.length`.
+   *        - ignoreNonIndexedProperties Boolean
+   *          If true, filters out items that aren't array items
+   *          e.g. properties names that are not a number between `0`
+   *          and `object.length`.
+   *        - sort Boolean
+   *          If true, the iterator will sort the properties by name
+   *          before dispatching them.
+   * @param aOnResponse function Called with the client instance.
+   */
+  enumProperties: DebuggerClient.requester({
+    type: "enumProperties",
+    options: args(0)
+  }, {
+    after: function(aResponse) {
+      if (aResponse.iterator) {
+        return { iterator: new PropertyIteratorClient(this._client, aResponse.iterator) };
+      }
+      return aResponse;
+    },
+    telemetry: "ENUMPROPERTIES"
+  }),
+
+  /**
    * Request the property descriptor of the object's specified property.
    *
    * @param aName string The name of the requested property.
@@ -2272,7 +2450,104 @@ ObjectClient.prototype = {
       return aPacket;
     },
     telemetry: "SCOPE"
-  })
+  }),
+
+  /**
+   * Request the promises directly depending on the current promise.
+   */
+  getDependentPromises: DebuggerClient.requester({
+    type: "dependentPromises"
+  }, {
+    before: function(aPacket) {
+      if (this._grip.class !== "Promise") {
+        throw new Error("getDependentPromises is only valid for promise " +
+          "grips.");
+      }
+      return aPacket;
+    }
+  }),
+
+  /**
+   * Request the stack to the promise's allocation point.
+   */
+  getPromiseAllocationStack: DebuggerClient.requester({
+    type: "allocationStack"
+  }, {
+    before: function(aPacket) {
+      if (this._grip.class !== "Promise") {
+        throw new Error("getAllocationStack is only valid for promise grips.");
+      }
+      return aPacket;
+    }
+  }),
+};
+
+/**
+ * A PropertyIteratorClient provides a way to access to property names and
+ * values of an object efficiently, slice by slice.
+ * Note that the properties can be sorted in the backend,
+ * this is controled while creating the PropertyIteratorClient
+ * from ObjectClient.enumProperties.
+ *
+ * @param aClient DebuggerClient
+ *        The debugger client parent.
+ * @param aGrip Object
+ *        A PropertyIteratorActor grip returned by the protocol via
+ *        TabActor.enumProperties request.
+ */
+function PropertyIteratorClient(aClient, aGrip) {
+  this._grip = aGrip;
+  this._client = aClient;
+  this.request = this._client.request;
+}
+
+PropertyIteratorClient.prototype = {
+  get actor() { return this._grip.actor; },
+
+  /**
+   * Get the total number of properties available in the iterator.
+   */
+  get count() { return this._grip.count; },
+
+  /**
+   * Get one or more property names that correspond to the positions in the
+   * indexes parameter.
+   *
+   * @param indexes Array
+   *        An array of property indexes.
+   * @param aCallback Function
+   *        The function called when we receive the property names.
+   */
+  names: DebuggerClient.requester({
+    type: "names",
+    indexes: args(0)
+  }, {}),
+
+  /**
+   * Get a set of following property value(s).
+   *
+   * @param start Number
+   *        The index of the first property to fetch.
+   * @param count Number
+   *        The number of properties to fetch.
+   * @param aCallback Function
+   *        The function called when we receive the property values.
+   */
+  slice: DebuggerClient.requester({
+    type: "slice",
+    start: args(0),
+    count: args(1)
+  }, {}),
+
+  /**
+   * Get all the property values.
+   *
+   * @param aCallback Function
+   *        The function called when we receive the property values.
+   */
+  all: DebuggerClient.requester({
+    type: "all"
+  }, {}),
 };
 
 /**
@@ -2334,12 +2609,24 @@ function SourceClient(aClient, aForm) {
 }
 
 SourceClient.prototype = {
-  get _transport() this._client._transport,
-  get isBlackBoxed() this._isBlackBoxed,
-  get isPrettyPrinted() this._isPrettyPrinted,
-  get actor() this._form.actor,
-  get request() this._client.request,
-  get url() this._form.url,
+  get _transport() {
+    return this._client._transport;
+  },
+  get isBlackBoxed() {
+    return this._isBlackBoxed;
+  },
+  get isPrettyPrinted() {
+    return this._isPrettyPrinted;
+  },
+  get actor() {
+    return this._form.actor;
+  },
+  get request() {
+    return this._client.request;
+  },
+  get url() {
+    return this._form.url;
+  },
 
   /**
    * Black box this SourceClient's source.
@@ -2689,7 +2976,9 @@ function EnvironmentClient(aClient, aForm) {
 
 EnvironmentClient.prototype = {
 
-  get actor() this._form.actor,
+  get actor() {
+    return this._form.actor;
+  },
   get _transport() { return this._client._transport; },
 
   /**

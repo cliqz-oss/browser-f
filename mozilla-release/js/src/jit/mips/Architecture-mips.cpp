@@ -23,7 +23,7 @@ uint32_t GetMIPSFlags()
     static uint32_t flags = 0;
     if (isSet)
         return flags;
-#ifdef JS_MIPS_SIMULATOR
+#ifdef JS_SIMULATOR_MIPS
     isSet = true;
     flags |= HWCAP_FPU;
     return flags;
@@ -46,7 +46,7 @@ uint32_t GetMIPSFlags()
 #endif
 
     return false;
-#endif // JS_MIPS_SIMULATOR
+#endif // JS_SIMULATOR_MIPS
 }
 
 bool hasFPU()
@@ -102,8 +102,8 @@ FloatRegister::singleOverlay(unsigned int which) const
 FloatRegisterSet
 FloatRegister::ReduceSetForPush(const FloatRegisterSet& s)
 {
-    FloatRegisterSet mod;
-    for (TypedRegisterIterator<FloatRegister> iter(s); iter.more(); iter++) {
+    LiveFloatRegisterSet mod;
+    for (FloatRegisterIterator iter(s); iter.more(); iter++) {
         if ((*iter).isSingle()) {
             // Even for single size registers save complete double register.
             mod.addUnchecked((*iter).doubleOverlay());
@@ -111,7 +111,7 @@ FloatRegister::ReduceSetForPush(const FloatRegisterSet& s)
             mod.addUnchecked(*iter);
         }
     }
-    return mod;
+    return mod.set();
 }
 
 uint32_t

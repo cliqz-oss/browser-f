@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -113,7 +114,7 @@ nsXBLProtoImpl::InstallImplementation(nsXBLPrototypeBinding* aPrototypeBinding,
   } else if (scopeObject != globalObject) {
 
     // This is just a property holder, so it doesn't need any special JSClass.
-    propertyHolder = JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr());
+    propertyHolder = JS_NewObjectWithGivenProto(cx, nullptr, nullptr);
     NS_ENSURE_TRUE(propertyHolder, NS_ERROR_OUT_OF_MEMORY);
 
     // Define it as a property on the scopeObject, using the same name used on
@@ -247,7 +248,7 @@ nsXBLProtoImpl::CompilePrototypeMembers(nsXBLPrototypeBinding* aBinding)
   jsapi.TakeOwnershipOfErrorReporting();
   JSContext* cx = jsapi.cx();
 
-  mPrecompiledMemberHolder = JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr());
+  mPrecompiledMemberHolder = JS_NewObjectWithGivenProto(cx, nullptr, nullptr);
   if (!mPrecompiledMemberHolder)
     return NS_ERROR_OUT_OF_MEMORY;
 
@@ -366,7 +367,7 @@ nsXBLProtoImpl::Read(nsIObjectInputStream* aStream,
   AssertInCompilationScope();
   AutoJSContext cx;
   // Set up a class object first so that deserialization is possible
-  mPrecompiledMemberHolder = JS_NewObjectWithGivenProto(cx, nullptr, JS::NullPtr());
+  mPrecompiledMemberHolder = JS_NewObjectWithGivenProto(cx, nullptr, nullptr);
   if (!mPrecompiledMemberHolder)
     return NS_ERROR_OUT_OF_MEMORY;
 

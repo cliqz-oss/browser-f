@@ -232,18 +232,18 @@ function createMockPluginFilesIfNeeded(aFile, aPluginId) {
 
   let id = aPluginId.substring(4);
   let libName = AppConstants.DLL_PREFIX + id + AppConstants.DLL_SUFFIX;
-  
+
   createFile(libName);
   createFile(id + ".info");
   if (aPluginId == "gmp-eme-adobe")
     createFile(id + ".voucher");
 }
 
-// Array.includes is only in 41, so polyfill for 40/39 uplift.
+// Array.includes() is only in Nightly channel, so polyfill so we don't fail
+// on other branches.
 if (![].includes) {
   Array.prototype.includes = function(element) {
-    var O = Object(this);
-    return O.indexOf(element) != -1;
+    return Object(this).indexOf(element) != -1;
   }
 }
 

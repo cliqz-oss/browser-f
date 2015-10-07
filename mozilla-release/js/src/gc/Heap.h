@@ -27,8 +27,6 @@
 #include "js/HeapAPI.h"
 #include "js/TracingAPI.h"
 
-struct JSCompartment;
-
 struct JSRuntime;
 
 namespace JS {
@@ -53,7 +51,10 @@ CurrentThreadIsIonCompiling();
 #endif
 
 extern bool
-UnmarkGrayCellRecursively(gc::Cell* cell, JSGCTraceKind kind);
+UnmarkGrayCellRecursively(gc::Cell* cell, JS::TraceKind kind);
+
+extern void
+TraceManuallyBarrieredGenericPointerEdge(JSTracer* trc, gc::Cell** thingp, const char* name);
 
 namespace gc {
 
@@ -62,9 +63,6 @@ class ArenaList;
 class SortedArenaList;
 struct ArenaHeader;
 struct Chunk;
-
-extern void
-MarkKind(JSTracer* trc, void** thingp, JSGCTraceKind kind);
 
 /*
  * This flag allows an allocation site to request a specific heap based upon the
@@ -81,7 +79,10 @@ enum InitialHeap {
 // miscompilations in GCC (fixed in 4.8.5 and 4.9.3). See also bug 1143966.
 enum class AllocKind {
     FIRST,
-    OBJECT0 = FIRST,
+    OBJECT_FIRST = FIRST,
+    FUNCTION = FIRST,
+    FUNCTION_EXTENDED,
+    OBJECT0,
     OBJECT0_BACKGROUND,
     OBJECT2,
     OBJECT2_BACKGROUND,
@@ -112,13 +113,13 @@ enum class AllocKind {
 
 static_assert(int(AllocKind::FIRST) == 0, "Various places depend on AllocKind starting at 0, "
                                           "please audit them carefully!");
-static_assert(int(AllocKind::OBJECT0) == 0, "Various places depend on AllocKind::OBJECT0 being 0, "
-                                            "please audit them carefully!");
+static_assert(int(AllocKind::OBJECT_FIRST) == 0, "Various places depend on AllocKind::OBJECT_FIRST "
+                                                 "being 0, please audit them carefully!");
 
 inline bool
 IsObjectAllocKind(AllocKind kind)
 {
-    return kind >= AllocKind::OBJECT0 && kind <= AllocKind::OBJECT_LAST;
+    return kind >= AllocKind::OBJECT_FIRST && kind <= AllocKind::OBJECT_LAST;
 }
 
 inline bool
@@ -142,10 +143,10 @@ AllAllocKinds()
 
 // Returns a sequence for use in a range-based for loop,
 // to iterate over all object alloc kinds.
-inline decltype(mozilla::MakeEnumeratedRange<int>(AllocKind::OBJECT0, AllocKind::OBJECT_LIMIT))
+inline decltype(mozilla::MakeEnumeratedRange<int>(AllocKind::OBJECT_FIRST, AllocKind::OBJECT_LIMIT))
 ObjectAllocKinds()
 {
-    return mozilla::MakeEnumeratedRange<int>(AllocKind::OBJECT0, AllocKind::OBJECT_LIMIT);
+    return mozilla::MakeEnumeratedRange<int>(AllocKind::OBJECT_FIRST, AllocKind::OBJECT_LIMIT);
 }
 
 // Returns a sequence for use in a range-based for loop,
@@ -168,33 +169,35 @@ template<typename ValueType> using AllAllocKindArray =
 template<typename ValueType> using ObjectAllocKindArray =
     mozilla::EnumeratedArray<AllocKind, AllocKind::OBJECT_LIMIT, ValueType>;
 
-static inline JSGCTraceKind
+static inline JS::TraceKind
 MapAllocToTraceKind(AllocKind kind)
 {
-    static const JSGCTraceKind map[] = {
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT0 */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT0_BACKGROUND */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT2 */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT2_BACKGROUND */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT4 */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT4_BACKGROUND */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT8 */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT8_BACKGROUND */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT12 */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT12_BACKGROUND */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT16 */
-        JSTRACE_OBJECT,       /* AllocKind::OBJECT16_BACKGROUND */
-        JSTRACE_SCRIPT,       /* AllocKind::SCRIPT */
-        JSTRACE_LAZY_SCRIPT,  /* AllocKind::LAZY_SCRIPT */
-        JSTRACE_SHAPE,        /* AllocKind::SHAPE */
-        JSTRACE_SHAPE,        /* AllocKind::ACCESSOR_SHAPE */
-        JSTRACE_BASE_SHAPE,   /* AllocKind::BASE_SHAPE */
-        JSTRACE_OBJECT_GROUP, /* AllocKind::OBJECT_GROUP */
-        JSTRACE_STRING,       /* AllocKind::FAT_INLINE_STRING */
-        JSTRACE_STRING,       /* AllocKind::STRING */
-        JSTRACE_STRING,       /* AllocKind::EXTERNAL_STRING */
-        JSTRACE_SYMBOL,       /* AllocKind::SYMBOL */
-        JSTRACE_JITCODE,      /* AllocKind::JITCODE */
+    static const JS::TraceKind map[] = {
+        JS::TraceKind::Object,       /* AllocKind::FUNCTION */
+        JS::TraceKind::Object,       /* AllocKind::FUNCTION_EXTENDED */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT0 */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT0_BACKGROUND */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT2 */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT2_BACKGROUND */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT4 */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT4_BACKGROUND */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT8 */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT8_BACKGROUND */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT12 */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT12_BACKGROUND */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT16 */
+        JS::TraceKind::Object,       /* AllocKind::OBJECT16_BACKGROUND */
+        JS::TraceKind::Script,       /* AllocKind::SCRIPT */
+        JS::TraceKind::LazyScript,   /* AllocKind::LAZY_SCRIPT */
+        JS::TraceKind::Shape,        /* AllocKind::SHAPE */
+        JS::TraceKind::Shape,        /* AllocKind::ACCESSOR_SHAPE */
+        JS::TraceKind::BaseShape,    /* AllocKind::BASE_SHAPE */
+        JS::TraceKind::ObjectGroup,  /* AllocKind::OBJECT_GROUP */
+        JS::TraceKind::String,       /* AllocKind::FAT_INLINE_STRING */
+        JS::TraceKind::String,       /* AllocKind::STRING */
+        JS::TraceKind::String,       /* AllocKind::EXTERNAL_STRING */
+        JS::TraceKind::Symbol,       /* AllocKind::SYMBOL */
+        JS::TraceKind::JitCode,      /* AllocKind::JITCODE */
     };
 
     static_assert(MOZ_ARRAY_LENGTH(map) == size_t(AllocKind::LIMIT),
@@ -227,7 +230,12 @@ struct Cell
     inline JSRuntime* runtimeFromAnyThread() const;
     inline JS::shadow::Runtime* shadowRuntimeFromAnyThread() const;
 
+    // May be overridden by GC thing kinds that have a compartment pointer.
+    inline JSCompartment* maybeCompartment() const { return nullptr; }
+
     inline StoreBuffer* storeBuffer() const;
+
+    inline JS::TraceKind getTraceKind() const;
 
     static MOZ_ALWAYS_INLINE bool needWriteBarrierPre(JS::Zone* zone);
 
@@ -262,7 +270,7 @@ class TenuredCell : public Cell
     // Access to the arena header.
     inline ArenaHeader* arenaHeader() const;
     inline AllocKind getAllocKind() const;
-    inline JSGCTraceKind getTraceKind() const;
+    inline JS::TraceKind getTraceKind() const;
     inline JS::Zone* zone() const;
     inline JS::Zone* zoneFromAnyThread() const;
     inline bool isInsideZone(JS::Zone* zone) const;
@@ -1024,18 +1032,19 @@ struct Chunk
     ArenaHeader* allocateArena(JSRuntime* rt, JS::Zone* zone, AllocKind kind,
                                const AutoLockGC& lock);
 
-    enum ArenaDecommitState { IsCommitted = false, IsDecommitted = true };
-    void releaseArena(JSRuntime* rt, ArenaHeader* aheader, const AutoLockGC& lock,
-                      ArenaDecommitState state = IsCommitted);
+    void releaseArena(JSRuntime* rt, ArenaHeader* aheader, const AutoLockGC& lock);
     void recycleArena(ArenaHeader* aheader, SortedArenaList& dest, AllocKind thingKind,
                       size_t thingsPerArena);
 
-    static Chunk* allocate(JSRuntime* rt);
+    bool decommitOneFreeArena(JSRuntime* rt, AutoLockGC& lock);
+    void decommitAllArenasWithoutUnlocking(const AutoLockGC& lock);
 
-    void decommitAllArenas(JSRuntime* rt);
+    static Chunk* allocate(JSRuntime* rt);
 
   private:
     inline void init(JSRuntime* rt);
+
+    void decommitAllArenas(JSRuntime* rt);
 
     /* Search for a decommitted arena to allocate. */
     unsigned findDecommittedArenaOffset();
@@ -1043,6 +1052,9 @@ struct Chunk
 
     void addArenaToFreeList(JSRuntime* rt, ArenaHeader* aheader);
     void addArenaToDecommittedList(JSRuntime* rt, const ArenaHeader* aheader);
+
+    void updateChunkListAfterAlloc(JSRuntime* rt, const AutoLockGC& lock);
+    void updateChunkListAfterFree(JSRuntime* rt, const AutoLockGC& lock);
 
   public:
     /* Unlink and return the freeArenasHead. */
@@ -1114,6 +1126,7 @@ inline uintptr_t
 ArenaHeader::address() const
 {
     uintptr_t addr = reinterpret_cast<uintptr_t>(this);
+    MOZ_ASSERT(addr);
     MOZ_ASSERT(!(addr & ArenaMask));
     MOZ_ASSERT(Chunk::withinArenasRange(addr));
     return addr;
@@ -1177,7 +1190,8 @@ ArenaHeader::setNextDelayedMarking(ArenaHeader* aheader)
     MOZ_ASSERT(!(uintptr_t(aheader) & ArenaMask));
     MOZ_ASSERT(!auxNextLink && !hasDelayedMarking);
     hasDelayedMarking = 1;
-    auxNextLink = aheader->arenaAddress() >> ArenaShift;
+    if (aheader)
+        auxNextLink = aheader->arenaAddress() >> ArenaShift;
 }
 
 inline void
@@ -1200,7 +1214,8 @@ ArenaHeader::setNextAllocDuringSweep(ArenaHeader* aheader)
 {
     MOZ_ASSERT(!auxNextLink && !allocatedDuringIncremental);
     allocatedDuringIncremental = 1;
-    auxNextLink = aheader->arenaAddress() >> ArenaShift;
+    if (aheader)
+        auxNextLink = aheader->arenaAddress() >> ArenaShift;
 }
 
 inline void
@@ -1301,6 +1316,12 @@ Cell::storeBuffer() const
     return chunk()->info.trailer.storeBuffer;
 }
 
+inline JS::TraceKind
+Cell::getTraceKind() const
+{
+    return isTenured() ? asTenured().getTraceKind() : JS::TraceKind::Object;
+}
+
 inline bool
 InFreeList(ArenaHeader* aheader, void* thing)
 {
@@ -1380,7 +1401,7 @@ TenuredCell::getAllocKind() const
     return arenaHeader()->getAllocKind();
 }
 
-JSGCTraceKind
+JS::TraceKind
 TenuredCell::getTraceKind() const
 {
     return MapAllocToTraceKind(getAllocKind());
@@ -1411,16 +1432,17 @@ TenuredCell::readBarrier(TenuredCell* thing)
 {
     MOZ_ASSERT(!CurrentThreadIsIonCompiling());
     MOZ_ASSERT(!isNullLike(thing));
+    if (thing->shadowRuntimeFromAnyThread()->isHeapBusy())
+        return;
+
     JS::shadow::Zone* shadowZone = thing->shadowZoneFromAnyThread();
     if (shadowZone->needsIncrementalBarrier()) {
         MOZ_ASSERT(!RuntimeFromMainThreadIsHeapMajorCollecting(shadowZone));
-        void* tmp = thing;
-        shadowZone->barrierTracer()->setTracingName("read barrier");
-        MarkKind(shadowZone->barrierTracer(), &tmp,
-                         MapAllocToTraceKind(thing->getAllocKind()));
+        Cell* tmp = thing;
+        TraceManuallyBarrieredGenericPointerEdge(shadowZone->barrierTracer(), &tmp, "read barrier");
         MOZ_ASSERT(tmp == thing);
     }
-    if (thing->isMarked(js::gc::GRAY))
+    if (thing->isMarked(GRAY))
         UnmarkGrayCellRecursively(thing, thing->getTraceKind());
 }
 
@@ -1428,16 +1450,14 @@ TenuredCell::readBarrier(TenuredCell* thing)
 TenuredCell::writeBarrierPre(TenuredCell* thing)
 {
     MOZ_ASSERT(!CurrentThreadIsIonCompiling());
-    if (isNullLike(thing) || !thing->shadowRuntimeFromAnyThread()->needsIncrementalBarrier())
+    if (isNullLike(thing) || thing->shadowRuntimeFromAnyThread()->isHeapBusy())
         return;
 
     JS::shadow::Zone* shadowZone = thing->shadowZoneFromAnyThread();
     if (shadowZone->needsIncrementalBarrier()) {
         MOZ_ASSERT(!RuntimeFromMainThreadIsHeapMajorCollecting(shadowZone));
-        void* tmp = thing;
-        shadowZone->barrierTracer()->setTracingName("pre barrier");
-        MarkKind(shadowZone->barrierTracer(), &tmp,
-                         MapAllocToTraceKind(thing->getAllocKind()));
+        Cell* tmp = thing;
+        TraceManuallyBarrieredGenericPointerEdge(shadowZone->barrierTracer(), &tmp, "pre barrier");
         MOZ_ASSERT(tmp == thing);
     }
 }
@@ -1446,7 +1466,7 @@ static MOZ_ALWAYS_INLINE void
 AssertValidToSkipBarrier(TenuredCell* thing)
 {
     MOZ_ASSERT(!IsInsideNursery(thing));
-    MOZ_ASSERT_IF(thing, MapAllocToTraceKind(thing->getAllocKind()) != JSTRACE_OBJECT);
+    MOZ_ASSERT_IF(thing, MapAllocToTraceKind(thing->getAllocKind()) != JS::TraceKind::Object);
 }
 
 /* static */ MOZ_ALWAYS_INLINE void

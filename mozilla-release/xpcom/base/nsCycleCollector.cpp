@@ -182,6 +182,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "mozilla/AutoTimelineMarker.h"
 #include "mozilla/Likely.h"
 #include "mozilla/PoisonIOInterposer.h"
 #include "mozilla/Telemetry.h"
@@ -633,7 +634,7 @@ private:
 
   struct Block
   {
-    // We create and destroy Block using NS_Alloc/NS_Free rather
+    // We create and destroy Block using moz_xmalloc/free rather
     // than new and delete to avoid calling its constructor and
     // destructor.
     Block()
@@ -673,7 +674,7 @@ public:
     Block* b = mBlocks;
     while (b) {
       Block* n = b->mNext;
-      NS_Free(b);
+      free(b);
       b = n;
     }
 
@@ -703,7 +704,7 @@ public:
     PtrInfo* Add(void* aPointer, nsCycleCollectionParticipant* aParticipant)
     {
       if (mNext == mBlockEnd) {
-        Block* block = static_cast<Block*>(NS_Alloc(sizeof(Block)));
+        Block* block = static_cast<Block*>(moz_xmalloc(sizeof(Block)));
         *mNextBlock = block;
         mNext = block->mEntries;
         mBlockEnd = block->mEntries + BlockSize;
@@ -832,21 +833,20 @@ private:
   PLDHashTable mPtrToNodeMap;
   bool mOutOfMemory;
 
-public:
-  CCGraph() : mRootCount(0), mOutOfMemory(false) {}
+  static const uint32_t kInitialMapLength = 16384;
 
-  ~CCGraph()
-  {
-    if (mPtrToNodeMap.IsInitialized()) {
-      PL_DHashTableFinish(&mPtrToNodeMap);
-    }
-  }
+public:
+  CCGraph()
+    : mRootCount(0)
+    , mPtrToNodeMap(&PtrNodeOps, sizeof(PtrToNodeEntry), kInitialMapLength)
+    , mOutOfMemory(false)
+  {}
+
+  ~CCGraph() {}
 
   void Init()
   {
     MOZ_ASSERT(IsEmpty(), "Failed to call CCGraph::Clear");
-    PL_DHashTableInit(&mPtrToNodeMap, &PtrNodeOps,
-                      sizeof(PtrToNodeEntry), 16384);
   }
 
   void Clear()
@@ -855,7 +855,7 @@ public:
     mEdges.Clear();
     mWeakMaps.Clear();
     mRootCount = 0;
-    PL_DHashTableFinish(&mPtrToNodeMap);
+    mPtrToNodeMap.ClearAndPrepareForLength(kInitialMapLength);
     mOutOfMemory = false;
   }
 
@@ -864,7 +864,7 @@ public:
   {
     return mNodes.IsEmpty() && mEdges.IsEmpty() &&
            mWeakMaps.IsEmpty() && mRootCount == 0 &&
-           !mPtrToNodeMap.IsInitialized();
+           mPtrToNodeMap.EntryCount() == 0;
   }
 #endif
 
@@ -1256,7 +1256,7 @@ class nsCycleCollector : public nsIMemoryReporter
   ccPhase mIncrementalPhase;
   CCGraph mGraph;
   nsAutoPtr<CCGraphBuilder> mBuilder;
-  nsCOMPtr<nsICycleCollectorListener> mListener;
+  nsRefPtr<nsCycleCollectorLogger> mLogger;
 
   DebugOnly<void*> mThread;
 
@@ -1325,7 +1325,9 @@ private:
   void CheckThreadSafety();
   void ShutdownCollect();
 
-  void FixGrayBits(bool aForceGC);
+  void FixGrayBits(bool aForceGC, TimeLog& aTimeLog);
+  bool IsIncrementalGCInProgress();
+  void FinishAnyIncrementalGCInProgress();
   bool ShouldMergeZones(ccType aCCType);
 
   void BeginCollection(ccType aCCType, nsICycleCollectorListener* aManualListener);
@@ -1395,24 +1397,6 @@ static mozilla::ThreadLocal<CollectorData*> sCollectorData;
 ////////////////////////////////////////////////////////////////////////
 // Utility functions
 ////////////////////////////////////////////////////////////////////////
-
-MOZ_NEVER_INLINE static void
-Fault(const char* aMsg, const void* aPtr = nullptr)
-{
-  if (aPtr) {
-    printf("Fault in cycle collector: %s (ptr: %p)\n", aMsg, aPtr);
-  } else {
-    printf("Fault in cycle collector: %s\n", aMsg);
-  }
-
-  NS_RUNTIMEABORT("cycle collector fault");
-}
-
-static void
-Fault(const char* aMsg, PtrInfo* aPi)
-{
-  Fault(aMsg, aPi->mPointer);
-}
 
 static inline void
 ToParticipant(nsISupports* aPtr, nsXPCOMCycleCollectionParticipant** aCp)
@@ -1736,6 +1720,11 @@ public:
     mWantAllTraces = true;
   }
 
+  bool IsAllTraces()
+  {
+    return mWantAllTraces;
+  }
+
   NS_IMETHOD AllTraces(nsICycleCollectorListener** aListener) override
   {
     SetAllTraces();
@@ -1788,7 +1777,7 @@ public:
     return NS_OK;
   }
 
-  NS_IMETHOD Begin() override
+  nsresult Begin()
   {
     nsresult rv;
 
@@ -1812,8 +1801,8 @@ public:
     fprintf(mCCLog, "# WantAllTraces=%s\n", mWantAllTraces ? "true" : "false");
     return NS_OK;
   }
-  NS_IMETHOD NoteRefCountedObject(uint64_t aAddress, uint32_t aRefCount,
-                                  const char* aObjectDescription) override
+  void NoteRefCountedObject(uint64_t aAddress, uint32_t aRefCount,
+                            const char* aObjectDescription)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "%p [rc=%u] %s\n", (void*)aAddress, aRefCount,
@@ -1829,11 +1818,10 @@ public:
       d->mCnt = aRefCount;
       d->mName.Append(aObjectDescription);
     }
-    return NS_OK;
   }
-  NS_IMETHOD NoteGCedObject(uint64_t aAddress, bool aMarked,
-                            const char* aObjectDescription,
-                            uint64_t aCompartmentAddress) override
+  void NoteGCedObject(uint64_t aAddress, bool aMarked,
+                      const char* aObjectDescription,
+                      uint64_t aCompartmentAddress)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "%p [gc%s] %s\n", (void*)aAddress,
@@ -1855,9 +1843,8 @@ public:
         d->mCompartmentOrToAddress.SetIsVoid(true);
       }
     }
-    return NS_OK;
   }
-  NS_IMETHOD NoteEdge(uint64_t aToAddress, const char* aEdgeName) override
+  void NoteEdge(uint64_t aToAddress, const char* aEdgeName)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "> %p %s\n", (void*)aToAddress, aEdgeName);
@@ -1871,34 +1858,30 @@ public:
       d->mCompartmentOrToAddress.AppendInt(aToAddress, 16);
       d->mName.Append(aEdgeName);
     }
-    return NS_OK;
   }
-  NS_IMETHOD NoteWeakMapEntry(uint64_t aMap, uint64_t aKey,
-                              uint64_t aKeyDelegate, uint64_t aValue) override
+  void NoteWeakMapEntry(uint64_t aMap, uint64_t aKey,
+                        uint64_t aKeyDelegate, uint64_t aValue)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "WeakMapEntry map=%p key=%p keyDelegate=%p value=%p\n",
               (void*)aMap, (void*)aKey, (void*)aKeyDelegate, (void*)aValue);
     }
     // We don't support after-processing for weak map entries.
-    return NS_OK;
   }
-  NS_IMETHOD NoteIncrementalRoot(uint64_t aAddress) override
+  void NoteIncrementalRoot(uint64_t aAddress)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "IncrementalRoot %p\n", (void*)aAddress);
     }
     // We don't support after-processing for incremental roots.
-    return NS_OK;
   }
-  NS_IMETHOD BeginResults() override
+  void BeginResults()
   {
     if (!mDisableLog) {
       fputs("==========\n", mCCLog);
     }
-    return NS_OK;
   }
-  NS_IMETHOD DescribeRoot(uint64_t aAddress, uint32_t aKnownEdges) override
+  void DescribeRoot(uint64_t aAddress, uint32_t aKnownEdges)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "%p [known=%u]\n", (void*)aAddress, aKnownEdges);
@@ -1910,9 +1893,8 @@ public:
       d->mAddress.AppendInt(aAddress, 16);
       d->mCnt = aKnownEdges;
     }
-    return NS_OK;
   }
-  NS_IMETHOD DescribeGarbage(uint64_t aAddress) override
+  void DescribeGarbage(uint64_t aAddress)
   {
     if (!mDisableLog) {
       fprintf(mCCLog, "%p [garbage]\n", (void*)aAddress);
@@ -1923,16 +1905,13 @@ public:
       d->mType = CCGraphDescriber::eGarbage;
       d->mAddress.AppendInt(aAddress, 16);
     }
-    return NS_OK;
   }
-  NS_IMETHOD End() override
+  void End()
   {
     if (!mDisableLog) {
       mCCLog = nullptr;
-      nsresult rv = mLogSink->CloseCCLog();
-      NS_ENSURE_SUCCESS(rv, rv);
+      NS_WARN_IF(NS_FAILED(mLogSink->CloseCCLog()));
     }
-    return NS_OK;
   }
   NS_IMETHOD ProcessNext(nsICycleCollectorHandler* aHandler,
                          bool* aCanContinue) override
@@ -1979,6 +1958,12 @@ public:
     }
     return NS_OK;
   }
+  NS_IMETHOD AsLogger(nsCycleCollectorLogger** aRetVal) override
+  {
+    nsRefPtr<nsCycleCollectorLogger> rval = this;
+    rval.forget(aRetVal);
+    return NS_OK;
+  }
 private:
   void ClearDescribers()
   {
@@ -2023,7 +2008,7 @@ GCThingIsGrayCCThing(JS::GCCellPtr thing)
 static bool
 ValueIsGrayCCThing(const JS::Value& value)
 {
-    return AddToCCKind(value.gcKind()) &&
+    return AddToCCKind(value.traceKind()) &&
            JS::GCThingIsMarkedGray(value.toGCCellPtr());
 }
 
@@ -2043,7 +2028,7 @@ private:
   nsCycleCollectionParticipant* mJSParticipant;
   nsCycleCollectionParticipant* mJSZoneParticipant;
   nsCString mNextEdgeName;
-  nsCOMPtr<nsICycleCollectorListener> mListener;
+  nsRefPtr<nsCycleCollectorLogger> mLogger;
   bool mMergeZones;
   nsAutoPtr<NodePool::Enumerator> mCurrNode;
 
@@ -2051,7 +2036,7 @@ public:
   CCGraphBuilder(CCGraph& aGraph,
                  CycleCollectorResults& aResults,
                  CycleCollectedJSRuntime* aJSRuntime,
-                 nsICycleCollectorListener* aListener,
+                 nsCycleCollectorLogger* aLogger,
                  bool aMergeZones);
   virtual ~CCGraphBuilder();
 
@@ -2086,7 +2071,7 @@ private:
 public:
   // nsCycleCollectionNoteRootCallback methods.
   NS_IMETHOD_(void) NoteXPCOMRoot(nsISupports* aRoot);
-  NS_IMETHOD_(void) NoteJSRoot(void* aRoot);
+  NS_IMETHOD_(void) NoteJSRoot(JSObject* aRoot);
   NS_IMETHOD_(void) NoteNativeRoot(void* aRoot,
                                    nsCycleCollectionParticipant* aParticipant);
   NS_IMETHOD_(void) NoteWeakMapping(JSObject* aMap, JS::GCCellPtr aKey,
@@ -2120,20 +2105,20 @@ private:
   }
 
   NS_IMETHOD_(void) NoteChild(void* aChild, nsCycleCollectionParticipant* aCp,
-                              nsCString aEdgeName)
+                              nsCString& aEdgeName)
   {
     PtrInfo* childPi = AddNode(aChild, aCp);
     if (!childPi) {
       return;
     }
     mEdgeBuilder.Add(childPi);
-    if (mListener) {
-      mListener->NoteEdge((uint64_t)aChild, aEdgeName.get());
+    if (mLogger) {
+      mLogger->NoteEdge((uint64_t)aChild, aEdgeName.get());
     }
     ++childPi->mInternalRefs;
   }
 
-  JS::Zone* MergeZone(void* aGcthing)
+  JS::Zone* MergeZone(JS::GCCellPtr aGcthing)
   {
     if (!mMergeZones) {
       return nullptr;
@@ -2149,7 +2134,7 @@ private:
 CCGraphBuilder::CCGraphBuilder(CCGraph& aGraph,
                                CycleCollectorResults& aResults,
                                CycleCollectedJSRuntime* aJSRuntime,
-                               nsICycleCollectorListener* aListener,
+                               nsCycleCollectorLogger* aLogger,
                                bool aMergeZones)
   : mGraph(aGraph)
   , mResults(aResults)
@@ -2157,7 +2142,7 @@ CCGraphBuilder::CCGraphBuilder(CCGraph& aGraph,
   , mEdgeBuilder(aGraph.mEdges)
   , mJSParticipant(nullptr)
   , mJSZoneParticipant(nullptr)
-  , mListener(aListener)
+  , mLogger(aLogger)
   , mMergeZones(aMergeZones)
 {
   if (aJSRuntime) {
@@ -2165,18 +2150,13 @@ CCGraphBuilder::CCGraphBuilder(CCGraph& aGraph,
     mJSZoneParticipant = aJSRuntime->ZoneParticipant();
   }
 
-  uint32_t flags = 0;
-  if (!flags && mListener) {
-    flags = nsCycleCollectionTraversalCallback::WANT_DEBUG_INFO;
-    bool all = false;
-    mListener->GetWantAllTraces(&all);
-    if (all) {
-      flags |= nsCycleCollectionTraversalCallback::WANT_ALL_TRACES;
+  if (mLogger) {
+    mFlags |= nsCycleCollectionTraversalCallback::WANT_DEBUG_INFO;
+    if (mLogger->IsAllTraces()) {
+      mFlags |= nsCycleCollectionTraversalCallback::WANT_ALL_TRACES;
       mWantAllTraces = true; // for nsCycleCollectionNoteRootCallback
     }
   }
-
-  mFlags |= flags;
 
   mMergeZones = mMergeZones && MOZ_LIKELY(!WantAllTraces());
 
@@ -2256,9 +2236,7 @@ CCGraphBuilder::BuildGraph(SliceBudget& aBudget)
 
     if (pi->mParticipant) {
       nsresult rv = pi->mParticipant->Traverse(pi->mPointer, *this);
-      if (NS_FAILED(rv)) {
-        Fault("script pointer traversal failed", pi);
-      }
+      MOZ_RELEASE_ASSERT(!NS_FAILED(rv), "Cycle collector Traverse method failed");
     }
 
     if (mCurrNode->AtBlockEnd()) {
@@ -2295,9 +2273,9 @@ CCGraphBuilder::NoteXPCOMRoot(nsISupports* aRoot)
 }
 
 NS_IMETHODIMP_(void)
-CCGraphBuilder::NoteJSRoot(void* aRoot)
+CCGraphBuilder::NoteJSRoot(JSObject* aRoot)
 {
-  if (JS::Zone* zone = MergeZone(aRoot)) {
+  if (JS::Zone* zone = MergeZone(JS::GCCellPtr(aRoot))) {
     NoteRoot(zone, mJSZoneParticipant);
   } else {
     NoteRoot(aRoot, mJSParticipant);
@@ -2314,17 +2292,14 @@ CCGraphBuilder::NoteNativeRoot(void* aRoot,
 NS_IMETHODIMP_(void)
 CCGraphBuilder::DescribeRefCountedNode(nsrefcnt aRefCount, const char* aObjName)
 {
-  if (aRefCount == 0) {
-    Fault("zero refcount", mCurrPi);
-  }
-  if (aRefCount == UINT32_MAX) {
-    Fault("overflowing refcount", mCurrPi);
-  }
+  MOZ_RELEASE_ASSERT(aRefCount != 0, "CCed refcounted object has zero refcount");
+  MOZ_RELEASE_ASSERT(aRefCount != UINT32_MAX, "CCed refcounted object has overflowing refcount");
+
   mResults.mVisitedRefCounted++;
 
-  if (mListener) {
-    mListener->NoteRefCountedObject((uint64_t)mCurrPi->mPointer, aRefCount,
-                                    aObjName);
+  if (mLogger) {
+    mLogger->NoteRefCountedObject((uint64_t)mCurrPi->mPointer, aRefCount,
+                                  aObjName);
   }
 
   mCurrPi->mRefCount = aRefCount;
@@ -2337,9 +2312,9 @@ CCGraphBuilder::DescribeGCedNode(bool aIsMarked, const char* aObjName,
   uint32_t refCount = aIsMarked ? UINT32_MAX : 0;
   mResults.mVisitedGCed++;
 
-  if (mListener) {
-    mListener->NoteGCedObject((uint64_t)mCurrPi->mPointer, aIsMarked,
-                              aObjName, aCompartmentAddress);
+  if (mLogger) {
+    mLogger->NoteGCedObject((uint64_t)mCurrPi->mPointer, aIsMarked,
+                            aObjName, aCompartmentAddress);
   }
 
   mCurrPi->mRefCount = refCount;
@@ -2409,7 +2384,7 @@ CCGraphBuilder::NoteJSChild(JS::GCCellPtr aChild)
   }
 
   if (GCThingIsGrayCCThing(aChild) || MOZ_UNLIKELY(WantAllTraces())) {
-    if (JS::Zone* zone = MergeZone(aChild.asCell())) {
+    if (JS::Zone* zone = MergeZone(aChild)) {
       NoteChild(zone, mJSZoneParticipant, edgeName);
     } else {
       NoteChild(aChild.asCell(), mJSParticipant, edgeName);
@@ -2434,7 +2409,7 @@ CCGraphBuilder::AddWeakMapNode(JS::GCCellPtr aNode)
     return nullptr;
   }
 
-  if (JS::Zone* zone = MergeZone(aNode.asCell())) {
+  if (JS::Zone* zone = MergeZone(aNode)) {
     return AddNode(zone, mJSZoneParticipant);
   }
   return AddNode(aNode.asCell(), mJSParticipant);
@@ -2458,9 +2433,9 @@ CCGraphBuilder::NoteWeakMapping(JSObject* aMap, JS::GCCellPtr aKey,
   mapping->mKeyDelegate = aKdelegate ? AddWeakMapNode(aKdelegate) : mapping->mKey;
   mapping->mVal = aVal ? AddWeakMapNode(aVal) : nullptr;
 
-  if (mListener) {
-    mListener->NoteWeakMapEntry((uint64_t)aMap, aKey.unsafeAsInteger(),
-                                (uint64_t)aKdelegate, aVal.unsafeAsInteger());
+  if (mLogger) {
+    mLogger->NoteWeakMapEntry((uint64_t)aMap, aKey.unsafeAsInteger(),
+                              (uint64_t)aKdelegate, aVal.unsafeAsInteger());
   }
 }
 
@@ -2838,6 +2813,11 @@ nsCycleCollector::ForgetSkippable(bool aRemoveChildlessNodes,
 {
   CheckThreadSafety();
 
+  mozilla::Maybe<mozilla::AutoGlobalTimelineMarker> marker;
+  if (NS_IsMainThread()) {
+    marker.emplace("nsCycleCollector::ForgetSkippable");
+  }
+
   // If we remove things from the purple buffer during graph building, we may
   // lose track of an object that was mutated during graph building.
   MOZ_ASSERT(mIncrementalPhase == IdlePhase);
@@ -2962,9 +2942,9 @@ nsCycleCollector::ScanWeakMaps()
 class PurpleScanBlackVisitor
 {
 public:
-  PurpleScanBlackVisitor(CCGraph& aGraph, nsICycleCollectorListener* aListener,
+  PurpleScanBlackVisitor(CCGraph& aGraph, nsCycleCollectorLogger* aLogger,
                          uint32_t& aCount, bool& aFailed)
-    : mGraph(aGraph), mListener(aListener), mCount(aCount), mFailed(aFailed)
+    : mGraph(aGraph), mLogger(aLogger), mCount(aCount), mFailed(aFailed)
   {
   }
 
@@ -2987,8 +2967,8 @@ public:
       return;
     }
     MOZ_ASSERT(pi->mParticipant, "No dead objects should be in the purple buffer.");
-    if (MOZ_UNLIKELY(mListener)) {
-      mListener->NoteIncrementalRoot((uint64_t)pi->mPointer);
+    if (MOZ_UNLIKELY(mLogger)) {
+      mLogger->NoteIncrementalRoot((uint64_t)pi->mPointer);
     }
     if (pi->mColor == black) {
       return;
@@ -2998,7 +2978,7 @@ public:
 
 private:
   CCGraph& mGraph;
-  nsCOMPtr<nsICycleCollectorListener> mListener;
+  nsRefPtr<nsCycleCollectorLogger> mLogger;
   uint32_t& mCount;
   bool& mFailed;
 };
@@ -3021,7 +3001,7 @@ nsCycleCollector::ScanIncrementalRoots()
   // buffer here, so these objects will be suspected and freed in the next CC
   // if they are garbage.
   bool failed = false;
-  PurpleScanBlackVisitor purpleScanBlackVisitor(mGraph, mListener,
+  PurpleScanBlackVisitor purpleScanBlackVisitor(mGraph, mLogger,
                                                 mWhiteNodeCount, failed);
   mPurpleBuf.VisitEntries(purpleScanBlackVisitor);
   timeLog.Checkpoint("ScanIncrementalRoots::fix purple");
@@ -3031,7 +3011,7 @@ nsCycleCollector::ScanIncrementalRoots()
     hasJSRuntime ? mJSRuntime->GCThingParticipant() : nullptr;
   nsCycleCollectionParticipant* zoneParticipant =
     hasJSRuntime ? mJSRuntime->ZoneParticipant() : nullptr;
-  bool hasListener = !!mListener;
+  bool hasLogger = !!mLogger;
 
   NodePool::Enumerator etor(mGraph.mNodes);
   while (!etor.IsDone()) {
@@ -3040,7 +3020,7 @@ nsCycleCollector::ScanIncrementalRoots()
     // As an optimization, if an object has already been determined to be live,
     // don't consider it further.  We can't do this if there is a listener,
     // because the listener wants to know the complete set of incremental roots.
-    if (pi->mColor == black && MOZ_LIKELY(!hasListener)) {
+    if (pi->mColor == black && MOZ_LIKELY(!hasLogger)) {
       continue;
     }
 
@@ -3085,9 +3065,9 @@ nsCycleCollector::ScanIncrementalRoots()
     // If there's a listener, tell it about this root. We don't bother with the
     // optimization of skipping the Walk() if pi is black: it will just return
     // without doing anything and there's no need to make this case faster.
-    if (MOZ_UNLIKELY(hasListener) && pi->mPointer) {
+    if (MOZ_UNLIKELY(hasLogger) && pi->mPointer) {
       // Dead objects aren't logged. See bug 1031370.
-      mListener->NoteIncrementalRoot((uint64_t)pi->mPointer);
+      mLogger->NoteIncrementalRoot((uint64_t)pi->mPointer);
     }
 
     FloodBlackNode(mWhiteNodeCount, failed, pi);
@@ -3133,12 +3113,10 @@ nsCycleCollector::ScanWhiteNodes(bool aFullySynchGraphBuild)
       continue;
     }
 
-    if (MOZ_LIKELY(pi->mInternalRefs < pi->mRefCount)) {
-      // This node will get marked black in the next pass.
-      continue;
-    }
+    MOZ_RELEASE_ASSERT(pi->mInternalRefs < pi->mRefCount,
+                       "Cycle collector found more references to an object than its refcount");
 
-    Fault("Traversed refs exceed refcount", pi);
+    // This node will get marked black in the next pass.
   }
 }
 
@@ -3188,8 +3166,8 @@ nsCycleCollector::ScanRoots(bool aFullySynchGraphBuild)
   ScanWeakMaps();
   timeLog.Checkpoint("ScanRoots::ScanWeakMaps");
 
-  if (mListener) {
-    mListener->BeginResults();
+  if (mLogger) {
+    mLogger->BeginResults();
 
     NodePool::Enumerator etor(mGraph.mNodes);
     while (!etor.IsDone()) {
@@ -3201,12 +3179,12 @@ nsCycleCollector::ScanRoots(bool aFullySynchGraphBuild)
         case black:
           if (!pi->IsGrayJS() && !pi->IsBlackJS() &&
               pi->mInternalRefs != pi->mRefCount) {
-            mListener->DescribeRoot((uint64_t)pi->mPointer,
-                                    pi->mInternalRefs);
+            mLogger->DescribeRoot((uint64_t)pi->mPointer,
+                                  pi->mInternalRefs);
           }
           break;
         case white:
-          mListener->DescribeGarbage((uint64_t)pi->mPointer);
+          mLogger->DescribeGarbage((uint64_t)pi->mPointer);
           break;
         case grey:
           MOZ_ASSERT(false, "All traversed objects should be black or white");
@@ -3214,8 +3192,8 @@ nsCycleCollector::ScanRoots(bool aFullySynchGraphBuild)
       }
     }
 
-    mListener->End();
-    mListener = nullptr;
+    mLogger->End();
+    mLogger = nullptr;
     timeLog.Checkpoint("ScanRoots::listener");
   }
 }
@@ -3404,10 +3382,7 @@ nsCycleCollector::~nsCycleCollector()
 void
 nsCycleCollector::RegisterJSRuntime(CycleCollectedJSRuntime* aJSRuntime)
 {
-  if (mJSRuntime) {
-    Fault("multiple registrations of cycle collector JS runtime", aJSRuntime);
-  }
-
+  MOZ_RELEASE_ASSERT(!mJSRuntime, "Multiple registrations of JS runtime in cycle collector");
   mJSRuntime = aJSRuntime;
 
   // We can't register as a reporter in nsCycleCollector() because that runs
@@ -3423,10 +3398,7 @@ nsCycleCollector::RegisterJSRuntime(CycleCollectedJSRuntime* aJSRuntime)
 void
 nsCycleCollector::ForgetJSRuntime()
 {
-  if (!mJSRuntime) {
-    Fault("forgetting non-registered cycle collector JS runtime");
-  }
-
+  MOZ_RELEASE_ASSERT(mJSRuntime, "Forgetting JS runtime in cycle collector before a JS runtime was registered");
   mJSRuntime = nullptr;
 }
 
@@ -3450,9 +3422,8 @@ nsCycleCollector::Suspect(void* aPtr, nsCycleCollectionParticipant* aParti,
 {
   CheckThreadSafety();
 
-  // Re-entering ::Suspect during collection used to be a fault, but
-  // we are canonicalizing nsISupports pointers using QI, so we will
-  // see some spurious refcount traffic here.
+  // Don't call AddRef or Release of a CCed object in a Traverse() method.
+  MOZ_ASSERT(!mScanInProgress, "Attempted to call Suspect() while a scan was in progress");
 
   if (MOZ_UNLIKELY(mScanInProgress)) {
     return;
@@ -3484,7 +3455,7 @@ nsCycleCollector::CheckThreadSafety()
 // and also when UnmarkGray has run out of stack.  We also force GCs on shut
 // down to collect cycles involving both DOM and JS.
 void
-nsCycleCollector::FixGrayBits(bool aForceGC)
+nsCycleCollector::FixGrayBits(bool aForceGC, TimeLog& aTimeLog)
 {
   CheckThreadSafety();
 
@@ -3494,6 +3465,7 @@ nsCycleCollector::FixGrayBits(bool aForceGC)
 
   if (!aForceGC) {
     mJSRuntime->FixWeakMappingGrayBits();
+    aTimeLog.Checkpoint("FixWeakMappingGrayBits");
 
     bool needGC = !mJSRuntime->AreGCGrayBitsValid();
     // Only do a telemetry ping for non-shutdown CCs.
@@ -3504,10 +3476,25 @@ nsCycleCollector::FixGrayBits(bool aForceGC)
     mResults.mForcedGC = true;
   }
 
-  TimeLog timeLog;
   mJSRuntime->GarbageCollect(aForceGC ? JS::gcreason::SHUTDOWN_CC :
                                         JS::gcreason::CC_FORCED);
-  timeLog.Checkpoint("GC()");
+  aTimeLog.Checkpoint("FixGrayBits GC");
+}
+
+bool
+nsCycleCollector::IsIncrementalGCInProgress()
+{
+  return mJSRuntime && JS::IsIncrementalGCInProgress(mJSRuntime->Runtime());
+}
+
+void
+nsCycleCollector::FinishAnyIncrementalGCInProgress()
+{
+  if (IsIncrementalGCInProgress()) {
+    NS_WARNING("Finishing incremental GC in progress during CC");
+    JS::PrepareForIncrementalGC(mJSRuntime->Runtime());
+    JS::FinishIncrementalGC(mJSRuntime->Runtime(), JS::gcreason::CC_FORCED);
+  }
 }
 
 void
@@ -3541,6 +3528,9 @@ nsCycleCollector::CleanupAfterCollection()
   timeLog.Checkpoint("CleanupAfterCollection::telemetry");
 
   if (mJSRuntime) {
+    mJSRuntime->FinalizeDeferredThings(mResults.mAnyManual
+                                       ? CycleCollectedJSRuntime::FinalizeNow
+                                       : CycleCollectedJSRuntime::FinalizeIncrementally);
     mJSRuntime->EndCycleCollectionCallback(mResults);
     timeLog.Checkpoint("CleanupAfterCollection::EndCycleCollectionCallback()");
   }
@@ -3550,6 +3540,8 @@ nsCycleCollector::CleanupAfterCollection()
 void
 nsCycleCollector::ShutdownCollect()
 {
+  FinishAnyIncrementalGCInProgress();
+
   SliceBudget unlimitedBudget;
   uint32_t i;
   for (i = 0; i < DEFAULT_SHUTDOWN_COLLECTIONS; ++i) {
@@ -3583,6 +3575,13 @@ nsCycleCollector::Collect(ccType aCCType,
   }
   mActivelyCollecting = true;
 
+  MOZ_ASSERT(!IsIncrementalGCInProgress());
+
+  mozilla::Maybe<mozilla::AutoGlobalTimelineMarker> marker;
+  if (NS_IsMainThread()) {
+    marker.emplace("nsCycleCollector::Collect");
+  }
+
   bool startedIdle = (mIncrementalPhase == IdlePhase);
   bool collectedAny = false;
 
@@ -3592,6 +3591,10 @@ nsCycleCollector::Collect(ccType aCCType,
     TimeLog timeLog;
     FreeSnowWhite(true);
     timeLog.Checkpoint("Collect::FreeSnowWhite");
+  }
+
+  if (aCCType != SliceCC) {
+    mResults.mAnyManual = true;
   }
 
   ++mResults.mNumSlices;
@@ -3751,40 +3754,54 @@ nsCycleCollector::BeginCollection(ccType aCCType,
 
   // Set up the listener for this CC.
   MOZ_ASSERT_IF(isShutdown, !aManualListener);
-  MOZ_ASSERT(!mListener, "Forgot to clear a previous listener?");
-  mListener = aManualListener;
-  aManualListener = nullptr;
-  if (!mListener && mParams.LogThisCC(isShutdown)) {
-    nsRefPtr<nsCycleCollectorLogger> logger = new nsCycleCollectorLogger();
-    if (mParams.AllTracesThisCC(isShutdown)) {
-      logger->SetAllTraces();
-    }
-    mListener = logger.forget();
+  MOZ_ASSERT(!mLogger, "Forgot to clear a previous listener?");
+
+  if (aManualListener) {
+    aManualListener->AsLogger(getter_AddRefs(mLogger));
   }
 
-  bool forceGC = isShutdown;
-  if (!forceGC && mListener) {
-    // On a WantAllTraces CC, force a synchronous global GC to prevent
-    // hijinks from ForgetSkippable and compartmental GCs.
-    mListener->GetWantAllTraces(&forceGC);
+  aManualListener = nullptr;
+  if (!mLogger && mParams.LogThisCC(isShutdown)) {
+    mLogger = new nsCycleCollectorLogger();
+    if (mParams.AllTracesThisCC(isShutdown)) {
+      mLogger->SetAllTraces();
+    }
   }
-  FixGrayBits(forceGC);
+
+  // On a WantAllTraces CC, force a synchronous global GC to prevent
+  // hijinks from ForgetSkippable and compartmental GCs.
+  bool forceGC = isShutdown || (mLogger && mLogger->IsAllTraces());
+
+  // BeginCycleCollectionCallback() might have started an IGC, and we need
+  // to finish it before we run FixGrayBits.
+  FinishAnyIncrementalGCInProgress();
+  timeLog.Checkpoint("Pre-FixGrayBits finish IGC");
+
+  FixGrayBits(forceGC, timeLog);
 
   FreeSnowWhite(true);
+  timeLog.Checkpoint("BeginCollection FreeSnowWhite");
 
-  if (mListener && NS_FAILED(mListener->Begin())) {
-    mListener = nullptr;
+  if (mLogger && NS_FAILED(mLogger->Begin())) {
+    mLogger = nullptr;
   }
+
+  // FreeSnowWhite could potentially have started an IGC, which we need
+  // to finish before we look at any JS roots.
+  FinishAnyIncrementalGCInProgress();
+  timeLog.Checkpoint("Post-FreeSnowWhite finish IGC");
 
   // Set up the data structures for building the graph.
   mGraph.Init();
   mResults.Init();
+  mResults.mAnyManual = (aCCType != SliceCC);
   bool mergeZones = ShouldMergeZones(aCCType);
   mResults.mMergedZones = mergeZones;
 
   MOZ_ASSERT(!mBuilder, "Forgot to clear mBuilder");
-  mBuilder = new CCGraphBuilder(mGraph, mResults, mJSRuntime, mListener,
+  mBuilder = new CCGraphBuilder(mGraph, mResults, mJSRuntime, mLogger,
                                 mergeZones);
+  timeLog.Checkpoint("BeginCollection prepare graph builder");
 
   if (mJSRuntime) {
     mJSRuntime->TraverseRoots(*mBuilder);

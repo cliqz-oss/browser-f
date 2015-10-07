@@ -1,11 +1,6 @@
-/** @jsx React.DOM */
-
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
-
-/* jshint newcap:false, esnext:true */
-/* global loop:true, React */
 
 var loop = loop || {};
 loop.conversation = (function(mozL10n) {
@@ -34,8 +29,8 @@ loop.conversation = (function(mozL10n) {
 
     propTypes: {
       dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
-      roomStore: React.PropTypes.instanceOf(loop.store.RoomStore),
-      mozLoop: React.PropTypes.object.isRequired
+      mozLoop: React.PropTypes.object.isRequired,
+      roomStore: React.PropTypes.instanceOf(loop.store.RoomStore)
     },
 
     getInitialState: function() {
@@ -49,14 +44,13 @@ loop.conversation = (function(mozL10n) {
         case "outgoing": {
           return (<CallControllerView
             dispatcher={this.props.dispatcher}
-            mozLoop={this.props.mozLoop}
-          />);
+            mozLoop={this.props.mozLoop} />);
         }
         case "room": {
           return (<DesktopRoomConversationView
             dispatcher={this.props.dispatcher}
-            roomStore={this.props.roomStore}
-          />);
+            mozLoop={this.props.mozLoop}
+            roomStore={this.props.roomStore} />);
         }
         case "failed": {
           return <GenericFailureView cancelCall={this.closeWindow} />;
@@ -92,10 +86,14 @@ loop.conversation = (function(mozL10n) {
       }
     });
 
+    // We want data channels only if the text chat preference is enabled.
+    var useDataChannels = loop.shared.utils.getBoolPreference("textChat.enabled");
+
     var dispatcher = new loop.Dispatcher();
     var client = new loop.Client();
     var sdkDriver = new loop.OTSdkDriver({
       isDesktop: true,
+      useDataChannels: useDataChannels,
       dispatcher: dispatcher,
       sdk: OT,
       mozLoop: navigator.mozLoop
@@ -136,11 +134,15 @@ loop.conversation = (function(mozL10n) {
     var feedbackStore = new loop.store.FeedbackStore(dispatcher, {
       feedbackClient: feedbackClient
     });
+    var textChatStore = new loop.store.TextChatStore(dispatcher, {
+      sdkDriver: sdkDriver
+    });
 
     loop.store.StoreMixin.register({
       conversationAppStore: conversationAppStore,
       conversationStore: conversationStore,
       feedbackStore: feedbackStore,
+      textChatStore: textChatStore
     });
 
     // Obtain the windowId and pass it through
@@ -156,11 +158,15 @@ loop.conversation = (function(mozL10n) {
       dispatcher.dispatch(new sharedActions.WindowUnload());
     });
 
-    React.render(<AppControllerView
-      roomStore={roomStore}
-      dispatcher={dispatcher}
-      mozLoop={navigator.mozLoop}
-    />, document.querySelector('#main'));
+    React.render(
+      <AppControllerView
+        dispatcher={dispatcher}
+        mozLoop={navigator.mozLoop}
+        roomStore={roomStore} />, document.querySelector("#main"));
+
+    document.documentElement.setAttribute("lang", mozL10n.getLanguage());
+    document.documentElement.setAttribute("dir", mozL10n.getDirection());
+    document.body.setAttribute("platform", loop.shared.utils.getPlatform());
 
     dispatcher.dispatch(new sharedActions.GetWindowData({
       windowId: windowId
@@ -181,4 +187,4 @@ loop.conversation = (function(mozL10n) {
   };
 })(document.mozL10n);
 
-document.addEventListener('DOMContentLoaded', loop.conversation.init);
+document.addEventListener("DOMContentLoaded", loop.conversation.init);

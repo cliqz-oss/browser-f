@@ -646,9 +646,13 @@ function BuildConditionSandbox(aURL) {
     sandbox.B2GDT = appInfo.name.toLowerCase() == "b2g" && !sandbox.B2G;
     sandbox.Android = xr.OS == "Android" && !sandbox.B2G;
     sandbox.cocoaWidget = xr.widgetToolkit == "cocoa";
-    sandbox.gtk2Widget = xr.widgetToolkit == "gtk2";
+    sandbox.gtkWidget = xr.widgetToolkit == "gtk2"
+                        || xr.widgetToolkit == "gtk3";
     sandbox.qtWidget = xr.widgetToolkit == "qt";
     sandbox.winWidget = xr.widgetToolkit == "windows";
+
+    // Scrollbars that are semi-transparent. See bug 1169666.
+    sandbox.transparentScrollbars = xr.widgetToolkit == "gtk3";
 
     if (sandbox.Android) {
         var sysInfo = CC["@mozilla.org/system-info;1"].getService(CI.nsIPropertyBag2);
@@ -744,7 +748,7 @@ function BuildConditionSandbox(aURL) {
     sandbox.Mulet = gB2GisMulet;
 
     try {
-        sandbox.asyncPanZoom = prefs.getBoolPref("layers.async-pan-zoom.enabled");
+        sandbox.asyncPanZoom = gContainingWindow.document.docShell.asyncPanZoomEnabled;
     } catch (e) {
         sandbox.asyncPanZoom = false;
     }
@@ -834,7 +838,7 @@ function ReadManifest(aURL, inherited_status)
     var lineNo = 0;
     var urlprefix = "";
     var defaultTestPrefSettings = [], defaultRefPrefSettings = [];
-    for each (var str in lines) {
+    for (var str of lines) {
         ++lineNo;
         if (str.charAt(0) == "#")
             continue; // entire line was a comment
@@ -881,8 +885,9 @@ function ReadManifest(aURL, inherited_status)
         var refPrefSettings = defaultRefPrefSettings.concat();
         var fuzzy_max_delta = 2;
         var fuzzy_max_pixels = 1;
+        var chaosMode = false;
 
-        while (items[0].match(/^(fails|needs-focus|random|skip|asserts|slow|require-or|silentfail|pref|test-pref|ref-pref|fuzzy)/)) {
+        while (items[0].match(/^(fails|needs-focus|random|skip|asserts|slow|require-or|silentfail|pref|test-pref|ref-pref|fuzzy|chaos-mode)/)) {
             var item = items.shift();
             var stat;
             var cond;
@@ -921,7 +926,7 @@ function ReadManifest(aURL, inherited_status)
                 var [precondition_str, fallback_action] = args;
                 var preconditions = precondition_str.split(/&&/);
                 cond = false;
-                for each (var precondition in preconditions) {
+                for (var precondition of preconditions) {
                     if (precondition === "debugMode") {
                         // Currently unimplemented. Requires asynchronous
                         // JSD call + getting an event while no JS is running
@@ -961,6 +966,9 @@ function ReadManifest(aURL, inherited_status)
                 fuzzy_max_delta = Number(m[2]);
                 fuzzy_max_pixels = Number(m[3]);
               }
+            } else if (item == "chaos-mode") {
+                cond = false;
+                chaosMode = true;
             } else {
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": unexpected item " + item;
             }
@@ -1049,7 +1057,8 @@ function ReadManifest(aURL, inherited_status)
                           fuzzyMaxDelta: fuzzy_max_delta,
                           fuzzyMaxPixels: fuzzy_max_pixels,
                           url1: testURI,
-                          url2: null });
+                          url2: null,
+                          chaosMode: chaosMode });
         } else if (items[0] == TYPE_SCRIPT) {
             if (items.length != 2)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect number of arguments to script";
@@ -1075,7 +1084,8 @@ function ReadManifest(aURL, inherited_status)
                           fuzzyMaxDelta: fuzzy_max_delta,
                           fuzzyMaxPixels: fuzzy_max_pixels,
                           url1: testURI,
-                          url2: null });
+                          url2: null,
+                          chaosMode: chaosMode });
         } else if (items[0] == TYPE_REFTEST_EQUAL || items[0] == TYPE_REFTEST_NOTEQUAL) {
             if (items.length != 3)
                 throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": incorrect number of arguments to " + items[0];
@@ -1104,7 +1114,8 @@ function ReadManifest(aURL, inherited_status)
                           fuzzyMaxDelta: fuzzy_max_delta,
                           fuzzyMaxPixels: fuzzy_max_pixels,
                           url1: testURI,
-                          url2: refURI });
+                          url2: refURI,
+                          chaosMode: chaosMode });
         } else {
             throw "Error in manifest file " + aURL.spec + " line " + lineNo + ": unknown test type " + items[0];
         }
@@ -1238,6 +1249,9 @@ function StartCurrentTest()
     }
     else {
         gDumpLog("REFTEST TEST-START | " + gURLs[0].prettyPath + "\n");
+        if (gURLs[0].chaosMode) {
+            gWindowUtils.enterChaosMode();
+        }
         if (!gURLs[0].needsFocus) {
             Blur();
         }
@@ -1757,7 +1771,7 @@ function LoadFailed(why)
 function RemoveExpectedCrashDumpFiles()
 {
     if (gExpectingProcessCrash) {
-        for each (let crashFilename in gExpectedCrashDumpFiles) {
+        for (let crashFilename of gExpectedCrashDumpFiles) {
             let file = gCrashDumpDir.clone();
             file.append(crashFilename);
             if (file.exists()) {
@@ -1859,6 +1873,9 @@ function DoAssertionCheck(numAsserts)
         }
     }
 
+    if (gURLs[0].chaosMode) {
+        gWindowUtils.leaveChaosMode();
+    }
     gDumpLog("REFTEST TEST-END | " + gURLs[0].prettyPath + "\n");
 
     // And start the next test.

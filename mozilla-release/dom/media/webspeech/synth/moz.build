@@ -5,7 +5,6 @@
 
 if CONFIG['MOZ_WEBSPEECH']:
     MOCHITEST_MANIFESTS += [
-        'ipc/test/mochitest.ini',
         'test/mochitest.ini',
     ]
 
@@ -35,6 +34,12 @@ if CONFIG['MOZ_WEBSPEECH']:
         'SpeechSynthesisUtterance.cpp',
         'SpeechSynthesisVoice.cpp',
     ]
+
+    if CONFIG['MOZ_WEBSPEECH_TEST_BACKEND']:
+        UNIFIED_SOURCES += [
+            'test/FakeSynthModule.cpp',
+            'test/nsFakeSynthServices.cpp'
+        ]
 
     if CONFIG['MOZ_SYNTH_PICO']:
         DIRS = ['pico']

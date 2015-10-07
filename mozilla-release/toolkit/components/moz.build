@@ -10,7 +10,6 @@ if CONFIG['MOZ_ENABLE_XREMOTE']:
 
 DIRS += [
     'aboutcache',
-    'aboutcompartments',
     'aboutmemory',
     'addoncompat',
     'alerts',
@@ -29,6 +28,7 @@ DIRS += [
     'finalizationwitness',
     'formautofill',
     'find',
+    'gfx',
     'jsdownloads',
     'mediasniffer',
     'microformats',
@@ -48,14 +48,20 @@ DIRS += [
     'statusfilter',
     'telemetry',
     'thumbnails',
+    'timermanager',
     'typeaheadfind',
     'urlformatter',
     'viewconfig',
-    'viewsource',
     'workerloader',
     'workerlz4',
     'xulstore'
 ]
+
+if CONFIG['MOZ_BUILD_APP'] != 'mobile/android':
+    DIRS += ['viewsource'];
+
+    if CONFIG['NS_PRINTING']:
+        DIRS += ['printing']
 
 if CONFIG['MOZ_CRASHREPORTER']:
     DIRS += ['crashes']
@@ -72,9 +78,6 @@ if CONFIG['MOZ_FEEDS']:
 if CONFIG['MOZ_HELP_VIEWER']:
     DIRS += ['help']
 
-if CONFIG['NS_PRINTING']:
-    DIRS += ['printing']
-
 if CONFIG['MOZ_XUL']:
     DIRS += ['autocomplete', 'satchel']
 
@@ -89,6 +92,12 @@ if CONFIG['MOZ_CAPTIVEDETECT']:
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] != "gonk" and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
     DIRS += ['terminator']
+
+if CONFIG['NIGHTLY_BUILD']: # Bug 1136927 - Performance Monitoring is not ready for prime-time yet
+    DIRS += [
+      'aboutperformance',
+      'perfmonitoring',
+    ]
 
 DIRS += ['build']
 

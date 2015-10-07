@@ -34,7 +34,7 @@
 <!ENTITY sync.input.key.label 'Wiederherstellungsschlüssel'>
 <!ENTITY sync.checkbox.server.label 'Eigenen Server verwenden'>
 <!ENTITY sync.input.server.label 'Serveradresse'>
-  
+
 <!-- Setup Fail -->
 <!ENTITY sync.title.fail.label 'Kann &syncBrand.shortName.label; nicht einrichten'>
 <!ENTITY sync.subtitle.fail.label '&syncBrand.fullName.label; konnte nicht zum Server verbinden. Wollen Sie es erneut versuchen?'>
@@ -43,7 +43,7 @@
 <!ENTITY sync.subtitle.nointernet.label 'Keine Internetverbindung verfügbar.'>
 <!ENTITY sync.subtitle.failaccount.label 'Kann Konto auf dem Gerät nicht einrichten'>
 <!ENTITY sync.subtitle.failmultiple.label 'Haben Sie Firefox mehrmals installiert? Derzeit unterstützt &syncBrand.fullName.label; nur eine Firefox-Installation. Bitte deinstallieren Sie andere Versionen, um &syncBrand.shortName.label; nutzen zu können.'>
-  
+
 <!-- Setup Success -->
 <!ENTITY sync.title.success.label 'Einrichtung abgeschlossen'>
 <!ENTITY sync.subtitle.success.label1 'Ihre Daten werden nun im Hintergrund heruntergeladen. Sie können Ihr Konto in den Einstellungen verwalten oder mit &brandShortName; ins Internet gehen.'>
@@ -62,7 +62,7 @@
 <!ENTITY sync.configure.engines.title.label 'Synchronisation'>
 <!ENTITY sync.configure.engines.sync.my.title.label 'Synchronisieren'>
 <!ENTITY sync.configure.engines.title.bookmarks 'Lesezeichen'>
-<!ENTITY sync.configure.engines.title.passwords 'Passwörter'>
+<!ENTITY sync.configure.engines.title.passwords2 'Zugangsdaten'>
 <!ENTITY sync.configure.engines.title.history 'Chronik'>
 <!ENTITY sync.configure.engines.title.tabs 'Tabs'>
 
@@ -141,7 +141,7 @@
 <!ENTITY fxaccount_policy_linkprivacy 'Datenschutzhinweis'>
 
 <!ENTITY fxaccount_getting_started_welcome_to_sync 'Willkommen bei &syncBrand.shortName.label;'>
-<!ENTITY fxaccount_getting_started_description 'Melden Sie sich an, um Ihre Tabs, Lesezeichen, Passwörter &amp; mehr zu synchronisieren.'>
+<!ENTITY fxaccount_getting_started_description2 'Melden Sie sich an, um Ihre Tabs, Lesezeichen, Zugangsdaten &amp; mehr zu synchronisieren.'>
 <!ENTITY fxaccount_getting_started_get_started 'Anmelden'>
 <!ENTITY fxaccount_getting_started_old_firefox 'Verwenden Sie eine ältere Version von &syncBrand.shortName.label;?'>
 
@@ -212,7 +212,7 @@
 <!ENTITY fxaccount_status_needs_finish_migrating 'Tippen Sie hier, um sich mit Ihrem neuen Firefox-Konto anzumelden.'>
 <!ENTITY fxaccount_status_bookmarks 'Lesezeichen'>
 <!ENTITY fxaccount_status_history 'Chronik'>
-<!ENTITY fxaccount_status_passwords 'Passwörter'>
+<!ENTITY fxaccount_status_passwords2 'Zugangsdaten'>
 <!ENTITY fxaccount_status_tabs 'Offene Tabs'>
 <!ENTITY fxaccount_status_legal 'Rechtliches' >
 <!-- Localization note: when tapped, the following two strings link to

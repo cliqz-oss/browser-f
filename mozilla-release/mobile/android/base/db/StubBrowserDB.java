@@ -114,8 +114,18 @@ class StubTabsAccessor implements TabsAccessor {
     }
 
     @Override
+    public List<RemoteClient> getClientsWithoutTabsByRecencyFromCursor(Cursor cursor) {
+        return new ArrayList<>();
+    }
+
+    @Override
     public List<RemoteClient> getClientsFromCursor(final Cursor cursor) {
         return new ArrayList<RemoteClient>();
+    }
+
+    @Override
+    public Cursor getRemoteClientsByRecencyCursor(Context context) {
+        return null;
     }
 
     public Cursor getRemoteTabsCursor(Context context) {
@@ -217,7 +227,7 @@ public class StubBrowserDB implements BrowserDB {
     public void removeHistoryEntry(ContentResolver cr, String url) {
     }
 
-    public void clearHistory(ContentResolver cr) {
+    public void clearHistory(ContentResolver cr, boolean clearSearchHistory) {
     }
 
     @RobocopTarget
@@ -250,7 +260,8 @@ public class StubBrowserDB implements BrowserDB {
     }
 
     @RobocopTarget
-    public void addBookmark(ContentResolver cr, String title, String uri) {
+    public boolean addBookmark(ContentResolver cr, String title, String uri) {
+        return false;
     }
 
     @RobocopTarget

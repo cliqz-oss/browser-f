@@ -7,6 +7,9 @@
 #ifndef gc_GCInternals_h
 #define gc_GCInternals_h
 
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/PodOperations.h"
+
 #include "jscntxt.h"
 
 #include "gc/Zone.h"
@@ -41,7 +44,7 @@ struct AutoFinishGC
 class AutoTraceSession
 {
   public:
-    explicit AutoTraceSession(JSRuntime* rt, HeapState state = Tracing);
+    explicit AutoTraceSession(JSRuntime* rt, JS::HeapState state = JS::HeapState::Tracing);
     ~AutoTraceSession();
 
   protected:
@@ -52,7 +55,7 @@ class AutoTraceSession
     AutoTraceSession(const AutoTraceSession&) = delete;
     void operator=(const AutoTraceSession&) = delete;
 
-    HeapState prevState;
+    JS::HeapState prevState;
 };
 
 struct AutoPrepareForTracing
@@ -93,7 +96,6 @@ class AutoStopVerifyingBarriers
 {
     GCRuntime* gc;
     bool restartPreVerifier;
-    bool restartPostVerifier;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 
   public:
@@ -102,8 +104,6 @@ class AutoStopVerifyingBarriers
       : gc(&rt->gc)
     {
         restartPreVerifier = gc->endVerifyPreBarriers() && !isShutdown;
-        restartPostVerifier = gc->endVerifyPostBarriers() && !isShutdown &&
-            JS::IsGenerationalGCEnabled(rt);
         MOZ_GUARD_OBJECT_NOTIFIER_INIT;
     }
 
@@ -121,8 +121,6 @@ class AutoStopVerifyingBarriers
 
         if (restartPreVerifier)
             gc->startVerifyPreBarriers();
-        if (restartPostVerifier)
-            gc->startVerifyPostBarriers();
 
         if (outer != gcstats::PHASE_NONE)
             gc->stats.beginPhase(outer);
@@ -140,13 +138,18 @@ void
 CheckHashTablesAfterMovingGC(JSRuntime* rt);
 #endif
 
-struct MovingTracer : JS::CallbackTracer {
-    explicit MovingTracer(JSRuntime* rt) : CallbackTracer(rt, Visit, TraceWeakMapKeysValues) {}
+struct MovingTracer : JS::CallbackTracer
+{
+    explicit MovingTracer(JSRuntime* rt) : CallbackTracer(rt, TraceWeakMapKeysValues) {}
 
-    static void Visit(JS::CallbackTracer* jstrc, void** thingp, JSGCTraceKind kind);
-    static bool IsMovingTracer(JSTracer* trc) {
-        return trc->isCallbackTracer() && trc->asCallbackTracer()->hasCallback(Visit);
+    void onObjectEdge(JSObject** objp) override;
+    void onChild(const JS::GCCellPtr& thing) override {
+        MOZ_ASSERT(!RelocationOverlay::isCellForwarded(thing.asCell()));
     }
+
+#ifdef DEBUG
+    TracerKind getTracerKind() const override { return TracerKind::Moving; }
+#endif
 };
 
 class AutoMaybeStartBackgroundAllocation
@@ -195,6 +198,28 @@ struct AutoSetThreadIsSweeping
 #else
     AutoSetThreadIsSweeping() {}
 #endif
+};
+
+// Structure for counting how many times objects in a particular group have
+// been tenured during a minor collection.
+struct TenureCount
+{
+    ObjectGroup* group;
+    int count;
+};
+
+// Keep rough track of how many times we tenure objects in particular groups
+// during minor collections, using a fixed size hash for efficiency at the cost
+// of potential collisions.
+struct TenureCountCache
+{
+    TenureCount entries[16];
+
+    TenureCountCache() { mozilla::PodZero(this); }
+
+    TenureCount& findEntry(ObjectGroup* group) {
+        return entries[PointerHasher<ObjectGroup*, 3>::hash(group) % mozilla::ArrayLength(entries)];
+    }
 };
 
 } /* namespace gc */

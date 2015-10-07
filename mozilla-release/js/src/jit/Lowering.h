@@ -130,7 +130,6 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitAtan2(MAtan2* ins);
     void visitHypot(MHypot* ins);
     void visitPow(MPow* ins);
-    void visitRandom(MRandom* ins);
     void visitMathFunction(MMathFunction* ins);
     void visitAdd(MAdd* ins);
     void visitSub(MSub* ins);
@@ -182,11 +181,16 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitSetArrayLength(MSetArrayLength* ins);
     void visitTypedArrayLength(MTypedArrayLength* ins);
     void visitTypedArrayElements(MTypedArrayElements* ins);
+    void visitSetDisjointTypedElements(MSetDisjointTypedElements* ins);
     void visitTypedObjectElements(MTypedObjectElements* ins);
     void visitSetTypedObjectOffset(MSetTypedObjectOffset* ins);
     void visitTypedObjectDescr(MTypedObjectDescr* ins);
     void visitInitializedLength(MInitializedLength* ins);
     void visitSetInitializedLength(MSetInitializedLength* ins);
+    void visitUnboxedArrayLength(MUnboxedArrayLength* ins);
+    void visitUnboxedArrayInitializedLength(MUnboxedArrayInitializedLength* ins);
+    void visitIncrementUnboxedArrayInitializedLength(MIncrementUnboxedArrayInitializedLength* ins);
+    void visitSetUnboxedArrayInitializedLength(MSetUnboxedArrayInitializedLength* ins);
     void visitNot(MNot* ins);
     void visitBoundsCheck(MBoundsCheck* ins);
     void visitBoundsCheckLower(MBoundsCheckLower* ins);
@@ -203,6 +207,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitArrayPopShift(MArrayPopShift* ins);
     void visitArrayPush(MArrayPush* ins);
     void visitArrayConcat(MArrayConcat* ins);
+    void visitArraySlice(MArraySlice* ins);
     void visitArrayJoin(MArrayJoin* ins);
     void visitLoadUnboxedScalar(MLoadUnboxedScalar* ins);
     void visitLoadTypedArrayElementHole(MLoadTypedArrayElementHole* ins);
@@ -222,6 +227,8 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitGuardObject(MGuardObject* ins);
     void visitGuardString(MGuardString* ins);
     void visitGuardReceiverPolymorphic(MGuardReceiverPolymorphic* ins);
+    void visitGuardUnboxedExpando(MGuardUnboxedExpando* ins);
+    void visitLoadUnboxedExpando(MLoadUnboxedExpando* ins);
     void visitPolyInlineGuard(MPolyInlineGuard* ins);
     void visitAssertRange(MAssertRange* ins);
     void visitCallGetProperty(MCallGetProperty* ins);
@@ -289,7 +296,8 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitLexicalCheck(MLexicalCheck* ins);
     void visitThrowUninitializedLexical(MThrowUninitializedLexical* ins);
     void visitDebugger(MDebugger* ins);
-    void visitNurseryObject(MNurseryObject* ins);
+    void visitNewTarget(MNewTarget* ins);
+    void visitArrowNewTarget(MArrowNewTarget* ins);
 };
 
 } // namespace jit

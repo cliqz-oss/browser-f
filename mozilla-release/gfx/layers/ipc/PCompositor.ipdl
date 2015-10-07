@@ -19,6 +19,7 @@ using mozilla::layers::LayersBackend from "mozilla/layers/LayersTypes.h";
 using mozilla::CrossProcessMutexHandle from "mozilla/ipc/CrossProcessMutex.h";
 using mozilla::ipc::SharedMemoryBasic::Handle from "mozilla/ipc/SharedMemoryBasic.h";
 using class mozilla::TimeStamp from "mozilla/TimeStamp.h";
+using class mozilla::layers::FrameUniformityData from "mozilla/layers/FrameUniformityData.h";
 
 namespace mozilla {
 namespace layers {
@@ -60,7 +61,7 @@ child:
    * application on the widgets. Used on Windows and Linux in managing
    * plugin widgets.
    */
-  async UpdatePluginConfigurations(nsIntPoint aContentOffset,
+  async UpdatePluginConfigurations(IntPoint aContentOffset,
                                    nsIntRegion aVisibleRegion,
                                    PluginWindowData[] aPlugins);
 
@@ -68,11 +69,21 @@ child:
    * Sets the list of currently visible plugin windows based on a
    * list of plugin window ids.
    */
-  async UpdatePluginVisibility(uintptr_t[] aVisibleIdList);
+  async UpdatePluginVisibility(uintptr_t aOwnerWidget,
+                               uintptr_t[] aVisibleIdList);
+
+  /**
+   * Drop any buffers that might be retained on the child compositor
+   * side.
+   */
+  async ClearCachedResources(uint64_t id);
 
 parent:
   // Child sends the parent a request for fill ratio numbers.
   async RequestOverfill();
+
+  // Child requests frame uniformity measurements
+  sync GetFrameUniformity() returns (FrameUniformityData data);
 
   // The child is about to be destroyed, so perform any necessary cleanup.
   sync WillStop();
@@ -85,6 +96,14 @@ parent:
   sync Pause();
   sync Resume();
 
+  // The child layer tree is hidden. id is the layers id of the child
+  // layer tree.
+  async NotifyHidden(uint64_t id);
+
+  // The child layer tree is visible. id is the layers id of the child
+  // layer tree.
+  async NotifyVisible(uint64_t id);
+
   async NotifyChildCreated(uint64_t id);
   async AdoptChild(uint64_t id);
 
@@ -95,7 +114,15 @@ parent:
   //
   // NB: this message will result in animations, transforms, effects,
   // and so forth being interpolated.  That's what we want to happen.
-  sync MakeSnapshot(SurfaceDescriptor inSnapshot, nsIntRect dirtyRect);
+  sync MakeSnapshot(SurfaceDescriptor inSnapshot, IntRect dirtyRect);
+
+  // Same as Makesnapshot(), except the snapshot is read from the underlying
+  // operating system desktop rather than the compositor's backbuffer. This
+  // is intended for testing whether hardware acceleration works.
+  //
+  // This call is part of IPDL, even though it simply wraps an nsIWidget
+  // call, to make sure it does not occur in the middle of a composite.
+  sync MakeWidgetSnapshot(SurfaceDescriptor inSnapshot);
 
   // Make sure any pending composites are started immediately and
   // block until they are completed.

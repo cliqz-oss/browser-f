@@ -1,6 +1,6 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-
- *
- * This Source Code Form is subject to the terms of the Mozilla Public
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
@@ -51,18 +51,15 @@ class nsIConsoleService;
 class nsIContent;
 class nsIContentPolicy;
 class nsIContentSecurityPolicy;
-class nsIDocShell;
+class nsIDocShellTreeItem;
 class nsIDocument;
 class nsIDocumentLoaderFactory;
-class nsIDocumentObserver;
 class nsIDOMDocument;
 class nsIDOMDocumentFragment;
 class nsIDOMEvent;
-class nsIDOMHTMLFormElement;
 class nsIDOMHTMLInputElement;
 class nsIDOMKeyEvent;
 class nsIDOMNode;
-class nsIDOMScriptObjectFactory;
 class nsIDOMWindow;
 class nsIDragSession;
 class nsIEditor;
@@ -71,8 +68,8 @@ class nsIFrame;
 class nsIImageLoadingContent;
 class nsIInterfaceRequestor;
 class nsIIOService;
-class nsIJSRuntimeService;
 class nsILineBreaker;
+class nsILoadGroup;
 class nsIMessageBroadcaster;
 class nsNameSpaceManager;
 class nsIObserver;
@@ -83,25 +80,28 @@ class nsIPrincipal;
 class nsIRequest;
 class nsIRunnable;
 class nsIScriptContext;
-class nsIScriptGlobalObject;
 class nsIScriptSecurityManager;
 class nsIStringBundle;
 class nsIStringBundleService;
+class nsISupportsArray;
 class nsISupportsHashKey;
 class nsIURI;
+class nsIUUIDGenerator;
 class nsIWidget;
 class nsIWordBreaker;
 class nsIXPConnect;
 class nsNodeInfoManager;
 class nsPIDOMWindow;
 class nsPresContext;
-class nsScriptObjectTracer;
 class nsStringBuffer;
 class nsStringHashKey;
 class nsTextFragment;
+class nsView;
 class nsViewportInfo;
 class nsWrapperCache;
 class nsAttrValue;
+class nsITransferable;
+class nsPIWindowRoot;
 
 struct JSPropertyDescriptor;
 struct JSRuntime;
@@ -120,10 +120,17 @@ namespace dom {
 class DocumentFragment;
 class Element;
 class EventTarget;
+class IPCDataTransfer;
 class NodeInfo;
+class nsIContentChild;
+class nsIContentParent;
 class Selection;
 class TabParent;
 } // namespace dom
+
+namespace gfx {
+class DataSourceSurface;
+} // namespace gfx
 
 namespace layers {
 class LayerManager;
@@ -193,6 +200,9 @@ public:
   static bool LookupBindingMember(JSContext* aCx, nsIContent *aContent,
                                   JS::Handle<jsid> aId,
                                   JS::MutableHandle<JSPropertyDescriptor> aDesc);
+
+  // Check whether we should avoid leaking distinguishing information to JS/CSS.
+  static bool ShouldResistFingerprinting(nsIDocShell* aDocShell);
 
   /**
    * Returns the parent node of aChild crossing document boundaries.
@@ -722,6 +732,11 @@ public:
   static bool IsInPrivateBrowsing(nsIDocument* aDoc);
 
   /**
+   * Returns true if this loadGroup uses Private Browsing.
+   */
+  static bool IsInPrivateBrowsing(nsILoadGroup* aLoadGroup);
+
+  /**
    * If aNode is not an element, return true exactly when aContent's binding
    * parent is null.
    *
@@ -771,7 +786,7 @@ public:
   static nsresult ReportToConsoleNonLocalized(const nsAString& aErrorText,
                                               uint32_t aErrorFlags,
                                               const nsACString& aCategory,
-                                              nsIDocument* aDocument,
+                                              const nsIDocument* aDocument,
                                               nsIURI* aURI = nullptr,
                                               const nsAFlatString& aSourceLine
                                                 = EmptyString(),
@@ -816,7 +831,7 @@ public:
   };
   static nsresult ReportToConsole(uint32_t aErrorFlags,
                                   const nsACString& aCategory,
-                                  nsIDocument* aDocument,
+                                  const nsIDocument* aDocument,
                                   PropertiesFile aFile,
                                   const char *aMessageName,
                                   const char16_t **aParams = nullptr,
@@ -844,6 +859,11 @@ public:
    * @return              the set of flags (0 if sandboxAttr is null)
    */
   static uint32_t ParseSandboxAttributeToFlags(const nsAttrValue* sandboxAttr);
+
+  /**
+   * Helper function that generates a UUID.
+   */
+  static nsresult GenerateUUIDInPlace(nsID& aUUID);
 
 
   /**
@@ -907,6 +927,11 @@ public:
    * Return the content policy service
    */
   static nsIContentPolicy *GetContentPolicy();
+
+  /**
+   * Map internal content policy types to external ones.
+   */
+  static nsContentPolicyType InternalContentPolicyTypeToExternal(nsContentPolicyType aType);
 
   /**
    * Quick helper to determine whether there are any mutation listeners
@@ -1116,7 +1141,7 @@ public:
   static mozilla::EventListenerManager*
     GetExistingListenerManagerForNode(const nsINode* aNode);
 
-  static void UnmarkGrayJSListenersInCCGenerationDocuments(uint32_t aGeneration);
+  static void UnmarkGrayJSListenersInCCGenerationDocuments();
 
   /**
    * Remove the eventlistener manager for aNode.
@@ -1273,8 +1298,12 @@ public:
    * @param aResult the result. Out param.
    * @return false on out of memory errors, true otherwise.
    */
+  MOZ_WARN_UNUSED_RESULT
   static bool GetNodeTextContent(nsINode* aNode, bool aDeep,
-                                 nsAString& aResult) NS_WARN_UNUSED_RESULT;
+                                 nsAString& aResult, const mozilla::fallible_t&);
+
+  static void GetNodeTextContent(nsINode* aNode, bool aDeep,
+                                 nsAString& aResult);
 
   /**
    * Same as GetNodeTextContents but appends the result rather than sets it.
@@ -1566,6 +1595,27 @@ public:
   static void WarnScriptWasIgnored(nsIDocument* aDocument);
 
   /**
+   * Whether to assert that RunInStableState() succeeds, or ignore failure,
+   * which may happen late in shutdown.
+   */
+  enum class DispatchFailureHandling { AssertSuccess, IgnoreFailure };
+
+  /**
+   * Add a "synchronous section", in the form of an nsIRunnable run once the
+   * event loop has reached a "stable state". |aRunnable| must not cause any
+   * queued events to be processed (i.e. must not spin the event loop).
+   * We've reached a stable state when the currently executing task/event has
+   * finished, see
+   * http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#synchronous-section
+   * In practice this runs aRunnable once the currently executing event
+   * finishes. If called multiple times per task/event, all the runnables will
+   * be executed, in the order in which RunInStableState() was called.
+   */
+  static void RunInStableState(already_AddRefed<nsIRunnable> aRunnable,
+                               DispatchFailureHandling aHandling =
+                                 DispatchFailureHandling::AssertSuccess);
+
+  /**
    * Retrieve information about the viewport as a data structure.
    * This will return information in the viewport META data section
    * of the document. This can be used in lieu of ProcessViewportInfo(),
@@ -1749,8 +1799,9 @@ public:
    * @param aString the string to convert the newlines inside [in/out]
    */
   static void PlatformToDOMLineBreaks(nsString &aString);
-  static NS_WARN_UNUSED_RESULT bool PlatformToDOMLineBreaks(nsString &aString,
-                                                            const mozilla::fallible_t&);
+  MOZ_WARN_UNUSED_RESULT
+  static bool PlatformToDOMLineBreaks(nsString &aString,
+                                      const mozilla::fallible_t&);
 
   /**
    * Populates aResultString with the contents of the string-buffer aBuf, up
@@ -1855,30 +1906,20 @@ public:
   static bool IsRequestFullScreenAllowed();
 
   /**
-   * Returns true if the DOM fullscreen API is restricted to content only.
-   * This mirrors the pref "full-screen-api.content-only". If this is true,
-   * fullscreen requests in chrome are denied, and fullscreen requests in
-   * content stop percolating upwards before they reach chrome documents.
-   * That is, when an element in content requests fullscreen, only its
-   * containing frames that are in content are also made fullscreen, not
-   * the containing frame in the chrome document.
-   *
-   * Note if the fullscreen API is running in content only mode then multiple
-   * branches of a doctree can be fullscreen at the same time, but no fullscreen
-   * document will have a common ancestor with another fullscreen document
-   * that is also fullscreen (since the only common ancestor they can have
-   * is the chrome document, and that can't be fullscreen). i.e. multiple
-   * child documents of the chrome document can be fullscreen, but the chrome
-   * document won't be fullscreen.
-   *
-   * Making the fullscreen API content only is useful on platforms where we
-   * still want chrome to be visible or accessible while content is
-   * fullscreen, like on Windows 8 in Metro mode.
-   *
-   * Note that if the fullscreen API is content only, chrome can still go
-   * fullscreen by setting the "fullScreen" attribute on its XUL window.
+   * Returns true if calling execCommand with 'cut' or 'copy' arguments
+   * is restricted to chrome code.
    */
-  static bool IsFullscreenApiContentOnly();
+  static bool IsCutCopyRestricted()
+  {
+    return !sIsCutCopyAllowed;
+  }
+
+  /**
+   * Returns true if calling execCommand with 'cut' or 'copy' arguments is
+   * allowed in the current context. These are only allowed if the user initiated
+   * them (like with a mouse-click or key press).
+   */
+  static bool IsCutCopyAllowed();
 
   /*
    * Returns true if the performance timing APIs are enabled.
@@ -1913,6 +1954,24 @@ public:
     return sEncodeDecodeURLHash;
   }
 
+  /*
+   * Returns true if URL getters should percent decode the value of the segment
+   */
+  static bool GettersDecodeURLHash()
+  {
+    return sGettersDecodeURLHash && sEncodeDecodeURLHash;
+  }
+
+  /*
+   * Returns true if the browser should attempt to prevent content scripts
+   * from collecting distinctive information about the browser that could
+   * be used to "fingerprint" and track the user across websites.
+   */
+  static bool ResistFingerprinting()
+  {
+    return sPrivacyResistFingerprinting;
+  }
+
   /**
    * Returns true if the doc tree branch which contains aDoc contains any
    * plugins which we don't control event dispatch for, i.e. do any plugins
@@ -1942,12 +2001,10 @@ public:
   static bool HasPluginWithUncontrolledEventDispatch(nsIContent* aContent);
 
   /**
-   * Returns the document that is the closest ancestor to aDoc that is
-   * fullscreen. If aDoc is fullscreen this returns aDoc. If aDoc is not
-   * fullscreen and none of aDoc's ancestors are fullscreen this returns
-   * nullptr.
+   * Returns the root document in a document hierarchy. Normally this
+   * will be the chrome document.
    */
-  static nsIDocument* GetFullscreenAncestor(nsIDocument* aDoc);
+  static nsIDocument* GetRootDocument(nsIDocument* aDoc);
 
   /**
    * Returns true if aWin and the current pointer lock document
@@ -2012,6 +2069,11 @@ public:
    * Perform cleanup that's appropriate for XPCOM shutdown.
    */
   static void XPCOMShutdown();
+
+  /**
+   * Checks if internal PDF viewer is enabled.
+   */
+  static bool IsPDFJSEnabled();
 
   enum ContentViewerType
   {
@@ -2278,6 +2340,7 @@ public:
    * otherwise it just outputs the hostname in aHost.
    */
   static void GetHostOrIPv6WithBrackets(nsIURI* aURI, nsAString& aHost);
+  static void GetHostOrIPv6WithBrackets(nsIURI* aURI, nsCString& aHost);
 
   /*
    * Call the given callback on all remote children of the given top-level
@@ -2286,6 +2349,92 @@ public:
   static void CallOnAllRemoteChildren(nsIDOMWindow* aWindow,
                                       CallOnRemoteChildFunction aCallback,
                                       void* aArg);
+
+  static void TransferablesToIPCTransferables(nsISupportsArray* aTransferables,
+                                              nsTArray<mozilla::dom::IPCDataTransfer>& aIPC,
+                                              mozilla::dom::nsIContentChild* aChild,
+                                              mozilla::dom::nsIContentParent* aParent);
+
+  static void TransferableToIPCTransferable(nsITransferable* aTransferable,
+                                            mozilla::dom::IPCDataTransfer* aIPCDataTransfer,
+                                            mozilla::dom::nsIContentChild* aChild,
+                                            mozilla::dom::nsIContentParent* aParent);
+
+  /*
+   * Get the pixel data from the given source surface and return it as a buffer.
+   * The length and stride will be assigned from the surface.
+   */
+  static mozilla::UniquePtr<char[]> GetSurfaceData(mozilla::gfx::DataSourceSurface* aSurface,
+                                                   size_t* aLength, int32_t* aStride);
+
+  // Helpers shared by the implementations of nsContentUtils methods and
+  // nsIDOMWindowUtils methods.
+  static mozilla::Modifiers GetWidgetModifiers(int32_t aModifiers);
+  static nsIWidget* GetWidget(nsIPresShell* aPresShell, nsPoint* aOffset);
+  static int16_t GetButtonsFlagForButton(int32_t aButton);
+  static mozilla::LayoutDeviceIntPoint ToWidgetPoint(const mozilla::CSSPoint& aPoint,
+                                                     const nsPoint& aOffset,
+                                                     nsPresContext* aPresContext);
+  static nsView* GetViewToDispatchEvent(nsPresContext* aPresContext,
+                                        nsIPresShell** aPresShell);
+
+  /**
+   * Synthesize a key event to the given widget
+   * (see nsIDOMWindowUtils.sendKeyEvent).
+   */
+  static nsresult SendKeyEvent(nsIWidget* aWidget,
+                               const nsAString& aType,
+                               int32_t aKeyCode,
+                               int32_t aCharCode,
+                               int32_t aModifiers,
+                               uint32_t aAdditionalFlags,
+                               bool* aDefaultActionTaken);
+
+  /**
+   * Synthesize a mouse event to the given widget
+   * (see nsIDOMWindowUtils.sendMouseEvent).
+   */
+  static nsresult SendMouseEvent(nsCOMPtr<nsIPresShell> aPresShell,
+                                 const nsAString& aType,
+                                 float aX,
+                                 float aY,
+                                 int32_t aButton,
+                                 int32_t aClickCount,
+                                 int32_t aModifiers,
+                                 bool aIgnoreRootScrollFrame,
+                                 float aPressure,
+                                 unsigned short aInputSourceArg,
+                                 bool aToWindow,
+                                 bool *aPreventDefault,
+                                 bool aIsSynthesized);
+
+  static void FirePageShowEvent(nsIDocShellTreeItem* aItem,
+                                mozilla::dom::EventTarget* aChromeEventHandler,
+                                bool aFireIfShowing);
+
+  static void FirePageHideEvent(nsIDocShellTreeItem* aItem,
+                                mozilla::dom::EventTarget* aChromeEventHandler);
+
+  static already_AddRefed<nsPIWindowRoot> GetWindowRoot(nsIDocument* aDoc);
+
+  /*
+   * Implements step 3.1 and 3.3 of the Determine request's Referrer algorithm
+   * from the Referrer Policy specification.
+   *
+   * The referrer policy of the document is applied by Necko when using
+   * channels.
+   *
+   * For documents representing an iframe srcdoc attribute, the document sets
+   * its own URI correctly, so this method simply uses the document's original
+   * or current URI as appropriate.
+   *
+   * aDoc may be null.
+   *
+   * https://w3c.github.io/webappsec/specs/referrer-policy/#determine-requests-referrer
+   */
+  static nsresult SetFetchReferrerURIWithPolicy(nsIPrincipal* aPrincipal,
+                                                nsIDocument* aDoc,
+                                                nsIHttpChannel* aChannel);
 
 private:
   static bool InitializeEventTable();
@@ -2338,6 +2487,7 @@ private:
   static nsNameSpaceManager *sNameSpaceManager;
 
   static nsIIOService *sIOService;
+  static nsIUUIDGenerator *sUUIDGenerator;
 
   static bool sImgLoaderInitialized;
   static void InitImgLoader();
@@ -2380,13 +2530,15 @@ private:
   static bool sAllowXULXBL_for_file;
   static bool sIsFullScreenApiEnabled;
   static bool sTrustedFullScreenOnly;
-  static bool sFullscreenApiIsContentOnly;
+  static bool sIsCutCopyAllowed;
   static uint32_t sHandlingInputTimeout;
   static bool sIsPerformanceTimingEnabled;
   static bool sIsResourceTimingEnabled;
   static bool sIsUserTimingLoggingEnabled;
   static bool sIsExperimentalAutocompleteEnabled;
   static bool sEncodeDecodeURLHash;
+  static bool sGettersDecodeURLHash;
+  static bool sPrivacyResistFingerprinting;
 
   static nsHtml5StringParser* sHTMLFragmentParser;
   static nsIParser* sXMLFragmentParser;

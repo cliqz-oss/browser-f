@@ -510,9 +510,13 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
   nsIFrame* kid;
   for (kid = GetFirstPrincipalChild(); kid; kid = kid->GetNextSibling()) {
-    // Skip touch caret frame if we do not build caret.
-    if (!aBuilder->IsBuildingCaret() && kid->GetContent() == mTouchCaretElement) {
-      continue;
+    // Skip touch/selection caret frame if we do not build caret.
+    if (!aBuilder->IsBuildingCaret()) {
+      if(kid->GetContent() == mTouchCaretElement ||
+         kid->GetContent() == mSelectionCaretsStartElement||
+         kid->GetContent() == mSelectionCaretsEndElement) {
+        continue;
+      }
     }
 
     // Put our child into its own pseudo-stack.
@@ -652,11 +656,11 @@ nsCanvasFrame::Reflow(nsPresContext*           aPresContext,
       kidReflowState(aPresContext, aReflowState, kidFrame,
                      aReflowState.AvailableSize(kidFrame->GetWritingMode()));
 
-    if (aReflowState.IsVResize() &&
-        (kidFrame->GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_HEIGHT)) {
-      // Tell our kid it's being vertically resized too.  Bit of a
+    if (aReflowState.IsBResize() &&
+        (kidFrame->GetStateBits() & NS_FRAME_CONTAINS_RELATIVE_BSIZE)) {
+      // Tell our kid it's being block-dir resized too.  Bit of a
       // hack for framesets.
-      kidReflowState.SetVResize(true);
+      kidReflowState.SetBResize(true);
     }
 
     WritingMode wm = aReflowState.GetWritingMode();

@@ -118,7 +118,13 @@ class UpvarCookie
     F(WITH) \
     F(RETURN) \
     F(NEW) \
-    F(DELETE) \
+    /* Delete operations.  These must be sequential. */ \
+    F(DELETENAME) \
+    F(DELETEPROP) \
+    F(DELETESUPERPROP) \
+    F(DELETEELEM) \
+    F(DELETESUPERELEM) \
+    F(DELETEEXPR) \
     F(TRY) \
     F(CATCH) \
     F(CATCHLIST) \
@@ -133,16 +139,15 @@ class UpvarCookie
     F(LEXICALSCOPE) \
     F(LET) \
     F(LETBLOCK) \
-    F(LETEXPR) \
     F(IMPORT) \
     F(IMPORT_SPEC_LIST) \
     F(IMPORT_SPEC) \
     F(EXPORT) \
     F(EXPORT_FROM) \
+    F(EXPORT_DEFAULT) \
     F(EXPORT_SPEC_LIST) \
     F(EXPORT_SPEC) \
     F(EXPORT_BATCH_SPEC) \
-    F(SEQ) \
     F(FORIN) \
     F(FOROF) \
     F(FORHEAD) \
@@ -154,9 +159,13 @@ class UpvarCookie
     F(CLASSMETHOD) \
     F(CLASSMETHODLIST) \
     F(CLASSNAMES) \
+    F(SUPERPROP) \
+    F(SUPERELEM) \
+    F(NEWTARGET) \
     \
     /* Unary operators. */ \
-    F(TYPEOF) \
+    F(TYPEOFNAME) \
+    F(TYPEOFEXPR) \
     F(VOID) \
     F(NOT) \
     F(BITNOT) \
@@ -226,6 +235,12 @@ enum ParseNodeKind
     PNK_ASSIGNMENT_LAST = PNK_MODASSIGN
 };
 
+inline bool
+IsDeleteKind(ParseNodeKind kind)
+{
+    return PNK_DELETENAME <= kind && kind <= PNK_DELETEEXPR;
+}
+
 /*
  * Label        Variant     Members
  * -----        -------     -------
@@ -239,12 +254,21 @@ enum ParseNodeKind
  *                          pn_cookie: static level and var index for function
  *                          pn_dflags: PND_* definition/use flags (see below)
  *                          pn_blockid: block id number
- * PNK_ARGSBODY list        list of formal parameters followed by:
+ * PNK_ARGSBODY list        list of formal parameters with
+ *                              PNK_NAME node with non-empty name for
+ *                                SingleNameBinding without Initializer
+ *                              PNK_ASSIGN node for SingleNameBinding with
+ *                                Initializer
+ *                              PNK_NAME node with empty name for destructuring
+ *                                pn_expr: PNK_ARRAY, PNK_OBJECT, or PNK_ASSIGN
+ *                                  PNK_ARRAY or PNK_OBJECT for BindingPattern
+ *                                    without Initializer
+ *                                  PNK_ASSIGN for BindingPattern with
+ *                                    Initializer
+ *                          followed by:
  *                              PNK_STATEMENTLIST node for function body
  *                                statements,
- *                              PNK_RETURN for expression closure, or
- *                              PNK_SEQ for expression closure with
- *                                destructured formal parameters
+ *                              PNK_RETURN for expression closure
  *                          pn_count: 1 + number of formal parameters
  *                          pn_tree: PNK_ARGSBODY or PNK_STATEMENTLIST node
  * PNK_SPREAD   unary       pn_kid: expression being spread
@@ -275,15 +299,13 @@ enum ParseNodeKind
  *                            PNK_FOROF (for-of) or PNK_FORHEAD (for(;;))
  *                          pn_right: body
  * PNK_FORIN    ternary     pn_kid1:  PNK_VAR to left of 'in', or nullptr
- *                            its pn_xflags may have PNX_POPVAR
- *                            bit set
+ *                            its pn_xflags may have PNX_POPVAR bit set
  *                          pn_kid2: PNK_NAME or destructuring expr
  *                            to left of 'in'; if pn_kid1, then this
  *                            is a clone of pn_kid1->pn_head
  *                          pn_kid3: object expr to right of 'in'
  * PNK_FOROF    ternary     pn_kid1:  PNK_VAR to left of 'of', or nullptr
- *                            its pn_xflags may have PNX_POPVAR
- *                            bit set
+ *                            its pn_xflags may have PNX_POPVAR bit set
  *                          pn_kid2: PNK_NAME or destructuring expr
  *                            to left of 'of'; if pn_kid1, then this
  *                            is a clone of pn_kid1->pn_head
@@ -325,6 +347,12 @@ enum ParseNodeKind
  *                              in original source, not introduced via
  *                              constant folding or other tree rewriting
  * PNK_LABEL    name        pn_atom: label, pn_expr: labeled statement
+ * PNK_IMPORT   binary      pn_left: PNK_IMPORT_SPEC_LIST import specifiers
+ *                          pn_right: PNK_STRING module specifier
+ * PNK_EXPORT   unary       pn_kid: declaration expression
+ * PNK_EXPORT_FROM binary   pn_left: PNK_EXPORT_SPEC_LIST export specifiers
+ *                          pn_right: PNK_STRING module specifier
+ * PNK_EXPORT_DEFAULT unary pn_kid: export default declaration or expression
  *
  * <Expressions>
  * All left-associated binary trees of the same type are optimized into lists
@@ -361,24 +389,18 @@ enum ParseNodeKind
  * PNK_LSH,     binary      pn_left: left-assoc SH expr, pn_right: ADD expr
  * PNK_RSH,
  * PNK_URSH
- * PNK_ADD      binary      pn_left: left-assoc ADD expr, pn_right: MUL expr
- *                          pn_xflags: if a left-associated binary PNK_ADD
- *                            tree has been flattened into a list (see above
- *                            under <Expressions>), pn_xflags will contain
- *                            PNX_STRCAT if at least one list element is a
- *                            string literal (PNK_STRING); if such a list has
- *                            any non-string, non-number term, pn_xflags will
- *                            contain PNX_CANTFOLD.
- * PNK_SUB      binary      pn_left: left-assoc SH expr, pn_right: ADD expr
+ * PNK_ADD,     binary      pn_left: left-assoc ADD expr, pn_right: MUL expr
+ * PNK_SUB
  * PNK_STAR,    binary      pn_left: left-assoc MUL expr, pn_right: UNARY expr
  * PNK_DIV,                 pn_op: JSOP_MUL, JSOP_DIV, JSOP_MOD
  * PNK_MOD
  * PNK_POS,     unary       pn_kid: UNARY expr
  * PNK_NEG
- * PNK_TYPEOF,  unary       pn_kid: UNARY expr
- * PNK_VOID,
+ * PNK_VOID,    unary       pn_kid: UNARY expr
  * PNK_NOT,
  * PNK_BITNOT
+ * PNK_TYPEOFNAME, unary    pn_kid: UNARY expr
+ * PNK_TYPEOFEXPR
  * PNK_PREINCREMENT, unary  pn_kid: MEMBER expr
  * PNK_POSTINCREMENT,
  * PNK_PREDECREMENT,
@@ -386,7 +408,16 @@ enum ParseNodeKind
  * PNK_NEW      list        pn_head: list of ctor, arg1, arg2, ... argN
  *                          pn_count: 1 + N (where N is number of args)
  *                          ctor is a MEMBER expr
- * PNK_DELETE   unary       pn_kid: MEMBER expr
+ * PNK_DELETENAME unary     pn_kid: PNK_NAME expr
+ * PNK_DELETEPROP unary     pn_kid: PNK_DOT expr
+ * PNK_DELETESUPERPROP unary pn_kid: PNK_SUPERPROP expr
+ * PNK_DELETEELEM unary     pn_kid: PNK_ELEM expr
+ * PNK_DELETESUPERELEM unary pn_kid: PNK_SUPERELEM expr
+ * PNK_DELETEEXPR unary     pn_kid: MEMBER expr that's evaluated, then the
+ *                          overall delete evaluates to true; can't be a kind
+ *                          for a more-specific PNK_DELETE* unless constant
+ *                          folding (or a similar parse tree manipulation) has
+ *                          occurred
  * PNK_DOT      name        pn_expr: MEMBER expr to left of .
  *                          pn_atom: name to right of .
  * PNK_ELEM     binary      pn_left: MEMBER expr to left of [
@@ -697,7 +728,7 @@ class ParseNode
                                            still valid, but this use no longer
                                            optimizable via an upvar opcode */
 #define PND_CLOSED              0x40    /* variable is closed over */
-#define PND_DEFAULT             0x80    /* definition is an arg with a default */
+// 0x80 is available
 #define PND_IMPLICITARGUMENTS  0x100    /* the definition is a placeholder for
                                            'arguments' that has been converted
                                            into a definition after the function
@@ -712,15 +743,13 @@ class ParseNode
 /* PN_LIST pn_xflags bits. */
 #define PNX_POPVAR      0x01            /* PNK_VAR or PNK_CONST last result
                                            needs popping */
-#define PNX_GROUPINIT   0x02            /* var [a, b] = [c, d]; unit list */
-#define PNX_FUNCDEFS    0x04            /* contains top-level function statements */
-#define PNX_SETCALL     0x08            /* call expression in lvalue context */
-#define PNX_DESTRUCT    0x10            /* code evaluating destructuring
-                                           arguments occurs before function body */
-#define PNX_SPECIALARRAYINIT 0x20       /* one or more of
+#define PNX_FUNCDEFS    0x02            /* contains top-level function statements */
+#define PNX_SETCALL     0x04            /* call expression in lvalue context */
+/* 0x08 is available */
+#define PNX_ARRAYHOLESPREAD 0x10        /* one or more of
                                            1. array initialiser has holes
                                            2. array initializer has spread node */
-#define PNX_NONCONST    0x40            /* initialiser has non-constants */
+#define PNX_NONCONST    0x20            /* initialiser has non-constants */
 
     static_assert(PNX_NONCONST < (1 << NumListFlagBits), "Not enough bits");
 
@@ -869,8 +898,8 @@ class ParseNode
 
     enum AllowConstantObjects {
         DontAllowObjects = 0,
-        DontAllowNestedObjects,
-        AllowObjects
+        AllowObjects,
+        ForCopyOnWriteArray
     };
 
     bool getConstantValue(ExclusiveContext* cx, AllowConstantObjects allowObjects, MutableHandleValue vp,
@@ -917,10 +946,6 @@ struct NullaryNode : public ParseNode
         pn_atom = atom;
     }
 
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_NULLARY);
-    }
-
 #ifdef DEBUG
     void dump();
 #endif
@@ -932,10 +957,6 @@ struct UnaryNode : public ParseNode
       : ParseNode(kind, op, PN_UNARY, pos)
     {
         pn_kid = kid;
-    }
-
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_UNARY);
     }
 
 #ifdef DEBUG
@@ -959,10 +980,6 @@ struct BinaryNode : public ParseNode
         pn_right = right;
     }
 
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_BINARY);
-    }
-
 #ifdef DEBUG
     void dump(int indent);
 #endif
@@ -977,10 +994,6 @@ struct BinaryObjNode : public ParseNode
         pn_left = left;
         pn_right = right;
         pn_binary_obj = objbox;
-    }
-
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_BINARY_OBJ);
     }
 
 #ifdef DEBUG
@@ -1007,10 +1020,6 @@ struct TernaryNode : public ParseNode
         pn_kid1 = kid1;
         pn_kid2 = kid2;
         pn_kid3 = kid3;
-    }
-
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_TERNARY);
     }
 
 #ifdef DEBUG
@@ -1058,10 +1067,6 @@ struct CodeNode : public ParseNode
         pn_cookie.makeFree();
     }
 
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_CODE);
-    }
-
 #ifdef DEBUG
     void dump(int indent);
 #endif
@@ -1079,10 +1084,6 @@ struct NameNode : public ParseNode
         pn_dflags = 0;
         pn_blockid = blockid;
         MOZ_ASSERT(pn_blockid == blockid);  // check for bitfield overflow
-    }
-
-    static bool test(const ParseNode& node) {
-        return node.isArity(PN_NAME);
     }
 
 #ifdef DEBUG
@@ -1425,6 +1426,37 @@ struct ClassNode : public TernaryNode {
     }
 };
 
+struct SuperProperty : public NullaryNode {
+    SuperProperty(JSAtom* atom, const TokenPos& pos)
+      : NullaryNode(PNK_SUPERPROP, JSOP_NOP, pos, atom)
+    { }
+
+    static bool test(const ParseNode& node) {
+        bool match = node.isKind(PNK_SUPERPROP);
+        MOZ_ASSERT_IF(match, node.isArity(PN_NULLARY));
+        return match;
+    }
+
+    JSAtom* propName() const {
+        return pn_atom;
+    }
+};
+
+struct SuperElement : public UnaryNode {
+    SuperElement(ParseNode* expr, const TokenPos& pos)
+      : UnaryNode(PNK_SUPERELEM, JSOP_NOP, pos, expr)
+    { }
+
+    static bool test(const ParseNode& node) {
+        bool match = node.isKind(PNK_SUPERELEM);
+        MOZ_ASSERT_IF(match, node.isArity(PN_UNARY));
+        return match;
+    }
+
+    ParseNode* expr() const {
+        return pn_kid;
+    }
+};
 
 #ifdef DEBUG
 void DumpParseTree(ParseNode* pn, int indent = 0);
@@ -1660,7 +1692,17 @@ enum ParseReportKind
     ParseStrictError
 };
 
-enum FunctionSyntaxKind { Expression, Statement, Arrow, Method, Lazy };
+enum FunctionSyntaxKind
+{
+    Expression,
+    Statement,
+    Arrow,
+    Method,
+    ClassConstructor,
+    DerivedClassConstructor,
+    Getter,
+    Setter
+};
 
 static inline ParseNode*
 FunctionArgsList(ParseNode* fn, unsigned* numFormals)

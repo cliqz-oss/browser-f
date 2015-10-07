@@ -73,6 +73,18 @@ rdtsc(void)
 
     return result;
 }
+#elif defined(__arm__)
+#include <sys/time.h>
+static __inline__ uint64_t
+rdtsc(void)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint64_t ret = tv.tv_sec;
+    ret *= 1000000;
+    ret += tv.tv_usec;
+    return ret;
+}
 #else
 static __inline__ uint64_t
 rdtsc(void)
@@ -185,10 +197,10 @@ TraceLoggerThread::~TraceLoggerThread()
         graph = nullptr;
     }
 
-    for (TextIdHashMap::Range r = extraTextId.all(); !r.empty(); r.popFront())
-        js_delete(r.front().value());
-    extraTextId.finish();
-    pointerMap.finish();
+    if (extraTextId.initialized()) {
+        for (TextIdHashMap::Range r = extraTextId.all(); !r.empty(); r.popFront())
+            js_delete(r.front().value());
+    }
 }
 
 bool

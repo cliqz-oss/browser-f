@@ -445,6 +445,12 @@
 <!ENTITY junkButton.tooltip "Die aktuelle Nachricht als Junk markieren">
 <!ENTITY notJunkButton.tooltip "Die aktuelle Nachricht als &quot;Kein Junk&quot; markieren">
 
+<!-- Remote Content Button Popup -->
+<!ENTITY remoteContentOptionsAllowForMsg.label "Externe Inhalte in dieser Nachricht anzeigen">
+<!ENTITY remoteContentOptionsAllowForMsg.accesskey "E">
+<!ENTITY editRemoteContentSettings.label "Berechtigungen für externe Inhalte bearbeiten…">
+<!ENTITY editRemoteContentSettings.accesskey "B">
+
 <!-- Statusbar -->
 <!ENTITY  statusText.label "Fertig">
 

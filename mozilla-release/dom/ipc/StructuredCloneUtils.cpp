@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
-/* vim: set sw=4 ts=8 et tw=80 : */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -50,14 +50,14 @@ Read(JSContext* aCx, JSStructuredCloneReader* aReader, uint32_t aTag,
     // while destructors are running.
     JS::Rooted<JS::Value> val(aCx);
     {
-      MOZ_ASSERT(aData < closure->mBlobs.Length());
-      nsRefPtr<File> blob = closure->mBlobs[aData];
+      MOZ_ASSERT(aData < closure->mBlobImpls.Length());
+      nsRefPtr<BlobImpl> blobImpl = closure->mBlobImpls[aData];
 
 #ifdef DEBUG
       {
-        // File should not be mutable.
+        // Blob should not be mutable.
         bool isMutable;
-        MOZ_ASSERT(NS_SUCCEEDED(blob->GetMutable(&isMutable)));
+        MOZ_ASSERT(NS_SUCCEEDED(blobImpl->GetMutable(&isMutable)));
         MOZ_ASSERT(!isMutable);
       }
 #endif
@@ -66,8 +66,8 @@ Read(JSContext* aCx, JSStructuredCloneReader* aReader, uint32_t aTag,
       nsIGlobalObject *global = xpc::NativeGlobal(JS::CurrentGlobalOrNull(aCx));
       MOZ_ASSERT(global);
 
-      nsRefPtr<File> newBlob = new File(global, blob->Impl());
-      if (!GetOrCreateDOMReflector(aCx, newBlob, &val)) {
+      nsRefPtr<Blob> newBlob = Blob::Create(global, blobImpl);
+      if (!ToJSValue(aCx, newBlob, &val)) {
         return nullptr;
       }
     }
@@ -89,12 +89,12 @@ Write(JSContext* aCx, JSStructuredCloneWriter* aWriter,
 
   // See if the wrapped native is a File/Blob.
   {
-    File* blob = nullptr;
+    Blob* blob = nullptr;
     if (NS_SUCCEEDED(UNWRAP_OBJECT(Blob, aObj, blob)) &&
         NS_SUCCEEDED(blob->SetMutable(false)) &&
         JS_WriteUint32Pair(aWriter, SCTAG_DOM_BLOB,
-                           closure->mBlobs.Length())) {
-      closure->mBlobs.AppendElement(blob);
+                           closure->mBlobImpls.Length())) {
+      closure->mBlobImpls.AppendElement(blob->Impl());
       return true;
     }
   }

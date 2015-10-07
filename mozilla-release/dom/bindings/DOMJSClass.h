@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*-*/
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -51,25 +52,23 @@ typedef bool (*PropertyEnabled)(JSContext* cx, JSObject* global);
 
 template<typename T>
 struct Prefable {
-  inline bool isEnabled(JSContext* cx, JSObject* obj) const {
+  inline bool isEnabled(JSContext* cx, JS::Handle<JSObject*> obj) const {
     if (!enabled) {
       return false;
     }
     if (!enabledFunc && !availableFunc && !checkPermissions) {
       return true;
     }
-    // Just go ahead and root obj, in case enabledFunc GCs
-    JS::Rooted<JSObject*> rootedObj(cx, obj);
     if (enabledFunc &&
-        !enabledFunc(cx, js::GetGlobalForObjectCrossCompartment(rootedObj))) {
+        !enabledFunc(cx, js::GetGlobalForObjectCrossCompartment(obj))) {
       return false;
     }
     if (availableFunc &&
-        !availableFunc(cx, js::GetGlobalForObjectCrossCompartment(rootedObj))) {
+        !availableFunc(cx, js::GetGlobalForObjectCrossCompartment(obj))) {
       return false;
     }
     if (checkPermissions &&
-        !CheckPermissions(cx, js::GetGlobalForObjectCrossCompartment(rootedObj),
+        !CheckPermissions(cx, js::GetGlobalForObjectCrossCompartment(obj),
                           checkPermissions)) {
       return false;
     }

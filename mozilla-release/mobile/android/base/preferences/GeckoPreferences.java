@@ -26,7 +26,6 @@ import org.mozilla.gecko.GeckoApplication;
 import org.mozilla.gecko.GeckoEvent;
 import org.mozilla.gecko.GeckoProfile;
 import org.mozilla.gecko.GeckoSharedPrefs;
-import org.mozilla.gecko.GuestSession;
 import org.mozilla.gecko.LocaleManager;
 import org.mozilla.gecko.Locales;
 import org.mozilla.gecko.PrefsHelper;
@@ -43,10 +42,10 @@ import org.mozilla.gecko.updater.UpdateServiceHelper;
 import org.mozilla.gecko.util.GeckoEventListener;
 import org.mozilla.gecko.util.HardwareUtils;
 import org.mozilla.gecko.util.ThreadUtils;
+import org.mozilla.gecko.util.InputOptionsUtils;
 import org.mozilla.gecko.widget.FloatingHintEditText;
 
 import android.app.ActionBar;
-import android.app.Activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.app.Fragment;
@@ -127,6 +126,9 @@ OnSharedPreferenceChangeListener
     private static final String PREFS_SYNC = NON_PREF_PREFIX + "sync";
     private static final String PREFS_TRACKING_PROTECTION = "privacy.trackingprotection.enabled";
     private static final String PREFS_TRACKING_PROTECTION_LEARN_MORE = NON_PREF_PREFIX + "trackingprotection.learn_more";
+    public static final String PREFS_OPEN_URLS_IN_PRIVATE = NON_PREF_PREFIX + "openExternalURLsPrivately";
+    public static final String PREFS_VOICE_INPUT_ENABLED = NON_PREF_PREFIX + "voice_input_enabled";
+    public static final String PREFS_QRCODE_ENABLED = NON_PREF_PREFIX + "qrcode_enabled";
 
     private static final String ACTION_STUMBLER_UPLOAD_PREF = AppConstants.ANDROID_PACKAGE_NAME + ".STUMBLER_PREF";
 
@@ -137,6 +139,8 @@ OnSharedPreferenceChangeListener
     public static final String PREFS_SUGGESTED_SITES = NON_PREF_PREFIX + "home_suggested_sites";
     public static final String PREFS_TAB_QUEUE = NON_PREF_PREFIX + "tab_queue";
     public static final String PREFS_CUSTOMIZE_SCREEN = NON_PREF_PREFIX + "customize_screen";
+    public static final String PREFS_TAB_QUEUE_LAST_SITE = NON_PREF_PREFIX + "last_site";
+    public static final String PREFS_TAB_QUEUE_LAST_TIME = NON_PREF_PREFIX + "last_time";
 
     // These values are chosen to be distinct from other Activity constants.
     private static final int REQUEST_CODE_PREF_SCREEN = 5;
@@ -682,6 +686,14 @@ OnSharedPreferenceChangeListener
                     // Only change the customize pref screen summary on nightly builds with the tab queue build flag.
                     pref.setSummary(getString(R.string.pref_category_customize_alt_summary));
                 }
+                if (getResources().getString(R.string.pref_category_input_options).equals(key)) {
+                    if (!AppConstants.NIGHTLY_BUILD || (!InputOptionsUtils.supportsVoiceRecognizer(getApplicationContext(), getResources().getString(R.string.voicesearch_prompt)) &&
+                            !InputOptionsUtils.supportsQrCodeReader(getApplicationContext()))) {
+                        preferences.removePreference(pref);
+                        i--;
+                        continue;
+                    }
+                }
                 setupPreferences((PreferenceGroup) pref, prefs);
             } else {
                 pref.setOnPreferenceChangeListener(this);
@@ -697,6 +709,12 @@ OnSharedPreferenceChangeListener
                 } else if (AppConstants.RELEASE_BUILD &&
                            PREFS_DISPLAY_REFLOW_ON_ZOOM.equals(key)) {
                     // Remove UI for reflow on release builds.
+                    preferences.removePreference(pref);
+                    i--;
+                    continue;
+                } else if (!AppConstants.NIGHTLY_BUILD &&
+                        PREFS_OPEN_URLS_IN_PRIVATE.equals(key)) {
+                    // Remove UI for opening external links in private browsing on non-Nightly builds.
                     preferences.removePreference(pref);
                     i--;
                     continue;
@@ -775,6 +793,18 @@ OnSharedPreferenceChangeListener
                     }
                 } else if (!(AppConstants.MOZ_ANDROID_TAB_QUEUE && AppConstants.NIGHTLY_BUILD) && PREFS_TAB_QUEUE.equals(key)) {
                     // Only show tab queue pref on nightly builds with the tab queue build flag.
+                    preferences.removePreference(pref);
+                    i--;
+                    continue;
+                } else if (PREFS_VOICE_INPUT_ENABLED.equals(key) &&
+                           (!AppConstants.NIGHTLY_BUILD || !InputOptionsUtils.supportsVoiceRecognizer(getApplicationContext(), getResources().getString(R.string.voicesearch_prompt)))) {
+                    // Remove UI for voice input on non nightly builds.
+                    preferences.removePreference(pref);
+                    i--;
+                    continue;
+                } else if (PREFS_QRCODE_ENABLED.equals(key) &&
+                         (!AppConstants.NIGHTLY_BUILD || !InputOptionsUtils.supportsQrCodeReader(getApplicationContext()))) {
+                    // Remove UI for qr code input on non nightly builds
                     preferences.removePreference(pref);
                     i--;
                     continue;

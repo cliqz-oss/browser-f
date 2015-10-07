@@ -378,7 +378,7 @@ nsresult nsPrefBranch::CheckSanityOfStringLength(const char* aPrefName, const ui
   }
   nsAutoCString message(nsPrintfCString("Warning: attempting to write %d bytes to preference %s. This is bad for general performance and memory usage. Such an amount of data should rather be written to an external file.",
                                         aLength,
-                                        aPrefName));
+                                        getPrefName(aPrefName)));
   rv = console->LogStringMessage(NS_ConvertUTF8toUTF16(message).get());
   if (NS_FAILED(rv)) {
     return rv;
@@ -555,22 +555,19 @@ NS_IMETHODIMP nsPrefBranch::GetChildList(const char *aStartingAt, uint32_t *aCou
   *aChildArray = nullptr;
   *aCount = 0;
 
-  if (!gHashTable.IsInitialized())
-    return NS_ERROR_NOT_INITIALIZED;
-
   // this will contain a list of all the pref name strings
   // allocate on the stack for speed
-  
+
   ed.parent = getPrefName(aStartingAt);
   ed.pref_list = &prefArray;
-  PL_DHashTableEnumerate(&gHashTable, pref_enumChild, &ed);
+  PL_DHashTableEnumerate(gHashTable, pref_enumChild, &ed);
 
   // now that we've built up the list, run the callback on
   // all the matching elements
   numPrefs = prefArray.Length();
 
   if (numPrefs) {
-    outArray = (char **)nsMemory::Alloc(numPrefs * sizeof(char *));
+    outArray = (char **)moz_xmalloc(numPrefs * sizeof(char *));
     if (!outArray)
       return NS_ERROR_OUT_OF_MEMORY;
 

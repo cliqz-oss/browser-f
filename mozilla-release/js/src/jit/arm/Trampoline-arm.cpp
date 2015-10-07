@@ -6,7 +6,7 @@
 
 #include "jscompartment.h"
 
-#include "jit/arm/BaselineHelpers-arm.h"
+#include "jit/arm/SharedICHelpers-arm.h"
 #include "jit/Bailouts.h"
 #include "jit/JitCompartment.h"
 #include "jit/JitFrames.h"
@@ -16,6 +16,8 @@
 # include "jit/PerfSpewer.h"
 #endif
 #include "jit/VMFunctions.h"
+
+#include "jit/MacroAssembler-inl.h"
 
 using namespace js;
 using namespace js::jit;
@@ -150,6 +152,16 @@ JitRuntime::generateEnterJIT(JSContext* cx, EnterJitType type)
     masm.loadPtr(slot_vp, r10);
     masm.unboxInt32(Address(r10, 0), r10);
 
+    {
+        Label noNewTarget;
+        masm.branchTest32(Assembler::Zero, r9, Imm32(CalleeToken_FunctionConstructing),
+                          &noNewTarget);
+
+        masm.add32(Imm32(1), r1);
+
+        masm.bind(&noNewTarget);
+    }
+
     // Guarantee stack alignment of Jit frames.
     //
     // This code moves the stack pointer to the location where it should be when
@@ -171,7 +183,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, EnterJitType type)
 
     // Get a copy of the number of args to use as a decrement counter, also set
     // the zero condition code.
-    aasm->as_mov(r5, O2Reg(r1), SetCond);
+    aasm->as_mov(r5, O2Reg(r1), SetCC);
 
     // Loop over arguments, copying them from an unknown buffer onto the Ion
     // stack so they can be accessed from JIT'ed code.
@@ -181,7 +193,7 @@ JitRuntime::generateEnterJIT(JSContext* cx, EnterJitType type)
         aasm->as_b(&footer, Assembler::Zero);
         // Get the top of the loop.
         masm.bind(&header);
-        aasm->as_sub(r5, r5, Imm8(1), SetCond);
+        aasm->as_sub(r5, r5, Imm8(1), SetCC);
         // We could be more awesome, and unroll this, using a loadm
         // (particularly since the offset is effectively 0) but that seems more
         // error prone, and complex.
@@ -463,25 +475,37 @@ JitRuntime::generateArgumentsRectifier(JSContext* cx, void** returnAddrOut)
 
     masm.ma_sub(r6, r8, r2);
 
-    masm.moveValue(UndefinedValue(), r5, r4);
+    // Get the topmost argument.
+    masm.ma_alu(sp, lsl(r8, 3), r3, OpAdd); // r3 <- r3 + nargs * 8
+    masm.ma_add(r3, Imm32(sizeof(RectifierFrameLayout)), r3);
 
-    masm.ma_mov(sp, r3); // Save %sp.
-    masm.ma_mov(sp, r7); // Save %sp again.
+    {
+        Label notConstructing;
+
+        masm.branchTest32(Assembler::Zero, r1, Imm32(CalleeToken_FunctionConstructing),
+                          &notConstructing);
+
+        // Add sizeof(Value) to overcome |this|
+        masm.ma_dataTransferN(IsLoad, 64, true, r3, Imm32(8), r4, Offset);
+        masm.ma_dataTransferN(IsStore, 64, true, sp, Imm32(-8), r4, PreIndex);
+
+        // Include the newly pushed newTarget value in the frame size
+        // calculated below.
+        masm.add32(Imm32(1), r6);
+
+        masm.bind(&notConstructing);
+    }
 
     // Push undefined.
+    masm.moveValue(UndefinedValue(), r5, r4);
     {
         Label undefLoopTop;
         masm.bind(&undefLoopTop);
         masm.ma_dataTransferN(IsStore, 64, true, sp, Imm32(-8), r4, PreIndex);
-        masm.ma_sub(r2, Imm32(1), r2, SetCond);
+        masm.ma_sub(r2, Imm32(1), r2, SetCC);
 
         masm.ma_b(&undefLoopTop, Assembler::NonZero);
     }
-
-    // Get the topmost argument.
-
-    masm.ma_alu(r3, lsl(r8, 3), r3, OpAdd); // r3 <- r3 + nargs * 8
-    masm.ma_add(r3, Imm32(sizeof(RectifierFrameLayout)), r3);
 
     // Push arguments, |nargs| + 1 times (to include |this|).
     {
@@ -490,7 +514,7 @@ JitRuntime::generateArgumentsRectifier(JSContext* cx, void** returnAddrOut)
         masm.ma_dataTransferN(IsLoad, 64, true, r3, Imm32(-8), r4, PostIndex);
         masm.ma_dataTransferN(IsStore, 64, true, sp, Imm32(-8), r4, PreIndex);
 
-        masm.ma_sub(r8, Imm32(1), r8, SetCond);
+        masm.ma_sub(r8, Imm32(1), r8, SetCC);
         masm.ma_b(&copyLoopTop, Assembler::NotSigned);
     }
 
@@ -955,7 +979,7 @@ JitRuntime::generateDebugTrapHandler(JSContext* cx)
     // Enter a stub frame and call the HandleDebugTrap VM function. Ensure the
     // stub frame has a nullptr ICStub pointer, since this pointer is marked
     // during GC.
-    masm.movePtr(ImmPtr(nullptr), BaselineStubReg);
+    masm.movePtr(ImmPtr(nullptr), ICStubReg);
     EmitEnterStubFrame(masm, scratch2);
 
     JitCode* code = cx->runtime()->jitRuntime()->getVMWrapper(HandleDebugTrapInfo);

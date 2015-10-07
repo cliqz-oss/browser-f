@@ -8,6 +8,7 @@ let gContentAPI;
 let gContentWindow;
 
 Components.utils.import("resource:///modules/UITour.jsm");
+Components.utils.import("resource://testing-common/TelemetryArchiveTesting.jsm", this);
 
 function test() {
   UITourTest();
@@ -17,10 +18,10 @@ let tests = [
   function test_untrusted_host(done) {
     loadUITourTestPage(function() {
       let bookmarksMenu = document.getElementById("bookmarks-menu-button");
-      ise(bookmarksMenu.open, false, "Bookmark menu should initially be closed");
+      is(bookmarksMenu.open, false, "Bookmark menu should initially be closed");
 
       gContentAPI.showMenu("bookmarks");
-      ise(bookmarksMenu.open, false, "Bookmark menu should not open on a untrusted host");
+      is(bookmarksMenu.open, false, "Bookmark menu should not open on a untrusted host");
 
       done();
     }, "http://mochi.test:8888/");
@@ -45,10 +46,10 @@ let tests = [
   function test_unsecure_host(done) {
     loadUITourTestPage(function() {
       let bookmarksMenu = document.getElementById("bookmarks-menu-button");
-      ise(bookmarksMenu.open, false, "Bookmark menu should initially be closed");
+      is(bookmarksMenu.open, false, "Bookmark menu should initially be closed");
 
       gContentAPI.showMenu("bookmarks");
-      ise(bookmarksMenu.open, false, "Bookmark menu should not open on a unsecure host");
+      is(bookmarksMenu.open, false, "Bookmark menu should not open on a unsecure host");
 
       done();
     }, "http://example.com/");
@@ -69,10 +70,10 @@ let tests = [
     Services.prefs.setBoolPref("browser.uitour.enabled", false);
 
     let bookmarksMenu = document.getElementById("bookmarks-menu-button");
-    ise(bookmarksMenu.open, false, "Bookmark menu should initially be closed");
+    is(bookmarksMenu.open, false, "Bookmark menu should initially be closed");
 
     gContentAPI.showMenu("bookmarks");
-    ise(bookmarksMenu.open, false, "Bookmark menu should not open when feature is disabled");
+    is(bookmarksMenu.open, false, "Bookmark menu should not open when feature is disabled");
 
     Services.prefs.setBoolPref("browser.uitour.enabled", true);
     done();
@@ -400,13 +401,24 @@ let tests = [
       });
     });
   },
-  function test_treatment_tag(done) {
+  taskify(function* test_treatment_tag(done) {
+    let ac = new TelemetryArchiveTesting.Checker();
+    yield ac.promiseInit();
     gContentAPI.setTreatmentTag("foobar", "baz");
     gContentAPI.getTreatmentTag("foobar", (data) => {
       is(data.value, "baz", "set and retrieved treatmentTag");
-      done();
+      ac.promiseFindPing("uitour-tag", [
+        [["payload", "tagName"], "foobar"],
+        [["payload", "tagValue"], "baz"],
+      ]).then((found) => {
+        ok(found, "Telemetry ping submitted for setTreatmentTag");
+        done();
+      }, (err) => {
+        ok(false, "Exeption finding uitour telemetry ping: " + err);
+        done();
+      });
     });
-  },
+  }),
 
   // Make sure this test is last in the file so the appMenu gets left open and done will confirm it got tore down.
   taskify(function* cleanupMenus() {

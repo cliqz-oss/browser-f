@@ -1292,6 +1292,20 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult,
                          aResult);
       break;
 
+    case eCSSProperty_contain:
+      if (intValue & NS_STYLE_CONTAIN_STRICT) {
+        NS_ASSERTION(intValue == (NS_STYLE_CONTAIN_STRICT | NS_STYLE_CONTAIN_ALL_BITS),
+                     "contain: strict should imply contain: layout style paint");
+        // Only output strict.
+        intValue = NS_STYLE_CONTAIN_STRICT;
+      }
+      nsStyleUtil::AppendBitmaskCSSValue(aProperty,
+                                         intValue,
+                                         NS_STYLE_CONTAIN_STRICT,
+                                         NS_STYLE_CONTAIN_PAINT,
+                                         aResult);
+      break;
+
     default:
       const nsAFlatCString& name = nsCSSProps::LookupPropertyValue(aProperty, intValue);
       AppendASCIItoUTF16(name, aResult);
@@ -1472,7 +1486,7 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult,
                                                 aResult, aSerialization);
         aResult.Append(' ');
       }
-      if (gradient->mBgPos.mXValue.GetUnit() != eCSSUnit_None) {
+      if (gradient->mBgPos.mYValue.GetUnit() != eCSSUnit_None) {
         gradient->mBgPos.mYValue.AppendToString(eCSSProperty_background_position,
                                                 aResult, aSerialization);
         aResult.Append(' ');
@@ -1944,7 +1958,7 @@ AppendGridTemplateToString(const nsCSSValueList* val,
     } else if (unit == eCSSUnit_Null) {
       // Empty or omitted <line-names>.
       if (isSubgrid) {
-        aResult.AppendLiteral("()");
+        aResult.AppendLiteral("[]");
       } else {
         // Serializes to nothing.
         addSpaceSeparator = false;  // Avoid a double space.
@@ -1952,10 +1966,10 @@ AppendGridTemplateToString(const nsCSSValueList* val,
 
     } else if (unit == eCSSUnit_List || unit == eCSSUnit_ListDep) {
       // Non-empty <line-names>
-      aResult.Append('(');
+      aResult.Append('[');
       AppendValueListToString(val->mValue.GetListValue(), aProperty,
                               aResult, aSerialization);
-      aResult.Append(')');
+      aResult.Append(']');
 
     } else {
       // <track-size>
@@ -2326,7 +2340,6 @@ css::URLValue::URLValue(nsIURI* aURI, nsStringBuffer* aString,
     mURIResolved(true)
 {
   MOZ_ASSERT(aOriginPrincipal, "Must have an origin principal");
-  mString->AddRef();
 }
 
 css::URLValue::URLValue(nsStringBuffer* aString, nsIURI* aBaseURI,
@@ -2338,12 +2351,6 @@ css::URLValue::URLValue(nsStringBuffer* aString, nsIURI* aBaseURI,
     mURIResolved(false)
 {
   MOZ_ASSERT(aOriginPrincipal, "Must have an origin principal");
-  mString->AddRef();
-}
-
-css::URLValue::~URLValue()
-{
-  mString->Release();
 }
 
 bool
@@ -2463,6 +2470,9 @@ css::ImageValue::~ImageValue()
 {
   mRequests.Enumerate(&ClearRequestHashtable, this);
 }
+
+NS_IMPL_ADDREF(css::ImageValue)
+NS_IMPL_RELEASE(css::ImageValue)
 
 nsCSSValueGradientStop::nsCSSValueGradientStop()
   : mLocation(eCSSUnit_None),

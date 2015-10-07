@@ -29,9 +29,7 @@
 namespace js {
 namespace jit {
 
-class MBasicBlock;
 class MIRGraph;
-class MStart;
 class OptimizationInfo;
 
 class MIRGenerator
@@ -40,7 +38,9 @@ class MIRGenerator
     MIRGenerator(CompileCompartment* compartment, const JitCompileOptions& options,
                  TempAllocator* alloc, MIRGraph* graph,
                  CompileInfo* info, const OptimizationInfo* optimizationInfo,
-                 Label* outOfBoundsLabel = nullptr, bool usesSignalHandlersForAsmJSOOB = false);
+                 Label* outOfBoundsLabel = nullptr,
+                 Label* conversionErrorLabel = nullptr,
+                 bool usesSignalHandlersForAsmJSOOB = false);
 
     TempAllocator& alloc() {
         return *alloc_;
@@ -91,6 +91,13 @@ class MIRGenerator
 
     bool isOptimizationTrackingEnabled() {
         return isProfilerInstrumentationEnabled() && !info().isAnalysis();
+    }
+
+    bool safeForMinorGC() const {
+        return safeForMinorGC_;
+    }
+    void setNotSafeForMinorGC() {
+        safeForMinorGC_ = false;
     }
 
     // Whether the main thread is trying to cancel this build.
@@ -194,16 +201,15 @@ class MIRGenerator
 
     bool instrumentedProfiling_;
     bool instrumentedProfilingIsCached_;
-
-    // List of nursery objects used by this compilation. Can be traced by a
-    // minor GC while compilation happens off-thread. This Vector should only
-    // be accessed on the main thread (IonBuilder, nursery GC or
-    // CodeGenerator::link).
-    ObjectVector nurseryObjects_;
+    bool safeForMinorGC_;
 
     void addAbortedPreliminaryGroup(ObjectGroup* group);
 
     Label* outOfBoundsLabel_;
+    // Label where we should jump in asm.js mode, in the case where we have an
+    // invalid conversion or a loss of precision (when converting from a
+    // floating point SIMD type into an integer SIMD type).
+    Label* conversionErrorLabel_;
 #if defined(ASMJS_MAY_USE_SIGNAL_HANDLERS_FOR_OOB)
     bool usesSignalHandlersForAsmJSOOB_;
 #endif
@@ -225,17 +231,24 @@ class MIRGenerator
   public:
     const JitCompileOptions options;
 
-    void traceNurseryObjects(JSTracer* trc);
-
-    const ObjectVector& nurseryObjects() const {
-        return nurseryObjects_;
+    Label* conversionErrorLabel() const {
+        MOZ_ASSERT((conversionErrorLabel_ != nullptr) == compilingAsmJS());
+        return conversionErrorLabel_;
     }
-
     Label* outOfBoundsLabel() const {
+        MOZ_ASSERT(compilingAsmJS());
         return outOfBoundsLabel_;
     }
     bool needsAsmJSBoundsCheckBranch(const MAsmJSHeapAccess* access) const;
     size_t foldableOffsetRange(const MAsmJSHeapAccess* access) const;
+
+  private:
+    GraphSpewer gs_;
+
+  public:
+    GraphSpewer& graphSpewer() {
+        return gs_;
+    }
 };
 
 } // namespace jit

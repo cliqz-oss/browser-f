@@ -6,7 +6,6 @@
 #define MEDIAENGINE_H_
 
 #include "mozilla/RefPtr.h"
-#include "nsIDOMFile.h"
 #include "DOMMediaStream.h"
 #include "MediaStreamGraph.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
@@ -15,7 +14,7 @@
 namespace mozilla {
 
 namespace dom {
-class File;
+class Blob;
 }
 
 enum {
@@ -65,6 +64,8 @@ public:
   virtual void EnumerateAudioDevices(dom::MediaSourceEnum,
                                      nsTArray<nsRefPtr<MediaEngineAudioSource> >*) = 0;
 
+  virtual void Shutdown() = 0;
+
 protected:
   virtual ~MediaEngine() {}
 };
@@ -82,11 +83,13 @@ public:
 
   virtual ~MediaEngineSource() {}
 
+  virtual void Shutdown() = 0;
+
   /* Populate the human readable name of this device in the nsAString */
   virtual void GetName(nsAString&) = 0;
 
-  /* Populate the UUID of this device in the nsAString */
-  virtual void GetUUID(nsAString&) = 0;
+  /* Populate the UUID of this device in the nsACString */
+  virtual void GetUUID(nsACString&) = 0;
 
   /* Release the device back to the system. */
   virtual nsresult Deallocate() = 0;
@@ -130,7 +133,7 @@ public:
 
     // aBlob is the image captured by MediaEngineSource. It is
     // called on main thread.
-    virtual nsresult PhotoComplete(already_AddRefed<dom::File> aBlob) = 0;
+    virtual nsresult PhotoComplete(already_AddRefed<dom::Blob> aBlob) = 0;
 
     // It is called on main thread. aRv is the error code.
     virtual nsresult PhotoError(nsresult aRv) = 0;
@@ -246,6 +249,7 @@ public:
   /* This call reserves but does not start the device. */
   virtual nsresult Allocate(const dom::MediaTrackConstraints &aConstraints,
                             const MediaEnginePrefs &aPrefs) = 0;
+
 protected:
   explicit MediaEngineAudioSource(MediaEngineState aState)
     : MediaEngineSource(aState) {}

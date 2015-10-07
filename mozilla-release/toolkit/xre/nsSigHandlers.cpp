@@ -56,7 +56,7 @@ static unsigned int _gdb_sleep_duration = 300;
 
 #include <unistd.h>
 #include "nsISupportsUtils.h"
-#include "nsStackWalk.h"
+#include "mozilla/StackWalk.h"
 
 // NB: keep me up to date with the same variable in
 // ipc/chromium/chrome/common/ipc_channel_posix.cc
@@ -68,10 +68,10 @@ static void PrintStackFrame(uint32_t aFrameNumber, void *aPC, void *aSP,
                             void *aClosure)
 {
   char buf[1024];
-  nsCodeAddressDetails details;
+  MozCodeAddressDetails details;
 
-  NS_DescribeCodeAddress(aPC, &details);
-  NS_FormatCodeAddressDetails(buf, sizeof(buf), aFrameNumber, aPC, &details);
+  MozDescribeCodeAddress(aPC, &details);
+  MozFormatCodeAddressDetails(buf, sizeof(buf), aFrameNumber, aPC, &details);
   fprintf(stdout, "%s\n", buf);
   fflush(stdout);
 }
@@ -87,7 +87,7 @@ ah_crap_handler(int signum)
          signum);
 
   printf("Stack:\n");
-  NS_StackWalk(PrintStackFrame, /* skipFrames */ 2, /* maxFrames */ 0,
+  MozStackWalk(PrintStackFrame, /* skipFrames */ 2, /* maxFrames */ 0,
                nullptr, 0, nullptr);
 
   printf("Sleeping for %d seconds.\n",_gdb_sleep_duration);
@@ -165,7 +165,7 @@ static void fpehandler(int signum, siginfo_t *si, void *context)
   status->__invalid = status->__denorm = status->__zdiv = status->__ovrfl = status->__undfl =
     status->__precis = status->__stkflt = status->__errsumm = 0;
 
-  __uint32_t *mxcsr = &uc->uc_mcontext->__fs.__fpu_mxcsr;
+  uint32_t *mxcsr = &uc->uc_mcontext->__fs.__fpu_mxcsr;
   *mxcsr |= SSE_EXCEPTION_MASK; /* disable all SSE exceptions */
   *mxcsr &= ~SSE_STATUS_FLAGS; /* clear all pending SSE exceptions */
 #endif
@@ -185,13 +185,13 @@ static void fpehandler(int signum, siginfo_t *si, void *context)
   *sw &= ~FPU_STATUS_FLAGS;
 #endif
 #if defined(__amd64__)
-  __uint16_t *cw = &uc->uc_mcontext.fpregs->cwd;
+  uint16_t *cw = &uc->uc_mcontext.fpregs->cwd;
   *cw |= FPU_EXCEPTION_MASK;
 
-  __uint16_t *sw = &uc->uc_mcontext.fpregs->swd;
+  uint16_t *sw = &uc->uc_mcontext.fpregs->swd;
   *sw &= ~FPU_STATUS_FLAGS;
 
-  __uint32_t *mxcsr = &uc->uc_mcontext.fpregs->mxcsr;
+  uint32_t *mxcsr = &uc->uc_mcontext.fpregs->mxcsr;
   *mxcsr |= SSE_EXCEPTION_MASK; /* disable all SSE exceptions */
   *mxcsr &= ~SSE_STATUS_FLAGS; /* clear all pending SSE exceptions */
 #endif

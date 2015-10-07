@@ -18,30 +18,21 @@ namespace ipc {
 // UnixSocketIOBuffer
 //
 
-UnixSocketIOBuffer::UnixSocketIOBuffer(const void* aData, size_t aSize)
-: mSize(aSize)
-, mOffset(0)
-, mAvailableSpace(aSize)
-{
-  MOZ_ASSERT(aData || !mSize);
-
-  mData = new uint8_t[mAvailableSpace];
-  memcpy(mData, aData, mSize);
-}
-
-UnixSocketIOBuffer::UnixSocketIOBuffer(size_t aAvailableSpace)
-: mSize(0)
-, mOffset(0)
-, mAvailableSpace(aAvailableSpace)
-{
-  mData = new uint8_t[mAvailableSpace];
-}
-
-UnixSocketIOBuffer::~UnixSocketIOBuffer()
+UnixSocketBuffer::UnixSocketBuffer()
+  : mSize(0)
+  , mOffset(0)
+  , mAvailableSpace(0)
+  , mData(nullptr)
 { }
 
+UnixSocketBuffer::~UnixSocketBuffer()
+{
+  // Make sure that the caller released the buffer's memory.
+  MOZ_ASSERT(!GetBuffer());
+}
+
 const uint8_t*
-UnixSocketIOBuffer::Consume(size_t aLen)
+UnixSocketBuffer::Consume(size_t aLen)
 {
   if (NS_WARN_IF(GetSize() < aLen)) {
     return nullptr;
@@ -52,7 +43,7 @@ UnixSocketIOBuffer::Consume(size_t aLen)
 }
 
 nsresult
-UnixSocketIOBuffer::Read(void* aValue, size_t aLen)
+UnixSocketBuffer::Read(void* aValue, size_t aLen)
 {
   const uint8_t* data = Consume(aLen);
   if (!data) {
@@ -63,7 +54,7 @@ UnixSocketIOBuffer::Read(void* aValue, size_t aLen)
 }
 
 uint8_t*
-UnixSocketIOBuffer::Append(size_t aLen)
+UnixSocketBuffer::Append(size_t aLen)
 {
   if (((mAvailableSpace - mSize) < aLen)) {
     size_t availableSpace = mAvailableSpace + std::max(mAvailableSpace, aLen);
@@ -78,7 +69,7 @@ UnixSocketIOBuffer::Append(size_t aLen)
 }
 
 nsresult
-UnixSocketIOBuffer::Write(const void* aValue, size_t aLen)
+UnixSocketBuffer::Write(const void* aValue, size_t aLen)
 {
   uint8_t* data = Append(aLen);
   if (!data) {
@@ -89,7 +80,7 @@ UnixSocketIOBuffer::Write(const void* aValue, size_t aLen)
 }
 
 void
-UnixSocketIOBuffer::CleanupLeadingSpace()
+UnixSocketBuffer::CleanupLeadingSpace()
 {
   if (GetLeadingSpace()) {
     if (GetSize() <= GetLeadingSpace()) {
@@ -102,16 +93,34 @@ UnixSocketIOBuffer::CleanupLeadingSpace()
 }
 
 //
+// UnixSocketIOBuffer
+//
+
+UnixSocketIOBuffer::~UnixSocketIOBuffer()
+{ }
+
+//
 // UnixSocketRawData
 //
 
 UnixSocketRawData::UnixSocketRawData(const void* aData, size_t aSize)
-: UnixSocketIOBuffer(aData, aSize)
-{ }
+{
+  MOZ_ASSERT(aData || !aSize);
+
+  ResetBuffer(static_cast<uint8_t*>(memcpy(new uint8_t[aSize], aData, aSize)),
+              0, aSize, aSize);
+}
 
 UnixSocketRawData::UnixSocketRawData(size_t aSize)
-: UnixSocketIOBuffer(aSize)
-{ }
+{
+  ResetBuffer(new uint8_t[aSize], 0, 0, aSize);
+}
+
+UnixSocketRawData::~UnixSocketRawData()
+{
+  nsAutoArrayPtr<uint8_t> data(GetBuffer());
+  ResetBuffer(nullptr, 0, 0, 0);
+}
 
 ssize_t
 UnixSocketRawData::Receive(int aFd)
@@ -171,24 +180,18 @@ UnixSocketRawData::Send(int aFd)
 SocketConnectionStatus
 SocketBase::GetConnectionStatus() const
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   return mConnectionStatus;
 }
 
 int
 SocketBase::GetSuggestedConnectDelayMs() const
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   return mConnectDelayMs;
 }
 
 void
 SocketBase::NotifySuccess()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   mConnectionStatus = SOCKET_CONNECTED;
   mConnectTimestamp = PR_IntervalNow();
   OnConnectSuccess();
@@ -197,8 +200,6 @@ SocketBase::NotifySuccess()
 void
 SocketBase::NotifyError()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   mConnectionStatus = SOCKET_DISCONNECTED;
   mConnectDelayMs = CalculateConnectDelayMs();
   mConnectTimestamp = 0;
@@ -208,8 +209,6 @@ SocketBase::NotifyError()
 void
 SocketBase::NotifyDisconnect()
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   mConnectionStatus = SOCKET_DISCONNECTED;
   mConnectDelayMs = CalculateConnectDelayMs();
   mConnectTimestamp = 0;
@@ -219,8 +218,6 @@ SocketBase::NotifyDisconnect()
 uint32_t
 SocketBase::CalculateConnectDelayMs() const
 {
-  MOZ_ASSERT(NS_IsMainThread());
-
   uint32_t connectDelayMs = mConnectDelayMs;
 
   if (mConnectTimestamp && (PR_IntervalNow()-mConnectTimestamp) > connectDelayMs) {
@@ -254,39 +251,131 @@ SocketBase::SetConnectionStatus(SocketConnectionStatus aConnectionStatus)
 }
 
 //
-// SocketConsumerBase
-//
-
-SocketConsumerBase::~SocketConsumerBase()
-{ }
-
-//
 // SocketIOBase
 //
+
+SocketIOBase::SocketIOBase(MessageLoop* aConsumerLoop)
+  : mConsumerLoop(aConsumerLoop)
+{
+  MOZ_ASSERT(mConsumerLoop);
+}
 
 SocketIOBase::~SocketIOBase()
 { }
 
-void
-SocketIOBase::EnqueueData(UnixSocketRawData* aData)
+MessageLoop*
+SocketIOBase::GetConsumerThread() const
 {
-  if (!aData->GetSize()) {
-    delete aData; // delete empty data immediately
-    return;
-  }
-  mOutgoingQ.AppendElement(aData);
+  return mConsumerLoop;
 }
 
 bool
-SocketIOBase::HasPendingData() const
+SocketIOBase::IsConsumerThread() const
 {
-  return !mOutgoingQ.IsEmpty();
+  return GetConsumerThread() == MessageLoop::current();
 }
 
-SocketIOBase::SocketIOBase(size_t aMaxReadSize)
-  : mMaxReadSize(aMaxReadSize)
+//
+// SocketEventTask
+//
+
+SocketEventTask::SocketEventTask(SocketIOBase* aIO, SocketEvent aEvent)
+  : SocketTask<SocketIOBase>(aIO)
+  , mEvent(aEvent)
+{ }
+
+void
+SocketEventTask::Run()
 {
-  MOZ_ASSERT(mMaxReadSize);
+  SocketIOBase* io = SocketTask<SocketIOBase>::GetIO();
+
+  MOZ_ASSERT(io->IsConsumerThread());
+
+  if (NS_WARN_IF(io->IsShutdownOnConsumerThread())) {
+    // Since we've already explicitly closed and the close
+    // happened before this, this isn't really an error.
+    return;
+  }
+
+  SocketBase* socketBase = io->GetSocketBase();
+  MOZ_ASSERT(socketBase);
+
+  if (mEvent == CONNECT_SUCCESS) {
+    socketBase->NotifySuccess();
+  } else if (mEvent == CONNECT_ERROR) {
+    socketBase->NotifyError();
+  } else if (mEvent == DISCONNECT) {
+    socketBase->NotifyDisconnect();
+  }
+}
+
+//
+// SocketRequestClosingTask
+//
+
+SocketRequestClosingTask::SocketRequestClosingTask(
+  SocketIOBase* aIO)
+  : SocketTask<SocketIOBase>(aIO)
+{ }
+
+void
+SocketRequestClosingTask::Run()
+{
+  SocketIOBase* io = SocketTask<SocketIOBase>::GetIO();
+
+  MOZ_ASSERT(io->IsConsumerThread());
+
+  if (NS_WARN_IF(io->IsShutdownOnConsumerThread())) {
+    // Since we've already explicitly closed and the close
+    // happened before this, this isn't really an error.
+    return;
+  }
+
+  SocketBase* socketBase = io->GetSocketBase();
+  MOZ_ASSERT(socketBase);
+
+  socketBase->Close();
+}
+
+//
+// SocketDeleteInstanceTask
+//
+
+SocketDeleteInstanceTask::SocketDeleteInstanceTask(
+  SocketIOBase* aIO)
+  : mIO(aIO)
+{ }
+
+void
+SocketDeleteInstanceTask::Run()
+{
+  mIO = nullptr; // delete instance
+}
+
+//
+// SocketIOShutdownTask
+//
+
+SocketIOShutdownTask::SocketIOShutdownTask(SocketIOBase* aIO)
+  : SocketIOTask<SocketIOBase>(aIO)
+{ }
+
+void
+SocketIOShutdownTask::Run()
+{
+  SocketIOBase* io = SocketIOTask<SocketIOBase>::GetIO();
+
+  MOZ_ASSERT(!io->IsConsumerThread());
+  MOZ_ASSERT(!io->IsShutdownOnIOThread());
+
+  // At this point, there should be no new events on the I/O thread
+  // after this one with the possible exception of an accept task,
+  // which ShutdownOnIOThread will cancel for us. We are now fully
+  // shut down, so we can send a message to the consumer thread to
+  // delete |io| safely knowing that it's not reference any longer.
+  io->ShutdownOnIOThread();
+  io->GetConsumerThread()->PostTask(FROM_HERE,
+                                    new SocketDeleteInstanceTask(io));
 }
 
 }

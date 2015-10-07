@@ -49,11 +49,11 @@ function test()
   {
     info("About to check split console with each panel individually.");
 
-    Task.spawn(function() {
+    Task.spawn(function*() {
       yield openAndCheckPanel("jsdebugger");
       yield openAndCheckPanel("inspector");
       yield openAndCheckPanel("styleeditor");
-      yield openAndCheckPanel("jsprofiler");
+      yield openAndCheckPanel("performance");
       yield openAndCheckPanel("netmonitor");
 
       yield checkWebconsolePanelOpened();

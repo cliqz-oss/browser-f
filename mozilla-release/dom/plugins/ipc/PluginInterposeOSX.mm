@@ -264,13 +264,13 @@ NSCursorInfo::NSCursorInfo(const Cursor* aCursor)
     }
   }
 
-  moz_free(bitmap);
+  free(bitmap);
 }
 
 NSCursorInfo::~NSCursorInfo()
 {
   if (mCustomImageData) {
-    moz_free(mCustomImageData);
+    free(mCustomImageData);
   }
 }
 
@@ -437,7 +437,7 @@ NSCursor* NSCursorInfo::GetTransparentCursor() const
     }
   }
 
-  moz_free(data);
+  free(data);
 
   // Fall back to an arrow cursor if (for some reason) the above code failed.
   if (!retval) {
@@ -527,7 +527,7 @@ void NSCursorInfo::SetHotSpot(nsPoint aHotSpot)
 void NSCursorInfo::SetCustomImageData(uint8_t* aData, uint32_t aDataLength)
 {
   if (mCustomImageData) {
-    moz_free(mCustomImageData);
+    free(mCustomImageData);
   }
   if (aDataLength) {
     mCustomImageData = (uint8_t*) moz_xmalloc(aDataLength);
@@ -584,7 +584,7 @@ void OnPluginShowWindow(uint32_t window_id,
        plugin_fullscreen_windows_set_.end())) {
     plugin_fullscreen_windows_set_.insert(window_id);
 
-    nsCocoaUtils::HideOSChromeOnScreen(TRUE, [[NSScreen screens] objectAtIndex:0]);
+    nsCocoaUtils::HideOSChromeOnScreen(true);
   }
 }
 
@@ -607,7 +607,7 @@ static void ReleasePluginFullScreen(pid_t plugin_pid) {
   // focus, but give it back to the plugin process if requested.
   ActivateProcess(base::GetCurrentProcId());
 
-  nsCocoaUtils::HideOSChromeOnScreen(FALSE, [[NSScreen screens] objectAtIndex:0]);
+  nsCocoaUtils::HideOSChromeOnScreen(false);
 
   if (plugin_pid != -1) {
     ActivateProcess(plugin_pid);

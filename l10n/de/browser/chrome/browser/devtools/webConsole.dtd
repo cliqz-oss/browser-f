@@ -76,6 +76,16 @@
 <!ENTITY btnConsoleXhr          "XMLHttpRequests (XHR)">
 <!ENTITY btnConsoleReflows      "DOM-Neuberechnungen">
 
+<!-- LOCALIZATION NODE (btnConsoleSharedWorkers) the term "Shared Workers"
+  -  should not be translated. -->
+<!ENTITY btnConsoleSharedWorkers "Shared-Worker">
+<!-- LOCALIZATION NODE (btnConsoleServiceWorkers) the term "Service Workers"
+  -  should not be translated. -->
+<!ENTITY btnConsoleServiceWorkers "Service-Worker">
+<!-- LOCALIZATION NODE (btnConsoleWindowlessWorkers) the term "Workers"
+  -  should not be translated. -->
+<!ENTITY btnConsoleWindowlessWorkers "Add-on- und Chrome-Worker">
+
 <!ENTITY filterOutput.placeholder "Suchen">
 <!ENTITY btnClear.label        "Leeren">
 <!ENTITY btnClear.tooltip      "Web-Konsole leeren">
@@ -97,3 +107,5 @@
 <!ENTITY closeCmd.key         "W">
 <!ENTITY findCmd.key          "F">
 <!ENTITY clearOutputCtrl.key  "L">
+<!ENTITY openInVarViewCmd.label "In Variablenansicht öffnen">
+<!ENTITY openInVarViewCmd.accesskey "V">

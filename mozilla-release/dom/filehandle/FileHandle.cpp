@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -474,7 +474,7 @@ FileHandleBase::OpenInputStream(bool aWholeFile, uint64_t aStart,
   // Common state checking
   ErrorResult error;
   if (!CheckState(error)) {
-    return error.ErrorCode();
+    return error.StealNSResult();
   }
 
   // Do nothing if the window is closed
@@ -592,7 +592,7 @@ FileHandleBase::Finish()
   FileService* service = FileService::Get();
   MOZ_ASSERT(service, "This should never be null");
 
-  nsIEventTarget* target = service->StreamTransportTarget();
+  nsIEventTarget* target = service->ThreadPoolTarget();
 
   nsresult rv = target->Dispatch(helper, NS_DISPATCH_NORMAL);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -622,18 +622,18 @@ FileHandleBase::GetInputStream(const ArrayBuffer& aValue,
 
 // static
 already_AddRefed<nsIInputStream>
-FileHandleBase::GetInputStream(const File& aValue, uint64_t* aInputLength,
+FileHandleBase::GetInputStream(const Blob& aValue, uint64_t* aInputLength,
                                ErrorResult& aRv)
 {
-  File& file = const_cast<File&>(aValue);
+  Blob& file = const_cast<Blob&>(aValue);
   uint64_t length = file.GetSize(aRv);
   if (aRv.Failed()) {
     return nullptr;
   }
 
   nsCOMPtr<nsIInputStream> stream;
-  aRv = file.GetInternalStream(getter_AddRefs(stream));
-  if (aRv.Failed()) {
+  file.GetInternalStream(getter_AddRefs(stream), aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
   }
 
@@ -739,7 +739,7 @@ ReadHelper::DoAsyncRun(nsISupports* aStream)
   FileService* service = FileService::Get();
   MOZ_ASSERT(service, "This should never be null");
 
-  nsIEventTarget* target = service->StreamTransportTarget();
+  nsIEventTarget* target = service->ThreadPoolTarget();
 
   nsCOMPtr<nsIAsyncStreamCopier> copier;
   nsresult rv =
@@ -814,7 +814,7 @@ WriteHelper::DoAsyncRun(nsISupports* aStream)
   FileService* service = FileService::Get();
   MOZ_ASSERT(service, "This should never be null");
 
-  nsIEventTarget* target = service->StreamTransportTarget();
+  nsIEventTarget* target = service->ThreadPoolTarget();
 
   nsCOMPtr<nsIAsyncStreamCopier> copier;
   nsresult rv =

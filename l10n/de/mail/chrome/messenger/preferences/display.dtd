@@ -4,6 +4,7 @@
 
 <!ENTITY itemFormatting.label             "Formatierung">
 <!ENTITY itemTags.label                   "Schlagwörter">
+<!ENTITY itemAdvanced.label               "Erweitert">
 
 <!ENTITY style.label                      "Stil:">
 <!ENTITY style.accesskey                  "S">
@@ -44,3 +45,29 @@
 <!ENTITY fontOptions.label       "Erweitert…">
 <!ENTITY colorButton.label       "Farben…">
 <!ENTITY colorButton.accesskey   "F">
+
+<!-- Advanced -->
+<!ENTITY reading.caption                  "Lesen">
+<!ENTITY display.caption                  "Ansicht">
+<!ENTITY showCondensedAddresses.label     "Bei bekannten Kontakten nur den Anzeigenamen zeigen">
+<!ENTITY showCondensedAddresses.accesskey "B">
+
+<!ENTITY autoMarkAsRead.label             "Nachrichten automatisch als gelesen markieren">
+<!ENTITY autoMarkAsRead.accesskey         "a">
+<!ENTITY markAsReadNoDelay.label          "Sofort beim Anzeigen">
+<!ENTITY markAsReadNoDelay.accesskey      "S">
+<!-- LOCALIZATION NOTE (markAsReadDelay.label): This will concatenate to
+     "After displaying for [___] seconds",
+     using (markAsReadDelay.label) and a number (secondsLabel.label). -->
+<!ENTITY markAsReadDelay.label            "Nach dem Anzeigen für">
+<!ENTITY markAsReadDelay.accesskey        "c">
+<!ENTITY secondsLabel.label               "Sekunden">
+<!ENTITY openMsgIn.label                  "Nachricht durch Doppelklick öffnen in:">
+<!ENTITY openMsgInNewTab.label            "Neuem Tab">
+<!ENTITY openMsgInNewTab.accesskey        "T">
+<!ENTITY reuseExpRadio0.label             "Neuem Fenster">
+<!ENTITY reuseExpRadio0.accesskey         "N">
+<!ENTITY reuseExpRadio1.label             "Vorhandenem Fenster">
+<!ENTITY reuseExpRadio1.accesskey         "V">
+<!ENTITY closeMsgOnMoveOrDelete.label     "Nachrichtenfenster/-tab beim Verschieben oder Löschen schließen">
+<!ENTITY closeMsgOnMoveOrDelete.accesskey "h">

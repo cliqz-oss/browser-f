@@ -64,7 +64,6 @@ UNIFIED_SOURCES += [
     'KeyPath.cpp',
     'PermissionRequestBase.cpp',
     'ReportInternalError.cpp',
-    'TransactionThreadPool.cpp',
 ]
 
 SOURCES += [
@@ -97,4 +96,5 @@ LOCAL_INCLUDES += [
     '/dom/workers',
     '/ipc/glue',
     '/xpcom/build',
+    '/xpcom/threads',
 ]

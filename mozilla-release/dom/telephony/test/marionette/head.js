@@ -119,6 +119,44 @@ let emulator = (function() {
   }
 
   /**
+   * Wait for one named system message.
+   *
+   * Resolve if that named message is received. Never reject.
+   *
+   * Fulfill params: the message passed.
+   *
+   * @param aEventName
+   *        A string message name.
+   * @param aMatchFun [optional]
+   *        A matching function returns true or false to filter the message. If no
+   *        matching function passed the promise is resolved after receiving the
+   *        first message.
+   *
+   * @return Promise<Message>
+   */
+  function waitForSystemMessage(aMessageName, aMatchFun = null) {
+    // Current page may not register to receiving the message. We should
+    // register it first.
+    let systemMessenger = SpecialPowers.Cc["@mozilla.org/system-message-internal;1"]
+                                       .getService(SpecialPowers.Ci.nsISystemMessagesInternal);
+
+    // TODO: Find a better way to get current pageURI and manifestURI.
+    systemMessenger.registerPage(aMessageName,
+                                 SpecialPowers.Services.io.newURI("app://system.gaiamobile.org/index.html", null, null),
+                                 SpecialPowers.Services.io.newURI("app://system.gaiamobile.org/manifest.webapp", null, null));
+
+    return new Promise(function(aResolve, aReject) {
+      window.navigator.mozSetMessageHandler(aMessageName, function(aMessage) {
+        if (!aMatchFun || aMatchFun(aMessage)) {
+          log("System message '" + aMessageName + "' got.");
+          window.navigator.mozSetMessageHandler(aMessageName, null);
+          aResolve(aMessage);
+        }
+      });
+    });
+  }
+
+  /**
    * Wait for one named event.
    *
    * @param aTarget
@@ -236,6 +274,18 @@ let emulator = (function() {
         return telephony.calls.length === 0;
       });
     });
+  }
+
+  /**
+   * @return Promise
+   */
+  function changeModemTech(aTech, aPreferredMask) {
+    return Promise.resolve()
+      .then(() => emulator.runCmd("modem tech " + aTech + " " + aPreferredMask))
+      .then(() => emulator.runCmd("modem tech"))
+      .then(result => is(result[0],
+                         aTech + " " + aPreferredMask,
+                         "Check modem 'tech/preferred mask'"));
   }
 
   /**
@@ -739,8 +789,7 @@ let emulator = (function() {
       promises.push(waitForNamedStateEvent(call, "held"));
     }
 
-    let promise = waitForNamedStateEvent(conference, "holding")
-      .then(() => waitForNamedStateEvent(conference, "held"))
+    let promise = waitForNamedStateEvent(conference, "held")
       .then(() => {
         if (typeof heldCallback === "function") {
           heldCallback();
@@ -772,8 +821,7 @@ let emulator = (function() {
       promises.push(waitForNamedStateEvent(call, "connected"));
     }
 
-    let promise = waitForNamedStateEvent(conference, "resuming")
-      .then(() => waitForNamedStateEvent(conference, "connected"))
+    let promise = waitForNamedStateEvent(conference, "connected")
       .then(() => {
         if (typeof connectedCallback === "function") {
           connectedCallback();
@@ -1047,6 +1095,11 @@ let emulator = (function() {
     });
   }
 
+  function sendTone(tone, pause, serviceId) {
+    log("Send DTMF " + tone + " serviceId " + serviceId);
+    return telephony.sendTones(tone, pause, null, serviceId);
+  }
+
   /**
    * Config radio.
    *
@@ -1066,12 +1119,19 @@ let emulator = (function() {
 
     let promises = [];
 
-    let promise = gWaitForEvent(connection, "radiostatechange", event => {
+    promises.push(gWaitForEvent(connection, "radiostatechange", event => {
       let state = connection.radioState;
       log("current radioState: " + state);
       return state == desiredRadioState;
-    });
-    promises.push(promise);
+    }));
+
+    // Wait for icc status to finish updating. Please see bug 1169504 for the
+    // reason why we need this.
+    promises.push(gWaitForEvent(connection, "iccchange", event => {
+      let iccId = connection.iccId;
+      log("current iccId: " + iccId);
+      return !!iccId === enabled;
+    }));
 
     promises.push(connection.setRadioEnabled(enabled));
 
@@ -1098,11 +1158,13 @@ let emulator = (function() {
    */
 
   this.gDelay = delay;
+  this.gWaitForSystemMessage = waitForSystemMessage;
   this.gWaitForEvent = waitForEvent;
   this.gWaitForCallsChangedEvent = waitForCallsChangedEvent;
   this.gWaitForNamedStateEvent = waitForNamedStateEvent;
   this.gWaitForStateChangeEvent = waitForStateChangeEvent;
   this.gCheckInitialState = checkInitialState;
+  this.gChangeModemTech = changeModemTech;
   this.gClearCalls = clearCalls;
   this.gOutCallStrPool = outCallStrPool;
   this.gInCallStrPool = inCallStrPool;
@@ -1126,6 +1188,7 @@ let emulator = (function() {
   this.gRemoveCallInConference = removeCallInConference;
   this.gHangUpCallInConference = hangUpCallInConference;
   this.gHangUpConference = hangUpConference;
+  this.gSendTone = sendTone;
   this.gSetupConference = setupConference;
   this.gSetRadioEnabled = setRadioEnabled;
   this.gSetRadioEnabledAll = setRadioEnabledAll;

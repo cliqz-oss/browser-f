@@ -153,8 +153,9 @@ static DllBlockInfo sWindowsDllBlocklist[] = {
   { "libinject2.dll", 0x537DDC93, DllBlockInfo::USE_TIMESTAMP },
   { "libredir2.dll", 0x5385B7ED, DllBlockInfo::USE_TIMESTAMP },
 
-  // Crashes with RoboForm2Go written against old SDK, bug 988311
+  // Crashes with RoboForm2Go written against old SDK, bug 988311/1196859
   { "rf-firefox-22.dll", ALL_VERSIONS },
+  { "rf-firefox-40.dll", ALL_VERSIONS },
 
   // Crashes with DesktopTemperature, bug 1046382
   { "dtwxsvc.dll", 0x53153234, DllBlockInfo::USE_TIMESTAMP },
@@ -168,6 +169,10 @@ static DllBlockInfo sWindowsDllBlocklist[] = {
   // Flash crashes with RealNetworks RealDownloader, bug 1132663
   { "rndlnpshimswf.dll", ALL_VERSIONS },
   { "rndlmainbrowserrecordplugin.dll", ALL_VERSIONS },
+
+  // Startup crashes with RealNetworks Browser Record Plugin, bug 1170141
+  { "nprpffbrowserrecordext.dll", ALL_VERSIONS },
+  { "nprndlffbrowserrecordext.dll", ALL_VERSIONS },
 
   // Crashes with CyberLink YouCam, bug 1136968
   { "ycwebcamerasource.ax", MAKE_VERSION(2, 0, 0, 1611) },

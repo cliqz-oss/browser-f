@@ -1092,11 +1092,12 @@ nsAccessibilityService::GetOrCreateAccessible(nsINode* aNode,
   }
 
   if (!newAcc && content->IsHTMLElement()) {  // HTML accessibles
-    bool isARIATableOrCell = roleMapEntry &&
-      (roleMapEntry->accTypes & (eTableCell | eTable));
+    bool isARIATablePart = roleMapEntry &&
+      (roleMapEntry->accTypes & (eTableCell | eTableRow | eTable));
 
-    if (!isARIATableOrCell ||
+    if (!isARIATablePart ||
         frame->AccessibleType() == eHTMLTableCellType ||
+        frame->AccessibleType() == eHTMLTableRowType ||
         frame->AccessibleType() == eHTMLTableType) {
       // Prefer to use markup to decide if and what kind of accessible to create,
       const MarkupMapInfo* markupMap =
@@ -1108,12 +1109,16 @@ nsAccessibilityService::GetOrCreateAccessible(nsINode* aNode,
         newAcc = CreateAccessibleByFrameType(frame, content, aContext);
     }
 
-    // In case of ARIA grids use grid-specific classes if it's not native table
-    // based.
-    if (isARIATableOrCell && (!newAcc || newAcc->IsGenericHyperText())) {
+    // In case of ARIA grid or table use table-specific classes if it's not
+    // native table based.
+    if (isARIATablePart && (!newAcc || newAcc->IsGenericHyperText())) {
       if ((roleMapEntry->accTypes & eTableCell)) {
         if (aContext->IsTableRow())
           newAcc = new ARIAGridCellAccessibleWrap(content, document);
+
+      } else if (roleMapEntry->IsOfType(eTableRow)) {
+        if (aContext->IsTable())
+          newAcc = new ARIARowAccessible(content, document);
 
       } else if (roleMapEntry->IsOfType(eTable)) {
         newAcc = new ARIAGridAccessibleWrap(content, document);
@@ -1191,12 +1196,15 @@ nsAccessibilityService::GetOrCreateAccessible(nsINode* aNode,
         newAcc = markupMap->new_func(content, aContext);
 
       // Fall back to text when encountering Content MathML.
-      if (!newAcc && !content->IsAnyOfMathMLElements(nsGkAtoms::mpadded_,
+      if (!newAcc && !content->IsAnyOfMathMLElements(nsGkAtoms::annotation_,
+                                                     nsGkAtoms::annotation_xml_,
+                                                     nsGkAtoms::mpadded_,
                                                      nsGkAtoms::mphantom_,
                                                      nsGkAtoms::maligngroup_,
                                                      nsGkAtoms::malignmark_,
-                                                     nsGkAtoms::mspace_)) {
-        newAcc = new HyperTextAccessible(content, document);
+                                                     nsGkAtoms::mspace_,
+                                                     nsGkAtoms::semantics_)) {
+       newAcc = new HyperTextAccessible(content, document);
       }
     }
   }
@@ -1257,7 +1265,11 @@ nsAccessibilityService::Init()
   logging::CheckEnv();
 #endif
 
-  gApplicationAccessible = new ApplicationAccessibleWrap();
+  if (XRE_GetProcessType() == GeckoProcessType_Default)
+    gApplicationAccessible = new ApplicationAccessibleWrap();
+  else
+    gApplicationAccessible = new ApplicationAccessible();
+
   NS_ADDREF(gApplicationAccessible); // will release in Shutdown()
 
 #ifdef MOZ_CRASHREPORTER
@@ -1274,7 +1286,8 @@ nsAccessibilityService::Init()
   gIsShutdown = false;
 
   // Now its safe to start platform accessibility.
-  PlatformInit();
+  if (XRE_GetProcessType() == GeckoProcessType_Default)
+    PlatformInit();
 
   return true;
 }
@@ -1316,7 +1329,9 @@ nsAccessibilityService::Shutdown()
 
   gIsShutdown = true;
 
-  PlatformShutdown();
+  if (XRE_GetProcessType() == GeckoProcessType_Default)
+    PlatformShutdown();
+
   gApplicationAccessible->Shutdown();
   NS_RELEASE(gApplicationAccessible);
   gApplicationAccessible = nullptr;

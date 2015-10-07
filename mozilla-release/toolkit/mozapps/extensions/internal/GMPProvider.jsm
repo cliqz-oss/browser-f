@@ -71,9 +71,9 @@ const GMP_PLUGINS = [
 XPCOMUtils.defineLazyGetter(this, "pluginsBundle",
   () => Services.strings.createBundle("chrome://global/locale/plugins.properties"));
 XPCOMUtils.defineLazyGetter(this, "gmpService",
-  () => Cc["@mozilla.org/gecko-media-plugin-service;1"].getService(Ci.mozIGeckoMediaPluginService));
+  () => Cc["@mozilla.org/gecko-media-plugin-service;1"].getService(Ci.mozIGeckoMediaPluginChromeService));
 
-XPCOMUtils.defineLazyGetter(this, "telemetryService", () => Services.telemetry);  
+XPCOMUtils.defineLazyGetter(this, "telemetryService", () => Services.telemetry);
 
 let messageManager = Cc["@mozilla.org/globalmessagemanager;1"]
                        .getService(Ci.nsIMessageListenerManager);
@@ -528,7 +528,8 @@ let GMPProvider = {
       }
     }
 
-    if (Preferences.get(GMPPrefs.KEY_EME_ENABLED, false)) {
+    var emeEnabled = Preferences.get(GMPPrefs.KEY_EME_ENABLED, false);
+    if (emeEnabled) {
       try {
         let greDir = Services.dirsvc.get(NS_GRE_DIR,
                                          Ci.nsILocalFile);
@@ -541,6 +542,12 @@ let GMPProvider = {
       } catch (e) {
         this._log.warn("startup - adding clearkey CDM failed", e);
       }
+    }
+
+    if (Preferences.get("media.gmp-adobe-eme.enabled", false)) {
+      // Gather telemetry on how many Adobe-compatible installs have
+      // disabled EME.
+      telemetryService.getHistogramById("VIDEO_EME_DISABLED").add(!emeEnabled);
     }
 
     AddonManagerPrivate.setTelemetryDetails("GMP", telemetry);

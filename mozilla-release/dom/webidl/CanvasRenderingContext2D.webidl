@@ -92,7 +92,7 @@ interface CanvasRenderingContext2D {
   void fill(Path2D path, optional CanvasWindingRule winding = "nonzero");
   void stroke();
   void stroke(Path2D path);
-  [Pref="canvas.focusring.enabled"] void drawFocusIfNeeded(Element element);
+  [Pref="canvas.focusring.enabled", Throws] void drawFocusIfNeeded(Element element);
 // NOT IMPLEMENTED  void drawSystemFocusRing(Path path, HTMLElement element);
   [Pref="canvas.customfocusring.enabled"] boolean drawCustomFocusRing(Element element);
 // NOT IMPLEMENTED  boolean drawCustomFocusRing(Path path, HTMLElement element);
@@ -224,6 +224,18 @@ interface CanvasRenderingContext2D {
   void asyncDrawXULElement(XULElement elem, double x, double y, double w,
                            double h, DOMString bgColor,
                            optional unsigned long flags = 0);
+
+  /**
+   * Render the root widget of a window into the canvas. Unlike drawWindow,
+   * this uses the operating system to snapshot the widget on-screen, rather
+   * than reading from our own compositor.
+   *
+   * Currently, this is only supported on Windows, and only on widgets that
+   * use OMTC, and only from within the chrome process.
+   */
+  [Throws, ChromeOnly]
+  void drawWidgetAsOnScreen(Window window);
+
   /**
    * This causes a context that is currently using a hardware-accelerated
    * backend to fallback to a software one. All state should be preserved.
@@ -246,7 +258,7 @@ interface CanvasDrawingStyles {
            attribute double miterLimit; // (default 10)
 
   // dashed lines
-    [LenientFloat] void setLineDash(sequence<double> segments); // default empty
+    [LenientFloat, Throws] void setLineDash(sequence<double> segments); // default empty
     sequence<double> getLineDash();
     [LenientFloat] attribute double lineDashOffset;
 

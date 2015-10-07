@@ -5,7 +5,7 @@
 #include "TrackEncoder.h"
 #include "AudioChannelFormat.h"
 #include "MediaStreamGraph.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "VideoUtils.h"
 
 #undef LOG
@@ -18,12 +18,8 @@
 
 namespace mozilla {
 
-#ifdef PR_LOGGING
 PRLogModuleInfo* gTrackEncoderLog;
-#define TRACK_LOG(type, msg) PR_LOG(gTrackEncoderLog, type, msg)
-#else
-#define TRACK_LOG(type, msg)
-#endif
+#define TRACK_LOG(type, msg) MOZ_LOG(gTrackEncoderLog, type, msg)
 
 static const int DEFAULT_CHANNELS = 1;
 static const int DEFAULT_SAMPLING_RATE = 16000;
@@ -38,16 +34,12 @@ TrackEncoder::TrackEncoder()
   , mInitialized(false)
   , mEndOfStream(false)
   , mCanceled(false)
-#ifdef PR_LOGGING
   , mAudioInitCounter(0)
   , mVideoInitCounter(0)
-#endif
 {
-#ifdef PR_LOGGING
   if (!gTrackEncoderLog) {
     gTrackEncoderLog = PR_NewLogModule("TrackEncoder");
   }
-#endif
 }
 
 void
@@ -65,10 +57,8 @@ AudioTrackEncoder::NotifyQueuedTrackChanges(MediaStreamGraph* aGraph,
 
   // Check and initialize parameters for codec encoder.
   if (!mInitialized) {
-#ifdef PR_LOGGING
     mAudioInitCounter++;
-    TRACK_LOG(PR_LOG_DEBUG, ("Init the audio encoder %d times", mAudioInitCounter));
-#endif
+    TRACK_LOG(LogLevel::Debug, ("Init the audio encoder %d times", mAudioInitCounter));
     AudioSegment::ChunkIterator iter(const_cast<AudioSegment&>(audio));
     while (!iter.IsEnded()) {
       AudioChunk chunk = *iter;
@@ -193,10 +183,8 @@ VideoTrackEncoder::NotifyQueuedTrackChanges(MediaStreamGraph* aGraph,
 
    // Check and initialize parameters for codec encoder.
   if (!mInitialized) {
-#ifdef PR_LOGGING
     mVideoInitCounter++;
-    TRACK_LOG(PR_LOG_DEBUG, ("Init the video encoder %d times", mVideoInitCounter));
-#endif
+    TRACK_LOG(LogLevel::Debug, ("Init the video encoder %d times", mVideoInitCounter));
     VideoSegment::ChunkIterator iter(const_cast<VideoSegment&>(video));
     while (!iter.IsEnded()) {
       VideoChunk chunk = *iter;

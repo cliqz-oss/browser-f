@@ -11,8 +11,6 @@
 #include "mozilla/gfx/2D.h"
 #include "nsAutoPtr.h"
 
-class gfxContext;
-
 namespace mozilla {
 namespace layers {
 
@@ -48,7 +46,7 @@ protected:
   virtual ~BasicCompositor();
 
 public:
-  virtual bool Initialize() override { return true; };
+  virtual bool Initialize() override;
 
   virtual void Destroy() override;
 
@@ -86,7 +84,8 @@ public:
                         const gfx::Rect& aClipRect,
                         const EffectChain &aEffectChain,
                         gfx::Float aOpacity,
-                        const gfx::Matrix4x4 &aTransform) override;
+                        const gfx::Matrix4x4& aTransform,
+                        const gfx::Rect& aVisibleRect) override;
 
   virtual void ClearRect(const gfx::Rect& aRect) override;
 

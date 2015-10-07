@@ -270,8 +270,9 @@ function testAboutModuleRegistration()
 
   let modulesToUnregister = new Map();
 
-  function TestChannel(uri, aboutName) {
+  function TestChannel(uri, aLoadInfo, aboutName) {
     this.aboutName = aboutName;
+    this.loadInfo = aLoadInfo;
     this.URI = this.originalURI = uri;
   }
 
@@ -361,8 +362,8 @@ function testAboutModuleRegistration()
       contractID: `@mozilla.org/network/protocol/about;1?what=${aboutName}`,
       QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
 
-      newChannel: (aURI) => {
-        return new TestChannel(aURI, aboutName);
+      newChannel: (aURI, aLoadInfo) => {
+        return new TestChannel(aURI, aLoadInfo, aboutName);
       },
 
       getURIFlags: (aURI) => {
@@ -493,6 +494,101 @@ function testAboutModuleRegistration()
   });
 }
 
+function testProgressListener()
+{
+  const url = baseURL + "browser_addonShims_testpage.html";
+
+  let sawGlobalLocChange = false;
+  let sawTabsLocChange = false;
+
+  let globalListener = {
+    onLocationChange: function(webProgress, request, uri) {
+      if (uri.spec == url) {
+        sawGlobalLocChange = true;
+        ok(request instanceof Ci.nsIHttpChannel, "Global listener channel is an HTTP channel");
+      }
+    },
+  };
+
+  let tabsListener = {
+    onLocationChange: function(browser, webProgress, request, uri) {
+      if (uri.spec == url) {
+        sawTabsLocChange = true;
+        ok(request instanceof Ci.nsIHttpChannel, "Tab listener channel is an HTTP channel");
+      }
+    },
+  };
+
+  gBrowser.addProgressListener(globalListener);
+  gBrowser.addTabsProgressListener(tabsListener);
+  info("Added progress listeners");
+
+  return new Promise(function(resolve, reject) {
+    let tab = gBrowser.addTab(url);
+    gBrowser.selectedTab = tab;
+    addLoadListener(tab.linkedBrowser, function handler() {
+      ok(sawGlobalLocChange, "Saw global onLocationChange");
+      ok(sawTabsLocChange, "Saw tabs onLocationChange");
+
+      gBrowser.removeTab(tab);
+      gBrowser.removeProgressListener(globalListener);
+      gBrowser.removeTabsProgressListener(tabsListener);
+      resolve();
+    });
+  });
+}
+
+function testRootTreeItem()
+{
+  return new Promise(function(resolve, reject) {
+    const url = baseURL + "browser_addonShims_testpage.html";
+    let tab = gBrowser.addTab(url);
+    gBrowser.selectedTab = tab;
+    let browser = tab.linkedBrowser;
+    addLoadListener(browser, function handler() {
+      let win = browser.contentWindow;
+
+      // Add-ons love this crap.
+      let root = win.QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+                    .getInterface(Components.interfaces.nsIWebNavigation)
+                    .QueryInterface(Components.interfaces.nsIDocShellTreeItem)
+                    .rootTreeItem
+                    .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
+                    .getInterface(Components.interfaces.nsIDOMWindow);
+      is(root, gWin, "got correct chrome window");
+
+      gBrowser.removeTab(tab);
+      resolve();
+    });
+  });
+}
+
+function testImportNode()
+{
+  return new Promise(function(resolve, reject) {
+    const url = baseURL + "browser_addonShims_testpage.html";
+    let tab = gBrowser.addTab(url);
+    gBrowser.selectedTab = tab;
+    let browser = tab.linkedBrowser;
+    addLoadListener(browser, function handler() {
+      let node = gWin.document.createElement("div");
+      let doc = browser.contentDocument;
+      let result;
+      try {
+        result = doc.importNode(node, false);
+      } catch (e) {
+        ok(false, "importing threw an exception");
+      }
+      if (browser.isRemoteBrowser) {
+        is(result, node, "got expected import result");
+      }
+
+      gBrowser.removeTab(tab);
+      resolve();
+    });
+  });
+}
+
 function runTests(win, funcs)
 {
   ok = funcs.ok;
@@ -508,7 +604,11 @@ function runTests(win, funcs)
     then(testObserver).
     then(testSandbox).
     then(testAddonContent).
-    then(testAboutModuleRegistration);
+    then(testAboutModuleRegistration).
+    then(testProgressListener).
+    then(testRootTreeItem).
+    then(testImportNode).
+    then(Promise.resolve());
 }
 
 /*

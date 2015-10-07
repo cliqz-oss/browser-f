@@ -81,6 +81,7 @@ PerThreadData::PerThreadData(JSRuntime* runtime)
     suppressGC(0),
 #ifdef DEBUG
     ionCompiling(false),
+    ionCompilingSafeForMinorGC(false),
     gcSweeping(false),
 #endif
     activeCompilations(0)
@@ -126,6 +127,7 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     asmJSActivationStack_(nullptr),
     asyncStackForNewActivations(nullptr),
     asyncCauseForNewActivations(nullptr),
+    entryMonitor(nullptr),
     parentRuntime(parentRuntime),
     interrupt_(false),
     telemetryCallback(nullptr),
@@ -159,7 +161,7 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
 #endif
     gc(thisFromCtor()),
     gcInitialized(false),
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+#ifdef JS_SIMULATOR
     simulator_(nullptr),
 #endif
     scriptAndCountsVector(nullptr),
@@ -171,6 +173,7 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     profilingScripts(false),
     suppressProfilerSampling(false),
     hadOutOfMemory(false),
+    handlingInitFailure(false),
     haveCreatedContext(false),
     allowRelazificationForTesting(false),
     data(nullptr),
@@ -206,10 +209,11 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
     jitSupportsFloatingPoint(false),
     jitSupportsSimd(false),
     ionPcScriptCache(nullptr),
-    defaultJSContextCallback(nullptr),
+    scriptEnvironmentPreparer(nullptr),
     ctypesActivityCallback(nullptr),
     offthreadIonCompilationEnabled_(true),
     parallelParsingEnabled_(true),
+    autoWritableJitCodeActive_(false),
 #ifdef DEBUG
     enteredPolicy(nullptr),
 #endif
@@ -277,7 +281,7 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
 
     const char* size = getenv("JSGC_MARK_STACK_LIMIT");
     if (size)
-        SetMarkStackLimit(this, atoi(size));
+        gc.setMarkStackLimit(atoi(size));
 
     ScopedJSDeletePtr<Zone> atomsZone(new_<Zone>(this));
     if (!atomsZone || !atomsZone->init(true))
@@ -291,7 +295,7 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
     gc.zones.append(atomsZone.get());
     atomsZone->compartments.append(atomsCompartment.get());
 
-    atomsCompartment->isSystem = true;
+    atomsCompartment->setIsSystem(true);
 
     atomsZone.forget();
     this->atomsCompartment_ = atomsCompartment.forget();
@@ -316,7 +320,7 @@ JSRuntime::init(uint32_t maxbytes, uint32_t maxNurseryBytes)
 
     dateTimeInfo.updateTimeZoneAdjustment();
 
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+#ifdef JS_SIMULATOR
     simulator_ = js::jit::Simulator::Create();
     if (!simulator_)
         return false;
@@ -437,7 +441,7 @@ JSRuntime::~JSRuntime()
     gc.storeBuffer.disable();
     gc.nursery.disable();
 
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+#ifdef JS_SIMULATOR
     js::jit::Simulator::Destroy(simulator_);
 #endif
 
@@ -521,7 +525,7 @@ JSRuntime::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::Runtim
     rtSizes->gc.marker += gc.marker.sizeOfExcludingThis(mallocSizeOf);
     rtSizes->gc.nurseryCommitted += gc.nursery.sizeOfHeapCommitted();
     rtSizes->gc.nurseryDecommitted += gc.nursery.sizeOfHeapDecommitted();
-    rtSizes->gc.nurseryHugeSlots += gc.nursery.sizeOfHugeSlots(mallocSizeOf);
+    rtSizes->gc.nurseryMallocedBuffers += gc.nursery.sizeOfMallocedBuffers(mallocSizeOf);
     gc.storeBuffer.addSizeOfExcludingThis(mallocSizeOf, &rtSizes->gc);
 }
 
@@ -593,7 +597,7 @@ JSRuntime::resetJitStackLimit()
     // Note that, for now, we use the untrusted limit for ion. This is fine,
     // because it's the most conservative limit, and if we hit it, we'll bail
     // out of ion into the interpeter, which will do a proper recursion check.
-#if defined(JS_ARM_SIMULATOR) || defined(JS_MIPS_SIMULATOR)
+#ifdef JS_SIMULATOR
     jitStackLimit_ = jit::Simulator::StackLimit();
 #else
     jitStackLimit_ = mainThread.nativeStackLimit[StackForUntrustedScript];
@@ -677,7 +681,9 @@ JSRuntime::getDefaultLocale()
     if (defaultLocale)
         return defaultLocale;
 
-    char* locale, *lang, *p;
+    char* locale;
+    char* lang;
+    char* p;
 #ifdef HAVE_SETLOCALE
     locale = setlocale(LC_ALL, nullptr);
 #else
@@ -728,21 +734,12 @@ JSRuntime::updateMallocCounter(JS::Zone* zone, size_t nbytes)
     gc.updateMallocCounter(zone, nbytes);
 }
 
-JS_FRIEND_API(void)
-JSRuntime::onTooMuchMalloc()
-{
-    gc.onTooMuchMalloc();
-}
-
 JS_FRIEND_API(void*)
-JSRuntime::onOutOfMemory(void* p, size_t nbytes)
+JSRuntime::onOutOfMemory(AllocFunction allocFunc, size_t nbytes, void* reallocPtr,
+                         JSContext* maybecx)
 {
-    return onOutOfMemory(p, nbytes, nullptr);
-}
+    MOZ_ASSERT_IF(allocFunc != AllocFunction::Realloc, !reallocPtr);
 
-JS_FRIEND_API(void*)
-JSRuntime::onOutOfMemory(void* p, size_t nbytes, JSContext* cx)
-{
     if (isHeapBusy())
         return nullptr;
 
@@ -751,25 +748,34 @@ JSRuntime::onOutOfMemory(void* p, size_t nbytes, JSContext* cx)
      * all the allocations and released the empty GC chunks.
      */
     gc.onOutOfMallocMemory();
-    if (!p)
+    void* p;
+    switch (allocFunc) {
+      case AllocFunction::Malloc:
         p = js_malloc(nbytes);
-    else if (p == reinterpret_cast<void*>(1))
+        break;
+      case AllocFunction::Calloc:
         p = js_calloc(nbytes);
-    else
-        p = js_realloc(p, nbytes);
+        break;
+      case AllocFunction::Realloc:
+        p = js_realloc(reallocPtr, nbytes);
+        break;
+      default:
+        MOZ_CRASH();
+    }
     if (p)
         return p;
-    if (cx)
-        ReportOutOfMemory(cx);
+
+    if (maybecx)
+        ReportOutOfMemory(maybecx);
     return nullptr;
 }
 
 void*
-JSRuntime::onOutOfMemoryCanGC(void* p, size_t bytes)
+JSRuntime::onOutOfMemoryCanGC(AllocFunction allocFunc, size_t bytes, void* reallocPtr)
 {
     if (largeAllocationFailureCallback && bytes >= LARGE_ALLOCATION)
         largeAllocationFailureCallback(largeAllocationFailureCallbackData);
-    return onOutOfMemory(p, bytes);
+    return onOutOfMemory(allocFunc, bytes, reallocPtr);
 }
 
 bool
@@ -859,4 +865,116 @@ JS::IsProfilingEnabledForRuntime(JSRuntime* runtime)
 {
     MOZ_ASSERT(runtime);
     return runtime->spsProfiler.enabled();
+}
+
+void
+js::ResetStopwatches(JSRuntime* rt)
+{
+    MOZ_ASSERT(rt);
+    rt->stopwatch.reset();
+}
+
+bool
+js::SetStopwatchIsMonitoringJank(JSRuntime* rt, bool value)
+{
+    return rt->stopwatch.setIsMonitoringJank(value);
+}
+bool
+js::GetStopwatchIsMonitoringJank(JSRuntime* rt)
+{
+    return rt->stopwatch.isMonitoringJank();
+}
+
+bool
+js::SetStopwatchIsMonitoringCPOW(JSRuntime* rt, bool value)
+{
+    return rt->stopwatch.setIsMonitoringCPOW(value);
+}
+bool
+js::GetStopwatchIsMonitoringCPOW(JSRuntime* rt)
+{
+    return rt->stopwatch.isMonitoringCPOW();
+}
+
+js::PerformanceGroupHolder::~PerformanceGroupHolder()
+{
+    unlink();
+}
+
+void*
+js::PerformanceGroupHolder::getHashKey(JSContext* cx)
+{
+    if (runtime_->stopwatch.currentPerfGroupCallback) {
+        return (*runtime_->stopwatch.currentPerfGroupCallback)(cx);
+    }
+
+    // As a fallback, put everything in the same PerformanceGroup.
+    return nullptr;
+}
+
+void
+js::PerformanceGroupHolder::unlink()
+{
+    if (!group_) {
+        // The group has never been instantiated.
+        return;
+    }
+
+    js::PerformanceGroup* group = group_;
+    group_ = nullptr;
+
+    if (group->decRefCount() > 0) {
+        // The group has at least another owner.
+        return;
+    }
+
+
+    JSRuntime::Stopwatch::Groups::Ptr ptr =
+        runtime_->stopwatch.groups_.lookup(group->key_);
+    MOZ_ASSERT(ptr);
+    runtime_->stopwatch.groups_.remove(ptr);
+    js_delete(group);
+}
+
+PerformanceGroup*
+js::PerformanceGroupHolder::getGroup(JSContext* cx)
+{
+    if (group_)
+        return group_;
+
+    void* key = getHashKey(cx);
+    JSRuntime::Stopwatch::Groups::AddPtr ptr =
+        runtime_->stopwatch.groups_.lookupForAdd(key);
+    if (ptr) {
+        group_ = ptr->value();
+        MOZ_ASSERT(group_);
+    } else {
+        group_ = runtime_->new_<PerformanceGroup>(cx, key);
+        runtime_->stopwatch.groups_.add(ptr, key, group_);
+    }
+
+    group_->incRefCount();
+
+    return group_;
+}
+
+PerformanceData*
+js::GetPerformanceData(JSRuntime* rt)
+{
+    return &rt->stopwatch.performance;
+}
+
+js::PerformanceGroup::PerformanceGroup(JSContext* cx, void* key)
+  : uid(cx->runtime()->stopwatch.uniqueId())
+  , stopwatch_(nullptr)
+  , iteration_(0)
+  , key_(key)
+  , refCount_(0)
+{
+}
+
+void
+JS_SetCurrentPerfGroupCallback(JSRuntime *rt, JSCurrentPerfGroupCallback cb)
+{
+    rt->stopwatch.currentPerfGroupCallback = cb;
 }

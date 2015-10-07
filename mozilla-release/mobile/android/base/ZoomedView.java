@@ -17,21 +17,32 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import android.content.Context;
+import android.content.res.Resources;
 import android.content.res.Configuration;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.graphics.BitmapShader;
+import android.graphics.Canvas;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.Matrix;
+import android.graphics.Paint;
 import android.graphics.Point;
 import android.graphics.PointF;
+import android.graphics.RectF;
+import android.graphics.Shader;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewTreeObserver;
+import android.view.animation.Animation;
+import android.view.animation.Animation.AnimationListener;
+import android.view.animation.OvershootInterpolator;
+import android.view.animation.ScaleAnimation;
 import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.RelativeLayout;
+import android.widget.TextView;
 
 import java.nio.ByteBuffer;
 import java.text.DecimalFormat;
@@ -40,20 +51,34 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
         LayerView.ZoomedViewListener, GeckoEventListener {
     private static final String LOGTAG = "Gecko" + ZoomedView.class.getSimpleName();
 
-    private static final int DEFAULT_ZOOM_FACTOR = 3;
-    private static final int W_CAPTURED_VIEW_IN_PERCENT = 80;
+    private static final float[] ZOOM_FACTORS_LIST = {2.0f, 3.0f, 1.5f};
+    private static final int W_CAPTURED_VIEW_IN_PERCENT = 50;
     private static final int H_CAPTURED_VIEW_IN_PERCENT = 50;
     private static final int MINIMUM_DELAY_BETWEEN_TWO_RENDER_CALLS_NS = 1000000;
     private static final int DELAY_BEFORE_NEXT_RENDER_REQUEST_MS = 2000;
+    private static final int OPENING_ANIMATION_DURATION_MS = 250;
+    private static final int CLOSING_ANIMATION_DURATION_MS = 150;
+    private static final float OVERSHOOT_INTERPOLATOR_TENSION = 1.5f;
 
-    private int zoomFactor;
+    private float zoomFactor;
+    private int currentZoomFactorIndex;
     private ImageView zoomedImageView;
     private LayerView layerView;
     private int viewWidth;
-    private int viewHeight;
+    private int viewHeight; // Only the zoomed view height, no toolbar, no shadow ...
+    private int viewContainerWidth;
+    private int viewContainerHeight; // Zoomed view height with toolbar and other elements like shadow, ...
+    private int containterSize; // shadow, margin, ...
     private Point lastPosition;
     private boolean shouldSetVisibleOnUpdate;
     private PointF returnValue;
+    private final PointF animationStart;
+    private ImageView closeButton;
+    private TextView changeZoomFactorButton;
+    private boolean toolbarOnTop;
+    private float offsetDueToToolBarPosition;
+    private int toolbarHeight;
+    private int cornerRadius;
 
     private boolean stopUpdateView;
 
@@ -63,6 +88,45 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
     private Runnable requestRenderRunnable;
     private long startTimeReRender;
     private long lastStartTimeReRender;
+
+    private ZoomedViewTouchListener touchListener;
+
+    private enum StartPointUpdate {
+        GECKO_POSITION, CENTER, NO_CHANGE
+    }
+
+    private class RoundedBitmapDrawable extends BitmapDrawable {
+        private Paint paint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
+        final float cornerRadius;
+        final boolean squareOnTopOfDrawable;
+
+        RoundedBitmapDrawable(Resources res, Bitmap bitmap, boolean squareOnTop, int radius) {
+            super(res, bitmap);
+            squareOnTopOfDrawable = squareOnTop;
+            final BitmapShader shader = new BitmapShader(bitmap, Shader.TileMode.CLAMP,
+                Shader.TileMode.CLAMP);
+            paint.setAntiAlias(true);
+            paint.setShader(shader);
+            cornerRadius = radius;
+        }
+
+        @Override
+        public void draw(Canvas canvas) {
+            int height = getBounds().height();
+            int width = getBounds().width();
+            RectF rect = new RectF(0.0f, 0.0f, width, height);
+            canvas.drawRoundRect(rect, cornerRadius, cornerRadius, paint);
+
+            //draw rectangles over the corners we want to be square
+            if (squareOnTopOfDrawable) {
+                canvas.drawRect(0, 0, cornerRadius, cornerRadius, paint);
+                canvas.drawRect(width - cornerRadius, 0, width, cornerRadius, paint);
+            } else {
+                canvas.drawRect(0, height - cornerRadius, cornerRadius, height, paint);
+                canvas.drawRect(width - cornerRadius, height - cornerRadius, width, height, paint);
+            }
+        }
+    }
 
     private class ZoomedViewTouchListener implements View.OnTouchListener {
         private float originRawX;
@@ -87,16 +151,18 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
                 if (dragged) {
                     dragged = false;
                 } else {
-                    GeckoEvent eClickInZoomedView = GeckoEvent.createBroadcastEvent("Gesture:ClickInZoomedView", "");
-                    GeckoAppShell.sendEventToGecko(eClickInZoomedView);
-                    layerView.dispatchTouchEvent(actionDownEvent);
-                    actionDownEvent.recycle();
-                    PointF convertedPosition = getUnzoomedPositionFromPointInZoomedView(event.getX(), event.getY());
-                    MotionEvent e = MotionEvent.obtain(event.getDownTime(), event.getEventTime(),
-                            MotionEvent.ACTION_UP, convertedPosition.x, convertedPosition.y,
-                            event.getMetaState());
-                    layerView.dispatchTouchEvent(e);
-                    e.recycle();
+                    if (isClickInZoomedView(event.getY())) {
+                        GeckoEvent eClickInZoomedView = GeckoEvent.createBroadcastEvent("Gesture:ClickInZoomedView", "");
+                        GeckoAppShell.sendEventToGecko(eClickInZoomedView);
+                        layerView.dispatchTouchEvent(actionDownEvent);
+                        actionDownEvent.recycle();
+                        PointF convertedPosition = getUnzoomedPositionFromPointInZoomedView(event.getX(), event.getY());
+                        MotionEvent e = MotionEvent.obtain(event.getDownTime(), event.getEventTime(),
+                                MotionEvent.ACTION_UP, convertedPosition.x, convertedPosition.y,
+                                event.getMetaState());
+                        layerView.dispatchTouchEvent(e);
+                        e.recycle();
+                    }
                 }
                 break;
 
@@ -113,6 +179,11 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
             return true;
         }
 
+        private boolean isClickInZoomedView(float y) {
+            return ((toolbarOnTop && y > toolbarHeight) ||
+                (!toolbarOnTop && y < ZoomedView.this.viewHeight));
+        }
+
         private boolean moveZoomedView(MotionEvent event) {
             RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) ZoomedView.this.getLayoutParams();
             if ((!dragged) && (Math.abs((int) (event.getRawX() - originRawX)) < PanZoomController.CLICK_THRESHOLD)
@@ -125,7 +196,7 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
             float newLeftMargin = params.leftMargin + event.getRawX() - originRawX;
             float newTopMargin = params.topMargin + event.getRawY() - originRawY;
             ImmutableViewportMetrics metrics = layerView.getViewportMetrics();
-            ZoomedView.this.moveZoomedView(metrics, newLeftMargin, newTopMargin);
+            ZoomedView.this.moveZoomedView(metrics, newLeftMargin, newTopMargin, StartPointUpdate.CENTER);
             originRawX = event.getRawX();
             originRawY = event.getRawY();
             return true;
@@ -143,19 +214,23 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
     public ZoomedView(Context context, AttributeSet attrs, int defStyle) {
         super(context, attrs, defStyle);
         returnValue = new PointF();
+        animationStart = new PointF();
+        currentZoomFactorIndex = 0;
+        zoomFactor = ZOOM_FACTORS_LIST[currentZoomFactorIndex];
         requestRenderRunnable = new Runnable() {
             @Override
             public void run() {
                 requestZoomedViewRender();
             }
         };
-        EventDispatcher.getInstance().registerGeckoThreadListener(this, "Gesture:nothingDoneOnLongPress",
+        touchListener = new ZoomedViewTouchListener();
+        EventDispatcher.getInstance().registerGeckoThreadListener(this,
                 "Gesture:clusteredLinksClicked", "Window:Resize", "Content:LocationChange");
     }
 
     void destroy() {
         ThreadUtils.removeCallbacksFromUiThread(requestRenderRunnable);
-        EventDispatcher.getInstance().unregisterGeckoThreadListener(this, "Gesture:nothingDoneOnLongPress",
+        EventDispatcher.getInstance().unregisterGeckoThreadListener(this,
                 "Gesture:clusteredLinksClicked", "Window:Resize", "Content:LocationChange");
     }
 
@@ -165,22 +240,51 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
     @Override
     protected void onFinishInflate() {
         super.onFinishInflate();
-        ImageView closeButton = (ImageView) findViewById(R.id.dialog_close);
+        closeButton = (ImageView) findViewById(R.id.dialog_close);
+        changeZoomFactorButton = (TextView) findViewById(R.id.change_zoom_factor);
+        zoomedImageView = (ImageView) findViewById(R.id.zoomed_image_view);
+
+        setTextInZoomFactorButton(ZOOM_FACTORS_LIST[0]);
+
+        toolbarHeight = getResources().getDimensionPixelSize(R.dimen.zoomed_view_toolbar_height);
+        containterSize = getResources().getDimensionPixelSize(R.dimen.drawable_dropshadow_size);
+        cornerRadius = getResources().getDimensionPixelSize(R.dimen.button_corner_radius);
+
+        moveToolbar(true);
+    }
+
+    private void setListeners() {
         closeButton.setOnClickListener(new View.OnClickListener() {
             public void onClick(View view) {
-                stopZoomDisplay();
+                stopZoomDisplay(true);
             }
         });
 
-        zoomedImageView = (ImageView) findViewById(R.id.zoomed_image_view);
-        zoomedImageView.setOnTouchListener(new ZoomedViewTouchListener());
+        changeZoomFactorButton.setOnClickListener(new View.OnClickListener() {
+            public void onClick(View view) {
+                changeZoomFactor();
+            }
+        });
+
+        setOnTouchListener(touchListener);
     }
 
+    private void removeListeners() {
+        closeButton.setOnClickListener(null);
+
+        changeZoomFactorButton.setOnClickListener(null);
+
+        setOnTouchListener(null);
+    }
     /*
      * Convert a click from ZoomedView. Return the position of the click in the
      * LayerView
      */
     private PointF getUnzoomedPositionFromPointInZoomedView(float x, float y) {
+        if (toolbarOnTop && y > toolbarHeight) {
+           y = y - toolbarHeight;
+        }
+
         ImmutableViewportMetrics metrics = layerView.getViewportMetrics();
         PointF offset = metrics.getMarginOffset();
         final float parentWidth = metrics.getWidth();
@@ -199,14 +303,15 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
                          */
                         (((float) params.leftMargin) - offset.x) *
                             ((parentWidth - offset.x - (viewWidth / zoomFactor)) /
-                            (parentWidth - offset.x - viewWidth)));
+                            (parentWidth - offset.x - viewContainerWidth)));
 
         // Same comments here vertically
         returnValue.y = (int) ((y / zoomFactor) +
-                        offset.y +
+                        offset.y -
+                        offsetDueToToolBarPosition +
                         (((float) params.topMargin) - offset.y) *
-                            ((parentHeight - offset.y - (viewHeight / zoomFactor)) /
-                            (parentHeight - offset.y - viewHeight)));
+                            ((parentHeight - offset.y + offsetDueToToolBarPosition - (viewHeight / zoomFactor)) /
+                            (parentHeight - offset.y - viewContainerHeight)));
 
         return returnValue;
     }
@@ -232,20 +337,21 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
                          * the LayerView to the ZoomedView.
                          */
                         ((parentWidth - offset.x - (viewWidth / zoomFactor)) /
-                        (parentWidth - offset.x - viewWidth)))
+                        (parentWidth - offset.x - viewContainerWidth)))
 
                 + offset.x);     // The offset of the layerView
 
         // Same comments here vertically
-        returnValue.y = (int) ((((y - (viewHeight / (2 * zoomFactor)))) /
-                        ((parentHeight - offset.y - (viewHeight / zoomFactor)) /
-                        (parentHeight - offset.y - viewHeight)))
+        returnValue.y = (int) ((((y + offsetDueToToolBarPosition - (viewHeight / (2 * zoomFactor)))) /
+                        ((parentHeight - offset.y + offsetDueToToolBarPosition - (viewHeight / zoomFactor)) /
+                        (parentHeight - offset.y - viewContainerHeight)))
                 + offset.y);
 
         return returnValue;
     }
 
-    private void moveZoomedView(ImmutableViewportMetrics metrics, float newLeftMargin, float newTopMargin) {
+    private void moveZoomedView(ImmutableViewportMetrics metrics, float newLeftMargin, float newTopMargin,
+            StartPointUpdate animateStartPoint) {
         final float parentWidth = metrics.getWidth();
         final float parentHeight = metrics.getHeight();
         RelativeLayout.LayoutParams newLayoutParams = (RelativeLayout.LayoutParams) getLayoutParams();
@@ -259,20 +365,73 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
 
         if (newTopMargin < topMarginMin) {
             newLayoutParams.topMargin = topMarginMin;
-        } else if (newTopMargin + viewHeight > parentHeight) {
-            newLayoutParams.topMargin = (int) (parentHeight - viewHeight);
+        } else if (newTopMargin + viewContainerHeight > parentHeight) {
+            newLayoutParams.topMargin = (int) (parentHeight - viewContainerHeight);
         }
 
         if (newLeftMargin < leftMarginMin) {
             newLayoutParams.leftMargin = leftMarginMin;
-        } else if (newLeftMargin + viewWidth > parentWidth) {
-            newLayoutParams.leftMargin = (int) (parentWidth - viewWidth);
+        } else if (newLeftMargin + viewContainerWidth > parentWidth) {
+            newLayoutParams.leftMargin = (int) (parentWidth - viewContainerWidth);
+        }
+
+        if (newLayoutParams.topMargin < topMarginMin + 1) {
+            moveToolbar(false);
+        } else if (newLayoutParams.topMargin + viewContainerHeight > parentHeight - 1) {
+            moveToolbar(true);
+        }
+
+        if (animateStartPoint == StartPointUpdate.GECKO_POSITION) {
+            // Before this point, the animationStart point is relative to the layerView.
+            // The value is initialized in startZoomDisplay using the click point position coming from Gecko.
+            // The position of the zoomed view is now calculated, so the position of the animation
+            // can now be correctly set relative to the zoomed view
+            animationStart.x = animationStart.x - newLayoutParams.leftMargin;
+            animationStart.y = animationStart.y - newLayoutParams.topMargin;
+        } else if (animateStartPoint == StartPointUpdate.CENTER) {
+            // At this point, the animationStart point is no more valid probably because
+            // the zoomed view has been moved by the user.
+            // In this case, the animationStart point is set to the center point of the zoomed view.
+            PointF convertedPosition = getUnzoomedPositionFromPointInZoomedView(viewContainerWidth / 2, viewContainerHeight / 2);
+            animationStart.x = convertedPosition.x - newLayoutParams.leftMargin;
+            animationStart.y = convertedPosition.y - newLayoutParams.topMargin;
         }
 
         setLayoutParams(newLayoutParams);
         PointF convertedPosition = getUnzoomedPositionFromPointInZoomedView(0, 0);
         lastPosition = PointUtils.round(convertedPosition);
         requestZoomedViewRender();
+    }
+
+    private void moveToolbar(boolean moveTop) {
+        if (toolbarOnTop == moveTop) {
+            return;
+        }
+        toolbarOnTop = moveTop;
+        if (toolbarOnTop) {
+            offsetDueToToolBarPosition = toolbarHeight;
+        } else {
+            offsetDueToToolBarPosition = 0;
+        }
+
+        RelativeLayout.LayoutParams p = (RelativeLayout.LayoutParams) zoomedImageView.getLayoutParams();
+        RelativeLayout.LayoutParams pChangeZoomFactorButton = (RelativeLayout.LayoutParams) changeZoomFactorButton.getLayoutParams();
+        RelativeLayout.LayoutParams pCloseButton = (RelativeLayout.LayoutParams) closeButton.getLayoutParams();
+
+        if (moveTop) {
+            p.addRule(RelativeLayout.BELOW, R.id.change_zoom_factor);
+            pChangeZoomFactorButton.addRule(RelativeLayout.BELOW, 0);
+            pCloseButton.addRule(RelativeLayout.BELOW, 0);
+        } else {
+            p.addRule(RelativeLayout.BELOW, 0);
+            pChangeZoomFactorButton.addRule(RelativeLayout.BELOW, R.id.zoomed_image_view);
+            pCloseButton.addRule(RelativeLayout.BELOW, R.id.zoomed_image_view);
+        }
+        pChangeZoomFactorButton.addRule(RelativeLayout.ALIGN_LEFT, R.id.zoomed_image_view);
+        pCloseButton.addRule(RelativeLayout.ALIGN_RIGHT, R.id.zoomed_image_view);
+        zoomedImageView.setLayoutParams(p);
+        changeZoomFactorButton.setLayoutParams(pChangeZoomFactorButton);
+        closeButton.setLayoutParams(pCloseButton);
     }
 
     @Override
@@ -294,18 +453,17 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
 
         RelativeLayout.LayoutParams params = (RelativeLayout.LayoutParams) getLayoutParams();
         setCapturedSize(viewport);
-        moveZoomedView(viewport, params.leftMargin, params.topMargin);
+        moveZoomedView(viewport, params.leftMargin, params.topMargin, StartPointUpdate.NO_CHANGE);
     }
 
     private void setCapturedSize(ImmutableViewportMetrics metrics) {
         float parentMinSize = Math.min(metrics.getWidth(), metrics.getHeight());
-        // For metrics.zoomFactor lower than 1, the zoom factor of the zoomed view is calculated
-        // to get always the same size for the content in the zoomed view.
-        // For metrics.zoomFactor greater than 1, the zoom factor is always set to the default
-        // value DEFAULT_ZOOM_FACTOR, thus the zoomed view is always a zoom of the normal view.
-        zoomFactor = Math.max(DEFAULT_ZOOM_FACTOR, (int) (DEFAULT_ZOOM_FACTOR / metrics.zoomFactor));
-        viewWidth = (int) (parentMinSize * W_CAPTURED_VIEW_IN_PERCENT / (zoomFactor * 100.0)) * zoomFactor;
-        viewHeight = (int) (parentMinSize * H_CAPTURED_VIEW_IN_PERCENT / (zoomFactor * 100.0)) * zoomFactor;
+        viewWidth = (int) ((parentMinSize * W_CAPTURED_VIEW_IN_PERCENT / (zoomFactor * 100.0)) * zoomFactor);
+        viewHeight = (int) ((parentMinSize * H_CAPTURED_VIEW_IN_PERCENT / (zoomFactor * 100.0)) * zoomFactor);
+        viewContainerHeight = viewHeight + toolbarHeight +
+                2 * containterSize; // Top and bottom shadows
+        viewContainerWidth = viewWidth +
+                2 * containterSize; // Right and left shadows
         // Display in zoomedview is corrupted when width is an odd number
         // More details about this issue here: bug 776906 comment 11
         viewWidth &= ~0x1;
@@ -329,12 +487,21 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
         }
         startTimeReRender = 0;
         shouldSetVisibleOnUpdate = true;
+
+        ImmutableViewportMetrics metrics = layerView.getViewportMetrics();
+        PointF offset = metrics.getMarginOffset();
+        // At this point, the start point is relative to the layerView.
+        // Later, it will be converted relative to the zoomed view as soon as
+        // the position of the zoomed view will be calculated.
+        animationStart.x = (float) leftFromGecko * metrics.zoomFactor + offset.x;
+        animationStart.y = (float) topFromGecko * metrics.zoomFactor + offset.y;
+
         moveUsingGeckoPosition(leftFromGecko, topFromGecko);
     }
 
-    private void stopZoomDisplay() {
+    private void stopZoomDisplay(boolean withAnimation) {
         shouldSetVisibleOnUpdate = false;
-        this.setVisibility(View.GONE);
+        hideZoomedView(withAnimation);
         ThreadUtils.removeCallbacksFromUiThread(requestRenderRunnable);
         if (layerView != null) {
             layerView.setOnMetricsChangedZoomedViewportListener(null);
@@ -343,13 +510,31 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
         }
     }
 
+    private void changeZoomFactor() {
+        if (currentZoomFactorIndex < ZOOM_FACTORS_LIST.length - 1) {
+            currentZoomFactorIndex++;
+        } else {
+            currentZoomFactorIndex = 0;
+        }
+        zoomFactor = ZOOM_FACTORS_LIST[currentZoomFactorIndex];
+
+        ImmutableViewportMetrics metrics = layerView.getViewportMetrics();
+        refreshZoomedViewSize(metrics);
+        setTextInZoomFactorButton(zoomFactor);
+    }
+
+    private void setTextInZoomFactorButton(float zoom) {
+        final String percentageValue = Integer.toString((int) (100*zoom));
+        changeZoomFactorButton.setText(getResources().getString(R.string.percent, percentageValue));
+    }
+
     @Override
     public void handleMessage(final String event, final JSONObject message) {
         ThreadUtils.postToUiThread(new Runnable() {
             @Override
             public void run() {
                 try {
-                    if (event.equals("Gesture:nothingDoneOnLongPress") || event.equals("Gesture:clusteredLinksClicked")) {
+                    if (event.equals("Gesture:clusteredLinksClicked")) {
                         final JSONObject clickPosition = message.getJSONObject("clickPosition");
                         int left = clickPosition.getInt("x");
                         int top = clickPosition.getInt("y");
@@ -362,7 +547,7 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
                         ImmutableViewportMetrics metrics = layerView.getViewportMetrics();
                         refreshZoomedViewSize(metrics);
                     } else if (event.equals("Content:LocationChange")) {
-                        stopZoomDisplay();
+                        stopZoomDisplay(false);
                     }
                 } catch (JSONException e) {
                     Log.e(LOGTAG, "JSON exception", e);
@@ -373,9 +558,13 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
 
     private void moveUsingGeckoPosition(int leftFromGecko, int topFromGecko) {
         ImmutableViewportMetrics metrics = layerView.getViewportMetrics();
+        final float parentHeight = metrics.getHeight();
+        // moveToolbar is called before getZoomedViewTopLeftPositionFromTouchPosition in order to
+        // correctly center vertically the zoomed area
+        moveToolbar((topFromGecko * metrics.zoomFactor > parentHeight / 2));
         PointF convertedPosition = getZoomedViewTopLeftPositionFromTouchPosition((leftFromGecko * metrics.zoomFactor),
                 (topFromGecko * metrics.zoomFactor));
-        moveZoomedView(metrics, convertedPosition.x, convertedPosition.y);
+        moveZoomedView(metrics, convertedPosition.x, convertedPosition.y, StartPointUpdate.GECKO_POSITION);
     }
 
     @Override
@@ -406,17 +595,70 @@ public class ZoomedView extends FrameLayout implements LayerView.OnMetricsChange
             } catch (Exception iae) {
                 Log.w(LOGTAG, iae.toString());
             }
-            BitmapDrawable ob3 = new BitmapDrawable(getResources(), sb3);
             if (zoomedImageView != null) {
+                RoundedBitmapDrawable ob3 = new RoundedBitmapDrawable(getResources(), sb3, toolbarOnTop, cornerRadius);
                 zoomedImageView.setImageDrawable(ob3);
             }
         }
         if (shouldSetVisibleOnUpdate) {
-            this.setVisibility(View.VISIBLE);
-            shouldSetVisibleOnUpdate = false;
+            this.showZoomedView();
         }
         lastStartTimeReRender = startTimeReRender;
         startTimeReRender = 0;
+    }
+
+    private void showZoomedView() {
+        // no animation if the zoomed view is already visible
+        if (getVisibility() != View.VISIBLE) {
+            final Animation anim = new ScaleAnimation(
+                    0f, 1f, // Start and end values for the X axis scaling
+                    0f, 1f, // Start and end values for the Y axis scaling
+                    Animation.ABSOLUTE, animationStart.x, // Pivot point of X scaling
+                    Animation.ABSOLUTE, animationStart.y); // Pivot point of Y scaling
+            anim.setFillAfter(true); // Needed to keep the result of the animation
+            anim.setDuration(OPENING_ANIMATION_DURATION_MS);
+            anim.setInterpolator(new OvershootInterpolator(OVERSHOOT_INTERPOLATOR_TENSION));
+            anim.setAnimationListener(new AnimationListener() {
+                public void onAnimationEnd(Animation animation) {
+                    setListeners();
+                }
+                public void onAnimationRepeat(Animation animation) {
+                }
+                public void onAnimationStart(Animation animation) {
+                    removeListeners();
+                }
+            });
+            setAnimation(anim);
+        }
+        setVisibility(View.VISIBLE);
+        shouldSetVisibleOnUpdate = false;
+    }
+
+    private void hideZoomedView(boolean withAnimation) {
+        if (withAnimation) {
+            final Animation anim = new ScaleAnimation(
+                1f, 0f, // Start and end values for the X axis scaling
+                1f, 0f, // Start and end values for the Y axis scaling
+                Animation.ABSOLUTE, animationStart.x, // Pivot point of X scaling
+                Animation.ABSOLUTE, animationStart.y); // Pivot point of Y scaling
+            anim.setFillAfter(true); // Needed to keep the result of the animation
+            anim.setDuration(CLOSING_ANIMATION_DURATION_MS);
+            anim.setAnimationListener(new AnimationListener() {
+                public void onAnimationEnd(Animation animation) {
+                }
+                public void onAnimationRepeat(Animation animation) {
+                }
+                public void onAnimationStart(Animation animation) {
+                    removeListeners();
+                }
+            });
+            setAnimation(anim);
+        } else {
+            removeListeners();
+            setAnimation(null);
+        }
+        setVisibility(View.GONE);
+        shouldSetVisibleOnUpdate = false;
     }
 
     private void updateBufferSize() {

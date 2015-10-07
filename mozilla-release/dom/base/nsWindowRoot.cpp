@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -23,6 +24,7 @@
 #include "nsIController.h"
 #include "xpcpublic.h"
 #include "nsCycleCollectionParticipant.h"
+#include "mozilla/dom/TabParent.h"
 
 #ifdef MOZ_XUL
 #include "nsIDOMXULElement.h"
@@ -187,9 +189,18 @@ nsWindowRoot::PostHandleEvent(EventChainPostVisitor& aVisitor)
 }
 
 nsIDOMWindow*
-nsWindowRoot::GetOwnerGlobal()
+nsWindowRoot::GetOwnerGlobalForBindings()
 {
   return GetWindow();
+}
+
+nsIGlobalObject*
+nsWindowRoot::GetOwnerGlobal() const
+{
+  nsCOMPtr<nsIGlobalObject> global =
+    do_QueryInterface(mWindow->GetCurrentInnerWindow());
+  // We're still holding a ref to it, so returning the raw pointer is ok...
+  return global;
 }
 
 nsPIDOMWindow*
@@ -373,6 +384,46 @@ JSObject*
 nsWindowRoot::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
   return mozilla::dom::WindowRootBinding::Wrap(aCx, this, aGivenProto);
+}
+
+void
+nsWindowRoot::AddBrowser(mozilla::dom::TabParent* aBrowser)
+{
+  nsWeakPtr weakBrowser = do_GetWeakReference(static_cast<nsITabParent*>(aBrowser));
+  mWeakBrowsers.PutEntry(weakBrowser);
+}
+
+void
+nsWindowRoot::RemoveBrowser(mozilla::dom::TabParent* aBrowser)
+{
+  nsWeakPtr weakBrowser = do_GetWeakReference(static_cast<nsITabParent*>(aBrowser));
+  mWeakBrowsers.RemoveEntry(weakBrowser);
+}
+
+static PLDHashOperator
+WeakBrowserEnumFunc(nsRefPtrHashKey<nsIWeakReference>* aKey, void* aArg)
+{
+  nsTArray<nsRefPtr<TabParent>>* tabParents =
+    static_cast<nsTArray<nsRefPtr<TabParent>>*>(aArg);
+  nsCOMPtr<nsITabParent> tabParent(do_QueryReferent((*aKey).GetKey()));
+  TabParent* tab = TabParent::GetFrom(tabParent);
+  if (tab) {
+    tabParents->AppendElement(tab);
+  }
+  return PL_DHASH_NEXT;
+}
+
+void
+nsWindowRoot::EnumerateBrowsers(BrowserEnumerator aEnumFunc, void* aArg)
+{
+  // Collect strong references to all browsers in a separate array in
+  // case aEnumFunc alters mWeakBrowsers.
+  nsTArray<nsRefPtr<TabParent>> tabParents;
+  mWeakBrowsers.EnumerateEntries(WeakBrowserEnumFunc, &tabParents);
+
+  for (uint32_t i = 0; i < tabParents.Length(); ++i) {
+    aEnumFunc(tabParents[i], aArg);
+  }
 }
 
 ///////////////////////////////////////////////////////////////////////////////////

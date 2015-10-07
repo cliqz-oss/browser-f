@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
-
 var loop = loop || {};
 loop.store = loop.store || {};
 
@@ -111,7 +109,7 @@ loop.store.FxOSActiveRoomStore = (function() {
           return;
         }
         if (event.target.error.name !== "NO_PROVIDER") {
-          console.error ("Unexpected " + event.target.error.name);
+          console.error("Unexpected " + event.target.error.name);
           return;
         }
         // We need to install the FxOS app.

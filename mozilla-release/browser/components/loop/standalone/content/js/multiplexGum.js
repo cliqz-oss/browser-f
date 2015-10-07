@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-
 var loop = loop || {};
 
 /**
@@ -58,7 +57,7 @@ loop.standaloneMedia = (function() {
           if (typeof cb == "function") {
             cb(param);
           }
-        })
+        });
       }
       function handleSuccess(localStream) {
         this.userMedia.pending = false;
@@ -124,7 +123,7 @@ loop.standaloneMedia = (function() {
         localStream: null,
         pending: false,
         errorCallbacks: [],
-        successCallbacks: [],
+        successCallbacks: []
       };
     }
   };
@@ -134,7 +133,7 @@ loop.standaloneMedia = (function() {
     // This function is needed to pull in the instance
     // of the singleton for tests to overwrite the used instance.
     singletonMultiplexGum.getPermsAndCacheMedia.apply(singletonMultiplexGum, arguments);
-  };
+  }
   patchSymbolIfExtant("navigator", "mozGetUserMedia", myGetUserMedia);
   patchSymbolIfExtant("navigator", "webkitGetUserMedia", myGetUserMedia);
   patchSymbolIfExtant("navigator", "getUserMedia", myGetUserMedia);
@@ -145,6 +144,6 @@ loop.standaloneMedia = (function() {
     _MultiplexGum: _MultiplexGum,
     setSingleton: function(singleton) {
       singletonMultiplexGum = singleton;
-    },
+    }
   };
 })();

@@ -7,7 +7,7 @@
 #ifndef jit_x64_Lowering_x64_h
 #define jit_x64_Lowering_x64_h
 
-#include "jit/shared/Lowering-x86-shared.h"
+#include "jit/x86-shared/Lowering-x86-shared.h"
 
 namespace js {
 namespace jit {
@@ -51,6 +51,7 @@ class LIRGeneratorX64 : public LIRGeneratorX86Shared
     void visitAsmJSAtomicBinopHeap(MAsmJSAtomicBinopHeap* ins);
     void visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic* ins);
     void visitSubstr(MSubstr* ins);
+    void visitRandom(MRandom* ins);
 };
 
 typedef LIRGeneratorX64 LIRGeneratorSpecific;

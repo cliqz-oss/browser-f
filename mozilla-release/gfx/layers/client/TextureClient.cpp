@@ -20,8 +20,6 @@
 #include "mozilla/gfx/Logging.h"        // for gfxDebug
 #include "mozilla/layers/TextureClientOGL.h"
 #include "mozilla/layers/PTextureChild.h"
-#include "SharedSurface.h"
-#include "GLContext.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h" // for CreateDataSourceSurfaceByCloning
 #include "nsPrintfCString.h"            // for nsPrintfCString
 #include "LayersLogging.h"              // for AppendToString
@@ -113,7 +111,7 @@ public:
 
   bool RecvCompositorRecycle() override
   {
-    RECYCLE_LOG("Receive recycle %p (%p)\n", mTextureClient, mWaitForRecycle.get());
+    RECYCLE_LOG("[CLIENT] Receive recycle %p (%p)\n", mTextureClient, mWaitForRecycle.get());
     mWaitForRecycle = nullptr;
     return true;
   }
@@ -121,7 +119,7 @@ public:
   void WaitForCompositorRecycle()
   {
     mWaitForRecycle = mTextureClient;
-    RECYCLE_LOG("Wait for recycle %p\n", mWaitForRecycle.get());
+    RECYCLE_LOG("[CLIENT] Wait for recycle %p\n", mWaitForRecycle.get());
     SendClientRecycle();
   }
 
@@ -364,9 +362,12 @@ TextureClient::CreateForDrawing(ISurfaceAllocator* aAllocator,
   if (!texture && aFormat == SurfaceFormat::B8G8R8X8 &&
       aAllocator->IsSameProcess() &&
       aMoz2DBackend == gfx::BackendType::CAIRO) {
-    texture = new DIBTextureClient(aAllocator, aFormat, aTextureFlags);
+    if (aAllocator->IsSameProcess()) {
+      texture = new TextureClientMemoryDIB(aAllocator, aFormat, aTextureFlags);
+    } else {
+      texture = new TextureClientShmemDIB(aAllocator, aFormat, aTextureFlags);
+    }
   }
-
 #endif
 
 #ifdef MOZ_X11
@@ -405,7 +406,7 @@ TextureClient::CreateForDrawing(ISurfaceAllocator* aAllocator,
   MOZ_ASSERT(!texture || texture->CanExposeDrawTarget(), "texture cannot expose a DrawTarget?");
 
   if (texture && texture->AllocateForSurface(aSize, aAllocFlags)) {
-    return texture;
+    return texture.forget();
   }
 
   if (aAllocFlags & ALLOC_DISALLOW_BUFFERTEXTURECLIENT) {
@@ -423,7 +424,7 @@ TextureClient::CreateForDrawing(ISurfaceAllocator* aAllocator,
     return nullptr;
   }
 
-  return texture;
+  return texture.forget();
 }
 
 // static
@@ -443,7 +444,7 @@ TextureClient::CreateForRawBufferAccess(ISurfaceAllocator* aAllocator,
       return nullptr;
     }
   }
-  return texture;
+  return texture.forget();
 }
 
 // static
@@ -469,7 +470,7 @@ TextureClient::CreateForYCbCr(ISurfaceAllocator* aAllocator,
     return nullptr;
   }
 
-  return texture;
+  return texture.forget();
 }
 
 // static
@@ -494,7 +495,7 @@ TextureClient::CreateWithBufferSize(ISurfaceAllocator* aAllocator,
     return nullptr;
   }
 
-  return texture;
+  return texture.forget();
 }
 
 TextureClient::TextureClient(ISurfaceAllocator* aAllocator, TextureFlags aFlags)
@@ -584,6 +585,10 @@ TextureClient::Finalize()
     // Null it before RemoveTexture calls to avoid invalid actor->mTextureClient
     // when calling TextureChild::ActorDestroy()
     actor->mTextureClient = nullptr;
+
+    // `actor->mWaitForRecycle` may not be null, as we may be being called from setting
+    // this RefPtr to null! Clearing it here will double-Release() it.
+
     // this will call ForceRemove in the right thread, using a sync proxy if needed
     if (actor->GetForwarder()) {
       actor->GetForwarder()->RemoveTexture(this);
@@ -759,8 +764,7 @@ BufferTextureClient::CreateSimilar(TextureFlags aFlags,
     mAllocator, mFormat, mSize, mBackend, mFlags | aFlags, aAllocFlags
   );
 
-  RefPtr<TextureClient> newTex = newBufferTex.get();
-  return newTex;
+  return newBufferTex.forget();
 }
 
 bool
@@ -913,32 +917,6 @@ BufferTextureClient::GetLockedData() const
   return serializer.GetData();
 }
 
-////////////////////////////////////////////////////////////////////////
-// SharedSurfaceTextureClient
-
-SharedSurfaceTextureClient::SharedSurfaceTextureClient(ISurfaceAllocator* aAllocator,
-                                                       TextureFlags aFlags,
-                                                       gl::SharedSurface* surf)
-  : TextureClient(aAllocator, aFlags)
-  , mIsLocked(false)
-  , mSurf(surf)
-  , mGL(mSurf->mGL)
-{
-  AddFlags(TextureFlags::DEALLOCATE_CLIENT);
-}
-
-SharedSurfaceTextureClient::~SharedSurfaceTextureClient()
-{
-  // the data is owned externally.
-}
-
-bool
-SharedSurfaceTextureClient::ToSurfaceDescriptor(SurfaceDescriptor& aOutDescriptor)
-{
-  aOutDescriptor = SharedSurfaceDescriptor((uintptr_t)mSurf);
-  return true;
-}
-
 TemporaryRef<SyncObject>
 SyncObject::CreateSyncObject(SyncHandle aHandle)
 {
@@ -947,8 +925,7 @@ SyncObject::CreateSyncObject(SyncHandle aHandle)
   }
 
 #ifdef XP_WIN
-  RefPtr<SyncObject> syncObject = new SyncObjectD3D11(aHandle);
-  return syncObject;
+  return MakeAndAddRef<SyncObjectD3D11>(aHandle);
 #else
   MOZ_ASSERT_UNREACHABLE();
   return nullptr;

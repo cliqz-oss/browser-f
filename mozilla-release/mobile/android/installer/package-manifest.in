@@ -42,7 +42,6 @@
 @BINPATH@/@DLL_PREFIX@plds4@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@nspr4@DLL_SUFFIX@
 #endif
-@BINPATH@/@DLL_PREFIX@mozalloc@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxplugin@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxplugingb@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@omxplugingb235@DLL_SUFFIX@
@@ -77,7 +76,8 @@
 [lib destdir="lib/@ANDROID_CPU_ARCH@"]
 @BINPATH@/@DLL_PREFIX@mozglue@DLL_SUFFIX@
 # This should be MOZ_CHILD_PROCESS_NAME, but that has a "lib/" prefix.
-@BINPATH@/@DLL_PREFIX@plugin-container@DLL_SUFFIX@
+@BINPATH@/@MOZ_CHILD_PROCESS_NAME@
+@BINPATH@/@MOZ_CHILD_PROCESS_NAME_PIE@
 
 [xpcom]
 @BINPATH@/dependentlibs.list
@@ -124,7 +124,6 @@
 @BINPATH@/components/chrome.xpt
 @BINPATH@/components/commandhandler.xpt
 @BINPATH@/components/commandlines.xpt
-@BINPATH@/components/compartments.xpt
 @BINPATH@/components/composer.xpt
 @BINPATH@/components/content_events.xpt
 @BINPATH@/components/content_geckomediaplugins.xpt
@@ -141,7 +140,6 @@
 @BINPATH@/components/dom_canvas.xpt
 @BINPATH@/components/dom_core.xpt
 @BINPATH@/components/dom_css.xpt
-@BINPATH@/components/dom_devicestorage.xpt
 @BINPATH@/components/dom_events.xpt
 @BINPATH@/components/dom_geolocation.xpt
 @BINPATH@/components/dom_media.xpt
@@ -216,6 +214,7 @@
 @BINPATH@/components/necko_file.xpt
 @BINPATH@/components/necko_ftp.xpt
 @BINPATH@/components/necko_http.xpt
+@BINPATH@/components/necko_mdns.xpt
 @BINPATH@/components/necko_res.xpt
 @BINPATH@/components/necko_socket.xpt
 @BINPATH@/components/necko_strconv.xpt
@@ -232,7 +231,6 @@
 @BINPATH@/components/plugin.xpt
 @BINPATH@/components/pref.xpt
 @BINPATH@/components/prefetch.xpt
-@BINPATH@/components/profile.xpt
 #ifdef MOZ_ENABLE_PROFILER_SPS
 @BINPATH@/components/profiler.xpt
 #endif
@@ -255,6 +253,9 @@
 @BINPATH@/components/toolkit_finalizationwitness.xpt
 @BINPATH@/components/toolkit_formautofill.xpt
 @BINPATH@/components/toolkit_osfile.xpt
+#ifdef NIGHTLY_BUILD
+@BINPATH@/components/toolkit_perfmonitoring.xpt
+#endif
 @BINPATH@/components/toolkit_xulstore.xpt
 @BINPATH@/components/toolkitprofile.xpt
 #ifdef MOZ_ENABLE_XREMOTE
@@ -458,6 +459,8 @@
 
 @BINPATH@/components/PresentationDeviceInfoManager.manifest
 @BINPATH@/components/PresentationDeviceInfoManager.js
+@BINPATH@/components/BuiltinProviders.manifest
+@BINPATH@/components/TCPPresentationServer.js
 
 @BINPATH@/components/PACGenerator.js
 @BINPATH@/components/PACGenerator.manifest
@@ -509,8 +512,8 @@
 @BINPATH@/@PREF_DIR@/mobile.js
 @BINPATH@/@PREF_DIR@/mobile-branding.js
 @BINPATH@/@PREF_DIR@/channel-prefs.js
+@BINPATH@/ua-update.json
 @BINPATH@/greprefs.js
-@BINPATH@/defaults/autoconfig/platform.js
 @BINPATH@/defaults/autoconfig/prefcalls.js
 @BINPATH@/defaults/profile/prefs.js
 
@@ -544,6 +547,20 @@
 @BINPATH@/res/html/*
 @BINPATH@/res/language.properties
 @BINPATH@/res/entityTables/*
+#ifdef NIGHTLY_BUILD
+@BINPATH@/res/text_caret.png
+@BINPATH@/res/text_caret@1.5x.png
+@BINPATH@/res/text_caret@2.25x.png
+@BINPATH@/res/text_caret@2x.png
+@BINPATH@/res/text_caret_tilt_left.png
+@BINPATH@/res/text_caret_tilt_left@1.5x.png
+@BINPATH@/res/text_caret_tilt_left@2.25x.png
+@BINPATH@/res/text_caret_tilt_left@2x.png
+@BINPATH@/res/text_caret_tilt_right.png
+@BINPATH@/res/text_caret_tilt_right@1.5x.png
+@BINPATH@/res/text_caret_tilt_right@2.25x.png
+@BINPATH@/res/text_caret_tilt_right@2x.png
+#endif
 
 #ifndef MOZ_ANDROID_EXCLUDE_FONTS
 @BINPATH@/res/fonts/*
@@ -558,9 +575,6 @@
 ;
 @BINPATH@/components/pipboot.xpt
 @BINPATH@/components/pipnss.xpt
-@BINPATH@/components/pippki.xpt
-@BINPATH@/chrome/pippki@JAREXT@
-@BINPATH@/chrome/pippki.manifest
 
 ; For process sandboxing
 #if defined(MOZ_SANDBOX)

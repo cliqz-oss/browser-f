@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +18,7 @@
 #include "nsServiceManagerUtils.h"
 #include "nsTArrayHelpers.h"
 #include "DOMMobileMessageError.h"
+#include "mozilla/dom/Promise.h"
 
 namespace mozilla {
 namespace dom {
@@ -80,6 +82,11 @@ MobileMessageCallback::MobileMessageCallback(DOMRequest* aDOMRequest)
 {
 }
 
+MobileMessageCallback::MobileMessageCallback(Promise* aPromise)
+  : mPromise(aPromise)
+{
+}
+
 MobileMessageCallback::~MobileMessageCallback()
 {
 }
@@ -88,6 +95,10 @@ MobileMessageCallback::~MobileMessageCallback()
 nsresult
 MobileMessageCallback::NotifySuccess(JS::Handle<JS::Value> aResult, bool aAsync)
 {
+  if (NS_WARN_IF(!mDOMRequest->GetOwner())) {
+    return NS_ERROR_FAILURE;
+  }
+
   if (aAsync) {
     nsCOMPtr<nsIDOMRequestService> rs =
       do_GetService(DOMREQUEST_SERVICE_CONTRACTID);
@@ -119,6 +130,10 @@ MobileMessageCallback::NotifySuccess(nsISupports *aMessage, bool aAsync)
 nsresult
 MobileMessageCallback::NotifyError(int32_t aError, DOMError *aDetailedError, bool aAsync)
 {
+  if (NS_WARN_IF(!mDOMRequest->GetOwner())) {
+    return NS_ERROR_FAILURE;
+  }
+
   if (aAsync) {
     NS_ASSERTION(!aDetailedError,
       "No Support to FireDetailedErrorAsync() in nsIDOMRequestService!");
@@ -149,18 +164,23 @@ MobileMessageCallback::NotifyMessageSent(nsISupports *aMessage)
 NS_IMETHODIMP
 MobileMessageCallback::NotifySendMessageFailed(int32_t aError, nsISupports *aMessage)
 {
+  nsCOMPtr<nsPIDOMWindow> window = mDOMRequest->GetOwner();
+  if (NS_WARN_IF(!window)) {
+    return NS_ERROR_FAILURE;
+  }
+
   nsRefPtr<DOMMobileMessageError> domMobileMessageError;
   if (aMessage) {
     nsAutoString errorStr = ConvertErrorCodeToErrorString(aError);
     nsCOMPtr<nsIDOMMozSmsMessage> smsMsg = do_QueryInterface(aMessage);
     if (smsMsg) {
       domMobileMessageError =
-        new DOMMobileMessageError(mDOMRequest->GetOwner(), errorStr, smsMsg);
+        new DOMMobileMessageError(window, errorStr, smsMsg);
     }
     else {
       nsCOMPtr<nsIDOMMozMmsMessage> mmsMsg = do_QueryInterface(aMessage);
       domMobileMessageError =
-        new DOMMobileMessageError(mDOMRequest->GetOwner(), errorStr, mmsMsg);
+        new DOMMobileMessageError(window, errorStr, mmsMsg);
     }
     NS_ASSERTION(domMobileMessageError, "Invalid DOMMobileMessageError!");
   }
@@ -278,6 +298,21 @@ NS_IMETHODIMP
 MobileMessageCallback::NotifyGetSmscAddressFailed(int32_t aError)
 {
   return NotifyError(aError);
+}
+
+NS_IMETHODIMP
+MobileMessageCallback::NotifySetSmscAddress()
+{
+  mPromise->MaybeResolve(JS::UndefinedHandleValue);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+MobileMessageCallback::NotifySetSmscAddressFailed(int32_t aError)
+{
+  const nsAString& errorStr = ConvertErrorCodeToErrorString(aError);
+  mPromise->MaybeRejectBrokenly(errorStr);
+  return NS_OK;
 }
 
 } // namesapce mobilemessage

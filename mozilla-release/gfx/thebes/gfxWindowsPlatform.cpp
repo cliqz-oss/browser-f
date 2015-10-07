@@ -73,11 +73,8 @@
 #include "SurfaceCache.h"
 #include "gfxPrefs.h"
 
-#if defined(MOZ_CRASHREPORTER)
-#include "nsExceptionHandler.h"
-#endif
-
 #include "VsyncSource.h"
+#include "DriverInitCrashDetection.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -117,8 +114,7 @@ DCFromDrawTarget::DCFromDrawTarget(DrawTarget& aDrawTarget)
 static const char *kFeatureLevelPref =
   "gfx.direct3d.last_used_feature_level_idx";
 static const int kSupportedFeatureLevels[] =
-  { D3D10_FEATURE_LEVEL_10_1, D3D10_FEATURE_LEVEL_10_0,
-    D3D10_FEATURE_LEVEL_9_3 };
+  { D3D10_FEATURE_LEVEL_10_1, D3D10_FEATURE_LEVEL_10_0 };
 
 class GfxD2DSurfaceReporter final : public nsIMemoryReporter
 {
@@ -410,8 +406,11 @@ public:
 NS_IMPL_ISUPPORTS(D3D9SharedTextureReporter, nsIMemoryReporter)
 
 gfxWindowsPlatform::gfxWindowsPlatform()
-  : mD3D11DeviceInitialized(false)
+  : mUseDirectWrite(false)
+  , mD3D11DeviceInitialized(false)
   , mIsWARP(false)
+  , mHasDeviceReset(false)
+  , mDoesD3D11TextureSharingWork(false)
 {
     mUseClearTypeForDownloadableFonts = UNINITIALIZED_VALUE;
     mUseClearTypeAlways = UNINITIALIZED_VALUE;
@@ -445,6 +444,9 @@ gfxWindowsPlatform::gfxWindowsPlatform()
 gfxWindowsPlatform::~gfxWindowsPlatform()
 {
     mDeviceManager = nullptr;
+    mD3D11Device = nullptr;
+    mD3D11ContentDevice = nullptr;
+    mD3D11ImageBridgeDevice = nullptr;
 
     // not calling FT_Done_FreeType because cairo may still hold references to
     // these FT_Faces.  See bug 458169.
@@ -456,6 +458,8 @@ gfxWindowsPlatform::~gfxWindowsPlatform()
 
     mozilla::gfx::Factory::D2DCleanup();
 
+    mAdapter = nullptr;
+
     /* 
      * Uninitialize COM 
      */ 
@@ -466,6 +470,15 @@ double
 gfxWindowsPlatform::GetDPIScale()
 {
   return WinUtils::LogToPhysFactor();
+}
+
+bool
+gfxWindowsPlatform::CanUseHardwareVideoDecoding()
+{
+    if (!gfxPrefs::LayersPreferD3D9() && !mDoesD3D11TextureSharingWork) {
+        return false;
+    }
+    return !IsWARP() && gfxPlatform::CanUseHardwareVideoDecoding();
 }
 
 void
@@ -482,6 +495,8 @@ gfxWindowsPlatform::UpdateRenderMode()
       mD3D11Device = nullptr;
       mD3D11ContentDevice = nullptr;
       mAdapter = nullptr;
+      mDeviceResetReason = DeviceResetReason::OK;
+      mHasDeviceReset = false;
 
       imgLoader::Singleton()->ClearCache(true);
       imgLoader::Singleton()->ClearCache(false);
@@ -494,12 +509,7 @@ gfxWindowsPlatform::UpdateRenderMode()
 
     bool isVistaOrHigher = IsVistaOrLater();
 
-    bool safeMode = false;
-    nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
-    if (xr)
-      xr->GetInSafeMode(&safeMode);
-
-    mUseDirectWrite = Preferences::GetBool("gfx.font_rendering.directwrite.enabled", false);
+    mUseDirectWrite = false;
 
 #ifdef CAIRO_HAS_D2D_SURFACE
     bool d2dDisabled = false;
@@ -535,8 +545,8 @@ gfxWindowsPlatform::UpdateRenderMode()
     }
 
     ID3D11Device *device = GetD3D11Device();
-    if (isVistaOrHigher && !safeMode && tryD2D && device &&
-        DoesD3D11TextureSharingWork(device)) {
+    if (isVistaOrHigher && !InSafeMode() && tryD2D && device &&
+        mDoesD3D11TextureSharingWork) {
 
         VerifyD2DDevice(d2dForceEnabled);
         if (mD2DDevice && GetD3D11Device()) {
@@ -655,6 +665,11 @@ void
 gfxWindowsPlatform::VerifyD2DDevice(bool aAttemptForce)
 {
 #ifdef CAIRO_HAS_D2D_SURFACE
+    DriverInitCrashDetection detectCrashes;
+    if (detectCrashes.DisableAcceleration()) {
+      return;
+    }
+
     if (mD2DDevice) {
         ID3D10Device1 *device = cairo_d2d_device_get_device(mD2DDevice);
 
@@ -673,10 +688,6 @@ gfxWindowsPlatform::VerifyD2DDevice(bool aAttemptForce)
     nsRefPtr<ID3D10Device1> device;
 
     int supportedFeatureLevelsCount = ArrayLength(kSupportedFeatureLevels);
-    // If we're not running in Metro don't allow DX9.3
-    if (!IsRunningInWindowsMetro()) {
-      supportedFeatureLevelsCount--;
-    }
 
     nsRefPtr<IDXGIAdapter1> adapter1 = GetDXGIAdapter();
 
@@ -763,26 +774,23 @@ gfxWindowsPlatform::CreatePlatformFontList()
 }
 
 already_AddRefed<gfxASurface>
-gfxWindowsPlatform::CreateOffscreenSurface(const IntSize& size,
-                                           gfxContentType contentType)
+gfxWindowsPlatform::CreateOffscreenSurface(const IntSize& aSize,
+                                           gfxImageFormat aFormat)
 {
     nsRefPtr<gfxASurface> surf = nullptr;
 
 #ifdef CAIRO_HAS_WIN32_SURFACE
     if (mRenderMode == RENDER_GDI)
-        surf = new gfxWindowsSurface(size,
-                                     OptimalFormatForContent(contentType));
+        surf = new gfxWindowsSurface(aSize, aFormat);
 #endif
 
 #ifdef CAIRO_HAS_D2D_SURFACE
     if (mRenderMode == RENDER_DIRECT2D)
-        surf = new gfxD2DSurface(size,
-                                 OptimalFormatForContent(contentType));
+        surf = new gfxD2DSurface(aSize, aFormat);
 #endif
 
     if (!surf || surf->CairoStatus()) {
-        surf = new gfxImageSurface(size,
-                                   OptimalFormatForContent(contentType));
+        surf = new gfxImageSurface(aSize, aFormat);
     }
 
     return surf.forget();
@@ -1162,36 +1170,47 @@ static DeviceResetReason HResultToResetReason(HRESULT hr)
 }
 
 bool
+gfxWindowsPlatform::IsDeviceReset(HRESULT hr, DeviceResetReason* aResetReason)
+{
+  if (hr != S_OK) {
+    mDeviceResetReason = HResultToResetReason(hr);
+    mHasDeviceReset = true;
+    if (aResetReason) {
+      *aResetReason = mDeviceResetReason;
+    }
+    return true;
+  }
+  return false;
+}
+
+bool
 gfxWindowsPlatform::DidRenderingDeviceReset(DeviceResetReason* aResetReason)
 {
+  if (mHasDeviceReset) {
+    if (aResetReason) {
+      *aResetReason = mDeviceResetReason;
+    }
+    return true;
+  }
   if (aResetReason) {
     *aResetReason = DeviceResetReason::OK;
   }
 
   if (mD3D11Device) {
     HRESULT hr = mD3D11Device->GetDeviceRemovedReason();
-    if (hr != S_OK) {
-      if (aResetReason) {
-        *aResetReason = HResultToResetReason(hr);
-      }
+    if (IsDeviceReset(hr, aResetReason)) {
       return true;
     }
   }
   if (mD3D11ContentDevice) {
     HRESULT hr = mD3D11ContentDevice->GetDeviceRemovedReason();
-    if (hr != S_OK) {
-      if (aResetReason) {
-        *aResetReason = HResultToResetReason(hr);
-      }
+    if (IsDeviceReset(hr, aResetReason)) {
       return true;
     }
   }
   if (GetD3D10Device()) {
     HRESULT hr = GetD3D10Device()->GetDeviceRemovedReason();
-    if (hr != S_OK) {
-      if (aResetReason) {
-        *aResetReason = HResultToResetReason(hr);
-      }
+    if (IsDeviceReset(hr, aResetReason)) {
       return true;
     }
   }
@@ -1690,10 +1709,10 @@ gfxWindowsPlatform::GetDXGIAdapter()
   return mAdapter;
 }
 
-bool DoesD3D11DeviceWork(ID3D11Device *device)
+bool DoesD3D11DeviceWork()
 {
-  static bool checked;
-  static bool result;
+  static bool checked = false;
+  static bool result = false;
 
   if (checked)
       return result;
@@ -1706,23 +1725,29 @@ bool DoesD3D11DeviceWork(ID3D11Device *device)
     return true;
   }
 
-  if (GetModuleHandleW(L"dlumd32.dll") && GetModuleHandleW(L"igd10umd32.dll")) {
-    nsString displayLinkModuleVersionString;
-    gfxWindowsPlatform::GetDLLVersion(L"dlumd32.dll", displayLinkModuleVersionString);
-    uint64_t displayLinkModuleVersion;
-    if (!ParseDriverVersion(displayLinkModuleVersionString, &displayLinkModuleVersion)) {
-#if defined(MOZ_CRASHREPORTER)
-      CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("DisplayLink: could not parse version\n"));
-#endif
-      gANGLESupportsD3D11 = false;
-      return false;
-    }
-    if (displayLinkModuleVersion <= V(8,6,1,36484)) {
-#if defined(MOZ_CRASHREPORTER)
-      CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("DisplayLink: too old version\n"));
-#endif
-      gANGLESupportsD3D11 = false;
-      return false;
+  if (GetModuleHandleW(L"igd10umd32.dll")) {
+    const wchar_t* checkModules[] = {L"dlumd32.dll",
+                                     L"dlumd11.dll",
+                                     L"dlumd10.dll"};
+    for (int i=0; i<PR_ARRAY_SIZE(checkModules); i+=1) {
+      if (GetModuleHandleW(checkModules[i])) {
+        nsString displayLinkModuleVersionString;
+        gfxWindowsPlatform::GetDLLVersion(checkModules[i],
+                                          displayLinkModuleVersionString);
+        uint64_t displayLinkModuleVersion;
+        if (!ParseDriverVersion(displayLinkModuleVersionString,
+                                &displayLinkModuleVersion)) {
+          gfxCriticalError() << "DisplayLink: could not parse version "
+                             << checkModules[i];
+          gANGLESupportsD3D11 = false;
+          return false;
+        }
+        if (displayLinkModuleVersion <= V(8,6,1,36484)) {
+          gfxCriticalError(CriticalLog::DefaultOptions(false)) << "DisplayLink: too old version " << displayLinkModuleVersionString.get();
+          gANGLESupportsD3D11 = false;
+          return false;
+        }
+      }
     }
   }
   result = true;
@@ -1752,9 +1777,7 @@ bool DoesD3D11TextureSharingWorkInternal(ID3D11Device *device, DXGI_FORMAT forma
       gfxInfo->GetAdapterVendorID(vendorID);
       gfxInfo->GetAdapterVendorID2(vendorID2);
       if (vendorID.EqualsLiteral("0x8086") && vendorID2.IsEmpty()) {
-#if defined(MOZ_CRASHREPORTER)
-        CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("Unexpected Intel/AMD dual-GPU setup\n"));
-#endif
+        gfxCriticalError(CriticalLog::DefaultOptions(false)) << "Unexpected Intel/AMD dual-GPU setup";
         return false;
       }
     }
@@ -1794,6 +1817,7 @@ bool DoesD3D11TextureSharingWorkInternal(ID3D11Device *device, DXGI_FORMAT forma
   if (FAILED(device->OpenSharedResource(shareHandle, __uuidof(ID3D11Resource),
                                         getter_AddRefs(sharedResource))))
   {
+    gfxCriticalError(CriticalLog::DefaultOptions(false)) << "OpenSharedResource failed for format " << format;
     return false;
   }
 
@@ -1807,9 +1831,7 @@ bool DoesD3D11TextureSharingWorkInternal(ID3D11Device *device, DXGI_FORMAT forma
 
   // This if(FAILED()) is the one that actually fails on systems affected by bug 1083071.
   if (FAILED(device->CreateShaderResourceView(sharedTexture, NULL, byRef(sharedView)))) {
-#if defined(MOZ_CRASHREPORTER)
-    CrashReporter::AppendAppNotesToCrashReport(NS_LITERAL_CSTRING("CreateShaderResourceView failed\n"));
-#endif
+    gfxCriticalError(CriticalLog::DefaultOptions(false)) << "CreateShaderResourceView failed for format" << format;
     return false;
   }
 
@@ -1831,23 +1853,7 @@ bool DoesD3D11TextureSharingWork(ID3D11Device *device)
 
 bool DoesD3D11AlphaTextureSharingWork(ID3D11Device *device)
 {
-  nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
-  if (gfxInfo) {
-    // A8 texture sharing crashes on this intel driver version (and no others)
-    // so just avoid using it in that case.
-    nsString adapterVendor;
-    nsString driverVersion;
-    gfxInfo->GetAdapterVendorID(adapterVendor);
-    gfxInfo->GetAdapterDriverVersion(driverVersion);
-
-    nsAString &intelVendorID = (nsAString &)GfxDriverInfo::GetDeviceVendor(VendorIntel);
-    if (adapterVendor.Equals(intelVendorID, nsCaseInsensitiveStringComparator()) &&
-        driverVersion.Equals(NS_LITERAL_STRING("8.15.10.2086"))) {
-      return false;
-    }
-  }
-
-  return DoesD3D11TextureSharingWorkInternal(device, DXGI_FORMAT_A8_UNORM, D3D11_BIND_SHADER_RESOURCE);
+  return DoesD3D11TextureSharingWorkInternal(device, DXGI_FORMAT_R8_UNORM, D3D11_BIND_SHADER_RESOURCE);
 }
 
 void
@@ -1861,20 +1867,21 @@ gfxWindowsPlatform::InitD3D11Devices()
   // a WARP device which should always be available on Windows 7 and higher.
 
   mD3D11DeviceInitialized = true;
+  mDoesD3D11TextureSharingWork = false;
 
   MOZ_ASSERT(!mD3D11Device); 
 
-  bool safeMode = false;
-  nsCOMPtr<nsIXULRuntime> xr = do_GetService("@mozilla.org/xre/runtime;1");
-  if (xr) {
-    xr->GetInSafeMode(&safeMode);
-  }
-
-  if (safeMode) {
+  DriverInitCrashDetection detectCrashes;
+  if (InSafeMode() || detectCrashes.DisableAcceleration()) {
     return;
   }
 
   bool useWARP = false;
+  bool allowWARP = false;
+
+  if (IsWin8OrLater()) {
+    allowWARP = true;
+  }
 
   nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
   if (gfxInfo) {
@@ -1888,17 +1895,11 @@ gfxWindowsPlatform::InitD3D11Devices()
         }
 
         if (!IsWin8OrLater()) {
-            /* On Windows 7 WARP runs very badly on the builtin vga driver */
-            nsString driver;
-            gfxInfo->GetAdapterDriver(driver);
-            // driver can start with vga or svga so only look for "framebuf..."
-            if (driver.Find("framebuf vga256 vga64k") != kNotFound) {
-                gfxCriticalError(CriticalLog::DefaultOptions(false)) << "Disabling WARP on builtin vga driver";
-                return;
-            }
+          /* We don't trust Windows 7 enough yet to use WARP */
+          return;
         }
 
-        useWARP = true;
+        useWARP = allowWARP;
       }
     }
   }
@@ -1934,7 +1935,7 @@ gfxWindowsPlatform::InitD3D11Devices()
       if (!gfxPrefs::LayersD3D11DisableWARP()) {
         return;
       }
-      useWARP = true;
+      useWARP = allowWARP;
     }
   }
 
@@ -1950,21 +1951,31 @@ gfxWindowsPlatform::InitD3D11Devices()
                              featureLevels.Elements(), featureLevels.Length(),
                              D3D11_SDK_VERSION, byRef(mD3D11Device), nullptr, nullptr);
     } MOZ_SEH_EXCEPT (EXCEPTION_EXECUTE_HANDLER) {
+      gfxCriticalError() << "Crash during D3D11 device creation";
+
       if (gfxPrefs::LayersD3D11DisableWARP()) {
         return;
       }
 
-      useWARP = true;
+      useWARP = allowWARP;
       adapter = nullptr;
     }
 
-    if (FAILED(hr) || !DoesD3D11DeviceWork(mD3D11Device)) {
+    if (FAILED(hr) || !DoesD3D11DeviceWork()) {
+      gfxCriticalError() << "D3D11 device creation failed" << hexa(hr);
+      mD3D11Device = nullptr;
       if (gfxPrefs::LayersD3D11DisableWARP()) {
         return;
       }
 
-      useWARP = true;
+      useWARP = allowWARP;
       adapter = nullptr;
+    }
+
+    if (mD3D11Device) {
+      // Only test this when not using WARP since it can fail and cause GetDeviceRemovedReason to return
+      // weird values.
+      mDoesD3D11TextureSharingWork = ::DoesD3D11TextureSharingWork(mD3D11Device);
     }
   }
 
@@ -1986,7 +1997,7 @@ gfxWindowsPlatform::InitD3D11Devices()
 
       if (FAILED(hr)) {
         // This should always succeed... in theory.
-        gfxCriticalError() << "Failed to initialize WARP D3D11 device!" << hr;
+        gfxCriticalError() << "Failed to initialize WARP D3D11 device! " << hexa(hr);
         return;
       }
 
@@ -1997,6 +2008,9 @@ gfxWindowsPlatform::InitD3D11Devices()
       return;
     }
   }
+
+  if (!mD3D11Device)
+    return;
 
   mD3D11Device->SetExceptionMode(0);
 
@@ -2022,6 +2036,10 @@ gfxWindowsPlatform::InitD3D11Devices()
     }
 
     mD3D11ContentDevice->SetExceptionMode(0);
+
+    nsRefPtr<ID3D10Multithread> multi;
+    mD3D11ContentDevice->QueryInterface(__uuidof(ID3D10Multithread), getter_AddRefs(multi));
+    multi->SetMultithreadProtected(TRUE);
 
     Factory::SetDirect3D11Device(mD3D11ContentDevice);
   }
@@ -2055,6 +2073,58 @@ gfxWindowsPlatform::InitD3D11Devices()
   d3d11Module.disown();
 }
 
+TemporaryRef<ID3D11Device>
+gfxWindowsPlatform::CreateD3D11DecoderDevice()
+{
+  nsModuleHandle d3d11Module(LoadLibrarySystem32(L"d3d11.dll"));
+  decltype(D3D11CreateDevice)* d3d11CreateDevice = (decltype(D3D11CreateDevice)*)
+    GetProcAddress(d3d11Module, "D3D11CreateDevice");
+
+   if (!d3d11CreateDevice) {
+    // We should just be on Windows Vista or XP in this case.
+    return nullptr;
+  }
+
+  nsTArray<D3D_FEATURE_LEVEL> featureLevels;
+  if (IsWin8OrLater()) {
+    featureLevels.AppendElement(D3D_FEATURE_LEVEL_11_1);
+  }
+  featureLevels.AppendElement(D3D_FEATURE_LEVEL_11_0);
+  featureLevels.AppendElement(D3D_FEATURE_LEVEL_10_1);
+  featureLevels.AppendElement(D3D_FEATURE_LEVEL_10_0);
+  featureLevels.AppendElement(D3D_FEATURE_LEVEL_9_3);
+
+  RefPtr<IDXGIAdapter1> adapter = GetDXGIAdapter();
+
+  if (!adapter) {
+    return nullptr;
+  }
+
+  HRESULT hr = E_INVALIDARG;
+
+  RefPtr<ID3D11Device> device;
+
+  MOZ_SEH_TRY{
+    hr = d3d11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr,
+                           D3D11_CREATE_DEVICE_VIDEO_SUPPORT,
+                           featureLevels.Elements(), featureLevels.Length(),
+                           D3D11_SDK_VERSION, byRef(device), nullptr, nullptr);
+  } MOZ_SEH_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+    return nullptr;
+  }
+
+  if (FAILED(hr) || !DoesD3D11DeviceWork()) {
+    return nullptr;
+  }
+
+  nsRefPtr<ID3D10Multithread> multi;
+  device->QueryInterface(__uuidof(ID3D10Multithread), getter_AddRefs(multi));
+
+  multi->SetMultithreadProtected(TRUE);
+
+  return device.forget();
+}
+
 static bool
 DwmCompositionEnabled()
 {
@@ -2074,6 +2144,7 @@ public:
     public:
       D3DVsyncDisplay()
         : mVsyncEnabledLock("D3DVsyncEnabledLock")
+        , mPrevVsync(TimeStamp::Now())
         , mVsyncEnabled(false)
       {
         mVsyncThread = new base::Thread("WindowsVsyncThread");
@@ -2120,7 +2191,7 @@ public:
       void ScheduleSoftwareVsync(TimeStamp aVsyncTimestamp)
       {
         MOZ_ASSERT(IsInVsyncThread());
-        NS_WARNING("DwmComposition dynamically disabled, falling back to software timers\n");
+        NS_WARNING("DwmComposition dynamically disabled, falling back to software timers");
 
         TimeStamp nextVsync = aVsyncTimestamp + mSoftwareVsyncRate;
         TimeDuration delay = nextVsync - TimeStamp::Now();
@@ -2133,19 +2204,65 @@ public:
             delay.ToMilliseconds());
       }
 
+      TimeStamp GetAdjustedVsyncTimeStamp(LARGE_INTEGER& aFrequency,
+                                          QPC_TIME& aQpcVblankTime)
+      {
+        TimeStamp vsync = TimeStamp::Now();
+        LARGE_INTEGER qpcNow;
+        QueryPerformanceCounter(&qpcNow);
+
+        const int microseconds = 1000000;
+        int64_t adjust = qpcNow.QuadPart - aQpcVblankTime;
+        int64_t usAdjust = (adjust * microseconds) / aFrequency.QuadPart;
+        vsync -= TimeDuration::FromMicroseconds((double) usAdjust);
+
+        if (IsWin10OrLater()) {
+          // On Windows 10 and on, DWMGetCompositionTimingInfo, mostly
+          // reports the upcoming vsync time, which is in the future.
+          // It can also sometimes report a vblank time in the past.
+          // Since large parts of Gecko assume TimeStamps can't be in future,
+          // use the previous vsync.
+
+          // Windows 10 and Intel HD vsync timestamps are messy and
+          // all over the place once in a while. Most of the time,
+          // it reports the upcoming vsync. Sometimes, that upcoming
+          // vsync is in the past. Sometimes that upcoming vsync is before
+          // the previously seen vsync. Sometimes, the previous vsync
+          // is still in the future. In these error cases,
+          // we try to normalize to Now().
+          TimeStamp upcomingVsync = vsync;
+          if (upcomingVsync < mPrevVsync) {
+            // Windows can report a vsync that's before
+            // the previous one. So update it to sometime in the future.
+            upcomingVsync = TimeStamp::Now() + TimeDuration::FromMilliseconds(1);
+          }
+
+          vsync = mPrevVsync;
+          mPrevVsync = upcomingVsync;
+        }
+        // On Windows 7 and 8, DwmFlush wakes up AFTER qpcVBlankTime
+        // from DWMGetCompositionTimingInfo. We can return the adjusted vsync.
+
+        // Once in a while, the reported vsync timestamp can be in the future.
+        // Normalize the reported timestamp to now.
+        if (vsync >= TimeStamp::Now()) {
+          vsync = TimeStamp::Now();
+        }
+        return vsync;
+      }
+
       void VBlankLoop()
       {
         MOZ_ASSERT(IsInVsyncThread());
+        MOZ_ASSERT(sizeof(int64_t) == sizeof(QPC_TIME));
 
         DWM_TIMING_INFO vblankTime;
         // Make sure to init the cbSize, otherwise GetCompositionTiming will fail
         vblankTime.cbSize = sizeof(DWM_TIMING_INFO);
 
-        LARGE_INTEGER qpcNow;
         LARGE_INTEGER frequency;
         QueryPerformanceFrequency(&frequency);
         TimeStamp vsync = TimeStamp::Now();
-        const int microseconds = 1000000;
 
         for (;;) {
           { // scope lock
@@ -2153,6 +2270,9 @@ public:
             if (!mVsyncEnabled) return;
           }
 
+          // Large parts of gecko assume that the refresh driver timestamp
+          // must be <= Now() and cannot be in the future.
+          MOZ_ASSERT(vsync <= TimeStamp::Now());
           Display::NotifyVsync(vsync);
 
           // DwmComposition can be dynamically enabled/disabled
@@ -2165,17 +2285,12 @@ public:
           }
 
           // Use a combination of DwmFlush + DwmGetCompositionTimingInfoPtr
-          // The qpcVBlank is always AFTER Now(), so it behaves like b2g
           // Using WaitForVBlank, the whole system dies :/
           WinUtils::dwmFlushProcPtr();
           HRESULT hr = WinUtils::dwmGetCompositionTimingInfoPtr(0, &vblankTime);
           vsync = TimeStamp::Now();
           if (SUCCEEDED(hr)) {
-            QueryPerformanceCounter(&qpcNow);
-            QPC_TIME adjust = qpcNow.QuadPart - vblankTime.qpcVBlank;
-            MOZ_ASSERT(adjust >= 0);
-            uint64_t usAdjust = (adjust * microseconds) / frequency.QuadPart;
-            vsync -= TimeDuration::FromMicroseconds((double) usAdjust);
+            vsync = GetAdjustedVsyncTimeStamp(frequency, vblankTime.qpcVBlank);
           }
         } // end for
       }
@@ -2195,6 +2310,7 @@ public:
       }
 
       TimeDuration mSoftwareVsyncRate;
+      TimeStamp mPrevVsync; // Only used on Windows 10
       Monitor mVsyncEnabledLock;
       base::Thread* mVsyncThread;
       bool mVsyncEnabled;
@@ -2222,14 +2338,14 @@ gfxWindowsPlatform::CreateHardwareVsyncSource()
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   if (!WinUtils::dwmIsCompositionEnabledPtr) {
-    NS_WARNING("Dwm composition not available, falling back to software vsync\n");
+    NS_WARNING("Dwm composition not available, falling back to software vsync");
     return gfxPlatform::CreateHardwareVsyncSource();
   }
 
   BOOL dwmEnabled = false;
   WinUtils::dwmIsCompositionEnabledPtr(&dwmEnabled);
   if (!dwmEnabled) {
-    NS_WARNING("DWM not enabled, falling back to software vsync\n");
+    NS_WARNING("DWM not enabled, falling back to software vsync");
     return gfxPlatform::CreateHardwareVsyncSource();
   }
 
@@ -2238,7 +2354,7 @@ gfxWindowsPlatform::CreateHardwareVsyncSource()
 }
 
 bool
-gfxWindowsPlatform::SupportsApzTouchInput()
+gfxWindowsPlatform::SupportsApzTouchInput() const
 {
   int value = Preferences::GetInt("dom.w3c_touch_events.enabled", 0);
   return value == 1 || value == 2;

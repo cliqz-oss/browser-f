@@ -147,11 +147,15 @@ struct ClassInfo
         FOR_EACH_SIZE(SUB_OTHER_SIZE)
     }
 
-    bool isNotable() const {
-        static const size_t NotabilityThreshold = 16 * 1024;
+    size_t sizeOfAllThings() const {
         size_t n = 0;
         FOR_EACH_SIZE(ADD_SIZE_TO_N)
-        return n >= NotabilityThreshold;
+        return n;
+    }
+
+    bool isNotable() const {
+        static const size_t NotabilityThreshold = 16 * 1024;
+        return sizeOfAllThings() >= NotabilityThreshold;
     }
 
     size_t sizeOfLiveGCThings() const {
@@ -221,7 +225,7 @@ struct GCSizes
     macro(_, _, marker) \
     macro(_, _, nurseryCommitted) \
     macro(_, _, nurseryDecommitted) \
-    macro(_, _, nurseryHugeSlots) \
+    macro(_, _, nurseryMallocedBuffers) \
     macro(_, _, storeBufferVals) \
     macro(_, _, storeBufferCells) \
     macro(_, _, storeBufferSlots) \
@@ -459,17 +463,17 @@ struct GCThingSizes
         dummy()
     {}
 
-    void addToKind(JSGCTraceKind kind, intptr_t n) {
+    void addToKind(JS::TraceKind kind, intptr_t n) {
         switch (kind) {
-          case JSTRACE_OBJECT:       object += n;      break;
-          case JSTRACE_STRING:       string += n;      break;
-          case JSTRACE_SYMBOL:       symbol += n;      break;
-          case JSTRACE_SCRIPT:       script += n;      break;
-          case JSTRACE_SHAPE:        shape += n;       break;
-          case JSTRACE_BASE_SHAPE:   baseShape += n;   break;
-          case JSTRACE_JITCODE:      jitcode += n;     break;
-          case JSTRACE_LAZY_SCRIPT:  lazyScript += n;  break;
-          case JSTRACE_OBJECT_GROUP: objectGroup += n; break;
+          case JS::TraceKind::Object:       object += n;      break;
+          case JS::TraceKind::String:       string += n;      break;
+          case JS::TraceKind::Symbol:       symbol += n;      break;
+          case JS::TraceKind::Script:       script += n;      break;
+          case JS::TraceKind::Shape:        shape += n;       break;
+          case JS::TraceKind::BaseShape:    baseShape += n;   break;
+          case JS::TraceKind::JitCode:      jitcode += n;     break;
+          case JS::TraceKind::LazyScript:   lazyScript += n;  break;
+          case JS::TraceKind::ObjectGroup:  objectGroup += n; break;
           default:
             MOZ_CRASH("Bad trace kind for GCThingSizes");
         }

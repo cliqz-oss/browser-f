@@ -296,6 +296,11 @@ NS_IMETHODIMP DummyChannel::GetContentDispositionHeader(nsACString&)
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP DummyChannel::ForceNoIntercept()
+{
+  return NS_OK;
+}
+
 /**
   * app:// protocol implementation.
   */
@@ -387,7 +392,7 @@ AppProtocolHandler::NewChannel2(nsIURI* aUri,
 
   if (Preferences::GetBool("dom.mozApps.themable")) {
     nsAutoCString origin;
-    nsPrincipal::GetOriginForURI(aUri, getter_Copies(origin));
+    nsPrincipal::GetOriginForURI(aUri, origin);
     nsAdoptingCString themeOrigin;
     themeOrigin = Preferences::GetCString("b2g.theme.origin");
     if (themeOrigin.Equals(origin)) {

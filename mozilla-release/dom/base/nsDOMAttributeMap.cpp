@@ -15,6 +15,7 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/NamedNodeMapBinding.h"
 #include "mozilla/dom/NodeInfoInlines.h"
+#include "mozilla/Telemetry.h"
 #include "nsAttrName.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -250,7 +251,7 @@ nsDOMAttributeMap::SetNamedItem(nsIDOMAttr* aAttr, nsIDOMAttr** aReturn)
 
   ErrorResult rv;
   *aReturn = SetNamedItem(*attribute, rv).take();
-  return rv.ErrorCode();
+  return rv.StealNSResult();
 }
 
 NS_IMETHODIMP
@@ -261,7 +262,7 @@ nsDOMAttributeMap::SetNamedItemNS(nsIDOMAttr* aAttr, nsIDOMAttr** aReturn)
 
   ErrorResult rv;
   *aReturn = SetNamedItemNS(*attribute, rv).take();
-  return rv.ErrorCode();
+  return rv.StealNSResult();
 }
 
 already_AddRefed<Attr>
@@ -270,6 +271,21 @@ nsDOMAttributeMap::SetNamedItemInternal(Attr& aAttr,
                                         ErrorResult& aError)
 {
   NS_ENSURE_TRUE(mContent, nullptr);
+
+  if (!aAttr.IsNSAware() &&
+      !mContent->IsHTMLElement() &&
+      aAttr.OwnerDoc()->IsHTMLDocument()) {
+    // Check whether we have a non-lowercase name, and if so log some telemetry.
+    // We check whether the attr's document is HTML _before_ the adopt we do
+    // below, because we're trying to figure out whether we could lowercase the
+    // attr name at creation time.  We restrict this to the !IsNSAware() case,
+    // because we only care about Attr nodes created via createAttribute.
+    nsIAtom* nameAtom = aAttr.NodeInfo()->NameAtom();
+    if (nsContentUtils::StringContainsASCIIUpper(nsDependentAtomString(nameAtom))) {
+        Telemetry::Accumulate(Telemetry::NONLOWERCASE_NONHTML_ATTR_NODE_SET,
+                              true);
+      }
+  }
 
   // XXX should check same-origin between mContent and aAttr however
   // nsContentUtils::CheckSameOrigin can't deal with attributenodes yet
@@ -364,7 +380,7 @@ nsDOMAttributeMap::RemoveNamedItem(const nsAString& aName,
 
   ErrorResult rv;
   *aReturn = RemoveNamedItem(aName, rv).take();
-  return rv.ErrorCode();
+  return rv.StealNSResult();
 }
 
 already_AddRefed<Attr>
@@ -505,7 +521,7 @@ nsDOMAttributeMap::RemoveNamedItemNS(const nsAString& aNamespaceURI,
   NS_ENSURE_ARG_POINTER(aReturn);
   ErrorResult rv;
   *aReturn = RemoveNamedItemNS(aNamespaceURI, aLocalName, rv).take();
-  return rv.ErrorCode();
+  return rv.StealNSResult();
 }
 
 already_AddRefed<Attr>

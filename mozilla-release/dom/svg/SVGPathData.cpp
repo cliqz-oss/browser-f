@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,7 +34,7 @@ static bool IsMoveto(uint16_t aSegType)
 nsresult
 SVGPathData::CopyFrom(const SVGPathData& rhs)
 {
-  if (!mData.SetCapacity(rhs.mData.Length())) {
+  if (!mData.SetCapacity(rhs.mData.Length(), fallible)) {
     // Yes, we do want fallible alloc here
     return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -80,7 +81,7 @@ SVGPathData::AppendSeg(uint32_t aType, ...)
 {
   uint32_t oldLength = mData.Length();
   uint32_t newLength = oldLength + 1 + SVGPathSegUtils::ArgCountForType(aType);
-  if (!mData.SetLength(newLength)) {
+  if (!mData.SetLength(newLength, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -174,7 +175,7 @@ SVGPathData::GetDistancesFromOriginToEndsOfVisibleSegments(FallibleTArray<double
 
     if (i == 0 || (segType != PATHSEG_MOVETO_ABS &&
                    segType != PATHSEG_MOVETO_REL)) {
-      if (!aOutput->AppendElement(state.length)) {
+      if (!aOutput->AppendElement(state.length, fallible)) {
         return false;
       }
     }

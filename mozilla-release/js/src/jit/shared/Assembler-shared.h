@@ -214,39 +214,6 @@ struct PatchedImmPtr {
 class AssemblerShared;
 class ImmGCPtr;
 
-// Used for immediates which require relocation and may be traced during minor GC.
-class ImmMaybeNurseryPtr
-{
-    friend class AssemblerShared;
-    friend class ImmGCPtr;
-    const gc::Cell* value;
-
-    ImmMaybeNurseryPtr() : value(0) {}
-
-  public:
-    explicit ImmMaybeNurseryPtr(const gc::Cell* ptr) : value(ptr)
-    {
-        // asm.js shouldn't be creating GC things
-        MOZ_ASSERT(!IsCompilingAsmJS());
-    }
-};
-
-// Dummy value used for nursery pointers during Ion compilation, see
-// LNurseryObject.
-class IonNurseryPtr
-{
-    const gc::Cell* ptr;
-
-  public:
-    friend class ImmGCPtr;
-
-    explicit IonNurseryPtr(const gc::Cell* ptr) : ptr(ptr)
-    {
-        MOZ_ASSERT(ptr);
-        MOZ_ASSERT(uintptr_t(ptr) & 0x1);
-    }
-};
-
 // Used for immediates which require relocation.
 class ImmGCPtr
 {
@@ -255,15 +222,10 @@ class ImmGCPtr
 
     explicit ImmGCPtr(const gc::Cell* ptr) : value(ptr)
     {
-        MOZ_ASSERT_IF(ptr, ptr->isTenured());
-
-        // asm.js shouldn't be creating GC things
-        MOZ_ASSERT(!IsCompilingAsmJS());
-    }
-
-    explicit ImmGCPtr(IonNurseryPtr ptr) : value(ptr.ptr)
-    {
-        MOZ_ASSERT(value);
+        // Nursery pointers can't be used if the main thread might be currently
+        // performing a minor GC.
+        MOZ_ASSERT_IF(ptr && !ptr->isTenured(),
+                      !CurrentThreadIsIonCompilingSafeForMinorGC());
 
         // asm.js shouldn't be creating GC things
         MOZ_ASSERT(!IsCompilingAsmJS());
@@ -271,13 +233,6 @@ class ImmGCPtr
 
   private:
     ImmGCPtr() : value(0) {}
-
-    friend class AssemblerShared;
-    explicit ImmGCPtr(ImmMaybeNurseryPtr ptr) : value(ptr.value)
-    {
-        // asm.js shouldn't be creating GC things
-        MOZ_ASSERT(!IsCompilingAsmJS());
-    }
 };
 
 // Pointer to be embedded as an immediate that is loaded/stored from by an
@@ -794,27 +749,32 @@ class AsmJSHeapAccess
     // If 'cmp' equals 'insnOffset' or if it is not supplied then the
     // cmpDelta_ is zero indicating that there is no length to patch.
     AsmJSHeapAccess(uint32_t insnOffset, uint32_t after, uint32_t cmp = NoLengthCheck)
-      : insnOffset_(insnOffset),
-        opLength_(after - insnOffset),
-        cmpDelta_(cmp == NoLengthCheck ? 0 : insnOffset - cmp)
-    {}
+    {
+        mozilla::PodZero(this);  // zero padding for Valgrind
+        insnOffset_ = insnOffset;
+        opLength_ = after - insnOffset;
+        cmpDelta_ = cmp == NoLengthCheck ? 0 : insnOffset - cmp;
+    }
 #elif defined(JS_CODEGEN_X64)
     // If 'cmp' equals 'insnOffset' or if it is not supplied then the
     // cmpDelta_ is zero indicating that there is no length to patch.
     AsmJSHeapAccess(uint32_t insnOffset, WhatToDoOnOOB oob,
                     uint32_t cmp = NoLengthCheck,
                     uint32_t offsetWithinWholeSimdVector = 0)
-      : insnOffset_(insnOffset),
-        offsetWithinWholeSimdVector_(offsetWithinWholeSimdVector),
-        throwOnOOB_(oob == Throw),
-        cmpDelta_(cmp == NoLengthCheck ? 0 : insnOffset - cmp)
     {
+        mozilla::PodZero(this);  // zero padding for Valgrind
+        insnOffset_ = insnOffset;
+        offsetWithinWholeSimdVector_ = offsetWithinWholeSimdVector;
+        throwOnOOB_ = oob == Throw;
+        cmpDelta_ = cmp == NoLengthCheck ? 0 : insnOffset - cmp;
         MOZ_ASSERT(offsetWithinWholeSimdVector_ == offsetWithinWholeSimdVector);
     }
 #elif defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS)
     explicit AsmJSHeapAccess(uint32_t insnOffset)
-      : insnOffset_(insnOffset)
-    {}
+    {
+        mozilla::PodZero(this);  // zero padding for Valgrind
+        insnOffset_ = insnOffset;
+    }
 #endif
 
     uint32_t insnOffset() const { return insnOffset_; }
@@ -856,6 +816,12 @@ enum AsmJSImmKind
 #if defined(JS_CODEGEN_ARM)
     AsmJSImm_aeabi_idivmod   = AsmJSExit::Builtin_IDivMod,
     AsmJSImm_aeabi_uidivmod  = AsmJSExit::Builtin_UDivMod,
+    AsmJSImm_AtomicCmpXchg   = AsmJSExit::Builtin_AtomicCmpXchg,
+    AsmJSImm_AtomicFetchAdd  = AsmJSExit::Builtin_AtomicFetchAdd,
+    AsmJSImm_AtomicFetchSub  = AsmJSExit::Builtin_AtomicFetchSub,
+    AsmJSImm_AtomicFetchAnd  = AsmJSExit::Builtin_AtomicFetchAnd,
+    AsmJSImm_AtomicFetchOr   = AsmJSExit::Builtin_AtomicFetchOr,
+    AsmJSImm_AtomicFetchXor  = AsmJSExit::Builtin_AtomicFetchXor,
 #endif
     AsmJSImm_ModD            = AsmJSExit::Builtin_ModD,
     AsmJSImm_SinD            = AsmJSExit::Builtin_SinD,
@@ -878,6 +844,7 @@ enum AsmJSImmKind
     AsmJSImm_ReportOverRecursed,
     AsmJSImm_OnDetached,
     AsmJSImm_OnOutOfBounds,
+    AsmJSImm_OnImpreciseConversion,
     AsmJSImm_HandleExecutionInterrupt,
     AsmJSImm_InvokeFromAsmJS_Ignore,
     AsmJSImm_InvokeFromAsmJS_ToInt32,
@@ -972,18 +939,6 @@ class AssemblerShared
 
     bool embedsNurseryPointers() const {
         return embedsNurseryPointers_;
-    }
-
-    ImmGCPtr noteMaybeNurseryPtr(ImmMaybeNurseryPtr ptr) {
-        if (ptr.value && gc::IsInsideNursery(ptr.value)) {
-            // noteMaybeNurseryPtr can be reached from off-thread compilation,
-            // though not with an actual nursery pointer argument in that case.
-            MOZ_ASSERT(GetJitContext()->runtime->onMainThread());
-            // Do not be ion-compiling on the main thread.
-            MOZ_ASSERT(!GetJitContext()->runtime->mainThread()->ionCompiling);
-            embedsNurseryPointers_ = true;
-        }
-        return ImmGCPtr(ptr);
     }
 
     void append(const CallSiteDesc& desc, size_t currentOffset, size_t framePushed) {

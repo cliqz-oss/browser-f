@@ -20,7 +20,7 @@
 #include "nsIContentPolicy.h"
 #include "nsContentUtils.h"
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 #include "nsString.h"
 #include "nsDirectoryServiceUtils.h"
@@ -40,19 +40,14 @@
 #include "nsIThread.h"
 #include "MainThreadUtils.h"
 #include "gfxColor.h"
-#ifdef MOZ_METRO
-#include "winrt/MetroInput.h"
-#include "winrt/MetroUtils.h"
-#endif // MOZ_METRO
+#include "nsLookAndFeel.h"
 
 #ifdef NS_ENABLE_TSF
 #include <textstor.h>
 #include "nsTextStore.h"
 #endif // #ifdef NS_ENABLE_TSF
 
-#ifdef PR_LOGGING
 PRLogModuleInfo* gWindowsLog = nullptr;
-#endif
 
 using namespace mozilla::gfx;
 
@@ -436,11 +431,9 @@ WinUtils::DwmFlushProc WinUtils::dwmFlushProcPtr = nullptr;
 void
 WinUtils::Initialize()
 {
-#ifdef PR_LOGGING
   if (!gWindowsLog) {
     gWindowsLog = PR_NewLogModule("Widget");
   }
-#endif
   if (!sDwmDll && IsVistaOrLater()) {
     sDwmDll = ::LoadLibraryW(kDwmLibraryName);
 
@@ -489,11 +482,9 @@ WinUtils::LogW(const wchar_t *fmt, ...)
                             nullptr) > 0) {
       // desktop console
       printf("%s\n", utf8);
-#ifdef PR_LOGGING
       NS_ASSERTION(gWindowsLog, "Called WinUtils Log() but Widget "
                                    "log module doesn't exist!");
-      PR_LOG(gWindowsLog, PR_LOG_ALWAYS, (utf8));
-#endif
+      MOZ_LOG(gWindowsLog, LogLevel::Error, (utf8));
     }
     delete[] utf8;
   }
@@ -525,11 +516,9 @@ WinUtils::Log(const char *fmt, ...)
   // desktop console
   printf("%s\n", buffer);
 
-#ifdef PR_LOGGING
   NS_ASSERTION(gWindowsLog, "Called WinUtils Log() but Widget "
                                "log module doesn't exist!");
-  PR_LOG(gWindowsLog, PR_LOG_ALWAYS, (buffer));
-#endif
+  MOZ_LOG(gWindowsLog, LogLevel::Error, (buffer));
   delete[] buffer;
 }
 
@@ -538,26 +527,18 @@ double
 WinUtils::LogToPhysFactor()
 {
   // dpi / 96.0
-  if (XRE_GetWindowsEnvironment() == WindowsEnvironmentType_Metro) {
-#ifdef MOZ_METRO
-    return MetroUtils::LogToPhysFactor();
-#else
-    return 1.0;
-#endif
-  } else {
-    HDC hdc = ::GetDC(nullptr);
-    double result = ::GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
-    ::ReleaseDC(nullptr, hdc);
+  HDC hdc = ::GetDC(nullptr);
+  double result = ::GetDeviceCaps(hdc, LOGPIXELSY) / 96.0;
+  ::ReleaseDC(nullptr, hdc);
 
-    if (result == 0) {
-      // Bug 1012487 - This can occur when the Screen DC is used off the
-      // main thread on windows. For now just assume a 100% DPI for this
-      // drawing call.
-      // XXX - fixme!
-      result = 1.0;
-    }
-    return result;
+  if (result == 0) {
+    // Bug 1012487 - This can occur when the Screen DC is used off the
+    // main thread on windows. For now just assume a 100% DPI for this
+    // drawing call.
+    // XXX - fixme!
+    result = 1.0;
   }
+  return result;
 }
 
 /* static */
@@ -955,14 +936,16 @@ WinUtils::GetMouseInputSource()
   return static_cast<uint16_t>(inputSource);
 }
 
+/* static */
 bool
 WinUtils::GetIsMouseFromTouch(uint32_t aEventType)
 {
-#define MOUSEEVENTF_FROMTOUCH 0xFF515700
-  return (aEventType == NS_MOUSE_BUTTON_DOWN ||
-          aEventType == NS_MOUSE_BUTTON_UP ||
-          aEventType == NS_MOUSE_MOVE) &&
-          (GetMessageExtraInfo() & MOUSEEVENTF_FROMTOUCH);
+  const uint32_t MOZ_T_I_SIGNATURE = TABLET_INK_TOUCH | TABLET_INK_SIGNATURE;
+  const uint32_t MOZ_T_I_CHECK_TCH = TABLET_INK_TOUCH | TABLET_INK_CHECK;
+  return ((aEventType == NS_MOUSE_MOVE ||
+           aEventType == NS_MOUSE_BUTTON_DOWN ||
+           aEventType == NS_MOUSE_BUTTON_UP) &&
+         (GetMessageExtraInfo() & MOZ_T_I_SIGNATURE) == MOZ_T_I_CHECK_TCH);
 }
 
 /* static */
@@ -1173,7 +1156,9 @@ AsyncFaviconDataReady::OnComplete(nsIURI *aFaviconURI,
   NS_ENSURE_SUCCESS(rv, rv);
 
   RefPtr<SourceSurface> surface =
-    container->GetFrame(imgIContainer::FRAME_FIRST, 0);
+    container->GetFrame(imgIContainer::FRAME_FIRST,
+                        imgIContainer::FLAG_SYNC_DECODE |
+                        imgIContainer::FLAG_ASYNC_NOTIFY);
   NS_ENSURE_TRUE(surface, NS_ERROR_FAILURE);
 
   RefPtr<DataSourceSurface> dataSurface;
@@ -1685,12 +1670,27 @@ WinUtils::SetupKeyModifiersSequence(nsTArray<KeyPair>* aArray,
 bool
 WinUtils::ShouldHideScrollbars()
 {
-#ifdef MOZ_METRO
-  if (XRE_GetWindowsEnvironment() == WindowsEnvironmentType_Metro) {
-    return widget::winrt::MetroInput::IsInputModeImprecise();
-  }
-#endif // MOZ_METRO
   return false;
+}
+
+// This is in use here and in dom/events/TouchEvent.cpp
+/* static */
+uint32_t
+WinUtils::IsTouchDeviceSupportPresent()
+{
+  int32_t touchCapabilities = ::GetSystemMetrics(SM_DIGITIZER);
+  return (touchCapabilities & NID_READY) &&
+         (touchCapabilities & (NID_EXTERNAL_TOUCH | NID_INTEGRATED_TOUCH));
+}
+
+/* static */
+uint32_t
+WinUtils::GetMaxTouchPoints()
+{
+  if (IsWin7OrLater() && IsTouchDeviceSupportPresent()) {
+    return GetSystemMetrics(SM_MAXIMUMTOUCHES);
+  }
+  return 0;
 }
 
 } // namespace widget

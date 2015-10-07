@@ -8,14 +8,16 @@
 
 const TEST_URL = TEST_BASE_HTTP + "doc_uncached.html";
 
-add_task(function() {
-  waitForExplicitFinish();
+add_task(function*() {
+  let isTesting = gDevTools.testing;
+  gDevTools.testing = true;
 
   info("Opening netmonitor");
   let tab = yield addTab("about:blank");
   let target = TargetFactory.forTab(tab);
   let toolbox = yield gDevTools.showToolbox(target, "netmonitor");
   let netmonitor = toolbox.getPanel("netmonitor");
+  netmonitor._view.RequestsMenu.lazyUpdate = false;
 
   info("Navigating to test page");
   yield navigateTo(TEST_URL);
@@ -28,12 +30,16 @@ add_task(function() {
 
   info("Checking Netmonitor contents.");
   let requestsForCss = 0;
+  let attachments = [];
   for (let item of netmonitor._view.RequestsMenu) {
     if (item.attachment.url.endsWith("doc_uncached.css")) {
-      requestsForCss++;
+      attachments.push(item.attachment);
     }
   }
 
-  is(requestsForCss, 1,
-     "Got one request for doc_uncached.css after Style Editor was loaded.");
+  is(attachments.length, 2,
+     "Got two requests for doc_uncached.css after Style Editor was loaded.");
+  ok(attachments[1].fromCache,
+     "Second request was loaded from browser cache");
+  gDevTools.testing = isTesting;
 });

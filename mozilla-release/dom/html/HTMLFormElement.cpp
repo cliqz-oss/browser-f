@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -30,6 +31,7 @@
 #include "nsIMutableArray.h"
 #include "nsIFormAutofillContentService.h"
 #include "mozilla/BinarySearch.h"
+#include "nsQueryObject.h"
 
 // form submission
 #include "mozilla/Telemetry.h"
@@ -45,7 +47,7 @@
 #include "nsIDocShell.h"
 #include "nsFormData.h"
 #include "nsFormSubmissionConstants.h"
-#include "nsIPromptService.h"
+#include "nsIPrompt.h"
 #include "nsISecurityUITelemetry.h"
 #include "nsIStringBundle.h"
 
@@ -269,7 +271,7 @@ HTMLFormElement::Submit()
 {
   ErrorResult rv;
   Submit(rv);
-  return rv.ErrorCode();
+  return rv.StealNSResult();
 }
 
 NS_IMETHODIMP
@@ -909,9 +911,16 @@ HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
     return NS_OK;
   }
 
-  nsCOMPtr<nsIPromptService> promptSvc =
-    do_GetService("@mozilla.org/embedcomp/prompt-service;1");
-  if (!promptSvc) {
+  nsCOMPtr<nsPIDOMWindow> window = OwnerDoc()->GetWindow();
+  if (!window) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIDocShell> docShell = window->GetDocShell();
+  if (!docShell) {
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIPrompt> prompt = do_GetInterface(docShell);
+  if (!prompt) {
     return NS_ERROR_FAILURE;
   }
   nsCOMPtr<nsIStringBundle> stringBundle;
@@ -939,13 +948,12 @@ HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
     getter_Copies(cont));
   int32_t buttonPressed;
   bool checkState = false; // this is unused (ConfirmEx requires this parameter)
-  nsCOMPtr<nsPIDOMWindow> window = OwnerDoc()->GetWindow();
-  rv = promptSvc->ConfirmEx(window, title.get(), message.get(),
-                            (nsIPromptService::BUTTON_TITLE_IS_STRING *
-                             nsIPromptService::BUTTON_POS_0) +
-                            (nsIPromptService::BUTTON_TITLE_CANCEL *
-                             nsIPromptService::BUTTON_POS_1),
-                            cont.get(), nullptr, nullptr, nullptr,
+  rv = prompt->ConfirmEx(title.get(), message.get(),
+                         (nsIPrompt::BUTTON_TITLE_IS_STRING *
+                          nsIPrompt::BUTTON_POS_0) +
+                         (nsIPrompt::BUTTON_TITLE_CANCEL *
+                          nsIPrompt::BUTTON_POS_1),
+                         cont.get(), nullptr, nullptr, nullptr,
                             &checkState, &buttonPressed);
   if (NS_FAILED(rv)) {
     return rv;
@@ -1743,8 +1751,7 @@ HTMLFormElement::GetActionURL(nsIURI** aActionURL,
   //
   // Assign to the output
   //
-  *aActionURL = actionURL;
-  NS_ADDREF(*aActionURL);
+  actionURL.forget(aActionURL);
 
   return rv;
 }

@@ -15,6 +15,7 @@
 #include "nsAutoPtr.h"
 #include "nsError.h"
 #include "nsNetCID.h"
+#include "nsNetUtil.h"
 #include "prnetdb.h"
 #include "prio.h"
 #include "nsNetAddr.h"
@@ -27,6 +28,10 @@
 #include "nsIDNSRecord.h"
 #include "nsIDNSService.h"
 #include "nsICancelable.h"
+
+#ifdef MOZ_WIDGET_GONK
+#include "NetStatistics.h"
+#endif
 
 using namespace mozilla::net;
 using namespace mozilla;
@@ -440,6 +445,8 @@ nsUDPMessage::GetDataAsTArray()
 nsUDPSocket::nsUDPSocket()
   : mLock("nsUDPSocket.mLock")
   , mFD(nullptr)
+  , mAppId(NECKO_UNKNOWN_APP_ID)
+  , mIsInBrowserElement(false)
   , mAttached(false)
   , mByteReadCount(0)
   , mByteWriteCount(0)
@@ -474,12 +481,13 @@ void
 nsUDPSocket::AddOutputBytes(uint64_t aBytes)
 {
   mByteWriteCount += aBytes;
+  SaveNetworkStats(false);
 }
 
 void
 nsUDPSocket::OnMsgClose()
 {
-  SOCKET_LOG(("nsUDPSocket::OnMsgClose [this=%p]\n", this));
+  UDPSOCKET_LOG(("nsUDPSocket::OnMsgClose [this=%p]\n", this));
 
   if (NS_FAILED(mCondition))
     return;
@@ -497,7 +505,7 @@ nsUDPSocket::OnMsgClose()
 void
 nsUDPSocket::OnMsgAttach()
 {
-  SOCKET_LOG(("nsUDPSocket::OnMsgAttach [this=%p]\n", this));
+  UDPSOCKET_LOG(("nsUDPSocket::OnMsgAttach [this=%p]\n", this));
 
   if (NS_FAILED(mCondition))
     return;
@@ -570,7 +578,7 @@ public:
                   FallibleTArray<uint8_t>& aData)
   : mOutputStream(aOutputStream)
   {
-    memcpy(&mAddr, aAddr, sizeof(NetAddr));
+    memcpy(&mAddr, aAddr, sizeof(mAddr));
     aData.SwapElements(mData);
   }
 
@@ -603,7 +611,8 @@ UDPMessageProxy::GetFromAddr(nsINetAddr * *aFromAddr)
 NS_IMETHODIMP
 UDPMessageProxy::GetData(nsACString & aData)
 {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  aData.Assign(reinterpret_cast<const char*>(mData.Elements()), mData.Length());
+  return NS_OK;
 }
 
 /* [noscript, notxpcom, nostdcall] Uint8TArrayRef getDataAsTArray(); */
@@ -652,7 +661,9 @@ nsUDPSocket::OnSocketReady(PRFileDesc *fd, int16_t outFlags)
 
   PRNetAddr prClientAddr;
   uint32_t count;
-  char buff[1500];
+  // Bug 1165423 - using 8k here because the packet could be larger
+  // than the MTU with fragmentation
+  char buff[8 * 1024];
   count = PR_RecvFrom(mFD, buff, sizeof(buff), 0, &prClientAddr, PR_INTERVAL_NO_WAIT);
 
   if (count < 1) {
@@ -661,9 +672,10 @@ nsUDPSocket::OnSocketReady(PRFileDesc *fd, int16_t outFlags)
     return;
   }
   mByteReadCount += count;
+  SaveNetworkStats(false);
 
   FallibleTArray<uint8_t> data;
-  if(!data.AppendElements(buff, count)){
+  if (!data.AppendElements(buff, count, fallible)) {
     mCondition = NS_ERROR_UNEXPECTED;
     return;
   }
@@ -710,6 +722,7 @@ nsUDPSocket::OnSocketDetached(PRFileDesc *fd)
     }
     mFD = nullptr;
   }
+  SaveNetworkStats(true);
 
   if (mListener)
   {
@@ -746,7 +759,8 @@ NS_IMPL_ISUPPORTS(nsUDPSocket, nsIUDPSocket)
 //-----------------------------------------------------------------------------
 
 NS_IMETHODIMP
-nsUDPSocket::Init(int32_t aPort, bool aLoopbackOnly, bool aAddressReuse, uint8_t aOptionalArgc)
+nsUDPSocket::Init(int32_t aPort, bool aLoopbackOnly, nsIPrincipal *aPrincipal,
+                  bool aAddressReuse, uint8_t aOptionalArgc)
 {
   NetAddr addr;
 
@@ -761,11 +775,12 @@ nsUDPSocket::Init(int32_t aPort, bool aLoopbackOnly, bool aAddressReuse, uint8_t
   else
     addr.inet.ip = htonl(INADDR_ANY);
 
-  return InitWithAddress(&addr, aAddressReuse, aOptionalArgc);
+  return InitWithAddress(&addr, aPrincipal, aAddressReuse, aOptionalArgc);
 }
 
 NS_IMETHODIMP
-nsUDPSocket::InitWithAddress(const NetAddr *aAddr, bool aAddressReuse, uint8_t aOptionalArgc)
+nsUDPSocket::InitWithAddress(const NetAddr *aAddr, nsIPrincipal *aPrincipal,
+                             bool aAddressReuse, uint8_t aOptionalArgc)
 {
   NS_ENSURE_TRUE(mFD == nullptr, NS_ERROR_ALREADY_INITIALIZED);
 
@@ -781,6 +796,27 @@ nsUDPSocket::InitWithAddress(const NetAddr *aAddr, bool aAddressReuse, uint8_t a
     NS_WARNING("unable to create UDP socket");
     return NS_ERROR_FAILURE;
   }
+
+  if (aPrincipal) {
+    nsresult rv = aPrincipal->GetAppId(&mAppId);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+
+    rv = aPrincipal->GetIsInBrowserElement(&mIsInBrowserElement);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  }
+
+#ifdef MOZ_WIDGET_GONK
+  if (mAppId != NECKO_UNKNOWN_APP_ID) {
+    nsCOMPtr<nsINetworkInterface> activeNetwork;
+    GetActiveNetworkInterface(activeNetwork);
+    mActiveNetwork =
+      new nsMainThreadPtrHolder<nsINetworkInterface>(activeNetwork);
+  }
+#endif
 
   uint16_t port;
   if (NS_FAILED(net::GetPort(aAddr, &port))) {
@@ -850,6 +886,7 @@ nsUDPSocket::Close()
         PR_Close(mFD);
         mFD = nullptr;
       }
+      SaveNetworkStats(true);
       return NS_OK;
     }
   }
@@ -875,6 +912,34 @@ nsUDPSocket::GetLocalAddr(nsINetAddr * *aResult)
   result.forget(aResult);
 
   return NS_OK;
+}
+
+void
+nsUDPSocket::SaveNetworkStats(bool aEnforce)
+{
+#ifdef MOZ_WIDGET_GONK
+  if (!mActiveNetwork || mAppId == NECKO_UNKNOWN_APP_ID) {
+    return;
+  }
+
+  if (mByteReadCount == 0 && mByteWriteCount == 0) {
+    return;
+  }
+
+  uint64_t total = mByteReadCount + mByteWriteCount;
+  if (aEnforce || total > NETWORK_STATS_THRESHOLD) {
+    // Create the event to save the network statistics.
+    // the event is then dispathed to the main thread.
+    nsRefPtr<nsRunnable> event =
+      new SaveNetworkStatsEvent(mAppId, mIsInBrowserElement, mActiveNetwork,
+                                mByteReadCount, mByteWriteCount, false);
+    NS_DispatchToMainThread(event);
+
+    // Reset the counters after saving.
+    mByteReadCount = 0;
+    mByteWriteCount = 0;
+  }
+#endif
 }
 
 NS_IMETHODIMP
@@ -993,6 +1058,113 @@ SocketListenerProxy::OnStopListeningRunnable::Run()
   return NS_OK;
 }
 
+
+class SocketListenerProxyBackground final : public nsIUDPSocketListener
+{
+  ~SocketListenerProxyBackground() {}
+
+public:
+  explicit SocketListenerProxyBackground(nsIUDPSocketListener* aListener)
+    : mListener(aListener)
+    , mTargetThread(do_GetCurrentThread())
+  { }
+
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSIUDPSOCKETLISTENER
+
+  class OnPacketReceivedRunnable : public nsRunnable
+  {
+  public:
+    OnPacketReceivedRunnable(const nsCOMPtr<nsIUDPSocketListener>& aListener,
+                             nsIUDPSocket* aSocket,
+                             nsIUDPMessage* aMessage)
+      : mListener(aListener)
+      , mSocket(aSocket)
+      , mMessage(aMessage)
+    { }
+
+    NS_DECL_NSIRUNNABLE
+
+  private:
+    nsCOMPtr<nsIUDPSocketListener> mListener;
+    nsCOMPtr<nsIUDPSocket> mSocket;
+    nsCOMPtr<nsIUDPMessage> mMessage;
+  };
+
+  class OnStopListeningRunnable : public nsRunnable
+  {
+  public:
+    OnStopListeningRunnable(const nsCOMPtr<nsIUDPSocketListener>& aListener,
+                            nsIUDPSocket* aSocket,
+                            nsresult aStatus)
+      : mListener(aListener)
+      , mSocket(aSocket)
+      , mStatus(aStatus)
+    { }
+
+    NS_DECL_NSIRUNNABLE
+
+  private:
+    nsCOMPtr<nsIUDPSocketListener> mListener;
+    nsCOMPtr<nsIUDPSocket> mSocket;
+    nsresult mStatus;
+  };
+
+private:
+  nsCOMPtr<nsIUDPSocketListener> mListener;
+  nsCOMPtr<nsIEventTarget> mTargetThread;
+};
+
+NS_IMPL_ISUPPORTS(SocketListenerProxyBackground,
+                  nsIUDPSocketListener)
+
+NS_IMETHODIMP
+SocketListenerProxyBackground::OnPacketReceived(nsIUDPSocket* aSocket,
+                                                nsIUDPMessage* aMessage)
+{
+  nsRefPtr<OnPacketReceivedRunnable> r =
+    new OnPacketReceivedRunnable(mListener, aSocket, aMessage);
+  return mTargetThread->Dispatch(r, NS_DISPATCH_NORMAL);
+}
+
+NS_IMETHODIMP
+SocketListenerProxyBackground::OnStopListening(nsIUDPSocket* aSocket,
+                                               nsresult aStatus)
+{
+  nsRefPtr<OnStopListeningRunnable> r =
+    new OnStopListeningRunnable(mListener, aSocket, aStatus);
+  return mTargetThread->Dispatch(r, NS_DISPATCH_NORMAL);
+}
+
+NS_IMETHODIMP
+SocketListenerProxyBackground::OnPacketReceivedRunnable::Run()
+{
+  NetAddr netAddr;
+  nsCOMPtr<nsINetAddr> nsAddr;
+  mMessage->GetFromAddr(getter_AddRefs(nsAddr));
+  nsAddr->GetNetAddr(&netAddr);
+
+  nsCOMPtr<nsIOutputStream> outputStream;
+  mMessage->GetOutputStream(getter_AddRefs(outputStream));
+
+  FallibleTArray<uint8_t>& data = mMessage->GetDataAsTArray();
+
+  UDPSOCKET_LOG(("%s [this=%p], len %u", __FUNCTION__, this, data.Length()));
+  nsCOMPtr<nsIUDPMessage> message = new UDPMessageProxy(&netAddr,
+                                                        outputStream,
+                                                        data);
+  mListener->OnPacketReceived(mSocket, message);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+SocketListenerProxyBackground::OnStopListeningRunnable::Run()
+{
+  mListener->OnStopListening(mSocket, mStatus);
+  return NS_OK;
+}
+
+
 class PendingSend : public nsIDNSListener
 {
 public:
@@ -1083,10 +1255,10 @@ class SendRequestRunnable: public nsRunnable {
 public:
   SendRequestRunnable(nsUDPSocket *aSocket,
                       const NetAddr &aAddr,
-                      FallibleTArray<uint8_t> &aData)
+                      FallibleTArray<uint8_t>&& aData)
     : mSocket(aSocket)
     , mAddr(aAddr)
-    , mData(aData)
+    , mData(Move(aData))
   { }
 
   NS_DECL_NSIRUNNABLE
@@ -1116,8 +1288,14 @@ nsUDPSocket::AsyncListen(nsIUDPSocketListener *aListener)
   NS_ENSURE_TRUE(mListener == nullptr, NS_ERROR_IN_PROGRESS);
   {
     MutexAutoLock lock(mLock);
-    mListener = new SocketListenerProxy(aListener);
     mListenerTarget = NS_GetCurrentThread();
+    if (NS_IsMainThread()) {
+      // PNecko usage
+      mListener = new SocketListenerProxy(aListener);
+    } else {
+      // PBackground usage from media/mtransport
+      mListener = new SocketListenerProxyBackground(aListener);
+    }
   }
   return PostEvent(this, &nsUDPSocket::OnMsgAttach);
 }
@@ -1133,7 +1311,7 @@ nsUDPSocket::Send(const nsACString &aHost, uint16_t aPort,
   *_retval = 0;
 
   FallibleTArray<uint8_t> fallibleArray;
-  if (!fallibleArray.InsertElementsAt(0, aData, aDataLength)) {
+  if (!fallibleArray.InsertElementsAt(0, aData, aDataLength, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -1191,12 +1369,13 @@ nsUDPSocket::SendWithAddress(const NetAddr *aAddr, const uint8_t *aData,
     *_retval = count;
   } else {
     FallibleTArray<uint8_t> fallibleArray;
-    if (!fallibleArray.InsertElementsAt(0, aData, aDataLength)) {
+    if (!fallibleArray.InsertElementsAt(0, aData, aDataLength, fallible)) {
       return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    nsresult rv = mSts->Dispatch(new SendRequestRunnable(this, *aAddr, fallibleArray),
-                                 NS_DISPATCH_NORMAL);
+    nsresult rv = mSts->Dispatch(
+      new SendRequestRunnable(this, *aAddr, Move(fallibleArray)),
+      NS_DISPATCH_NORMAL);
     NS_ENSURE_SUCCESS(rv, rv);
     *_retval = aDataLength;
   }
@@ -1250,7 +1429,7 @@ nsUDPSocket::SetSocketOption(const PRSocketOptionData& aOpt)
   }
 
   if (PR_SetSocketOption(mFD, &aOpt) != PR_SUCCESS) {
-    SOCKET_LOG(("nsUDPSocket::SetSocketOption [this=%p] failed for type %d, "
+    UDPSOCKET_LOG(("nsUDPSocket::SetSocketOption [this=%p] failed for type %d, "
       "error %d\n", this, aOpt.option, PR_GetError()));
     return NS_ERROR_FAILURE;
   }

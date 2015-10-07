@@ -31,12 +31,11 @@ const LoginInfo =
       Components.Constructor("@mozilla.org/login-manager/loginInfo;1",
                              "nsILoginInfo", "init");
 
-// Import LoginTestUtils.jsm as LoginTest.
-XPCOMUtils.defineLazyModuleGetter(this, "LoginTest",
-                                  "resource://testing-common/LoginTestUtils.jsm",
-                                  "LoginTestUtils");
-LoginTest.Assert = Assert;
-const TestData = LoginTest.testData;
+// Import LoginTestUtils.jsm as LoginTestUtils.
+XPCOMUtils.defineLazyModuleGetter(this, "LoginTestUtils",
+                                  "resource://testing-common/LoginTestUtils.jsm");
+LoginTestUtils.Assert = Assert;
+const TestData = LoginTestUtils.testData;
 
 /**
  * All the tests are implemented with add_task, this starts them automatically.
@@ -123,39 +122,44 @@ const RecipeHelpers = {
   initNewParent() {
     return (new LoginRecipesParent({ defaults: false })).initializationPromise;
   },
+};
 
+const MockDocument = {
   /**
-   * Create a document for the given URL containing the given HTML containing a
-   * form and return the <form>.
+   * Create a document for the given URL containing the given HTML with the ownerDocument of all <form>s having a mocked location.
    */
-  createTestForm(aDocumentURL, aHTML = "<form>") {
+  createTestDocument(aDocumentURL, aHTML = "<form>") {
     let parser = Cc["@mozilla.org/xmlextras/domparser;1"].
                  createInstance(Ci.nsIDOMParser);
     parser.init();
     let parsedDoc = parser.parseFromString(aHTML, "text/html");
 
+    for (let element of parsedDoc.forms) {
+      this.mockOwnerDocumentProperty(element, parsedDoc, aDocumentURL);
+    }
+    return parsedDoc;
+  },
+
+  mockOwnerDocumentProperty(aElement, aDoc, aURL) {
     // Mock the document.location object so we can unit test without a frame. We use a proxy
     // instead of just assigning to the property since it's not configurable or writable.
-    let document = new Proxy(parsedDoc, {
+    let document = new Proxy(aDoc, {
       get(target, property, receiver) {
         // document.location is normally null when a document is outside of a "browsing context".
         // See https://html.spec.whatwg.org/#the-location-interface
         if (property == "location") {
-          return new URL(aDocumentURL);
+          return new URL(aURL);
         }
         return target[property];
       },
     });
 
-    let form = parsedDoc.forms[0];
-
-    // Assign form.ownerDocument to the proxy so document.location works.
-    Object.defineProperty(form, "ownerDocument", {
+    // Assign element.ownerDocument to the proxy so document.location works.
+    Object.defineProperty(aElement, "ownerDocument", {
       value: document,
     });
+  },
 
-    return form;
-  }
 };
 
 //// Initialization functions common to all tests
@@ -172,8 +176,28 @@ add_task(function test_common_initialize()
   yield Services.logins.initializationPromise;
 
   // Ensure that every test file starts with an empty database.
-  LoginTest.clearData();
+  LoginTestUtils.clearData();
 
   // Clean up after every test.
-  do_register_cleanup(() => LoginTest.clearData());
+  do_register_cleanup(() => LoginTestUtils.clearData());
 });
+
+/**
+ * Compare two FormLike to see if they represent the same information. Elements
+ * are compared using their @id attribute.
+ */
+function formLikeEqual(a, b) {
+  Assert.strictEqual(Object.keys(a).length, Object.keys(b).length,
+                     "Check the formLikes have the same number of properties");
+
+  for (let propName of Object.keys(a)) {
+    if (propName == "elements") {
+      Assert.strictEqual(a.elements.length, b.elements.length, "Check element count");
+      for (let i = 0; i < a.elements.length; i++) {
+        Assert.strictEqual(a.elements[i].id, b.elements[i].id, "Check element " + i + " id");
+      }
+      continue;
+    }
+    Assert.strictEqual(a[propName], b[propName], "Compare formLike " + propName + " property");
+  }
+}

@@ -2,20 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/*global loop, sinon, React */
-/* jshint newcap:false */
-
-var expect = chai.expect;
-var l10n = navigator.mozL10n || document.mozL10n;
-var TestUtils = React.addons.TestUtils;
-var sharedActions = loop.shared.actions;
-var sharedViews = loop.shared.views;
-
-var FEEDBACK_STATES = loop.store.FEEDBACK_STATES;
-
 describe("loop.shared.views.FeedbackView", function() {
   "use strict";
 
+  var expect = chai.expect;
+  var l10n = navigator.mozL10n || document.mozL10n;
+  var TestUtils = React.addons.TestUtils;
+  var sharedActions = loop.shared.actions;
+  var sharedViews = loop.shared.views;
+
+  var FEEDBACK_STATES = loop.store.FEEDBACK_STATES;
   var sandbox, comp, dispatcher, fakeFeedbackClient, feedbackStore;
 
   beforeEach(function() {
@@ -35,30 +31,30 @@ describe("loop.shared.views.FeedbackView", function() {
   });
 
   // local test helpers
-  function clickHappyFace(comp) {
-    var happyFace = comp.getDOMNode().querySelector(".face-happy");
+  function clickHappyFace(component) {
+    var happyFace = component.getDOMNode().querySelector(".face-happy");
     TestUtils.Simulate.click(happyFace);
   }
 
-  function clickSadFace(comp) {
-    var sadFace = comp.getDOMNode().querySelector(".face-sad");
+  function clickSadFace(component) {
+    var sadFace = component.getDOMNode().querySelector(".face-sad");
     TestUtils.Simulate.click(sadFace);
   }
 
-  function fillSadFeedbackForm(comp, category, text) {
+  function fillSadFeedbackForm(component, category, text) {
     TestUtils.Simulate.change(
-      comp.getDOMNode().querySelector("[value='" + category + "']"));
+      component.getDOMNode().querySelector("[value='" + category + "']"));
 
     if (text) {
       TestUtils.Simulate.change(
-        comp.getDOMNode().querySelector("[name='description']"), {
+        component.getDOMNode().querySelector("[name='description']"), {
           target: {value: "fake reason"}
         });
     }
   }
 
-  function submitSadFeedbackForm(comp, category, text) {
-    TestUtils.Simulate.submit(comp.getDOMNode().querySelector("form"));
+  function submitSadFeedbackForm(component, category, text) {
+    TestUtils.Simulate.submit(component.getDOMNode().querySelector("form"));
   }
 
   describe("Happy feedback", function() {
@@ -80,6 +76,15 @@ describe("loop.shared.views.FeedbackView", function() {
       expect(comp.getDOMNode().querySelectorAll(".thank-you")).not.eql(null);
       expect(comp.getDOMNode().querySelector("button.fx-embedded-btn-back"))
         .eql(null);
+    });
+
+    it("should not display the countdown text if noCloseText is true", function() {
+      comp = TestUtils.renderIntoDocument(
+        React.createElement(sharedViews.FeedbackView, {
+          noCloseText: true
+        }));
+
+      expect(comp.getDOMNode().querySelector(".info.thank-you")).eql(null);
     });
   });
 

@@ -1,4 +1,5 @@
-/* -*- Mode: IDL; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -11,6 +12,7 @@
 #include "nsGlobalWindow.h"
 #include "nsIDocument.h"
 #include "WorkerPrivate.h"
+#include "WorkerStructuredClone.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -27,17 +29,21 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ServiceWorkerClient)
 NS_INTERFACE_MAP_END
 
 ServiceWorkerClientInfo::ServiceWorkerClientInfo(nsIDocument* aDoc)
+  : mWindowId(0)
 {
   MOZ_ASSERT(aDoc);
-  MOZ_ASSERT(aDoc->GetWindow());
-
   nsresult rv = aDoc->GetId(mClientId);
   if (NS_FAILED(rv)) {
     NS_WARNING("Failed to get the UUID of the document.");
   }
 
-  nsRefPtr<nsGlobalWindow> outerWindow = static_cast<nsGlobalWindow*>(aDoc->GetWindow());
-  mWindowId = outerWindow->WindowID();
+  nsRefPtr<nsGlobalWindow> innerWindow = static_cast<nsGlobalWindow*>(aDoc->GetInnerWindow());
+  if (innerWindow) {
+    // XXXcatalinb: The inner window can be null if the document is navigating
+    // and was detached.
+    mWindowId = innerWindow->WindowID();
+  }
+
   aDoc->GetURL(mUrl);
   mVisibilityState = aDoc->VisibilityState();
 
@@ -47,6 +53,8 @@ ServiceWorkerClientInfo::ServiceWorkerClientInfo(nsIDocument* aDoc)
     NS_WARNING("Failed to get focus information.");
   }
 
+  nsRefPtr<nsGlobalWindow> outerWindow = static_cast<nsGlobalWindow*>(aDoc->GetWindow());
+  MOZ_ASSERT(outerWindow);
   if (!outerWindow->IsTopLevelWindow()) {
     mFrameType = FrameType::Nested;
   } else if (outerWindow->HadOriginalOpener()) {
@@ -68,23 +76,25 @@ class ServiceWorkerClientPostMessageRunnable final : public nsRunnable
 {
   uint64_t mWindowId;
   JSAutoStructuredCloneBuffer mBuffer;
-  nsTArray<nsCOMPtr<nsISupports>> mClonedObjects;
+  WorkerStructuredCloneClosure mClosure;
 
 public:
   ServiceWorkerClientPostMessageRunnable(uint64_t aWindowId,
                                          JSAutoStructuredCloneBuffer&& aData,
-                                         nsTArray<nsCOMPtr<nsISupports>>& aClonedObjects)
+                                         WorkerStructuredCloneClosure& aClosure)
     : mWindowId(aWindowId),
       mBuffer(Move(aData))
   {
-    mClonedObjects.SwapElements(aClonedObjects);
+    mClosure.mClonedObjects.SwapElements(aClosure.mClonedObjects);
+    MOZ_ASSERT(aClosure.mMessagePorts.IsEmpty());
+    mClosure.mMessagePortIdentifiers.SwapElements(aClosure.mMessagePortIdentifiers);
   }
 
   NS_IMETHOD
   Run()
   {
     AssertIsOnMainThread();
-    nsGlobalWindow* window = nsGlobalWindow::GetOuterWindowWithId(mWindowId);
+    nsGlobalWindow* window = nsGlobalWindow::GetInnerWindowWithId(mWindowId);
     if (!window) {
       return NS_ERROR_FAILURE;
     }
@@ -92,7 +102,7 @@ public:
     ErrorResult result;
     dom::Navigator* navigator = window->GetNavigator(result);
     if (NS_WARN_IF(result.Failed())) {
-      return result.ErrorCode();
+      return result.StealNSResult();
     }
 
     nsRefPtr<ServiceWorkerContainer> container = navigator->ServiceWorker();
@@ -111,8 +121,10 @@ private:
 
     // Release reference to objects that were AddRef'd for
     // cloning into worker when array goes out of scope.
-    nsTArray<nsCOMPtr<nsISupports>> clonedObjects;
-    clonedObjects.SwapElements(mClonedObjects);
+    WorkerStructuredCloneClosure closure;
+    closure.mClonedObjects.SwapElements(mClosure.mClonedObjects);
+    MOZ_ASSERT(mClosure.mMessagePorts.IsEmpty());
+    closure.mMessagePortIdentifiers.SwapElements(mClosure.mMessagePortIdentifiers);
 
     JS::Rooted<JS::Value> messageData(aCx);
     if (!mBuffer.read(aCx, &messageData,
@@ -178,16 +190,17 @@ ServiceWorkerClient::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
 
   const JSStructuredCloneCallbacks* callbacks = WorkerStructuredCloneCallbacks(false);
 
-  nsTArray<nsCOMPtr<nsISupports>> clonedObjects;
+  WorkerStructuredCloneClosure closure;
 
   JSAutoStructuredCloneBuffer buffer;
-  if (!buffer.write(aCx, aMessage, transferable, callbacks, &clonedObjects)) {
+  if (!buffer.write(aCx, aMessage, transferable, callbacks, &closure)) {
     aRv.Throw(NS_ERROR_DOM_DATA_CLONE_ERR);
     return;
   }
 
   nsRefPtr<ServiceWorkerClientPostMessageRunnable> runnable =
-    new ServiceWorkerClientPostMessageRunnable(mWindowId, Move(buffer), clonedObjects);
+    new ServiceWorkerClientPostMessageRunnable(mWindowId, Move(buffer),
+                                               closure);
   nsresult rv = NS_DispatchToMainThread(runnable);
   if (NS_FAILED(rv)) {
     aRv.Throw(NS_ERROR_FAILURE);

@@ -2,13 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop, sinon */
-
-var expect = chai.expect;
-
 describe("loop.shared.models", function() {
   "use strict";
 
+  var expect = chai.expect;
+  var l10n = navigator.mozL10n || document.mozL10n;
   var sharedModels = loop.shared.models, sandbox, fakeXHR,
       requests = [], fakeSDK, fakeMozLoop, fakeSession, fakeSessionData;
 
@@ -22,14 +20,14 @@ describe("loop.shared.models", function() {
       requests.push(xhr);
     };
     fakeSessionData = {
-      sessionId:      "sessionId",
-      sessionToken:   "sessionToken",
-      apiKey:         "apiKey",
-      callType:       "callType",
+      sessionId: "sessionId",
+      sessionToken: "sessionToken",
+      apiKey: "apiKey",
+      callType: "callType",
       websocketToken: 123,
-      callToken:      "callToken",
-      callUrl:        "http://invalid/callToken",
-      callerId:       "mrssmith"
+      callToken: "callToken",
+      callUrl: "http://invalid/callToken",
+      callerId: "mrssmith"
     };
     fakeSession = _.extend({
       connect: function () {},
@@ -188,7 +186,7 @@ describe("loop.shared.models", function() {
           model.set({
             windowId: "28",
             sessionId: "321456",
-            callId: "142536",
+            callId: "142536"
           });
           model.startSession();
 
@@ -450,7 +448,7 @@ describe("loop.shared.models", function() {
     beforeEach(function() {
       collection = new sharedModels.NotificationCollection();
       sandbox.stub(l10n, "get", function(x, y) {
-        return "translated:" + x + (y ? ':' + y : '');
+        return "translated:" + x + (y ? ":" + y : "");
       });
       notifData = {level: "error", message: "plop"};
       testNotif = new sharedModels.NotificationModel(notifData);

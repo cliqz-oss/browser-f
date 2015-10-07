@@ -539,10 +539,10 @@ function CanonicalizeLocaleList(locales) {
         if (kPresent) {
             var kValue = O[k];
             if (!(typeof kValue === "string" || IsObject(kValue)))
-                ThrowError(JSMSG_INVALID_LOCALES_ELEMENT);
+                ThrowTypeError(JSMSG_INVALID_LOCALES_ELEMENT);
             var tag = ToString(kValue);
             if (!IsStructurallyValidLanguageTag(tag))
-                ThrowError(JSMSG_INVALID_LANGUAGE_TAG, tag);
+                ThrowRangeError(JSMSG_INVALID_LANGUAGE_TAG, tag);
             tag = CanonicalizeLanguageTag(tag);
             if (seen.indexOf(tag) === -1)
                 seen.push(tag);
@@ -843,7 +843,7 @@ function SupportedLocales(availableLocales, requestedLocales, options) {
         if (matcher !== undefined) {
             matcher = ToString(matcher);
             if (matcher !== "lookup" && matcher !== "best fit")
-                ThrowError(JSMSG_INVALID_LOCALE_MATCHER, matcher);
+                ThrowRangeError(JSMSG_INVALID_LOCALE_MATCHER, matcher);
         }
     }
 
@@ -888,7 +888,7 @@ function GetOption(options, property, type, values, fallback) {
 
         // Step 2.d.
         if (values !== undefined && callFunction(std_Array_indexOf, values, value) === -1)
-            ThrowError(JSMSG_INVALID_OPTION_VALUE, property, value);
+            ThrowRangeError(JSMSG_INVALID_OPTION_VALUE, property, value);
 
         // Step 2.e.
         return value;
@@ -917,7 +917,7 @@ function GetNumberOption(options, property, minimum, maximum, fallback) {
     if (value !== undefined) {
         value = ToNumber(value);
         if (Number_isNaN(value) || value < minimum || value > maximum)
-            ThrowError(JSMSG_INVALID_DIGITS_VALUE, value);
+            ThrowRangeError(JSMSG_INVALID_DIGITS_VALUE, value);
         return std_Math_floor(value);
     }
 
@@ -927,15 +927,6 @@ function GetNumberOption(options, property, minimum, maximum, fallback) {
 
 
 /********** Property access for Intl objects **********/
-
-
-/**
- * Set a normal public property p of o to value v, but use Object.defineProperty
- * to avoid interference from setters on Object.prototype.
- */
-function defineProperty(o, p, v) {
-    _DefineDataProperty(o, p, v, ATTR_ENUMERABLE | ATTR_CONFIGURABLE | ATTR_WRITABLE);
-}
 
 
 /**
@@ -1081,7 +1072,7 @@ function getIntlObjectInternals(obj, className, methodName) {
     assert(internals === undefined || isInitializedIntlObject(obj), "bad mapping in internalsMap");
 
     if (internals === undefined || internals.type !== className)
-        ThrowError(JSMSG_INTL_OBJECT_NOT_INITED, className, methodName, className);
+        ThrowTypeError(JSMSG_INTL_OBJECT_NOT_INITED, className, methodName, className);
 
     return internals;
 }
@@ -1255,7 +1246,7 @@ function InitializeCollator(collator, locales, options) {
 
     // Step 1.
     if (isInitializedIntlObject(collator))
-        ThrowError(JSMSG_INTL_OBJECT_REINITED);
+        ThrowTypeError(JSMSG_INTL_OBJECT_REINITED);
 
     // Step 2.
     var internals = initializeIntlObject(collator);
@@ -1458,7 +1449,7 @@ function Intl_Collator_resolvedOptions() {
     for (var i = 0; i < relevantExtensionKeys.length; i++) {
         var key = relevantExtensionKeys[i];
         var property = (key === "co") ? "collation" : collatorKeyMappings[key].property;
-        defineProperty(result, property, internals[property]);
+        _DefineDataProperty(result, property, internals[property]);
     }
     return result;
 }
@@ -1597,7 +1588,7 @@ function InitializeNumberFormat(numberFormat, locales, options) {
 
     // Step 1.
     if (isInitializedIntlObject(numberFormat))
-        ThrowError(JSMSG_INTL_OBJECT_REINITED);
+        ThrowTypeError(JSMSG_INTL_OBJECT_REINITED);
 
     // Step 2.
     var internals = initializeIntlObject(numberFormat);
@@ -1666,11 +1657,11 @@ function InitializeNumberFormat(numberFormat, locales, options) {
     // Steps 17-20.
     var c = GetOption(options, "currency", "string", undefined, undefined);
     if (c !== undefined && !IsWellFormedCurrencyCode(c))
-        ThrowError(JSMSG_INVALID_CURRENCY_CODE, c);
+        ThrowRangeError(JSMSG_INVALID_CURRENCY_CODE, c);
     var cDigits;
     if (s === "currency") {
         if (c === undefined)
-            ThrowError(JSMSG_UNDEFINED_CURRENCY);
+            ThrowTypeError(JSMSG_UNDEFINED_CURRENCY);
 
         // Steps 20.a-c.
         c = toASCIIUpperCase(c);
@@ -1901,7 +1892,7 @@ function Intl_NumberFormat_resolvedOptions() {
     for (var i = 0; i < optionalProperties.length; i++) {
         var p = optionalProperties[i];
         if (callFunction(std_Object_hasOwnProperty, internals, p))
-            defineProperty(result, p, internals[p]);
+            _DefineDataProperty(result, p, internals[p]);
     }
     return result;
 }
@@ -2045,7 +2036,7 @@ function InitializeDateTimeFormat(dateTimeFormat, locales, options) {
 
     // Step 1.
     if (isInitializedIntlObject(dateTimeFormat))
-        ThrowError(JSMSG_INTL_OBJECT_REINITED);
+        ThrowTypeError(JSMSG_INTL_OBJECT_REINITED);
 
     // Step 2.
     var internals = initializeIntlObject(dateTimeFormat);
@@ -2101,7 +2092,7 @@ function InitializeDateTimeFormat(dateTimeFormat, locales, options) {
     if (tz !== undefined) {
         tz = toASCIIUpperCase(ToString(tz));
         if (tz !== "UTC")
-            ThrowError(JSMSG_INVALID_TIME_ZONE, tz);
+            ThrowRangeError(JSMSG_INVALID_TIME_ZONE, tz);
     }
     lazyDateTimeFormatData.timeZone = tz;
 
@@ -2366,17 +2357,17 @@ function ToDateTimeOptions(options, required, defaults) {
         // the Throw parameter, while Object.defineProperty uses true. For the
         // calls here, the difference doesn't matter because we're adding
         // properties to a new object.
-        defineProperty(options, "year", "numeric");
-        defineProperty(options, "month", "numeric");
-        defineProperty(options, "day", "numeric");
+        _DefineDataProperty(options, "year", "numeric");
+        _DefineDataProperty(options, "month", "numeric");
+        _DefineDataProperty(options, "day", "numeric");
     }
 
     // Step 8.
     if (needDefaults && (defaults === "time" || defaults === "all")) {
         // See comment for step 7.
-        defineProperty(options, "hour", "numeric");
-        defineProperty(options, "minute", "numeric");
-        defineProperty(options, "second", "numeric");
+        _DefineDataProperty(options, "hour", "numeric");
+        _DefineDataProperty(options, "minute", "numeric");
+        _DefineDataProperty(options, "second", "numeric");
     }
 
     // Step 9.
@@ -2680,11 +2671,11 @@ function resolveICUPattern(pattern, result) {
                 // skip other pattern characters and literal text
             }
             if (callFunction(std_Object_hasOwnProperty, icuPatternCharToComponent, c))
-                defineProperty(result, icuPatternCharToComponent[c], value);
+                _DefineDataProperty(result, icuPatternCharToComponent[c], value);
             if (c === "h" || c === "K")
-                defineProperty(result, "hour12", true);
+                _DefineDataProperty(result, "hour12", true);
             else if (c === "H" || c === "k")
-                defineProperty(result, "hour12", false);
+                _DefineDataProperty(result, "hour12", false);
         }
     }
 }

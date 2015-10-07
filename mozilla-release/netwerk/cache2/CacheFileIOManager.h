@@ -23,7 +23,6 @@ class nsIFile;
 class nsITimer;
 class nsIDirectoryEnumerator;
 class nsILoadContextInfo;
-class nsICacheStorageVisitor;
 
 namespace mozilla {
 namespace net {
@@ -33,9 +32,9 @@ class CacheFile;
 class CacheFileHandlesEntry;
 #endif
 
-const char kEntriesDir[] = "entries";
-const char kDoomedDir[]  = "doomed";
-const char kTrashDir[]   = "trash";
+#define ENTRIES_DIR "entries"
+#define DOOMED_DIR  "doomed"
+#define TRASH_DIR   "trash"
 
 
 class CacheFileHandle : public nsISupports
@@ -174,7 +173,6 @@ private:
 ////////////////////////////////////////////////////////////////////////////////
 
 class OpenFileEvent;
-class CloseFileEvent;
 class ReadEvent;
 class WriteEvent;
 class MetadataWriteScheduleEvent;

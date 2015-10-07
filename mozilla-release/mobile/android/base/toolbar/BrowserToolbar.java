@@ -347,6 +347,10 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
         canvas.drawRect(0, height - shadowSize, getWidth(), height, shadowPaint);
     }
 
+    public void onParentFocus() {
+        urlEditLayout.onParentFocus();
+    }
+
     public void setProgressBar(ToolbarProgressView progressBar) {
         this.progressBar = progressBar;
     }
@@ -562,20 +566,19 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
     private void toggleTabs() {
         if (activity.areTabsShown()) {
-            if (activity.hasTabsSideBar())
-                activity.hideTabs();
+            return;
+        }
+
+        if (hideVirtualKeyboard()) {
+            getViewTreeObserver().addOnGlobalLayoutListener(new OnGlobalLayoutListener() {
+                @Override
+                public void onGlobalLayout() {
+                    getViewTreeObserver().removeGlobalOnLayoutListener(this);
+                    showSelectedTabs();
+                }
+            });
         } else {
-            if (hideVirtualKeyboard()) {
-                getViewTreeObserver().addOnGlobalLayoutListener(new OnGlobalLayoutListener() {
-                    @Override
-                    public void onGlobalLayout() {
-                        getViewTreeObserver().removeGlobalOnLayoutListener(this);
-                        showSelectedTabs();
-                    }
-                });
-            } else {
-                showSelectedTabs();
-            }
+            showSelectedTabs();
         }
     }
 
@@ -837,7 +840,6 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
         tabsButton.setPrivateMode(isPrivate);
         menuButton.setPrivateMode(isPrivate);
-        menuIcon.setPrivateMode(isPrivate);
         urlEditLayout.setPrivateMode(isPrivate);
     }
 
@@ -855,6 +857,7 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
 
     public void onDestroy() {
         Tabs.unregisterOnTabsChangedListener(this);
+        urlDisplayLayout.destroy();
     }
 
     public boolean openOptionsMenu() {
@@ -904,7 +907,7 @@ public abstract class BrowserToolbar extends ThemedRelativeLayout
         }
 
         final StateListDrawable stateList = new StateListDrawable();
-        stateList.addState(PRIVATE_STATE_SET, getColorDrawable(R.color.background_private));
+        stateList.addState(PRIVATE_STATE_SET, getColorDrawable(R.color.tabs_tray_grey_pressed));
         stateList.addState(EMPTY_STATE_SET, drawable);
 
         setBackgroundDrawable(stateList);

@@ -137,9 +137,10 @@ class OrderedHashTable
     }
 
     ~OrderedHashTable() {
-        for (Range* r = ranges, *next; r; r = next) {
-            next = r->next;
+        for (Range* r = ranges; r; ) {
+            Range* next = r->next;
             r->onTableDestroyed();
+            r = next;
         }
         alloc.free_(hashTable);
         freeData(data, dataLength);
@@ -593,7 +594,8 @@ class OrderedHashTable
     void rehashInPlace() {
         for (uint32_t i = 0, N = hashBuckets(); i < N; i++)
             hashTable[i] = nullptr;
-        Data* wp = data, *end = data + dataLength;
+        Data* wp = data;
+        Data* end = data + dataLength;
         for (Data* rp = data; rp != end; rp++) {
             if (!Ops::isEmpty(Ops::getKey(rp->element))) {
                 HashNumber h = prepareHash(Ops::getKey(rp->element)) >> hashShift;
@@ -642,7 +644,8 @@ class OrderedHashTable
         }
 
         Data* wp = newData;
-        for (Data* p = data, *end = data + dataLength; p != end; p++) {
+        Data* end = data + dataLength;
+        for (Data* p = data; p != end; p++) {
             if (!Ops::isEmpty(Ops::getKey(p->element))) {
                 HashNumber h = prepareHash(Ops::getKey(p->element)) >> newHashShift;
                 new (wp) Data(Move(p->element), newHashTable[h]);
@@ -836,8 +839,7 @@ HashableValue
 HashableValue::mark(JSTracer* trc) const
 {
     HashableValue hv(*this);
-    trc->setTracingLocation((void*)this);
-    gc::MarkValue(trc, &hv.value, "key");
+    TraceEdge(trc, &hv.value, "key");
     return hv;
 }
 
@@ -877,6 +879,7 @@ const Class MapIteratorObject::class_ = {
     nullptr, /* setProperty */
     nullptr, /* enumerate */
     nullptr, /* resolve */
+    nullptr, /* mayResolve */
     nullptr, /* convert */
     MapIteratorObject::finalize
 };
@@ -1021,6 +1024,7 @@ const Class MapObject::class_ = {
     nullptr, // setProperty
     nullptr, // enumerate
     nullptr, // resolve
+    nullptr, // mayResolve
     nullptr, // convert
     finalize,
     nullptr, // call
@@ -1046,17 +1050,24 @@ const JSFunctionSpec MapObject::methods[] = {
     JS_FS_END
 };
 
+const JSPropertySpec MapObject::staticProperties[] = {
+    JS_SELF_HOSTED_SYM_GET(species, "MapSpecies", 0),
+    JS_PS_END
+};
+
 static JSObject*
 InitClass(JSContext* cx, Handle<GlobalObject*> global, const Class* clasp, JSProtoKey key, Native construct,
-          const JSPropertySpec* properties, const JSFunctionSpec* methods)
+          const JSPropertySpec* properties, const JSFunctionSpec* methods,
+          const JSPropertySpec* staticProperties)
 {
     RootedNativeObject proto(cx, global->createBlankPrototype(cx, clasp));
     if (!proto)
         return nullptr;
     proto->setPrivate(nullptr);
 
-    Rooted<JSFunction*> ctor(cx, global->createConstructor(cx, construct, ClassName(key, cx), 1));
+    Rooted<JSFunction*> ctor(cx, global->createConstructor(cx, construct, ClassName(key, cx), 0));
     if (!ctor ||
+        !JS_DefineProperties(cx, ctor, staticProperties) ||
         !LinkConstructorAndPrototype(cx, ctor, proto) ||
         !DefinePropertiesAndFunctions(cx, proto, properties, methods) ||
         !GlobalObject::initBuiltinConstructor(cx, global, key, ctor, proto))
@@ -1071,7 +1082,8 @@ MapObject::initClass(JSContext* cx, JSObject* obj)
 {
     Rooted<GlobalObject*> global(cx, &obj->as<GlobalObject>());
     RootedObject proto(cx,
-        InitClass(cx, global, &class_, JSProto_Map, construct, properties, methods));
+        InitClass(cx, global, &class_, JSProto_Map, construct, properties, methods,
+                  staticProperties));
     if (proto) {
         // Define the "entries" method.
         JSFunction* fun = JS_DefineFunction(cx, proto, "entries", entries, 0, 0);
@@ -1106,7 +1118,7 @@ MapObject::mark(JSTracer* trc, JSObject* obj)
     if (ValueMap* map = obj->as<MapObject>().getData()) {
         for (ValueMap::Range r = map->all(); !r.empty(); r.popFront()) {
             MarkKey(r, r.front().key, trc);
-            gc::MarkValue(trc, &r.front().value, "value");
+            TraceEdge(trc, &r.front().value, "value");
         }
     }
 }
@@ -1128,11 +1140,11 @@ class OrderedHashTableRef : public gc::BufferableRef
   public:
     explicit OrderedHashTableRef(TableType* t, const Value& k) : table(t), key(k) {}
 
-    void mark(JSTracer* trc) {
+    void trace(JSTracer* trc) override {
         MOZ_ASSERT(UnbarrieredHashPolicy::hash(key) ==
                    HashableValue::Hasher::hash(*reinterpret_cast<HashableValue*>(&key)));
         Value prior = key;
-        gc::MarkValueUnbarriered(trc, &key, "ordered hash table key");
+        TraceManuallyBarrieredEdge(trc, &key, "ordered hash table key");
         table->rekeyOneEntry(prior, key);
     }
 };
@@ -1613,6 +1625,7 @@ const Class SetIteratorObject::class_ = {
     nullptr, /* setProperty */
     nullptr, /* enumerate */
     nullptr, /* resolve */
+    nullptr, /* mayResolve */
     nullptr, /* convert */
     SetIteratorObject::finalize
 };
@@ -1753,6 +1766,7 @@ const Class SetObject::class_ = {
     nullptr, // setProperty
     nullptr, // enumerate
     nullptr, // resolve
+    nullptr, // mayResolve
     nullptr, // convert
     finalize,
     nullptr, // call
@@ -1776,12 +1790,18 @@ const JSFunctionSpec SetObject::methods[] = {
     JS_FS_END
 };
 
+const JSPropertySpec SetObject::staticProperties[] = {
+    JS_SELF_HOSTED_SYM_GET(species, "SetSpecies", 0),
+    JS_PS_END
+};
+
 JSObject*
 SetObject::initClass(JSContext* cx, JSObject* obj)
 {
     Rooted<GlobalObject*> global(cx, &obj->as<GlobalObject>());
     RootedObject proto(cx,
-        InitClass(cx, global, &class_, JSProto_Set, construct, properties, methods));
+        InitClass(cx, global, &class_, JSProto_Set, construct, properties, methods,
+                  staticProperties));
     if (proto) {
         // Define the "values" method.
         JSFunction* fun = JS_DefineFunction(cx, proto, "values", values, 0, 0);
