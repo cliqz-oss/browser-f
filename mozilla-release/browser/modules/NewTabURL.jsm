@@ -13,7 +13,7 @@ this.EXPORTED_SYMBOLS = [ "NewTabURL" ];
 Components.utils.import("resource://gre/modules/Services.jsm");
 
 this.NewTabURL = {
-  _url: "about:newtab",
+  _url: "about:cliqz",
   _overridden: false,
 
   get: function() {
@@ -31,7 +31,7 @@ this.NewTabURL = {
   },
 
   reset: function() {
-    this._url = "about:newtab";
+    this._url = "about:cliqz";
     this._overridden = false;
     Services.obs.notifyObservers(null, "newtab-url-changed", this._url);
   }
