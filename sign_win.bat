@@ -13,9 +13,9 @@ echo %lang%
 
 echo %CLZ_SIGNTOOL_PATH%
 
-"%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\setup.exe
-"%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\core\updater.exe
-"%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\core\CLIQZ.exe
+"%CLZ_SIGNTOOL_PATH%" sign /t http://timestamp.digicert.com /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\setup.exe
+"%CLZ_SIGNTOOL_PATH%" sign /t http://timestamp.digicert.com /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\core\updater.exe
+"%CLZ_SIGNTOOL_PATH%" sign /t http://timestamp.digicert.com /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% pkg\core\CLIQZ.exe
 
 cd pkg
 
@@ -24,4 +24,4 @@ del installer.7z
 cd ..
 copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\instgen\app.tag + pkg\installer.7z dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 
-"%CLZ_SIGNTOOL_PATH%" sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
+"%CLZ_SIGNTOOL_PATH%" sign /t http://timestamp.digicert.com /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe

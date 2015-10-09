@@ -42,3 +42,15 @@ When submitting the bug report please include following information:
 * OS version, eg. Windox 8.1, Mac OS X 10.10.4
 * system architecture (32/64 bit)
 * browser version, eg. CLIQZ 0.8, based on Firefox 39
+
+## Repository Structure
+
+For automated build purposes we keep copies of original Mozilla project in our
+repository. Thus following folders, are achives of respective Mozilla
+repositories:
+
+* `mozilla-release` - https://hg.mozilla.org/releases/mozilla-release
+* `l10n/de` - http://hg.mozilla.org/releases/l10n/mozilla-release/de/
+* `build-tools` - https://github.com/mozilla/build-tools
+
+CLIQZ changes gets applied unto original Mozilla code.
