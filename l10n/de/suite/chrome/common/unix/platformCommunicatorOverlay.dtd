@@ -31,6 +31,3 @@
 <!ENTITY ctrlKey.label                  "Strg">
 <!ENTITY altKey.label                   "Alt">
 <!ENTITY shiftKey.label                 "Umschalt">
-
-<!ENTITY menubarCmd.label               "Menüleiste">
-<!ENTITY menubarCmd.accesskey           "M">
