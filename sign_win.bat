@@ -18,8 +18,8 @@ echo %CLZ_SIGNTOOL_PATH%
 for %%f in (
   pkg\core\CLIQZ.exe,
   pkg\core\crashreporter.exe,
-  pkg\core\maintenenceservice.exe,
-  pkg\core\maintenenceservice_installer.exe,
+  pkg\core\maintenanceservice.exe,
+  pkg\core\maintenanceservice_installer.exe,
   pkg\core\plugin-container.exe,
   pkg\core\plugin-hang-ui.exe,
   pkg\core\uninstall\helper.exe,
@@ -38,17 +38,18 @@ for %%f in (
   pkg\core\icuuc52.dll,
   pkg\core\libEGL.dll,
   pkg\core\libGLESv2.dll,
-  pkg\core\libmozalloc.dll,
+  pkg\core\mozalloc.dll,
   pkg\core\mozglue.dll,
   pkg\core\nss3.dll,
   pkg\core\nssckbi.dll,
   pkg\core\nssdbm3.dll,
   pkg\core\sandboxbroker.dll,
-  pkg\core\softokn.dll,
+  pkg\core\softokn3.dll,
   pkg\core\xul.dll,
 ) do (
   "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
-  "%CLZ_SIGNTOOL_PATH%" verify %%f
+  "%CLZ_SIGNTOOL_PATH%" verify /pa %%f
+  exit /b %ERRORLEVEL%
 )
 
 cd pkg
@@ -59,4 +60,5 @@ cd ..
 copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\instgen\app.tag + pkg\installer.7z dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 
 "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
-"%CLZ_SIGNTOOL_PATH%" verify dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
+"%CLZ_SIGNTOOL_PATH%" verify /pa dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
+exit /b %ERRORLEVEL%
