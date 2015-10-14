@@ -60,9 +60,8 @@ DEFAULT_NO_CONNECTIONS_PREFS = {
     'browser.safebrowsing.enabled' : False,
     'browser.safebrowsing.updateURL': 'http://localhost/safebrowsing-dummy/update',
     'browser.safebrowsing.gethashURL': 'http://localhost/safebrowsing-dummy/gethash',
-    'browser.safebrowsing.reportURL': 'http://localhost/safebrowsing-dummy/report',
     'browser.safebrowsing.malware.reportURL': 'http://localhost/safebrowsing-dummy/malwarereport',
-    'browser.selfsupport.url': 'http://localhost/repair-dummy',
+    'browser.selfsupport.url': 'https://localhost/selfsupport-dummy',
     'browser.trackingprotection.gethashURL': 'http://localhost/safebrowsing-dummy/gethash',
     'browser.trackingprotection.updateURL': 'http://localhost/safebrowsing-dummy/update',
 

@@ -61,6 +61,7 @@ static RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "privatebrowsing", "chrome://browser/content/aboutPrivateBrowsing.xhtml",
+    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
     nsIAboutModule::ALLOW_SCRIPT },
   { "rights",
 #ifdef MOZ_OFFICIAL_BRANDING
@@ -78,8 +79,6 @@ static RedirEntry kRedirMap[] = {
   { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
 #ifdef MOZ_SERVICES_SYNC
-  { "sync-progress", "chrome://browser/content/sync/progress.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
   { "sync-tabs", "chrome://browser/content/sync/aboutSyncTabs.xul",
     nsIAboutModule::ALLOW_SCRIPT },
 #endif
@@ -124,6 +123,18 @@ static RedirEntry kRedirMap[] = {
     nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
     nsIAboutModule::MAKE_UNLINKABLE |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
+  {
+    "pocket-saved", "chrome://browser/content/pocket/panels/saved.html",
+    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT |
+    nsIAboutModule::MAKE_UNLINKABLE },
+  {
+    "pocket-signup", "chrome://browser/content/pocket/panels/signup.html",
+    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT |
+    nsIAboutModule::MAKE_UNLINKABLE },
 };
 static const int kRedirTotal = ArrayLength(kRedirMap);
 

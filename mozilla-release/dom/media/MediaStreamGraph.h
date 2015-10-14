@@ -22,6 +22,7 @@
 #include <speex/speex_resampler.h>
 #include "mozilla/dom/AudioChannelBinding.h"
 #include "DOMMediaStream.h"
+#include "AudioContext.h"
 
 class nsIRunnable;
 
@@ -34,9 +35,7 @@ class nsAutoRefTraits<SpeexResamplerState> : public nsPointerRefTraits<SpeexResa
 
 namespace mozilla {
 
-#ifdef PR_LOGGING
 extern PRLogModuleInfo* gMediaStreamGraphLog;
-#endif
 
 /*
  * MediaStreamGraph is a framework for synchronized audio/video processing
@@ -225,7 +224,7 @@ public:
  */
 class MainThreadMediaStreamListener {
 public:
-  virtual void NotifyMainThreadStateChanged() = 0;
+  virtual void NotifyMainThreadStreamFinished() = 0;
 };
 
 /**
@@ -247,7 +246,6 @@ class MediaInputPort;
 class AudioNodeEngine;
 class AudioNodeExternalInputStream;
 class AudioNodeStream;
-struct AudioChunk;
 class CameraPreviewMediaStream;
 
 /**
@@ -313,11 +311,13 @@ class CameraPreviewMediaStream;
  * for those objects in arbitrary order and the MediaStreamGraph has to be able
  * to handle this.
  */
-class MediaStream : public mozilla::LinkedListElement<MediaStream> {
+class MediaStream : public mozilla::LinkedListElement<MediaStream>
+{
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaStream)
 
   explicit MediaStream(DOMMediaStream* aWrapper);
+  virtual dom::AudioContext::AudioContextId AudioContextId() const { return 0; }
 
 protected:
   // Protected destructor, to discourage deletion outside of Release():
@@ -364,26 +364,27 @@ public:
   // Explicitly block. Useful for example if a media element is pausing
   // and we need to stop its stream emitting its buffered data.
   virtual void ChangeExplicitBlockerCount(int32_t aDelta);
+  void BlockStreamIfNeeded();
+  void UnblockStreamIfNeeded();
   // Events will be dispatched by calling methods of aListener.
   virtual void AddListener(MediaStreamListener* aListener);
   virtual void RemoveListener(MediaStreamListener* aListener);
   // A disabled track has video replaced by black, and audio replaced by
   // silence.
   void SetTrackEnabled(TrackID aTrackID, bool aEnabled);
-  // Events will be dispatched by calling methods of aListener. It is the
+
+  // Finish event will be notified by calling methods of aListener. It is the
   // responsibility of the caller to remove aListener before it is destroyed.
-  void AddMainThreadListener(MainThreadMediaStreamListener* aListener)
-  {
-    NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
-    mMainThreadListeners.AppendElement(aListener);
-  }
+  void AddMainThreadListener(MainThreadMediaStreamListener* aListener);
   // It's safe to call this even if aListener is not currently a listener;
   // the call will be ignored.
   void RemoveMainThreadListener(MainThreadMediaStreamListener* aListener)
   {
-    NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
+    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_ASSERT(aListener);
     mMainThreadListeners.RemoveElement(aListener);
   }
+
   /**
    * Ensure a runnable will run on the main thread after running all pending
    * updates that were sent from the graph thread or will be sent before the
@@ -414,6 +415,7 @@ public:
     NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
     return mMainThreadFinished;
   }
+
   bool IsDestroyed()
   {
     NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
@@ -465,6 +467,22 @@ public:
   {
     mExplicitBlockerCount.SetAtAndAfter(aTime, mExplicitBlockerCount.GetAt(aTime) + aDelta);
   }
+  void BlockStreamIfNeededImpl(GraphTime aTime)
+  {
+    bool blocked = mExplicitBlockerCount.GetAt(aTime) > 0;
+    if (blocked) {
+      return;
+    }
+    ChangeExplicitBlockerCountImpl(aTime, 1);
+  }
+  void UnblockStreamIfNeededImpl(GraphTime aTime)
+  {
+    bool blocked = mExplicitBlockerCount.GetAt(aTime) > 0;
+    if (!blocked) {
+      return;
+    }
+    ChangeExplicitBlockerCountImpl(aTime, -1);
+  }
   void AddListenerImpl(already_AddRefed<MediaStreamListener> aListener);
   void RemoveListenerImpl(MediaStreamListener* aListener);
   void RemoveAllListenersImpl();
@@ -492,7 +510,7 @@ public:
   {
     return mConsumers.Length();
   }
-  const StreamBuffer& GetStreamBuffer() { return mBuffer; }
+  StreamBuffer& GetStreamBuffer() { return mBuffer; }
   GraphTime GetStreamBufferStartTime() { return mBufferStartTime; }
 
   double StreamTimeToSeconds(StreamTime aTime)
@@ -577,6 +595,27 @@ protected:
     mBuffer.ForgetUpTo(aCurrentTime - mBufferStartTime);
   }
 
+  void NotifyMainThreadListeners()
+  {
+    NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
+
+    for (int32_t i = mMainThreadListeners.Length() - 1; i >= 0; --i) {
+      mMainThreadListeners[i]->NotifyMainThreadStreamFinished();
+    }
+    mMainThreadListeners.Clear();
+  }
+
+  bool ShouldNotifyStreamFinished()
+  {
+    NS_ASSERTION(NS_IsMainThread(), "Call only on main thread");
+    if (!mMainThreadFinished || mFinishedNotificationSent) {
+      return false;
+    }
+
+    mFinishedNotificationSent = true;
+    return true;
+  }
+
   // This state is all initialized on the main thread but
   // otherwise modified only on the media graph thread.
 
@@ -605,6 +644,7 @@ protected:
   TimeVarying<GraphTime,uint32_t,0> mExplicitBlockerCount;
   nsTArray<nsRefPtr<MediaStreamListener> > mListeners;
   nsTArray<MainThreadMediaStreamListener*> mMainThreadListeners;
+  nsRefPtr<nsRunnable> mNotificationMainThreadRunnable;
   nsTArray<TrackID> mDisabledTrackIDs;
 
   // Precomputed blocking status (over GraphTime).
@@ -622,7 +662,8 @@ protected:
 
   // Where audio output is going. There is one AudioOutputStream per
   // audio track.
-  struct AudioOutputStream {
+  struct AudioOutputStream
+  {
     // When we started audio playback for this track.
     // Add mStream->GetPosition() to find the current audio playback position.
     GraphTime mAudioPlaybackStartTime;
@@ -677,6 +718,7 @@ protected:
   // Main-thread views of state
   StreamTime mMainThreadCurrentTime;
   bool mMainThreadFinished;
+  bool mFinishedNotificationSent;
   bool mMainThreadDestroyed;
 
   // Our media stream graph.  null if destroyed on the graph thread.
@@ -691,7 +733,8 @@ protected:
  * Audio and video can be written on any thread, but you probably want to
  * always write from the same thread to avoid unexpected interleavings.
  */
-class SourceMediaStream : public MediaStream {
+class SourceMediaStream : public MediaStream
+{
 public:
   explicit SourceMediaStream(DOMMediaStream* aWrapper) :
     MediaStream(aWrapper),
@@ -757,6 +800,11 @@ public:
    * any pending track adds.
    */
   void FinishAddTracks();
+
+  /**
+   * Find track by track id.
+   */
+  StreamBuffer::Track* FindTrack(TrackID aID);
 
   /**
    * Append media data to a track. Ownership of aSegment remains with the caller,
@@ -855,7 +903,7 @@ protected:
     }
 
     nsRefPtr<MediaTaskQueue> mTarget;
-    RefPtr<nsIRunnable> mRunnable;
+    nsCOMPtr<nsIRunnable> mRunnable;
   };
   enum TrackCommands {
     TRACK_CREATE = MediaStreamListener::TRACK_EVENT_CREATED,
@@ -948,7 +996,8 @@ protected:
  * the Destroy message is processed on the graph manager thread we disconnect
  * the port and drop the graph's reference, destroying the object.
  */
-class MediaInputPort final {
+class MediaInputPort final
+{
 private:
   // Do not call this constructor directly. Instead call aDest->AllocateInputPort.
   MediaInputPort(MediaStream* aSource, ProcessedMediaStream* aDest,
@@ -1065,7 +1114,8 @@ private:
  * its output. The details of how the output is produced are handled by
  * subclasses overriding the ProcessInput method.
  */
-class ProcessedMediaStream : public MediaStream {
+class ProcessedMediaStream : public MediaStream
+{
 public:
   explicit ProcessedMediaStream(DOMMediaStream* aWrapper)
     : MediaStream(aWrapper), mAutofinish(false)
@@ -1173,7 +1223,8 @@ protected:
  * process.  Each OfflineAudioContext object creates its own MediaStreamGraph
  * object too.
  */
-class MediaStreamGraph {
+class MediaStreamGraph
+{
 public:
   // We ensure that the graph current time advances in multiples of
   // IdealAudioBlockSize()/AudioStream::PreferredSampleRate(). A stream that
@@ -1226,6 +1277,21 @@ public:
   AudioNodeExternalInputStream*
   CreateAudioNodeExternalInputStream(AudioNodeEngine* aEngine,
                                      TrackRate aSampleRate = 0);
+
+  /* From the main thread, ask the MSG to send back an event when the graph
+   * thread is running, and audio is being processed. */
+  void NotifyWhenGraphStarted(AudioNodeStream* aNodeStream);
+  /* From the main thread, suspend, resume or close an AudioContext.
+   * aNodeStream is the stream of the DestinationNode of the AudioContext.
+   *
+   * This can possibly pause the graph thread, releasing system resources, if
+   * all streams have been suspended/closed.
+   *
+   * When the operation is complete, aPromise is resolved.
+   */
+  void ApplyAudioContextOperation(AudioNodeStream* aNodeStream,
+                                  dom::AudioContextOperation aState,
+                                  void * aPromise);
 
   bool IsNonRealtime() const;
   /**

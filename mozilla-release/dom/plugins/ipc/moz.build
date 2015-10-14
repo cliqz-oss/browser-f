@@ -31,6 +31,7 @@ EXPORTS.mozilla.plugins += [
     'PluginModuleParent.h',
     'PluginProcessChild.h',
     'PluginProcessParent.h',
+    'PluginQuirks.h',
     'PluginScriptableObjectChild.h',
     'PluginScriptableObjectParent.h',
     'PluginScriptableObjectUtils-inl.h',
@@ -68,10 +69,8 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     ]
 
 if CONFIG['MOZ_ENABLE_QT']:
-    GENERATED_SOURCES += [
-        'moc_NestedLoopTimer.cpp',
-    ]
     SOURCES += [
+        '!moc_NestedLoopTimer.cpp',
         'NestedLoopTimer.cpp',
         'PluginHelperQt.cpp',
     ]
@@ -88,6 +87,7 @@ UNIFIED_SOURCES += [
     'PluginModuleParent.cpp',
     'PluginProcessChild.cpp',
     'PluginProcessParent.cpp',
+    'PluginQuirks.cpp',
     'PluginScriptableObjectChild.cpp',
     'PluginScriptableObjectParent.cpp',
     'PluginStreamChild.cpp',
@@ -128,6 +128,12 @@ LOCAL_INCLUDES += [
     '../base',
     '/xpcom/base/',
 ]
+
+if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
+    LOCAL_INCLUDES += [
+        '/security/sandbox/chromium',
+        '/security/sandbox/chromium-shim',
+    ]
 
 DEFINES['FORCE_PR_LOG'] = True
 

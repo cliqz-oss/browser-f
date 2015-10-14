@@ -13,30 +13,17 @@
 #include "gc/Zone.h"
 
 namespace js {
-
-class Shape;
-
 namespace gc {
 
 static inline AllocKind
 GetGCObjectKind(const Class* clasp)
 {
     if (clasp == FunctionClassPtr)
-        return JSFunction::FinalizeKind;
+        return AllocKind::FUNCTION;
     uint32_t nslots = JSCLASS_RESERVED_SLOTS(clasp);
     if (clasp->flags & JSCLASS_HAS_PRIVATE)
         nslots++;
     return GetGCObjectKind(nslots);
-}
-
-inline JSGCTraceKind
-GetGCThingTraceKind(const void* thing)
-{
-    MOZ_ASSERT(thing);
-    const Cell* cell = static_cast<const Cell*>(thing);
-    if (IsInsideNursery(cell))
-        return JSTRACE_OBJECT;
-    return MapAllocToTraceKind(cell->asTenured().getAllocKind());
 }
 
 inline void

@@ -4,27 +4,29 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* 
+/*
  * Implementation of the "@mozilla.org/layout/content-policy;1" contract.
  */
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 #include "nsISupports.h"
 #include "nsXPCOM.h"
 #include "nsContentPolicyUtils.h"
 #include "nsContentPolicy.h"
 #include "nsIURI.h"
+#include "nsIDocShell.h"
 #include "nsIDOMNode.h"
 #include "nsIDOMWindow.h"
 #include "nsIContent.h"
+#include "nsILoadContext.h"
 #include "nsCOMArray.h"
+
+using mozilla::LogLevel;
 
 NS_IMPL_ISUPPORTS(nsContentPolicy, nsIContentPolicy)
 
-#ifdef PR_LOGGING
 static PRLogModuleInfo* gConPolLog;
-#endif
 
 nsresult
 NS_NewContentPolicy(nsIContentPolicy **aResult)
@@ -40,11 +42,9 @@ nsContentPolicy::nsContentPolicy()
     : mPolicies(NS_CONTENTPOLICY_CATEGORY)
     , mSimplePolicies(NS_SIMPLECONTENTPOLICY_CATEGORY)
 {
-#ifdef PR_LOGGING
     if (! gConPolLog) {
         gConPolLog = PR_NewLogModule("nsContentPolicy");
     }
-#endif
 }
 
 nsContentPolicy::~nsContentPolicy()
@@ -72,7 +72,7 @@ nsContentPolicy::~nsContentPolicy()
 inline nsresult
 nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
                              SCPMethod         simplePolicyMethod,
-                             uint32_t          contentType,
+                             nsContentPolicyType contentType,
                              nsIURI           *contentLocation,
                              nsIURI           *requestingLocation,
                              nsISupports      *requestingContext,
@@ -114,6 +114,9 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
         }
     }
 
+    nsContentPolicyType externalType =
+        nsContentUtils::InternalContentPolicyTypeToExternal(contentType);
+
     /* 
      * Enumerate mPolicies and ask each of them, taking the logical AND of
      * their permissions.
@@ -124,7 +127,7 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
     int32_t count = entries.Count();
     for (int32_t i = 0; i < count; i++) {
         /* check the appropriate policy */
-        rv = (entries[i]->*policyMethod)(contentType, contentLocation,
+        rv = (entries[i]->*policyMethod)(externalType, contentLocation,
                                          requestingLocation, requestingContext,
                                          mimeType, extra, requestPrincipal,
                                          decision);
@@ -170,7 +173,7 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
     count = simpleEntries.Count();
     for (int32_t i = 0; i < count; i++) {
         /* check the appropriate policy */
-        rv = (simpleEntries[i]->*simplePolicyMethod)(contentType, contentLocation,
+        rv = (simpleEntries[i]->*simplePolicyMethod)(externalType, contentLocation,
                                                      requestingLocation,
                                                      topFrameElement, isTopLevel,
                                                      mimeType, extra, requestPrincipal,
@@ -187,14 +190,12 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
     return NS_OK;
 }
 
-#ifdef PR_LOGGING
-
 //uses the parameters from ShouldXYZ to produce and log a message
 //logType must be a literal string constant
 #define LOG_CHECK(logType)                                                    \
   PR_BEGIN_MACRO                                                              \
-    /* skip all this nonsense if the call failed */                           \
-    if (NS_SUCCEEDED(rv)) {                                                   \
+    /* skip all this nonsense if the call failed or logging is disabled */    \
+    if (NS_SUCCEEDED(rv) && MOZ_LOG_TEST(gConPolLog, LogLevel::Debug)) {          \
       const char *resultName;                                                 \
       if (decision) {                                                         \
         resultName = NS_CP_ResponseName(*decision);                           \
@@ -209,18 +210,12 @@ nsContentPolicy::CheckPolicy(CPMethod          policyMethod,
       if (requestingLocation) {                                               \
           requestingLocation->GetSpec(refSpec);                               \
       }                                                                       \
-      PR_LOG(gConPolLog, PR_LOG_DEBUG,                                        \
+      MOZ_LOG(gConPolLog, LogLevel::Debug,                                        \
              ("Content Policy: " logType ": <%s> <Ref:%s> result=%s",         \
               spec.get(), refSpec.get(), resultName)                          \
              );                                                               \
     }                                                                         \
   PR_END_MACRO
-
-#else //!defined(PR_LOGGING)
-
-#define LOG_CHECK(logType)
-
-#endif //!defined(PR_LOGGING)
 
 NS_IMETHODIMP
 nsContentPolicy::ShouldLoad(uint32_t          contentType,

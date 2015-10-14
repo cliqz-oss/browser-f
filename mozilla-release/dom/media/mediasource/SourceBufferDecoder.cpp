@@ -6,22 +6,17 @@
 
 #include "MediaSourceUtils.h"
 #include "SourceBufferDecoder.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "AbstractMediaDecoder.h"
 #include "MediaDecoderReader.h"
-#include "mozilla/dom/TimeRanges.h"
 
-#ifdef PR_LOGGING
 extern PRLogModuleInfo* GetMediaSourceLog();
 /* Polyfill __func__ on MSVC to pass to the log. */
 #ifdef _MSC_VER
 #define __func__ __FUNCTION__
 #endif
 
-#define MSE_DEBUG(arg, ...) PR_LOG(GetMediaSourceLog(), PR_LOG_DEBUG, ("SourceBufferDecoder(%p:%s)::%s: " arg, this, mResource->GetContentType().get(), __func__, ##__VA_ARGS__))
-#else
-#define MSE_DEBUG(...)
-#endif
+#define MSE_DEBUG(arg, ...) MOZ_LOG(GetMediaSourceLog(), mozilla::LogLevel::Debug, ("SourceBufferDecoder(%p:%s)::%s: " arg, this, mResource->GetContentType().get(), __func__, ##__VA_ARGS__))
 
 namespace mozilla {
 
@@ -42,7 +37,6 @@ SourceBufferDecoder::SourceBufferDecoder(MediaResource* aResource,
   , mParentDecoder(aParentDecoder)
   , mReader(nullptr)
   , mTimestampOffset(aTimestampOffset)
-  , mMediaDuration(-1)
   , mRealMediaDuration(0)
   , mTrimmedOffset(-1)
 {
@@ -67,12 +61,6 @@ void
 SourceBufferDecoder::NotifyBytesConsumed(int64_t aBytes, int64_t aOffset)
 {
   MSE_DEBUG("UNIMPLEMENTED");
-}
-
-int64_t
-SourceBufferDecoder::GetMediaDuration()
-{
-  return mMediaDuration;
 }
 
 VideoFrameContainer*
@@ -121,12 +109,6 @@ SourceBufferDecoder::QueueMetadata(int64_t aTime,
 
 void
 SourceBufferDecoder::RemoveMediaTracks()
-{
-  MSE_DEBUG("UNIMPLEMENTED");
-}
-
-void
-SourceBufferDecoder::SetMediaEndTime(int64_t aTime)
 {
   MSE_DEBUG("UNIMPLEMENTED");
 }
@@ -185,12 +167,6 @@ SourceBufferDecoder::NotifyDecodedFrames(uint32_t aParsed, uint32_t aDecoded,
 }
 
 void
-SourceBufferDecoder::SetMediaDuration(int64_t aDuration)
-{
-  mMediaDuration = aDuration;
-}
-
-void
 SourceBufferDecoder::SetRealMediaDuration(int64_t aDuration)
 {
   mRealMediaDuration = aDuration;
@@ -200,12 +176,6 @@ void
 SourceBufferDecoder::Trim(int64_t aDuration)
 {
   mTrimmedOffset = (double)aDuration / USECS_PER_S;
-}
-
-void
-SourceBufferDecoder::UpdateEstimatedMediaDuration(int64_t aDuration)
-{
-  MSE_DEBUG("UNIMPLEMENTED");
 }
 
 void
@@ -227,35 +197,27 @@ SourceBufferDecoder::GetOwner()
 }
 
 void
-SourceBufferDecoder::NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset)
+SourceBufferDecoder::NotifyDataArrived(uint32_t aLength, int64_t aOffset, bool aThrottleUpdates)
 {
-  mReader->NotifyDataArrived(aBuffer, aLength, aOffset);
-
-  // XXX: Params make no sense to parent decoder as it relates to a
-  // specific SourceBufferDecoder's data stream.  Pass bogus values here to
-  // force parent decoder's state machine to recompute end time for
-  // infinite length media.
-  mParentDecoder->NotifyDataArrived(nullptr, 0, 0);
 }
 
-nsresult
-SourceBufferDecoder::GetBuffered(dom::TimeRanges* aBuffered)
+media::TimeIntervals
+SourceBufferDecoder::GetBuffered()
 {
-  nsresult rv = mReader->GetBuffered(aBuffered);
-  if (NS_FAILED(rv)) {
-    return rv;
+  media::TimeIntervals buffered = mReader->GetBuffered();
+  if (buffered.IsInvalid()) {
+    return buffered;
   }
 
   // Adjust buffered range according to timestamp offset.
-  aBuffered->Shift((double)mTimestampOffset / USECS_PER_S);
+  buffered.Shift(media::TimeUnit::FromMicroseconds(mTimestampOffset));
 
   if (!WasTrimmed()) {
-    return NS_OK;
+    return buffered;
   }
-  nsRefPtr<dom::TimeRanges> tr = new dom::TimeRanges();
-  tr->Add(0, mTrimmedOffset);
-  aBuffered->Intersection(tr);
-  return NS_OK;
+  media::TimeInterval filter(media::TimeUnit::FromSeconds(0),
+                             media::TimeUnit::FromSeconds(mTrimmedOffset));
+  return buffered.Intersection(filter);
 }
 
 int64_t

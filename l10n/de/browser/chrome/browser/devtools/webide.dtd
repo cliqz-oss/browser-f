@@ -195,3 +195,16 @@
 
 <!-- Logs panel -->
 <!ENTITY logs_title "Protokolle der Prozesse vor dem Packen">
+
+<!-- Simulator Options -->
+<!ENTITY simulator_title "Simulator-Einstellungen">
+<!ENTITY simulator_remove "Simulator entfernen">
+<!ENTITY simulator_reset "Standard wiederherstellen">
+<!ENTITY simulator_name "Name">
+<!ENTITY simulator_software "Software">
+<!ENTITY simulator_version "Version">
+<!ENTITY simulator_profile "Profil">
+<!ENTITY simulator_hardware "Hardware">
+<!ENTITY simulator_device "Gerät">
+<!ENTITY simulator_screenSize "Bildschirm">
+<!ENTITY simulator_pixelRatio "Pixel-Verhältnis">

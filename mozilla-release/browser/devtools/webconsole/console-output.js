@@ -7,6 +7,8 @@
 
 const {Cc, Ci, Cu} = require("chrome");
 
+const { Services } = require("resource://gre/modules/Services.jsm");
+
 loader.lazyImporter(this, "VariablesView", "resource:///modules/devtools/VariablesView.jsm");
 loader.lazyImporter(this, "escapeHTML", "resource:///modules/devtools/VariablesView.jsm");
 loader.lazyImporter(this, "gDevTools", "resource:///modules/devtools/gDevTools.jsm");
@@ -91,6 +93,7 @@ const CONSOLE_API_LEVELS_TO_SEVERITIES = {
   table: "log",
   debug: "log",
   dir: "log",
+  dirxml: "log",
   group: "log",
   groupCollapsed: "log",
   groupEnd: "log",
@@ -337,6 +340,10 @@ ConsoleOutput.prototype = {
   openLink: function()
   {
     this.owner.owner.openLink.apply(this.owner.owner, arguments);
+  },
+
+  openLocationInDebugger: function ({url, line}) {
+    return this.owner.owner.viewSourceInDebugger(url, line);
   },
 
   /**
@@ -680,6 +687,7 @@ Messages.Simple = function(message, options = {})
   this.severity = options.severity;
   this.location = options.location;
   this.timestamp = options.timestamp || Date.now();
+  this.prefix = options.prefix;
   this.private = !!options.private;
 
   this._message = message;
@@ -708,6 +716,12 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
    * @type object
    */
   location: null,
+
+  /**
+   * Message prefix
+   * @type string|null
+   */
+  prefix: null,
 
   /**
    * Tells if this message comes from a private browsing context.
@@ -806,6 +820,7 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
 
     rid.category = this.category;
     rid.severity = this.severity;
+    rid.prefix = this.prefix;
     rid.private = this.private;
     rid.location = this.location;
     rid.link = this._link;
@@ -838,6 +853,13 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
     icon.className = "icon";
     icon.title = l10n.getStr("severity." + this._severityNameCompat);
 
+    let prefixNode;
+    if (this.prefix) {
+      prefixNode = this.document.createElementNS(XHTML_NS, "span");
+      prefixNode.className = "prefix devtools-monospace";
+      prefixNode.textContent = this.prefix + ":";
+    }
+
     // Apply the current group by indenting appropriately.
     // TODO: remove this once bug 778766 is fixed.
     let indent = this._groupDepthCompat * COMPAT.GROUP_INDENT;
@@ -859,6 +881,9 @@ Messages.Simple.prototype = Heritage.extend(Messages.BaseMessage.prototype,
     this.element.appendChild(timestamp.element);
     this.element.appendChild(indentNode);
     this.element.appendChild(icon);
+    if (prefixNode) {
+      this.element.appendChild(prefixNode);
+    }
     this.element.appendChild(body);
     if (repeatNode) {
       this.element.appendChild(repeatNode);
@@ -1059,7 +1084,7 @@ Messages.Extended.prototype = Heritage.extend(Messages.Simple.prototype,
    *        DOM node or a function to invoke.
    * @return Element
    */
-  _renderBodyPiece: function(piece)
+  _renderBodyPiece: function(piece, options = {})
   {
     if (piece instanceof Ci.nsIDOMNode) {
       return piece;
@@ -1068,7 +1093,7 @@ Messages.Extended.prototype = Heritage.extend(Messages.Simple.prototype,
       return piece(this);
     }
 
-    return this._renderValueGrip(piece);
+    return this._renderValueGrip(piece, options);
   },
 
   /**
@@ -1277,6 +1302,7 @@ Messages.ConsoleGeneric = function(packet)
     timestamp: packet.timeStamp,
     category: "webdev",
     severity: CONSOLE_API_LEVELS_TO_SEVERITIES[packet.level],
+    prefix: packet.prefix,
     private: packet.private,
     filterDuplicates: true,
     location: {
@@ -1407,20 +1433,21 @@ Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
   _renderBodyPieces: function(container)
   {
     let lastStyle = null;
+    let stylePieces = this._styles.length > 0 ? this._styles.length : 1;
 
     for (let i = 0; i < this._messagePieces.length; i++) {
-      let separator = i > 0 ? this._renderBodyPieceSeparator() : null;
-      if (separator) {
-        container.appendChild(separator);
+      // Pieces with an associated style definition come from "%c" formatting.
+      // For body pieces beyond that, add a separator before each one.
+      if (i >= stylePieces) {
+        container.appendChild(this._renderBodyPieceSeparator());
       }
 
       let piece = this._messagePieces[i];
       let style = this._styles[i];
 
       // No long string support.
-      if (style && typeof style == "string" ) {
-        lastStyle = this.cleanupStyle(style);
-      }
+      lastStyle = (style && typeof style == "string") ?
+                  this.cleanupStyle(style) : null;
 
       container.appendChild(this._renderBodyPiece(piece, lastStyle));
     }
@@ -1431,7 +1458,9 @@ Messages.ConsoleGeneric.prototype = Heritage.extend(Messages.Extended.prototype,
 
   _renderBodyPiece: function(piece, style)
   {
-    let elem = Messages.Extended.prototype._renderBodyPiece.call(this, piece);
+    // Skip quotes for top-level strings.
+    let options = { noStringQuotes: true };
+    let elem = Messages.Extended.prototype._renderBodyPiece.call(this, piece, options);
     let result = elem;
 
     if (style) {
@@ -2471,6 +2500,8 @@ Widgets.JSObject.prototype = Heritage.extend(Widgets.BaseWidget.prototype,
       options.onClick = options.href ? this._onClickAnchor : this._onClick;
     }
 
+    options.onContextMenu = options.onContextMenu || this._onContextMenu;
+
     let anchor = this.el("a", {
       class: options.className,
       draggable: false,
@@ -2478,6 +2509,8 @@ Widgets.JSObject.prototype = Heritage.extend(Widgets.BaseWidget.prototype,
     }, text);
 
     this.message._addLinkCallback(anchor, options.onClick);
+
+    anchor.addEventListener("contextmenu", options.onContextMenu.bind(this));
 
     if (options.appendTo) {
       options.appendTo.appendChild(anchor);
@@ -2488,16 +2521,38 @@ Widgets.JSObject.prototype = Heritage.extend(Widgets.BaseWidget.prototype,
     return anchor;
   },
 
+  openObjectInVariablesView: function()
+  {
+    this.output.openVariablesView({
+      label: VariablesView.getString(this.objectActor, { concise: true }),
+      objectActor: this.objectActor,
+      autofocus: true,
+    });
+  },
+
   /**
    * The click event handler for objects shown inline.
    * @private
    */
   _onClick: function()
   {
-    this.output.openVariablesView({
-      label: VariablesView.getString(this.objectActor, { concise: true }),
-      objectActor: this.objectActor,
-      autofocus: true,
+    this.openObjectInVariablesView();
+  },
+
+  _onContextMenu: function(ev) {
+    // TODO offer a nice API for the context menu.
+    // Probably worth to take a look at Firebug's way
+    // https://github.com/firebug/firebug/blob/master/extension/content/firebug/chrome/menu.js
+    let doc = ev.target.ownerDocument;
+    let cmPopup = doc.getElementById("output-contextmenu");
+    let openInVarViewCmd = doc.getElementById("menu_openInVarView");
+    let openVarView = this.openObjectInVariablesView.bind(this);
+    openInVarViewCmd.addEventListener("command", openVarView);
+    openInVarViewCmd.removeAttribute("disabled");
+    cmPopup.addEventListener("popuphiding", function onPopupHiding() {
+      cmPopup.removeEventListener("popuphiding", onPopupHiding);
+      openInVarViewCmd.removeEventListener("command", openVarView);
+      openInVarViewCmd.setAttribute("disabled", "true");
     });
   },
 
@@ -2665,6 +2720,16 @@ Widgets.ObjectRenderers.add({
 
     this._text(")");
   },
+
+  _onClick: function () {
+    let location = this.objectActor.location;
+    if (location) {
+      this.output.openLocationInDebugger(location);
+    }
+    else {
+      this.openObjectInVariablesView();
+    }
+  }
 }); // Widgets.ObjectRenderers.byClass.Function
 
 /**
@@ -2980,7 +3045,8 @@ Widgets.ObjectRenderers.add({
 
   _renderDocumentNode: function()
   {
-    let fn = Widgets.ObjectRenderers.byKind.ObjectWithURL.prototype._renderElement;
+    let fn =
+      Widgets.ObjectRenderers.byKind.ObjectWithURL.prototype._renderElement;
     this.element = fn.call(this, this.objectActor,
                            this.objectActor.preview.location);
     this.element.classList.add("documentNode");
@@ -3153,6 +3219,12 @@ Widgets.ObjectRenderers.add({
         "message was got cleared away");
     }
 
+    // Check it again as this method is async!
+    if (this._linkedToInspector) {
+      return;
+    }
+    this._linkedToInspector = true;
+
     this.highlightDomNode = this.highlightDomNode.bind(this);
     this.element.addEventListener("mouseover", this.highlightDomNode, false);
     this.unhighlightDomNode = this.unhighlightDomNode.bind(this);
@@ -3163,8 +3235,6 @@ Widgets.ObjectRenderers.add({
       onClick: this.openNodeInInspector.bind(this)
     });
     this._openInspectorNode.title = l10n.getStr("openNodeInInspector");
-
-    this._linkedToInspector = true;
   }),
 
   /**
@@ -3238,7 +3308,7 @@ Widgets.ObjectRenderers.add({
 
   render: function()
   {
-    let { ownProperties, safeGetterValues } = this.objectActor.preview;
+    let { ownProperties, safeGetterValues } = this.objectActor.preview || {};
     if ((!ownProperties && !safeGetterValues) || this.options.concise) {
       this._renderConciseObject();
       return;
@@ -3274,7 +3344,7 @@ Widgets.ObjectRenderers.add({
 
   render: function()
   {
-    let { ownProperties, safeGetterValues } = this.objectActor.preview;
+    let { ownProperties, safeGetterValues } = this.objectActor.preview || {};
     if ((!ownProperties && !safeGetterValues) || this.options.concise) {
       this._renderConciseObject();
       return;
@@ -3294,11 +3364,16 @@ Widgets.ObjectRenderers.add({
  *        The owning message.
  * @param object longStringActor
  *        The LongStringActor to display.
+ * @param object options
+ *        Options, such as noStringQuotes
  */
-Widgets.LongString = function(message, longStringActor)
+Widgets.LongString = function(message, longStringActor, options)
 {
   Widgets.BaseWidget.call(this, message);
   this.longStringActor = longStringActor;
+  this.noStringQuotes = (options && "noStringQuotes" in options) ?
+    options.noStringQuotes : !this.message._quoteStrings;
+
   this._onClick = this._onClick.bind(this);
   this._onSubstring = this._onSubstring.bind(this);
 };
@@ -3334,7 +3409,7 @@ Widgets.LongString.prototype = Heritage.extend(Widgets.BaseWidget.prototype,
   _renderString: function(str)
   {
     this.element.textContent = VariablesView.getString(str, {
-      noStringQuotes: !this.message._quoteStrings,
+      noStringQuotes: this.noStringQuotes,
       noEllipsis: true,
     });
   },

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=79: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -40,8 +40,7 @@ public:
   void Init();
   void Invalidate();
 
-  void GetMimeTypes(nsTArray<nsRefPtr<nsMimeType> >& aMimeTypes,
-                    nsTArray<nsRefPtr<nsMimeType> >& aHiddenMimeTypes);
+  void GetMimeTypes(nsTArray<nsRefPtr<nsMimeType>>& aMimeTypes);
 
   // PluginArray WebIDL methods
 
@@ -61,18 +60,7 @@ private:
   void EnsurePlugins();
 
   nsCOMPtr<nsPIDOMWindow> mWindow;
-
-  // Many sites check whether a particular plugin is installed by enumerating
-  // all navigator.plugins, checking each plugin's name. These sites should
-  // just check navigator.plugins["Popular Plugin Name"] instead. mPlugins
-  // contains those popular plugins that must be exposed in navigator.plugins
-  // enumeration to avoid breaking web content.
   nsTArray<nsRefPtr<nsPluginElement> > mPlugins;
-
-  // mHiddenPlugins contains plugins that can be queried by
-  // navigator.plugins["Hidden Plugin Name"] but do not need to be exposed in
-  // navigator.plugins enumeration.
-  nsTArray<nsRefPtr<nsPluginElement> > mHiddenPlugins;
 };
 
 class nsPluginElement final : public nsISupports,

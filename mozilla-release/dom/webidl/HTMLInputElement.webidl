@@ -40,8 +40,6 @@ interface HTMLInputElement : HTMLElement {
   readonly attribute HTMLFormElement? form;
   [Pure]
   readonly attribute FileList? files;
-  [Throws, Pref="dom.input.dirpicker"]
-  void openDirectoryPicker();
   [Pure, SetterThrows]
            attribute DOMString formAction;
   [Pure, SetterThrows]
@@ -148,10 +146,10 @@ partial interface HTMLInputElement {
   [GetterThrows]
   readonly attribute long                  textLength;
 
-  [ChromeOnly]
+  [Throws, ChromeOnly]
   sequence<DOMString> mozGetFileNameArray();
 
-  [ChromeOnly]
+  [ChromeOnly, Throws]
   void mozSetFileNameArray(sequence<DOMString> fileNames);
 
   [ChromeOnly]

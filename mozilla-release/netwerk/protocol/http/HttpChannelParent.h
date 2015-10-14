@@ -20,6 +20,7 @@
 #include "nsHttpChannel.h"
 #include "nsIAuthPromptProvider.h"
 #include "mozilla/dom/ipc/IdType.h"
+#include "nsINetworkInterceptController.h"
 
 class nsICacheEntry;
 class nsIAssociatedContentSecurity;
@@ -41,7 +42,9 @@ class HttpChannelParent final : public PHttpChannelParent
                               , public nsIInterfaceRequestor
                               , public ADivertableParentChannel
                               , public nsIAuthPromptProvider
+                              , public nsINetworkInterceptController
                               , public DisconnectableParent
+                              , public HttpChannelSecurityWarningReporter
 {
   virtual ~HttpChannelParent();
 
@@ -54,6 +57,7 @@ public:
   NS_DECL_NSIPROGRESSEVENTSINK
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSIAUTHPROMPTPROVIDER
+  NS_DECL_NSINETWORKINTERCEPTCONTROLLER
 
   HttpChannelParent(const dom::PBrowserOrId& iframeEmbedding,
                     nsILoadContext* aLoadContext,
@@ -84,7 +88,7 @@ public:
 protected:
   // used to connect redirected-to channel in parent with just created
   // ChildChannel.  Used during redirects.
-  bool ConnectChannel(const uint32_t& channelId);
+  bool ConnectChannel(const uint32_t& channelId, const bool& shouldIntercept);
 
   bool DoAsyncOpen(const URIParams&           uri,
                    const OptionalURIParams&   originalUri,
@@ -110,12 +114,11 @@ protected:
                    const bool&                chooseApplicationCache,
                    const nsCString&           appCacheClientID,
                    const bool&                allowSpdy,
+                   const bool&                allowAltSvc,
                    const OptionalFileDescriptorSet& aFds,
-                   const ipc::PrincipalInfo&  aRequestingPrincipalInfo,
-                   const ipc::PrincipalInfo&  aTriggeringPrincipalInfo,
-                   const uint32_t&            aSecurityFlags,
-                   const uint32_t&            aContentPolicyType,
-                   const uint32_t&            aInnerWindowID);
+                   const LoadInfoArgs&        aLoadInfoArgs,
+                   const OptionalHttpResponseHead& aSynthesizedResponseHead,
+                   const uint32_t&            aCacheKey);
 
   virtual bool RecvSetPriority(const uint16_t& priority) override;
   virtual bool RecvSetClassOfService(const uint32_t& cos) override;
@@ -149,6 +152,9 @@ protected:
   void OfflineDisconnect() override;
   uint32_t GetAppId() override;
 
+  nsresult ReportSecurityMessage(const nsAString& aMessageTag,
+                                 const nsAString& aMessageCategory) override;
+
 private:
   nsRefPtr<nsHttpChannel>       mChannel;
   nsCOMPtr<nsICacheEntry>       mCacheEntry;
@@ -177,6 +183,8 @@ private:
   nsCOMPtr<nsILoadContext> mLoadContext;
   nsRefPtr<nsHttpHandler>  mHttpHandler;
 
+  nsAutoPtr<nsHttpResponseHead> mSynthesizedResponseHead;
+
   nsRefPtr<HttpChannelParentListener> mParentListener;
   // This is listener we are diverting to.
   nsCOMPtr<nsIStreamListener> mDivertListener;
@@ -192,7 +200,15 @@ private:
 
   bool mSuspendedForDiversion;
 
+  // Set if this channel should be intercepted before it sets up the HTTP transaction.
+  bool mShouldIntercept : 1;
+  // Set if this channel should suspend on interception.
+  bool mShouldSuspendIntercept : 1;
+
   dom::TabId mNestedFrameId;
+
+  // Handle to the channel wrapper if this channel has been intercepted.
+  nsCOMPtr<nsIInterceptedChannel> mInterceptedChannel;
 };
 
 } // namespace net

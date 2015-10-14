@@ -148,6 +148,35 @@ DrawTargetSkia::Snapshot()
   return snapshot.forget();
 }
 
+bool
+DrawTargetSkia::LockBits(uint8_t** aData, IntSize* aSize,
+                          int32_t* aStride, SurfaceFormat* aFormat)
+{
+  const SkBitmap &bitmap = mCanvas->getDevice()->accessBitmap(false);
+  if (!bitmap.lockPixelsAreWritable()) {
+    return false;
+  }
+
+  MarkChanged();
+
+  bitmap.lockPixels();
+  *aData = reinterpret_cast<uint8_t*>(bitmap.getPixels());
+  *aSize = IntSize(bitmap.width(), bitmap.height());
+  *aStride = int32_t(bitmap.rowBytes());
+  *aFormat = SkiaColorTypeToGfxFormat(bitmap.colorType());
+  return true;
+}
+
+void
+DrawTargetSkia::ReleaseBits(uint8_t* aData)
+{
+  const SkBitmap &bitmap = mCanvas->getDevice()->accessBitmap(false);
+  MOZ_ASSERT(bitmap.lockPixelsAreWritable());
+
+  bitmap.unlockPixels();
+  bitmap.notifyPixelsChanged();
+}
+
 static void
 SetPaintPattern(SkPaint& aPaint, const Pattern& aPattern, TempBitmap& aTmpBitmap,
                 Float aAlpha = 1.0)
@@ -497,6 +526,26 @@ DrawTargetSkia::Fill(const Path *aPath,
   mCanvas->drawPath(skiaPath->GetPath(), paint.mPaint);
 }
 
+bool
+DrawTargetSkia::ShouldLCDRenderText(FontType aFontType, AntialiasMode aAntialiasMode)
+{
+  // For non-opaque surfaces, only allow subpixel AA if explicitly permitted.
+  if (!IsOpaque(mFormat) && !mPermitSubpixelAA) {
+    return false;
+  }
+
+  if (aAntialiasMode == AntialiasMode::DEFAULT) {
+    switch (aFontType) {
+      case FontType::MAC:
+        return true;
+      default:
+        // TODO: Figure out what to do for the other platforms.
+        return false;
+    }
+  }
+  return (aAntialiasMode == AntialiasMode::SUBPIXEL);
+}
+
 void
 DrawTargetSkia::FillGlyphs(ScaledFont *aFont,
                            const GlyphBuffer &aBuffer,
@@ -519,6 +568,9 @@ DrawTargetSkia::FillGlyphs(ScaledFont *aFont,
   paint.mPaint.setTextSize(SkFloatToScalar(skiaFont->mSize));
   paint.mPaint.setTextEncoding(SkPaint::kGlyphID_TextEncoding);
 
+  bool shouldLCDRenderText = ShouldLCDRenderText(aFont->GetType(), aOptions.mAntialiasMode);
+  paint.mPaint.setLCDRenderText(shouldLCDRenderText);
+
   if (aRenderingOptions && aRenderingOptions->GetType() == FontType::CAIRO) {
     switch (static_cast<const GlyphRenderingOptionsCairo*>(aRenderingOptions)->GetHinting()) {
       case FontHinting::NONE:
@@ -538,6 +590,9 @@ DrawTargetSkia::FillGlyphs(ScaledFont *aFont,
     if (static_cast<const GlyphRenderingOptionsCairo*>(aRenderingOptions)->GetAutoHinting()) {
       paint.mPaint.setAutohinted(true);
     }
+  } else if (aFont->GetType() == FontType::MAC && shouldLCDRenderText) {
+    // SkFontHost_mac only supports subpixel antialiasing when hinting is turned off.
+    paint.mPaint.setHinting(SkPaint::kNo_Hinting);
   } else {
     paint.mPaint.setHinting(SkPaint::kNormal_Hinting);
   }
@@ -649,7 +704,8 @@ TemporaryRef<SourceSurface>
 DrawTargetSkia::OptimizeSourceSurface(SourceSurface *aSurface) const
 {
   if (aSurface->GetType() == SurfaceType::SKIA) {
-    return aSurface;
+    RefPtr<SourceSurface> surface(aSurface);
+    return surface.forget();
   }
 
   if (!UsingSkiaGPU()) {
@@ -686,13 +742,13 @@ DrawTargetSkia::CreateSourceSurfaceFromNativeSurface(const NativeSurface &aSurfa
       return nullptr;
     }
     cairo_surface_t* surf = static_cast<cairo_surface_t*>(aSurface.mSurface);
-    return new SourceSurfaceCairo(surf, aSurface.mSize, aSurface.mFormat);
+    return MakeAndAddRef<SourceSurfaceCairo>(surf, aSurface.mSize, aSurface.mFormat);
 #if USE_SKIA_GPU
-  } else if (aSurface.mType == NativeSurfaceType::OPENGL_TEXTURE) {
+  } else if (aSurface.mType == NativeSurfaceType::OPENGL_TEXTURE && UsingSkiaGPU()) {
     RefPtr<SourceSurfaceSkia> newSurf = new SourceSurfaceSkia();
     unsigned int texture = (unsigned int)((uintptr_t)aSurface.mSurface);
-    if (UsingSkiaGPU() && newSurf->InitFromTexture((DrawTargetSkia*)this, texture, aSurface.mSize, aSurface.mFormat)) {
-      return newSurf;
+    if (newSurf->InitFromTexture((DrawTargetSkia*)this, texture, aSurface.mSize, aSurface.mFormat)) {
+      return newSurf.forget();
     }
     return nullptr;
 #endif
@@ -873,7 +929,7 @@ DrawTargetSkia::GetNativeSurface(NativeSurfaceType aType)
 TemporaryRef<PathBuilder>
 DrawTargetSkia::CreatePathBuilder(FillRule aFillRule) const
 {
-  return new PathBuilderSkia(aFillRule);
+  return MakeAndAddRef<PathBuilderSkia>(aFillRule);
 }
 
 void
@@ -926,7 +982,7 @@ DrawTargetSkia::CreateGradientStops(GradientStop *aStops, uint32_t aNumStops, Ex
   }
   std::stable_sort(stops.begin(), stops.end());
 
-  return new GradientStopsSkia(stops, aNumStops, aExtendMode);
+  return MakeAndAddRef<GradientStopsSkia>(stops, aNumStops, aExtendMode);
 }
 
 TemporaryRef<FilterNode>

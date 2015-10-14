@@ -15,7 +15,6 @@
 #include "nsITimer.h"
 #include "nsString.h"
 
-class nsPluginHost;
 struct PRLibrary;
 struct nsPluginInfo;
 class nsNPAPIPlugin;
@@ -91,6 +90,10 @@ public:
 
   // Number of PluginModuleParents living in all content processes.
   size_t        mContentProcessRunningCount;
+
+  // True if we've ever created an instance of this plugin in the current process.
+  bool          mHadLocalInstance;
+
   nsCString     mName; // UTF-8
   nsCString     mDescription; // UTF-8
   nsTArray<nsCString> mMimeTypes; // UTF-8
@@ -100,6 +103,7 @@ public:
   nsRefPtr<nsNPAPIPlugin> mPlugin;
   bool          mIsJavaPlugin;
   bool          mIsFlashPlugin;
+  bool          mSupportsAsyncInit;
   nsCString     mFileName; // UTF-8
   nsCString     mFullPath; // UTF-8
   nsCString     mVersion;  // UTF-8

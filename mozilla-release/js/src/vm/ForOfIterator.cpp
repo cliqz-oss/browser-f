@@ -72,7 +72,7 @@ ForOfIterator::init(HandleValue iterable, NonIterableBehavior nonIterableBehavio
     // one about |obj|.
     if (!callee.isObject() || !callee.toObject().isCallable()) {
         UniquePtr<char[], JS::FreePolicy> bytes = DecompileValueGenerator(cx, JSDVG_SEARCH_STACK,
-                                                                          iterable, NullPtr());
+                                                                          iterable, nullptr);
         if (!bytes)
             return false;
         JS_ReportErrorNumber(cx, GetErrorMessage, nullptr, JSMSG_NOT_ITERABLE, bytes.get());
@@ -88,14 +88,6 @@ ForOfIterator::init(HandleValue iterable, NonIterableBehavior nonIterableBehavio
         return false;
 
     return true;
-}
-
-bool
-ForOfIterator::initWithIterator(HandleValue aIterator)
-{
-    JSContext* cx = cx_;
-    RootedObject iteratorObj(cx, ToObject(cx, aIterator));
-    return iterator = iteratorObj;
 }
 
 inline bool

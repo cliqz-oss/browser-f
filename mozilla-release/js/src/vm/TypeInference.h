@@ -530,7 +530,7 @@ class TypeSet
 
     static void MarkTypeRoot(JSTracer* trc, Type* v, const char* name);
     static void MarkTypeUnbarriered(JSTracer* trc, Type* v, const char* name);
-    static bool IsTypeMarkedFromAnyThread(Type* v);
+    static bool IsTypeMarked(Type* v);
     static bool IsTypeAllocatedDuringIncremental(Type v);
     static bool IsTypeAboutToBeFinalized(Type* v);
 };
@@ -613,10 +613,15 @@ class ConstraintTypeSet : public TypeSet
      */
     void addType(ExclusiveContext* cx, Type type);
 
+    // Trigger a post barrier when writing to this set, if necessary.
+    // addType(cx, type) takes care of this automatically.
+    void postWriteBarrier(ExclusiveContext* cx, Type type);
+
     /* Add a new constraint to this set. */
     bool addConstraint(JSContext* cx, TypeConstraint* constraint, bool callExisting = true);
 
     inline void sweep(JS::Zone* zone, AutoClearTypeInferenceStateOnOOM& oom);
+    inline void trace(JS::Zone* zone, JSTracer* trc);
 };
 
 class StackTypeSet : public ConstraintTypeSet
@@ -806,6 +811,10 @@ class PreliminaryObjectArrayWithTemplate : public PreliminaryObjectArray
       : shape_(shape)
     {}
 
+    void clear() {
+        shape_.init(nullptr);
+    }
+
     Shape* shape() {
         return shape_;
     }
@@ -914,6 +923,13 @@ class TypeNewScript
         js_free(initializerList);
     }
 
+    void clear() {
+        function_.init(nullptr);
+        templateObject_.init(nullptr);
+        initializedShape_.init(nullptr);
+        initializedGroup_.init(nullptr);
+    }
+
     static void writeBarrierPre(TypeNewScript* newScript);
 
     bool analyzed() const {
@@ -956,17 +972,6 @@ inline bool isInlinableCall(jsbytecode* pc);
 
 bool
 ClassCanHaveExtraProperties(const Class* clasp);
-
-/*
- * Whether Array.prototype, or an object on its proto chain, has an
- * indexed property.
- */
-bool
-ArrayPrototypeHasIndexedProperty(CompilerConstraintList* constraints, JSScript* script);
-
-/* Whether obj or any of its prototypes have an indexed property. */
-bool
-TypeCanHaveExtraIndexedProperties(CompilerConstraintList* constraints, TemporaryTypeSet* types);
 
 /* Persistent type information for a script, retained across GCs. */
 class TypeScript

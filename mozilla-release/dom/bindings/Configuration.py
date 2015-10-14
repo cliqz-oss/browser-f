@@ -25,6 +25,7 @@ class Configuration:
         # |parseData|.
         self.descriptors = []
         self.interfaces = {}
+        self.optimizedOutDescriptorNames = set()
         self.generatedEvents = generatedEvents;
         self.maxProtoChainLength = 0;
         for thing in parseData:
@@ -47,11 +48,10 @@ class Configuration:
                         "%s\n"
                         "%s" %
                         (thing.location, thing.implementor.location))
-            # Some toplevel things are sadly types, and those have an
-            # isInterface that doesn't mean the same thing as IDLObject's
-            # isInterface()...
-            if (not isinstance(thing, IDLInterface) and
-                not isinstance(thing, IDLExternalInterface)):
+
+            assert not thing.isType();
+
+            if not thing.isInterface():
                 continue
             iface = thing
             self.interfaces[iface.identifier.name] = iface
@@ -60,6 +60,7 @@ class Configuration:
                 # if they have no interface object because chances are we
                 # don't need to do anything interesting with them.
                 if iface.isConsequential() and not iface.hasInterfaceObject():
+                    self.optimizedOutDescriptorNames.add(iface.identifier.name)
                     continue
                 entry = {}
             else:
@@ -246,13 +247,23 @@ class Configuration:
         Gets the appropriate descriptor for the given interface name
         and the given workers boolean.
         """
-        for d in self.descriptorsByName[interfaceName]:
+        # We may have optimized out this descriptor, but the chances of anyone
+        # asking about it are then slim.  Put the check for that _after_ we've
+        # done our normal lookups.  But that means we have to do our normal
+        # lookups in a way that will not throw if they fail.
+        for d in self.descriptorsByName.get(interfaceName, []):
             if d.workers == workers:
                 return d
 
         if workers:
-            for d in self.descriptorsByName[interfaceName]:
+            for d in self.descriptorsByName.get(interfaceName, []):
                 return d
+
+        if interfaceName in self.optimizedOutDescriptorNames:
+            raise NoSuchDescriptorError(
+                "No descriptor for '%s', which is a mixin ([NoInterfaceObject] "
+                "and a consequential interface) without an explicit "
+                "Bindings.conf annotation." % interfaceName)
 
         raise NoSuchDescriptorError("For " + interfaceName + " found no matches");
     def getDescriptorProvider(self, workers):
@@ -675,14 +686,18 @@ class Descriptor(DescriptorProvider):
 
     def needsHeaderInclude(self):
         """
-        An interface doesn't need a header file if it is not concrete,
-        not pref-controlled, has no prototype object, and has no
-        static methods or attributes.
+        An interface doesn't need a header file if it is not concrete, not
+        pref-controlled, has no prototype object, has no static methods or
+        attributes and has no parent.  The parent matters because we assert
+        things about refcounting that depend on the actual underlying type if we
+        have a parent.
+
         """
         return (self.interface.isExternal() or self.concrete or
             self.interface.hasInterfacePrototypeObject() or
             any((m.isAttr() or m.isMethod()) and m.isStatic() for m
-                in self.interface.members))
+                in self.interface.members) or
+            self.interface.parent)
 
     def hasThreadChecks(self):
         return ((self.isExposedConditionally() and
@@ -788,9 +803,9 @@ def findCallbacksAndDictionaries(inputTypes):
     def doFindCallbacksAndDictionaries(types, callbacks, dictionaries):
         unhandledTypes = set()
         for type in types:
-            if type.isCallback() and type not in callbacks:
-                unhandledTypes |= getFlatTypes(getTypesFromCallback(type))
-                callbacks.add(type)
+            if type.isCallback() and type.callback not in callbacks:
+                unhandledTypes |= getFlatTypes(getTypesFromCallback(type.callback))
+                callbacks.add(type.callback)
             elif type.isDictionary() and type.inner not in dictionaries:
                 d = type.inner
                 unhandledTypes |= getFlatTypes(getTypesFromDictionary(d))

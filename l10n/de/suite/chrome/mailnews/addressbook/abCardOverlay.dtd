@@ -48,10 +48,6 @@
 <!ENTITY ScreenName.label               "AOL-Name:">
 <!ENTITY ScreenName.accesskey           "O">
 
-<!ENTITY allowRemoteContent1.label      "Externe Inhalte erlauben.">
-<!ENTITY allowRemoteContent1.accesskey  "I">
-<!ENTITY allowRemoteContent1.tooltip    "In HTML-Nachrichten können Inhalte von externen Quellen eingebunden sein. Beim Anzeigen dieser Nachrichten wird eine Verbindung zur externen Quelle hergestellt. Dadurch könnte zurückverfolgt werden, dass die Nachricht gelesen wird. Durch Aktivieren dieser Option erlauben Sie das Laden der Inhalte von externen Quellen bei Nachrichten dieses Absenders.">
-
 <!ENTITY WorkPhone.label                "Dienstlich:">
 <!ENTITY WorkPhone.accesskey            "h">
 <!ENTITY HomePhone.label                "Privat:">

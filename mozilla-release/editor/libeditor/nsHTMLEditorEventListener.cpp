@@ -24,6 +24,7 @@
 #include "nsIHTMLObjectResizer.h"
 #include "nsISupportsImpl.h"
 #include "nsLiteralString.h"
+#include "nsQueryObject.h"
 #include "nsRange.h"
 
 using namespace mozilla;
@@ -182,7 +183,7 @@ nsHTMLEditorEventListener::MouseDown(nsIDOMMouseEvent* aMouseEvent)
     // the event; so we need to check resizing state ourselves
     htmlEditor->CheckSelectionStateForAnonymousButtons(selection);
 
-    // Prevent bubbling if we changed selection or 
+    // Prevent bubbling if we changed selection or
     //   for all context clicks
     if (element || isContextClick) {
       aMouseEvent->PreventDefault();

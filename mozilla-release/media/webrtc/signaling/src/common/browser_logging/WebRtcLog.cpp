@@ -4,17 +4,22 @@
 
 #include "WebRtcLog.h"
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "prenv.h"
 #include "webrtc/system_wrappers/interface/trace.h"
 
 #include "nscore.h"
 #ifdef MOZILLA_INTERNAL_API
 #include "nsString.h"
+#include "nsXULAppAPI.h"
+#if !defined(MOZILLA_XPCOMRT_API)
 #include "mozilla/Preferences.h"
+#endif // !defined(MOZILLA_XPCOMRT_API)
 #else
 #include "nsStringAPI.h"
 #endif
+
+using mozilla::LogLevel;
 
 static int gWebRtcTraceLoggingOn = 0;
 
@@ -45,10 +50,8 @@ class WebRtcTraceCallback: public webrtc::TraceCallback
 public:
   void Print(webrtc::TraceLevel level, const char* message, int length)
   {
-#ifdef PR_LOGGING
     PRLogModuleInfo *log = GetWebRtcTraceLog();
-    PR_LOG(log, PR_LOG_DEBUG, ("%s", message));
-#endif
+    MOZ_LOG(log, LogLevel::Debug, ("%s", message));
   }
 };
 
@@ -57,11 +60,13 @@ static WebRtcTraceCallback gWebRtcCallback;
 #ifdef MOZILLA_INTERNAL_API
 void GetWebRtcLogPrefs(uint32_t *aTraceMask, nsACString* aLogFile, nsACString *aAECLogDir, bool *aMultiLog)
 {
+#if !defined(MOZILLA_XPCOMRT_API)
   *aMultiLog = mozilla::Preferences::GetBool("media.webrtc.debug.multi_log");
   *aTraceMask = mozilla::Preferences::GetUint("media.webrtc.debug.trace_mask");
   mozilla::Preferences::GetCString("media.webrtc.debug.log_file", aLogFile);
   mozilla::Preferences::GetCString("media.webrtc.debug.aec_log_dir", aAECLogDir);
   webrtc::Trace::set_aec_debug_size(mozilla::Preferences::GetUint("media.webrtc.debug.aec_dump_max_size"));
+#endif // !defined(MOZILLA_XPCOMRT_API)
 }
 #endif
 
@@ -141,11 +146,12 @@ void ConfigWebRtcLog(uint32_t trace_mask, nsCString &aLogFile, nsCString &aAECLo
       webrtc::Trace::SetTraceFile(aLogFile.get(), multi_log);
     }
   }
-#ifdef MOZILLA_INTERNAL_API
-  // Capture the final choices for the trace settings.
-  mozilla::Preferences::SetCString("media.webrtc.debug.log_file", aLogFile);
-  mozilla::Preferences::SetUint("media.webrtc.debug.trace_mask", trace_mask);
-  mozilla::Preferences::SetCString("media.webrtc.debug.aec_log_dir", aAECLogDir);
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
+  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+    // Capture the final choices for the trace settings.
+    mozilla::Preferences::SetCString("media.webrtc.debug.log_file", aLogFile);
+    mozilla::Preferences::SetCString("media.webrtc.debug.aec_log_dir", aAECLogDir);
+  }
 #endif
   return;
 }

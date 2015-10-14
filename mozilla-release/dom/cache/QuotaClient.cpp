@@ -110,7 +110,13 @@ public:
   InitOrigin(PersistenceType aPersistenceType, const nsACString& aGroup,
              const nsACString& aOrigin, UsageInfo* aUsageInfo) override
   {
-    return NS_OK;
+    // The QuotaManager passes a nullptr UsageInfo if there is no quota being
+    // enforced against the origin.
+    if (!aUsageInfo) {
+      return NS_OK;
+    }
+
+    return GetUsageForOrigin(aPersistenceType, aGroup, aOrigin, aUsageInfo);
   }
 
   virtual nsresult
@@ -118,6 +124,8 @@ public:
                     const nsACString& aOrigin,
                     UsageInfo* aUsageInfo) override
   {
+    MOZ_ASSERT(aUsageInfo);
+
     QuotaManager* qm = QuotaManager::Get();
     MOZ_ASSERT(qm);
 
@@ -153,6 +161,7 @@ public:
       if (isDir) {
         if (leafName.EqualsLiteral("morgue")) {
           rv = GetBodyUsage(file, aUsageInfo);
+          if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
         } else {
           NS_WARNING("Unknown Cache directory found!");
         }
@@ -160,10 +169,11 @@ public:
         continue;
       }
 
-      // Ignore transient sqlite files
+      // Ignore transient sqlite files and marker files
       if (leafName.EqualsLiteral("caches.sqlite-journal") ||
           leafName.EqualsLiteral("caches.sqlite-shm") ||
-          leafName.Find(NS_LITERAL_CSTRING("caches.sqlite-mj"), false, 0, 0) == 0) {
+          leafName.Find(NS_LITERAL_CSTRING("caches.sqlite-mj"), false, 0, 0) == 0 ||
+          leafName.EqualsLiteral("context_open.marker")) {
         continue;
       }
 
@@ -198,18 +208,6 @@ public:
     // automatically.
   }
 
-  virtual bool
-  IsFileServiceUtilized() override
-  {
-    return false;
-  }
-
-  virtual bool
-  IsTransactionServiceActivated() override
-  {
-    return true;
-  }
-
   virtual void
   WaitForStoragesToComplete(nsTArray<nsIOfflineStorage*>& aStorages,
                             nsIRunnable* aCallback) override
@@ -229,9 +227,12 @@ public:
     }
   }
 
+  virtual void
+  PerformIdleMaintenance() override
+  { }
 
   virtual void
-  ShutdownTransactionService() override
+  ShutdownWorkThreads() override
   {
     MOZ_ASSERT(NS_IsMainThread());
 

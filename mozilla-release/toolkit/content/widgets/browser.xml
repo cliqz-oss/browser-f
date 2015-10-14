@@ -402,11 +402,6 @@
         ]]></getter>
       </property>
 
-      <field name="_permanentKey">({})</field>
-
-      <property name="permanentKey" readonly="true"
-                onget="return this._permanentKey;"/>
-
       <property name="outerWindowID" readonly="true">
         <getter><![CDATA[
           return this.contentWindow
@@ -505,6 +500,12 @@
       <property name="isSyntheticDocument">
         <getter><![CDATA[
           return this.contentDocument.mozSyntheticDocument;
+        ]]></getter>
+      </property>
+
+      <property name="hasContentOpener">
+        <getter><![CDATA[
+          return !!this.contentWindow.opener;
         ]]></getter>
       </property>
 
@@ -657,7 +658,7 @@
 
       <field name="blockedPopups">null</field>
 
-      <!-- Obsolete name for blockedPopups. Used by metro and android. -->
+      <!-- Obsolete name for blockedPopups. Used by android. -->
       <property name="pageReport"
          onget="return this.blockedPopups;"
          readonly="true"/>
@@ -1001,6 +1002,7 @@
               this._autoScrollPopup.setAttribute("translucent", /Win|Mac/.test(navigator.platform));
             }
 
+            this._autoScrollPopup.setAttribute("noautofocus", "true");
             this._autoScrollPopup.setAttribute("scrolldir", scrolldir);
             this._autoScrollPopup.addEventListener("popuphidden", this, true);
             this._autoScrollPopup.showPopup(document.documentElement,
@@ -1096,8 +1098,7 @@
             "_docShell",
             "_webBrowserFind",
             "_contentWindow",
-            "_webNavigation",
-            "_permanentKey"
+            "_webNavigation"
           ];
 
           if (this.isRemoteBrowser) {
@@ -1112,7 +1113,6 @@
               "_contentTitle",
               "_characterSet",
               "_contentPrincipal",
-              "_syncHandler",
               "_imageDocument",
               "_fullZoom",
               "_textZoom",
@@ -1171,6 +1171,9 @@
         ]]>
         </body>
       </method>
+
+      <!-- This will go away if the binding has been removed for some reason. -->
+      <field name="_alive">true</field>
     </implementation>
 
     <handlers>
@@ -1252,6 +1255,11 @@
           event.preventDefault();
         }
 
+        // No need to handle "dragover" in e10s, since nsDocShellTreeOwner.cpp in the child process
+        // handles that case using "@mozilla.org/content/dropped-link-handler;1" service.
+        if (this.isRemoteBrowser)
+          return;
+
         let linkHandler = Components.classes["@mozilla.org/content/dropped-link-handler;1"].
                             getService(Components.interfaces.nsIDroppedLinkHandler);
         if (linkHandler.canDropLink(event, false))
@@ -1260,7 +1268,9 @@
       </handler>
       <handler event="drop" group="system">
       <![CDATA[
-        if (!this.droppedLinkHandler || event.defaultPrevented)
+        // No need to handle "drop" in e10s, since nsDocShellTreeOwner.cpp in the child process
+        // handles that case using "@mozilla.org/content/dropped-link-handler;1" service.
+        if (!this.droppedLinkHandler || event.defaultPrevented || this.isRemoteBrowser)
           return;
 
         let name = { };

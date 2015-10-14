@@ -93,7 +93,8 @@ child:
                  nsCString           securityInfoSerialization,
                  NetAddr             selfAddr,
                  NetAddr             peerAddr,
-                 int16_t             redirectCount);
+                 int16_t             redirectCount,
+                 uint32_t            cacheKey);
 
   // Combines a single OnDataAvailable and its associated OnProgress &
   // OnStatus calls into one IPDL message
@@ -138,6 +139,10 @@ child:
   // Child should resume processing the ChannelEventQueue, i.e. diverting any
   // OnDataAvailable and OnStopRequest messages in the queue back to the parent.
   DivertMessages();
+
+  // Report a security message to the console associated with this
+  // channel.
+  ReportSecurityMessage(nsString messageTag, nsString messageCategory);
 
   // Tell child to delete channel (all IPDL deletes must be done from child to
   // avoid races: see bug 591708).

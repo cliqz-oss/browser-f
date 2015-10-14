@@ -25,11 +25,10 @@
               android:layout_width="wrap_content"
               android:layout_height="wrap_content"
               android:layout_marginRight="@dimen/find_in_page_status_margin_right"
-              android:textColor="@color/find_status_default"
+              android:textColor="@color/tabs_tray_icon_grey"
               android:visibility="gone"/>
 
-    <CheckedTextView xmlns:android="http://schemas.android.com/apk/res/android"
-                     android:id="@+id/find_matchcase"
+    <CheckedTextView android:id="@+id/find_matchcase"
                      android:layout_width="wrap_content"
                      android:layout_height="wrap_content"
                      android:padding="@dimen/find_in_page_matchcase_padding"

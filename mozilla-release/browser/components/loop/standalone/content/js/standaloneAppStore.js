@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
-
 var loop = loop || {};
 loop.store = loop.store || {};
 
@@ -23,7 +21,8 @@ loop.store.StandaloneAppStore = (function() {
   /**
    * Constructor
    *
-   * @param {Object} options Options for the store. Should contain the dispatcher.
+   * @param {Object} options Options for the store. Should contain the
+   *                         dispatcher.
    */
   var StandaloneAppStore = function(options) {
     if (!options.dispatcher) {
@@ -71,9 +70,9 @@ loop.store.StandaloneAppStore = (function() {
       var windowType = "home";
 
       function extractId(path, regexp) {
-        var match = path.match(regexp);
-        if (match && match[1]) {
-          return match;
+        var pathMatch = path.match(regexp);
+        if (pathMatch && pathMatch[1]) {
+          return pathMatch;
         }
         return null;
       }
@@ -96,8 +95,20 @@ loop.store.StandaloneAppStore = (function() {
     },
 
     /**
+     * Extracts the crypto key from the hash for the page.
+     */
+    _extractCryptoKey: function(windowHash) {
+      if (windowHash && windowHash[0] === "#") {
+        return windowHash.substring(1, windowHash.length);
+      }
+
+      return null;
+    },
+
+    /**
      * Handles the extract token info action - obtains the token information
-     * and its type; updates the store and notifies interested components.
+     * and its type; extracts any crypto information; updates the store and
+     * notifies interested components.
      *
      * @param {sharedActions.GetWindowData} actionData The action data
      */
@@ -131,10 +142,11 @@ loop.store.StandaloneAppStore = (function() {
         unsupportedPlatform: unsupportedPlatform
       });
 
-      // If we've not got a window ID, don't dispatch the action, as we don't need
-      // it.
+      // If we've not got a window ID, don't dispatch the action, as we don't
+      // need it.
       if (token) {
         this._dispatcher.dispatch(new loop.shared.actions.FetchServerData({
+          cryptoKey: this._extractCryptoKey(actionData.windowHash),
           token: token,
           windowType: windowType
         }));

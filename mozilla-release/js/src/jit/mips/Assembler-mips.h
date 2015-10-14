@@ -256,7 +256,6 @@ class Instruction;
 class InstReg;
 class InstImm;
 class InstJump;
-class BranchInstBlock;
 
 uint32_t RS(Register r);
 uint32_t RT(Register r);
@@ -445,7 +444,6 @@ enum FunctionField {
     ff_null        = 0
 };
 
-class MacroAssemblerMIPS;
 class Operand;
 
 // A BOffImm16 is a 16 bit immediate that is used for branches.
@@ -643,6 +641,20 @@ PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitRuntime::Back
 class Assembler;
 typedef js::jit::AssemblerBuffer<1024, Instruction> MIPSBuffer;
 
+class MIPSBufferWithExecutableCopy : public MIPSBuffer
+{
+  public:
+    void executableCopy(uint8_t* buffer) {
+        if (this->oom())
+            return;
+
+        for (Slice* cur = head; cur != nullptr; cur = cur->getNext()) {
+            memcpy(buffer, &cur->instructions, cur->length());
+            buffer += cur->length();
+        }
+    }
+};
+
 class Assembler : public AssemblerShared
 {
   public:
@@ -753,7 +765,7 @@ class Assembler : public AssemblerShared
     CompactBufferWriter dataRelocations_;
     CompactBufferWriter preBarriers_;
 
-    MIPSBuffer m_buffer;
+    MIPSBufferWithExecutableCopy m_buffer;
 
   public:
     Assembler()
@@ -773,8 +785,11 @@ class Assembler : public AssemblerShared
     // As opposed to x86/x64 version, the data relocation has to be executed
     // before to recover the pointer, and not after.
     void writeDataRelocation(ImmGCPtr ptr) {
-        if (ptr.value)
+        if (ptr.value) {
+            if (gc::IsInsideNursery(ptr.value))
+                embedsNurseryPointers_ = true;
             dataRelocations_.writeUnsigned(nextOffset().getOffset());
+        }
     }
     void writePrebarrierOffset(CodeOffsetLabel label) {
         preBarriers_.writeUnsigned(label.offset());
@@ -786,6 +801,10 @@ class Assembler : public AssemblerShared
     bool oom() const;
 
     void setPrinter(Sprinter* sp) {
+    }
+
+    static const Register getStackPointer() {
+        return StackPointer;
     }
 
   private:
@@ -1018,11 +1037,8 @@ class Assembler : public AssemblerShared
     static void TraceJumpRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
     static void TraceDataRelocations(JSTracer* trc, JitCode* code, CompactBufferReader& reader);
 
-    static void FixupNurseryObjects(JSContext* cx, JitCode* code, CompactBufferReader& reader,
-                                    const ObjectVector& nurseryObjects);
-
     static bool SupportsFloatingPoint() {
-#if (defined(__mips_hard_float) && !defined(__mips_single_float)) || defined(JS_MIPS_SIMULATOR)
+#if (defined(__mips_hard_float) && !defined(__mips_single_float)) || defined(JS_SIMULATOR_MIPS)
         return true;
 #else
         return false;

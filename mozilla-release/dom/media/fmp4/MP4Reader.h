@@ -19,21 +19,11 @@
 
 namespace mozilla {
 
-namespace dom {
-class TimeRanges;
-}
-
-typedef std::deque<MediaSample*> MediaSampleQueue;
+typedef std::deque<nsRefPtr<MediaRawData>> MediaSampleQueue;
 
 class MP4Stream;
 
 #if defined(MOZ_GONK_MEDIACODEC) || defined(XP_WIN) || defined(MOZ_APPLEMEDIA) || defined(MOZ_FFMPEG)
-#define MP4_READER_DORMANT
-#else
-#undef MP4_READER_DORMANT
-#endif
-
-#if defined(XP_WIN) || defined(MOZ_APPLEMEDIA) || defined(MOZ_FFMPEG)
 #define MP4_READER_DORMANT_HEURISTIC
 #else
 #undef MP4_READER_DORMANT_HEURISTIC
@@ -41,10 +31,10 @@ class MP4Stream;
 
 class MP4Reader final : public MediaDecoderReader
 {
-  typedef mp4_demuxer::TrackType TrackType;
+  typedef TrackInfo::TrackType TrackType;
 
 public:
-  explicit MP4Reader(AbstractMediaDecoder* aDecoder);
+  explicit MP4Reader(AbstractMediaDecoder* aDecoder, MediaTaskQueue* aBorrowedTaskQueue = nullptr);
 
   virtual ~MP4Reader();
 
@@ -61,11 +51,6 @@ public:
   virtual bool HasAudio() override;
   virtual bool HasVideo() override;
 
-  // PreReadMetadata() is called by MediaDecoderStateMachine::DecodeMetadata()
-  // before checking hardware resource. In Gonk, it requests hardware codec so
-  // MediaDecoderStateMachine could go to DORMANT state if the hardware codec is
-  // not available.
-  virtual void PreReadMetadata() override;
   virtual nsresult ReadMetadata(MediaInfo* aInfo,
                                 MetadataTags** aTags) override;
 
@@ -77,13 +62,15 @@ public:
   virtual bool IsMediaSeekable() override;
 
   virtual int64_t GetEvictionOffset(double aTime) override;
-  virtual void NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset) override;
 
-  virtual nsresult GetBuffered(dom::TimeRanges* aBuffered) override;
+protected:
+  virtual void NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset) override;
+public:
+
+  virtual media::TimeIntervals GetBuffered() override;
 
   // For Media Resource Management
   virtual void SetIdle() override;
-  virtual bool IsWaitingMediaResources() override;
   virtual bool IsDormantNeeded() override;
   virtual void ReleaseMediaResources() override;
   virtual void SetSharedDecoderManager(SharedDecoderManager* aManager)
@@ -121,23 +108,21 @@ private:
 
   // Blocks until the demuxer produces an sample of specified type.
   // Returns nullptr on error on EOS. Caller must delete sample.
-  MediaSample* PopSample(mp4_demuxer::TrackType aTrack);
-  MediaSample* PopSampleLocked(mp4_demuxer::TrackType aTrack);
+  already_AddRefed<MediaRawData> PopSample(TrackType aTrack);
+  already_AddRefed<MediaRawData> PopSampleLocked(TrackType aTrack);
 
   bool SkipVideoDemuxToNextKeyFrame(int64_t aTimeThreshold, uint32_t& parsed);
 
   // DecoderCallback proxies the MediaDataDecoderCallback calls to these
   // functions.
-  void Output(mp4_demuxer::TrackType aType, MediaData* aSample);
-  void InputExhausted(mp4_demuxer::TrackType aTrack);
-  void Error(mp4_demuxer::TrackType aTrack);
-  void Flush(mp4_demuxer::TrackType aTrack);
-  void DrainComplete(mp4_demuxer::TrackType aTrack);
+  void Output(TrackType aType, MediaData* aSample);
+  void InputExhausted(TrackType aTrack);
+  void Error(TrackType aTrack);
+  void Flush(TrackType aTrack);
+  void DrainComplete(TrackType aTrack);
   void UpdateIndex();
   bool IsSupportedAudioMimeType(const nsACString& aMimeType);
   bool IsSupportedVideoMimeType(const nsACString& aMimeType);
-  void NotifyResourcesStatusChanged();
-  void RequestCodecResource();
   virtual bool IsWaitingOnCDMResource() override;
 
   Microseconds GetNextKeyframeTime();
@@ -152,8 +137,7 @@ private:
 
   class DecoderCallback : public MediaDataDecoderCallback {
   public:
-    DecoderCallback(MP4Reader* aReader,
-                    mp4_demuxer::TrackType aType)
+    DecoderCallback(MP4Reader* aReader, TrackType aType)
       : mReader(aReader)
       , mType(aType)
     {
@@ -170,15 +154,15 @@ private:
     virtual void DrainComplete() override {
       mReader->DrainComplete(mType);
     }
-    virtual void NotifyResourcesStatusChanged() override {
-      mReader->NotifyResourcesStatusChanged();
-    }
     virtual void ReleaseMediaResources() override {
       mReader->ReleaseMediaResources();
     }
+    virtual bool OnReaderTaskQueue() override {
+      return mReader->OnTaskQueue();
+    }
   private:
     MP4Reader* mReader;
-    mp4_demuxer::TrackType mType;
+    TrackType mType;
   };
 
   struct DecoderData {
@@ -260,7 +244,7 @@ private:
 
   // Queued samples extracted by the demuxer, but not yet sent to the platform
   // decoder.
-  nsAutoPtr<MediaSample> mQueuedVideoSample;
+  nsRefPtr<MediaRawData> mQueuedVideoSample;
 
   // Returns true when the decoder for this track needs input.
   // aDecoder.mMonitor must be locked.
@@ -272,11 +256,13 @@ private:
   // delta there.
   uint64_t mLastReportedNumDecodedFrames;
 
-  DecoderData& GetDecoderData(mp4_demuxer::TrackType aTrack);
+  DecoderData& GetDecoderData(TrackType aTrack);
 
   layers::LayersBackend mLayersBackendType;
 
-  nsTArray<nsTArray<uint8_t>> mInitDataEncountered;
+  // For use with InvokeAndRetry as an already_refed can't be converted to bool
+  nsRefPtr<MediaRawData> DemuxVideoSample();
+  nsRefPtr<MediaRawData> DemuxAudioSample();
 
   // True if we've read the streams' metadata.
   bool mDemuxerInitialized;
@@ -286,8 +272,6 @@ private:
 
   // Synchronized by decoder monitor.
   bool mIsEncrypted;
-
-  bool mAreDecodersSetup;
 
   bool mIndexReady;
   int64_t mLastSeenEnd;

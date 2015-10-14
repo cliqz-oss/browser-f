@@ -17,57 +17,62 @@
 #include "nsString.h"
 #include "nscore.h"
 #include "TimeUnits.h"
+#include <map>
 
 namespace mozilla {
 
 class ContainerParser;
 class MediaSourceDecoder;
-class LargeDataBuffer;
+class MediaByteBuffer;
 
-namespace dom {
-
-class TimeRanges;
-
-} // namespace dom
-
-class TrackBuffer final {
+class TrackBuffer final : public SourceBufferContentManager {
 public:
-  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(TrackBuffer);
-
   TrackBuffer(MediaSourceDecoder* aParentDecoder, const nsACString& aType);
 
   nsRefPtr<ShutdownPromise> Shutdown();
 
+  bool AppendData(MediaByteBuffer* aData, TimeUnit aTimestampOffset) override;
+
   // Append data to the current decoder.  Also responsible for calling
   // NotifyDataArrived on the decoder to keep buffered range computation up
-  // to date.  Returns false if the append failed.
-  nsRefPtr<TrackBufferAppendPromise> AppendData(LargeDataBuffer* aData,
-                                                int64_t aTimestampOffset /* microseconds */);
+  // to date.
+  nsRefPtr<AppendPromise> BufferAppend() override;
 
   // Evicts data held in the current decoders SourceBufferResource from the
   // start of the buffer through to aPlaybackTime. aThreshold is used to
   // bound the data being evicted. It will not evict more than aThreshold
   // bytes. aBufferStartTime contains the new start time of the current
-  // decoders buffered data after the eviction. Returns true if data was
-  // evicted.
-  bool EvictData(double aPlaybackTime, uint32_t aThreshold, double* aBufferStartTime);
+  // decoders buffered data after the eviction.
+  EvictDataResult EvictData(TimeUnit aPlaybackTime, uint32_t aThreshold, TimeUnit* aBufferStartTime) override;
 
   // Evicts data held in all the decoders SourceBufferResource from the start
   // of the buffer through to aTime.
-  void EvictBefore(double aTime);
+  void EvictBefore(TimeUnit aTime) override;
 
-  // Returns the highest end time of all of the buffered ranges in the
-  // decoders managed by this TrackBuffer, and returns the union of the
-  // decoders buffered ranges in aRanges. This may be called on any thread.
-  double Buffered(dom::TimeRanges* aRanges);
+  nsRefPtr<RangeRemovalPromise> RangeRemoval(TimeUnit aStart, TimeUnit aEnd) override;
+
+  void AbortAppendData() override;
+
+  int64_t GetSize() override;
+
+  void ResetParserState() override;
+
+  // Returns the union of the decoders buffered ranges in aRanges.
+  // This may be called on any thread.
+  media::TimeIntervals Buffered() override;
+
+  void Ended() override
+  {
+    EndCurrentDecoder();
+  }
+
+  void Detach() override;
 
   // Mark the current decoder's resource as ended, clear mCurrentDecoder and
   // reset mLast{Start,End}Timestamp.  Main thread only.
   void DiscardCurrentDecoder();
   // Mark the current decoder's resource as ended.
   void EndCurrentDecoder();
-
-  void Detach();
 
   // Returns true if an init segment has been appended.
   bool HasInitSegment();
@@ -84,57 +89,51 @@ public:
 
   void BreakCycles();
 
-  // Run MSE Reset Parser State Algorithm.
-  // 3.5.2 Reset Parser State
-  // http://w3c.github.io/media-source/#sourcebuffer-reset-parser-state
-  void ResetParserState();
-
   // Returns a reference to mInitializedDecoders, used by MediaSourceReader
   // to select decoders.
   // TODO: Refactor to a cleaner interface between TrackBuffer and MediaSourceReader.
   const nsTArray<nsRefPtr<SourceBufferDecoder>>& Decoders();
 
-  // Runs MSE range removal algorithm.
-  // http://w3c.github.io/media-source/#sourcebuffer-coded-frame-removal
-  // Implementation is only partial, we can only trim a buffer.
-  // Returns true if data was evicted.
-  // Times are in microseconds.
-  bool RangeRemoval(mozilla::media::Microseconds aStart,
-                    mozilla::media::Microseconds aEnd);
-
-  // Abort any pending appendBuffer by rejecting any pending promises.
-  void AbortAppendData();
-
-  // Return the size used by all decoders managed by this TrackBuffer.
-  int64_t GetSize();
-
   // Return true if we have a partial media segment being appended that is
   // currently not playable.
   bool HasOnlyIncompleteMedia();
+
+  // Return the buffered ranges for given decoder.
+  media::TimeIntervals GetBuffered(SourceBufferDecoder* aDecoder);
 
 #ifdef MOZ_EME
   nsresult SetCDMProxy(CDMProxy* aProxy);
 #endif
 
 #if defined(DEBUG)
-  void Dump(const char* aPath);
+  void Dump(const char* aPath) override;
 #endif
+
+  typedef std::map<SourceBufferDecoder*, media::TimeIntervals> DecoderBufferedMap;
 
 private:
   friend class DecodersToInitialize;
-  ~TrackBuffer();
+  friend class MetadataRecipient;
+  virtual ~TrackBuffer();
 
   // Create a new decoder, set mCurrentDecoder to the new decoder and
   // returns it. The new decoder must be queued using QueueInitializeDecoder
   // for initialization.
   // The decoder is not considered initialized until it is added to
   // mInitializedDecoders.
-  already_AddRefed<SourceBufferDecoder> NewDecoder(int64_t aTimestampOffset /* microseconds */);
+  already_AddRefed<SourceBufferDecoder> NewDecoder(media::TimeUnit aTimestampOffset);
 
   // Helper for AppendData, ensures NotifyDataArrived is called whenever
   // data is appended to the current decoder's SourceBufferResource.
-  bool AppendDataToCurrentResource(LargeDataBuffer* aData,
+  int64_t AppendDataToCurrentResource(MediaByteBuffer* aData,
                                    uint32_t aDuration /* microseconds */);
+  // Queue on the parent's decoder task queue a call to NotifyTimeRangesChanged.
+  void NotifyTimeRangesChanged();
+  // Queue on the parent's decoder task queue a call to NotifyDataRemoved.
+  void NotifyReaderDataRemoved(MediaDecoderReader* aReader);
+
+  typedef MediaPromise<bool, nsresult, /* IsExclusive = */ true> BufferedRangesUpdatedPromise;
+  nsRefPtr<BufferedRangesUpdatedPromise> UpdateBufferedRanges(Interval<int64_t> aByteRange, bool aNotifyParent);
 
   // Queue execution of InitializeDecoder on mTaskQueue.
   bool QueueInitializeDecoder(SourceBufferDecoder* aDecoder);
@@ -165,9 +164,17 @@ private:
   void RemoveDecoder(SourceBufferDecoder* aDecoder);
 
   // Remove all empty decoders from the provided list;
-  void RemoveEmptyDecoders(nsTArray<SourceBufferDecoder*>& aDecoders);
+  void RemoveEmptyDecoders(const nsTArray<SourceBufferDecoder*>& aDecoders);
+
+  void OnMetadataRead(MetadataHolder* aMetadata,
+                      SourceBufferDecoder* aDecoder,
+                      bool aWasEnded);
+
+  void OnMetadataNotRead(ReadMetadataFailureReason aReason,
+                         SourceBufferDecoder* aDecoder);
 
   nsAutoPtr<ContainerParser> mParser;
+  nsRefPtr<MediaByteBuffer> mInputBuffer;
 
   // A task queue using the shared media thread pool.  Used exclusively to
   // initialize (i.e. call ReadMetadata on) decoders as they are created via
@@ -198,11 +205,12 @@ private:
   // AppendData.  Accessed on the main thread only.
   int64_t mLastStartTimestamp;
   Maybe<int64_t> mLastEndTimestamp;
-  void AdjustDecodersTimestampOffset(int32_t aOffset);
+  void AdjustDecodersTimestampOffset(TimeUnit aOffset);
 
-  // The timestamp offset used by our current decoder, in microseconds.
-  int64_t mLastTimestampOffset;
-  int64_t mAdjustedTimestamp;
+  // The timestamp offset used by our current decoder.
+  media::TimeUnit mLastTimestampOffset;
+  media::TimeUnit mTimestampOffset;
+  media::TimeUnit mAdjustedTimestamp;
 
   // True if at least one of our decoders has encrypted content.
   bool mIsWaitingOnCDM;
@@ -216,8 +224,18 @@ private:
   bool mDecoderPerSegment;
   bool mShutdown;
 
-  MediaPromiseHolder<TrackBufferAppendPromise> mInitializationPromise;
+  MediaPromiseHolder<AppendPromise> mInitializationPromise;
+  // Track our request for metadata from the reader.
+  MediaPromiseRequestHolder<MediaDecoderReader::MetadataPromise> mMetadataRequest;
 
+  MediaPromiseHolder<RangeRemovalPromise> mRangeRemovalPromise;
+
+  Interval<int64_t> mLastAppendRange;
+
+  // Protected by Parent's decoder Monitor.
+  media::TimeIntervals mBufferedRanges;
+
+  DecoderBufferedMap mReadersBuffered;
 };
 
 } // namespace mozilla

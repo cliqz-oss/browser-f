@@ -94,7 +94,7 @@ public:
   // We can't compute a proper start time since we won't necessarily
   // have the first frame of the resource available. This does the same
   // as chrome/blink and assumes that we always start at t=0.
-  virtual int64_t ComputeStartTime(const VideoData* aVideo, const AudioData* aAudio) override { return 0; }
+  virtual bool ForceZeroStartTime() const override { return true; }
 
   // Buffering heuristics don't make sense for MSE, because the arrival of data
   // is at least partly controlled by javascript, and javascript does not expect
@@ -112,7 +112,7 @@ public:
   nsresult ResetDecode() override;
 
   // Acquires the decoder monitor, and is thus callable on any thread.
-  nsresult GetBuffered(dom::TimeRanges* aBuffered) override;
+  media::TimeIntervals GetBuffered() override;
 
   already_AddRefed<SourceBufferDecoder> CreateSubDecoder(const nsACString& aType,
                                                          int64_t aTimestampOffset /* microseconds */);
@@ -219,9 +219,10 @@ private:
 
   // Return a decoder from the set available in aTrackDecoders that has data
   // available in the range requested by aTarget.
+  friend class TrackBuffer;
   already_AddRefed<SourceBufferDecoder> SelectDecoder(int64_t aTarget /* microseconds */,
                                                       int64_t aTolerance /* microseconds */,
-                                                      const nsTArray<nsRefPtr<SourceBufferDecoder>>& aTrackDecoders);
+                                                      TrackBuffer* aTrackBuffer);
   bool HaveData(int64_t aTarget, MediaData::Type aType);
   already_AddRefed<SourceBufferDecoder> FirstDecoder(MediaData::Type aType);
 
@@ -240,8 +241,8 @@ private:
   nsRefPtr<TrackBuffer> mAudioTrack;
   nsRefPtr<TrackBuffer> mVideoTrack;
 
-  MediaPromiseConsumerHolder<AudioDataPromise> mAudioRequest;
-  MediaPromiseConsumerHolder<VideoDataPromise> mVideoRequest;
+  MediaPromiseRequestHolder<AudioDataPromise> mAudioRequest;
+  MediaPromiseRequestHolder<VideoDataPromise> mVideoRequest;
 
   MediaPromiseHolder<AudioDataPromise> mAudioPromise;
   MediaPromiseHolder<VideoDataPromise> mVideoPromise;
@@ -261,8 +262,8 @@ private:
   int64_t mLastAudioTime;
   int64_t mLastVideoTime;
 
-  MediaPromiseConsumerHolder<SeekPromise> mAudioSeekRequest;
-  MediaPromiseConsumerHolder<SeekPromise> mVideoSeekRequest;
+  MediaPromiseRequestHolder<SeekPromise> mAudioSeekRequest;
+  MediaPromiseRequestHolder<SeekPromise> mVideoSeekRequest;
   MediaPromiseHolder<SeekPromise> mSeekPromise;
 
   // Temporary seek information while we wait for the data

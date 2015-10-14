@@ -15,8 +15,6 @@
 namespace js {
 namespace jit {
 
-class MDefinition;
-
 static MOZ_CONSTEXPR_VAR Register StackPointer = { Registers::invalid_reg };
 static MOZ_CONSTEXPR_VAR Register FramePointer = { Registers::invalid_reg };
 static MOZ_CONSTEXPR_VAR Register ReturnReg = { Registers::invalid_reg };
@@ -145,6 +143,11 @@ class Operand
 {
   public:
     Operand (const Address&) { MOZ_CRASH();}
+    Operand (const Register) { MOZ_CRASH();}
+    Operand (const FloatRegister) { MOZ_CRASH();}
+    Operand (Register, Imm32 ) { MOZ_CRASH(); }
+    Operand (Register, int32_t ) { MOZ_CRASH(); }
+
 
 };
 
@@ -154,10 +157,6 @@ class MacroAssemblerNone : public Assembler
     MacroAssemblerNone() { MOZ_CRASH(); }
 
     MoveResolver moveResolver_;
-    size_t framePushed_;
-
-    uint32_t framePushed() const { MOZ_CRASH(); }
-    void setFramePushed(uint32_t) { MOZ_CRASH(); }
 
     size_t size() const { MOZ_CRASH(); }
     size_t bytesNeeded() const { MOZ_CRASH(); }
@@ -171,12 +170,6 @@ class MacroAssemblerNone : public Assembler
     void trace(JSTracer*) { MOZ_CRASH(); }
     static void TraceJumpRelocations(JSTracer*, JitCode*, CompactBufferReader&) { MOZ_CRASH(); }
     static void TraceDataRelocations(JSTracer*, JitCode*, CompactBufferReader&) { MOZ_CRASH(); }
-
-    static void FixupNurseryObjects(JSContext*, JitCode*, CompactBufferReader&,
-                                    const ObjectVector&)
-    {
-        MOZ_CRASH();
-    }
 
     static bool SupportsFloatingPoint() { return false; }
     static bool SupportsSimd() { return false; }
@@ -243,8 +236,7 @@ class MacroAssemblerNone : public Assembler
     template <typename T> void Push(T) { MOZ_CRASH(); }
     template <typename T> void pop(T) { MOZ_CRASH(); }
     template <typename T> void Pop(T) { MOZ_CRASH(); }
-    template <typename T> CodeOffsetLabel PushWithPatch(T) { MOZ_CRASH(); }
-    void implicitPop(uint32_t) { MOZ_CRASH(); }
+    template <typename T> CodeOffsetLabel pushWithPatch(T) { MOZ_CRASH(); }
 
     CodeOffsetJump jumpWithPatch(RepatchLabel*) { MOZ_CRASH(); }
     CodeOffsetJump jumpWithPatch(RepatchLabel*, Condition) { MOZ_CRASH(); }
@@ -260,8 +252,6 @@ class MacroAssemblerNone : public Assembler
     template <typename T, typename S> void cmpPtrSet(Condition, T, S, Register) { MOZ_CRASH(); }
     template <typename T, typename S> void cmp32Set(Condition, T, S, Register) { MOZ_CRASH(); }
 
-    void reserveStack(uint32_t) { MOZ_CRASH(); }
-    template <typename T> void freeStack(T) { MOZ_CRASH(); }
     template <typename T, typename S> void add32(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void addPtr(T, S) { MOZ_CRASH(); }
     template <typename T, typename S> void sub32(T, S) { MOZ_CRASH(); }
@@ -473,6 +463,8 @@ class MacroAssemblerNone : public Assembler
     void setPrinter(Sprinter*) { MOZ_CRASH(); }
     Operand ToPayload(Operand base) { MOZ_CRASH(); }
 
+    static const Register getStackPointer() { MOZ_CRASH(); }
+
     // Instrumentation for entering and leaving the profiler.
     void profilerEnterFrame(Register , Register ) { MOZ_CRASH(); }
     void profilerExitFrame() { MOZ_CRASH(); }
@@ -500,8 +492,14 @@ class ABIArgGenerator
     static const Register NonReturn_VolatileReg1;
 };
 
-static inline void PatchJump(CodeLocationJump&, CodeLocationLabel) { MOZ_CRASH(); }
+static inline void
+PatchJump(CodeLocationJump&, CodeLocationLabel, ReprotectCode reprotect = DontReprotect)
+{
+    MOZ_CRASH();
+}
+
 static inline bool GetTempRegForIntArg(uint32_t, uint32_t, Register*) { MOZ_CRASH(); }
+
 static inline
 void PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitRuntime::BackedgeTarget target)
 {

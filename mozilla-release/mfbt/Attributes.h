@@ -283,7 +283,34 @@
 #  define MOZ_TSAN_BLACKLIST /* nothing */
 #endif
 
-#ifdef __cplusplus
+/**
+ * MOZ_ALLOCATOR tells the compiler that the function it marks returns either a
+ * "fresh", "pointer-free" block of memory, or nullptr. "Fresh" means that the
+ * block is not pointed to by any other reachable pointer in the program.
+ * "Pointer-free" means that the block contains no pointers to any valid object
+ * in the program. It may be initialized with other (non-pointer) values.
+ *
+ * Placing this attribute on appropriate functions helps GCC analyze pointer
+ * aliasing more accurately in their callers.
+ *
+ * GCC warns if a caller ignores the value returned by a function marked with
+ * MOZ_ALLOCATOR: it is hard to imagine cases where dropping the value returned
+ * by a function that meets the criteria above would be intentional.
+ *
+ * Place this attribute after the argument list and 'this' qualifiers of a
+ * function definition. For example, write
+ *
+ *   void *my_allocator(size_t) MOZ_ALLOCATOR;
+ *
+ * or
+ *
+ *   void *my_allocator(size_t bytes) MOZ_ALLOCATOR { ... }
+ */
+#if defined(__GNUC__) || defined(__clang__)
+#  define MOZ_ALLOCATOR __attribute__ ((malloc, warn_unused_result))
+#else
+#  define MOZ_ALLOCATOR
+#endif
 
 /**
  * MOZ_WARN_UNUSED_RESULT tells the compiler to emit a warning if a function's
@@ -303,6 +330,8 @@
 #else
 #  define MOZ_WARN_UNUSED_RESULT
 #endif
+
+#ifdef __cplusplus
 
 /*
  * The following macros are attributes that support the static analysis plugin
@@ -386,18 +415,37 @@
  *   conversions.
  * MOZ_NO_ARITHMETIC_EXPR_IN_ARGUMENT: Applies to functions. Makes it a compile
  *   time error to pass arithmetic expressions on variables to the function.
- * MOZ_OWNING_REF: Applies to declarations of pointer types.  This attribute
- *   tells the compiler that the raw pointer is a strong reference, and that
- *   property is somehow enforced by the code.  This can make the compiler
+ * MOZ_OWNING_REF: Applies to declarations of pointers to reference counted
+ *   types.  This attribute tells the compiler that the raw pointer is a strong
+ *   reference, where ownership through methods such as AddRef and Release is
+ *   managed manually.  This can make the compiler ignore these pointers when
+ *   validating the usage of pointers otherwise.
+ *
+ *   Example uses include owned pointers inside of unions, and pointers stored
+ *   in POD types where a using a smart pointer class would make the object
+ *   non-POD.
+ * MOZ_NON_OWNING_REF: Applies to declarations of pointers to reference counted
+ *   types.  This attribute tells the compiler that the raw pointer is a weak
+ *   reference, which is ensured to be valid by a guarantee that the reference
+ *   will be nulled before the pointer becomes invalid.  This can make the compiler
  *   ignore these pointers when validating the usage of pointers otherwise.
- * MOZ_NON_OWNING_REF: Applies to declarations of pointer types.  This attribute
- *   tells the compiler that the raw pointer is a weak reference, and that
- *   property is somehow enforced by the code.  This can make the compiler
- *   ignore these pointers when validating the usage of pointers otherwise.
- * MOZ_UNSAFE_REF: Applies to declarations of pointer types.  This attribute
- *   should be used for non-owning references that can be unsafe, and their
- *   safety needs to be validated through code inspection.  The string argument
- *   passed to this macro documents the safety conditions.
+ *
+ *   Examples include an mOwner pointer, which is nulled by the owning class's
+ *   destructor, and is null-checked before dereferencing.
+ * MOZ_UNSAFE_REF: Applies to declarations of pointers to reference counted types.
+ *   Occasionally there are non-owning references which are valid, but do not take
+ *   the form of a MOZ_NON_OWNING_REF.  Their safety may be dependent on the behaviour
+ *   of API consumers.  The string argument passed to this macro documents the safety
+ *   conditions.  This can make the compiler ignore these pointers when validating
+ *   the usage of pointers elsewhere.
+ *
+ *   Examples include an nsIAtom* member which is known at compile time to point to a
+ *   static atom which is valid throughout the lifetime of the program, or an API which
+ *   stores a pointer, but doesn't take ownership over it, instead requiring the API
+ *   consumer to correctly null the value before it becomes invalid.
+ *
+ *   Use of this annotation is discouraged when a strong reference or one of the above
+ *   two annotations can be used instead.
  * MOZ_NO_ADDREF_RELEASE_ON_RETURN: Applies to function declarations.  Makes it
  *   a compile time error to call AddRef or Release on the return value of a
  *   function.  This is intended to be used with operator->() of our smart
@@ -420,7 +468,7 @@
 #  define MOZ_NO_ARITHMETIC_EXPR_IN_ARGUMENT __attribute__((annotate("moz_no_arith_expr_in_arg")))
 #  define MOZ_OWNING_REF __attribute__((annotate("moz_strong_ref")))
 #  define MOZ_NON_OWNING_REF __attribute__((annotate("moz_weak_ref")))
-#  define MOZ_UNSAFE_REF(reason) __attribute__((annotate("moz_strong_ref")))
+#  define MOZ_UNSAFE_REF(reason) __attribute__((annotate("moz_weak_ref")))
 #  define MOZ_NO_ADDREF_RELEASE_ON_RETURN __attribute__((annotate("moz_no_addref_release_on_return")))
 /*
  * It turns out that clang doesn't like void func() __attribute__ {} without a

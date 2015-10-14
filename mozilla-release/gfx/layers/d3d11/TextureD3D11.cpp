@@ -34,7 +34,7 @@ SurfaceFormatToDXGIFormat(gfx::SurfaceFormat aFormat)
     case SurfaceFormat::R8G8B8X8:
       return DXGI_FORMAT_R8G8B8A8_UNORM;
     case SurfaceFormat::A8:
-      return DXGI_FORMAT_A8_UNORM;
+      return DXGI_FORMAT_R8_UNORM;
     default:
       MOZ_ASSERT(false, "unsupported format");
       return DXGI_FORMAT_UNKNOWN;
@@ -167,7 +167,7 @@ CreateTextureHostD3D11(const SurfaceDescriptor& aDesc,
       NS_WARNING("Unsupported SurfaceDescriptor type");
     }
   }
-  return result;
+  return result.forget();
 }
 
 TextureClientD3D11::TextureClientD3D11(ISurfaceAllocator* aAllocator,
@@ -212,6 +212,22 @@ TextureClientD3D11::~TextureClientD3D11()
 #endif
 }
 
+// static
+TemporaryRef<TextureClientD3D11>
+TextureClientD3D11::Create(ISurfaceAllocator* aAllocator,
+                           gfx::SurfaceFormat aFormat,
+                           TextureFlags aFlags,
+                           ID3D11Texture2D* aTexture,
+                           gfx::IntSize aSize)
+{
+  RefPtr<TextureClientD3D11> texture = new TextureClientD3D11(aAllocator,
+                                                             aFormat,
+                                                             aFlags);
+  texture->mTexture = aTexture;
+  texture->mSize = aSize;
+  return texture.forget();
+}
+
 TemporaryRef<TextureClient>
 TextureClientD3D11::CreateSimilar(TextureFlags aFlags,
                                   TextureAllocationFlags aAllocFlags) const
@@ -223,7 +239,7 @@ TextureClientD3D11::CreateSimilar(TextureFlags aFlags,
     return nullptr;
   }
 
-  return tex;
+  return tex.forget();
 }
 
 void
@@ -431,11 +447,14 @@ TextureClientD3D11::AllocateForSurface(gfx::IntSize aSize, TextureAllocationFlag
     return false;
   }
 
-  ID3D11Device* d3d11device = gfxWindowsPlatform::GetPlatform()->GetD3D11ContentDevice();
+  gfxWindowsPlatform* windowsPlatform = gfxWindowsPlatform::GetPlatform();
+  ID3D11Device* d3d11device = windowsPlatform->GetD3D11ContentDevice();
+  bool haveD3d11Backend = windowsPlatform->GetContentBackend() == BackendType::DIRECT2D1_1;
 
-  if (gfxPrefs::Direct2DUse1_1() && d3d11device) {
+  if (haveD3d11Backend) {
+    MOZ_ASSERT(d3d11device != nullptr);
 
-    CD3D11_TEXTURE2D_DESC newDesc(mFormat == SurfaceFormat::A8 ? DXGI_FORMAT_A8_UNORM : DXGI_FORMAT_B8G8R8A8_UNORM,
+    CD3D11_TEXTURE2D_DESC newDesc(mFormat == SurfaceFormat::A8 ? DXGI_FORMAT_R8_UNORM : DXGI_FORMAT_B8G8R8A8_UNORM,
                                   aSize.width, aSize.height, 1, 1,
                                   D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE);
 
@@ -532,6 +551,39 @@ DXGIYCbCrTextureClient::~DXGIYCbCrTextureClient()
     KeepUntilFullDeallocation(MakeUnique<YCbCrKeepAliveD3D11>(mHoldRefs), true);
   }
   MOZ_COUNT_DTOR(DXGIYCbCrTextureClient);
+}
+
+// static
+TemporaryRef<DXGIYCbCrTextureClient>
+DXGIYCbCrTextureClient::Create(ISurfaceAllocator* aAllocator,
+                               TextureFlags aFlags,
+                               IUnknown* aTextureY,
+                               IUnknown* aTextureCb,
+                               IUnknown* aTextureCr,
+                               HANDLE aHandleY,
+                               HANDLE aHandleCb,
+                               HANDLE aHandleCr,
+                               const gfx::IntSize& aSize,
+                               const gfx::IntSize& aSizeY,
+                               const gfx::IntSize& aSizeCbCr)
+{
+  if (!aHandleY || !aHandleCb || !aHandleCr ||
+      !aTextureY || !aTextureCb || !aTextureCr) {
+    return nullptr;
+  }
+
+  RefPtr<DXGIYCbCrTextureClient> texture =
+    new DXGIYCbCrTextureClient(aAllocator, aFlags);
+  texture->mHandles[0] = aHandleY;
+  texture->mHandles[1] = aHandleCb;
+  texture->mHandles[2] = aHandleCr;
+  texture->mHoldRefs[0] = aTextureY;
+  texture->mHoldRefs[1] = aTextureCb;
+  texture->mHoldRefs[2] = aTextureCr;
+  texture->mSize = aSize;
+  texture->mSizeY = aSizeY;
+  texture->mSizeCbCr = aSizeCbCr;
+  return texture.forget();
 }
 
 bool
@@ -665,9 +717,11 @@ DXGIYCbCrTextureHostD3D11::OpenSharedHandle()
     return false;
   }
 
+  RefPtr<ID3D11Texture2D> textures[3];
+
   HRESULT hr = GetDevice()->OpenSharedResource((HANDLE)mHandles[0],
                                                __uuidof(ID3D11Texture2D),
-                                               (void**)(ID3D11Texture2D**)byRef(mTextures[0]));
+                                               (void**)(ID3D11Texture2D**)byRef(textures[0]));
   if (FAILED(hr)) {
     NS_WARNING("Failed to open shared texture for Y Plane");
     return false;
@@ -675,7 +729,7 @@ DXGIYCbCrTextureHostD3D11::OpenSharedHandle()
 
   hr = GetDevice()->OpenSharedResource((HANDLE)mHandles[1],
                                        __uuidof(ID3D11Texture2D),
-                                       (void**)(ID3D11Texture2D**)byRef(mTextures[1]));
+                                       (void**)(ID3D11Texture2D**)byRef(textures[1]));
   if (FAILED(hr)) {
     NS_WARNING("Failed to open shared texture for Cb Plane");
     return false;
@@ -683,11 +737,15 @@ DXGIYCbCrTextureHostD3D11::OpenSharedHandle()
 
   hr = GetDevice()->OpenSharedResource((HANDLE)mHandles[2],
                                        __uuidof(ID3D11Texture2D),
-                                       (void**)(ID3D11Texture2D**)byRef(mTextures[2]));
+                                       (void**)(ID3D11Texture2D**)byRef(textures[2]));
   if (FAILED(hr)) {
     NS_WARNING("Failed to open shared texture for Cr Plane");
     return false;
   }
+
+  mTextures[0] = textures[0].forget();
+  mTextures[1] = textures[1].forget();
+  mTextures[2] = textures[2].forget();
 
   return true;
 }
@@ -716,6 +774,8 @@ DXGIYCbCrTextureHostD3D11::Lock()
     if (!mTextures[0] && !OpenSharedHandle()) {
       return false;
     }
+
+    MOZ_ASSERT(mTextures[1] && mTextures[2]);
 
     mTextureSources[0] = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor, mTextures[0]);
     mTextureSources[1] = new DataTextureSourceD3D11(SurfaceFormat::A8, mCompositor, mTextures[1]);
@@ -810,7 +870,7 @@ DataTextureSourceD3D11::Update(DataSourceSurface* aSurface,
 
     if (aDestRegion) {
       nsIntRegionRectIterator iter(*aDestRegion);
-      const nsIntRect *iterRect;
+      const IntRect *iterRect;
       while ((iterRect = iter.Next())) {
         D3D11_BOX box;
         box.front = 0;
@@ -884,11 +944,11 @@ DataTextureSourceD3D11::GetTileRect(uint32_t aIndex) const
   return GetTileRectD3D11(aIndex, mSize, mCompositor->GetMaxTextureSize());
 }
 
-nsIntRect
+IntRect
 DataTextureSourceD3D11::GetTileRect()
 {
   IntRect rect = GetTileRect(mCurrentTile);
-  return nsIntRect(rect.x, rect.y, rect.width, rect.height);
+  return IntRect(rect.x, rect.y, rect.width, rect.height);
 }
 
 void
@@ -965,6 +1025,13 @@ SyncObjectD3D11::FinalizeFrame()
   if (!mD3D10Texture && mD3D10SyncedTextures.size()) {
     ID3D10Device* device = gfxWindowsPlatform::GetPlatform()->GetD3D10Device();
 
+    if (!device) {
+      // We've lost our device during the frame, no point in syncing.
+      mD3D10SyncedTextures.clear();
+      gfxCriticalError() << "No device to execute texture syncing on!";
+      return;
+    }
+
     hr = device->OpenSharedResource(mHandle, __uuidof(ID3D10Texture2D), (void**)(ID3D10Texture2D**)byRef(mD3D10Texture));
     
     if (FAILED(hr) || !mD3D10Texture) {
@@ -989,6 +1056,13 @@ SyncObjectD3D11::FinalizeFrame()
 
   if (!mD3D11Texture && mD3D11SyncedTextures.size()) {
     ID3D11Device* device = gfxWindowsPlatform::GetPlatform()->GetD3D11ContentDevice();
+    
+    if (!device) {
+      // We've lost our device during the frame, no point in syncing.
+      mD3D11SyncedTextures.clear();
+      gfxCriticalError() << "No device to execute texture syncing on!";
+      return;
+    }
 
     hr = device->OpenSharedResource(mHandle, __uuidof(ID3D11Texture2D), (void**)(ID3D11Texture2D**)byRef(mD3D11Texture));
     

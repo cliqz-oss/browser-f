@@ -8,8 +8,6 @@
 
 namespace mozilla {
 
-#ifdef PR_LOGGING
-
 PRLogModuleInfo* GetEMELog() {
   static PRLogModuleInfo* log = nullptr;
   if (!log) {
@@ -25,8 +23,6 @@ PRLogModuleInfo* GetEMEVerboseLog() {
   }
   return log;
 }
-
-#endif
 
 static bool
 ContainsOnlyDigits(const nsAString& aString)
@@ -111,6 +107,16 @@ ParseKeySystem(const nsAString& aInputKeySystem,
     }
   }
   return false;
+}
+
+void
+ConstructKeySystem(const nsAString& aKeySystem,
+                   const nsAString& aCDMVersion,
+                   nsAString& aOutKeySystem)
+{
+  aOutKeySystem.Append(aKeySystem);
+  aOutKeySystem.AppendLiteral(".");
+  aOutKeySystem.Append(aCDMVersion);
 }
 
 } // namespace mozilla

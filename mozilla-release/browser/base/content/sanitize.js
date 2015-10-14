@@ -180,6 +180,7 @@ Sanitizer.prototype = {
       clear: function ()
       {
         TelemetryStopwatch.start("FX_SANITIZE_COOKIES");
+        TelemetryStopwatch.start("FX_SANITIZE_COOKIES_2");
 
         var cookieMgr = Components.classes["@mozilla.org/cookiemanager;1"]
                                   .getService(Ci.nsICookieManager);
@@ -199,12 +200,15 @@ Sanitizer.prototype = {
           cookieMgr.removeAll();
         }
 
+        TelemetryStopwatch.finish("FX_SANITIZE_COOKIES_2");
+
         // Clear deviceIds. Done asynchronously (returns before complete).
         let mediaMgr = Components.classes["@mozilla.org/mediaManagerService;1"]
                                  .getService(Ci.nsIMediaManagerService);
         mediaMgr.sanitizeDeviceIds(this.range && this.range[0]);
 
         // Clear plugin data.
+        TelemetryStopwatch.start("FX_SANITIZE_PLUGINS");
         const phInterface = Ci.nsIPluginHost;
         const FLAG_CLEAR_ALL = phInterface.FLAG_CLEAR_ALL;
         let ph = Cc["@mozilla.org/plugin/host;1"].getService(phInterface);
@@ -234,6 +238,7 @@ Sanitizer.prototype = {
           }
         }
 
+        TelemetryStopwatch.finish("FX_SANITIZE_PLUGINS");
         TelemetryStopwatch.finish("FX_SANITIZE_COOKIES");
       },
 
@@ -486,6 +491,11 @@ Sanitizer.prototype = {
                     .getService(Ci.nsISiteSecurityService);
         sss.clearAll();
 
+        // Clear all push notification subscriptions
+        var push = Cc["@mozilla.org/push/NotificationService;1"]
+                    .getService(Ci.nsIPushNotificationService);
+        push.clearAll();
+
         TelemetryStopwatch.finish("FX_SANITIZE_SITESETTINGS");
       },
 
@@ -568,20 +578,6 @@ Sanitizer.prototype = {
         let features = "chrome,all,dialog=no," + this.privateStateForNewWindow;
         let newWindow = existingWindow.openDialog("chrome://browser/content/", "_blank",
                                                   features, defaultArgs);
-#ifdef XP_MACOSX
-        function onFullScreen(e) {
-          newWindow.removeEventListener("fullscreen", onFullScreen);
-          let docEl = newWindow.document.documentElement;
-          let sizemode = docEl.getAttribute("sizemode");
-          if (!newWindow.fullScreen && sizemode == "fullscreen") {
-            docEl.setAttribute("sizemode", "normal");
-            e.preventDefault();
-            e.stopPropagation();
-            return false;
-          }
-        }
-        newWindow.addEventListener("fullscreen", onFullScreen);
-#endif
 
         // Window creation and destruction is asynchronous. We need to wait
         // until all existing windows are fully closed, and the new window is
@@ -595,9 +591,6 @@ Sanitizer.prototype = {
             return;
 
           Services.obs.removeObserver(onWindowOpened, "browser-delayed-startup-finished");
-#ifdef XP_MACOSX
-          newWindow.removeEventListener("fullscreen", onFullScreen);
-#endif
           newWindowOpened = true;
           // If we're the last thing to happen, invoke callback.
           if (numWindowsClosing == 0) {

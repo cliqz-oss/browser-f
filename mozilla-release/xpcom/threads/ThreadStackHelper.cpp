@@ -44,6 +44,7 @@
 
 #include <string.h>
 #include <vector>
+#include <cstdlib>
 
 #ifdef XP_LINUX
 #ifdef ANDROID
@@ -611,6 +612,11 @@ ThreadStackHelper::AppendJSEntry(const volatile StackEntry* aEntry,
       // Only keep the file base name for paths outside the above formats.
       basename = strrchr(filename, '/');
       basename = basename ? basename + 1 : filename;
+      // Look for Windows path separator as well.
+      filename = strrchr(basename, '\\');
+      if (filename) {
+        basename = filename + 1;
+      }
     }
 
     size_t len = PR_snprintf(buffer, sizeof(buffer), "%s:%u", basename, lineno);

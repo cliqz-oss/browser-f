@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -459,19 +460,14 @@ nsPropertiesParser::ParseBuffer(const char16_t* aBuffer,
 
 nsPersistentProperties::nsPersistentProperties()
   : mIn(nullptr)
+  , mTable(&property_HashTableOps, sizeof(PropertyTableEntry), 16)
 {
-  PL_DHashTableInit(&mTable, &property_HashTableOps,
-                    sizeof(PropertyTableEntry), 16);
-
   PL_INIT_ARENA_POOL(&mArena, "PersistentPropertyArena", 2048);
 }
 
 nsPersistentProperties::~nsPersistentProperties()
 {
   PL_FinishArenaPool(&mArena);
-  if (mTable.IsInitialized()) {
-    PL_DHashTableFinish(&mTable);
-  }
 }
 
 nsresult
@@ -567,25 +563,6 @@ nsPersistentProperties::GetStringProperty(const nsACString& aKey,
   return NS_OK;
 }
 
-static PLDHashOperator
-AddElemToArray(PLDHashTable* aTable, PLDHashEntryHdr* aHdr,
-               uint32_t aIndex, void* aArg)
-{
-  nsCOMArray<nsIPropertyElement>* props =
-    static_cast<nsCOMArray<nsIPropertyElement>*>(aArg);
-  PropertyTableEntry* entry =
-    static_cast<PropertyTableEntry*>(aHdr);
-
-  nsPropertyElement* element =
-    new nsPropertyElement(nsDependentCString(entry->mKey),
-                          nsDependentString(entry->mValue));
-
-  props->AppendObject(element);
-
-  return PL_DHASH_NEXT;
-}
-
-
 NS_IMETHODIMP
 nsPersistentProperties::Enumerate(nsISimpleEnumerator** aResult)
 {
@@ -595,9 +572,16 @@ nsPersistentProperties::Enumerate(nsISimpleEnumerator** aResult)
   props.SetCapacity(mTable.EntryCount());
 
   // Step through hash entries populating a transient array
-  uint32_t n = PL_DHashTableEnumerate(&mTable, AddElemToArray, (void*)&props);
-  if (n < mTable.EntryCount()) {
-    return NS_ERROR_OUT_OF_MEMORY;
+  for (auto iter = mTable.Iter(); !iter.Done(); iter.Next()) {
+    auto entry = static_cast<PropertyTableEntry*>(iter.Get());
+
+    nsRefPtr<nsPropertyElement> element =
+      new nsPropertyElement(nsDependentCString(entry->mKey),
+                            nsDependentString(entry->mValue));
+
+    if (!props.AppendObject(element)) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
   }
 
   return NS_NewArrayEnumerator(aResult, props);

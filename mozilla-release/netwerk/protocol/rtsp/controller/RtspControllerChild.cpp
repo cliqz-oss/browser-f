@@ -14,11 +14,11 @@
 #include "mozilla/ipc/InputStreamUtils.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "nsStringStream.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 PRLogModuleInfo* gRtspChildLog = nullptr;
 #undef LOG
-#define LOG(args) PR_LOG(gRtspChildLog, PR_LOG_DEBUG, args)
+#define LOG(args) MOZ_LOG(gRtspChildLog, mozilla::LogLevel::Debug, args)
 
 const uint32_t kRtspTotalTracks = 2;
 const unsigned long kRtspCommandDelayMs = 200;
@@ -70,10 +70,8 @@ RtspControllerChild::RtspControllerChild(nsIChannel *channel)
   , mPlayTimer(nullptr)
   , mPauseTimer(nullptr)
 {
-#if defined(PR_LOGGING)
   if (!gRtspChildLog)
     gRtspChildLog = PR_NewLogModule("nsRtspChild");
-#endif
   AddIPDLReference();
   gNeckoChild->SendPRtspControllerConstructor(this);
 }

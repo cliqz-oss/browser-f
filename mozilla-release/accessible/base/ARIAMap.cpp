@@ -98,6 +98,16 @@ static nsRoleMapEntry sWAIRoleMaps[] =
     kNoReqStates
     // eARIAPressed is auto applied on any button
   },
+  { // cell
+    &nsGkAtoms::cell,
+    roles::CELL,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    eTableCell,
+    kNoReqStates
+  },
   { // checkbox
     &nsGkAtoms::checkbox,
     roles::CHECKBUTTON,
@@ -478,7 +488,7 @@ static nsRoleMapEntry sWAIRoleMaps[] =
   },
   { // radiogroup
     &nsGkAtoms::radiogroup,
-    roles::GROUPING,
+    roles::RADIO_GROUP,
     kUseMapRole,
     eNoValue,
     eNoAction,
@@ -628,6 +638,17 @@ static nsRoleMapEntry sWAIRoleMaps[] =
     eSwitchAction,
     eNoLiveAttr,
     kGenericAccType,
+    kNoReqStates,
+    eARIASelectable
+  },
+  { // table
+    &nsGkAtoms::table,
+    roles::TABLE,
+    kUseMapRole,
+    eNoValue,
+    eNoAction,
+    eNoLiveAttr,
+    eTable,
     kNoReqStates,
     eARIASelectable
   },

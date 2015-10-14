@@ -4,7 +4,7 @@
 
 "use strict";
 
-let { Cu } = require("chrome");
+let { Cu, components } = require("chrome");
 let DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 let Services = require("Services");
 let promise = require("promise");
@@ -14,12 +14,6 @@ let events = require("sdk/event/core");
 let object = require("sdk/util/object");
 
 exports.emit = events.emit;
-
-// Waiting for promise.done() to be added, see bug 851321
-function promiseDone(err) {
-  console.error(err);
-  return promise.reject(err);
-}
 
 /**
  * Types: named marshallers/demarshallers.
@@ -39,8 +33,8 @@ function promiseDone(err) {
 let types = Object.create(null);
 exports.types = types;
 
-let registeredTypes = new Map();
-let registeredLifetimes = new Map();
+let registeredTypes = types.registeredTypes = new Map();
+let registeredLifetimes = types.registeredLifetimes = new Map();
 
 /**
  * Return the type object associated with a given typestring.
@@ -114,6 +108,11 @@ types.getType = function(type) {
 function identityWrite(v) {
   if (v === undefined) {
     throw Error("undefined passed where a value is required");
+  }
+  // This has to handle iterator->array conversion because arrays of
+  // primitive types pass through here.
+  if (v && typeof (v) === "object" && Symbol.iterator in v) {
+    return [...v];
   }
   return v;
 }
@@ -196,8 +195,8 @@ types.addArrayType = function(subtype) {
   }
   return types.addType(name, {
     category: "array",
-    read: (v, ctx) => [subtype.read(i, ctx) for (i of v)],
-    write: (v, ctx) => [subtype.write(i, ctx) for (i of v)]
+    read: (v, ctx) => [...v].map(i => subtype.read(i, ctx)),
+    write: (v, ctx) => [...v].map(i => subtype.write(i, ctx))
   });
 };
 
@@ -568,7 +567,7 @@ function findPlaceholders(template, constructor, path=[], placeholders=[]) {
   }
 
   if (template instanceof constructor) {
-    placeholders.push({ placeholder: template, path: [p for (p of path)] });
+    placeholders.push({ placeholder: template, path: [...path] });
     return placeholders;
   }
 
@@ -776,17 +775,25 @@ let Pool = Class({
   },
 
   // true if the given actor ID exists in the pool.
-  has: function(actorID) this.__poolMap && this._poolMap.has(actorID),
+  has: function(actorID) {
+    return this.__poolMap && this._poolMap.has(actorID);
+  },
 
   // The actor for a given actor id stored in this pool
-  actor: function(actorID) this.__poolMap ? this._poolMap.get(actorID) : null,
+  actor: function(actorID) {
+    return this.__poolMap ? this._poolMap.get(actorID) : null;
+  },
 
   // Same as actor, should update debugger connection to use 'actor'
   // and then remove this.
-  get: function(actorID) this.__poolMap ? this._poolMap.get(actorID) : null,
+  get: function(actorID) {
+    return this.__poolMap ? this._poolMap.get(actorID) : null;
+  },
 
   // True if this pool has no children.
-  isEmpty: function() !this.__poolMap || this._poolMap.size == 0,
+  isEmpty: function() {
+    return !this.__poolMap || this._poolMap.size == 0;
+  },
 
   /**
    * Destroy this item, removing it from a parent if it has one,
@@ -1165,7 +1172,8 @@ let Front = Class({
     this._requests.push({
       deferred,
       to: to || this.actorID,
-      type
+      type,
+      stack: components.stack,
     });
     this.send(packet);
     return deferred.promise;
@@ -1202,20 +1210,22 @@ let Front = Class({
       throw err;
     }
 
-    let { deferred } = this._requests.shift();
-    if (packet.error) {
-      // "Protocol error" is here to avoid TBPL heuristics. See also
-      // https://mxr.mozilla.org/webtools-central/source/tbpl/php/inc/GeneralErrorFilter.php
-      let message;
-      if (packet.error && packet.message) {
-        message = "Protocol error (" + packet.error + "): " + packet.message;
+    let { deferred, stack } = this._requests.shift();
+    Cu.callFunctionWithAsyncStack(() => {
+      if (packet.error) {
+        // "Protocol error" is here to avoid TBPL heuristics. See also
+        // https://mxr.mozilla.org/webtools-central/source/tbpl/php/inc/GeneralErrorFilter.php
+        let message;
+        if (packet.error && packet.message) {
+          message = "Protocol error (" + packet.error + "): " + packet.message;
+        } else {
+          message = packet.error;
+        }
+        deferred.reject(message);
       } else {
-        message = packet.error;
+        deferred.resolve(packet);
       }
-      deferred.reject(message);
-    } else {
-      deferred.resolve(packet);
-    }
+    }, stack, "DevTools RDP");
   }
 });
 exports.Front = Front;
@@ -1329,7 +1339,7 @@ let frontProto = function(proto) {
         }
 
         return ret;
-      }).then(null, promiseDone);
+      });
     }
 
     // Release methods should call the destroy function on return.

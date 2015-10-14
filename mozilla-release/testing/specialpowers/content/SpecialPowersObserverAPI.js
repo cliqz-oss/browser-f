@@ -318,7 +318,7 @@ SpecialPowersObserverAPI.prototype = {
 
         switch (msg.op) {
           case "add":
-            Services.perms.addFromPrincipal(principal, msg.type, msg.permission);
+            Services.perms.addFromPrincipal(principal, msg.type, msg.permission, msg.expireType, msg.expireTime);
             break;
           case "remove":
             Services.perms.removeFromPrincipal(principal, msg.type);
@@ -375,6 +375,33 @@ SpecialPowersObserverAPI.prototype = {
               scope.UserCustomizations._debug = aMessage.json.value;
               return;
             }
+          case "inject-app":
+            {
+              let aAppId = aMessage.json.appId;
+              let aApp   = aMessage.json.app;
+
+              let keys = Object.keys(Webapps.DOMApplicationRegistry.webapps);
+              let exists = keys.indexOf(aAppId) !== -1;
+              if (exists) {
+                return false;
+              }
+
+              Webapps.DOMApplicationRegistry.webapps[aAppId] = aApp;
+              return true;
+            }
+          case "reject-app":
+            {
+              let aAppId = aMessage.json.appId;
+
+              let keys = Object.keys(Webapps.DOMApplicationRegistry.webapps);
+              let exists = keys.indexOf(aAppId) !== -1;
+              if (!exists) {
+                return false;
+              }
+
+              delete Webapps.DOMApplicationRegistry.webapps[aAppId];
+              return true;
+            }
           default:
             throw new SpecialPowersError("Invalid operation for SPWebAppsService");
         }
@@ -382,11 +409,15 @@ SpecialPowersObserverAPI.prototype = {
       }
 
       case "SPObserverService": {
+        let topic = aMessage.json.observerTopic;
         switch (aMessage.json.op) {
           case "notify":
-            let topic = aMessage.json.observerTopic;
             let data = aMessage.json.observerData
             Services.obs.notifyObservers(null, topic, data);
+            break;
+          case "add":
+            this._registerObservers._self = this;
+            this._registerObservers._add(topic);
             break;
           default:
             throw new SpecialPowersError("Invalid operation for SPObserverervice");
@@ -470,7 +501,7 @@ SpecialPowersObserverAPI.prototype = {
         let msg = aMessage.data;
         let op = msg.op;
 
-        if (op != 'clear' && op != 'getUsage') {
+        if (op != 'clear' && op != 'getUsage' && op != 'reset') {
           throw new SpecialPowersError('Invalid operation for SPQuotaManager');
         }
 
@@ -484,6 +515,8 @@ SpecialPowersObserverAPI.prototype = {
           } else {
             qm.clearStoragesForURI(uri);
           }
+        } else if (op == 'reset') {
+          qm.reset();
         }
 
         // We always use the getUsageForURI callback even if we're clearing
@@ -505,6 +538,17 @@ SpecialPowersObserverAPI.prototype = {
         } else {
           qm.getUsageForURI(uri, callback);
         }
+
+        return undefined;	// See comment at the beginning of this function.
+      }
+
+      case "SPPeriodicServiceWorkerUpdates": {
+        // We could just dispatch a generic idle-daily notification here, but
+        // this is better since it avoids invoking other idle daily observers
+        // at the cost of hard-coding the usage of PeriodicServiceWorkerUpdater.
+        Cc["@mozilla.org/service-worker-periodic-updater;1"].
+          getService(Ci.nsIObserver).
+          observe(null, "idle-daily", "Caller:SpecialPowers");
 
         return undefined;	// See comment at the beginning of this function.
       }

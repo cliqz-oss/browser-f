@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -185,7 +186,14 @@ TextInputProcessor::BeginInputTransactionInternal(
 
   // This instance has finished preparing to link to the dispatcher.  Therefore,
   // let's forget the old dispatcher and purpose.
-  UnlinkFromTextEventDispatcher();
+  if (mDispatcher) {
+    mDispatcher->EndInputTransaction(this);
+    if (NS_WARN_IF(mDispatcher)) {
+      // Forcibly initialize the members if we failed to end the input
+      // transaction.
+      UnlinkFromTextEventDispatcher();
+    }
+  }
 
   if (aForTests) {
     rv = dispatcher->BeginInputTransactionForTests(this);

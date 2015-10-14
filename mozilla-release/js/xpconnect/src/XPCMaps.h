@@ -32,10 +32,13 @@ class JSObject2WrappedJSMap
 public:
     static JSObject2WrappedJSMap* newMap(int length) {
         JSObject2WrappedJSMap* map = new JSObject2WrappedJSMap();
-        if (map && map->mTable.init(length))
-            return map;
-        delete map;
-        return nullptr;
+        if (!map->mTable.init(length)) {
+            // This is a decent estimate of the size of the hash table's
+            // entry storage. The |2| is because on average the capacity is
+            // twice the requested length.
+            NS_ABORT_OOM(length * 2 * sizeof(Map::Entry));
+        }
+        return map;
     }
 
     inline nsXPCWrappedJS* Find(JSObject* Obj) {
@@ -145,8 +148,9 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::Iterator Iter() const { return PLDHashTable::Iterator(mTable); }
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
@@ -204,8 +208,8 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::Iterator Iter() const { return PLDHashTable::Iterator(mTable); }
 
     ~IID2WrappedJSClassMap();
 private:
@@ -258,8 +262,8 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
@@ -314,8 +318,8 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     // ClassInfo2NativeSetMap holds pointers to *some* XPCNativeSets.
     // So we don't want to count those XPCNativeSets, because they are better
@@ -371,8 +375,9 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::Iterator Iter() const { return PLDHashTable::Iterator(mTable); }
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
@@ -441,8 +446,9 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::Iterator Iter() const { return PLDHashTable::Iterator(mTable); }
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     size_t SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf);
 
@@ -504,8 +510,6 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
 
     ~IID2ThisTranslatorMap();
 private:
@@ -540,8 +544,8 @@ public:
     bool GetNewOrUsed(uint32_t flags, char* name, XPCNativeScriptableInfo* si);
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     ~XPCNativeScriptableSharedMap();
 private:
@@ -556,6 +560,8 @@ private:
 class XPCWrappedNativeProtoMap
 {
 public:
+    typedef PLDHashEntryStub Entry;
+
     static XPCWrappedNativeProtoMap* newMap(int length);
 
     inline XPCWrappedNativeProto* Add(XPCWrappedNativeProto* proto)
@@ -578,8 +584,9 @@ public:
     }
 
     inline uint32_t Count() { return mTable->EntryCount(); }
-    inline uint32_t Enumerate(PLDHashEnumerator f, void* arg)
-        {return PL_DHashTableEnumerate(mTable, f, arg);}
+
+    PLDHashTable::Iterator Iter() const { return PLDHashTable::Iterator(mTable); }
+    PLDHashTable::RemovingIterator RemovingIter() { return PLDHashTable::RemovingIterator(mTable); }
 
     ~XPCWrappedNativeProtoMap();
 private:
@@ -599,10 +606,13 @@ class JSObject2JSObjectMap
 public:
     static JSObject2JSObjectMap* newMap(int length) {
         JSObject2JSObjectMap* map = new JSObject2JSObjectMap();
-        if (map && map->mTable.init(length))
-            return map;
-        delete map;
-        return nullptr;
+        if (!map->mTable.init(length)) {
+            // This is a decent estimate of the size of the hash table's
+            // entry storage. The |2| is because on average the capacity is
+            // twice the requested length.
+            NS_ABORT_OOM(length * 2 * sizeof(Map::Entry));
+        }
+        return map;
     }
 
     inline JSObject* Find(JSObject* key) {

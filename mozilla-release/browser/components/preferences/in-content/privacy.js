@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+Components.utils.import("resource://gre/modules/AppConstants.jsm");
+
 var gPrivacyPane = {
 
   /**
@@ -103,6 +105,8 @@ var gPrivacyPane = {
                      gPrivacyPane.showCookies);
     setEventListener("clearDataSettings", "command",
                      gPrivacyPane.showClearPrivateDataSettings);
+
+    document.getElementById("searchesSuggestion").hidden = !AppConstants.NIGHTLY_BUILD;
   },
 
   // HISTORY MODE
@@ -358,12 +362,12 @@ var gPrivacyPane = {
    * Update browser.urlbar.autocomplete.enabled when a
    * browser.urlbar.suggest.* pref is changed from the ui.
    */
-  writeSuggestionPref: function () {
+  writeSuggestionPref() {
     let getVal = (aPref) => {
       return document.getElementById("browser.urlbar.suggest." + aPref).value;
     }
     // autocomplete.enabled is true if any of the suggestions is true
-    let enabled = ["history", "bookmark", "openpage"].map(getVal).some(v => v);
+    let enabled = ["history", "bookmark", "openpage", "searches"].map(getVal).some(v => v);
     Services.prefs.setBoolPref("browser.urlbar.autocomplete.enabled", enabled);
   },
 

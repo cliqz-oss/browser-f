@@ -4,16 +4,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "WebGLContext.h"
-#include "WebGLContextUtils.h"
-#include "WebGLBuffer.h"
-#include "WebGLShader.h"
-#include "WebGLProgram.h"
-#include "WebGLFramebuffer.h"
-#include "WebGLRenderbuffer.h"
-#include "WebGLTexture.h"
-#include "WebGLVertexArray.h"
+
 #include "GLContext.h"
 #include "mozilla/dom/ToJSValue.h"
+#include "mozilla/Preferences.h"
+#include "nsString.h"
+#include "WebGLBuffer.h"
+#include "WebGLContextUtils.h"
+#include "WebGLFramebuffer.h"
+#include "WebGLProgram.h"
+#include "WebGLRenderbuffer.h"
+#include "WebGLShader.h"
+#include "WebGLTexture.h"
+#include "WebGLVertexArray.h"
 
 using namespace mozilla;
 using namespace dom;
@@ -59,15 +62,15 @@ WebGLContext::Enable(GLenum cap)
 }
 
 static JS::Value
-StringValue(JSContext* cx, const char* chars, ErrorResult& rv)
+StringValue(JSContext* cx, const nsAString& str, ErrorResult& rv)
 {
-    JSString* str = JS_NewStringCopyZ(cx, chars);
-    if (!str) {
+    JSString* jsStr = JS_NewUCStringCopyN(cx, str.BeginReading(), str.Length());
+    if (!jsStr) {
         rv.Throw(NS_ERROR_OUT_OF_MEMORY);
         return JS::NullValue();
     }
 
-    return JS::StringValue(str);
+    return JS::StringValue(jsStr);
 }
 
 bool
@@ -150,18 +153,15 @@ WebGLContext::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
         } else if (pname >= LOCAL_GL_DRAW_BUFFER0 &&
                    pname < GLenum(LOCAL_GL_DRAW_BUFFER0 + mGLMaxDrawBuffers))
         {
-            if (mBoundDrawFramebuffer) {
-                GLint iv = 0;
-                gl->fGetIntegerv(pname, &iv);
-                return JS::Int32Value(iv);
-            }
-
             GLint iv = 0;
             gl->fGetIntegerv(pname, &iv);
 
-            if (iv == GLint(LOCAL_GL_COLOR_ATTACHMENT0 + pname - LOCAL_GL_DRAW_BUFFER0)) {
+            if (mBoundDrawFramebuffer)
+                return JS::Int32Value(iv);
+
+            const GLint index = (pname - LOCAL_GL_DRAW_BUFFER0);
+            if (iv == LOCAL_GL_COLOR_ATTACHMENT0 + index)
                 return JS::Int32Value(LOCAL_GL_BACK);
-            }
 
             return JS::Int32Value(LOCAL_GL_NONE);
         }
@@ -169,31 +169,86 @@ WebGLContext::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
 
     if (IsExtensionEnabled(WebGLExtensionID::OES_vertex_array_object)) {
         if (pname == LOCAL_GL_VERTEX_ARRAY_BINDING) {
-            if (mBoundVertexArray == mDefaultVertexArray){
-                return WebGLObjectAsJSValue(cx, (WebGLVertexArray *) nullptr, rv);
-            }
-
-            return WebGLObjectAsJSValue(cx, mBoundVertexArray.get(), rv);
+            WebGLVertexArray* vao =
+                (mBoundVertexArray != mDefaultVertexArray) ? mBoundVertexArray.get() : nullptr;
+            return WebGLObjectAsJSValue(cx, vao, rv);
         }
     }
 
-    if (IsWebGL2()) {
+    if (IsExtensionEnabled(WebGLExtensionID::EXT_disjoint_timer_query)) {
+        if (pname == LOCAL_GL_TIMESTAMP_EXT) {
+            GLuint64 iv = 0;
+            gl->fGetInteger64v(pname, (GLint64*) &iv);
+            // TODO: JS doesn't support 64-bit integers. Be lossy and
+            // cast to double (53 bits)
+            return JS::NumberValue(static_cast<double>(iv));
+        } else if (pname == LOCAL_GL_GPU_DISJOINT_EXT) {
+            // When disjoint isn't supported, leave as false.
+            realGLboolean disjoint = LOCAL_GL_FALSE;
+            if (gl->IsExtensionSupported(gl::GLContext::EXT_disjoint_timer_query)) {
+                gl->fGetBooleanv(pname, &disjoint);
+            }
+            return JS::BooleanValue(bool(disjoint));
+        }
+    }
+
+    // Privileged string params exposed by WEBGL_debug_renderer_info.
+    // The privilege check is done in WebGLContext::IsExtensionSupported.
+    // So here we just have to check that the extension is enabled.
+    if (IsExtensionEnabled(WebGLExtensionID::WEBGL_debug_renderer_info)) {
         switch (pname) {
-            case LOCAL_GL_MAX_SAMPLES:
-            case LOCAL_GL_MAX_UNIFORM_BLOCK_SIZE:
-            case LOCAL_GL_MAX_VERTEX_UNIFORM_COMPONENTS: {
-                GLint val;
-                gl->fGetIntegerv(pname, &val);
-                return JS::NumberValue(uint32_t(val));
-            }
+        case UNMASKED_VENDOR_WEBGL:
+        case UNMASKED_RENDERER_WEBGL:
+            {
+                const char* overridePref = nullptr;
+                GLenum driverEnum = LOCAL_GL_NONE;
 
-            case LOCAL_GL_TEXTURE_BINDING_3D: {
-                return WebGLObjectAsJSValue(cx, mBound3DTextures[mActiveTexture].get(), rv);
-            }
+                switch (pname) {
+                case UNMASKED_RENDERER_WEBGL:
+                    overridePref = "webgl.renderer-string-override";
+                    driverEnum = LOCAL_GL_RENDERER;
+                    break;
+                case UNMASKED_VENDOR_WEBGL:
+                    overridePref = "webgl.vendor-string-override";
+                    driverEnum = LOCAL_GL_VENDOR;
+                    break;
+                default:
+                    MOZ_CRASH("bad `pname`");
+                }
 
-            // DRAW_FRAMEBUFFER_BINDING is the same as FRAMEBUFFER_BINDING.
-            case LOCAL_GL_READ_FRAMEBUFFER_BINDING:
-                return WebGLObjectAsJSValue(cx, mBoundReadFramebuffer.get(), rv);
+                bool hasRetVal = false;
+
+                nsAutoString ret;
+                if (overridePref) {
+                    nsresult res = Preferences::GetString(overridePref, &ret);
+                    if (NS_SUCCEEDED(res) && ret.Length() > 0)
+                        hasRetVal = true;
+                }
+
+                if (!hasRetVal) {
+                    const char* chars = reinterpret_cast<const char*>(gl->fGetString(driverEnum));
+                    ret = NS_ConvertASCIItoUTF16(chars);
+                    hasRetVal = true;
+                }
+
+                return StringValue(cx, ret, rv);
+            }
+        }
+    }
+
+    if (IsExtensionEnabled(WebGLExtensionID::OES_standard_derivatives)) {
+        if (pname == LOCAL_GL_FRAGMENT_SHADER_DERIVATIVE_HINT) {
+            GLint i = 0;
+            gl->fGetIntegerv(pname, &i);
+            return JS::Int32Value(i);
+        }
+    }
+
+    if (IsExtensionEnabled(WebGLExtensionID::EXT_texture_filter_anisotropic)) {
+        if (pname == LOCAL_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT) {
+            GLfloat f = 0.f;
+            gl->fGetFloatv(pname, &f);
+            return JS::NumberValue(f);
         }
     }
 
@@ -202,41 +257,12 @@ WebGLContext::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
         // String params
         //
         case LOCAL_GL_VENDOR:
-            return StringValue(cx, "Mozilla", rv);
         case LOCAL_GL_RENDERER:
             return StringValue(cx, "Mozilla", rv);
-        case LOCAL_GL_VERSION: {
-            const char* version = 0;
-
-            if (IsWebGL2()) {
-                version = "WebGL 2.0";
-            } else {
-                version = "WebGL 1.0";
-            }
-
-            MOZ_ASSERT(version != 0);
-            return StringValue(cx, version, rv);
-        }
+        case LOCAL_GL_VERSION:
+            return StringValue(cx, "WebGL 1.0", rv);
         case LOCAL_GL_SHADING_LANGUAGE_VERSION:
             return StringValue(cx, "WebGL GLSL ES 1.0", rv);
-
-            // Privileged string params exposed by WEBGL_debug_renderer_info:
-        case UNMASKED_VENDOR_WEBGL:
-        case UNMASKED_RENDERER_WEBGL: {
-            // The privilege check is done in WebGLContext::IsExtensionSupported.
-            // So here we just have to check that the extension is enabled.
-            if (!IsExtensionEnabled(WebGLExtensionID::WEBGL_debug_renderer_info)) {
-                break;
-            }
-            GLenum glstringname = LOCAL_GL_NONE;
-            if (pname == UNMASKED_VENDOR_WEBGL) {
-                glstringname = LOCAL_GL_VENDOR;
-            } else if (pname == UNMASKED_RENDERER_WEBGL) {
-                glstringname = LOCAL_GL_RENDERER;
-            }
-            const char* string = reinterpret_cast<const char*>(gl->fGetString(glstringname));
-            return StringValue(cx, string, rv);
-        }
 
         ////////////////////////////////
         // Single-value params
@@ -348,15 +374,6 @@ WebGLContext::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
             }
             return JS::Int32Value(i);
         }
-        case LOCAL_GL_FRAGMENT_SHADER_DERIVATIVE_HINT: {
-            if (IsExtensionEnabled(WebGLExtensionID::OES_standard_derivatives)) {
-                GLint i = 0;
-                gl->fGetIntegerv(pname, &i);
-                return JS::Int32Value(i);
-            } else {
-                break;
-            }
-        }
         case LOCAL_GL_MAX_TEXTURE_SIZE:
             return JS::Int32Value(mGLMaxTextureSize);
 
@@ -385,36 +402,22 @@ WebGLContext::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
             }
             return JS::ObjectOrNullValue(obj);
         }
-        case LOCAL_GL_MAX_TRANSFORM_FEEDBACK_SEPARATE_ATTRIBS: {
-            if (!IsWebGL2()) {
-                break;
-            }
-            return JS::Int32Value(mGLMaxTransformFeedbackSeparateAttribs);
-        }
 
         // unsigned int. here we may have to return very large values like 2^32-1 that can't be represented as
         // javascript integer values. We just return them as doubles and javascript doesn't care.
         case LOCAL_GL_STENCIL_BACK_VALUE_MASK:
+            return JS::DoubleValue(mStencilValueMaskBack); // pass as FP value to allow large values such as 2^32-1.
+
         case LOCAL_GL_STENCIL_BACK_WRITEMASK:
+            return JS::DoubleValue(mStencilWriteMaskBack);
+
         case LOCAL_GL_STENCIL_VALUE_MASK:
-        case LOCAL_GL_STENCIL_WRITEMASK: {
-            GLint i = 0; // the GL api (glGetIntegerv) only does signed ints
-            gl->fGetIntegerv(pname, &i);
-            GLuint i_unsigned(i); // this is where -1 becomes 2^32-1
-            double i_double(i_unsigned); // pass as FP value to allow large values such as 2^32-1.
-            return JS::DoubleValue(i_double);
-        }
+            return JS::DoubleValue(mStencilValueMaskFront);
+
+        case LOCAL_GL_STENCIL_WRITEMASK:
+            return JS::DoubleValue(mStencilWriteMaskFront);
 
         // float
-        case LOCAL_GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT: {
-            if (IsExtensionEnabled(WebGLExtensionID::EXT_texture_filter_anisotropic)) {
-                GLfloat f = 0.f;
-                gl->fGetFloatv(pname, &f);
-                return JS::DoubleValue(f);
-            } else {
-                break;
-            }
-        }
         case LOCAL_GL_DEPTH_CLEAR_VALUE:
         case LOCAL_GL_LINE_WIDTH:
         case LOCAL_GL_POLYGON_OFFSET_FACTOR:
@@ -516,13 +519,6 @@ WebGLContext::GetParameter(JSContext* cx, GLenum pname, ErrorResult& rv)
 
         case LOCAL_GL_ARRAY_BUFFER_BINDING: {
             return WebGLObjectAsJSValue(cx, mBoundArrayBuffer.get(), rv);
-        }
-
-        case LOCAL_GL_TRANSFORM_FEEDBACK_BUFFER_BINDING: {
-            if (!IsWebGL2()) {
-                break;
-            }
-            return WebGLObjectAsJSValue(cx, mBoundTransformFeedbackBuffer.get(), rv);
         }
 
         case LOCAL_GL_ELEMENT_ARRAY_BUFFER_BINDING: {

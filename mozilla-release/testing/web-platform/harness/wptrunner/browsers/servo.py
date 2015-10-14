@@ -26,11 +26,11 @@ def check_args(**kwargs):
 
 def browser_kwargs(**kwargs):
     return {"binary": kwargs["binary"],
-            "debug_args": kwargs["debug_args"],
-            "interactive": kwargs["interactive"]}
+            "debug_info": kwargs["debug_info"]}
 
 
-def executor_kwargs(test_type, server_config, cache_manager, **kwargs):
+def executor_kwargs(test_type, server_config, cache_manager, run_info_data,
+                    **kwargs):
     rv = base_executor_kwargs(test_type, server_config,
                               cache_manager, **kwargs)
     rv["pause_after_test"] = kwargs["pause_after_test"]
@@ -39,17 +39,16 @@ def executor_kwargs(test_type, server_config, cache_manager, **kwargs):
 def env_options():
     return {"host": "localhost",
             "bind_hostname": "true",
-            "testharnessreport": "testharnessreport-servo.js"}
+            "testharnessreport": "testharnessreport-servo.js",
+            "supports_debugger": True}
 
 
 class ServoBrowser(NullBrowser):
-    def __init__(self, logger, binary, debug_args=None, interactive=False):
+    def __init__(self, logger, binary, debug_info=None):
         NullBrowser.__init__(self, logger)
         self.binary = binary
-        self.debug_args = debug_args
-        self.interactive = interactive
+        self.debug_info = debug_info
 
     def executor_browser(self):
         return ExecutorBrowser, {"binary": self.binary,
-                                 "debug_args": self.debug_args,
-                                 "interactive": self.interactive}
+                                 "debug_info": self.debug_info}

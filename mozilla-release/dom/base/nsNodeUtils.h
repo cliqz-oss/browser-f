@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -12,13 +13,11 @@
 #include "nsCOMArray.h"
 
 struct CharacterDataChangeInfo;
-class nsIVariant;
-class nsIDOMNode;
 template<class E> class nsCOMArray;
 class nsCycleCollectionTraversalCallback;
 namespace mozilla {
 namespace dom {
-class AnimationPlayer;
+class Animation;
 }
 }
 
@@ -127,9 +126,9 @@ public:
     }
   }
 
-  static void AnimationAdded(mozilla::dom::AnimationPlayer* aPlayer);
-  static void AnimationChanged(mozilla::dom::AnimationPlayer* aPlayer);
-  static void AnimationRemoved(mozilla::dom::AnimationPlayer* aPlayer);
+  static void AnimationAdded(mozilla::dom::Animation* aAnimation);
+  static void AnimationChanged(mozilla::dom::Animation* aAnimation);
+  static void AnimationRemoved(mozilla::dom::Animation* aAnimation);
 
   /**
    * To be called when reference count of aNode drops to zero.
@@ -161,7 +160,7 @@ public:
                         nsINode **aResult)
   {
     return CloneAndAdopt(aNode, true, aDeep, aNewNodeInfoManager,
-                         JS::NullPtr(), aNodesWithProperties, nullptr, aResult);
+                         nullptr, aNodesWithProperties, nullptr, aResult);
   }
 
   /**
@@ -170,7 +169,7 @@ public:
   static nsresult Clone(nsINode *aNode, bool aDeep, nsINode **aResult)
   {
     nsCOMArray<nsINode> dummyNodeWithProperties;
-    return CloneAndAdopt(aNode, true, aDeep, nullptr, JS::NullPtr(),
+    return CloneAndAdopt(aNode, true, aDeep, nullptr, nullptr,
                          dummyNodeWithProperties, aNode->GetParent(), aResult);
   }
 

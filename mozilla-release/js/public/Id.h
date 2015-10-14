@@ -141,9 +141,9 @@ JSID_TO_GCTHING(jsid id)
 {
     void* thing = (void*)(JSID_BITS(id) & ~(size_t)JSID_TYPE_MASK);
     if (JSID_IS_STRING(id))
-        return JS::GCCellPtr(thing, JSTRACE_STRING);
+        return JS::GCCellPtr(thing, JS::TraceKind::String);
     MOZ_ASSERT(JSID_IS_SYMBOL(id));
-    return JS::GCCellPtr(thing, JSTRACE_SYMBOL);
+    return JS::GCCellPtr(thing, JS::TraceKind::Symbol);
 }
 
 static MOZ_ALWAYS_INLINE bool
@@ -175,6 +175,21 @@ template <> struct GCMethods<jsid>
     static void postBarrier(jsid* idp) {}
     static void relocate(jsid* idp) {}
 };
+
+// If the jsid is a GC pointer type, convert to that type and call |f| with
+// the pointer. If the jsid is not a GC type, calls F::defaultValue.
+template <typename F, typename... Args>
+auto
+DispatchIdTyped(F f, jsid& id, Args&&... args)
+  -> decltype(f(static_cast<JSString*>(nullptr), mozilla::Forward<Args>(args)...))
+{
+    if (JSID_IS_STRING(id))
+        return f(JSID_TO_STRING(id), mozilla::Forward<Args>(args)...);
+    if (JSID_IS_SYMBOL(id))
+        return f(JSID_TO_SYMBOL(id), mozilla::Forward<Args>(args)...);
+    MOZ_ASSERT(!JSID_IS_GCTHING(id));
+    return F::defaultValue(id);
+}
 
 #undef id
 

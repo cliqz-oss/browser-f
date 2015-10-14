@@ -1,11 +1,10 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var expect = chai.expect;
-
 describe("loop.Dispatcher", function () {
   "use strict";
 
+  var expect = chai.expect;
   var sharedActions = loop.shared.actions;
   var dispatcher, sandbox;
 
@@ -24,7 +23,7 @@ describe("loop.Dispatcher", function () {
 
       dispatcher.register(object, ["getWindowData"]);
 
-      expect(dispatcher._eventData["getWindowData"][0]).eql(object);
+      expect(dispatcher._eventData.getWindowData[0]).eql(object);
     });
 
     it("should register multiple store against an action name", function() {
@@ -34,8 +33,8 @@ describe("loop.Dispatcher", function () {
       dispatcher.register(object1, ["getWindowData"]);
       dispatcher.register(object2, ["getWindowData"]);
 
-      expect(dispatcher._eventData["getWindowData"][0]).eql(object1);
-      expect(dispatcher._eventData["getWindowData"][1]).eql(object2);
+      expect(dispatcher._eventData.getWindowData[0]).eql(object1);
+      expect(dispatcher._eventData.getWindowData[1]).eql(object2);
     });
   });
 

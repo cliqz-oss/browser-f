@@ -266,8 +266,10 @@ WebGLContext::ValidateDataRanges(WebGLintptr readOffset, WebGLintptr writeOffset
     MOZ_ASSERT((CheckedInt<WebGLsizeiptr>(writeOffset) + size).isValid());
 
     bool separate = (readOffset + size < writeOffset || writeOffset + size < readOffset);
-    if (!separate)
-        ErrorInvalidValue("%s: ranges [readOffset, readOffset + size) and [writeOffset, writeOffset + size) overlap");
+    if (!separate) {
+        ErrorInvalidValue("%s: ranges [readOffset, readOffset + size) and [writeOffset, "
+                          "writeOffset + size) overlap", info);
+    }
 
     return separate;
 }
@@ -1753,6 +1755,7 @@ WebGLContext::InitAndValidateGL()
     mBound2DTextures.Clear();
     mBoundCubeMapTextures.Clear();
     mBound3DTextures.Clear();
+    mBoundSamplers.Clear();
 
     mBoundArrayBuffer = nullptr;
     mBoundTransformFeedbackBuffer = nullptr;
@@ -1796,6 +1799,7 @@ WebGLContext::InitAndValidateGL()
     mBound2DTextures.SetLength(mGLMaxTextureUnits);
     mBoundCubeMapTextures.SetLength(mGLMaxTextureUnits);
     mBound3DTextures.SetLength(mGLMaxTextureUnits);
+    mBoundSamplers.SetLength(mGLMaxTextureUnits);
 
     if (MinCapabilityMode()) {
         mGLMaxTextureSize = MINVALUE_GL_MAX_TEXTURE_SIZE;
@@ -1948,6 +1952,21 @@ WebGLContext::InitAndValidateGL()
     mDefaultVertexArray = WebGLVertexArray::Create(this);
     mDefaultVertexArray->mAttribs.SetLength(mGLMaxVertexAttribs);
     mBoundVertexArray = mDefaultVertexArray;
+
+    // OpenGL core profiles remove the default VAO object from version
+    // 4.0.0. We create a default VAO for all core profiles,
+    // regardless of version.
+    //
+    // GL Spec 4.0.0:
+    // (https://www.opengl.org/registry/doc/glspec40.core.20100311.pdf)
+    // in Section E.2.2 "Removed Features", pg 397: "[...] The default
+    // vertex array object (the name zero) is also deprecated. [...]"
+
+    if (gl->IsCoreProfile()) {
+        MakeContextCurrent();
+        mDefaultVertexArray->GenVertexArray();
+        mDefaultVertexArray->BindVertexArray();
+    }
 
     if (mLoseContextOnMemoryPressure)
         mContextObserver->RegisterMemoryPressureEvent();

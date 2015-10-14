@@ -24,6 +24,7 @@
  * object behavior and, e.g., allows custom slow layout.
  */
 
+struct JSAtomState;
 struct JSFreeOp;
 struct JSFunctionSpec;
 
@@ -31,7 +32,6 @@ namespace js {
 
 struct Class;
 class FreeOp;
-class PropertyName;
 class Shape;
 
 // This is equal to JSFunction::class_.  Use it in places where you don't want
@@ -42,7 +42,9 @@ extern JS_FRIEND_DATA(const js::Class* const) FunctionClassPtr;
 
 namespace JS {
 
-class AutoIdVector;
+template <typename T>
+class AutoVectorRooter;
+typedef AutoVectorRooter<jsid> AutoIdVector;
 
 /*
  * Per ES6, the [[DefineOwnProperty]] internal method has three different
@@ -140,6 +142,8 @@ class ObjectOpResult
     JS_PUBLIC_API(bool) failCantDeleteWindowElement();
     JS_PUBLIC_API(bool) failCantDeleteWindowNamedProperty();
     JS_PUBLIC_API(bool) failCantPreventExtensions();
+    JS_PUBLIC_API(bool) failNoNamedSetter();
+    JS_PUBLIC_API(bool) failNoIndexedSetter();
 
     uint32_t failureCode() const {
         MOZ_ASSERT(!ok());
@@ -214,14 +218,16 @@ class ObjectOpResult
 
 // JSClass operation signatures.
 
-// Add or get a property named by id in obj.  Note the jsid id type -- id may
+// Get a property named by id in obj.  Note the jsid id type -- id may
 // be a string (Unicode property identifier) or an int (element index).  The
 // *vp out parameter, on success, is the new property value after the action.
 typedef bool
 (* JSGetterOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                JS::MutableHandleValue vp);
 
-typedef JSGetterOp JSAddPropertyOp;
+// Add a property named by id to obj.
+typedef bool
+(* JSAddPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue v);
 
 // Set a property named by id in obj, treating the assignment as strict
 // mode code if strict is true. Note the jsid id type -- id may be a string
@@ -249,19 +255,20 @@ typedef bool
 (* JSDeletePropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                        JS::ObjectOpResult& result);
 
-// The type of ObjectOps::enumerate. This callback overrides a portion of SpiderMonkey's default
-// [[Enumerate]] internal method. When an ordinary object is enumerated, that object and each object
-// on its prototype chain is tested for an enumerate op, and those ops are called in order.
-// The properties each op adds to the 'properties' vector are added to the set of values the
-// for-in loop will iterate over. All of this is nonstandard.
+// The type of ObjectOps::enumerate. This callback overrides a portion of
+// SpiderMonkey's default [[Enumerate]] internal method. When an ordinary object
+// is enumerated, that object and each object on its prototype chain is tested
+// for an enumerate op, and those ops are called in order. The properties each
+// op adds to the 'properties' vector are added to the set of values the for-in
+// loop will iterate over. All of this is nonstandard.
 //
-// An object is "enumerated" when it's the target of a for-in loop or JS_Enumerate().
-// All other property inspection, including Object.keys(obj), goes through [[OwnKeys]].
-//
-// The callback's job is to populate 'properties' with all property keys that the for-in loop
-// should visit.
+// An object is "enumerated" when it's the target of a for-in loop or
+// JS_Enumerate(). The callback's job is to populate 'properties' with the
+// object's property keys. If `enumerableOnly` is true, the callback should only
+// add enumerable properties.
 typedef bool
-(* JSNewEnumerateOp)(JSContext* cx, JS::HandleObject obj, JS::AutoIdVector& properties);
+(* JSNewEnumerateOp)(JSContext* cx, JS::HandleObject obj, JS::AutoIdVector& properties,
+                     bool enumerableOnly);
 
 // The old-style JSClass.enumerate op should define all lazy properties not
 // yet reflected in obj.
@@ -279,6 +286,18 @@ typedef bool
 typedef bool
 (* JSResolveOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id,
                 bool* resolvedp);
+
+// A class with a resolve hook can optionally have a mayResolve hook. This hook
+// must have no side effects and must return true for a given id if the resolve
+// hook may resolve this id. This is useful when we're doing a "pure" lookup: if
+// mayResolve returns false, we know we don't have to call the effectful resolve
+// hook.
+//
+// maybeObj, if non-null, is the object on which we're doing the lookup. This
+// can be nullptr: during JIT compilation we sometimes know the Class but not
+// the object.
+typedef bool
+(* JSMayResolveOp)(const JSAtomState& names, jsid id, JSObject* maybeObj);
 
 // Convert obj to the given type, returning true with the resulting value in
 // *vp on success, and returning false on error or exception.
@@ -388,7 +407,7 @@ class JS_FRIEND_API(ElementAdder)
 
     GetBehavior getBehavior() const { return getBehavior_; }
 
-    void append(JSContext* cx, JS::HandleValue v);
+    bool append(JSContext* cx, JS::HandleValue v);
     void appendHole();
 };
 
@@ -419,6 +438,7 @@ typedef void
     JSSetterOp          setProperty;                                          \
     JSEnumerateOp       enumerate;                                            \
     JSResolveOp         resolve;                                              \
+    JSMayResolveOp      mayResolve;                                           \
     JSConvertOp         convert;                                              \
     FinalizeOpType      finalize;                                             \
     JSNative            call;                                                 \
@@ -437,21 +457,27 @@ const size_t JSCLASS_CACHED_PROTO_WIDTH = 6;
 
 struct ClassSpec
 {
-    ClassObjectCreationOp createConstructor;
-    ClassObjectCreationOp createPrototype;
-    const JSFunctionSpec* constructorFunctions;
-    const JSPropertySpec* constructorProperties;
-    const JSFunctionSpec* prototypeFunctions;
-    const JSPropertySpec* prototypeProperties;
-    FinishClassInitOp finishInit;
+    // All properties except flags should be accessed through accessor.
+    ClassObjectCreationOp createConstructor_;
+    ClassObjectCreationOp createPrototype_;
+    const JSFunctionSpec* constructorFunctions_;
+    const JSPropertySpec* constructorProperties_;
+    const JSFunctionSpec* prototypeFunctions_;
+    const JSPropertySpec* prototypeProperties_;
+    FinishClassInitOp finishInit_;
     uintptr_t flags;
 
     static const size_t ParentKeyWidth = JSCLASS_CACHED_PROTO_WIDTH;
 
     static const uintptr_t ParentKeyMask = (1 << ParentKeyWidth) - 1;
     static const uintptr_t DontDefineConstructor = 1 << ParentKeyWidth;
+    static const uintptr_t IsDelegated = 1 << (ParentKeyWidth + 1);
 
-    bool defined() const { return !!createConstructor; }
+    bool defined() const { return !!createConstructor_; }
+
+    bool delegated() const {
+        return (flags & IsDelegated);
+    }
 
     bool dependent() const {
         MOZ_ASSERT(defined());
@@ -466,6 +492,47 @@ struct ClassSpec
     bool shouldDefineConstructor() const {
         MOZ_ASSERT(defined());
         return !(flags & DontDefineConstructor);
+    }
+
+    const ClassSpec* delegatedClassSpec() const {
+        MOZ_ASSERT(delegated());
+        return reinterpret_cast<ClassSpec*>(createConstructor_);
+    }
+
+    ClassObjectCreationOp createConstructorHook() const {
+        if (delegated())
+            return delegatedClassSpec()->createConstructorHook();
+        return createConstructor_;
+    }
+    ClassObjectCreationOp createPrototypeHook() const {
+        if (delegated())
+            return delegatedClassSpec()->createPrototypeHook();
+        return createPrototype_;
+    }
+    const JSFunctionSpec* constructorFunctions() const {
+        if (delegated())
+            return delegatedClassSpec()->constructorFunctions();
+        return constructorFunctions_;
+    }
+    const JSPropertySpec* constructorProperties() const {
+        if (delegated())
+            return delegatedClassSpec()->constructorProperties();
+        return constructorProperties_;
+    }
+    const JSFunctionSpec* prototypeFunctions() const {
+        if (delegated())
+            return delegatedClassSpec()->prototypeFunctions();
+        return prototypeFunctions_;
+    }
+    const JSPropertySpec* prototypeProperties() const {
+        if (delegated())
+            return delegatedClassSpec()->prototypeProperties();
+        return prototypeProperties_;
+    }
+    FinishClassInitOp finishInitHook() const {
+        if (delegated())
+            return delegatedClassSpec()->finishInitHook();
+        return finishInit_;
     }
 };
 
@@ -506,6 +573,10 @@ struct ClassExtension
      */
     JSObjectMovedOp objectMovedOp;
 };
+
+inline ClassObjectCreationOp DELEGATED_CLASSSPEC(const ClassSpec* spec) {
+    return reinterpret_cast<ClassObjectCreationOp>(const_cast<ClassSpec*>(spec));
+}
 
 #define JS_NULL_CLASS_SPEC  {nullptr,nullptr,nullptr,nullptr,nullptr,nullptr,nullptr}
 #define JS_NULL_CLASS_EXT   {nullptr,nullptr,false,nullptr,nullptr}
@@ -574,7 +645,7 @@ struct JSClass {
 
 #define JSCLASS_IS_PROXY                (1<<(JSCLASS_HIGH_FLAGS_SHIFT+4))
 
-#define JSCLASS_FINALIZE_FROM_NURSERY   (1<<(JSCLASS_HIGH_FLAGS_SHIFT+5))
+#define JSCLASS_SKIP_NURSERY_FINALIZE   (1<<(JSCLASS_HIGH_FLAGS_SHIFT+5))
 
 // Reserved for embeddings.
 #define JSCLASS_USERBIT2                (1<<(JSCLASS_HIGH_FLAGS_SHIFT+6))
@@ -598,8 +669,8 @@ struct JSClass {
 // JSCLASS_GLOBAL_APPLICATION_SLOTS is the number of slots reserved at
 // the beginning of every global object's slots for use by the
 // application.
-#define JSCLASS_GLOBAL_APPLICATION_SLOTS 4
-#define JSCLASS_GLOBAL_SLOT_COUNT      (JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 3 + 31)
+#define JSCLASS_GLOBAL_APPLICATION_SLOTS 5
+#define JSCLASS_GLOBAL_SLOT_COUNT      (JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 3 + 30)
 #define JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(n)                                    \
     (JSCLASS_IS_GLOBAL | JSCLASS_HAS_RESERVED_SLOTS(JSCLASS_GLOBAL_SLOT_COUNT + (n)))
 #define JSCLASS_GLOBAL_FLAGS                                                  \
@@ -686,6 +757,8 @@ static_assert(offsetof(JSClass, setProperty) == offsetof(Class, setProperty),
 static_assert(offsetof(JSClass, enumerate) == offsetof(Class, enumerate),
               "Class and JSClass must be consistent");
 static_assert(offsetof(JSClass, resolve) == offsetof(Class, resolve),
+              "Class and JSClass must be consistent");
+static_assert(offsetof(JSClass, mayResolve) == offsetof(Class, mayResolve),
               "Class and JSClass must be consistent");
 static_assert(offsetof(JSClass, convert) == offsetof(Class, convert),
               "Class and JSClass must be consistent");

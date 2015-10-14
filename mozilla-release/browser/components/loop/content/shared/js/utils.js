@@ -2,12 +2,50 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
+/* global Components */
 
 var loop = loop || {};
 loop.shared = loop.shared || {};
-loop.shared.utils = (function(mozL10n) {
+var inChrome = typeof Components != "undefined" && "utils" in Components;
+
+(function() {
   "use strict";
+
+  /**
+   * Root object, by default set to window if we're not in chrome code.
+   * @type {DOMWindow|Object}
+   */
+  var rootObject = inChrome ? {} : window;
+  /**
+   * Root navigator, by default set to navigator if we're not in chrome code.
+   * @type {Navigator|Object}
+   */
+  var rootNavigator = inChrome ? {} : navigator;
+
+  /**
+   * Sets new root objects.  This is useful for testing native DOM events, and also
+   * so we can easily stub items like navigator.mediaDevices.
+   * can fake them. In beforeEach(), loop.shared.utils.setRootObjects is used to
+   * substitute fake objects, and in afterEach(), the real window object is
+   * replaced.
+   *
+   * @param {Object} windowObj The fake window object, undefined to use window.
+   * @param {Object} navigatorObj The fake navigator object, undefined to use navigator.
+   */
+  function setRootObjects(windowObj, navigatorObj) {
+    rootObject = windowObj || window;
+    rootNavigator = navigatorObj || navigator;
+  }
+
+  var mozL10n;
+  if (inChrome) {
+    this.EXPORTED_SYMBOLS = ["utils"];
+    mozL10n = { get: function() {
+      throw new Error("mozL10n.get not availabled from chrome!");
+    }};
+  } else {
+    mozL10n = document.mozL10n || navigator.mozL10n;
+  }
 
   /**
    * Call types used for determining if a call is audio/video or audio-only.
@@ -36,11 +74,24 @@ loop.shared.utils = (function(mozL10n) {
 
   var FAILURE_DETAILS = {
     MEDIA_DENIED: "reason-media-denied",
+    NO_MEDIA: "reason-no-media",
     UNABLE_TO_PUBLISH_MEDIA: "unable-to-publish-media",
+    USER_UNAVAILABLE: "reason-user-unavailable",
     COULD_NOT_CONNECT: "reason-could-not-connect",
     NETWORK_DISCONNECTED: "reason-network-disconnected",
     EXPIRED_OR_INVALID: "reason-expired-or-invalid",
     UNKNOWN: "reason-unknown"
+  };
+
+  var ROOM_INFO_FAILURES = {
+    // There's no data available from the server.
+    NO_DATA: "no_data",
+    // WebCrypto is unsupported in this browser.
+    WEB_CRYPTO_UNSUPPORTED: "web_crypto_unsupported",
+    // The room is missing the crypto key information.
+    NO_CRYPTO_KEY: "no_crypto_key",
+    // Decryption failed.
+    DECRYPT_FAILED: "decrypt_failed"
   };
 
   var STREAM_PROPERTIES = {
@@ -86,8 +137,8 @@ loop.shared.utils = (function(mozL10n) {
   }
 
   function isChrome(platform) {
-    return platform.toLowerCase().indexOf('chrome') > -1 ||
-           platform.toLowerCase().indexOf('chromium') > -1;
+    return platform.toLowerCase().indexOf("chrome") > -1 ||
+           platform.toLowerCase().indexOf("chromium") > -1;
   }
 
   function isFirefox(platform) {
@@ -104,8 +155,8 @@ loop.shared.utils = (function(mozL10n) {
   }
 
   function isOpera(platform) {
-    return platform.toLowerCase().indexOf('opera') > -1 ||
-           platform.toLowerCase().indexOf('opr') > -1;
+    return platform.toLowerCase().indexOf("opera") > -1 ||
+           platform.toLowerCase().indexOf("opr") > -1;
   }
 
   /**
@@ -141,7 +192,7 @@ loop.shared.utils = (function(mozL10n) {
    *                                `false`.
    * @return {String} The platform we're currently running on, in lower-case.
    */
-  var getOS = _.memoize(function(platform, withVersion) {
+  var getOS = function(platform, withVersion) {
     if (!platform) {
       if ("oscpu" in window.navigator) {
         // See https://developer.mozilla.org/en-US/docs/Web/API/Navigator/oscpu
@@ -178,10 +229,7 @@ loop.shared.utils = (function(mozL10n) {
     }
 
     return platform.trim();
-  }, function(platform, withVersion) {
-    // Cache the return values with the following key.
-    return (platform + "") + (withVersion + "");
-  });
+  };
 
   /**
    * Helper to get the Operating System version.
@@ -194,7 +242,7 @@ loop.shared.utils = (function(mozL10n) {
    * @return {String} The current version of the platform we're currently running
    *                  on.
    */
-  var getOSVersion = _.memoize(function(platform) {
+  var getOSVersion = function(platform) {
     var os = getOS(platform, true);
     var digitsRE = /\s([0-9.]+)/;
 
@@ -238,7 +286,63 @@ loop.shared.utils = (function(mozL10n) {
     }
 
     return { major: Infinity, minor: 0 };
-  });
+  };
+
+  /**
+   * Helper to get the current short platform string, based on the return value
+   * of `getOS`.
+   * Possible return values are 'mac', 'win' or 'other'.
+   *
+   * @param  {String} [os] Optional string for the OS, used in tests only.
+   * @return {String} 'mac', 'win' or 'other'.
+   */
+  var getPlatform = function(os) {
+    os = getOS(os);
+    var platform = "other";
+    if (os.indexOf("mac") > -1) {
+      platform = "mac";
+    } else if (os.indexOf("win") > -1) {
+      platform = "win";
+    }
+    return platform;
+  };
+
+  /**
+   * Determines if the user has any audio devices installed.
+   *
+   * @param  {Function} callback Called with a boolean which is true if there
+   *                             are audio devices present.
+   */
+  function hasAudioOrVideoDevices(callback) {
+    // mediaDevices is the official API for the spec.
+    // Older versions of FF had mediaDevices but not enumerateDevices.
+    if ("mediaDevices" in rootNavigator &&
+        "enumerateDevices" in rootNavigator.mediaDevices) {
+      rootNavigator.mediaDevices.enumerateDevices().then(function(result) {
+        function checkForInput(device) {
+          return device.kind === "audioinput" || device.kind === "videoinput";
+        }
+
+        callback(result.some(checkForInput));
+      }).catch(function() {
+        callback(false);
+      });
+    // MediaStreamTrack is the older version of the API, implemented originally
+    // by Google Chrome.
+    } else if ("MediaStreamTrack" in rootObject &&
+               "getSources" in rootObject.MediaStreamTrack) {
+      rootObject.MediaStreamTrack.getSources(function(result) {
+        function checkForInput(device) {
+          return device.kind === "audio" || device.kind === "video";
+        }
+
+        callback(result.some(checkForInput));
+      });
+    } else {
+      // We don't know, so assume true.
+      callback(true);
+    }
+  }
 
   /**
    * Helper to allow getting some of the location data in a way that's compatible
@@ -252,30 +356,98 @@ loop.shared.utils = (function(mozL10n) {
   }
 
   /**
+   * Formats a url for display purposes. This includes converting the
+   * domain to punycode, and then decoding the url.
+   *
+   * @param {String} url The url to format.
+   * @return {Object}    An object containing the hostname and full location.
+   */
+  function formatURL(url) {
+    // We're using new URL to pass this through the browser's ACE/punycode
+    // processing system. If the browser considers a url to need to be
+    // punycode encoded for it to be displayed, then new URL will do that for
+    // us. This saves us needing our own punycode library.
+    var urlObject;
+    try {
+      urlObject = new URL(url);
+    } catch (ex) {
+      console.error("Error occurred whilst parsing URL:", ex);
+      return null;
+    }
+
+    // Finally, ensure we look good.
+    return {
+      hostname: urlObject.hostname,
+      location: decodeURI(urlObject.href)
+    };
+  }
+
+  /**
    * Generates and opens a mailto: url with call URL information prefilled.
    * Note: This only works for Desktop.
    *
-   * @param  {String} callUrl   The call URL.
-   * @param  {String} recipient The recipient email address (optional).
+   * @param {String} callUrl              The call URL.
+   * @param {String} [recipient]          The recipient email address (optional).
+   * @param {String} [contextDescription] The context description (optional).
+   * @param {String} [from]               The area from which this function is called.
    */
-  function composeCallUrlEmail(callUrl, recipient) {
-    if (typeof navigator.mozLoop === "undefined") {
+  function composeCallUrlEmail(callUrl, recipient, contextDescription, from) {
+    var mozLoop = navigator.mozLoop;
+    if (typeof mozLoop === "undefined") {
       console.warn("composeCallUrlEmail isn't available for Loop standalone.");
       return;
     }
-    navigator.mozLoop.composeEmail(
-      mozL10n.get("share_email_subject5", {
-        clientShortname2: mozL10n.get("clientShortname2")
-      }),
-      mozL10n.get("share_email_body5", {
+
+    var subject, body;
+    var brandShortname = mozL10n.get("brandShortname");
+    var clientShortname2 = mozL10n.get("clientShortname2");
+    var clientSuperShortname = mozL10n.get("clientSuperShortname");
+    var learnMoreUrl = mozLoop.getLoopPref("learnMoreUrl");
+
+    if (contextDescription) {
+      subject = mozL10n.get("share_email_subject_context", {
+        clientShortname2: clientShortname2,
+        title: contextDescription
+      });
+      body = mozL10n.get("share_email_body_context", {
         callUrl: callUrl,
-        brandShortname: mozL10n.get("brandShortname"),
-        clientShortname2: mozL10n.get("clientShortname2"),
-        clientSuperShortname: mozL10n.get("clientSuperShortname"),
-        learnMoreUrl: navigator.mozLoop.getLoopPref("learnMoreUrl")
-      }).replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"),
+        brandShortname: brandShortname,
+        clientShortname2: clientShortname2,
+        clientSuperShortname: clientSuperShortname,
+        learnMoreUrl: learnMoreUrl,
+        title: contextDescription
+      });
+    } else {
+      subject = mozL10n.get("share_email_subject5", {
+        clientShortname2: clientShortname2
+      });
+      body = mozL10n.get("share_email_body5", {
+        callUrl: callUrl,
+        brandShortname: brandShortname,
+        clientShortname2: clientShortname2,
+        clientSuperShortname: clientSuperShortname,
+        learnMoreUrl: learnMoreUrl
+      });
+    }
+
+    mozLoop.composeEmail(
+      subject,
+      body.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n"),
       recipient
     );
+
+    var bucket = mozLoop.SHARING_ROOM_URL["EMAIL_FROM_" + (from || "").toUpperCase()];
+    if (typeof bucket === "undefined") {
+      console.error("No URL sharing type bucket found for '" + from + "'");
+      return;
+    }
+    mozLoop.telemetryAddValue("LOOP_SHARING_ROOM_URL", bucket);
+  }
+
+  // We can alias `subarray` to `slice` when the latter is not available, because
+  // they're semantically identical.
+  if (!Uint8Array.prototype.slice) {
+    Uint8Array.prototype.slice = Uint8Array.prototype.subarray;
   }
 
   /**
@@ -500,27 +672,99 @@ loop.shared.utils = (function(mozL10n) {
     return result;
   }
 
-  return {
+  /**
+   * Get the difference after comparing two different objects. It compares property
+   * names and their respective values if necessary.
+   * This function does _not_ recurse into object values to keep this functions'
+   * complexity predictable to O(2).
+   *
+   * @param  {Object} a Object number 1, the comparator.
+   * @param  {Object} b Object number 2, the comparison.
+   * @return {Object}   The diff output, which is itself an object structured as:
+   *                    {
+   *                      updated: [prop1, prop6],
+   *                      added: [prop2],
+   *                      removed: [prop3]
+   *                    }
+   */
+  function objectDiff(a, b) {
+    var propsA = a ? Object.getOwnPropertyNames(a) : [];
+    var propsB = b ? Object.getOwnPropertyNames(b) : [];
+    var diff = {
+      updated: [],
+      added: [],
+      removed: []
+    };
+
+    var prop;
+    for (var i = 0, lA = propsA.length; i < lA; ++i) {
+      prop = propsA[i];
+      if (propsB.indexOf(prop) == -1) {
+        diff.removed.push(prop);
+      } else if (a[prop] !== b[prop]) {
+        diff.updated.push(prop);
+      }
+    }
+
+    for (var j = 0, lB = propsB.length; j < lB; ++j) {
+      prop = propsB[j];
+      if (propsA.indexOf(prop) == -1) {
+        diff.added.push(prop);
+      }
+    }
+
+    return diff;
+  }
+
+  /**
+   * When comparing two object, you sometimes want to ignore falsy values when
+   * they're not persisted on the server, for example.
+   * This function removes all the empty/ falsy properties from the target object.
+   *
+   * @param  {Object} obj Target object to strip the falsy properties from
+   * @return {Object}
+   */
+  function stripFalsyValues(obj) {
+    var props = Object.getOwnPropertyNames(obj);
+    var prop;
+    for (var i = props.length; i >= 0; --i) {
+      prop = props[i];
+      // If the value of the object property evaluates to |false|, delete it.
+      if (!obj[prop]) {
+        delete obj[prop];
+      }
+    }
+    return obj;
+  }
+
+  this.utils = {
     CALL_TYPES: CALL_TYPES,
     FAILURE_DETAILS: FAILURE_DETAILS,
     REST_ERRNOS: REST_ERRNOS,
     WEBSOCKET_REASONS: WEBSOCKET_REASONS,
     STREAM_PROPERTIES: STREAM_PROPERTIES,
     SCREEN_SHARE_STATES: SCREEN_SHARE_STATES,
+    ROOM_INFO_FAILURES: ROOM_INFO_FAILURES,
+    setRootObjects: setRootObjects,
     composeCallUrlEmail: composeCallUrlEmail,
     formatDate: formatDate,
+    formatURL: formatURL,
     getBoolPreference: getBoolPreference,
     getOS: getOS,
     getOSVersion: getOSVersion,
+    getPlatform: getPlatform,
     isChrome: isChrome,
     isFirefox: isFirefox,
     isFirefoxOS: isFirefoxOS,
     isOpera: isOpera,
     getUnsupportedPlatform: getUnsupportedPlatform,
+    hasAudioOrVideoDevices: hasAudioOrVideoDevices,
     locationData: locationData,
     atob: atob,
     btoa: btoa,
     strToUint8Array: strToUint8Array,
-    Uint8ArrayToStr: Uint8ArrayToStr
+    Uint8ArrayToStr: Uint8ArrayToStr,
+    objectDiff: objectDiff,
+    stripFalsyValues: stripFalsyValues
   };
-})(document.mozL10n || navigator.mozL10n);
+}).call(inChrome ? this : loop.shared);

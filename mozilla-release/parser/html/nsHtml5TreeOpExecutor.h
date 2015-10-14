@@ -25,8 +25,6 @@
 #include "mozilla/net/ReferrerPolicy.h"
 
 class nsHtml5Parser;
-class nsHtml5TreeBuilder;
-class nsHtml5Tokenizer;
 class nsHtml5StreamParser;
 class nsIContent;
 class nsIDocument;
@@ -70,9 +68,8 @@ class nsHtml5TreeOpExecutor final : public nsHtml5DocumentBuilder,
     nsCOMPtr<nsIURI> mSpeculationBaseURI;
 
     /**
-     * Need to keep track of whether the referrer policy was already set.
+     * Speculative referrer policy
      */
-    bool             mSpeculationReferrerPolicyWasSet;
     ReferrerPolicy   mSpeculationReferrerPolicy;
 
     nsCOMPtr<nsIURI> mViewSourceBaseURI;

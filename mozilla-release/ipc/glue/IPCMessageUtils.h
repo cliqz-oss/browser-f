@@ -12,6 +12,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/TimeStamp.h"
 #ifdef XP_WIN
 #include "mozilla/TimeStamp_windows.h"
@@ -22,6 +23,7 @@
 #include <stdint.h>
 
 #include "nsID.h"
+#include "nsIWidget.h"
 #include "nsMemory.h"
 #include "nsString.h"
 #include "nsTArray.h"
@@ -84,6 +86,35 @@ struct SerializedStructuredCloneBuffer
 
   uint64_t* data;
   size_t dataLength;
+};
+
+struct OwningSerializedStructuredCloneBuffer : public SerializedStructuredCloneBuffer
+{
+  OwningSerializedStructuredCloneBuffer()
+  {}
+
+  OwningSerializedStructuredCloneBuffer(const OwningSerializedStructuredCloneBuffer&) = delete;
+
+  explicit OwningSerializedStructuredCloneBuffer(const JSAutoStructuredCloneBuffer& aOther)
+   : SerializedStructuredCloneBuffer(aOther)
+  {}
+
+  ~OwningSerializedStructuredCloneBuffer()
+  {
+    if (data) {
+      js_free(data);
+    }
+  }
+
+  OwningSerializedStructuredCloneBuffer&
+  operator=(const JSAutoStructuredCloneBuffer& aOther)
+  {
+    SerializedStructuredCloneBuffer::operator=(aOther);
+    return *this;
+  }
+
+  OwningSerializedStructuredCloneBuffer&
+  operator=(const OwningSerializedStructuredCloneBuffer& aOther) = delete;
 };
 
 } // namespace mozilla
@@ -483,19 +514,19 @@ struct ParamTraits<FallibleTArray<E> >
         return false;
       }
 
-      E* elements = aResult->AppendElements(length);
+      E* elements = aResult->AppendElements(length, mozilla::fallible);
       if (!elements) {
         return false;
       }
 
       memcpy(elements, outdata, pickledLength);
     } else {
-      if (!aResult->SetCapacity(length)) {
+      if (!aResult->SetCapacity(length, mozilla::fallible)) {
         return false;
       }
 
       for (uint32_t index = 0; index < length; index++) {
-        E* element = aResult->AppendElement();
+        E* element = aResult->AppendElement(mozilla::fallible);
         MOZ_ASSERT(element);
         if (!ReadParam(aMsg, aIter, element)) {
           return false;
@@ -740,6 +771,72 @@ struct ParamTraits<mozilla::SerializedStructuredCloneBuffer>
   static void Log(const paramType& aParam, std::wstring* aLog)
   {
     LogParam(aParam.dataLength, aLog);
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::OwningSerializedStructuredCloneBuffer>
+  : public ParamTraits<mozilla::SerializedStructuredCloneBuffer>
+{
+  typedef mozilla::OwningSerializedStructuredCloneBuffer paramType;
+
+  static bool Read(const Message* aMsg, void** aIter, paramType* aResult)
+  {
+    if (!ParamTraits<mozilla::SerializedStructuredCloneBuffer>::Read(aMsg, aIter, aResult)) {
+      return false;
+    }
+
+    if (aResult->data) {
+      uint64_t* data = static_cast<uint64_t*>(js_malloc(aResult->dataLength));
+      if (!data) {
+        return false;
+      }
+      memcpy(data, aResult->data, aResult->dataLength);
+      aResult->data = data;
+    }
+
+    return true;
+  }
+};
+
+template <>
+struct ParamTraits<nsIWidget::TouchPointerState>
+  : public BitFlagsEnumSerializer<nsIWidget::TouchPointerState,
+                                  nsIWidget::TouchPointerState::ALL_BITS>
+{
+};
+
+template<class T>
+struct ParamTraits< mozilla::Maybe<T> >
+{
+  typedef mozilla::Maybe<T> paramType;
+
+  static void Write(Message* msg, const paramType& param)
+  {
+    if (param.isSome()) {
+      WriteParam(msg, true);
+      WriteParam(msg, param.value());
+    } else {
+      WriteParam(msg, false);
+    }
+  }
+
+  static bool Read(const Message* msg, void** iter, paramType* result)
+  {
+    bool isSome;
+    if (!ReadParam(msg, iter, &isSome)) {
+      return false;
+    }
+    if (isSome) {
+      T tmp;
+      if (!ReadParam(msg, iter, &tmp)) {
+        return false;
+      }
+      *result = mozilla::Some(mozilla::Move(tmp));
+    } else {
+      *result = mozilla::Nothing();
+    }
+    return true;
   }
 };
 

@@ -13,6 +13,7 @@ gDirectorySource = "data:application/json," + JSON.stringify({
     imageURI: "data:image/png;base64,helloWORLD3",
     title: "title",
     type: "affiliate",
+    adgroup_name: "test",
     frecent_sites: ["example0.com"]
   }]
 });
@@ -29,6 +30,7 @@ function runTests() {
   setPinnedLinks("");
 
   yield addNewTabPageTab();
+  yield customizeNewTabPage("enhanced"); // Toggle enhanced off
   checkGrid("0,1,2,3,4,5,6,7,8");
 
   yield blockCell(4);
@@ -79,8 +81,8 @@ function runTests() {
   NewTabUtils.isTopPlacesSite = origIsTopPlacesSite;
   yield restore();
   yield setLinks("0,1,2,3,4,5,6,7,8,9");
+  yield customizeNewTabPage("enhanced"); // Toggle enhanced on
   yield addNewTabPageTab();
-  yield customizeNewTabPage("enhanced");
   checkGrid("http://suggested.com/,0,1,2,3,4,5,6,7,8,9");
 
   yield blockCell(1);

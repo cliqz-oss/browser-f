@@ -636,16 +636,6 @@ void StartForceQuitWatchdog(ShutdownMode aMode, int32_t aTimeoutSecs)
   PROXY_IF_SANDBOXED(StartForceQuitWatchdog(aMode, aTimeoutSecs));
 }
 
-void StartMonitoringGamepadStatus()
-{
-  PROXY_IF_SANDBOXED(StartMonitoringGamepadStatus());
-}
-
-void StopMonitoringGamepadStatus()
-{
-  PROXY_IF_SANDBOXED(StopMonitoringGamepadStatus());
-}
-
 void
 RegisterWakeLockObserver(WakeLockObserver* aObserver)
 {
@@ -874,6 +864,13 @@ SetCurrentThreadPriority(hal::ThreadPriority aThreadPriority)
   PROXY_IF_SANDBOXED(SetCurrentThreadPriority(aThreadPriority));
 }
 
+void
+SetThreadPriority(PlatformThreadId aThreadId,
+                  hal::ThreadPriority aThreadPriority)
+{
+  PROXY_IF_SANDBOXED(SetThreadPriority(aThreadId, aThreadPriority));
+}
+
 // From HalTypes.h.
 const char*
 ProcessPriorityToString(ProcessPriority aPriority)
@@ -891,8 +888,6 @@ ProcessPriorityToString(ProcessPriority aPriority)
     return "FOREGROUND_KEYBOARD";
   case PROCESS_PRIORITY_BACKGROUND_PERCEIVABLE:
     return "BACKGROUND_PERCEIVABLE";
-  case PROCESS_PRIORITY_BACKGROUND_HOMESCREEN:
-    return "BACKGROUND_HOMESCREEN";
   case PROCESS_PRIORITY_BACKGROUND:
     return "BACKGROUND";
   case PROCESS_PRIORITY_UNKNOWN:

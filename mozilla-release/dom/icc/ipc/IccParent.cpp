@@ -1,10 +1,15 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/dom/icc/IccParent.h"
-#include "nsIIccService.h"
 #include "IccInfo.h"
+#include "nsIIccService.h"
+#include "nsIStkCmdFactory.h"
+#include "nsIStkProactiveCmd.h"
+
 
 using mozilla::dom::IccInfo;
 
@@ -95,6 +100,72 @@ IccParent::RecvInit(OptionalIccInfoData* aInfoData,
   return true;
 }
 
+bool
+IccParent::RecvStkResponse(const nsString& aCmd, const nsString& aResponse)
+{
+  NS_ENSURE_TRUE(mIcc, false);
+
+  nsCOMPtr<nsIStkCmdFactory> cmdFactory =
+    do_GetService(ICC_STK_CMD_FACTORY_CONTRACTID);
+  NS_ENSURE_TRUE(cmdFactory, false);
+
+  nsCOMPtr<nsIStkProactiveCmd> cmd;
+  cmdFactory->InflateCommand(aCmd, getter_AddRefs(cmd));
+  NS_ENSURE_TRUE(cmd, false);
+
+  nsCOMPtr<nsIStkTerminalResponse> response;
+  cmdFactory->InflateResponse(aResponse, getter_AddRefs(response));
+  NS_ENSURE_TRUE(response, false);
+
+  nsresult rv = mIcc->SendStkResponse(cmd, response);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  return true;
+}
+
+bool
+IccParent::RecvStkMenuSelection(const uint16_t& aItemIdentifier,
+                                const bool& aHelpRequested)
+{
+  NS_ENSURE_TRUE(mIcc, false);
+
+  nsresult rv = mIcc->SendStkMenuSelection(aItemIdentifier, aHelpRequested);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  return true;
+}
+
+bool
+IccParent::RecvStkTimerExpiration(const uint16_t& aTimerId,
+                                  const uint32_t& aTimerValue)
+{
+  NS_ENSURE_TRUE(mIcc, false);
+
+  nsresult rv = mIcc->SendStkTimerExpiration(aTimerId, aTimerValue);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  return true;
+}
+
+bool
+IccParent::RecvStkEventDownload(const nsString& aEvent)
+{
+  NS_ENSURE_TRUE(mIcc, false);
+
+  nsCOMPtr<nsIStkCmdFactory> cmdFactory =
+    do_GetService(ICC_STK_CMD_FACTORY_CONTRACTID);
+  NS_ENSURE_TRUE(cmdFactory, false);
+
+  nsCOMPtr<nsIStkDownloadEvent> event;
+  cmdFactory->InflateDownloadEvent(aEvent, getter_AddRefs(event));
+  NS_ENSURE_TRUE(event, false);
+
+  nsresult rv = mIcc->SendStkEventDownload(event);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  return true;
+}
+
 PIccRequestParent*
 IccParent::AllocPIccRequestParent(const IccRequest& aRequest)
 {
@@ -152,17 +223,23 @@ IccParent::RecvPIccRequestConstructor(PIccRequestParent* aActor,
 NS_IMPL_ISUPPORTS(IccParent, nsIIccListener)
 
 NS_IMETHODIMP
-IccParent::NotifyStkCommand(const nsAString & aMessage)
+IccParent::NotifyStkCommand(nsIStkProactiveCmd *aStkProactiveCmd)
 {
-  // Bug 1114938 - [B2G][ICC] Refactor STK in MozIcc.webidl with IPDL.
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsCOMPtr<nsIStkCmdFactory> cmdFactory =
+    do_GetService(ICC_STK_CMD_FACTORY_CONTRACTID);
+  NS_ENSURE_TRUE(cmdFactory, NS_ERROR_UNEXPECTED);
+
+  nsAutoString cmd;
+  nsresult rv = cmdFactory->DeflateCommand(aStkProactiveCmd, cmd);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return SendNotifyStkCommand(cmd) ? NS_OK : NS_ERROR_FAILURE;
 }
 
 NS_IMETHODIMP
 IccParent::NotifyStkSessionEnd()
 {
-  // Bug 1114938 - [B2G][ICC] Refactor STK in MozIcc.webidl with IPDL.
-  return NS_ERROR_NOT_IMPLEMENTED;
+  return SendNotifyStkSessionEnd() ? NS_OK : NS_ERROR_FAILURE;;
 }
 
 NS_IMETHODIMP
@@ -305,14 +382,14 @@ IccRequestParent::NotifyGetCardLockRetryCount(int32_t aCount)
 NS_IMETHODIMP
 IccRequestParent::NotifyError(const nsAString & aErrorMsg)
 {
-  return SendReply(IccReplyError(nsString(aErrorMsg)));
+  return SendReply(IccReplyError(nsAutoString(aErrorMsg)));
 }
 
 NS_IMETHODIMP
 IccRequestParent::NotifyCardLockError(const nsAString & aErrorMsg,
                                       int32_t aRetryCount)
 {
-  return SendReply(IccReplyCardLockError(aRetryCount, nsString(aErrorMsg)));
+  return SendReply(IccReplyCardLockError(aRetryCount, nsAutoString(aErrorMsg)));
 }
 
 } // namespace icc

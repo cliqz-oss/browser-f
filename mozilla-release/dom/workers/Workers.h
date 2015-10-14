@@ -1,4 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -19,6 +20,7 @@
 #include "nsILoadContext.h"
 #include "nsIWeakReferenceUtils.h"
 #include "nsIInterfaceRequestor.h"
+#include "mozilla/dom/ChannelInfo.h"
 
 #define BEGIN_WORKERS_NAMESPACE \
   namespace mozilla { namespace dom { namespace workers {
@@ -195,6 +197,11 @@ enum WorkerPreference
 {
   WORKERPREF_DUMP = 0, // browser.dom.window.dump.enabled
   WORKERPREF_DOM_CACHES, // dom.caches.enabled
+  WORKERPREF_SERVICEWORKERS, // dom.serviceWorkers.enabled
+  WORKERPREF_INTERCEPTION_ENABLED, // dom.serviceWorkers.interception.enabled
+  WORKERPREF_DOM_WORKERNOTIFICATION, // dom.webnotifications.workers.enabled
+  WORKERPREF_DOM_CACHES_TESTING, // dom.caches.testing.enabled
+  WORKERPREF_SERVICEWORKERS_TESTING, // dom.serviceWorkers.testing.enabled
   WORKERPREF_COUNT
 };
 
@@ -227,6 +234,7 @@ struct WorkerLoadInfo
     already_AddRefed<nsITabChild> GetAnyLiveTabChild();
 
     nsCOMPtr<nsILoadContext> mLoadContext;
+    nsCOMPtr<nsIInterfaceRequestor> mOuterRequestor;
 
     // Array of weak references to nsITabChild.  We do not want to keep TabChild
     // actors alive for long after their ActorDestroy() methods are called.
@@ -239,7 +247,12 @@ struct WorkerLoadInfo
   nsAutoPtr<mozilla::ipc::PrincipalInfo> mPrincipalInfo;
   nsCString mDomain;
 
+  nsString mServiceWorkerCacheName;
+
+  ChannelInfo mChannelInfo;
+
   uint64_t mWindowID;
+  uint64_t mServiceWorkerID;
 
   bool mFromWindow;
   bool mEvalAllowed;
@@ -249,6 +262,8 @@ struct WorkerLoadInfo
   bool mIsInPrivilegedApp;
   bool mIsInCertifiedApp;
   bool mIndexedDBAllowed;
+  bool mPrivateBrowsing;
+  bool mServiceWorkersTestingInWindow;
 
   WorkerLoadInfo();
   ~WorkerLoadInfo();
@@ -262,10 +277,10 @@ void
 CancelWorkersForWindow(nsPIDOMWindow* aWindow);
 
 void
-SuspendWorkersForWindow(nsPIDOMWindow* aWindow);
+FreezeWorkersForWindow(nsPIDOMWindow* aWindow);
 
 void
-ResumeWorkersForWindow(nsPIDOMWindow* aWindow);
+ThawWorkersForWindow(nsPIDOMWindow* aWindow);
 
 class WorkerTask
 {
@@ -337,6 +352,9 @@ IsWorkerGlobal(JSObject* global);
 
 bool
 IsDebuggerGlobal(JSObject* global);
+
+bool
+IsDebuggerSandbox(JSObject* object);
 
 // Throws the JSMSG_GETTER_ONLY exception.  This shouldn't be used going
 // forward -- getter-only properties should just use JS_PSG for the setter

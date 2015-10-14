@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -41,13 +42,13 @@ class nsIDOMNodeList;
 class nsIEditor;
 class nsIFrame;
 class nsIMutationObserver;
+class nsINode;
 class nsINodeList;
 class nsIPresShell;
 class nsIPrincipal;
 class nsIURI;
 class nsNodeSupportsWeakRefTearoff;
 class nsNodeWeakReference;
-class nsXPCClassInfo;
 class nsDOMMutationObserver;
 
 namespace mozilla {
@@ -72,7 +73,6 @@ class DOMQuad;
 class DOMRectReadOnly;
 class Element;
 class EventHandlerNonNull;
-class OnErrorEventHandlerNonNull;
 template<typename T> class Optional;
 class Text;
 class TextOrElementOrDocument;
@@ -942,7 +942,8 @@ public:
                                 const mozilla::dom::Nullable<bool>& aWantsUntrusted,
                                 mozilla::ErrorResult& aRv) override;
   using nsIDOMEventTarget::AddSystemEventListener;
-  virtual nsIDOMWindow* GetOwnerGlobal() override;
+  virtual nsIDOMWindow* GetOwnerGlobalForBindings() override;
+  virtual nsIGlobalObject* GetOwnerGlobal() const override;
 
   /**
    * Adds a mutation observer to be notified when this node, or any of its
@@ -1020,11 +1021,7 @@ public:
   class nsSlots
   {
   public:
-    nsSlots()
-      : mChildNodes(nullptr),
-        mWeakReference(nullptr)
-    {
-    }
+    nsSlots();
 
     // If needed we could remove the vtable pointer this dtor causes by
     // putting a DestroySlots function on nsINode
@@ -1042,15 +1039,14 @@ public:
      * An object implementing nsIDOMNodeList for this content (childNodes)
      * @see nsIDOMNodeList
      * @see nsGenericHTMLElement::GetChildNodes
-     *
-     * MSVC 7 doesn't like this as an nsRefPtr
      */
-    nsChildContentList* mChildNodes;
+    nsRefPtr<nsChildContentList> mChildNodes;
 
     /**
-     * Weak reference to this node
+     * Weak reference to this node.  This is cleared by the destructor of
+     * nsNodeWeakReference.
      */
-    nsNodeWeakReference* mWeakReference;
+    nsNodeWeakReference* MOZ_NON_OWNING_REF mWeakReference;
   };
 
   /**
@@ -1754,7 +1750,7 @@ public:
     nsINode* parent = GetParentNode();
     mozilla::ErrorResult rv;
     parent->RemoveChild(*this, rv);
-    return rv.ErrorCode();
+    return rv.StealNSResult();
   }
 
   // ChildNode methods
@@ -1926,23 +1922,33 @@ protected:
 
   nsRefPtr<mozilla::dom::NodeInfo> mNodeInfo;
 
-  nsINode* mParent;
+  // mParent is an owning ref most of the time, except for the case of document
+  // nodes, so it cannot be represented by nsCOMPtr, so mark is as
+  // MOZ_OWNING_REF.
+  nsINode* MOZ_OWNING_REF mParent;
 
 private:
   // Boolean flags.
   uint32_t mBoolFlags;
 
 protected:
-  nsIContent* mNextSibling;
-  nsIContent* mPreviousSibling;
-  nsIContent* mFirstChild;
+  // These references are non-owning and safe, as they are managed by
+  // nsAttrAndChildArray.
+  nsIContent* MOZ_NON_OWNING_REF mNextSibling;
+  nsIContent* MOZ_NON_OWNING_REF mPreviousSibling;
+  // This reference is non-owning and safe, since in the case of documents,
+  // it is set to null when the document gets destroyed, and in the case of
+  // other nodes, the children keep the parents alive.
+  nsIContent* MOZ_NON_OWNING_REF mFirstChild;
 
   union {
     // Pointer to our primary frame.  Might be null.
     nsIFrame* mPrimaryFrame;
 
     // Pointer to the root of our subtree.  Might be null.
-    nsINode* mSubtreeRoot;
+    // This reference is non-owning and safe, since it either points to the
+    // object itself, or is reset by ClearSubtreeRootPointer.
+    nsINode* MOZ_NON_OWNING_REF mSubtreeRoot;
   };
 
   // Storage for more members that are usually not needed; allocated lazily.
@@ -1996,7 +2002,7 @@ ToCanonicalSupports(nsINode* aPointer)
   { \
     mozilla::ErrorResult rv; \
     nsINode::SetNodeValue(aNodeValue, rv); \
-    return rv.ErrorCode(); \
+    return rv.StealNSResult(); \
   } \
   NS_IMETHOD GetNodeType(uint16_t* aNodeType) __VA_ARGS__ override \
   { \
@@ -2064,7 +2070,7 @@ ToCanonicalSupports(nsINode* aPointer)
     mozilla::ErrorResult rv; \
     nsCOMPtr<nsINode> clone = nsINode::CloneNode(aDeep, rv); \
     if (rv.Failed()) { \
-      return rv.ErrorCode(); \
+      return rv.StealNSResult(); \
     } \
     *aResult = clone.forget().take()->AsDOMNode(); \
     return NS_OK; \
@@ -2107,13 +2113,13 @@ ToCanonicalSupports(nsINode* aPointer)
   { \
     mozilla::ErrorResult rv; \
     nsINode::GetTextContent(aTextContent, rv); \
-    return rv.ErrorCode(); \
+    return rv.StealNSResult(); \
   } \
   NS_IMETHOD SetTextContent(const nsAString& aTextContent) __VA_ARGS__ override \
   { \
     mozilla::ErrorResult rv; \
     nsINode::SetTextContent(aTextContent, rv); \
-    return rv.ErrorCode(); \
+    return rv.StealNSResult(); \
   } \
   NS_IMETHOD LookupPrefix(const nsAString& aNamespaceURI, nsAString& aResult) __VA_ARGS__ override \
   { \

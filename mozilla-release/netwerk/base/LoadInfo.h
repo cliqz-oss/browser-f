@@ -18,13 +18,23 @@ class nsINode;
 namespace mozilla {
 
 namespace net {
-class HttpChannelParent;
-class FTPChannelParent;
-class WebSocketChannelParent;
+class LoadInfoArgs;
+}
+
+namespace ipc {
+// we have to forward declare that function so we can use it as a friend.
+nsresult
+LoadInfoArgsToLoadInfo(const mozilla::net::LoadInfoArgs& aLoadInfoArgs,
+                       nsILoadInfo** outLoadInfo);
 }
 
 /**
  * Class that provides an nsILoadInfo implementation.
+ *
+ * Note that there is no reason why this class should be MOZ_EXPORT, but
+ * Thunderbird relies on some insane hacks which require this, so we'll leave it
+ * as is for now, but hopefully we'll be able to remove the MOZ_EXPORT keyword
+ * from this class at some point.  See bug 1149127 for the discussion.
  */
 class MOZ_EXPORT LoadInfo final : public nsILoadInfo
 {
@@ -48,11 +58,13 @@ private:
            nsIPrincipal* aTriggeringPrincipal,
            nsSecurityFlags aSecurityFlags,
            nsContentPolicyType aContentPolicyType,
-           uint32_t aInnerWindowID);
+           uint64_t aInnerWindowID,
+           uint64_t aOuterWindowID,
+           uint64_t aParentOuterWindowID);
 
-  friend class net::HttpChannelParent;
-  friend class net::FTPChannelParent;
-  friend class net::WebSocketChannelParent;
+  friend nsresult
+  mozilla::ipc::LoadInfoArgsToLoadInfo(const mozilla::net::LoadInfoArgs& aLoadInfoArgs,
+                                       nsILoadInfo** outLoadInfo);
 
   ~LoadInfo();
 
@@ -62,7 +74,9 @@ private:
   nsSecurityFlags mSecurityFlags;
   nsContentPolicyType mContentPolicyType;
   nsCOMPtr<nsIURI> mBaseURI;
-  uint32_t mInnerWindowID;
+  uint64_t mInnerWindowID;
+  uint64_t mOuterWindowID;
+  uint64_t mParentOuterWindowID;
 };
 
 } // namespace mozilla

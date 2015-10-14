@@ -1,22 +1,26 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "nsAutoPtr.h"
+#include "nsIConsoleService.h"
 #include "nsIObserverService.h"
 #include "nsIObserver.h"
+#include "nsIScriptError.h"
 #include "nsObserverService.h"
 #include "nsObserverList.h"
+#include "nsServiceManagerUtils.h"
 #include "nsThreadUtils.h"
 #include "nsEnumeratorUtils.h"
+#include "xpcpublic.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "mozilla/Services.h"
 
 #define NOTIFY_GLOBAL_OBSERVERS
 
-#if defined(PR_LOGGING)
 // Log module for nsObserverService logging...
 //
 // To enable logging (see prlog.h for full details):
@@ -24,7 +28,7 @@
 //    set NSPR_LOG_MODULES=ObserverService:5
 //    set NSPR_LOG_FILE=nspr.log
 //
-// this enables PR_LOG_DEBUG level information and places all output in
+// this enables LogLevel::Debug level information and places all output in
 // the file nspr.log
 static PRLogModuleInfo*
 GetObserverServiceLog()
@@ -35,10 +39,7 @@ GetObserverServiceLog()
   }
   return sLog;
 }
-  #define LOG(x)  PR_LOG(GetObserverServiceLog(), PR_LOG_DEBUG, x)
-#else
-  #define LOG(x)
-#endif /* PR_LOGGING */
+#define LOG(x)  MOZ_LOG(GetObserverServiceLog(), mozilla::LogLevel::Debug, x)
 
 namespace mozilla {
 
@@ -186,7 +187,6 @@ nsObserverService::CollectReports(nsIHandleReportCallback* aHandleReport,
 ////////////////////////////////////////////////////////////////////////////////
 // nsObserverService Implementation
 
-
 NS_IMPL_ISUPPORTS(nsObserverService,
                   nsIObserverService,
                   nsObserverService,
@@ -205,13 +205,17 @@ nsObserverService::~nsObserverService(void)
 void
 nsObserverService::RegisterReporter()
 {
+#if !defined(MOZILLA_XPCOMRT_API)
   RegisterWeakMemoryReporter(this);
+#endif // !defined(MOZILLA_XPCOMRT_API)
 }
 
 void
 nsObserverService::Shutdown()
 {
+#if !defined(MOZILLA_XPCOMRT_API)
   UnregisterWeakMemoryReporter(this);
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
   mShuttingDown = true;
 
@@ -263,6 +267,13 @@ nsObserverService::AddObserver(nsIObserver* aObserver, const char* aTopic,
   }
 
   if (mozilla::net::IsNeckoChild() && !strncmp(aTopic, "http-on-", 8)) {
+    nsCOMPtr<nsIConsoleService> console(do_GetService(NS_CONSOLESERVICE_CONTRACTID));
+    nsCOMPtr<nsIScriptError> error(do_CreateInstance(NS_SCRIPTERROR_CONTRACTID));
+    error->Init(NS_LITERAL_STRING("http-on-* observers only work in the parent process"),
+                EmptyString(), EmptyString(), 0, 0,
+                nsIScriptError::warningFlag, "chrome javascript");
+    console->LogMessage(error);
+
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
@@ -339,22 +350,32 @@ NS_IMETHODIMP nsObserverService::NotifyObservers(nsISupports* aSubject,
   return NS_OK;
 }
 
+#if !defined(MOZILLA_XPCOMRT_API)
 static PLDHashOperator
-UnmarkGrayObserverEntry(nsObserverList* aObserverList, void* aClosure)
+AppendStrongObservers(nsObserverList* aObserverList, void* aClosure)
 {
+  nsCOMArray<nsIObserver>* array = static_cast<nsCOMArray<nsIObserver>*>(aClosure);
+
   if (aObserverList) {
-    aObserverList->UnmarkGrayStrongObservers();
+    aObserverList->AppendStrongObservers(*array);
   }
   return PL_DHASH_NEXT;
 }
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
 NS_IMETHODIMP
 nsObserverService::UnmarkGrayStrongObservers()
 {
   NS_ENSURE_VALIDCALL
 
-  mObserverTopicTable.EnumerateEntries(UnmarkGrayObserverEntry, nullptr);
+#if !defined(MOZILLA_XPCOMRT_API)
+  nsCOMArray<nsIObserver> strongObservers;
+  mObserverTopicTable.EnumerateEntries(AppendStrongObservers, &strongObservers);
+
+  for (uint32_t i = 0; i < strongObservers.Length(); ++i) {
+    xpc_TryUnmarkWrappedGrayObject(strongObservers[i]);
+  }
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
   return NS_OK;
 }
-

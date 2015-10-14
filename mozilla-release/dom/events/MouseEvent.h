@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -68,6 +69,9 @@ public:
                          aShiftKey, aMetaKey, aButton,
                          aRelatedTarget);
   }
+
+  void InitializeExtraMouseEventDictionaryMembers(const MouseEventInit& aParam);
+
   bool GetModifierState(const nsAString& aKeyArg)
   {
     return GetModifierStateInternal(aKeyArg);
@@ -76,11 +80,11 @@ public:
                                                   const nsAString& aType,
                                                   const MouseEventInit& aParam,
                                                   ErrorResult& aRv);
-  int32_t MozMovementX()
+  int32_t MovementX()
   {
     return GetMovementPoint().x;
   }
-  int32_t MozMovementY()
+  int32_t MovementY()
   {
     return GetMovementPoint().y;
   }

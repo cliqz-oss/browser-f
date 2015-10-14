@@ -28,6 +28,8 @@ struct RectCornerRadii;
 }
 }
 
+class ClipExporter;
+
 /**
  * This is the main class for doing actual drawing. It is initialized using
  * a surface and can be drawn on. It manages various state information like
@@ -319,7 +321,7 @@ public:
      */
     void Mask(gfxASurface *surface, const gfxPoint& offset = gfxPoint(0.0, 0.0));
 
-    void Mask(mozilla::gfx::SourceSurface *surface, const mozilla::gfx::Point& offset = mozilla::gfx::Point());
+    void Mask(mozilla::gfx::SourceSurface *surface, float alpha = 1.0f, const mozilla::gfx::Point& offset = mozilla::gfx::Point());
 
     /**
      ** Line Properties
@@ -446,11 +448,21 @@ public:
     gfxRect GetClipExtents();
 
     /**
+     * Whether the current clip is not a simple rectangle.
+     */
+    bool HasComplexClip() const;
+
+    /**
      * Returns true if the given rectangle is fully contained in the current clip. 
      * This is conservative; it may return false even when the given rectangle is 
      * fully contained by the current clip.
      */
     bool ClipContainsRect(const gfxRect& aRect);
+
+     /**
+      * Exports the current clip using the provided exporter.
+      */
+    bool ExportClip(ClipExporter& aExporter);
 
     /**
      * Groups
@@ -721,6 +733,14 @@ private:
 
   gfxContext *mContext;
   mozilla::gfx::Pattern *mPattern;
+};
+
+/* This interface should be implemented to handle exporting the clip from a context.
+ */
+class ClipExporter : public mozilla::gfx::PathSink {
+public:
+  virtual void BeginClip(const mozilla::gfx::Matrix& aMatrix) = 0;
+  virtual void EndClip() = 0;
 };
 
 #endif /* GFX_CONTEXT_H */

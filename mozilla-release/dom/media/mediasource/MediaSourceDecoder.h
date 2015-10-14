@@ -7,6 +7,7 @@
 #ifndef MOZILLA_MEDIASOURCEDECODER_H_
 #define MOZILLA_MEDIASOURCEDECODER_H_
 
+#include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "nsCOMPtr.h"
 #include "nsError.h"
@@ -22,6 +23,7 @@ class MediaDecoderStateMachine;
 class SourceBufferDecoder;
 class TrackBuffer;
 enum MSRangeRemovalAction : uint8_t;
+class MediaSourceDemuxer;
 
 namespace dom {
 
@@ -38,7 +40,8 @@ public:
   virtual MediaDecoder* Clone() override;
   virtual MediaDecoderStateMachine* CreateStateMachine() override;
   virtual nsresult Load(nsIStreamListener**, MediaDecoder*) override;
-  virtual nsresult GetSeekable(dom::TimeRanges* aSeekable) override;
+  virtual media::TimeIntervals GetSeekable() override;
+  media::TimeIntervals GetBuffered() override;
 
   virtual void Shutdown() override;
 
@@ -62,7 +65,6 @@ public:
   void SetInitialDuration(int64_t aDuration);
   void SetMediaSourceDuration(double aDuration, MSRangeRemovalAction aAction);
   double GetMediaSourceDuration();
-  void DurationChanged(double aOldDuration, double aNewDuration);
 
   // Called whenever a TrackBuffer has new data appended or a new decoder
   // initializes.  Safe to call from any thread.
@@ -76,17 +78,19 @@ public:
   virtual nsresult SetCDMProxy(CDMProxy* aProxy) override;
 #endif
 
-  MediaSourceReader* GetReader() { return mReader; }
+  MediaSourceReader* GetReader()
+  {
+    MOZ_ASSERT(!mIsUsingFormatReader);
+    return static_cast<MediaSourceReader*>(mReader.get());
+  }
+  MediaSourceDemuxer* GetDemuxer()
+  {
+    return mDemuxer;
+  }
 
   // Returns true if aReader is a currently active audio or video
   // reader in this decoders MediaSourceReader.
   bool IsActiveReader(MediaDecoderReader* aReader);
-
-  // Return a decoder from the set available in aTrackDecoders that has data
-  // available in the range requested by aTarget.
-  already_AddRefed<SourceBufferDecoder> SelectDecoder(int64_t aTarget /* microseconds */,
-                                                      int64_t aTolerance /* microseconds */,
-                                                      const nsTArray<nsRefPtr<SourceBufferDecoder>>& aTrackDecoders);
 
   // Returns a string describing the state of the MediaSource internal
   // buffered data. Used for debugging purposes.
@@ -94,18 +98,16 @@ public:
 
 private:
   void DoSetMediaSourceDuration(double aDuration);
-  void ScheduleDurationChange(double aOldDuration,
-                              double aNewDuration,
-                              MSRangeRemovalAction aAction);
 
   // The owning MediaSource holds a strong reference to this decoder, and
   // calls Attach/DetachMediaSource on this decoder to set and clear
   // mMediaSource.
   dom::MediaSource* mMediaSource;
-  nsRefPtr<MediaSourceReader> mReader;
+  nsRefPtr<MediaDecoderReader> mReader;
+  bool mIsUsingFormatReader;
+  nsRefPtr<MediaSourceDemuxer> mDemuxer;
 
-  // Protected by GetReentrantMonitor()
-  double mMediaSourceDuration;
+  Atomic<bool> mEnded;
 };
 
 } // namespace mozilla

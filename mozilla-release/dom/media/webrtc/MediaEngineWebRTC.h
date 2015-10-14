@@ -109,19 +109,20 @@ public:
 
   void Refresh(int aIndex);
 
+  virtual void Shutdown() override;
+
 protected:
   ~MediaEngineWebRTCVideoSource() { Shutdown(); }
 
 private:
   // Initialize the needed Video engine interfaces.
   void Init();
-  void Shutdown();
 
   // Engine variables.
   webrtc::VideoEngine* mVideoEngine; // Weak reference, don't free.
-  webrtc::ViEBase* mViEBase;
-  webrtc::ViECapture* mViECapture;
-  webrtc::ViERender* mViERender;
+  ScopedCustomReleasePtr<webrtc::ViEBase> mViEBase;
+  ScopedCustomReleasePtr<webrtc::ViECapture> mViECapture;
+  ScopedCustomReleasePtr<webrtc::ViERender> mViERender;
 
   int mMinFps; // Min rate we want to accept
   dom::MediaSourceEnum mMediaSource; // source of media (camera | application | screen)
@@ -137,7 +138,6 @@ public:
   MediaEngineWebRTCAudioSource(nsIThread* aThread, webrtc::VoiceEngine* aVoiceEnginePtr,
                                int aIndex, const char* name, const char* uuid)
     : MediaEngineAudioSource(kReleased)
-    , mSamples(0)
     , mVoiceEngine(aVoiceEnginePtr)
     , mMonitor("WebRTCMic.Monitor")
     , mThread(aThread)
@@ -153,12 +153,12 @@ public:
     , mNullTransport(nullptr) {
     MOZ_ASSERT(aVoiceEnginePtr);
     mDeviceName.Assign(NS_ConvertUTF8toUTF16(name));
-    mDeviceUUID.Assign(NS_ConvertUTF8toUTF16(uuid));
+    mDeviceUUID.Assign(uuid);
     Init();
   }
 
   virtual void GetName(nsAString& aName) override;
-  virtual void GetUUID(nsAString& aUUID) override;
+  virtual void GetUUID(nsACString& aUUID) override;
 
   virtual nsresult Allocate(const dom::MediaTrackConstraints& aConstraints,
                             const MediaEnginePrefs& aPrefs) override;
@@ -196,18 +196,13 @@ public:
 
   NS_DECL_THREADSAFE_ISUPPORTS
 
+  virtual void Shutdown() override;
+
 protected:
   ~MediaEngineWebRTCAudioSource() { Shutdown(); }
 
-  // mSamples is an int to avoid conversions when comparing/etc to
-  // samplingFreq & length. Making mSamples protected instead of private is a
-  // silly way to avoid -Wunused-private-field warnings when PR_LOGGING is not
-  // #defined. mSamples is not actually expected to be used by a derived class.
-  int mSamples;
-
 private:
   void Init();
-  void Shutdown();
 
   webrtc::VoiceEngine* mVoiceEngine;
   ScopedCustomReleasePtr<webrtc::VoEBase> mVoEBase;
@@ -228,7 +223,7 @@ private:
   bool mStarted;
 
   nsString mDeviceName;
-  nsString mDeviceUUID;
+  nsCString mDeviceUUID;
 
   bool mEchoOn, mAgcOn, mNoiseOn;
   webrtc::EcModes  mEchoCancel;
@@ -246,12 +241,12 @@ public:
 
   // Clients should ensure to clean-up sources video/audio sources
   // before invoking Shutdown on this class.
-  void Shutdown();
+  void Shutdown() override;
 
   virtual void EnumerateVideoDevices(dom::MediaSourceEnum,
-                                    nsTArray<nsRefPtr<MediaEngineVideoSource> >*);
+                                     nsTArray<nsRefPtr<MediaEngineVideoSource>>*) override;
   virtual void EnumerateAudioDevices(dom::MediaSourceEnum,
-                                    nsTArray<nsRefPtr<MediaEngineAudioSource> >*);
+                                     nsTArray<nsRefPtr<MediaEngineAudioSource>>*) override;
 private:
   ~MediaEngineWebRTC() {
     Shutdown();

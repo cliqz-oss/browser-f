@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -13,7 +14,13 @@
 #include "nsString.h"
 #include "nsTArray.h"
 #include "nsUnicharUtils.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
+
+namespace mozilla {
+namespace dom {
+  struct CSP;
+}
+}
 
 /* =============== Logging =================== */
 
@@ -58,6 +65,10 @@ void CSP_LogMessage(const nsAString& aMessage,
 // these strings map to the CSPDirectives in nsIContentSecurityPolicy
 // NOTE: When implementing a new directive, you will need to add it here but also
 // add a corresponding entry to the constants in nsIContentSecurityPolicy.idl
+// and also create an entry for the new directive in
+// nsCSPDirective::toDomCSPStruct() and add it to CSPDictionaries.webidl.
+// Order of elements below important! Make sure it matches the order as in
+// nsIContentSecurityPolicy.idl
 static const char* CSPStrDirectives[] = {
   "-error-",    // NO_DIRECTIVE
   "default-src",     // DEFAULT_SRC_DIRECTIVE
@@ -74,7 +85,8 @@ static const char* CSPStrDirectives[] = {
   "reflected-xss",   // REFLECTED_XSS_DIRECTIVE
   "base-uri",        // BASE_URI_DIRECTIVE
   "form-action",     // FORM_ACTION_DIRECTIVE
-  "referrer"         // REFERRER_DIRECTIVE
+  "referrer",        // REFERRER_DIRECTIVE
+  "manifest-src"     // MANIFEST_SRC_DIRECTIVE
 };
 
 inline const char* CSP_CSPDirectiveToString(CSPDirective aDir)
@@ -220,9 +232,12 @@ class nsCSPKeywordSrc : public nsCSPBaseSrc {
 
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce) const;
     void toString(nsAString& outStr) const;
+    void invalidate();
 
   private:
     CSPKeyword mKeyword;
+    // invalidate 'unsafe-inline' if nonce- or hash-source specified
+    bool       mInvalidated;
 };
 
 /* =============== nsCSPNonceSource =========== */
@@ -280,6 +295,7 @@ class nsCSPDirective {
     bool permits(nsIURI* aUri) const;
     bool allows(enum CSPKeyword aKeyword, const nsAString& aHashOrNonce) const;
     void toString(nsAString& outStr) const;
+    void toDomCSPStruct(mozilla::dom::CSP& outCSP) const;
 
     inline void addSrcs(const nsTArray<nsCSPBaseSrc*>& aSrcs)
       { mSrcs = aSrcs; }
@@ -321,6 +337,7 @@ class nsCSPPolicy {
     bool allows(nsContentPolicyType aContentType,
                 enum CSPKeyword aKeyword) const;
     void toString(nsAString& outStr) const;
+    void toDomCSPStruct(mozilla::dom::CSP& outCSP) const;
 
     inline void addDirective(nsCSPDirective* aDir)
       { mDirectives.AppendElement(aDir); }

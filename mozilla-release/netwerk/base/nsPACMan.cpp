@@ -25,10 +25,8 @@
 using namespace mozilla;
 using namespace mozilla::net;
 
-#if defined(PR_LOGGING)
-#endif
 #undef LOG
-#define LOG(args) PR_LOG(GetProxyLog(), PR_LOG_DEBUG, args)
+#define LOG(args) MOZ_LOG(GetProxyLog(), mozilla::LogLevel::Debug, args)
 
 // The PAC thread does evaluations of both PAC files and
 // nsISystemProxySettings because they can both block the calling thread and we
@@ -441,7 +439,7 @@ nsPACMan::StartLoading()
     return;
   }
 
-  if (NS_SUCCEEDED(mLoader->Init(this))) {
+  if (NS_SUCCEEDED(mLoader->Init(this, nullptr))) {
     // Always hit the origin server when loading PAC.
     nsCOMPtr<nsIIOService> ios = do_GetIOService();
     if (ios) {

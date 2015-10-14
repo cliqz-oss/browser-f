@@ -9,7 +9,7 @@ enum MobilePreferredNetworkType {"wcdma/gsm", "gsm", "wcdma", "wcdma/gsm-auto",
                                  "cdma/evdo", "cdma", "evdo",
                                  "wcdma/gsm/cdma/evdo", "lte/cdma/evdo",
                                  "lte/wcdma/gsm", "lte/wcdma/gsm/cdma/evdo",
-                                 "lte"};
+                                 "lte", "lte/wcdma"};
 enum MobileRoamingMode {"home", "affiliated", "any"};
 
 [Pref="dom.mobileconnection.enabled"]
@@ -56,6 +56,9 @@ interface MozMobileConnection : EventTarget
   const long CALL_BARRING_PROGRAM_OUTGOING_INTERNATIONAL_EXCEPT_HOME = 2;
   const long CALL_BARRING_PROGRAM_ALL_INCOMING                       = 3;
   const long CALL_BARRING_PROGRAM_INCOMING_ROAMING                   = 4;
+  const long CALL_BARRING_PROGRAM_ALL_SERVICE                        = 5;
+  const long CALL_BARRING_PROGRAM_OUTGOING_SERVICE                   = 6;
+  const long CALL_BARRING_PROGRAM_INCOMING_SERVICE                   = 7;
 
   /**
    * Calling line identification restriction constants.
@@ -187,7 +190,7 @@ interface MozMobileConnection : EventTarget
    * result will be a string indicating the current preferred network type.
    * The value will be either 'wcdma/gsm', 'gsm', 'wcdma', 'wcdma/gsm-auto',
    * 'cdma/evdo', 'cdma', 'evdo', 'wcdma/gsm/cdma/evdo', 'lte/cdma/evdo',
-   * 'lte/wcdma/gsm', 'lte/wcdma/gsm/cdma/evdo' or 'lte'.
+   * 'lte/wcdma/gsm', 'lte/wcdma/gsm/cdma/evdo', 'lte' or 'lte/wcdma'.
    *
    * Otherwise, the request's onerror will be called, and the request's error
    * will be either 'RadioNotAvailable', 'RequestNotSupported',

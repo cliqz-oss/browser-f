@@ -16,7 +16,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/HTMLMediaElement.h"
-#include "mozilla/dom/TimeRanges.h"
 #include "mozilla/mozalloc.h"
 #include "nsContentTypeParser.h"
 #include "nsContentUtils.h"
@@ -30,13 +29,16 @@
 #include "nsPIDOMWindow.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "nsServiceManagerUtils.h"
+
+#ifdef MOZ_WIDGET_ANDROID
+#include "AndroidBridge.h"
+#endif
 
 struct JSContext;
 class JSObject;
 
-#ifdef PR_LOGGING
 PRLogModuleInfo* GetMediaSourceLog()
 {
   static PRLogModuleInfo* sLogModule;
@@ -55,12 +57,8 @@ PRLogModuleInfo* GetMediaSourceAPILog()
   return sLogModule;
 }
 
-#define MSE_DEBUG(arg, ...) PR_LOG(GetMediaSourceLog(), PR_LOG_DEBUG, ("MediaSource(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
-#define MSE_API(arg, ...) PR_LOG(GetMediaSourceAPILog(), PR_LOG_DEBUG, ("MediaSource(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
-#else
-#define MSE_DEBUG(...)
-#define MSE_API(...)
-#endif
+#define MSE_DEBUG(arg, ...) MOZ_LOG(GetMediaSourceLog(), mozilla::LogLevel::Debug, ("MediaSource(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
+#define MSE_API(arg, ...) MOZ_LOG(GetMediaSourceAPILog(), mozilla::LogLevel::Debug, ("MediaSource(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
 
 // Arbitrary limit.
 static const unsigned int MAX_SOURCE_BUFFERS = 16;
@@ -87,18 +85,27 @@ IsTypeSupported(const nsAString& aType)
   if (NS_FAILED(rv)) {
     return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
   }
+  if (Preferences::GetBool("media.mediasource.format-reader", false) &&
+      !mimeType.EqualsASCII("video/mp4") && !mimeType.EqualsASCII("audio/mp4")) {
+    return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
+  }
   bool found = false;
   for (uint32_t i = 0; gMediaSourceTypes[i]; ++i) {
     if (mimeType.EqualsASCII(gMediaSourceTypes[i])) {
       if ((mimeType.EqualsASCII("video/mp4") ||
            mimeType.EqualsASCII("audio/mp4")) &&
-          !Preferences::GetBool("media.mediasource.mp4.enabled", false)) {
-        break;
+          (!Preferences::GetBool("media.mediasource.mp4.enabled", false)
+#ifdef MOZ_WIDGET_ANDROID
+          // MP4 won't work unless we have JellyBean+
+          || AndroidBridge::Bridge()->GetAPIVersion() < 16
+#endif
+          )) {
+        return NS_ERROR_DOM_INVALID_STATE_ERR;
       }
       if ((mimeType.EqualsASCII("video/webm") ||
            mimeType.EqualsASCII("audio/webm")) &&
           !Preferences::GetBool("media.mediasource.webm.enabled", false)) {
-        break;
+        return NS_ERROR_DOM_INVALID_STATE_ERR;
       }
       found = true;
       break;
@@ -377,7 +384,9 @@ MediaSource::Enabled(JSContext* cx, JSObject* aGlobal)
           eTLDplusOne.EqualsLiteral("youtube-nocookie.com") ||
           eTLDplusOne.EqualsLiteral("netflix.com") ||
           eTLDplusOne.EqualsLiteral("dailymotion.com") ||
-          eTLDplusOne.EqualsLiteral("dmcdn.net");
+          eTLDplusOne.EqualsLiteral("dmcdn.net") ||
+          eTLDplusOne.EqualsLiteral("bbc.com") ||
+          eTLDplusOne.EqualsLiteral("bbc.co.uk");
 }
 
 bool
@@ -410,8 +419,6 @@ MediaSource::Detach()
     MOZ_ASSERT(mActiveSourceBuffers->IsEmpty() && mSourceBuffers->IsEmpty());
     return;
   }
-  mDecoder->DetachMediaSource();
-  mDecoder = nullptr;
   mMediaElement = nullptr;
   mFirstSourceBufferInitialized = false;
   SetReadyState(MediaSourceReadyState::Closed);
@@ -421,6 +428,8 @@ MediaSource::Detach()
   if (mSourceBuffers) {
     mSourceBuffers->Clear();
   }
+  mDecoder->DetachMediaSource();
+  mDecoder = nullptr;
 }
 
 MediaSource::MediaSource(nsPIDOMWindow* aWindow)

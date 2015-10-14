@@ -45,6 +45,7 @@ var gAdvancedPane = {
 #ifdef MOZ_SERVICES_HEALTHREPORT
     this.initSubmitHealthReport();
 #endif
+    this.updateCacheSizeInputField();
     this.updateActualCacheSize();
     this.updateActualAppCacheSize();
 
@@ -413,24 +414,31 @@ var gAdvancedPane = {
   },
 
   /**
-   * Converts the cache size from units of KB to units of MB and returns that
-   * value.
+   * Converts the cache size from units of KB to units of MB and stores it in
+   * the textbox element.
    */
-  readCacheSize: function ()
+  updateCacheSizeInputField()
   {
-    var preference = document.getElementById("browser.cache.disk.capacity");
-    return preference.value / 1024;
+    let cacheSizeElem = document.getElementById("cacheSize");
+    let cachePref = document.getElementById("browser.cache.disk.capacity");
+    cacheSizeElem.value = cachePref.value / 1024;
+    if (cachePref.locked)
+      cacheSizeElem.disabled = true;
   },
 
   /**
-   * Converts the cache size as specified in UI (in MB) to KB and returns that
-   * value.
+   * Updates the cache size preference once user enters a new value.
+   * We intentionally do not set preference="browser.cache.disk.capacity"
+   * onto the textbox directly, as that would update the pref at each keypress
+   * not only after the final value is entered.
    */
-  writeCacheSize: function ()
+  updateCacheSizePref()
   {
-    var cacheSize = document.getElementById("cacheSize");
-    var intValue = parseInt(cacheSize.value, 10);
-    return isNaN(intValue) ? 0 : intValue * 1024;
+    let cacheSizeElem = document.getElementById("cacheSize");
+    let cachePref = document.getElementById("browser.cache.disk.capacity");
+    // Converts the cache size as specified in UI (in MB) to KB.
+    let intValue = parseInt(cacheSizeElem.value, 10);
+    cachePref.value = isNaN(intValue) ? 0 : intValue * 1024;
   },
 
   /**
@@ -663,22 +671,10 @@ var gAdvancedPane = {
   {
     var enabledPref = document.getElementById("app.update.enabled");
     var autoPref = document.getElementById("app.update.auto");
-#ifdef XP_WIN
-#ifdef MOZ_METRO
-    var metroEnabledPref = document.getElementById("app.update.metro.enabled");
-#endif
-#endif
     var radiogroup = document.getElementById("updateRadioGroup");
 
     if (!enabledPref.value)   // Don't care for autoPref.value in this case.
       radiogroup.value="manual";    // 3. Never check for updates.
-#ifdef XP_WIN
-#ifdef MOZ_METRO
-    // enabledPref.value && autoPref.value && metroEnabledPref.value
-    else if (metroEnabledPref.value && this._showingWin8Prefs)
-      radiogroup.value="autoMetro"; // 0. Automatically install updates
-#endif
-#endif
     else if (autoPref.value)  // enabledPref.value && autoPref.value
       radiogroup.value="auto";      // 1. Automatically install updates
     else                      // enabledPref.value && !autoPref.value
@@ -697,14 +693,6 @@ var gAdvancedPane = {
     // the warnIncompatible checkbox value is set by readAddonWarn
     warnIncompatible.disabled = radiogroup.disabled || modePref.locked ||
                                 !enabledPref.value || !autoPref.value;
-#ifdef XP_WIN
-#ifdef MOZ_METRO
-    if (this._showingWin8Prefs) {
-      warnIncompatible.disabled |= metroEnabledPref.value;
-      warnIncompatible.checked |= metroEnabledPref.value;
-    }
-#endif
-#endif
 
 #ifdef MOZ_MAINTENANCE_SERVICE
     // Check to see if the maintenance service is installed.
@@ -735,31 +723,12 @@ var gAdvancedPane = {
     var enabledPref = document.getElementById("app.update.enabled");
     var autoPref = document.getElementById("app.update.auto");
     var modePref = document.getElementById("app.update.mode");
-#ifdef XP_WIN
-#ifdef MOZ_METRO
-    var metroEnabledPref = document.getElementById("app.update.metro.enabled");
-    // Initialize the pref to false only if we're showing the option
-    if (this._showingWin8Prefs) {
-      metroEnabledPref.value = false;
-    }
-#endif
-#endif
     var radiogroup = document.getElementById("updateRadioGroup");
     switch (radiogroup.value) {
       case "auto":      // 1. Automatically install updates for Desktop only
         enabledPref.value = true;
         autoPref.value = true;
         break;
-#ifdef XP_WIN
-#ifdef MOZ_METRO
-      case "autoMetro": // 0. Automatically install updates for both Metro and Desktop
-        enabledPref.value = true;
-        autoPref.value = true;
-        metroEnabledPref.value = true;
-        modePref.value = 1;
-        break;
-#endif
-#endif
       case "checkOnly": // 2. Check, but let me choose
         enabledPref.value = true;
         autoPref.value = false;
@@ -773,14 +742,6 @@ var gAdvancedPane = {
     warnIncompatible.disabled = enabledPref.locked || !enabledPref.value ||
                                 autoPref.locked || !autoPref.value ||
                                 modePref.locked;
-#ifdef XP_WIN
-#ifdef MOZ_METRO
-    if (this._showingWin8Prefs) {
-      warnIncompatible.disabled |= metroEnabledPref.value;
-      warnIncompatible.checked |= metroEnabledPref.value;
-    }
-#endif
-#endif
   },
 
   /**

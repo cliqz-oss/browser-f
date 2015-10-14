@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,6 +8,7 @@
 
 #include "nsFocusManager.h"
 
+#include "AccessibleCaretEventHub.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsGkAtoms.h"
 #include "nsContentUtils.h"
@@ -69,37 +71,26 @@ using namespace mozilla;
 using namespace mozilla::dom;
 using namespace mozilla::widget;
 
-#ifdef PR_LOGGING
-
 // Two types of focus pr logging are available:
 //   'Focus' for normal focus manager calls
 //   'FocusNavigation' for tab and document navigation
 PRLogModuleInfo* gFocusLog;
 PRLogModuleInfo* gFocusNavigationLog;
 
-#define LOGFOCUS(args) PR_LOG(gFocusLog, 4, args)
-#define LOGFOCUSNAVIGATION(args) PR_LOG(gFocusNavigationLog, 4, args)
+#define LOGFOCUS(args) MOZ_LOG(gFocusLog, mozilla::LogLevel::Debug, args)
+#define LOGFOCUSNAVIGATION(args) MOZ_LOG(gFocusNavigationLog, mozilla::LogLevel::Debug, args)
 
 #define LOGTAG(log, format, content)                            \
-  {                                                             \
+  if (MOZ_LOG_TEST(log, LogLevel::Debug)) {                         \
     nsAutoCString tag(NS_LITERAL_CSTRING("(none)"));            \
     if (content) {                                              \
       content->NodeInfo()->NameAtom()->ToUTF8String(tag);       \
     }                                                           \
-    PR_LOG(log, 4, (format, tag.get()));                        \
+    MOZ_LOG(log, LogLevel::Debug, (format, tag.get()));             \
   }
 
 #define LOGCONTENT(format, content) LOGTAG(gFocusLog, format, content)
 #define LOGCONTENTNAVIGATION(format, content) LOGTAG(gFocusNavigationLog, format, content)
-
-#else
-
-#define LOGFOCUS(args)
-#define LOGFOCUSNAVIGATION(args)
-#define LOGCONTENT(format, content)
-#define LOGCONTENTNAVIGATION(format, content)
-
-#endif
 
 struct nsDelayedBlurOrFocusEvent
 {
@@ -196,10 +187,8 @@ nsFocusManager::Init()
   NS_ADDREF(fm);
   sInstance = fm;
 
-#ifdef PR_LOGGING
   gFocusLog = PR_NewLogModule("Focus");
   gFocusNavigationLog = PR_NewLogModule("FocusNavigation");
-#endif
 
   nsIContent::sTabFocusModelAppliesToXUL =
     Preferences::GetBool("accessibility.tabfocus_applies_to_xul",
@@ -491,10 +480,9 @@ nsFocusManager::MoveFocus(nsIDOMWindow* aWindow, nsIDOMElement* aStartElement,
 {
   *aElement = nullptr;
 
-#ifdef PR_LOGGING
   LOGFOCUS(("<<MoveFocus begin Type: %d Flags: %x>>", aType, aFlags));
 
-  if (PR_LOG_TEST(gFocusLog, PR_LOG_DEBUG) && mFocusedWindow) {
+  if (MOZ_LOG_TEST(gFocusLog, LogLevel::Debug) && mFocusedWindow) {
     nsIDocument* doc = mFocusedWindow->GetExtantDoc();
     if (doc && doc->GetDocumentURI()) {
       nsAutoCString spec;
@@ -504,7 +492,6 @@ nsFocusManager::MoveFocus(nsIDOMWindow* aWindow, nsIDOMElement* aStartElement,
   }
 
   LOGCONTENT("  Current Focus: %s", mFocusedContent.get());
-#endif
 
   // use FLAG_BYMOVEFOCUS when switching focus with MoveFocus unless one of
   // the other focus methods is already set, or we're just moving to the root
@@ -651,8 +638,7 @@ nsFocusManager::WindowRaised(nsIDOMWindow* aWindow)
   nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(aWindow);
   NS_ENSURE_TRUE(window && window->IsOuterWindow(), NS_ERROR_INVALID_ARG);
 
-#ifdef PR_LOGGING
-  if (PR_LOG_TEST(gFocusLog, PR_LOG_DEBUG)) {
+  if (MOZ_LOG_TEST(gFocusLog, LogLevel::Debug)) {
     LOGFOCUS(("Window %p Raised [Currently: %p %p]", aWindow, mActiveWindow.get(), mFocusedWindow.get()));
     nsAutoCString spec;
     nsIDocument* doc = window->GetExtantDoc();
@@ -668,7 +654,6 @@ nsFocusManager::WindowRaised(nsIDOMWindow* aWindow)
       }
     }
   }
-#endif
 
   if (mActiveWindow == window) {
     // The window is already active, so there is no need to focus anything,
@@ -749,8 +734,7 @@ nsFocusManager::WindowLowered(nsIDOMWindow* aWindow)
   nsCOMPtr<nsPIDOMWindow> window = do_QueryInterface(aWindow);
   NS_ENSURE_TRUE(window && window->IsOuterWindow(), NS_ERROR_INVALID_ARG);
 
-#ifdef PR_LOGGING
-  if (PR_LOG_TEST(gFocusLog, PR_LOG_DEBUG)) {
+  if (MOZ_LOG_TEST(gFocusLog, LogLevel::Debug)) {
     LOGFOCUS(("Window %p Lowered [Currently: %p %p]", aWindow, mActiveWindow.get(), mFocusedWindow.get()));
     nsAutoCString spec;
     nsIDocument* doc = window->GetExtantDoc();
@@ -766,7 +750,6 @@ nsFocusManager::WindowLowered(nsIDOMWindow* aWindow)
       }
     }
   }
-#endif
 
   if (mActiveWindow != window)
     return NS_OK;
@@ -869,8 +852,7 @@ nsFocusManager::WindowShown(nsIDOMWindow* aWindow, bool aNeedsFocus)
 
   window = window->GetOuterWindow();
 
-#ifdef PR_LOGGING
-  if (PR_LOG_TEST(gFocusLog, PR_LOG_DEBUG)) {
+  if (MOZ_LOG_TEST(gFocusLog, LogLevel::Debug)) {
     LOGFOCUS(("Window %p Shown [Currently: %p %p]", window.get(), mActiveWindow.get(), mFocusedWindow.get()));
     nsAutoCString spec;
     nsIDocument* doc = window->GetExtantDoc();
@@ -887,7 +869,6 @@ nsFocusManager::WindowShown(nsIDOMWindow* aWindow, bool aNeedsFocus)
       }
     }
   }
-#endif
 
   if (nsCOMPtr<nsITabChild> child = do_GetInterface(window->GetDocShell())) {
     bool active = static_cast<TabChild*>(child.get())->ParentIsActive();
@@ -926,8 +907,7 @@ nsFocusManager::WindowHidden(nsIDOMWindow* aWindow)
 
   window = window->GetOuterWindow();
 
-#ifdef PR_LOGGING
-  if (PR_LOG_TEST(gFocusLog, PR_LOG_DEBUG)) {
+  if (MOZ_LOG_TEST(gFocusLog, LogLevel::Debug)) {
     LOGFOCUS(("Window %p Hidden [Currently: %p %p]", window.get(), mActiveWindow.get(), mFocusedWindow.get()));
     nsAutoCString spec;
     nsIDocument* doc = window->GetExtantDoc();
@@ -952,7 +932,6 @@ nsFocusManager::WindowHidden(nsIDOMWindow* aWindow)
       }
     }
   }
-#endif
 
   if (!IsSameOrAncestor(window, mFocusedWindow))
     return NS_OK;
@@ -1252,16 +1231,15 @@ nsFocusManager::SetFocusInner(nsIContent* aNewContent, int32_t aFlags,
   // key input if a windowed plugin is focused, so just exit fullscreen
   // to guard against phishing.
 #ifndef XP_MACOSX
-  nsIDocument* fullscreenAncestor;
   if (contentToFocus &&
-      (fullscreenAncestor = nsContentUtils::GetFullscreenAncestor(contentToFocus->OwnerDoc())) &&
+      nsContentUtils::GetRootDocument(contentToFocus->OwnerDoc())->IsFullScreenDoc() &&
       nsContentUtils::HasPluginWithUncontrolledEventDispatch(contentToFocus)) {
     nsContentUtils::ReportToConsole(nsIScriptError::warningFlag,
                                     NS_LITERAL_CSTRING("DOM"),
                                     contentToFocus->OwnerDoc(),
                                     nsContentUtils::eDOM_PROPERTIES,
                                     "FocusedWindowedPluginWhileFullScreen");
-    nsIDocument::ExitFullscreen(fullscreenAncestor, /* async */ true);
+    nsIDocument::ExitFullscreen(contentToFocus->OwnerDoc(), /* async */ true);
   }
 #endif
 
@@ -1693,6 +1671,11 @@ nsFocusManager::Blur(nsPIDOMWindow* aWindowToClear,
     selectionCarets->NotifyBlur(aIsLeavingDocument || !mActiveWindow);
   }
 
+  nsRefPtr<AccessibleCaretEventHub> eventHub = presShell->GetAccessibleCaretEventHub();
+  if (eventHub) {
+    eventHub->NotifyBlur(aIsLeavingDocument || !mActiveWindow);
+  }
+
   // at this point, it is expected that this window will be still be
   // focused, but the focused content will be null, as it was cleared before
   // the event. If this isn't the case, then something else was focused during
@@ -1792,10 +1775,9 @@ nsFocusManager::Focus(nsPIDOMWindow* aWindow,
     clearFirstFocusEvent = true;
   }
 
-#ifdef PR_LOGGING
   LOGCONTENT("Element %s has been focused", aContent);
 
-  if (PR_LOG_TEST(gFocusLog, PR_LOG_DEBUG)) {
+  if (MOZ_LOG_TEST(gFocusLog, LogLevel::Debug)) {
     nsIDocument* docm = aWindow->GetExtantDoc();
     if (docm) {
       LOGCONTENT(" from %s", docm->GetRootElement());
@@ -1803,7 +1785,6 @@ nsFocusManager::Focus(nsPIDOMWindow* aWindow,
     LOGFOCUS((" [Newdoc: %d FocusChanged: %d Raised: %d Flags: %x]",
              aIsNewDocument, aFocusChanged, aWindowRaised, aFlags));
   }
-#endif
 
   if (aIsNewDocument) {
     // if this is a new document, update the parent chain of frames so that
@@ -1929,9 +1910,13 @@ nsFocusManager::Focus(nsPIDOMWindow* aWindow,
       }
     }
 
-    nsPresContext* presContext = presShell->GetPresContext();
-    IMEStateManager::OnChangeFocus(presContext, nullptr,
-                                   GetFocusMoveActionCause(aFlags));
+    if (!mFocusedContent) {
+      // When there is no focused content, IMEStateManager needs to adjust IME
+      // enabled state with the document.
+      nsPresContext* presContext = presShell->GetPresContext();
+      IMEStateManager::OnChangeFocus(presContext, nullptr,
+                                     GetFocusMoveActionCause(aFlags));
+    }
 
     if (!aWindowRaised)
       aWindow->UpdateCommands(NS_LITERAL_STRING("focus"), nullptr, 0);
@@ -2633,8 +2618,9 @@ nsFocusManager::DetermineElementToMoveFocus(nsPIDOMWindow* aWindow,
 
         // as long as the found node was not the same as the starting node,
         // set it as the return value.
-        if (nextFocus != originalStartContent)
-          NS_ADDREF(*aNextContent = nextFocus);
+        if (nextFocus != originalStartContent) {
+          nextFocus.forget(aNextContent);
+        }
         return NS_OK;
       }
 
@@ -3116,8 +3102,7 @@ nsFocusManager::GetLastDocShell(nsIDocShellTreeItem* aItem,
     int32_t childCount = 0;
     curItem->GetChildCount(&childCount);
     if (!childCount) {
-      *aResult = curItem;
-      NS_ADDREF(*aResult);
+      curItem.forget(aResult);
       return;
     }
 
@@ -3195,7 +3180,7 @@ nsFocusManager::GetPreviousDocShell(nsIDocShellTreeItem* aItem,
   if (prevItem)
     GetLastDocShell(prevItem, aResult);
   else
-    NS_ADDREF(*aResult = parentItem);
+    parentItem.forget(aResult);
 }
 
 nsIContent*
@@ -3413,7 +3398,7 @@ nsFocusManager::GetFocusInSelection(nsPIDOMWindow* aWindow,
     nsCOMPtr<nsIURI> uri;
     if (testContent == currentFocus ||
         testContent->IsLink(getter_AddRefs(uri))) {
-      NS_ADDREF(*aFocusedContent = testContent);
+      testContent.forget(aFocusedContent);
       return;
     }
 
@@ -3443,7 +3428,7 @@ nsFocusManager::GetFocusInSelection(nsPIDOMWindow* aWindow,
     nsCOMPtr<nsIURI> uri;
     if (testContent == currentFocus ||
         testContent->IsLink(getter_AddRefs(uri))) {
-      NS_ADDREF(*aFocusedContent = testContent);
+      testContent.forget(aFocusedContent);
       return;
     }
 

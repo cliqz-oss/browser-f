@@ -49,15 +49,10 @@ this.mozIApplication = function(aApp) {
 
 mozIApplication.prototype = {
   hasPermission: function(aPermission) {
-    let uri = Services.io.newURI(this.origin, null, null);
-    let secMan = Cc["@mozilla.org/scriptsecuritymanager;1"]
-                   .getService(Ci.nsIScriptSecurityManager);
     // This helper checks an URI inside |aApp|'s origin and part of |aApp| has a
     // specific permission. It is not checking if browsers inside |aApp| have such
     // permission.
-    let principal = secMan.getAppCodebasePrincipal(uri, this.localId,
-                                                   /*mozbrowser*/false);
-    let perm = Services.perms.testExactPermissionFromPrincipal(principal,
+    let perm = Services.perms.testExactPermissionFromPrincipal(this.principal,
                                                                aPermission);
     return (perm === Ci.nsIPermissionManager.ALLOW_ACTION);
   },
@@ -66,8 +61,29 @@ mozIApplication.prototype = {
     let uri = Services.io.newURI(aPageURL, null, null);
     let filepath = AppsUtils.getFilePath(uri.path);
     let eliminatedUri = Services.io.newURI(uri.prePath + filepath, null, null);
-    let equalCriterion = aUri => aUri.equals(eliminatedUri);
+    let equalCriterion = aUrl => Services.io.newURI(aUrl, null, null)
+                                            .equals(eliminatedUri);
     return this.widgetPages.find(equalCriterion) !== undefined;
+  },
+
+  get principal() {
+    if (this._principal) {
+      return this._principal;
+    }
+
+    this._principal = null;
+
+    try {
+      this._principal = Services.scriptSecurityManager.getAppCodebasePrincipal(
+        Services.io.newURI(this.origin, null, null),
+        this.localId,
+        false /* mozbrowser */
+      );
+    } catch(e) {
+      dump("Could not create app principal " + e + "\n");
+    }
+
+    return this._principal;
   },
 
   QueryInterface: function(aIID) {
@@ -503,20 +519,19 @@ this.AppsUtils = {
    * Checks if the app role is allowed:
    * Only certified apps can be themes.
    * Only privileged or certified apps can be addons.
-   * Langpacks need to be privileged.
    * @param aRole   : the role assigned to this app.
    * @param aStatus : the APP_STATUS_* for this app.
    */
   checkAppRole: function(aRole, aStatus) {
+    try {
+      // Anything is possible in developer mode.
+      if (Services.prefs.getBoolPref("dom.apps.developer_mode")) {
+        return true;
+      }
+    } catch(e) {}
+
     if (aRole == "theme" && aStatus !== Ci.nsIPrincipal.APP_STATUS_CERTIFIED) {
       return false;
-    }
-    if (aRole == "langpack" && aStatus !== Ci.nsIPrincipal.APP_STATUS_PRIVILEGED) {
-      let allow = false;
-      try  {
-        allow = Services.prefs.getBoolPref("dom.apps.allow_unsigned_langpacks");
-      } catch(e) {}
-      return allow;
     }
     if (!this.allowUnsignedAddons &&
         (aRole == "addon" &&
@@ -622,7 +637,12 @@ this.AppsUtils = {
     aPrefBranch.setCharPref("gecko.mstone", mstone);
     aPrefBranch.setCharPref("gecko.buildID", buildID);
 
-    return ((mstone != savedmstone) || (buildID != savedBuildID));
+    if ((mstone != savedmstone) || (buildID != savedBuildID)) {
+      aPrefBranch.setBoolPref("dom.apps.reset-permissions", false);
+      return true;
+    } else {
+      return false;
+    }
   },
 
   /**
@@ -692,17 +712,13 @@ this.AppsUtils = {
       let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
       file.initWithPath(aPath);
 
-      let channel = NetUtil.newChannel2(file,
-                                        null,
-                                        null,
-                                        null,      // aLoadingNode
-                                        Services.scriptSecurityManager.getSystemPrincipal(),
-                                        null,      // aTriggeringPrincipal
-                                        Ci.nsILoadInfo.SEC_NORMAL,
-                                        Ci.nsIContentPolicy.TYPE_OTHER);
+      let channel = NetUtil.newChannel({
+        uri: NetUtil.newURI(file),
+        loadUsingSystemPrincipal: true});
+
       channel.contentType = "application/json";
 
-      NetUtil.asyncFetch2(channel, function(aStream, aResult) {
+      NetUtil.asyncFetch(channel, function(aStream, aResult) {
         if (!Components.isSuccessCode(aResult)) {
           deferred.resolve(null);
 
@@ -891,18 +907,17 @@ ManifestHelper.prototype = {
     return {};
   },
 
-  get biggestIconURL() {
+  biggestIconURL: function(predicate) {
     let icons = this._localeProp("icons");
     if (!icons) {
       return null;
     }
 
-    let iconSizes = Object.keys(icons);
+    let iconSizes = Object.keys(icons).sort((a, b) => a - b)
+                          .filter(predicate || (() => true));
     if (iconSizes.length == 0) {
       return null;
     }
-
-    iconSizes.sort((a, b) => a - b);
     let biggestIconSize = iconSizes.pop();
     let biggestIcon = icons[biggestIconSize];
     let biggestIconURL = this._baseURI.resolve(biggestIcon);

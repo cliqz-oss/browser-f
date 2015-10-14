@@ -313,9 +313,7 @@ void
 ImageLoader::AddImage(ImageLoader::Image* aImage)
 {
   NS_ASSERTION(!mImages.Contains(aImage), "Huh?");
-  if (!mImages.PutEntry(aImage)) {
-    NS_RUNTIMEABORT("OOM");
-  }
+  mImages.PutEntry(aImage);
 }
 
 void
@@ -350,6 +348,10 @@ void InvalidateImagesCallback(nsIFrame* aFrame,
     return;
   }
 
+  if (nsLayoutUtils::InvalidationDebuggingIsEnabled()) {
+    printf_stderr("Invalidating display item(type=%d) based on frame %p \
+      because it might contain an invalidated image\n", type, aFrame);
+  }
   aItem->Invalidate();
   aFrame->SchedulePaint();
 

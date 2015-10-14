@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -165,19 +166,9 @@ CreateScopeKey(nsIPrincipal* aPrincipal,
     key.Append(nsPrintfCString(":%d", port));
   }
 
-  bool unknownAppId;
-  rv = aPrincipal->GetUnknownAppId(&unknownAppId);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (!unknownAppId) {
-    uint32_t appId;
-    rv = aPrincipal->GetAppId(&appId);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    bool isInBrowserElement;
-    rv = aPrincipal->GetIsInBrowserElement(&isInBrowserElement);
-    NS_ENSURE_SUCCESS(rv, rv);
-
+  if (!aPrincipal->GetUnknownAppId()) {
+    uint32_t appId = aPrincipal->GetAppId();
+    bool isInBrowserElement = aPrincipal->GetIsInBrowserElement();
     if (appId == nsIScriptSecurityManager::NO_APP_ID && !isInBrowserElement) {
       aKey.Assign(key);
       return NS_OK;
@@ -220,19 +211,9 @@ CreateQuotaDBKey(nsIPrincipal* aPrincipal,
 
   CreateReversedDomain(eTLDplusOne, subdomainsDBKey);
 
-  bool unknownAppId;
-  rv = aPrincipal->GetUnknownAppId(&unknownAppId);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  if (!unknownAppId) {
-    uint32_t appId;
-    rv = aPrincipal->GetAppId(&appId);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    bool isInBrowserElement;
-    rv = aPrincipal->GetIsInBrowserElement(&isInBrowserElement);
-    NS_ENSURE_SUCCESS(rv, rv);
-
+  if (!aPrincipal->GetUnknownAppId()) {
+    uint32_t appId = aPrincipal->GetAppId();
+    bool isInBrowserElement = aPrincipal->GetIsInBrowserElement();
     if (appId == nsIScriptSecurityManager::NO_APP_ID && !isInBrowserElement) {
       aKey.Assign(subdomainsDBKey);
       return NS_OK;
@@ -645,6 +626,21 @@ DOMLocalStorageManager::DOMLocalStorageManager()
 DOMLocalStorageManager::~DOMLocalStorageManager()
 {
   sSelf = nullptr;
+}
+
+DOMLocalStorageManager*
+DOMLocalStorageManager::Ensure()
+{
+  if (sSelf) {
+    return sSelf;
+  }
+
+  // Cause sSelf to be populated.
+  nsCOMPtr<nsIDOMStorageManager> initializer =
+    do_GetService("@mozilla.org/dom/localStorage-manager;1");
+  MOZ_ASSERT(sSelf, "Didn't initialize?");
+
+  return sSelf;
 }
 
 // DOMSessionStorageManager

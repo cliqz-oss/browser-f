@@ -34,6 +34,7 @@
 #include "FallbackCameraPlatform.h"
 #endif
 
+class nsITimer;
 
 namespace android {
   class GonkCameraHardware;
@@ -46,21 +47,21 @@ namespace mozilla {
 namespace layers {
   class TextureClient;
   class ImageContainer;
+  class Image;
 }
-
-class GonkRecorderProfile;
-class GonkRecorderProfileManager;
 
 class nsGonkCameraControl : public CameraControlImpl
 {
 public:
   nsGonkCameraControl(uint32_t aCameraId);
 
-  void OnAutoFocusComplete(bool aSuccess);
+  void OnAutoFocusMoving(bool aIsMoving);
+  void OnAutoFocusComplete(bool aSuccess, bool aExpired);
   void OnFacesDetected(camera_frame_metadata_t* aMetaData);
   void OnTakePictureComplete(uint8_t* aData, uint32_t aLength);
   void OnTakePictureError();
   void OnRateLimitPreview(bool aLimit);
+  void OnPoster(void* aData, uint32_t aLength);
   void OnNewPreviewFrame(layers::TextureClient* aBuffer);
 #ifdef MOZ_WIDGET_GONK
   void OnRecorderEvent(int msg, int ext1, int ext2);
@@ -150,6 +151,8 @@ protected:
   nsresult PausePreview();
   nsresult GetSupportedSize(const Size& aSize, const nsTArray<Size>& supportedSizes, Size& best);
 
+  void CreatePoster(layers::Image* aImage, uint32_t aWidth, uint32_t aHeight, int32_t aRotation);
+
   nsresult LoadRecorderProfiles();
   static PLDHashOperator Enumerate(const nsAString& aProfileName,
                                    RecorderProfile* aProfile,
@@ -198,6 +201,13 @@ protected:
 
   nsRefPtr<DeviceStorageFile> mVideoFile;
   nsString                  mFileFormat;
+
+  Atomic<bool>              mCapturePoster;
+  int32_t                   mVideoRotation;
+
+  bool                      mAutoFocusPending;
+  nsCOMPtr<nsITimer>        mAutoFocusCompleteTimer;
+  int32_t                   mAutoFocusCompleteExpired;
 
   // Guards against calling StartPreviewImpl() while in OnTakePictureComplete().
   ReentrantMonitor          mReentrantMonitor;

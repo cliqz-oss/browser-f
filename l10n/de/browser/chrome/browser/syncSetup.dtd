@@ -73,7 +73,6 @@
 <!-- Existing Account Page 2: Manual Login -->
 <!ENTITY setup.signInPage.title.label "Anmeldung">
 <!ENTITY existingRecoveryKey.description "Um eine Kopie Ihres Wiederherstellungs-Schlüssels zu erhalten, gehen Sie in die &syncBrand.shortName.label;-Einstellungen auf Ihrem anderen Gerät, und wählen Sie &#x0022;Mein Wiederherstellungs-Schlüssel&#x0022; unter &#x0022;Benutzerkonto verwalten&#x0022;.">
-
 <!ENTITY verifying.label              "Überprüfen…">
 <!ENTITY resetPassword.label          "Passwort zurücksetzen">
 <!ENTITY resetSyncKey.label           "Ich habe mein anderes Gerät verloren.">

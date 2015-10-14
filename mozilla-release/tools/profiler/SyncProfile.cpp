@@ -5,12 +5,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "SyncProfile.h"
-#include "UnwinderThread2.h"
 
 SyncProfile::SyncProfile(ThreadInfo* aInfo, int aEntrySize)
   : ThreadProfile(aInfo, new ProfileBuffer(aEntrySize))
   , mOwnerState(REFERENCED)
-  , mUtb(nullptr)
 {
   MOZ_COUNT_CTOR(SyncProfile);
 }
@@ -18,9 +16,6 @@ SyncProfile::SyncProfile(ThreadInfo* aInfo, int aEntrySize)
 SyncProfile::~SyncProfile()
 {
   MOZ_COUNT_DTOR(SyncProfile);
-  if (mUtb) {
-    utb__release_sync_buffer(mUtb);
-  }
 
   // SyncProfile owns the ThreadInfo; see NewSyncProfile.
   ThreadInfo* info = GetThreadInfo();
@@ -28,18 +23,9 @@ SyncProfile::~SyncProfile()
 }
 
 bool
-SyncProfile::SetUWTBuffer(LinkedUWTBuffer* aBuff)
-{
-  MOZ_ASSERT(aBuff);
-  mUtb = aBuff;
-  return true;
-}
-
-bool
 SyncProfile::ShouldDestroy()
 {
-  GetMutex()->AssertNotCurrentThreadOwns();
-  mozilla::MutexAutoLock lock(*GetMutex());
+  ::MutexAutoLock lock(GetMutex());
   if (mOwnerState == OWNED) {
     mOwnerState = OWNER_DESTROYING;
     return true;
@@ -51,11 +37,6 @@ SyncProfile::ShouldDestroy()
 void
 SyncProfile::EndUnwind()
 {
-  // Mutex must be held when this is called
-  GetMutex()->AssertCurrentThreadOwns();
-  if (mUtb) {
-    utb__end_sync_buffer_unwind(mUtb);
-  }
   if (mOwnerState != ORPHANED) {
     mOwnerState = OWNED;
   }
@@ -67,3 +48,10 @@ SyncProfile::EndUnwind()
   }
 }
 
+// SyncProfiles' stacks are deduplicated in the context of the containing
+// profile in which the backtrace is as a marker payload.
+void
+SyncProfile::StreamJSON(SpliceableJSONWriter& aWriter, UniqueStacks& aUniqueStacks)
+{
+  ThreadProfile::StreamSamplesAndMarkers(aWriter, /* aSinceTime = */ 0, aUniqueStacks);
+}

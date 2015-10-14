@@ -7,6 +7,7 @@
 #define mozilla_net_Predictor_h
 
 #include "nsINetworkPredictor.h"
+#include "nsINetworkPredictorVerifier.h"
 
 #include "nsCOMPtr.h"
 #include "nsICacheEntry.h"
@@ -25,8 +26,6 @@
 class nsICacheStorage;
 class nsIDNSService;
 class nsIIOService;
-class nsINetworkPredictorVerifier;
-class nsIThread;
 class nsITimer;
 
 namespace mozilla {
@@ -37,6 +36,7 @@ class Predictor : public nsINetworkPredictor
                 , public nsISpeculativeConnectionOverrider
                 , public nsIInterfaceRequestor
                 , public nsICacheEntryMetaDataVisitor
+                , public nsINetworkPredictorVerifier
 {
 public:
   NS_DECL_ISUPPORTS
@@ -45,6 +45,7 @@ public:
   NS_DECL_NSISPECULATIVECONNECTIONOVERRIDER
   NS_DECL_NSIINTERFACEREQUESTOR
   NS_DECL_NSICACHEENTRYMETADATAVISITOR
+  NS_DECL_NSINETWORKPREDICTORVERIFIER
 
   Predictor();
 
@@ -54,6 +55,9 @@ public:
 
 private:
   virtual ~Predictor();
+
+  // Stores callbacks for a child process predictor (for test purposes)
+  nsCOMPtr<nsINetworkPredictorVerifier> mChildVerifier;
 
   union Reason {
     PredictorLearnReason mLearn;

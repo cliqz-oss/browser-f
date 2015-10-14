@@ -12,6 +12,7 @@
 #define jsexn_h
 
 #include "jsapi.h"
+#include "jscntxt.h"
 #include "NamespaceImports.h"
 
 namespace js {
@@ -125,9 +126,12 @@ class AutoClearPendingException
     { }
 
     ~AutoClearPendingException() {
-        cx->clearPendingException();
+        JS_ClearPendingException(cx);
     }
 };
+
+extern const char*
+ValueToSourceForError(JSContext* cx, HandleValue val, JSAutoByteString& bytes);
 
 } // namespace js
 

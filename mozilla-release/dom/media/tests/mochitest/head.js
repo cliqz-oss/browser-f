@@ -115,8 +115,7 @@ function getUserMedia(constraints) {
 }
 
 // These are the promises we use to track that the prerequisites for the test
-// are in place before running it.  Users of this file need to ensure that they
-// also provide a promise called `scriptsReady` as well.
+// are in place before running it.
 var setTestOptions;
 var testConfigured = new Promise(r => setTestOptions = r);
 
@@ -131,16 +130,22 @@ function setupEnvironment() {
   window.finish = () => SimpleTest.finish();
   SpecialPowers.pushPrefEnv({
     'set': [
+      ['canvas.capturestream.enabled', true],
       ['dom.messageChannel.enabled', true],
       ['media.peerconnection.enabled', true],
       ['media.peerconnection.identity.enabled', true],
-      ['media.peerconnection.identity.timeout', 12000],
-      ['media.peerconnection.default_iceservers', '[]'],
+      ['media.peerconnection.identity.timeout', 120000],
+      ['media.peerconnection.ice.stun_client_maximum_transmits', 14],
+      ['media.peerconnection.ice.trickle_grace_period', 30000],
       ['media.navigator.permission.disabled', true],
       ['media.getusermedia.screensharing.enabled', true],
       ['media.getusermedia.screensharing.allowed_domains', "mochi.test"]
     ]
   }, setTestOptions);
+
+  // We don't care about waiting for this to complete, we just want to ensure
+  // that we don't build up a huge backlog of GC work.
+  SpecialPowers.exactGC(window);
 }
 
 // This is called by steeplechase; which provides the test configuration options
@@ -163,15 +168,10 @@ function run_test(is_initiator) {
 
 function runTestWhenReady(testFunc) {
   setupEnvironment();
-  return Promise.all([scriptsReady, testConfigured]).then(() => {
-    try {
-      return testConfigured.then(options => testFunc(options));
-    } catch (e) {
-      ok(false, 'Error executing test: ' + e +
-         ((typeof e.stack === 'string') ?
-          (' ' + e.stack.split('\n').join(' ... ')) : ''));
-    }
-  });
+  return testConfigured.then(options => testFunc(options))
+    .catch(e => ok(false, 'Error executing test: ' + e +
+        ((typeof e.stack === 'string') ?
+        (' ' + e.stack.split('\n').join(' ... ')) : '')));
 }
 
 
@@ -386,8 +386,8 @@ CommandChain.prototype = {
   /**
    * Inserts the new commands after the specified command.
    */
-  insertAfter: function(functionOrName, commands) {
-    this._insertHelper(functionOrName, commands, 1);
+  insertAfter: function(functionOrName, commands, all, start) {
+    this._insertHelper(functionOrName, commands, 1, all, start);
   },
 
   /**
@@ -437,8 +437,8 @@ CommandChain.prototype = {
   /**
    * Removes all commands after the specified one, returns what was removed.
    */
-  removeAfter: function(functionOrName) {
-    var index = this.indexOf(functionOrName);
+  removeAfter: function(functionOrName, start) {
+    var index = this.indexOf(functionOrName, start);
     if (index >= 0) {
       return this.commands.splice(index + 1);
     }
@@ -467,8 +467,8 @@ CommandChain.prototype = {
   /**
    * Replaces all commands after the specified one, returns what was removed.
    */
-  replaceAfter: function(functionOrName, commands) {
-    var oldCommands = this.removeAfter(functionOrName);
+  replaceAfter: function(functionOrName, commands, start) {
+    var oldCommands = this.removeAfter(functionOrName, start);
     this.append(commands);
     return oldCommands;
   },

@@ -8,9 +8,9 @@
 
 let WAIT_TIME = 1000;
 
-function spawnTest () {
+function* spawnTest() {
   let { target, front } = yield initBackend(SIMPLE_URL);
-  let config = { withMemory: true, withTicks: true };
+  let config = { withMarkers: true, withAllocations: true, withTicks: true };
 
   yield front._request("memory", "attach");
 
