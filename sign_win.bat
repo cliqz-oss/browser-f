@@ -49,7 +49,7 @@ for %%f in (
 ) do (
   "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
   "%CLZ_SIGNTOOL_PATH%" verify /pa %%f
-  exit /b %ERRORLEVEL%
+  if NOT %ERRORLEVEL%==0 exit /b 1
 )
 
 cd pkg
