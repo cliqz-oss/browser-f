@@ -456,7 +456,7 @@ const PanelUI = {
 
     let helpMenu = document.getElementById("menu_HelpPopup");
     let items = this.getElementsByTagName("vbox")[0];
-    let attrs = ["oncommand", "onclick", "label", "key", "disabled"];
+    let attrs = ["label", "key", "disabled"];
     let NSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
     // Remove all buttons from the view
@@ -478,6 +478,7 @@ const PanelUI = {
         button.setAttribute(attrName, node.getAttribute(attrName));
       }
       button.setAttribute("class", "subviewbutton");
+      button.addEventListener("click", node.click.bind(node));
       fragment.appendChild(button);
     }
     items.appendChild(fragment);
