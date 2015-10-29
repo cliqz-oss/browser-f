@@ -167,6 +167,7 @@
     <vbox class="main-content" flex="1">
       <!-- main header -->
       <hbox id="header" align="center">
+        <label value="&cliqz.firefoxAddons;"/>
         <button id="show-all-extensions" hidden="true"
                 label="&showAllExtensions.button.label;"
                 command="cmd_showAllExtensions"/>
