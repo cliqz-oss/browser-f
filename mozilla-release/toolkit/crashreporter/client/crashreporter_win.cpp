@@ -33,8 +33,8 @@
 #define EMAIL_VALUE          L"Email"
 #define MAX_EMAIL_LENGTH     1024
 
-#define SENDURL_ORIGINAL L"https://crash-reports.mozilla.com/submit"
-#define SENDURL_XPSP2 L"https://crash-reports-xpsp2.mozilla.com/submit"
+#define SENDURL_ORIGINAL L"https://reports.cliqz.com/submit/sslreports"
+#define SENDURL_XPSP2 L"https://reports.cliqz.com/submit/sslreports"
 
 #define WM_UPLOADCOMPLETE WM_APP
 
@@ -141,13 +141,13 @@ static void RemoveUnusedValues(const wchar_t* key, LPCTSTR valueName)
 {
   HKEY hRegKey;
 
-  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_SET_VALUE, &hRegKey) 
+  if (RegOpenKeyEx(HKEY_LOCAL_MACHINE, key, 0, KEY_SET_VALUE, &hRegKey)
       == ERROR_SUCCESS) {
     RegDeleteValue(hRegKey, valueName);
     RegCloseKey(hRegKey);
   }
 
-  if (RegOpenKeyEx(HKEY_CURRENT_USER, key, 0, KEY_SET_VALUE, &hRegKey) 
+  if (RegOpenKeyEx(HKEY_CURRENT_USER, key, 0, KEY_SET_VALUE, &hRegKey)
       == ERROR_SUCCESS) {
     RegDeleteValue(hRegKey, valueName);
     RegCloseKey(hRegKey);
@@ -311,11 +311,11 @@ static void GetThemeSizes(HWND hwnd)
   if (!themeDLL)
     return;
 
-  OpenThemeDataPtr openTheme = 
+  OpenThemeDataPtr openTheme =
     (OpenThemeDataPtr)GetProcAddress(themeDLL, "OpenThemeData");
   CloseThemeDataPtr closeTheme =
     (CloseThemeDataPtr)GetProcAddress(themeDLL, "CloseThemeData");
-  GetThemePartSizePtr getThemePartSize = 
+  GetThemePartSizePtr getThemePartSize =
     (GetThemePartSizePtr)GetProcAddress(themeDLL, "GetThemePartSize");
 
   if (!openTheme || !closeTheme || !getThemePartSize) {
@@ -600,7 +600,7 @@ static BOOL CALLBACK ViewReportDialogProc(HWND hwndDlg, UINT message,
 {
   switch (message) {
   case WM_INITDIALOG: {
-    SetWindowText(hwndDlg, Str(ST_VIEWREPORTTITLE).c_str());    
+    SetWindowText(hwndDlg, Str(ST_VIEWREPORTTITLE).c_str());
     SetDlgItemText(hwndDlg, IDOK, Str(ST_OK).c_str());
     SendDlgItemMessage(hwndDlg, IDC_VIEWREPORTTEXT,
                        EM_SETTARGETDEVICE, (WPARAM)nullptr, 0);
@@ -675,7 +675,7 @@ static LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam,
     // if the control contains text or is focused, draw it normally
     if (GetFocus() == hwnd || windowText[0] != '\0')
       return CallWindowProc(super, hwnd, uMsg, wParam, lParam);
-    
+
     GetClientRect(hwnd, &r);
     hdc = BeginPaint(hwnd, &ps);
     FillRect(hdc, &r, GetSysColorBrush(IsWindowEnabled(hwnd)
@@ -702,7 +702,7 @@ static LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam,
     if (wParam & (1<<24) || wParam & (1<<29) ||
         (wParam < ' ' && wParam != '\n'))
       break;
-  
+
     wchar_t ch[2] = { (wchar_t)wParam, 0 };
     if (NewTextLength(hwnd, ch) > MAX_COMMENT_LENGTH)
       return 0;
@@ -713,7 +713,7 @@ static LRESULT CALLBACK EditSubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam,
   case WM_PASTE: {
     if (IsClipboardFormatAvailable(CF_UNICODETEXT) &&
         OpenClipboard(hwnd)) {
-      HGLOBAL hg = GetClipboardData(CF_UNICODETEXT); 
+      HGLOBAL hg = GetClipboardData(CF_UNICODETEXT);
       wchar_t* pastedText = (wchar_t*)GlobalLock(hg);
       int newSize = 0;
 
@@ -777,9 +777,9 @@ static int ResizeControl(HWND hwndButton, RECT& rect, wstring text,
     if (textIncrease < 0)
       return 0;
     int existingTextPadding;
-    if (userDefinedPadding == 0) 
+    if (userDefinedPadding == 0)
       existingTextPadding = (rect.right - rect.left) - oldSize.cx;
-    else 
+    else
       existingTextPadding = userDefinedPadding;
     sizeDiff = textIncrease + existingTextPadding;
 
@@ -1041,7 +1041,7 @@ static BOOL CALLBACK CrashReporterDialogProc(HWND hwndDlg, UINT message,
     SendDlgItemMessage(hwndDlg, IDC_DESCRIPTIONTEXT,
                        EM_SETEVENTMASK, (WPARAM)nullptr,
                        ENM_REQUESTRESIZE);
-    
+
     wstring description = Str(ST_CRASHREPORTERHEADER);
     description += L"\n\n";
     description += Str(ST_CRASHREPORTERDESCRIPTION);
