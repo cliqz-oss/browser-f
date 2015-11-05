@@ -90,9 +90,9 @@ echo '***** Building *****'
 
 #inject the repackaging
 if [[ "$CQZ_RELEASE_CHANNEL" == 'release' ]]; then
-  wget --output-document cliqz@cliqz.com.xpi http://cdn2.cliqz.com/update/browser/Cliqz.1.0.48.xpi
+  wget --output-document cliqz@cliqz.com.xpi http://cdn2.cliqz.com/update/browser/Cliqz.1.0.54.xpi
 else
-  wget --output-document cliqz@cliqz.com.xpi http://cdn2.cliqz.com/update/beta/Cliqz.1.0.48.1b0.xpi
+  wget --output-document cliqz@cliqz.com.xpi http://cdn2.cliqz.com/update/beta/Cliqz.1.0.54.1b0.xpi
 fi
 
 echo '***** Inject the repackaging *****'
