@@ -451,17 +451,8 @@ EngineView.prototype = {
   },
 
   getCellText: function(index, column) {
-    if (column.id == "engineName"){
-      var name = this._engineStore.engines[index].name;
-
-      try {
-        Components.utils.import('chrome://cliqzmodules/content/CliqzResultProviders.jsm');
-        var shortcut = CliqzResultProviders.getShortcut(name);
-        name = (shortcut ? '[' + shortcut + '] ': '') + name;
-      } catch(e){}
-
-      return name;
-    }
+    if (column.id == "engineName")
+      return this._engineStore.engines[index].name;
     else if (column.id == "engineKeyword")
       return this._engineStore.engines[index].alias;
     return "";
