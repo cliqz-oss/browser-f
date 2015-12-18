@@ -890,7 +890,7 @@ FramePointerStackWalk(MozWalkStackCallback aCallback, uint32_t aSkipFrames,
 
   int32_t skip = aSkipFrames;
   uint32_t numFrames = 0;
-  while (1) {
+  while (bp) {
     void** next = (void**)*bp;
     // bp may not be a frame pointer on i386 if code was compiled with
     // -fomit-frame-pointer, so do some sanity checks.
@@ -930,7 +930,7 @@ FramePointerStackWalk(MozWalkStackCallback aCallback, uint32_t aSkipFrames,
   return numFrames != 0;
 }
 
-}
+} // namespace mozilla
 
 #define X86_OR_PPC (defined(__i386) || defined(PPC) || defined(__ppc__))
 #if X86_OR_PPC && (MOZ_STACKWALK_SUPPORTS_MACOSX || MOZ_STACKWALK_SUPPORTS_LINUX) // i386 or PPC Linux or Mac stackwalking code

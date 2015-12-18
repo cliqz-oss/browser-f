@@ -54,39 +54,6 @@ describe("loop.shared.utils", function() {
     });
   });
 
-  describe("#isFirefoxOS", function() {
-    describe("without mozActivities", function() {
-      it("shouldn't detect FirefoxOS on mobile platform", function() {
-        expect(sharedUtils.isFirefoxOS("mobi")).eql(false);
-      });
-
-      it("shouldn't detect FirefoxOS on non mobile platform", function() {
-        expect(sharedUtils.isFirefoxOS("whatever")).eql(false);
-      });
-    });
-
-    describe("with mozActivities", function() {
-      var realMozActivity;
-
-      before(function() {
-        realMozActivity = window.MozActivity;
-        window.MozActivity = {};
-      });
-
-      after(function() {
-        window.MozActivity = realMozActivity;
-      });
-
-      it("should detect FirefoxOS on mobile platform", function() {
-        expect(sharedUtils.isFirefoxOS("mobi")).eql(true);
-      });
-
-      it("shouldn't detect FirefoxOS on non mobile platform", function() {
-        expect(sharedUtils.isFirefoxOS("whatever")).eql(false);
-      });
-    });
-  });
-
   describe("#formatDate", function() {
     beforeEach(function() {
       sandbox.stub(Date.prototype, "toLocaleDateString").returns("fake result");
@@ -313,6 +280,11 @@ describe("loop.shared.utils", function() {
   });
 
   describe("#formatURL", function() {
+    beforeEach(function() {
+      // Stub to prevent console messages.
+      sandbox.stub(window.console, "error");
+    });
+
     it("should decode encoded URIs", function() {
       expect(sharedUtils.formatURL("http://invalid.com/?a=Foo%20Bar"))
         .eql({
@@ -335,6 +307,12 @@ describe("loop.shared.utils", function() {
     it("should return null if it the url is not valid", function() {
       expect(sharedUtils.formatURL("hinvalid//url")).eql(null);
     });
+
+    it("should log an error message to the console", function() {
+      sharedUtils.formatURL("hinvalid//url");
+
+      sinon.assert.calledOnce(console.error);
+    });
   });
 
   describe("#composeCallUrlEmail", function() {
@@ -344,14 +322,14 @@ describe("loop.shared.utils", function() {
       // fake mozL10n
       sandbox.stub(navigator.mozL10n, "get", function(id) {
         switch(id) {
-          case "share_email_subject5":
+          case "share_email_subject6":
             return "subject";
-          case "share_email_body5":
+          case "share_email_body6":
             return "body";
-          case "share_email_subject_context":
-            return "subject_context";
-          case "share_email_body_context":
+          case "share_email_body_context2":
             return "body_context";
+          case "share_email_footer":
+            return "footer";
         }
       });
       composeEmail = sandbox.spy();
@@ -365,6 +343,8 @@ describe("loop.shared.utils", function() {
         composeEmail: composeEmail,
         telemetryAddValue: telemetryAddValue
       };
+
+      sandbox.stub(window.console, "error");
     });
 
     it("should compose a call url email", function() {
@@ -372,14 +352,14 @@ describe("loop.shared.utils", function() {
 
       sinon.assert.calledOnce(composeEmail);
       sinon.assert.calledWith(composeEmail,
-                              "subject", "body", "fake@invalid.tld");
+                              "subject", "body" + "footer", "fake@invalid.tld");
     });
 
     it("should compose a different email when context info is provided", function() {
       sharedUtils.composeCallUrlEmail("http://invalid", null, "Hello, is me you're looking for?");
 
       sinon.assert.calledOnce(composeEmail);
-      sinon.assert.calledWith(composeEmail, "subject_context", "body_context");
+      sinon.assert.calledWith(composeEmail, "subject", "body_context" + "footer");
     });
 
     it("should record a telemetry event when an email is composed", function() {
@@ -387,6 +367,12 @@ describe("loop.shared.utils", function() {
         "Hello, is me you're looking for?", "callfailed");
 
       sinon.assert.calledOnce(telemetryAddValue, "LOOP_SHARING_ROOM_URL",  2);
+    });
+
+    it("should log an error for invalid URLs", function() {
+      sharedUtils.composeCallUrlEmail("http://invalid", "fake@invalid.tld");
+
+      sinon.assert.calledOnce(console.error);
     });
   });
 
@@ -644,6 +630,47 @@ describe("loop.shared.utils", function() {
 
       sharedUtils.stripFalsyValues(obj);
       expect(obj).to.eql({ prop1: "null", prop3: true });
+    });
+  });
+
+  describe("#truncate", function() {
+    describe("ltr support", function() {
+      it("should default to 72 chars", function() {
+        var output = sharedUtils.truncate(new Array(75).join());
+
+        expect(output.length).to.eql(73); // 72 + …
+      });
+
+      it("should take a max size argument", function() {
+        var output = sharedUtils.truncate(new Array(73).join(), 20);
+
+        expect(output.length).to.eql(21); // 20 + …
+      });
+    });
+
+    describe("rtl support", function() {
+      var directionStub;
+
+      beforeEach(function() {
+        // XXX should use sandbox
+        // https://github.com/cjohansen/Sinon.JS/issues/781
+        directionStub = sinon.stub(navigator.mozL10n.language, "direction", {
+          get: function() {
+            return "rtl";
+          }
+        });
+      });
+
+      afterEach(function() {
+        directionStub.restore();
+      });
+
+      it("should support RTL", function() {
+        var output = sharedUtils.truncate(new Array(73).join(), 20);
+
+        expect(output.length).to.eql(21); // 20 + …
+        expect(output.substr(0, 1)).to.eql("…");
+      });
     });
   });
 });

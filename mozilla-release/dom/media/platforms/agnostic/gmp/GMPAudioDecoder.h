@@ -48,7 +48,7 @@ private:
 class GMPAudioDecoder : public MediaDataDecoder {
 protected:
   GMPAudioDecoder(const AudioInfo& aConfig,
-                  MediaTaskQueue* aTaskQueue,
+                  TaskQueue* aTaskQueue,
                   MediaDataDecoderCallbackProxy* aCallback,
                   AudioCallbackAdapter* aAdapter)
    : mConfig(aConfig)
@@ -60,7 +60,7 @@ protected:
 
 public:
   GMPAudioDecoder(const AudioInfo& aConfig,
-                  MediaTaskQueue* aTaskQueue,
+                  TaskQueue* aTaskQueue,
                   MediaDataDecoderCallbackProxy* aCallback)
    : mConfig(aConfig)
    , mCallback(aCallback)
@@ -69,7 +69,7 @@ public:
   {
   }
 
-  virtual nsresult Init() override;
+  virtual nsRefPtr<InitPromise> Init() override;
   virtual nsresult Input(MediaRawData* aSample) override;
   virtual nsresult Flush() override;
   virtual nsresult Drain() override;

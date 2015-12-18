@@ -11,11 +11,11 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/MessageEvent.h"
 #include "mozilla/dom/MessageEventBinding.h"
-#include "mozilla/dom/StructuredCloneUtils.h"
 #include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/dom/WorkerScope.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/ipc/PBackgroundChild.h"
+#include "mozilla/dom/ipc/StructuredCloneData.h"
 #include "WorkerPrivate.h"
 
 namespace mozilla {
@@ -26,10 +26,10 @@ namespace dom {
 
 using namespace workers;
 
-BroadcastChannelChild::BroadcastChannelChild(const nsAString& aOrigin)
-  : mOrigin(aOrigin)
-  , mActorDestroyed(false)
+BroadcastChannelChild::BroadcastChannelChild(const nsACString& aOrigin)
+  : mActorDestroyed(false)
 {
+  CopyUTF8toUTF16(aOrigin, mOrigin);
 }
 
 BroadcastChannelChild::~BroadcastChannelChild()
@@ -85,18 +85,20 @@ BroadcastChannelChild::RecvNotify(const ClonedMessageData& aData)
     return true;
   }
 
-  JSContext* cx = jsapi.cx();
+  ipc::StructuredCloneData cloneData;
+  cloneData.BlobImpls().AppendElements(blobs);
 
   const SerializedStructuredCloneBuffer& buffer = aData.data();
-  StructuredCloneData cloneData;
-  cloneData.mData = buffer.data;
-  cloneData.mDataLength = buffer.dataLength;
-  cloneData.mClosure.mBlobImpls.SwapElements(blobs);
+  cloneData.UseExternalData(buffer.data, buffer.dataLength);
 
+  JSContext* cx = jsapi.cx();
   JS::Rooted<JS::Value> value(cx, JS::NullValue());
-  if (cloneData.mDataLength && !ReadStructuredClone(cx, cloneData, &value)) {
-    JS_ClearPendingException(cx);
-    return false;
+  if (buffer.dataLength) {
+    ErrorResult rv;
+    cloneData.Read(cx, &value, rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      return true;
+    }
   }
 
   RootedDictionary<MessageEventInit> init(cx);
@@ -127,5 +129,5 @@ BroadcastChannelChild::ActorDestroy(ActorDestroyReason aWhy)
   mActorDestroyed = true;
 }
 
-} // dom namespace
-} // mozilla namespace
+} // namespace dom
+} // namespace mozilla

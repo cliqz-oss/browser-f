@@ -8,7 +8,7 @@ const Cu = Components.utils;
 Cu.import("resource://gre/modules/AppConstants.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
-let modules = {
+var modules = {
   // about:
   "": {
     uri: "chrome://browser/content/about.xhtml",
@@ -36,7 +36,7 @@ let modules = {
   rights: {
     uri: AppConstants.MOZ_OFFICIAL_BRANDING ?
       "chrome://browser/content/aboutRights.xhtml" :
-      "chrome://global/content/aboutRights-unbranded.xhtml",
+      "chrome://global/content/aboutRights.xhtml",
     privileged: false
   },
   blocked: {
@@ -52,10 +52,6 @@ let modules = {
   home: {
     uri: "chrome://browser/content/aboutHome.xhtml",
     privileged: false
-  },
-  apps: {
-    uri: "chrome://browser/content/aboutApps.xhtml",
-    privileged: true
   },
   downloads: {
     uri: "chrome://browser/content/aboutDownloads.xhtml",
@@ -75,6 +71,10 @@ let modules = {
     uri: "chrome://browser/content/aboutPrivateBrowsing.xhtml",
     privileged: true
   },
+  logins: {
+    uri: "chrome://browser/content/aboutLogins.xhtml",
+    privileged: true
+  },
 }
 
 if (AppConstants.MOZ_SERVICES_HEALTHREPORT) {
@@ -89,9 +89,9 @@ if (AppConstants.MOZ_DEVICES) {
     privileged: true
   };
 }
-if (AppConstants.NIGHTLY_BUILD) {
-  modules['logins'] = {
-    uri: "chrome://browser/content/aboutLogins.xhtml",
+if (!AppConstants.MOZ_ANDROID_NATIVE_ACCOUNT_UI) {
+  modules['accounts'] = {
+    uri: "chrome://browser/content/aboutAccounts.xhtml",
     privileged: true
   };
 }

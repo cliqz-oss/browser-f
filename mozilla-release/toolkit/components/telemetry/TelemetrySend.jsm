@@ -89,7 +89,7 @@ const OVERDUE_PING_FILE_AGE = 7 * 24 * 60 * MS_IN_A_MINUTE; // 1 week
  * Tests override properties on this object to allow for control of behavior
  * that would otherwise be very hard to cover.
  */
-let Policy = {
+var Policy = {
   now: () => new Date(),
   midnightPingFuzzingDelay: () => MIDNIGHT_FUZZING_DELAY_MS,
   setSchedulerTickTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
@@ -111,6 +111,20 @@ function isV4PingFormat(aPing) {
  */
 function isDeletionPing(aPing) {
   return isV4PingFormat(aPing) && (aPing.type == PING_TYPE_DELETION);
+}
+
+/**
+ * Save the provided ping as a pending ping. If it's a deletion ping, save it
+ * to a special location.
+ * @param {Object} aPing The ping to save.
+ * @return {Promise} A promise resolved when the ping is saved.
+ */
+function savePing(aPing) {
+  if (isDeletionPing(aPing)) {
+    return TelemetryStorage.saveDeletionPing(aPing);
+  } else {
+    return TelemetryStorage.savePendingPing(aPing);
+  }
 }
 
 function tomorrow(date) {
@@ -221,6 +235,13 @@ this.TelemetrySend = {
   },
 
   /**
+   * Clear out unpersisted, yet to be sent, pings and cancel outgoing ping requests.
+   */
+  clearCurrentPings: function() {
+    return TelemetrySendImpl.clearCurrentPings();
+  },
+
+  /**
    * Only used in tests to wait on outgoing pending pings.
    */
   testWaitOnOutgoingPings: function() {
@@ -242,7 +263,7 @@ this.TelemetrySend = {
   },
 };
 
-let CancellableTimeout = {
+var CancellableTimeout = {
   _deferred: null,
   _timer: null,
 
@@ -283,7 +304,7 @@ let CancellableTimeout = {
 /**
  * SendScheduler implements the timer & scheduling behavior for ping sends.
  */
-let SendScheduler = {
+var SendScheduler = {
   // Whether any ping sends failed since the last tick. If yes, we start with our exponential
   // backoff timeout.
   _sendsFailed: false,
@@ -312,16 +333,19 @@ let SendScheduler = {
     return Promise.resolve(this._sendTask);
   },
 
+  start: function() {
+    this._log.trace("start");
+    this._sendsFailed = false;
+    this._backoffDelay = SEND_TICK_DELAY;
+    this._shutdown = false;
+  },
+
   /**
    * Only used for testing, resets the state to emulate a restart.
    */
   reset: function() {
     this._log.trace("reset");
-    return this.shutdown().then(() => {
-      this._sendsFailed = false;
-      this._backoffDelay = SEND_TICK_DELAY;
-      this._shutdown = false;
-    });
+    return this.shutdown().then(() => this.start());
   },
 
   /**
@@ -505,8 +529,10 @@ let SendScheduler = {
   },
  };
 
-let TelemetrySendImpl = {
+var TelemetrySendImpl = {
   _sendingEnabled: false,
+  // Tracks the shutdown state.
+  _shutdown: false,
   _logger: null,
   // This tracks all pending ping requests to the server.
   _pendingPingRequests: new Map(),
@@ -602,6 +628,8 @@ let TelemetrySendImpl = {
    }),
 
   shutdown: Task.async(function*() {
+    this._shutdown = true;
+
     for (let topic of this.OBSERVER_TOPICS) {
       try {
         Services.obs.removeObserver(this, topic);
@@ -629,8 +657,8 @@ let TelemetrySendImpl = {
   reset: function() {
     this._log.trace("reset");
 
+    this._shutdown = false;
     this._currentPings = new Map();
-
     this._overduePingCount = 0;
 
     const histograms = [
@@ -673,7 +701,7 @@ let TelemetrySendImpl = {
       // Sending is disabled or throttled, add this to the persisted pending pings.
       this._log.trace("submitPing - can't send ping now, persisting to disk - " +
                       "canSendNow: " + this.canSendNow);
-      return TelemetryStorage.savePendingPing(ping);
+      return savePing(ping);
     }
 
     // Let the scheduler trigger sending pings if possible.
@@ -691,6 +719,38 @@ let TelemetrySendImpl = {
     this._log.trace("setServer", server);
     this._server = server;
   },
+
+  /**
+   * Clear out unpersisted, yet to be sent, pings and cancel outgoing ping requests.
+   */
+  clearCurrentPings: Task.async(function*() {
+    if (this._shutdown) {
+      this._log.trace("clearCurrentPings - in shutdown, bailing out");
+      return;
+    }
+
+    // Temporarily disable the scheduler. It must not try to reschedule ping sending
+    // while we're deleting them.
+    yield SendScheduler.shutdown();
+
+    // Now that the ping activity has settled, abort outstanding ping requests.
+    this._cancelOutgoingRequests();
+
+    // Also, purge current pings.
+    this._currentPings.clear();
+
+    // We might have been interrupted and shutdown could have been started.
+    // We need to bail out in that case to avoid triggering send activity etc.
+    // at unexpected times.
+    if (this._shutdown) {
+      this._log.trace("clearCurrentPings - in shutdown, not spinning SendScheduler up again");
+      return;
+    }
+
+    // Enable the scheduler again and spin the send task.
+    SendScheduler.start();
+    SendScheduler.triggerSendingPings(true);
+  }),
 
   _cancelOutgoingRequests: function() {
     // Abort any pending ping XHRs.
@@ -716,11 +776,7 @@ let TelemetrySendImpl = {
         } catch (ex) {
           this._log.info("sendPings - ping " + ping.id + " not sent, saving to disk", ex);
           // Deletion pings must be saved to a special location.
-          if (isDeletionPing(ping)) {
-            yield TelemetryStorage.saveDeletionPing(ping);
-          } else {
-            yield TelemetryStorage.savePendingPing(ping);
-          }
+          yield savePing(ping);
         } finally {
           this._currentPings.delete(ping.id);
         }
@@ -1022,7 +1078,7 @@ let TelemetrySendImpl = {
   _persistCurrentPings: Task.async(function*() {
     for (let [id, ping] of this._currentPings) {
       try {
-        yield TelemetryStorage.savePendingPing(ping);
+        yield savePing(ping);
         this._log.trace("_persistCurrentPings - saved ping " + id);
       } catch (ex) {
         this._log.error("_persistCurrentPings - failed to save ping " + id, ex);

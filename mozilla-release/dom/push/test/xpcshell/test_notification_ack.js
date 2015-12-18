@@ -5,7 +5,7 @@
 
 const {PushDB, PushService, PushServiceWebSocket} = serviceExports;
 
-let userAgentID = '5ab1d1df-7a3d-4024-a469-b9e1bb399fad';
+var userAgentID = '5ab1d1df-7a3d-4024-a469-b9e1bb399fad';
 
 function run_test() {
   do_get_profile();
@@ -26,19 +26,22 @@ add_task(function* test_notification_ack() {
     pushEndpoint: 'https://example.com/update/1',
     scope: 'https://example.org/1',
     originAttributes: '',
-    version: 1
+    version: 1,
+    quota: Infinity,
   }, {
     channelID: '9a5ff87f-47c9-4215-b2b8-0bdd38b4b305',
     pushEndpoint: 'https://example.com/update/2',
     scope: 'https://example.org/2',
     originAttributes: '',
-    version: 2
+    version: 2,
+    quota: Infinity,
   }, {
     channelID: '5477bfda-22db-45d4-9614-fee369630260',
     pushEndpoint: 'https://example.com/update/3',
     scope: 'https://example.org/3',
     originAttributes: '',
-    version: 3
+    version: 3,
+    quota: Infinity,
   }];
   for (let record of records) {
     yield db.put(record);
@@ -51,7 +54,8 @@ add_task(function* test_notification_ack() {
   ]);
 
   let acks = 0;
-  let ackDefer = Promise.defer();
+  let ackDone;
+  let ackPromise = new Promise(resolve => ackDone = resolve);
   PushService.init({
     serverURI: "wss://push.example.org/",
     networkInfo: new MockDesktopNetworkInfo(),
@@ -112,7 +116,7 @@ add_task(function* test_notification_ack() {
               channelID: '5477bfda-22db-45d4-9614-fee369630260',
               version: 6
             }], updates, 'Wrong updates for acknowledgement 3');
-            ackDefer.resolve();
+            ackDone();
             break;
 
           default:
@@ -125,6 +129,6 @@ add_task(function* test_notification_ack() {
 
   yield waitForPromise(notifyPromise, DEFAULT_TIMEOUT,
     'Timed out waiting for notifications');
-  yield waitForPromise(ackDefer.promise, DEFAULT_TIMEOUT,
+  yield waitForPromise(ackPromise, DEFAULT_TIMEOUT,
     'Timed out waiting for multiple acknowledgements');
 });

@@ -5,16 +5,21 @@
 
 package org.mozilla.gecko.toolbar;
 
+import org.mozilla.gecko.AboutPages;
 import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.CustomEditText;
 import org.mozilla.gecko.InputMethods;
+import org.mozilla.gecko.R;
 import org.mozilla.gecko.toolbar.BrowserToolbar.OnCommitListener;
 import org.mozilla.gecko.toolbar.BrowserToolbar.OnDismissListener;
 import org.mozilla.gecko.toolbar.BrowserToolbar.OnFilterListener;
+import org.mozilla.gecko.util.DrawableUtil;
 import org.mozilla.gecko.util.GamepadUtils;
 import org.mozilla.gecko.util.StringUtils;
+import org.mozilla.gecko.util.HardwareUtils;
 
 import android.content.Context;
+import android.graphics.drawable.Drawable;
 import android.graphics.Rect;
 import android.text.Editable;
 import android.text.NoCopySpan;
@@ -88,11 +93,18 @@ public class ToolbarEditText extends CustomEditText
         setOnKeyPreImeListener(new KeyPreImeListener());
         setOnSelectionChangedListener(new SelectionChangeListener());
         addTextChangedListener(new TextChangeListener());
+        // Set an inactive search icon on tablet devices when in editing mode
+        updateSearchIcon(false);
     }
 
     @Override
     public void onFocusChanged(boolean gainFocus, int direction, Rect previouslyFocusedRect) {
         super.onFocusChanged(gainFocus, direction, previouslyFocusedRect);
+
+        // Make search icon inactive when edit toolbar search term isn't a user entered
+        // search term
+        final boolean isActive = !TextUtils.isEmpty(getText());
+        updateSearchIcon(isActive);
 
         if (gainFocus) {
             resetAutocompleteState();
@@ -113,7 +125,17 @@ public class ToolbarEditText extends CustomEditText
 
     @Override
     public void setText(final CharSequence text, final TextView.BufferType type) {
-        super.setText(text, type);
+        final String textString = (text == null) ? "" : text.toString();
+
+        // If we're on the home or private browsing page, we don't set the "about" url.
+        final CharSequence finalText;
+        if (AboutPages.isAboutHome(textString) || AboutPages.isAboutPrivateBrowsing(textString)) {
+            finalText = "";
+        } else {
+            finalText = text;
+        }
+
+        super.setText(finalText, type);
 
         // Any autocomplete text would have been overwritten, so reset our autocomplete states.
         resetAutocompleteState();
@@ -136,6 +158,33 @@ public class ToolbarEditText extends CustomEditText
 
     void setToolbarPrefs(final ToolbarPrefs prefs) {
         mPrefs = prefs;
+    }
+
+    /**
+     * Update the search icon at the left of the edittext based
+     * on its state.
+     *
+     * @param isActive The state of the edittext. Active is when the initialized
+     *         text has changed and is not empty.
+     */
+    void updateSearchIcon(boolean isActive) {
+        if (!HardwareUtils.isTablet()) {
+            return;
+        }
+
+        // When on tablet show a magnifying glass in editing mode
+        final int searchDrawableId = R.drawable.search_icon_active;
+        final Drawable searchDrawable;
+        if (!isActive) {
+            searchDrawable = DrawableUtil.tintDrawable(getContext(), searchDrawableId, R.color.placeholder_grey);
+        } else {
+            if (isPrivateMode()) {
+                searchDrawable = DrawableUtil.tintDrawable(getContext(), searchDrawableId, R.color.tabs_tray_icon_grey);
+            } else {
+                searchDrawable = getResources().getDrawable(searchDrawableId);
+            }
+        }
+        setCompoundDrawablesWithIntrinsicBounds(searchDrawable, null, null, null);
     }
 
     /**
@@ -513,6 +562,9 @@ public class ToolbarEditText extends CustomEditText
                 // until any new autocomplete text gets added.
                 removeAutocomplete(editable);
             }
+
+            // Update search icon with an active state since user is typing
+            updateSearchIcon(textLength > 0);
 
             if (mFilterListener != null) {
                 mFilterListener.onFilter(text, doAutocomplete ? ToolbarEditText.this : null);

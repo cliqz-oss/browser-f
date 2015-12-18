@@ -196,12 +196,11 @@ CreateFromDER(unsigned char *data,
 
     sequence->GetASN1Objects(getter_AddRefs(elements));
     nsCOMPtr<nsIASN1Object> asn1Obj = do_QueryElementAt(elements, 0);
-    *retval = asn1Obj;
-    if (!*retval)
+    if (!asn1Obj) {
       return NS_ERROR_FAILURE;
+    }
 
-    NS_ADDREF(*retval);
-      
+    asn1Obj.forget(retval);
   }
   return rv; 
 }
@@ -339,7 +338,6 @@ nsNSSASN1PrintableItem::~nsNSSASN1PrintableItem()
     free(mData);
 }
 
-/* readonly attribute wstring value; */
 NS_IMETHODIMP 
 nsNSSASN1PrintableItem::GetDisplayValue(nsAString &aValue)
 {
@@ -416,7 +414,6 @@ nsNSSASN1PrintableItem::GetData(char **outData, uint32_t *outLen)
   return NS_OK;
 }
 
-/* attribute wstring displayName; */
 NS_IMETHODIMP 
 nsNSSASN1PrintableItem::GetDisplayName(nsAString &aDisplayName)
 {

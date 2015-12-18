@@ -11,7 +11,6 @@ const DBG_STRINGS_URI = "chrome://browser/locale/devtools/debugger.properties";
 const NEW_SOURCE_IGNORED_URLS = ["debugger eval code", "XStringBundle"];
 const NEW_SOURCE_DISPLAY_DELAY = 200; // ms
 const FETCH_SOURCE_RESPONSE_DELAY = 200; // ms
-const FETCH_EVENT_LISTENERS_DELAY = 200; // ms
 const FRAME_STEP_CLEAR_DELAY = 100; // ms
 const CALL_STACK_PAGE_SIZE = 25; // frames
 
@@ -103,7 +102,12 @@ Cu.import("resource:///modules/devtools/VariablesView.jsm");
 Cu.import("resource:///modules/devtools/VariablesViewController.jsm");
 Cu.import("resource:///modules/devtools/ViewHelpers.jsm");
 
-const require = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools.require;
+Cu.import("resource:///modules/devtools/shared/browser-loader.js");
+const require = BrowserLoader("resource:///modules/devtools/debugger/", this).require;
+
+const {TargetFactory} = require("devtools/framework/target");
+const {Toolbox} = require("devtools/framework/toolbox");
+const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 const promise = require("devtools/toolkit/deprecated-sync-thenables");
 const Editor = require("devtools/sourceeditor/editor");
 const DebuggerEditor = require("devtools/sourceeditor/debugger.js");
@@ -116,12 +120,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "Task",
 XPCOMUtils.defineLazyModuleGetter(this, "Parser",
   "resource:///modules/devtools/Parser.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "devtools",
-  "resource://gre/modules/devtools/Loader.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "DevToolsUtils",
-  "resource://gre/modules/devtools/DevToolsUtils.jsm");
-
 XPCOMUtils.defineLazyModuleGetter(this, "ShortcutUtils",
   "resource://gre/modules/ShortcutUtils.jsm");
 
@@ -130,7 +128,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "clipboardHelper",
 
 Object.defineProperty(this, "NetworkHelper", {
   get: function() {
-    return devtools.require("devtools/toolkit/webconsole/network-helper");
+    return require("devtools/toolkit/webconsole/network-helper");
   },
   configurable: true,
   enumerable: true
@@ -139,7 +137,7 @@ Object.defineProperty(this, "NetworkHelper", {
 /**
  * Object defining the debugger controller components.
  */
-let DebuggerController = {
+var DebuggerController = {
   /**
    * Initializes the debugger controller.
    */
@@ -185,7 +183,6 @@ let DebuggerController = {
     if (this._target.isTabActor) {
       this.Workers.disconnect();
     }
-    this.Tracer.disconnect();
     this.disconnect();
 
     this._shutdown = true;
@@ -204,7 +201,7 @@ let DebuggerController = {
     }
 
     let target = this._target;
-    let { client, form: { chromeDebugger, traceActor, actor } } = target;
+    let { client, form: { chromeDebugger, actor } } = target;
     target.on("close", this._onTabDetached);
     target.on("navigate", this._onTabNavigated);
     target.on("will-navigate", this._onTabNavigated);
@@ -218,10 +215,6 @@ let DebuggerController = {
       yield this._startChromeDebugging(chromeDebugger);
     } else {
       yield this._startDebuggingTab();
-
-      if (Prefs.tracerEnabled && traceActor) {
-        yield this._startTracingTab(traceActor);
-      }
     }
 
     this._hideUnsupportedFeatures();
@@ -328,7 +321,9 @@ let DebuggerController = {
       this.SourceScripts.connect();
 
       if (aThreadClient.paused) {
-        aThreadClient.resume(this._ensureResumptionOrder);
+        aThreadClient.resume(res => {
+          this._ensureResumptionOrder(res)
+        });
       }
 
       deferred.resolve();
@@ -391,31 +386,6 @@ let DebuggerController = {
   },
 
   /**
-   * Sets up an execution tracing session.
-   *
-   * @param object aTraceActor
-   *        The remote protocol grip of the trace actor.
-   * @return object
-   *         A promise resolved once the client attaches to the tracer.
-   */
-  _startTracingTab: function(aTraceActor) {
-    let deferred = promise.defer();
-
-    this.client.attachTracer(aTraceActor, (response, traceClient) => {
-      if (!traceClient) {
-        deferred.reject(new Error("Failed to attach to tracing actor."));
-        return;
-      }
-      this.traceClient = traceClient;
-      this.Tracer.connect();
-
-      deferred.resolve();
-    });
-
-    return deferred.promise;
-  },
-
-  /**
    * Detach and reattach to the thread actor with useSourceMaps true, blow
    * away old sources and get them again.
    */
@@ -455,6 +425,7 @@ function Workers() {
   this._onWorkerListChanged = this._onWorkerListChanged.bind(this);
   this._onWorkerFreeze = this._onWorkerFreeze.bind(this);
   this._onWorkerThaw = this._onWorkerThaw.bind(this);
+  this._onWorkerSelect = this._onWorkerSelect.bind(this);
 }
 
 Workers.prototype = {
@@ -476,6 +447,10 @@ Workers.prototype = {
   },
 
   _updateWorkerList: function () {
+    if (!this._tabClient.listWorkers) {
+      return;
+    }
+
     this._tabClient.listWorkers((response) => {
       let workerActors = new Set();
       for (let worker of response.workers) {
@@ -516,6 +491,13 @@ Workers.prototype = {
   _onWorkerThaw: function (type, packet) {
     let workerClient = this._workerClients.get(packet.from);
     DebuggerView.Workers.addWorker(packet.from, workerClient.url);
+  },
+
+  _onWorkerSelect: function (workerActor) {
+    let workerClient = this._workerClients.get(workerActor);
+    gDevTools.showToolbox(TargetFactory.forWorker(workerClient),
+                          "jsdebugger",
+                          Toolbox.HostType.WINDOW);
   }
 };
 
@@ -713,7 +695,10 @@ StackFrames.prototype = {
       // script dialog and internal events such as setting breakpoints, ignore
       // the event to avoid UI flicker.
       case "interrupted":
-        return;
+        if (!aPacket.why.onNext) {
+          return;
+        }
+        break;
     }
 
     this.activeThread.fillFrames(CALL_STACK_PAGE_SIZE);
@@ -1292,11 +1277,10 @@ SourceScripts.prototype = {
     // both in the editor and the breakpoints pane.
     DebuggerController.Breakpoints.updatePaneBreakpoints();
     DebuggerController.Breakpoints.updateEditorBreakpoints();
-    DebuggerController.HitCounts.updateEditorHitCounts();
 
     // Make sure the events listeners are up to date.
     if (DebuggerView.instrumentsPaneTab == "events-tab") {
-      DebuggerController.Breakpoints.DOM.scheduleEventListenersFetch();
+      store.dispatch(actions.fetchEventListeners());
     }
 
     // Signal that a new source has been added.
@@ -1345,7 +1329,6 @@ SourceScripts.prototype = {
     // both in the editor and the breakpoints pane.
     DebuggerController.Breakpoints.updatePaneBreakpoints();
     DebuggerController.Breakpoints.updateEditorBreakpoints();
-    DebuggerController.HitCounts.updateEditorHitCounts();
 
     // Signal that sources have been added.
     window.emit(EVENTS.SOURCES_ADDED);
@@ -1552,374 +1535,6 @@ SourceScripts.prototype = {
         deferred.resolve(fetched.sort(([aFirst], [aSecond]) => aFirst > aSecond));
       }
     }
-
-    return deferred.promise;
-  }
-};
-
-/**
- * Tracer update the UI according to the messages exchanged with the tracer
- * actor.
- */
-function Tracer() {
-  this._trace = null;
-  this._idCounter = 0;
-  this.onTraces = this.onTraces.bind(this);
-}
-
-Tracer.prototype = {
-  get client() {
-    return DebuggerController.client;
-  },
-
-  get traceClient() {
-    return DebuggerController.traceClient;
-  },
-
-  get tracing() {
-    return !!this._trace;
-  },
-
-  /**
-   * Hooks up the debugger controller with the tracer client.
-   */
-  connect: function() {
-    this._stack = [];
-    this.client.addListener("traces", this.onTraces);
-  },
-
-  /**
-   * Disconnects the debugger controller from the tracer client. Any further
-   * communcation with the tracer actor will not have any effect on the UI.
-   */
-  disconnect: function() {
-    this._stack = null;
-    this.client.removeListener("traces", this.onTraces);
-  },
-
-  /**
-   * Instructs the tracer actor to start tracing.
-   */
-  startTracing: function(aCallback = () => {}) {
-    if (this.tracing) {
-      return;
-    }
-
-    DebuggerView.Tracer.selectTab();
-
-    let id = this._trace = "dbg.trace" + Math.random();
-    let fields = [
-      "name",
-      "location",
-      "hitCount",
-      "parameterNames",
-      "depth",
-      "arguments",
-      "return",
-      "throw",
-      "yield"
-    ];
-
-    this.traceClient.startTrace(fields, id, aResponse => {
-      const { error } = aResponse;
-      if (error) {
-        DevToolsUtils.reportException("Tracer.prototype.startTracing", error);
-        this._trace = null;
-      }
-
-      aCallback(aResponse);
-    });
-  },
-
-  /**
-   * Instructs the tracer actor to stop tracing.
-   */
-  stopTracing: function(aCallback = () => {}) {
-    if (!this.tracing) {
-      return;
-    }
-    this.traceClient.stopTrace(this._trace, aResponse => {
-      const { error } = aResponse;
-      if (error) {
-        DevToolsUtils.reportException("Tracer.prototype.stopTracing", error);
-      }
-
-      this._trace = null;
-      DebuggerController.HitCounts.clear();
-      aCallback(aResponse);
-    });
-  },
-
-  onTraces: function (aEvent, { traces }) {
-    const tracesLength = traces.length;
-    let tracesToShow;
-
-    // Update hit counts.
-    for (let t of traces) {
-      if (t.type == "enteredFrame") {
-        DebuggerController.HitCounts.set(t.location, t.hitCount);
-      }
-    }
-    DebuggerController.HitCounts.updateEditorHitCounts();
-
-    // Limit number of traces to be shown in the log.
-    if (tracesLength > TracerView.MAX_TRACES) {
-      tracesToShow = traces.slice(tracesLength - TracerView.MAX_TRACES, tracesLength);
-      this._stack.splice(0, this._stack.length);
-      DebuggerView.Tracer.empty();
-    } else {
-      tracesToShow = traces;
-    }
-
-    // Show traces in the log.
-    for (let t of tracesToShow) {
-      if (t.type == "enteredFrame") {
-        this._onCall(t);
-      } else {
-        this._onReturn(t);
-      }
-    }
-    DebuggerView.Tracer.commit();
-  },
-
-  /**
-   * Callback for handling a new call frame.
-   */
-  _onCall: function({ name, location, blackBoxed, parameterNames, depth, arguments: args }) {
-    const item = {
-      name: name,
-      location: location,
-      id: this._idCounter++,
-      blackBoxed
-    };
-
-    this._stack.push(item);
-    DebuggerView.Tracer.addTrace({
-      type: "call",
-      name: name,
-      location: location,
-      depth: depth,
-      parameterNames: parameterNames,
-      arguments: args,
-      frameId: item.id,
-      blackBoxed
-    });
-  },
-
-  /**
-   * Callback for handling an exited frame.
-   */
-  _onReturn: function(aPacket) {
-    if (!this._stack.length) {
-      return;
-    }
-
-    const { name, id, location, blackBoxed } = this._stack.pop();
-    DebuggerView.Tracer.addTrace({
-      type: aPacket.why,
-      name: name,
-      location: location,
-      depth: aPacket.depth,
-      frameId: id,
-      returnVal: aPacket.return || aPacket.throw || aPacket.yield,
-      blackBoxed
-    });
-  },
-
-  /**
-   * Create an object which has the same interface as a normal object client,
-   * but since we already have all the information for an object that we will
-   * ever get (the server doesn't create actors when tracing, just firehoses
-   * data and forgets about it) just return the data immdiately.
-   *
-   * @param Object aObject
-   *        The tracer object "grip" (more like a limited snapshot).
-   * @returns Object
-   *          The synchronous client object.
-   */
-  syncGripClient: function(aObject) {
-    return {
-      get isFrozen() { return aObject.frozen; },
-      get isSealed() { return aObject.sealed; },
-      get isExtensible() { return aObject.extensible; },
-
-      get ownProperties() { return aObject.ownProperties; },
-      get prototype() { return null; },
-
-      getParameterNames: callback => callback(aObject),
-      getPrototypeAndProperties: callback => callback(aObject),
-      getPrototype: callback => callback(aObject),
-
-      getOwnPropertyNames: (callback) => {
-        callback({
-          ownPropertyNames: aObject.ownProperties
-            ? Object.keys(aObject.ownProperties)
-            : []
-        });
-      },
-
-      getProperty: (property, callback) => {
-        callback({
-          descriptor: aObject.ownProperties
-            ? aObject.ownProperties[property]
-            : null
-        });
-      },
-
-      getDisplayString: callback => callback("[object " + aObject.class + "]"),
-
-      getScope: callback => callback({
-        error: "scopeNotAvailable",
-        message: "Cannot get scopes for traced objects"
-      })
-    };
-  },
-
-  /**
-   * Wraps object snapshots received from the tracer server so that we can
-   * differentiate them from long living object grips from the debugger server
-   * in the variables view.
-   *
-   * @param Object aObject
-   *        The object snapshot from the tracer actor.
-   */
-  WrappedObject: function(aObject) {
-    this.object = aObject;
-  }
-};
-
-/**
- * Handles breaking on event listeners in the currently debugged target.
- */
-function EventListeners() {
-}
-
-EventListeners.prototype = {
-  /**
-   * A list of event names on which the debuggee will automatically pause
-   * when invoked.
-   */
-  activeEventNames: [],
-
-  /**
-   * Updates the list of events types with listeners that, when invoked,
-   * will automatically pause the debuggee. The respective events are
-   * retrieved from the UI.
-   */
-  scheduleEventBreakpointsUpdate: function() {
-    // Make sure we're not sending a batch of closely repeated requests.
-    // This can easily happen when toggling all events of a certain type.
-    setNamedTimeout("event-breakpoints-update", 0, () => {
-      this.activeEventNames = DebuggerView.EventListeners.getCheckedEvents();
-      gThreadClient.pauseOnDOMEvents(this.activeEventNames);
-
-      // Notify that event breakpoints were added/removed on the server.
-      window.emit(EVENTS.EVENT_BREAKPOINTS_UPDATED);
-    });
-  },
-
-  /**
-   * Schedules fetching the currently attached event listeners from the debugee.
-   */
-  scheduleEventListenersFetch: function() {
-    // Make sure we're not sending a batch of closely repeated requests.
-    // This can easily happen whenever new sources are fetched.
-    setNamedTimeout("event-listeners-fetch", FETCH_EVENT_LISTENERS_DELAY, () => {
-      if (gThreadClient.state != "paused") {
-        gThreadClient.interrupt(() => this._getListeners(() => gThreadClient.resume()));
-      } else {
-        this._getListeners();
-      }
-    });
-  },
-
-  /**
-   * A semaphore that is used to ensure only a single protocol request for event
-   * listeners will be ongoing at any given time.
-   */
-  _parsingListeners: false,
-
-  /**
-   * A flag the indicates whether a new request to fetch updated event listeners
-   * has arrived, while another one was in progress.
-   */
-  _eventListenersUpdateNeeded: false,
-
-  /**
-   * Fetches the currently attached event listeners from the debugee.
-   * The thread client state is assumed to be "paused".
-   *
-   * @param function aCallback
-   *        Invoked once the event listeners are fetched and displayed.
-   */
-  _getListeners: function(aCallback) {
-    // Don't make a new request if one is still ongoing, but schedule one for
-    // later.
-    if (this._parsingListeners) {
-      this._eventListenersUpdateNeeded = true;
-      return;
-    }
-    this._parsingListeners = true;
-    gThreadClient.eventListeners(Task.async(function*(aResponse) {
-      if (aResponse.error) {
-        throw "Error getting event listeners: " + aResponse.message;
-      }
-
-      // Make sure all the listeners are sorted by the event type, since
-      // they're not guaranteed to be clustered together.
-      aResponse.listeners.sort((a, b) => a.type > b.type ? 1 : -1);
-
-      // Add all the listeners in the debugger view event linsteners container.
-      let fetchedDefinitions = new Map();
-      for (let listener of aResponse.listeners) {
-        let definitionSite;
-        if (fetchedDefinitions.has(listener.function.actor)) {
-          definitionSite = fetchedDefinitions.get(listener.function.actor);
-        } else if (listener.function.class == "Function") {
-          definitionSite = yield this._getDefinitionSite(listener.function);
-          fetchedDefinitions.set(listener.function.actor, definitionSite);
-        }
-        listener.function.url = definitionSite;
-        DebuggerView.EventListeners.addListener(listener, { staged: true });
-      }
-      fetchedDefinitions.clear();
-
-      // Flushes all the prepared events into the event listeners container.
-      DebuggerView.EventListeners.commit();
-
-      // Now that we are done, schedule a new update if necessary.
-      this._parsingListeners = false;
-      if (this._eventListenersUpdateNeeded) {
-        this._eventListenersUpdateNeeded = false;
-        this.scheduleEventListenersFetch();
-      }
-
-      // Notify that event listeners were fetched and shown in the view,
-      // and callback to resume the active thread if necessary.
-      window.emit(EVENTS.EVENT_LISTENERS_FETCHED);
-      aCallback && aCallback();
-    }.bind(this)));
-  },
-
-  /**
-   * Gets a function's source-mapped definiton site.
-   *
-   * @param object aFunction
-   *        The grip of the function to get the definition site for.
-   * @return object
-   *         A promise that is resolved with the function's owner source url.
-   */
-  _getDefinitionSite: function(aFunction) {
-    let deferred = promise.defer();
-
-    gThreadClient.pauseGrip(aFunction).getDefinitionSite(aResponse => {
-      if (aResponse.error) {
-        // Don't make this error fatal, because it would break the entire events pane.
-        const msg = "Error getting function definition site: " + aResponse.message;
-        DevToolsUtils.reportException("_getDefinitionSite", msg);
-      }
-      deferred.resolve(aResponse.source.url);
-    });
 
     return deferred.promise;
   }
@@ -2150,10 +1765,10 @@ Breakpoints.prototype = {
         }
       }
 
-      // Preserve information about the breakpoint's line text, to display it
-      // in the sources pane without requiring fetching the source (for example,
-      // after the target navigated). Note that this will get out of sync
-      // if the source text contents change.
+      // Preserve information about the breakpoint's line text, to display it in
+      // the sources pane without requiring fetching the source (for example,
+      // after the target navigated). Note that this will get out of sync if the
+      // source text contents change.
       let line = aBreakpointClient.location.line - 1;
       aBreakpointClient.text = DebuggerView.editor.getText(line).trim();
 
@@ -2411,95 +2026,14 @@ Object.defineProperty(Breakpoints.prototype, "_addedOrDisabled", {
 });
 
 /**
- * Handles Tracer's hit counts.
- */
-function HitCounts() {
-  /**
-   * Storage of hit counts for every location
-   * hitCount = _locations[url][line][column]
-   */
-  this._hitCounts = Object.create(null);
-}
-
-HitCounts.prototype = {
-  set: function({url, line, column}, aHitCount) {
-    if (url) {
-      if (!this._hitCounts[url]) {
-        this._hitCounts[url] = Object.create(null);
-      }
-      if (!this._hitCounts[url][line]) {
-        this._hitCounts[url][line] = Object.create(null);
-      }
-      this._hitCounts[url][line][column] = aHitCount;
-    }
-  },
-
-  /**
-   * Update all the hit counts in the editor view. This is invoked when the
-   * selected script is changed, or when new sources are received via the
-   * _onNewSource and _onSourcesAdded event listeners.
-   */
-  updateEditorHitCounts: function() {
-    // First, remove all hit counters.
-    DebuggerView.editor.removeAllMarkers("hit-counts");
-
-    // Then, add new hit counts, just for the current source.
-    for (let url in this._hitCounts) {
-      for (let line in this._hitCounts[url]) {
-        for (let column in this._hitCounts[url][line]) {
-          this._updateEditorHitCount({url, line, column});
-        }
-      }
-    }
-  },
-
-  /**
-   * Update a hit counter on a certain line.
-   */
-  _updateEditorHitCount: function({url, line, column}) {
-    // Editor must be initialized.
-    if (!DebuggerView.editor) {
-      return;
-    }
-
-    // No need to do anything if the counter's source is not being shown in the
-    // editor.
-    if (url &&
-        DebuggerView.Sources.selectedItem.attachment.source.url != url) {
-      return;
-    }
-
-    // There might be more counters on the same line. We need to combine them
-    // into one.
-    let content = Object.keys(this._hitCounts[url][line])
-                    .sort() // Sort by key (column).
-                    .map(a => this._hitCounts[url][line][a]) // Extract values.
-                    .map(a => a + "\u00D7") // Format hit count (e.g. 146×).
-                    .join("|");
-
-    // CodeMirror's lines are indexed from 0, while traces start from 1
-    DebuggerView.editor.addContentMarker(line - 1, "hit-counts", "hit-count",
-                                         content);
-  },
-
-  /**
-   * Remove all hit couters and clear the storage
-   */
-  clear: function() {
-    DebuggerView.editor.removeAllMarkers("hit-counts");
-    this._hitCounts = Object.create(null);
-  }
-}
-
-/**
  * Localization convenience methods.
  */
-let L10N = new ViewHelpers.L10N(DBG_STRINGS_URI);
+var L10N = new ViewHelpers.L10N(DBG_STRINGS_URI);
 
 /**
  * Shortcuts for accessing various debugger preferences.
  */
-let Prefs = new ViewHelpers.Prefs("devtools", {
+var Prefs = new ViewHelpers.Prefs("devtools", {
   workersAndSourcesWidth: ["Int", "debugger.ui.panes-workers-and-sources-width"],
   instrumentsWidth: ["Int", "debugger.ui.panes-instruments-width"],
   panesVisibleOnStartup: ["Bool", "debugger.ui.panes-visible-on-startup"],
@@ -2511,16 +2045,17 @@ let Prefs = new ViewHelpers.Prefs("devtools", {
   sourceMapsEnabled: ["Bool", "debugger.source-maps-enabled"],
   prettyPrintEnabled: ["Bool", "debugger.pretty-print-enabled"],
   autoPrettyPrint: ["Bool", "debugger.auto-pretty-print"],
-  tracerEnabled: ["Bool", "debugger.tracer"],
   workersEnabled: ["Bool", "debugger.workers"],
   editorTabSize: ["Int", "editor.tabsize"],
-  autoBlackBox: ["Bool", "debugger.auto-black-box"]
+  autoBlackBox: ["Bool", "debugger.auto-black-box"],
+  promiseDebuggerEnabled: ["Bool", "debugger.promise"]
 });
 
 /**
  * Convenient way of emitting events from the panel window.
  */
 EventEmitter.decorate(this);
+EventEmitter.decorate(DebuggerController);
 
 /**
  * Preliminary setup for the DebuggerController object.
@@ -2532,9 +2067,6 @@ DebuggerController.ThreadState = new ThreadState();
 DebuggerController.StackFrames = new StackFrames();
 DebuggerController.SourceScripts = new SourceScripts();
 DebuggerController.Breakpoints = new Breakpoints();
-DebuggerController.Breakpoints.DOM = new EventListeners();
-DebuggerController.Tracer = new Tracer();
-DebuggerController.HitCounts = new HitCounts();
 
 /**
  * Export some properties to the global scope for easier access.
@@ -2582,4 +2114,4 @@ function dumpn(str) {
   }
 }
 
-let wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");
+var wantLogging = Services.prefs.getBoolPref("devtools.debugger.log");

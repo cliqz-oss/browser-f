@@ -20,8 +20,8 @@ namespace mozilla {
 namespace gfx {
 class DataSourceSurface;
 class SourceSurface;
-}
-}
+} // namespace gfx
+} // namespace mozilla
 
 /**
  * A raw image buffer. The format can be set in the constructor. Its main
@@ -77,8 +77,18 @@ public:
     gfxImageFormat Format() const { return mFormat; }
 
     virtual const mozilla::gfx::IntSize GetSize() const override { return mSize; }
-    int32_t Width() const { return mSize.width; }
-    int32_t Height() const { return mSize.height; }
+    int32_t Width() const {
+        if (mSize.width < 0) {
+            return 0;
+        }
+        return mSize.width;
+    }
+    int32_t Height() const {
+        if (mSize.height < 0) {
+            return 0;
+        }
+        return mSize.height;
+    }
 
     /**
      * Distance in bytes between the start of a line and the start of the
@@ -93,7 +103,12 @@ public:
     /**
      * Returns the total size of the image data.
      */
-    int32_t GetDataSize() const { return mStride*mSize.height; }
+    int32_t GetDataSize() const {
+        if (mStride < 0 || mSize.height < 0) {
+            return 0;
+        }
+        return mStride*mSize.height;
+    }
 
     /* Fast copy from another image surface; returns TRUE if successful, FALSE otherwise */
     bool CopyFrom (gfxImageSurface *other);
@@ -114,7 +129,7 @@ public:
      * Copy to a Moz2D DataSourceSurface.
      * Marked as virtual so that browsercomps can access this method.
      */
-    virtual mozilla::TemporaryRef<mozilla::gfx::DataSourceSurface> CopyToB8G8R8A8DataSourceSurface();
+    virtual already_AddRefed<mozilla::gfx::DataSourceSurface> CopyToB8G8R8A8DataSourceSurface();
 
     /* return new Subimage with pointing to original image starting from aRect.pos
      * and size of aRect.size. New subimage keeping current image reference
@@ -144,8 +159,12 @@ protected:
     void AllocateAndInit(long aStride, int32_t aMinimalAllocation, bool aClear);
     void InitFromSurface(cairo_surface_t *csurf);
 
-    long ComputeStride() const { return ComputeStride(mSize, mFormat); }
-
+    long ComputeStride() const { 
+        if (mSize.height < 0 || mSize.width < 0) {
+            return 0;
+        }
+        return ComputeStride(mSize, mFormat);
+    }
 
     void MakeInvalid();
 

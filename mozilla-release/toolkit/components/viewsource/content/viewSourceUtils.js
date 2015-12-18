@@ -17,6 +17,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "ViewSourceBrowser",
   "resource://gre/modules/ViewSourceBrowser.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Deprecated",
   "resource://gre/modules/Deprecated.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Services",
+  "resource://gre/modules/Services.jsm");
 
 var gViewSourceUtils = {
 
@@ -88,6 +92,9 @@ var gViewSourceUtils = {
    *          The line number to focus on once the source is loaded.
    */
   viewSourceInBrowser: function(aArgs) {
+    Services.telemetry
+            .getHistogramById("VIEW_SOURCE_IN_BROWSER_OPENED_BOOLEAN")
+            .add(true);
     let viewSourceBrowser = new ViewSourceBrowser(aArgs.viewSourceBrowser);
     viewSourceBrowser.loadViewSource(aArgs);
   },
@@ -97,33 +104,42 @@ var gViewSourceUtils = {
    * <browser>.  This allows for non-window display methods, such as a tab from
    * Firefox.
    *
-   * @param aSelection
-   *        A Selection object for the content of interest.
    * @param aViewSourceInBrowser
-   *        The browser to display the view source in.
+   *        The browser containing the page to view the source of.
+   * @param aTarget
+   *        Set to the target node for MathML. Null for other types of elements.
+   * @param aGetBrowserFn
+   *        If set, a function that will return a browser to open the source in.
+   *        If null, or this function returns null, opens the source in a new window.
    */
-  viewSourceFromSelectionInBrowser: function(aSelection, aViewSourceInBrowser) {
-    let viewSourceBrowser = new ViewSourceBrowser(aViewSourceInBrowser);
-    viewSourceBrowser.loadViewSourceFromSelection(aSelection);
-  },
+  viewPartialSourceInBrowser: function(aViewSourceInBrowser, aTarget, aGetBrowserFn) {
+    let mm = aViewSourceInBrowser.messageManager;
+    mm.addMessageListener("ViewSource:GetSelectionDone", function gotSelection(message) {
+      mm.removeMessageListener("ViewSource:GetSelectionDone", gotSelection);
 
-  /**
-   * Displays view source for a MathML fragment from some document in the
-   * provided <browser>.  This allows for non-window display methods,  such as a
-   * tab from Firefox.
-   *
-   * @param aNode
-   *        Some element within the fragment of interest.
-   * @param aContext
-   *        A string denoting the type of fragment.  Currently, "mathml" is the
-   *        only accepted value.
-   * @param aViewSourceInBrowser
-   *        The browser to display the view source in.
-   */
-  viewSourceFromFragmentInBrowser: function(aNode, aContext,
-                                            aViewSourceInBrowser) {
-    let viewSourceBrowser = new ViewSourceBrowser(aViewSourceInBrowser);
-    viewSourceBrowser.loadViewSourceFromFragment(aNode, aContext);
+      if (!message.data)
+        return;
+
+      let browserToOpenIn = aGetBrowserFn ? aGetBrowserFn() : null;
+      if (browserToOpenIn) {
+        let viewSourceBrowser = new ViewSourceBrowser(browserToOpenIn);
+        viewSourceBrowser.loadViewSourceFromSelection(message.data.uri, message.data.drawSelection,
+                                                      message.data.baseURI);
+      }
+      else {
+        let docUrl = null;
+        window.openDialog("chrome://global/content/viewPartialSource.xul",
+                          "_blank", "scrollbars,resizable,chrome,dialog=no",
+                          {
+                            URI: message.data.uri,
+                            drawSelection: message.data.drawSelection,
+                            baseURI: message.data.baseURI,
+                            partial: true,
+                          });
+      }
+    });
+
+    mm.sendAsyncMessage("ViewSource:GetSelection", { }, { target: aTarget });
   },
 
   // Opens the interval view source viewer
@@ -147,6 +163,9 @@ var gViewSourceUtils = {
       } catch (ex) {
       }
     }
+    Services.telemetry
+            .getHistogramById("VIEW_SOURCE_IN_WINDOW_OPENED_BOOLEAN")
+            .add(true);
     openDialog("chrome://global/content/viewSource.xul",
                "_blank",
                "all,dialog=no",
@@ -217,18 +236,35 @@ var gViewSourceUtils = {
                          "openInExternalEditor are using an out-of-date API.",
                          "https://developer.mozilla.org/en-US/Add-ons/" +
                          "Code_snippets/View_Source_for_XUL_Applications");
+      if (Components.utils.isCrossProcessWrapper(aDocument)) {
+        throw new Error("View Source cannot accept a CPOW as a document.");
+      }
       data = {
         url: aArgsOrURL,
         pageDescriptor: aPageDescriptor,
         doc: aDocument,
-        lineNumber: aLineNumber
+        lineNumber: aLineNumber,
+        isPrivate: false,
       };
+      if (aDocument) {
+          data.isPrivate =
+            PrivateBrowsingUtils.isWindowPrivate(aDocument.defaultView);
+      }
     } else {
-      let { URL, outerWindowID, lineNumber } = aArgsOrURL;
+      let { URL, browser, lineNumber } = aArgsOrURL;
       data = {
         url: URL,
-        lineNumber
+        lineNumber,
+        isPrivate: false,
       };
+      if (browser) {
+        data.doc = {
+          characterSet: browser.characterSet,
+          contentType: browser.documentContentType,
+          title: browser.contentTitle,
+        };
+        data.isPrivate = PrivateBrowsingUtils.isBrowserPrivate(browser);
+      }
     }
 
     try {
@@ -241,12 +277,12 @@ var gViewSourceUtils = {
       // make a uri
       var ios = Components.classes["@mozilla.org/network/io-service;1"]
                           .getService(Components.interfaces.nsIIOService);
-      var charset = aDocument ? aDocument.characterSet : null;
+      var charset = data.doc ? data.doc.characterSet : null;
       var uri = ios.newURI(data.url, charset, null);
       data.uri = uri;
 
       var path;
-      var contentType = aDocument ? aDocument.contentType : null;
+      var contentType = data.doc ? data.doc.contentType : null;
       if (uri.scheme == "file") {
         // it's a local file; we can open it directly
         path = uri.QueryInterface(Components.interfaces.nsIFileURL).file.path;
@@ -260,23 +296,10 @@ var gViewSourceUtils = {
         this.viewSourceProgressListener.editor = editor;
         this.viewSourceProgressListener.callBack = aCallBack;
         this.viewSourceProgressListener.data = data;
-        if (!aPageDescriptor) {
+        if (!data.pageDescriptor) {
           // without a page descriptor, loadPage has no chance of working. download the file.
-          var file = this.getTemporaryFile(uri, aDocument, contentType);
+          var file = this.getTemporaryFile(uri, data.doc, contentType);
           this.viewSourceProgressListener.file = file;
-
-          let fromPrivateWindow = false;
-          if (aDocument) {
-            try {
-              fromPrivateWindow =
-                aDocument.defaultView
-                         .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                         .getInterface(Components.interfaces.nsIWebNavigation)
-                         .QueryInterface(Components.interfaces.nsILoadContext)
-                         .usePrivateBrowsing;
-            } catch (e) {
-            }
-          }
 
           var webBrowserPersist = Components
                                   .classes["@mozilla.org/embedding/browser/nsWebBrowserPersist;1"]
@@ -285,11 +308,11 @@ var gViewSourceUtils = {
           webBrowserPersist.persistFlags = this.mnsIWebBrowserPersist.PERSIST_FLAGS_REPLACE_EXISTING_FILES;
           webBrowserPersist.progressListener = this.viewSourceProgressListener;
           let referrerPolicy = Components.interfaces.nsIHttpChannel.REFERRER_POLICY_NO_REFERRER;
-          webBrowserPersist.savePrivacyAwareURI(uri, null, null, referrerPolicy, null, null, file, fromPrivateWindow);
+          webBrowserPersist.savePrivacyAwareURI(uri, null, null, referrerPolicy, null, null, file, data.isPrivate);
 
           let helperService = Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"]
                                         .getService(Components.interfaces.nsPIExternalAppLauncher);
-          if (fromPrivateWindow) {
+          if (data.isPrivate) {
             // register the file to be deleted when possible
             helperService.deleteTemporaryPrivateFileWhenPossible(file);
           } else {
@@ -309,7 +332,7 @@ var gViewSourceUtils = {
           progress.addProgressListener(this.viewSourceProgressListener,
                                        this.mnsIWebProgress.NOTIFY_STATE_DOCUMENT);
           var pageLoader = webShell.QueryInterface(this.mnsIWebPageDescriptor);
-          pageLoader.loadPage(aPageDescriptor, this.mnsIWebPageDescriptor.DISPLAY_AS_SOURCE);
+          pageLoader.loadPage(data.pageDescriptor, this.mnsIWebPageDescriptor.DISPLAY_AS_SOURCE);
         }
       }
     } catch (ex) {
@@ -331,7 +354,10 @@ var gViewSourceUtils = {
   // Calls the callback, keeping in mind undefined or null values.
   handleCallBack: function(aCallBack, result, data)
   {
-    // ifcallback is undefined, default to the internal viewer
+    Services.telemetry
+            .getHistogramById("VIEW_SOURCE_EXTERNAL_RESULT_BOOLEAN")
+            .add(result);
+    // if callback is undefined, default to the internal viewer
     if (aCallBack === undefined) {
       this.internalViewerFallback(result, data);
     } else if (aCallBack) {
@@ -439,16 +465,9 @@ var gViewSourceUtils = {
           coStream.close();
           foStream.close();
 
-          let fromPrivateWindow =
-            this.data.doc.defaultView
-                         .QueryInterface(Components.interfaces.nsIInterfaceRequestor)
-                         .getInterface(Components.interfaces.nsIWebNavigation)
-                         .QueryInterface(Components.interfaces.nsILoadContext)
-                         .usePrivateBrowsing;
-
           let helperService = Components.classes["@mozilla.org/uriloader/external-helper-app-service;1"]
                               .getService(Components.interfaces.nsPIExternalAppLauncher);
-          if (fromPrivateWindow) {
+          if (this.data.isPrivate) {
             // register the file to be deleted when possible
             helperService.deleteTemporaryPrivateFileWhenPossible(this.file);
           } else {

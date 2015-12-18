@@ -575,7 +575,7 @@ ErrorHandler.prototype = {
     root.level = Log.Level[Svc.Prefs.get("log.rootLogger")];
 
     let logs = ["Sync", "FirefoxAccounts", "Hawk", "Common.TokenServerClient",
-                "Sync.SyncMigration"];
+                "Sync.SyncMigration", "browserwindow.syncui"];
 
     this._logManager = new LogManager(Svc.Prefs, logs, "sync");
   },
@@ -596,10 +596,13 @@ ErrorHandler.prototype = {
         let exception = subject;  // exception thrown by engine's sync() method
         let engine_name = data;   // engine name that threw the exception
 
-        this.checkServerError(exception);
+        this.checkServerError(exception, "engines/" + engine_name);
 
         Status.engines = [engine_name, exception.failureCode || ENGINE_UNKNOWN_FAIL];
         this._log.debug(engine_name + " failed: " + Utils.exceptionStr(exception));
+
+        Services.telemetry.getKeyedHistogramById("WEAVE_ENGINE_SYNC_ERRORS")
+                          .add(engine_name);
         break;
       case "weave:service:login:error":
         this._log.error("Sync encountered a login error");
@@ -728,6 +731,9 @@ ErrorHandler.prototype = {
     }
   },
 
+  // A function to indicate if Sync errors should be "reported" - which in this
+  // context really means "should be notify observers of an error" - but note
+  // that since bug 1180587, no one is going to surface an error to the user.
   shouldReportError: function shouldReportError() {
     if (Status.login == MASTER_PASSWORD_LOCKED) {
       this._log.trace("shouldReportError: false (master password locked).");
@@ -843,7 +849,7 @@ ErrorHandler.prototype = {
    *
    * This method also looks for "side-channel" warnings.
    */
-  checkServerError: function (resp) {
+  checkServerError: function (resp, cause) {
     switch (resp.status) {
       case 200:
       case 404:
@@ -873,6 +879,9 @@ ErrorHandler.prototype = {
         break;
 
       case 401:
+        Services.telemetry.getKeyedHistogramById(
+          "WEAVE_STORAGE_AUTH_ERRORS").add(cause);
+
         this.service.logout();
         this._log.info("Got 401 response; resetting clusterURL.");
         Svc.Prefs.reset("clusterURL");

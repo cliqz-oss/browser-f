@@ -4,31 +4,6 @@
 
 package org.mozilla.gecko.fxa.activities;
 
-import java.util.Calendar;
-import java.util.Date;
-import java.util.GregorianCalendar;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Set;
-
-import org.mozilla.gecko.AppConstants;
-import org.mozilla.gecko.R;
-import org.mozilla.gecko.background.common.log.Logger;
-import org.mozilla.gecko.background.fxa.FxAccountUtils;
-import org.mozilla.gecko.background.preferences.PreferenceFragment;
-import org.mozilla.gecko.fxa.FirefoxAccounts;
-import org.mozilla.gecko.fxa.FxAccountConstants;
-import org.mozilla.gecko.fxa.authenticator.AndroidFxAccount;
-import org.mozilla.gecko.fxa.login.Married;
-import org.mozilla.gecko.fxa.login.State;
-import org.mozilla.gecko.fxa.sync.FxAccountSyncStatusHelper;
-import org.mozilla.gecko.fxa.tasks.FxAccountCodeResender;
-import org.mozilla.gecko.sync.ExtendedJSONObject;
-import org.mozilla.gecko.sync.SharedPreferencesClientsDataDelegate;
-import org.mozilla.gecko.sync.SyncConfiguration;
-import org.mozilla.gecko.util.HardwareUtils;
-import org.mozilla.gecko.util.ThreadUtils;
-
 import android.accounts.Account;
 import android.content.BroadcastReceiver;
 import android.content.ContentResolver;
@@ -36,6 +11,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.preference.CheckBoxPreference;
@@ -48,8 +24,34 @@ import android.preference.PreferenceScreen;
 import android.support.v4.content.LocalBroadcastManager;
 import android.text.TextUtils;
 import android.text.format.DateUtils;
-import android.widget.Toast;
+import com.squareup.picasso.Picasso;
+import com.squareup.picasso.Target;
+import org.mozilla.gecko.AppConstants;
+import org.mozilla.gecko.R;
+import org.mozilla.gecko.background.common.log.Logger;
+import org.mozilla.gecko.background.fxa.FxAccountUtils;
+import org.mozilla.gecko.background.preferences.PreferenceFragment;
+import org.mozilla.gecko.fxa.FirefoxAccounts;
+import org.mozilla.gecko.fxa.FxAccountConstants;
+import org.mozilla.gecko.fxa.SyncStatusListener;
+import org.mozilla.gecko.fxa.authenticator.AndroidFxAccount;
+import org.mozilla.gecko.fxa.login.Married;
+import org.mozilla.gecko.fxa.login.State;
+import org.mozilla.gecko.fxa.sync.FxAccountSyncStatusHelper;
+import org.mozilla.gecko.fxa.tasks.FxAccountCodeResender;
+import org.mozilla.gecko.sync.ExtendedJSONObject;
+import org.mozilla.gecko.sync.SharedPreferencesClientsDataDelegate;
+import org.mozilla.gecko.sync.SyncConfiguration;
+import org.mozilla.gecko.sync.setup.activities.ActivityUtils;
+import org.mozilla.gecko.util.HardwareUtils;
+import org.mozilla.gecko.util.ThreadUtils;
 
+import java.util.Calendar;
+import java.util.Date;
+import java.util.GregorianCalendar;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * A fragment that displays the status of an AndroidFxAccount.
@@ -91,18 +93,10 @@ public class FxAccountStatusFragment
   // configured to use a custom Sync server. In debug mode, this is set.
   private static boolean ALWAYS_SHOW_SYNC_SERVER = false;
 
-  // If the user clicks the email field this many times, the debug / personal
-  // information logging setting will toggle. The setting is not permanent: it
-  // lasts until this process is killed. We don't want to dump PII to the log
-  // for a long time!
-  private final int NUMBER_OF_CLICKS_TO_TOGGLE_DEBUG =
-      // !defined(MOZILLA_OFFICIAL) || defined(NIGHTLY_BUILD) || defined(MOZ_DEBUG)
-      (!AppConstants.MOZILLA_OFFICIAL || AppConstants.NIGHTLY_BUILD || AppConstants.DEBUG_BUILD) ? 5 : -1 /* infinite */;
-  private int debugClickCount = 0;
-
   protected PreferenceCategory accountCategory;
   protected Preference profilePreference;
   protected Preference emailPreference;
+  protected Preference manageAccountPreference;
   protected Preference authServerPreference;
 
   protected Preference needsPasswordPreference;
@@ -140,13 +134,11 @@ public class FxAccountStatusFragment
   // Runnable to update last synced time.
   protected Runnable lastSyncedTimeUpdateRunnable;
 
-  // Runnable to retry fetching profile information.
-  protected Runnable profileFetchRunnable;
-
   // Broadcast Receiver to update profile Information.
   protected FxAccountProfileInformationReceiver accountProfileInformationReceiver;
 
   protected final InnerSyncStatusDelegate syncStatusDelegate = new InnerSyncStatusDelegate();
+  private Target profileAvatarTarget;
 
   protected Preference ensureFindPreference(String key) {
     Preference preference = findPreference(key);
@@ -180,6 +172,10 @@ public class FxAccountStatusFragment
     } else {
       accountCategory.removePreference(profilePreference);
     }
+    manageAccountPreference = ensureFindPreference("manage_account");
+    if (AppConstants.MOZ_ANDROID_NATIVE_ACCOUNT_UI) {
+      accountCategory.removePreference(manageAccountPreference);
+    }
     authServerPreference = ensureFindPreference("auth_server");
 
     needsPasswordPreference = ensureFindPreference("needs_credentials");
@@ -208,6 +204,7 @@ public class FxAccountStatusFragment
     } else {
       emailPreference.setOnPreferenceClickListener(this);
     }
+    manageAccountPreference.setOnPreferenceClickListener(this);
 
     needsPasswordPreference.setOnPreferenceClickListener(this);
     needsVerificationPreference.setOnPreferenceClickListener(this);
@@ -245,20 +242,22 @@ public class FxAccountStatusFragment
 
   @Override
   public boolean onPreferenceClick(Preference preference) {
-    final Preference personalInformationPreference = AppConstants.MOZ_ANDROID_FIREFOX_ACCOUNT_PROFILES ? profilePreference : emailPreference;
-    if (preference == personalInformationPreference) {
-      debugClickCount += 1;
-      if (NUMBER_OF_CLICKS_TO_TOGGLE_DEBUG > 0 && debugClickCount >= NUMBER_OF_CLICKS_TO_TOGGLE_DEBUG) {
-        debugClickCount = 0;
-        FxAccountUtils.LOG_PERSONAL_INFORMATION = !FxAccountUtils.LOG_PERSONAL_INFORMATION;
-        Toast.makeText(getActivity(), "Toggled logging Firefox Account personal information!", Toast.LENGTH_LONG).show();
-        hardRefresh(); // Display or hide debug options.
+    if (preference == profilePreference) {
+      if (!AppConstants.MOZ_ANDROID_NATIVE_ACCOUNT_UI) {
+        // There is no native equivalent, bind the click action to fire an intent.
+        ActivityUtils.openURLInFennec(getActivity().getApplicationContext(), "about:accounts?action=avatar");
       }
+    }
+
+    if (preference == manageAccountPreference) {
+      // There's no native equivalent, so no need to re-direct through an Intent filter.
+      ActivityUtils.openURLInFennec(getActivity().getApplicationContext(), "about:accounts?action=manage");
       return true;
     }
 
     if (preference == needsPasswordPreference) {
-      Intent intent = new Intent(getActivity(), FxAccountUpdateCredentialsActivity.class);
+      final Intent intent = new Intent(FxAccountConstants.ACTION_FXA_UPDATE_CREDENTIALS);
+      intent.putExtra(FxAccountWebFlowActivity.EXTRA_ENDPOINT, FxAccountConstants.ENDPOINT_PREFERENCES);
       final Bundle extras = getExtrasForAccount();
       if (extras != null) {
         intent.putExtras(extras);
@@ -272,7 +271,8 @@ public class FxAccountStatusFragment
     }
 
     if (preference == needsFinishMigratingPreference) {
-      final Intent intent = new Intent(getActivity(), FxAccountFinishMigratingActivity.class);
+      final Intent intent = new Intent(FxAccountConstants.ACTION_FXA_FINISH_MIGRATING);
+      intent.putExtra(FxAccountWebFlowActivity.EXTRA_ENDPOINT, FxAccountConstants.ENDPOINT_PREFERENCES);
       final Bundle extras = getExtrasForAccount();
       if (extras != null) {
         intent.putExtras(extras);
@@ -286,12 +286,15 @@ public class FxAccountStatusFragment
     }
 
     if (preference == needsVerificationPreference) {
-      FxAccountCodeResender.resendCode(getActivity().getApplicationContext(), fxAccount);
+      if (AppConstants.MOZ_ANDROID_NATIVE_ACCOUNT_UI) {
+        FxAccountCodeResender.resendCode(getActivity().getApplicationContext(), fxAccount);
+      }
 
-      Intent intent = new Intent(getActivity(), FxAccountConfirmAccountActivity.class);
+      final Intent intent = new Intent(FxAccountConstants.ACTION_FXA_CONFIRM_ACCOUNT);
       // Per http://stackoverflow.com/a/8992365, this triggers a known bug with
       // the soft keyboard not being shown for the started activity. Why, Android, why?
       intent.setFlags(Intent.FLAG_ACTIVITY_NO_ANIMATION);
+      intent.putExtra(FxAccountWebFlowActivity.EXTRA_ENDPOINT, FxAccountConstants.ENDPOINT_PREFERENCES);
       startActivity(intent);
 
       return true;
@@ -409,7 +412,7 @@ public class FxAccountStatusFragment
     setCheckboxesEnabled(true);
   }
 
-  protected class InnerSyncStatusDelegate implements FirefoxAccounts.SyncStatusListener {
+  protected class InnerSyncStatusDelegate implements SyncStatusListener {
     protected final Runnable refreshRunnable = new Runnable() {
       @Override
       public void run() {
@@ -485,6 +488,19 @@ public class FxAccountStatusFragment
     // register/unregister calls.
     FxAccountSyncStatusHelper.getInstance().startObserving(syncStatusDelegate);
 
+    if (AppConstants.MOZ_ANDROID_FIREFOX_ACCOUNT_PROFILES) {
+      profilePreference.getIntent().setData(Uri.parse("about:accounts?action=avatar"));
+      // Register a local broadcast receiver to get profile cached notification.
+      final IntentFilter intentFilter = new IntentFilter();
+      intentFilter.addAction(FxAccountConstants.ACCOUNT_PROFILE_JSON_UPDATED_ACTION);
+      accountProfileInformationReceiver = new FxAccountProfileInformationReceiver();
+      LocalBroadcastManager.getInstance(getActivity()).registerReceiver(accountProfileInformationReceiver, intentFilter);
+
+      // profilePreference is set during onCreate, so it's definitely not null here.
+      final float cornerRadius = getResources().getDimension(R.dimen.fxaccount_profile_image_width) / 2;
+      profileAvatarTarget = new PicassoPreferenceIconTarget(getResources(), profilePreference, cornerRadius);
+    }
+
     refresh();
   }
 
@@ -498,13 +514,14 @@ public class FxAccountStatusFragment
       handler.removeCallbacks(lastSyncedTimeUpdateRunnable);
     }
 
-    if (profileFetchRunnable != null) {
-      handler.removeCallbacks(profileFetchRunnable);
-    }
-
     // Focus lost, unregister broadcast receiver.
     if (accountProfileInformationReceiver != null) {
       LocalBroadcastManager.getInstance(getActivity()).unregisterReceiver(accountProfileInformationReceiver);
+    }
+
+    if (profileAvatarTarget != null) {
+      Picasso.with(getActivity()).cancelRequest(profileAvatarTarget);
+      profileAvatarTarget = null;
     }
   }
 
@@ -606,53 +623,60 @@ public class FxAccountStatusFragment
       return;
     }
 
-    final ExtendedJSONObject cachedProfileJSON = fxAccount.getCachedProfileJSON();
-    if (cachedProfileJSON != null) {
-      // Update profile information from the cached Json.
-      updateProfileInformation(cachedProfileJSON);
+    final ExtendedJSONObject profileJSON = fxAccount.getProfileJSON();
+    if (profileJSON == null) {
+      // Update the profile title with email as the fallback.
+      // Profile icon by default use the default avatar as the fallback.
+      profilePreference.setTitle(fxAccount.getEmail());
       return;
     }
 
-    // Update the profile title with email as the fallback.
-    // Profile icon by default use the default avatar as the fallback.
-    profilePreference.setTitle(fxAccount.getEmail());
-
-    // Register a local broadcast receiver to get profile cached notification.
-    final IntentFilter intentFilter = new IntentFilter();
-    intentFilter.addAction(FxAccountConstants.ACCOUNT_PROFILE_AVATAR_UPDATED_ACTION);
-    accountProfileInformationReceiver = new FxAccountProfileInformationReceiver();
-    LocalBroadcastManager.getInstance(getActivity()).registerReceiver(accountProfileInformationReceiver, intentFilter);
-
-    // Fetch the profile from the server.
-    fxAccount.maybeUpdateProfileJSON(false);
-
-    // Schedule an runnable to retry fetching profile.
-    profileFetchRunnable = new ProfileFetchUpdateRunnable();
-    handler.postDelayed(profileFetchRunnable, PROFILE_FETCH_RETRY_INTERVAL_IN_MILLISECONDS);
+    updateProfileInformation(profileJSON);
   }
 
   /**
    * Update profile information from json on UI thread.
    *
-   * @param profileJson json fetched from server.
+   * @param profileJSON json fetched from server.
    */
-  protected void updateProfileInformation(final ExtendedJSONObject profileJson) {
-    // Remove the scheduled runnable for fetching the profile information.
-    if (profileFetchRunnable != null) {
-      handler.removeCallbacks(profileFetchRunnable);
+  protected void updateProfileInformation(final ExtendedJSONObject profileJSON) {
+    // View changes must always be done on UI thread.
+    ThreadUtils.assertOnUiThread();
+
+    FxAccountUtils.pii(LOG_TAG, "Profile JSON is: " + profileJSON.toJSONString());
+
+    final String userName = profileJSON.getString(FxAccountConstants.KEY_PROFILE_JSON_USERNAME);
+    // Update the profile username and email if available.
+    if (!TextUtils.isEmpty(userName)) {
+      profilePreference.setTitle(userName);
+      profilePreference.setSummary(fxAccount.getEmail());
+    } else {
+      profilePreference.setTitle(fxAccount.getEmail());
     }
 
-    // Read the profile information from json and Update the UI elements.
-    ThreadUtils.postToUiThread(new Runnable() {
-      @Override
-      public void run() {
-        // Icon update from java is not supported prior to API 11, skip the avatar update for older device.
-        if (AppConstants.Versions.feature11Plus) {
-          profilePreference.setIcon(getResources().getDrawable(R.drawable.sync_avatar_default));
-        }
-        profilePreference.setTitle(fxAccount.getAndroidAccount().name);
-      }
-    });
+    // Icon update from java is not supported prior to API 11, skip the avatar image fetch and update for older device.
+    if (!AppConstants.Versions.feature11Plus) {
+      Logger.info(LOG_TAG, "Skipping profile image fetch for older pre-API 11 devices.");
+      return;
+    }
+
+    // Avatar URI empty, skip profile image fetch.
+    final String avatarURI = profileJSON.getString(FxAccountConstants.KEY_PROFILE_JSON_AVATAR);
+    if (TextUtils.isEmpty(avatarURI)) {
+      Logger.info(LOG_TAG, "AvatarURI is empty, skipping profile image fetch.");
+      return;
+    }
+
+    // Using noPlaceholder would avoid a pop of the default image, but it's not available in the version of Picasso
+    // we ship in the tree.
+    Picasso
+        .with(getActivity())
+        .load(avatarURI)
+        .centerInside()
+        .resizeDimen(R.dimen.fxaccount_profile_image_width, R.dimen.fxaccount_profile_image_height)
+        .placeholder(R.drawable.sync_avatar_default)
+        .error(R.drawable.sync_avatar_default)
+        .into(profileAvatarTarget);
   }
 
   private void scheduleAndUpdateLastSyncedTime() {
@@ -831,25 +855,23 @@ public class FxAccountStatusFragment
   }
 
   /**
-   * The Runnable that schedules a future to fetch profile information.
-   */
-  protected class ProfileFetchUpdateRunnable implements Runnable  {
-    @Override
-    public void run() {
-      updateProfileInformation();
-    }
-  }
-
-  /**
    * Broadcast receiver to receive updates for the cached profile action.
    */
   public class FxAccountProfileInformationReceiver extends BroadcastReceiver {
     @Override
     public void onReceive(Context context, Intent intent) {
-      if (intent.getAction().equals(FxAccountConstants.ACCOUNT_PROFILE_AVATAR_UPDATED_ACTION)) {
-        // We should have a cached profile json here.
-        updateProfileInformation(fxAccount.getCachedProfileJSON());
+      if (!intent.getAction().equals(FxAccountConstants.ACCOUNT_PROFILE_JSON_UPDATED_ACTION)) {
+        return;
       }
+
+      Logger.info(LOG_TAG, "Profile avatar cache update action broadcast received.");
+      // Update the UI from cached profile json on the main thread.
+      getActivity().runOnUiThread(new Runnable() {
+        @Override
+        public void run() {
+          updateProfileInformation();
+        }
+      });
     }
   }
 

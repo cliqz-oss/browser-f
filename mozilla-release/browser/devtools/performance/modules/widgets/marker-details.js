@@ -11,8 +11,6 @@ const { Cc, Ci, Cu, Cr } = require("chrome");
 
 loader.lazyRequireGetter(this, "EventEmitter",
   "devtools/toolkit/event-emitter");
-loader.lazyRequireGetter(this, "L10N",
-  "devtools/performance/global", true);
 loader.lazyRequireGetter(this, "MarkerUtils",
   "devtools/performance/marker-utils");
 
@@ -36,15 +34,25 @@ function MarkerDetails(parent, splitter) {
 
   this._parent.addEventListener("click", this._onClick);
   this._splitter.addEventListener("mouseup", this._onSplitterMouseUp);
+
+  this.hidden = true;
 }
 
 MarkerDetails.prototype = {
   /**
    * Sets this view's width.
-   * @param boolean
+   * @param number
    */
   set width(value) {
     this._parent.setAttribute("width", value);
+  },
+
+  /**
+   * Sets this view's width.
+   * @return number
+   */
+  get width() {
+    return +this._parent.getAttribute("width");
   },
 
   /**
@@ -52,7 +60,18 @@ MarkerDetails.prototype = {
    * @param boolean
    */
   set hidden(value) {
-    this._parent.hidden = value;
+    if (this._parent.hidden != value) {
+      this._parent.hidden = value;
+      this.emit("resize");
+    }
+  },
+
+  /**
+   * Gets this view's visibility.
+   * @param boolean
+   */
+  get hidden() {
+    return this._parent.hidden;
   },
 
   /**
@@ -69,14 +88,17 @@ MarkerDetails.prototype = {
    *        An options object holding:
    *          - marker: The marker to display.
    *          - frames: Array of stack frame information; see stack.js.
+   *          - allocations: Whether or not allocations were enabled for this recording. [optional]
    */
-  render: function({ marker, frames }) {
+  render: function (options) {
+    let { marker, frames } = options;
     this.empty();
 
     let elements = [];
     elements.push(MarkerUtils.DOM.buildTitle(this._document, marker));
     elements.push(MarkerUtils.DOM.buildDuration(this._document, marker));
     MarkerUtils.DOM.buildFields(this._document, marker).forEach(f => elements.push(f));
+    MarkerUtils.DOM.buildCustom(this._document, marker, options).forEach(f => elements.push(f));
 
     // Build a stack element -- and use the "startStack" label if
     // we have both a startStack and endStack.
@@ -102,14 +124,12 @@ MarkerDetails.prototype = {
    * for the moment.
    */
   _onClick: function (e) {
-    let data = findActionFromEvent(e.target);
+    let data = findActionFromEvent(e.target, this._parent);
     if (!data) {
       return;
     }
 
-    if (data.action === "view-source") {
-      this.emit("view-source", data.url, data.line);
-    }
+    this.emit(data.action, data);
   },
 
   /**
@@ -121,7 +141,7 @@ MarkerDetails.prototype = {
 };
 
 /**
- * Take an element from an event `target`, and asend through
+ * Take an element from an event `target`, and ascend through
  * the DOM, looking for an element with a `data-action` attribute. Return
  * the parsed `data-action` value found, or null if none found before
  * reaching the parent `container`.

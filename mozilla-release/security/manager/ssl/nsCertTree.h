@@ -14,7 +14,7 @@
 #include "nsIMutableArray.h"
 #include "nsNSSComponent.h"
 #include "nsTArray.h"
-#include "pldhash.h"
+#include "PLDHashTable.h"
 #include "nsIX509CertDB.h"
 #include "nsCertOverrideService.h"
 #include "mozilla/Attributes.h"
@@ -132,7 +132,7 @@ private:
   treeArrayEl *GetThreadDescAtIndex(int32_t _index);
   already_AddRefed<nsIX509Cert> 
     GetCertAtIndex(int32_t _index, int32_t *outAbsoluteCertOffset = nullptr);
-  mozilla::TemporaryRef<nsCertTreeDispInfo>
+  already_AddRefed<nsCertTreeDispInfo>
     GetDispInfoAtIndex(int32_t index, int32_t *outAbsoluteCertOffset = nullptr);
   void FreeCertArray();
   nsresult UpdateUIContents();

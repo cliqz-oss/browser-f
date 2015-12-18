@@ -8,11 +8,14 @@
 #define mozilla_dom_PerformanceEntry_h___
 
 #include "nsDOMNavigationTiming.h"
+#include "nsString.h"
+#include "nsWrapperCache.h"
 
 class nsISupports;
 
 namespace mozilla {
 namespace dom {
+class PerformanceResourceTiming;
 
 // http://www.w3.org/TR/performance-timeline/#performanceentry
 class PerformanceEntry : public nsISupports,
@@ -74,6 +77,11 @@ public:
   virtual DOMHighResTimeStamp Duration() const
   {
     return 0;
+  }
+
+  virtual const PerformanceResourceTiming* ToResourceTiming() const
+  {
+    return nullptr;
   }
 
 protected:

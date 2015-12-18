@@ -9,18 +9,14 @@
 
 #include "mozilla/dom/AudioChannelBinding.h"
 #include "AudioNode.h"
-#include "nsIDOMEventListener.h"
 #include "nsIAudioChannelAgent.h"
-#include "AudioChannelCommon.h"
 
 namespace mozilla {
 namespace dom {
 
 class AudioContext;
-class EventProxyHandler;
 
 class AudioDestinationNode final : public AudioNode
-                                 , public nsIDOMEventListener
                                  , public nsIAudioChannelAgentCallback
                                  , public MainThreadMediaStreamListener
 {
@@ -57,12 +53,12 @@ public:
   void Mute();
   void Unmute();
 
+  void Suspend();
+  void Resume();
+
   void StartRendering(Promise* aPromise);
 
   void OfflineShutdown();
-
-  // nsIDOMEventListener - by proxy
-  NS_IMETHOD HandleEvent(nsIDOMEvent* aEvent) override;
 
   AudioChannel MozAudioChannelType() const;
   void SetMozAudioChannelType(AudioChannel aValue, ErrorResult& aRv);
@@ -78,6 +74,7 @@ public:
   void SetIsOnlyNodeForContext(bool aIsOnlyNode);
 
   void CreateAudioChannelAgent();
+  void DestroyAudioChannelAgent();
 
   virtual const char* NodeType() const override
   {
@@ -96,7 +93,7 @@ protected:
 private:
   bool CheckAudioChannelPermissions(AudioChannel aValue);
 
-  void SetCanPlay(bool aCanPlay);
+  void SetCanPlay(float aVolume, bool aMuted);
 
   void NotifyStableState();
   void ScheduleStableStateNotification();
@@ -105,8 +102,8 @@ private:
   uint32_t mFramesToProduce;
 
   nsCOMPtr<nsIAudioChannelAgent> mAudioChannelAgent;
+  nsRefPtr<MediaInputPort> mCaptureStreamPort;
 
-  nsRefPtr<EventProxyHandler> mEventProxyHelper;
   nsRefPtr<Promise> mOfflineRenderingPromise;
 
   // Audio Channel Type.
@@ -118,10 +115,11 @@ private:
   double mExtraCurrentTime;
   double mExtraCurrentTimeSinceLastStartedBlocking;
   bool mExtraCurrentTimeUpdatedSinceLastStableState;
+  bool mCaptured;
 };
 
-}
-}
+} // namespace dom
+} // namespace mozilla
 
 #endif
 

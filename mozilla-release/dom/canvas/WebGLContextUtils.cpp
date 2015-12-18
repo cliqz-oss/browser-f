@@ -27,8 +27,6 @@
 
 namespace mozilla {
 
-using namespace gl;
-
 bool
 IsGLDepthFormat(TexInternalFormat internalformat)
 {
@@ -496,10 +494,12 @@ WebGLContext::GenerateWarning(const char* fmt, va_list ap)
         return;
     }
 
-    AutoJSAPI api;
+    dom::AutoJSAPI api;
     if (!api.Init(mCanvasElement->OwnerDoc()->GetScopeObject())) {
         return;
     }
+
+    api.TakeOwnershipOfErrorReporting();
 
     JSContext* cx = api.cx();
     JS_ReportWarning(cx, "WebGL: %s", buf);
@@ -1003,7 +1003,7 @@ WebGLContext::EnumName(GLenum glenum, nsACString* out_name)
 }
 
 bool
-WebGLContext::IsCompressedTextureFormat(GLenum format)
+IsCompressedTextureFormat(GLenum format)
 {
     switch (format) {
     case LOCAL_GL_COMPRESSED_RGB_S3TC_DXT1_EXT:
@@ -1036,7 +1036,7 @@ WebGLContext::IsCompressedTextureFormat(GLenum format)
 
 
 bool
-WebGLContext::IsTextureFormatCompressed(TexInternalFormat format)
+IsTextureFormatCompressed(TexInternalFormat format)
 {
     return IsCompressedTextureFormat(format.get());
 }

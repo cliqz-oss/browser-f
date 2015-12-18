@@ -12,7 +12,6 @@
 #include "mozilla/Omnijar.h"
 #include "nsAutoPtr.h"
 #include "nsIInputStream.h"
-#include "nsNetUtil.h"
 #define gfxToolkitPlatform gfxAndroidPlatform
 
 #include "nsXULAppAPI.h"
@@ -631,11 +630,11 @@ public:
             StringHash,
             HashMatchEntry,
             MoveEntry,
-            PL_DHashClearEntryStub,
+            PLDHashTable::ClearEntryStub,
             nullptr
         };
 
-        MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default,
+        MOZ_ASSERT(XRE_IsParentProcess(),
                    "StartupCacheFontNameCache should only be used in chrome "
                    "process");
         mCache = mozilla::scache::StartupCache::GetSingleton();
@@ -701,8 +700,8 @@ public:
             }
             uint32_t filesize = strtoul(beginning, nullptr, 10);
 
-            FNCMapEntry* mapEntry = static_cast<FNCMapEntry*>
-                (PL_DHashTableAdd(&mMap, filename.get(), fallible));
+            auto mapEntry =
+                static_cast<FNCMapEntry*>(mMap.Add(filename.get(), fallible));
             if (mapEntry) {
                 mapEntry->mFilename.Assign(filename);
                 mapEntry->mTimestamp = timestamp;
@@ -725,9 +724,7 @@ public:
     GetInfoForFile(const nsCString& aFileName, nsCString& aFaceList,
                    uint32_t *aTimestamp, uint32_t *aFilesize)
     {
-        FNCMapEntry *entry =
-            static_cast<FNCMapEntry*>(PL_DHashTableSearch(&mMap,
-                                                          aFileName.get()));
+        auto entry = static_cast<FNCMapEntry*>(mMap.Search(aFileName.get()));
         if (entry) {
             *aTimestamp = entry->mTimestamp;
             *aFilesize = entry->mFilesize;
@@ -743,8 +740,8 @@ public:
     CacheFileInfo(const nsCString& aFileName, const nsCString& aFaceList,
                   uint32_t aTimestamp, uint32_t aFilesize)
     {
-        FNCMapEntry* entry = static_cast<FNCMapEntry*>
-            (PL_DHashTableAdd(&mMap, aFileName.get(), fallible));
+        auto entry =
+            static_cast<FNCMapEntry*>(mMap.Add(aFileName.get(), fallible));
         if (entry) {
             entry->mFilename.Assign(aFileName);
             entry->mTimestamp = aTimestamp;
@@ -914,19 +911,19 @@ gfxFT2FontList::AppendFacesFromFontFile(const nsCString& aFileName,
                                         StandardFile aStdFile,
                                         FT2FontFamily::Visibility aVisibility)
 {
-    nsCString faceList;
+    nsCString cachedFaceList;
     uint32_t filesize = 0, timestamp = 0;
     if (aCache) {
-        aCache->GetInfoForFile(aFileName, faceList, &timestamp, &filesize);
+        aCache->GetInfoForFile(aFileName, cachedFaceList, &timestamp, &filesize);
     }
 
     struct stat s;
     int statRetval = stat(aFileName.get(), &s);
-    if (!faceList.IsEmpty() && 0 == statRetval &&
+    if (!cachedFaceList.IsEmpty() && 0 == statRetval &&
         s.st_mtime == timestamp && s.st_size == filesize)
     {
         LOG(("using cached font info for %s", aFileName.get()));
-        AppendFacesFromCachedFaceList(aFileName, faceList, aStdFile,
+        AppendFacesFromCachedFaceList(aFileName, cachedFaceList, aStdFile,
                                       aVisibility);
         return;
     }
@@ -935,7 +932,7 @@ gfxFT2FontList::AppendFacesFromFontFile(const nsCString& aFileName,
     FT_Face dummy;
     if (FT_Err_Ok == FT_New_Face(ftLibrary, aFileName.get(), -1, &dummy)) {
         LOG(("reading font info via FreeType for %s", aFileName.get()));
-        nsCString faceList;
+        nsCString newFaceList;
         timestamp = s.st_mtime;
         filesize = s.st_size;
         for (FT_Long i = 0; i < dummy->num_faces; i++) {
@@ -943,12 +940,12 @@ gfxFT2FontList::AppendFacesFromFontFile(const nsCString& aFileName,
             if (FT_Err_Ok != FT_New_Face(ftLibrary, aFileName.get(), i, &face)) {
                 continue;
             }
-            AddFaceToList(aFileName, i, aStdFile, aVisibility, face, faceList);
+            AddFaceToList(aFileName, i, aStdFile, aVisibility, face, newFaceList);
             FT_Done_Face(face);
         }
         FT_Done_Face(dummy);
-        if (aCache && 0 == statRetval && !faceList.IsEmpty()) {
-            aCache->CacheFileInfo(aFileName, faceList, timestamp, filesize);
+        if (aCache && 0 == statRetval && !newFaceList.IsEmpty()) {
+            aCache->CacheFileInfo(aFileName, newFaceList, timestamp, filesize);
         }
     }
 }
@@ -1148,7 +1145,7 @@ gfxFT2FontList::FindFonts()
     mCodepointsWithNoFonts.SetRange(0,0x1f);     // C0 controls
     mCodepointsWithNoFonts.SetRange(0x7f,0x9f);  // C1 controls
 
-    if (XRE_GetProcessType() != GeckoProcessType_Default) {
+    if (!XRE_IsParentProcess()) {
         // Content process: ask the Chrome process to give us the list
         InfallibleTArray<FontListEntry> fonts;
         mozilla::dom::ContentChild::GetSingleton()->SendReadFontList(&fonts);

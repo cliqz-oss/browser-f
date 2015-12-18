@@ -50,6 +50,8 @@ using mozilla::RangedPtr;
 
 using JS::AutoCheckCannotGC;
 using JS::GenericNaN;
+using JS::ToInt8;
+using JS::ToInt16;
 using JS::ToInt32;
 using JS::ToInt64;
 using JS::ToUint32;
@@ -509,7 +511,7 @@ Extract(const Value& v)
 
 #if JS_HAS_TOSOURCE
 MOZ_ALWAYS_INLINE bool
-num_toSource_impl(JSContext* cx, CallArgs args)
+num_toSource_impl(JSContext* cx, const CallArgs& args)
 {
     double d = Extract(args.thisv());
 
@@ -683,7 +685,7 @@ static JSString*
 NumberToStringWithBase(ExclusiveContext* cx, double d, int base);
 
 MOZ_ALWAYS_INLINE bool
-num_toString_impl(JSContext* cx, CallArgs args)
+num_toString_impl(JSContext* cx, const CallArgs& args)
 {
     MOZ_ASSERT(IsNumber(args.thisv()));
 
@@ -720,7 +722,7 @@ js::num_toString(JSContext* cx, unsigned argc, Value* vp)
 
 #if !EXPOSE_INTL_API
 MOZ_ALWAYS_INLINE bool
-num_toLocaleString_impl(JSContext* cx, CallArgs args)
+num_toLocaleString_impl(JSContext* cx, const CallArgs& args)
 {
     MOZ_ASSERT(IsNumber(args.thisv()));
 
@@ -854,7 +856,7 @@ num_toLocaleString(JSContext* cx, unsigned argc, Value* vp)
 #endif /* !EXPOSE_INTL_API */
 
 MOZ_ALWAYS_INLINE bool
-num_valueOf_impl(JSContext* cx, CallArgs args)
+num_valueOf_impl(JSContext* cx, const CallArgs& args)
 {
     MOZ_ASSERT(IsNumber(args.thisv()));
     args.rval().setNumber(Extract(args.thisv()));
@@ -889,7 +891,7 @@ ComputePrecisionInRange(JSContext* cx, int minPrecision, int maxPrecision, Handl
 }
 
 static bool
-DToStrResult(JSContext* cx, double d, JSDToStrMode mode, int precision, CallArgs args)
+DToStrResult(JSContext* cx, double d, JSDToStrMode mode, int precision, const CallArgs& args)
 {
     char buf[DTOSTR_VARIABLE_BUFFER_SIZE(MAX_PRECISION + 1)];
     char* numStr = js_dtostr(cx->mainThread().dtoaState, buf, sizeof buf, mode, precision, d);
@@ -909,7 +911,7 @@ DToStrResult(JSContext* cx, double d, JSDToStrMode mode, int precision, CallArgs
  * than ECMA requires; this is permitted by ECMA-262.
  */
 MOZ_ALWAYS_INLINE bool
-num_toFixed_impl(JSContext* cx, CallArgs args)
+num_toFixed_impl(JSContext* cx, const CallArgs& args)
 {
     MOZ_ASSERT(IsNumber(args.thisv()));
 
@@ -932,7 +934,7 @@ num_toFixed(JSContext* cx, unsigned argc, Value* vp)
 }
 
 MOZ_ALWAYS_INLINE bool
-num_toExponential_impl(JSContext* cx, CallArgs args)
+num_toExponential_impl(JSContext* cx, const CallArgs& args)
 {
     MOZ_ASSERT(IsNumber(args.thisv()));
 
@@ -958,7 +960,7 @@ num_toExponential(JSContext* cx, unsigned argc, Value* vp)
 }
 
 MOZ_ALWAYS_INLINE bool
-num_toPrecision_impl(JSContext* cx, CallArgs args)
+num_toPrecision_impl(JSContext* cx, const CallArgs& args)
 {
     MOZ_ASSERT(IsNumber(args.thisv()));
 
@@ -1546,6 +1548,44 @@ JS_PUBLIC_API(bool)
 js::ToNumberSlow(JSContext* cx, Value v, double* out)
 {
     return ToNumberSlow(static_cast<ExclusiveContext*>(cx), v, out);
+}
+
+/*
+ * Convert a value to an int8_t, according to the WebIDL rules for byte
+ * conversion. Return converted value in *out on success, false on failure.
+ */
+JS_PUBLIC_API(bool)
+js::ToInt8Slow(JSContext *cx, const HandleValue v, int8_t *out)
+{
+    MOZ_ASSERT(!v.isInt32());
+    double d;
+    if (v.isDouble()) {
+        d = v.toDouble();
+    } else {
+        if (!ToNumberSlow(cx, v, &d))
+            return false;
+    }
+    *out = ToInt8(d);
+    return true;
+}
+
+/*
+ * Convert a value to an int16_t, according to the WebIDL rules for short
+ * conversion. Return converted value in *out on success, false on failure.
+ */
+JS_PUBLIC_API(bool)
+js::ToInt16Slow(JSContext *cx, const HandleValue v, int16_t *out)
+{
+    MOZ_ASSERT(!v.isInt32());
+    double d;
+    if (v.isDouble()) {
+        d = v.toDouble();
+    } else {
+        if (!ToNumberSlow(cx, v, &d))
+            return false;
+    }
+    *out = ToInt16(d);
+    return true;
 }
 
 /*

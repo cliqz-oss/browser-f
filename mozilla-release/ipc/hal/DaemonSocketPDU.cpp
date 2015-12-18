@@ -6,6 +6,7 @@
 
 #include "DaemonSocketPDU.h"
 #include "mozilla/ipc/DaemonSocketConsumer.h"
+#include "nsISupportsImpl.h" // for MOZ_COUNT_CTOR, MOZ_COUNT_DTOR
 
 #ifdef CHROMIUM_LOG
 #undef CHROMIUM_LOG
@@ -28,10 +29,11 @@ namespace ipc {
 //
 
 DaemonSocketPDU::DaemonSocketPDU(uint8_t aService, uint8_t aOpcode,
-                                       uint16_t aPayloadSize)
+                                 uint16_t aPayloadSize)
   : mConsumer(nullptr)
-  , mUserData(nullptr)
 {
+  MOZ_COUNT_CTOR_INHERITED(DaemonSocketPDU, UnixSocketIOBuffer);
+
   // Allocate memory
   size_t availableSpace = HEADER_SIZE + aPayloadSize;
   ResetBuffer(new uint8_t[availableSpace], 0, 0, availableSpace);
@@ -48,14 +50,17 @@ DaemonSocketPDU::DaemonSocketPDU(uint8_t aService, uint8_t aOpcode,
 
 DaemonSocketPDU::DaemonSocketPDU(size_t aPayloadSize)
   : mConsumer(nullptr)
-  , mUserData(nullptr)
 {
+  MOZ_COUNT_CTOR_INHERITED(DaemonSocketPDU, UnixSocketIOBuffer);
+
   size_t availableSpace = HEADER_SIZE + aPayloadSize;
   ResetBuffer(new uint8_t[availableSpace], 0, 0, availableSpace);
 }
 
 DaemonSocketPDU::~DaemonSocketPDU()
 {
+  MOZ_COUNT_DTOR_INHERITED(DaemonSocketPDU, UnixSocketIOBuffer);
+
   nsAutoArrayPtr<uint8_t> data(GetBuffer());
   ResetBuffer(nullptr, 0, 0, 0);
 }
@@ -95,8 +100,8 @@ DaemonSocketPDU::Send(int aFd)
 
   if (mConsumer) {
     // We successfully sent a PDU, now store the
-    // result runnable in the consumer.
-    mConsumer->StoreUserData(*this);
+    // result handler in the consumer.
+    mConsumer->StoreResultHandler(*this);
   }
 
   return res;

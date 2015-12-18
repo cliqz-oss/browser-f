@@ -8,7 +8,6 @@ EXPORTS += [
     'ContextStateTracker.h',
     'DrawMode.h',
     'gfx2DGlue.h',
-    'gfx3DMatrix.h',
     'gfxAlphaRecovery.h',
     'gfxASurface.h',
     'gfxBaseSharedMemorySurface.h',
@@ -23,6 +22,7 @@ EXPORTS += [
     'gfxFontFamilyList.h',
     'gfxFontFeatures.h',
     'gfxFontInfoLoader.h',
+    'gfxFontPrefLangList.h',
     'gfxFontTest.h',
     'gfxFontUtils.h',
     'gfxGradientCache.h',
@@ -162,7 +162,6 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'qt':
 
 elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
     EXPORTS += [
-        'gfxD2DSurface.h',
         'gfxDWriteFonts.h',
         'gfxGDIFont.h',
         'gfxGDIFontList.h',
@@ -185,7 +184,6 @@ elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':
             'gfxDWriteFontList.cpp',
         ]
         SOURCES += [
-            'gfxD2DSurface.cpp',
             'gfxDWriteCommon.cpp',
             'gfxDWriteFonts.cpp',
         ]
@@ -213,7 +211,6 @@ SOURCES += [
 
 UNIFIED_SOURCES += [
     'CJKCompatSVS.cpp',
-    'gfx3DMatrix.cpp',
     'gfxAlphaRecovery.cpp',
     'gfxBaseSharedMemorySurface.cpp',
     'gfxBlur.cpp',
@@ -263,7 +260,11 @@ if CONFIG['ENABLE_INTL_API']:
         'icu',
     ]
 
-FAIL_ON_WARNINGS = not CONFIG['_MSC_VER']
+if CONFIG['GNU_CXX']:
+    CXXFLAGS += ['-Wshadow']
+
+if CONFIG['_MSC_VER']:
+    ALLOW_COMPILER_WARNINGS = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -303,6 +304,8 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] in ('gtk2', 'gtk3', 'qt'):
     CXXFLAGS += CONFIG['MOZ_PANGO_CFLAGS']
+
+LOCAL_INCLUDES += CONFIG['SKIA_INCLUDES']
 
 DEFINES['GRAPHITE2_STATIC'] = True
 

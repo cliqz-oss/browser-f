@@ -29,7 +29,7 @@ static
 bool
 stepFunc(JSContext *aCtx,
          uint32_t,
-         jsval *_vp)
+         JS::Value *_vp)
 {
   nsCOMPtr<nsIXPConnect> xpc(Service::getXPConnect());
   nsCOMPtr<nsIXPConnectWrappedNative> wrapper;
@@ -61,7 +61,7 @@ stepFunc(JSContext *aCtx,
   bool hasMore = false;
   rv = stmt->ExecuteStep(&hasMore);
   if (NS_SUCCEEDED(rv) && !hasMore) {
-    *_vp = JSVAL_FALSE;
+    _vp->setBoolean(false);
     (void)stmt->Reset();
     return true;
   }
@@ -71,7 +71,7 @@ stepFunc(JSContext *aCtx,
     return false;
   }
 
-  *_vp = BOOLEAN_TO_JSVAL(hasMore);
+  _vp->setBoolean(hasMore);
   return true;
 }
 
@@ -82,7 +82,7 @@ nsresult
 StatementJSHelper::getRow(Statement *aStatement,
                           JSContext *aCtx,
                           JSObject *aScopeObj,
-                          jsval *_row)
+                          JS::Value *_row)
 {
   MOZ_ASSERT(NS_IsMainThread());
   nsresult rv;
@@ -101,7 +101,7 @@ StatementJSHelper::getRow(Statement *aStatement,
 
     nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
     nsCOMPtr<nsIXPConnect> xpc(Service::getXPConnect());
-    rv = xpc->WrapNative(
+    rv = xpc->WrapNativeHolder(
       aCtx,
       ::JS_GetGlobalForObject(aCtx, scope),
       row,
@@ -118,7 +118,7 @@ StatementJSHelper::getRow(Statement *aStatement,
   obj = aStatement->mStatementRowHolder->GetJSObject();
   NS_ENSURE_STATE(obj);
 
-  *_row = OBJECT_TO_JSVAL(obj);
+  _row->setObject(*obj);
   return NS_OK;
 }
 
@@ -126,7 +126,7 @@ nsresult
 StatementJSHelper::getParams(Statement *aStatement,
                              JSContext *aCtx,
                              JSObject *aScopeObj,
-                             jsval *_params)
+                             JS::Value *_params)
 {
   MOZ_ASSERT(NS_IsMainThread());
   nsresult rv;
@@ -146,7 +146,7 @@ StatementJSHelper::getParams(Statement *aStatement,
 
     nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
     nsCOMPtr<nsIXPConnect> xpc(Service::getXPConnect());
-    rv = xpc->WrapNative(
+    rv = xpc->WrapNativeHolder(
       aCtx,
       ::JS_GetGlobalForObject(aCtx, scope),
       params,
@@ -164,7 +164,7 @@ StatementJSHelper::getParams(Statement *aStatement,
   obj = aStatement->mStatementParamsHolder->GetJSObject();
   NS_ENSURE_STATE(obj);
 
-  *_params = OBJECT_TO_JSVAL(obj);
+  _params->setObject(*obj);
   return NS_OK;
 }
 
@@ -190,7 +190,7 @@ StatementJSHelper::GetProperty(nsIXPConnectWrappedNative *aWrapper,
                                JSContext *aCtx,
                                JSObject *aScopeObj,
                                jsid aId,
-                               jsval *_result,
+                               JS::Value *_result,
                                bool *_retval)
 {
   if (!JSID_IS_STRING(aId))

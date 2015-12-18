@@ -33,7 +33,7 @@ namespace gmp {
 already_AddRefed<GeckoMediaPluginServiceChild>
 GeckoMediaPluginServiceChild::GetSingleton()
 {
-  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_Default);
+  MOZ_ASSERT(!XRE_IsParentProcess());
   nsRefPtr<GeckoMediaPluginService> service(
     GeckoMediaPluginService::GetGeckoMediaPluginService());
 #ifdef DEBUG
@@ -177,6 +177,40 @@ GeckoMediaPluginServiceChild::GetNodeId(const nsAString& aOrigin,
 {
   UniquePtr<GetServiceChildCallback> callback(
     new GetNodeIdDone(aOrigin, aTopLevelOrigin, aInPrivateBrowsing, Move(aCallback)));
+  GetServiceChild(Move(callback));
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GeckoMediaPluginServiceChild::UpdateTrialCreateState(const nsAString& aKeySystem,
+                                                     uint32_t aState)
+{
+  if (NS_GetCurrentThread() != mGMPThread) {
+    mGMPThread->Dispatch(NS_NewRunnableMethodWithArgs<nsString, uint32_t>(
+      this, &GeckoMediaPluginServiceChild::UpdateTrialCreateState,
+      aKeySystem, aState), NS_DISPATCH_NORMAL);
+    return NS_OK;
+  }
+
+  class Callback : public GetServiceChildCallback
+  {
+  public:
+    Callback(const nsAString& aKeySystem, uint32_t aState)
+      : mKeySystem(aKeySystem)
+      , mState(aState)
+    { }
+
+    virtual void Done(GMPServiceChild* aService) override
+    {
+      aService->SendUpdateGMPTrialCreateState(mKeySystem, mState);
+    }
+
+  private:
+    nsString mKeySystem;
+    uint32_t mState;
+  };
+
+  UniquePtr<GetServiceChildCallback> callback(new Callback(aKeySystem, aState));
   GetServiceChild(Move(callback));
   return NS_OK;
 }

@@ -10,19 +10,18 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource:///modules/devtools/SideMenuWidget.jsm");
 Cu.import("resource:///modules/devtools/ViewHelpers.jsm");
 Cu.import("resource://gre/modules/devtools/Console.jsm");
-Cu.import("resource:///modules/devtools/gDevTools.jsm");
 
-const devtools = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools;
-const { require } = devtools;
-const promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
+const { require } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
+const promise = require("promise");
 const EventEmitter = require("devtools/toolkit/event-emitter");
 const { CallWatcherFront } = require("devtools/server/actors/call-watcher");
 const { CanvasFront } = require("devtools/server/actors/canvas");
+const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 
 const Telemetry = require("devtools/shared/telemetry");
 const telemetry = new Telemetry();
 
-const CANVAS_ACTOR_RECORDING_ATTEMPT = gDevTools.testing ? 500 : 5000;
+const CANVAS_ACTOR_RECORDING_ATTEMPT = DevToolsUtils.testing ? 500 : 5000;
 
 XPCOMUtils.defineLazyModuleGetter(this, "Task",
   "resource://gre/modules/Task.jsm");
@@ -35,9 +34,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
 
 XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
   "resource://gre/modules/NetUtil.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "DevToolsUtils",
-  "resource://gre/modules/devtools/DevToolsUtils.jsm");
 
 XPCOMUtils.defineLazyGetter(this, "NetworkHelper", function() {
   return require("devtools/toolkit/webconsole/network-helper");
@@ -103,7 +99,7 @@ const CALLS_LIST_SLOW_SAVE_DELAY = 100; // ms
 /**
  * The current target and the Canvas front, set by this tool's host.
  */
-let gToolbox, gTarget, gFront;
+var gToolbox, gTarget, gFront;
 
 /**
  * Initializes the canvas debugger controller and views.
@@ -130,7 +126,7 @@ function shutdownCanvasDebugger() {
 /**
  * Functions handling target-related lifetime events.
  */
-let EventsHandler = {
+var EventsHandler = {
   /**
    * Listen for events emitted by the current tab target.
    */
@@ -183,8 +179,8 @@ let EventsHandler = {
 /**
  * Localization convenience methods.
  */
-let L10N = new ViewHelpers.L10N(STRINGS_URI);
-let SHARED_L10N = new ViewHelpers.L10N(SHARED_STRINGS_URI);
+var L10N = new ViewHelpers.L10N(STRINGS_URI);
+var SHARED_L10N = new ViewHelpers.L10N(SHARED_STRINGS_URI);
 
 /**
  * Convenient way of emitting events from the panel window.
@@ -194,8 +190,8 @@ EventEmitter.decorate(this);
 /**
  * DOM query helpers.
  */
-let $ = (selector, target = document) => target.querySelector(selector);
-let $all = (selector, target = document) => target.querySelectorAll(selector);
+var $ = (selector, target = document) => target.querySelector(selector);
+var $all = (selector, target = document) => target.querySelectorAll(selector);
 
 /**
  * Gets the fileName part of a string which happens to be an URL.

@@ -245,7 +245,6 @@ NS_IMETHODIMP nsPrintSettingsGTK::GetOutputFormat(int16_t *aOutputFormat)
  * from the GTK objects rather than our own variables.
  */
 
-/* attribute long printRange; */
 NS_IMETHODIMP nsPrintSettingsGTK::GetPrintRange(int16_t *aPrintRange)
 {
   NS_ENSURE_ARG_POINTER(aPrintRange);
@@ -277,7 +276,6 @@ NS_IMETHODIMP nsPrintSettingsGTK::SetPrintRange(int16_t aPrintRange)
   return NS_OK;
 }
 
-/* attribute long startPageRange; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetStartPageRange(int32_t *aStartPageRange)
 {
@@ -315,7 +313,6 @@ nsPrintSettingsGTK::SetStartPageRange(int32_t aStartPageRange)
   return NS_OK;
 }
 
-/* attribute long endPageRange; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetEndPageRange(int32_t *aEndPageRange)
 {
@@ -350,7 +347,6 @@ nsPrintSettingsGTK::SetEndPageRange(int32_t aEndPageRange)
   return NS_OK;
 }
 
-/* attribute boolean printReversed; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetPrintReversed(bool *aPrintReversed)
 {
@@ -364,7 +360,6 @@ nsPrintSettingsGTK::SetPrintReversed(bool aPrintReversed)
   return NS_OK;
 }
 
-/* attribute boolean printInColor; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetPrintInColor(bool *aPrintInColor)
 {
@@ -378,7 +373,6 @@ nsPrintSettingsGTK::SetPrintInColor(bool aPrintInColor)
   return NS_OK;
 }
 
-/* attribute short orientation; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetOrientation(int32_t *aOrientation)
 {
@@ -412,7 +406,6 @@ nsPrintSettingsGTK::SetOrientation(int32_t aOrientation)
   return NS_OK;
 }
 
-/* attribute wstring toFileName; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetToFileName(char16_t * *aToFileName)
 {
@@ -513,7 +506,6 @@ nsPrintSettingsGTK::SetPrinterName(const char16_t * aPrinter)
   return NS_OK;
 }
 
-/* attribute long numCopies; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetNumCopies(int32_t *aNumCopies)
 {
@@ -528,7 +520,6 @@ nsPrintSettingsGTK::SetNumCopies(int32_t aNumCopies)
   return NS_OK;
 }
 
-/* attribute double scaling; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetScaling(double *aScaling)
 {
@@ -543,7 +534,6 @@ nsPrintSettingsGTK::SetScaling(double aScaling)
   return NS_OK;
 }
 
-/* attribute wstring paperName; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetPaperName(char16_t * *aPaperName)
 {
@@ -633,7 +623,6 @@ nsPrintSettingsGTK::SetUnwriteableMarginInTwips(nsIntMargin& aUnwriteableMargin)
   return NS_OK;
 }
 
-/* attribute double unwriteableMarginTop; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::SetUnwriteableMarginTop(double aUnwriteableMarginTop)
 {
@@ -643,7 +632,6 @@ nsPrintSettingsGTK::SetUnwriteableMarginTop(double aUnwriteableMarginTop)
   return NS_OK;
 }
 
-/* attribute double unwriteableMarginLeft; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::SetUnwriteableMarginLeft(double aUnwriteableMarginLeft)
 {
@@ -653,7 +641,6 @@ nsPrintSettingsGTK::SetUnwriteableMarginLeft(double aUnwriteableMarginLeft)
   return NS_OK;
 }
 
-/* attribute double unwriteableMarginBottom; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::SetUnwriteableMarginBottom(double aUnwriteableMarginBottom)
 {
@@ -663,7 +650,6 @@ nsPrintSettingsGTK::SetUnwriteableMarginBottom(double aUnwriteableMarginBottom)
   return NS_OK;
 }
 
-/* attribute double unwriteableMarginRight; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::SetUnwriteableMarginRight(double aUnwriteableMarginRight)
 {
@@ -673,7 +659,6 @@ nsPrintSettingsGTK::SetUnwriteableMarginRight(double aUnwriteableMarginRight)
   return NS_OK;
 }
 
-/* attribute double paperWidth; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetPaperWidth(double *aPaperWidth)
 {
@@ -692,7 +677,6 @@ nsPrintSettingsGTK::SetPaperWidth(double aPaperWidth)
   return NS_OK;
 }
 
-/* attribute double paperHeight; */
 NS_IMETHODIMP
 nsPrintSettingsGTK::GetPaperHeight(double *aPaperHeight)
 {

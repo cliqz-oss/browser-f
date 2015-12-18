@@ -9,9 +9,6 @@
 #define __mozilla_widget_GfxInfoBase_h__
 
 #include "nsIGfxInfo.h"
-#if defined(XP_MACOSX) || defined(XP_WIN)
-#include "nsIGfxInfo2.h"
-#endif
 #include "nsCOMPtr.h"
 #include "nsIObserver.h"
 #include "nsWeakReference.h"
@@ -19,6 +16,7 @@
 #include "nsTArray.h"
 #include "nsString.h"
 #include "GfxInfoCollector.h"
+#include "gfxTelemetry.h"
 #include "nsIGfxInfoDebug.h"
 #include "mozilla/Mutex.h"
 #include "js/Value.h"
@@ -28,9 +26,6 @@ namespace mozilla {
 namespace widget {  
 
 class GfxInfoBase : public nsIGfxInfo,
-#if defined(XP_MACOSX) || defined(XP_WIN)
-                    public nsIGfxInfo2,
-#endif
                     public nsIObserver,
                     public nsSupportsWeakReference
 #ifdef DEBUG
@@ -58,6 +53,7 @@ public:
   NS_IMETHOD GetFailures(uint32_t *failureCount, int32_t** indices, char ***failures) override;
   NS_IMETHOD_(void) LogFailure(const nsACString &failure) override;
   NS_IMETHOD GetInfo(JSContext*, JS::MutableHandle<JS::Value>) override;
+  NS_IMETHOD GetFeatures(JSContext*, JS::MutableHandle<JS::Value>) override;
 
   // Initialization function. If you override this, you must call this class's
   // version of Init first.
@@ -103,6 +99,14 @@ protected:
   // (while subclasses check for more specific ones).
   virtual const nsTArray<GfxDriverInfo>& GetGfxDriverInfo() = 0;
 
+  virtual void DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> obj);
+  bool InitFeatureObject(
+    JSContext* aCx,
+    JS::Handle<JSObject*> aContainer,
+    const char* aName,
+    mozilla::gfx::FeatureStatus aFeatureStatus,
+    JS::MutableHandle<JSObject*> aOutObj);
+
 private:
   virtual int32_t FindBlocklistedDeviceInList(const nsTArray<GfxDriverInfo>& aDriverInfo,
                                               nsAString& aSuggestedVersion,
@@ -115,7 +119,7 @@ private:
 
 };
 
-}
-}
+} // namespace widget
+} // namespace mozilla
 
 #endif /* __mozilla_widget_GfxInfoBase_h__ */

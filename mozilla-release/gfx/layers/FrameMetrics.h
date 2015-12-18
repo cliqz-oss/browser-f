@@ -14,7 +14,6 @@
 #include "mozilla/gfx/ScaleFactor.h"    // for ScaleFactor
 #include "mozilla/gfx/Logging.h"        // for Log
 #include "gfxColor.h"
-#include "gfxPrefs.h"                   // for LayoutUseContainersForRootFrames
 #include "nsString.h"
 
 namespace IPC {
@@ -104,6 +103,7 @@ public:
            mPageScrollAmount == aOther.mPageScrollAmount &&
            mAllowVerticalScrollWithWheel == aOther.mAllowVerticalScrollWithWheel &&
            mClipRect == aOther.mClipRect &&
+           mMaskLayerIndex == aOther.mMaskLayerIndex &&
            mIsLayersIdRoot == aOther.mIsLayersIdRoot &&
 		   mUsesContainerScrolling == aOther.mUsesContainerScrolling;
   }
@@ -525,6 +525,13 @@ public:
     return mClipRect.ref();
   }
 
+  void SetMaskLayerIndex(const Maybe<size_t>& aIndex) {
+    mMaskLayerIndex = aIndex;
+  }
+  const Maybe<size_t>& GetMaskLayerIndex() const {
+    return mMaskLayerIndex;
+  }
+
   void SetIsLayersIdRoot(bool aValue) {
     mIsLayersIdRoot = aValue;
   }
@@ -532,10 +539,9 @@ public:
     return mIsLayersIdRoot;
   }
 
-  void SetUsesContainerScrolling(bool aValue) {
-    MOZ_ASSERT_IF(aValue, gfxPrefs::LayoutUseContainersForRootFrames());
-    mUsesContainerScrolling = aValue;
-  }
+  // Implemented out of line because the implementation needs gfxPrefs.h
+  // and we don't want to include that from FrameMetrics.h.
+  void SetUsesContainerScrolling(bool aValue);
   bool UsesContainerScrolling() const {
     return mUsesContainerScrolling;
   }
@@ -714,6 +720,11 @@ private:
   // The clip rect to use when compositing a layer with this FrameMetrics.
   Maybe<ParentLayerIntRect> mClipRect;
 
+  // An extra clip mask layer to use when compositing a layer with this
+  // FrameMetrics. This is an index into the MetricsMaskLayers array on
+  // the Layer.
+  Maybe<size_t> mMaskLayerIndex;
+
   // Whether these framemetrics are for the root scroll frame (root element if
   // we don't have a root scroll frame) for its layers id.
   bool mIsLayersIdRoot;
@@ -868,7 +879,7 @@ struct ZoomConstraints {
 
 typedef Maybe<ZoomConstraints> MaybeZoomConstraints;
 
-}
-}
+} // namespace layers
+} // namespace mozilla
 
 #endif /* GFX_FRAMEMETRICS_H */

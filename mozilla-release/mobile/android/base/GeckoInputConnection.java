@@ -18,6 +18,7 @@ import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.gecko.util.ThreadUtils.AssertBehavior;
 
 import android.content.Context;
+import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
@@ -323,6 +324,29 @@ class GeckoInputConnection
     }
 
     @Override
+    public boolean performPrivateCommand(final String action, final Bundle data) {
+        switch (action) {
+            case "process-gecko-events":
+                // Process all currently pending Gecko thread events before returning.
+
+                final Editable editable = getEditable();
+                if (editable == null) {
+                    return false;
+                }
+
+                // Removing an invalid span is essentially a no-op, but it does force the
+                // current thread to wait for the Gecko thread when we call length(), in order
+                // to process the removeSpan event. Once Gecko thread processes the removeSpan
+                // event, all previous events in the Gecko event queue would have been
+                // processed as well.
+                editable.removeSpan(null);
+                editable.length();
+                return true;
+        }
+        return false;
+    }
+
+    @Override
     public ExtractedText getExtractedText(ExtractedTextRequest req, int flags) {
         if (req == null)
             return null;
@@ -369,8 +393,26 @@ class GeckoInputConnection
         final InputMethodManager imm = getInputMethodManager();
         if (imm != null) {
             final View v = getView();
-            imm.showSoftInput(v, 0);
+
+            if (v.hasFocus() && !imm.isActive(v)) {
+                // Workaround: The view has focus but it is not the active view for the input method. (Bug 1211848)
+                refocusAndShowSoftInput(imm, v);
+            } else {
+                imm.showSoftInput(v, 0);
+            }
         }
+    }
+
+    private static void refocusAndShowSoftInput(final InputMethodManager imm, final View v) {
+        ThreadUtils.postToUiThread(new Runnable() {
+            @Override
+            public void run() {
+                v.clearFocus();
+                v.requestFocus();
+
+                imm.showSoftInput(v, 0);
+            }
+        });
     }
 
     private static void hideSoftInput() {
@@ -402,7 +444,11 @@ class GeckoInputConnection
             // reasonable, deterministic value
             notifySelectionChange(-1, -1);
         }
-        imm.restartInput(v);
+        try {
+            imm.restartInput(v);
+        } catch(RuntimeException e) {
+            Log.e(LOGTAG, "Error restarting input", e);
+        }
     }
 
     private void resetInputConnection() {

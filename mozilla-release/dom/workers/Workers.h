@@ -39,12 +39,13 @@ class nsIPrincipal;
 class nsILoadGroup;
 class nsITabChild;
 class nsIChannel;
+class nsIRunnable;
 class nsIURI;
 
 namespace mozilla {
 namespace ipc {
 class PrincipalInfo;
-}
+} // namespace ipc
 
 namespace dom {
 // If you change this, the corresponding list in nsIWorkerDebugger.idl needs to
@@ -55,8 +56,9 @@ enum WorkerType
   WorkerTypeShared,
   WorkerTypeService
 };
-}
-}
+
+} // namespace dom
+} // namespace mozilla
 
 BEGIN_WORKERS_NAMESPACE
 
@@ -200,8 +202,14 @@ enum WorkerPreference
   WORKERPREF_SERVICEWORKERS, // dom.serviceWorkers.enabled
   WORKERPREF_INTERCEPTION_ENABLED, // dom.serviceWorkers.interception.enabled
   WORKERPREF_DOM_WORKERNOTIFICATION, // dom.webnotifications.workers.enabled
+  WORKERPREF_DOM_SERVICEWORKERNOTIFICATION, // dom.webnotifications.serviceworker.enabled
   WORKERPREF_DOM_CACHES_TESTING, // dom.caches.testing.enabled
   WORKERPREF_SERVICEWORKERS_TESTING, // dom.serviceWorkers.testing.enabled
+  WORKERPREF_INTERCEPTION_OPAQUE_ENABLED, // dom.serviceWorkers.interception.opaque.enabled
+  WORKERPREF_PERFORMANCE_LOGGING_ENABLED, // dom.performance.enable_user_timing_logging
+  WORKERPREF_PUSH, // dom.push.enabled
+  WORKERPREF_REQUESTCACHE, // dom.requestcache.enabled
+  WORKERPREF_REQUESTCONTEXT, // dom.requestcontext.enabled
   WORKERPREF_COUNT
 };
 
@@ -218,6 +226,12 @@ struct WorkerLoadInfo
   nsCOMPtr<nsIContentSecurityPolicy> mCSP;
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
+
+  // mLoadFailedAsyncRunnable will execute on main thread if script loading
+  // fails during script loading.  If script loading is never started due to
+  // a synchronous error, then the runnable is never executed.  The runnable
+  // is guaranteed to be released on the main thread.
+  nsCOMPtr<nsIRunnable> mLoadFailedAsyncRunnable;
 
   class InterfaceRequestor final : public nsIInterfaceRequestor
   {
@@ -261,7 +275,7 @@ struct WorkerLoadInfo
   bool mPrincipalIsSystem;
   bool mIsInPrivilegedApp;
   bool mIsInCertifiedApp;
-  bool mIndexedDBAllowed;
+  bool mStorageAllowed;
   bool mPrivateBrowsing;
   bool mServiceWorkersTestingInWindow;
 
@@ -331,7 +345,7 @@ public:
 };
 
 WorkerCrossThreadDispatcher*
-GetWorkerCrossThreadDispatcher(JSContext* aCx, jsval aWorker);
+GetWorkerCrossThreadDispatcher(JSContext* aCx, JS::Value aWorker);
 
 // Random unique constant to facilitate JSPrincipal debugging
 const uint32_t kJSPrincipalsDebugToken = 0x7e2df9d2;

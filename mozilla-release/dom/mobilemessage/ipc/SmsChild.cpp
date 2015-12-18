@@ -53,7 +53,7 @@ NotifyObserversWithMobileMessage(const char* aEventName,
   obs->NotifyObservers(msg, aEventName, nullptr);
 }
 
-} // anonymous namespace
+} // namespace
 
 namespace mozilla {
 namespace dom {
@@ -199,7 +199,6 @@ SmsRequestChild::Recv__delete__(const MessageReply& aReply)
 {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mReplyRequest);
-  nsCOMPtr<SmsMessage> message;
   switch(aReply.type()) {
     case MessageReply::TReplyMessageSend: {
         const MobileMessageData& data =
@@ -259,7 +258,9 @@ SmsRequestChild::Recv__delete__(const MessageReply& aReply)
         aReply.get_ReplyGetSegmentInfoForTextFail().error());
       break;
     case MessageReply::TReplyGetSmscAddress:
-      mReplyRequest->NotifyGetSmscAddress(aReply.get_ReplyGetSmscAddress().smscAddress());
+      mReplyRequest->NotifyGetSmscAddress(aReply.get_ReplyGetSmscAddress().smscAddress(),
+                                          aReply.get_ReplyGetSmscAddress().typeOfNumber(),
+                                          aReply.get_ReplyGetSmscAddress().numberPlanIdentification());
       break;
     case MessageReply::TReplyGetSmscAddressFail:
       mReplyRequest->NotifyGetSmscAddressFailed(aReply.get_ReplyGetSmscAddressFail().error());

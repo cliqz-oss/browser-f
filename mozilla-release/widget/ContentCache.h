@@ -14,17 +14,12 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/EventForwards.h"
 #include "mozilla/WritingModes.h"
+#include "nsIWidget.h"
 #include "nsString.h"
 #include "nsTArray.h"
 #include "Units.h"
 
-class nsIWidget;
-
 namespace mozilla {
-
-namespace widget {
-struct IMENotification;
-}
 
 class ContentCacheInParent;
 
@@ -287,23 +282,23 @@ public:
   /**
    * HandleQueryContentEvent() sets content data to aEvent.mReply.
    *
-   * For NS_QUERY_SELECTED_TEXT, fail if the cache doesn't contain the whole
+   * For eQuerySelectedText, fail if the cache doesn't contain the whole
    *  selected range. (This shouldn't happen because PuppetWidget should have
    *  already sent the whole selection.)
    *
-   * For NS_QUERY_TEXT_CONTENT, fail only if the cache doesn't overlap with
+   * For eQueryTextContent, fail only if the cache doesn't overlap with
    *  the queried range. Note the difference from above. We use
-   *  this behavior because a normal NS_QUERY_TEXT_CONTENT event is allowed to
+   *  this behavior because a normal eQueryTextContent event is allowed to
    *  have out-of-bounds offsets, so that widget can request content without
    *  knowing the exact length of text. It's up to widget to handle cases when
    *  the returned offset/length are different from the queried offset/length.
    *
-   * For NS_QUERY_TEXT_RECT, fail if cached offset/length aren't equals to input.
+   * For eQueryTextRect, fail if cached offset/length aren't equals to input.
    *   Cocoa widget always queries selected offset, so it works on it.
    *
-   * For NS_QUERY_CARET_RECT, fail if cached offset isn't equals to input
+   * For eQueryCaretRect, fail if cached offset isn't equals to input
    *
-   * For NS_QUERY_EDITOR_RECT, always success
+   * For eQueryEditorRect, always success
    */
   bool HandleQueryContentEvent(WidgetQueryContentEvent& aEvent,
                                nsIWidget* aWidget) const;
@@ -313,6 +308,21 @@ public:
    * This returns true if the event should be sent.  Otherwise, false.
    */
   bool OnCompositionEvent(const WidgetCompositionEvent& aCompositionEvent);
+
+  /**
+   * OnSelectionEvent() should be called before sending selection event.
+   */
+  void OnSelectionEvent(const WidgetSelectionEvent& aSelectionEvent);
+
+  /**
+   * OnEventNeedingAckHandled() should be called after the child process
+   * handles a sent event which needs acknowledging.
+   *
+   * WARNING: This may send notifications to IME.  That might cause destroying
+   *          TabParent or aWidget.  Therefore, the caller must not destroy
+   *          this instance during a call of this method.
+   */
+  void OnEventNeedingAckHandled(nsIWidget* aWidget, EventMessage aMessage);
 
   /**
    * RequestToCommitComposition() requests to commit or cancel composition to
@@ -333,13 +343,19 @@ public:
                                       nsAString& aLastString);
 
   /**
-   * InitNotification() initializes aNotification with stored data.
-   *
-   * @param aNotification       Must be NOTIFY_IME_OF_SELECTION_CHANGE.
+   * MaybeNotifyIME() may notify IME of the notification.  If child process
+   * hasn't been handled all sending events yet, this stores the notification
+   * and flush it later.
    */
-  void InitNotification(IMENotification& aNotification) const;
+  void MaybeNotifyIME(nsIWidget* aWidget,
+                      const IMENotification& aNotification);
 
 private:
+  IMENotification mPendingSelectionChange;
+  IMENotification mPendingTextChange;
+  IMENotification mPendingLayoutChange;
+  IMENotification mPendingCompositionUpdate;
+
   // This is commit string which is caused by our request.
   nsString mCommitStringByRequest;
   // Start offset of the composition string.
@@ -347,6 +363,10 @@ private:
   // Count of composition events during requesting commit or cancel the
   // composition.
   uint32_t mCompositionEventsDuringRequest;
+  // mPendingEventsNeedingAck is increased before sending a composition event or
+  // a selection event and decreased after they are received in the child
+  // process.
+  uint32_t mPendingEventsNeedingAck;
 
   bool mIsComposing;
   bool mRequestedToCommitOrCancelComposition;
@@ -358,6 +378,7 @@ private:
                          uint32_t aLength,
                          LayoutDeviceIntRect& aUnionTextRect) const;
 
+  void FlushPendingNotifications(nsIWidget* aWidget);
 };
 
 } // namespace mozilla

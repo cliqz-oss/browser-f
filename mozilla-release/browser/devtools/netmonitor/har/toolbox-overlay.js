@@ -4,7 +4,6 @@
 "use strict";
 
 const { Cu, Ci } = require("chrome");
-const { devtools } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 
 loader.lazyRequireGetter(this, "HarAutomation", "devtools/netmonitor/har/har-automation", true);
 
@@ -77,5 +76,10 @@ function register(toolbox) {
   overlays.set(toolbox, overlay);
 }
 
+function get(toolbox) {
+  return overlays.get(toolbox);
+}
+
 // Exports from this module
 exports.register = register;
+exports.get = get;

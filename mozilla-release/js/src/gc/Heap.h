@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "jsfriendapi.h"
 #include "jspubtd.h"
 #include "jstypes.h"
 #include "jsutil.h"
@@ -32,8 +33,8 @@ struct JSRuntime;
 namespace JS {
 namespace shadow {
 struct Runtime;
-}
-}
+} // namespace shadow
+} // namespace JS
 
 namespace js {
 
@@ -285,9 +286,8 @@ class TenuredCell : public Cell
     static MOZ_ALWAYS_INLINE void readBarrier(TenuredCell* thing);
     static MOZ_ALWAYS_INLINE void writeBarrierPre(TenuredCell* thing);
 
-    static MOZ_ALWAYS_INLINE void writeBarrierPost(TenuredCell* thing, void* cellp);
-    static MOZ_ALWAYS_INLINE void writeBarrierPostRelocate(TenuredCell* thing, void* cellp);
-    static MOZ_ALWAYS_INLINE void writeBarrierPostRemove(TenuredCell* thing, void* cellp);
+    static MOZ_ALWAYS_INLINE void writeBarrierPost(void* cellp, TenuredCell* prior,
+                                                   TenuredCell* next);
 
 #ifdef DEBUG
     inline bool isAligned() const;
@@ -571,6 +571,7 @@ class FreeList
         }
         head.checkSpan(thingSize);
         JS_EXTRA_POISON(reinterpret_cast<void*>(thing), JS_ALLOCATED_TENURED_PATTERN, thingSize);
+        MemProfiler::SampleTenured(reinterpret_cast<void*>(thing), thingSize);
         return reinterpret_cast<TenuredCell*>(thing);
     }
 };
@@ -1450,7 +1451,8 @@ TenuredCell::readBarrier(TenuredCell* thing)
 TenuredCell::writeBarrierPre(TenuredCell* thing)
 {
     MOZ_ASSERT(!CurrentThreadIsIonCompiling());
-    if (isNullLike(thing) || thing->shadowRuntimeFromAnyThread()->isHeapBusy())
+    MOZ_ASSERT_IF(thing, !isNullLike(thing));
+    if (!thing || thing->shadowRuntimeFromAnyThread()->isHeapBusy())
         return;
 
     JS::shadow::Zone* shadowZone = thing->shadowZoneFromAnyThread();
@@ -1470,21 +1472,9 @@ AssertValidToSkipBarrier(TenuredCell* thing)
 }
 
 /* static */ MOZ_ALWAYS_INLINE void
-TenuredCell::writeBarrierPost(TenuredCell* thing, void* cellp)
+TenuredCell::writeBarrierPost(void* cellp, TenuredCell* prior, TenuredCell* next)
 {
-    AssertValidToSkipBarrier(thing);
-}
-
-/* static */ MOZ_ALWAYS_INLINE void
-TenuredCell::writeBarrierPostRelocate(TenuredCell* thing, void* cellp)
-{
-    AssertValidToSkipBarrier(thing);
-}
-
-/* static */ MOZ_ALWAYS_INLINE void
-TenuredCell::writeBarrierPostRemove(TenuredCell* thing, void* cellp)
-{
-    AssertValidToSkipBarrier(thing);
+    AssertValidToSkipBarrier(next);
 }
 
 #ifdef DEBUG

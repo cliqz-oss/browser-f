@@ -13,6 +13,7 @@
  */
 var loop = loop || {};
 loop.Dispatcher = (function() {
+  "use strict";
 
   function Dispatcher() {
     this._eventData = {};
@@ -33,6 +34,28 @@ loop.Dispatcher = (function() {
           this._eventData[type].push(store);
         } else {
           this._eventData[type] = [store];
+        }
+      }.bind(this));
+    },
+
+    /**
+     * Unregister a store from receiving notifications of specific actions.
+     *
+     * @param {Object} store The store object to unregister
+     * @param {Array} eventTypes An array of action names
+     */
+    unregister: function(store, eventTypes) {
+      eventTypes.forEach(function(type) {
+        if (!this._eventData.hasOwnProperty(type)) {
+          return;
+        }
+        var idx = this._eventData[type].indexOf(store);
+        if (idx === -1) {
+          return;
+        }
+        this._eventData[type].splice(idx, 1);
+        if (!this._eventData[type].length) {
+          delete this._eventData[type];
         }
       }.bind(this));
     },

@@ -55,6 +55,11 @@ public:
   virtual bool RecvCaretMoveEvent(const uint64_t& aID, const int32_t& aOffset)
     override final;
 
+  virtual bool RecvTextChangeEvent(const uint64_t& aID, const nsString& aStr,
+                                   const int32_t& aStart, const uint32_t& aLen,
+                                   const bool& aIsInsert,
+                                   const bool& aFromUser) override;
+
   virtual bool RecvBindChildDoc(PDocAccessibleParent* aChildDoc, const uint64_t& aID) override;
   void Unbind()
   {
@@ -67,6 +72,7 @@ public:
   void Destroy();
   virtual void ActorDestroy(ActorDestroyReason aWhy) override
   {
+    MOZ_DIAGNOSTIC_ASSERT(CheckDocTree());
     if (!mShutdown)
       Destroy();
   }
@@ -98,7 +104,7 @@ public:
 
   void RemoveAccessible(ProxyAccessible* aAccessible)
   {
-    MOZ_ASSERT(mAccessibles.GetEntry(aAccessible->ID()));
+    MOZ_DIAGNOSTIC_ASSERT(mAccessibles.GetEntry(aAccessible->ID()));
     mAccessibles.RemoveEntry(aAccessible->ID());
   }
 
@@ -145,7 +151,7 @@ private:
   uint32_t AddSubtree(ProxyAccessible* aParent,
                       const nsTArray<AccessibleData>& aNewTree, uint32_t aIdx,
                       uint32_t aIdxInParent);
-  static PLDHashOperator ShutdownAccessibles(ProxyEntry* entry, void* unused);
+  MOZ_WARN_UNUSED_RESULT bool CheckDocTree() const;
 
   nsTArray<DocAccessibleParent*> mChildDocs;
   DocAccessibleParent* mParentDoc;

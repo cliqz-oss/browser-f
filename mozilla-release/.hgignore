@@ -6,6 +6,7 @@
 (?i)(^|/)TAGS$
 (^|/)ID$
 (^|/)\.DS_Store$
+.*\.egg-info
 
 # Vim swap files.
 ^\.sw.$
@@ -84,3 +85,11 @@ GPATH
 
 # Android Gradle artifacts.
 ^mobile/android/gradle/.gradle
+
+# XCode project cruft
+^embedding/ios/GeckoEmbed/GeckoEmbed.xcodeproj/project.xcworkspace/xcuserdata
+^embedding/ios/GeckoEmbed/GeckoEmbed.xcodeproj/xcuserdata
+
+# Ignore mozharness execution files
+^testing/mozharness/logs/
+^testing/mozharness/build/

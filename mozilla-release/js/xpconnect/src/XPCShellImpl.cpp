@@ -8,6 +8,7 @@
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "jsprf.h"
+#include "mozilla/ChaosMode.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
@@ -32,6 +33,7 @@
 #include "nsIPrincipal.h"
 #include "nsJSUtils.h"
 #include "gfxPrefs.h"
+#include "nsIXULRuntime.h"
 
 #include "base/histogram.h"
 
@@ -173,20 +175,16 @@ GetLocationProperty(JSContext* cx, unsigned argc, Value* vp)
         }
 
         if (location) {
-            nsCOMPtr<nsIXPConnectJSObjectHolder> locationHolder;
-
             bool symlink;
             // don't normalize symlinks, because that's kind of confusing
             if (NS_SUCCEEDED(location->IsSymlink(&symlink)) &&
                 !symlink)
                 location->Normalize();
+            RootedObject locationObj(cx);
             rv = xpc->WrapNative(cx, &args.thisv().toObject(), location,
-                                 NS_GET_IID(nsIFile),
-                                 getter_AddRefs(locationHolder));
-
-            if (NS_SUCCEEDED(rv) &&
-                locationHolder->GetJSObject()) {
-                args.rval().setObject(*locationHolder->GetJSObject());
+                                 NS_GET_IID(nsIFile), locationObj.address());
+            if (NS_SUCCEEDED(rv) && locationObj) {
+                args.rval().setObject(*locationObj);
             }
         }
     }
@@ -196,20 +194,25 @@ GetLocationProperty(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-GetLine(JSContext* cx, char* bufp, FILE* file, const char* prompt) {
-    {
-        char line[4096] = { '\0' };
-        fputs(prompt, gOutFile);
-        fflush(gOutFile);
-        if ((!fgets(line, sizeof line, file) && errno != EINTR) || feof(file))
+GetLine(JSContext* cx, char* bufp, FILE* file, const char* prompt)
+{
+    fputs(prompt, gOutFile);
+    fflush(gOutFile);
+
+    char line[4096] = { '\0' };
+    while (true) {
+        if (fgets(line, sizeof line, file)) {
+            strcpy(bufp, line);
+            return true;
+        }
+        if (errno != EINTR) {
             return false;
-        strcpy(bufp, line);
+        }
     }
-    return true;
 }
 
 static bool
-ReadLine(JSContext* cx, unsigned argc, jsval* vp)
+ReadLine(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -253,7 +256,7 @@ ReadLine(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-Print(JSContext* cx, unsigned argc, jsval* vp)
+Print(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     args.rval().setUndefined();
@@ -281,7 +284,7 @@ Print(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-Dump(JSContext* cx, unsigned argc, jsval* vp)
+Dump(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     args.rval().setUndefined();
@@ -314,7 +317,7 @@ Dump(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-Load(JSContext* cx, unsigned argc, jsval* vp)
+Load(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -363,7 +366,7 @@ Load(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-Version(JSContext* cx, unsigned argc, jsval* vp)
+Version(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     args.rval().setInt32(JS_GetVersion(cx));
@@ -374,7 +377,7 @@ Version(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-Quit(JSContext* cx, unsigned argc, jsval* vp)
+Quit(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -388,7 +391,7 @@ Quit(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-DumpXPC(JSContext* cx, unsigned argc, jsval* vp)
+DumpXPC(JSContext* cx, unsigned argc, Value* vp)
 {
     JS::CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -406,7 +409,7 @@ DumpXPC(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-GC(JSContext* cx, unsigned argc, jsval* vp)
+GC(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     JSRuntime* rt = JS_GetRuntime(cx);
@@ -420,7 +423,7 @@ GC(JSContext* cx, unsigned argc, jsval* vp)
 
 #ifdef JS_GC_ZEAL
 static bool
-GCZeal(JSContext* cx, unsigned argc, jsval* vp)
+GCZeal(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     uint32_t zeal;
@@ -464,7 +467,7 @@ SendCommand(JSContext* cx, unsigned argc, Value* vp)
 }
 
 static bool
-Options(JSContext* cx, unsigned argc, jsval* vp)
+Options(JSContext* cx, unsigned argc, Value* vp)
 {
     JS::CallArgs args = CallArgsFromVp(argc, vp);
     RuntimeOptions oldRuntimeOptions = RuntimeOptionsRef(cx);
@@ -569,7 +572,7 @@ XPCShellInterruptCallback(JSContext* cx)
 }
 
 static bool
-SetInterruptCallback(JSContext* cx, unsigned argc, jsval* vp)
+SetInterruptCallback(JSContext* cx, unsigned argc, Value* vp)
 {
     MOZ_ASSERT(sScriptedInterruptCallback.initialized());
 
@@ -598,7 +601,7 @@ SetInterruptCallback(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-SimulateActivityCallback(JSContext* cx, unsigned argc, jsval* vp)
+SimulateActivityCallback(JSContext* cx, unsigned argc, Value* vp)
 {
     // Sanity-check args.
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
@@ -611,7 +614,7 @@ SimulateActivityCallback(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-RegisterAppManifest(JSContext* cx, unsigned argc, jsval* vp)
+RegisterAppManifest(JSContext* cx, unsigned argc, Value* vp)
 {
     JS::CallArgs args = JS::CallArgsFromVp(argc, vp);
     if (args.length() != 1) {
@@ -711,7 +714,7 @@ env_setProperty(JSContext* cx, HandleObject obj, HandleId id, MutableHandleValue
         JS_ReportError(cx, "can't set envariable %s to %s", name.ptr(), value.ptr());
         return false;
     }
-    vp.set(STRING_TO_JSVAL(valstr));
+    vp.setString(valstr);
 #endif /* !defined SOLARIS */
     return result.succeed();
 }
@@ -1187,7 +1190,6 @@ nsXPCFunctionThisTranslator::~nsXPCFunctionThisTranslator()
 {
 }
 
-/* nsISupports TranslateThis (in nsISupports aInitialThis); */
 NS_IMETHODIMP
 nsXPCFunctionThisTranslator::TranslateThis(nsISupports* aInitialThis,
                                            nsISupports** _retval)
@@ -1256,6 +1258,20 @@ XRE_XPCShellMain(int argc, char** argv, char** envp)
     // used by telemetry.
     UniquePtr<base::StatisticsRecorder> telStats =
        MakeUnique<base::StatisticsRecorder>();
+
+    if (PR_GetEnv("MOZ_CHAOSMODE")) {
+        ChaosFeature feature = ChaosFeature::Any;
+        long featureInt = strtol(PR_GetEnv("MOZ_CHAOSMODE"), nullptr, 16);
+        if (featureInt) {
+            // NOTE: MOZ_CHAOSMODE=0 or a non-hex value maps to Any feature.
+            feature = static_cast<ChaosFeature>(featureInt);
+        }
+        ChaosMode::SetChaosFeature(feature);
+    }
+
+    if (ChaosMode::isActive(ChaosFeature::Any)) {
+        printf_stderr("*** You are running in chaos test mode. See ChaosMode.h. ***\n");
+    }
 
     nsCOMPtr<nsIFile> appFile;
     rv = XRE_GetBinaryPath(argv[0], getter_AddRefs(appFile));
@@ -1474,6 +1490,8 @@ XRE_XPCShellMain(int argc, char** argv, char** envp)
 
         // Initialize graphics prefs on the main thread, if not already done
         gfxPrefs::GetSingleton();
+        // Initialize e10s check on the main thread, if not already done
+        BrowserTabsRemoteAutostart();
 
         {
             JS::Rooted<JSObject*> glob(cx, holder->GetJSObject());
@@ -1490,7 +1508,7 @@ XRE_XPCShellMain(int argc, char** argv, char** envp)
 
             JSAutoCompartment ac(cx, glob);
 
-            if (!JS_InitReflect(cx, glob)) {
+            if (!JS_InitReflectParse(cx, glob)) {
                 return 1;
             }
 

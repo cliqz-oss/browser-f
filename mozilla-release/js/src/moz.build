@@ -35,7 +35,7 @@ for header in ('GCAPI.h', 'HeapAPI.h', 'RootingAPI.h', 'SliceBudget.h', 'TraceKi
     with Files('../public/' + header):
         BUG_COMPONENT = component_gc
 
-for stlfile in ['jsarray.*', 'jsbool*', 'jsdate.*', 'jsnum.*', 'json.*', 'jsreflect.*', 'jsstr.*']:
+for stlfile in ['jsarray.*', 'jsbool*', 'jsdate.*', 'jsnum.*', 'json.*', 'jsstr.*']:
     with Files(stlfile):
         BUG_COMPONENT = component_stl
 
@@ -122,11 +122,14 @@ EXPORTS.js += [
     '../public/RootingAPI.h',
     '../public/SliceBudget.h',
     '../public/StructuredClone.h',
+    '../public/TraceableHashTable.h',
+    '../public/TraceableVector.h',
     '../public/TraceKind.h',
     '../public/TracingAPI.h',
     '../public/TrackedOptimizationInfo.h',
     '../public/TypeDecls.h',
     '../public/UbiNode.h',
+    '../public/UbiNodeCensus.h',
     '../public/UbiNodeTraverse.h',
     '../public/Utility.h',
     '../public/Value.h',
@@ -135,6 +138,7 @@ EXPORTS.js += [
 ]
 
 UNIFIED_SOURCES += [
+    'asmjs/AsmJSCompile.cpp',
     'asmjs/AsmJSFrameIterator.cpp',
     'asmjs/AsmJSLink.cpp',
     'asmjs/AsmJSModule.cpp',
@@ -144,8 +148,11 @@ UNIFIED_SOURCES += [
     'builtin/Eval.cpp',
     'builtin/Intl.cpp',
     'builtin/MapObject.cpp',
+    'builtin/ModuleObject.cpp',
     'builtin/Object.cpp',
     'builtin/Profilers.cpp',
+    'builtin/Reflect.cpp',
+    'builtin/ReflectParse.cpp',
     'builtin/SIMD.cpp',
     'builtin/SymbolObject.cpp',
     'builtin/TestingFunctions.cpp',
@@ -166,10 +173,10 @@ UNIFIED_SOURCES += [
     'gc/Iteration.cpp',
     'gc/Marking.cpp',
     'gc/Memory.cpp',
+    'gc/MemoryProfiler.cpp',
     'gc/Nursery.cpp',
     'gc/RootMarking.cpp',
     'gc/Statistics.cpp',
-    'gc/StoreBuffer.cpp',
     'gc/Tracer.cpp',
     'gc/Verifier.cpp',
     'gc/Zone.cpp',
@@ -202,6 +209,7 @@ UNIFIED_SOURCES += [
     'jit/EdgeCaseAnalysis.cpp',
     'jit/EffectiveAddressAnalysis.cpp',
     'jit/ExecutableAllocator.cpp',
+    'jit/InstructionReordering.cpp',
     'jit/Ion.cpp',
     'jit/IonAnalysis.cpp',
     'jit/IonBuilder.cpp',
@@ -259,13 +267,11 @@ UNIFIED_SOURCES += [
     'jsopcode.cpp',
     'jsprf.cpp',
     'jspropertytree.cpp',
-    'jsreflect.cpp',
     'jsscript.cpp',
     'jsstr.cpp',
     'jswatchpoint.cpp',
     'jsweakmap.cpp',
     'perf/jsperf.cpp',
-    'prmjtime.cpp',
     'proxy/BaseProxyHandler.cpp',
     'proxy/CrossCompartmentWrapper.cpp',
     'proxy/DeadObjectProxy.cpp',
@@ -316,9 +322,12 @@ UNIFIED_SOURCES += [
     'vm/StringBuffer.cpp',
     'vm/StructuredClone.cpp',
     'vm/Symbol.cpp',
+    'vm/TaggedProto.cpp',
+    'vm/Time.cpp',
     'vm/TypedArrayObject.cpp',
     'vm/TypeInference.cpp',
     'vm/UbiNode.cpp',
+    'vm/UbiNodeCensus.cpp',
     'vm/UnboxedObject.cpp',
     'vm/Unicode.cpp',
     'vm/Value.cpp',
@@ -336,9 +345,13 @@ UNIFIED_SOURCES += [
 # from <stdlib.h> on Windows through a preprocessor define.
 # jsutil.cpp cannot be built in unified mode because it is needed for
 # check-vanilla-allocations.
+# StoreBuffer.cpp cannot be built in unified because its template
+# instantiations may or may not be needed depending on what it gets bundled
+# with.
 SOURCES += [
     'builtin/RegExp.cpp',
     'frontend/Parser.cpp',
+    'gc/StoreBuffer.cpp',
     'jsarray.cpp',
     'jsatom.cpp',
     'jsmath.cpp',
@@ -374,10 +387,12 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
         'jit/x86-shared/BaselineCompiler-x86-shared.cpp',
         'jit/x86-shared/BaselineIC-x86-shared.cpp',
         'jit/x86-shared/CodeGenerator-x86-shared.cpp',
-        'jit/x86-shared/Disassembler-x86-shared.cpp',
         'jit/x86-shared/Lowering-x86-shared.cpp',
         'jit/x86-shared/MacroAssembler-x86-shared.cpp',
         'jit/x86-shared/MoveEmitter-x86-shared.cpp',
+    ]
+    SOURCES += [
+        'jit/x86-shared/Disassembler-x86-shared.cpp',  # using namespace js::jit::X86Encoding;
     ]
     if CONFIG['JS_CODEGEN_X64']:
         UNIFIED_SOURCES += [
@@ -388,6 +403,7 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
             'jit/x64/CodeGenerator-x64.cpp',
             'jit/x64/Lowering-x64.cpp',
             'jit/x64/MacroAssembler-x64.cpp',
+            'jit/x64/SharedIC-x64.cpp',
             'jit/x64/Trampoline-x64.cpp',
         ]
     else:
@@ -399,6 +415,7 @@ elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
             'jit/x86/CodeGenerator-x86.cpp',
             'jit/x86/Lowering-x86.cpp',
             'jit/x86/MacroAssembler-x86.cpp',
+            'jit/x86/SharedIC-x86.cpp',
             'jit/x86/Trampoline-x86.cpp',
         ]
 elif CONFIG['JS_CODEGEN_ARM']:
@@ -409,9 +426,12 @@ elif CONFIG['JS_CODEGEN_ARM']:
         'jit/arm/BaselineCompiler-arm.cpp',
         'jit/arm/BaselineIC-arm.cpp',
         'jit/arm/CodeGenerator-arm.cpp',
+        'jit/arm/disasm/Constants-arm.cpp',
+        'jit/arm/disasm/Disasm-arm.cpp',
         'jit/arm/Lowering-arm.cpp',
         'jit/arm/MacroAssembler-arm.cpp',
         'jit/arm/MoveEmitter-arm.cpp',
+        'jit/arm/SharedIC-arm.cpp',
         'jit/arm/Trampoline-arm.cpp',
     ]
     if CONFIG['JS_SIMULATOR_ARM']:
@@ -428,6 +448,7 @@ elif CONFIG['JS_CODEGEN_ARM64']:
         'jit/arm64/Lowering-arm64.cpp',
         'jit/arm64/MacroAssembler-arm64.cpp',
         'jit/arm64/MoveEmitter-arm64.cpp',
+        'jit/arm64/SharedIC-arm64.cpp',
         'jit/arm64/Trampoline-arm64.cpp',
         'jit/arm64/vixl/Assembler-vixl.cpp',
         'jit/arm64/vixl/Cpu-vixl.cpp',
@@ -446,23 +467,34 @@ elif CONFIG['JS_CODEGEN_ARM64']:
             'jit/arm64/vixl/MozSimulator-vixl.cpp',
             'jit/arm64/vixl/Simulator-vixl.cpp'
         ]
-elif CONFIG['JS_CODEGEN_MIPS']:
+elif CONFIG['JS_CODEGEN_MIPS32']:
     UNIFIED_SOURCES += [
-        'jit/mips/Architecture-mips.cpp',
-        'jit/mips/Assembler-mips.cpp',
-        'jit/mips/Bailouts-mips.cpp',
-        'jit/mips/BaselineCompiler-mips.cpp',
-        'jit/mips/BaselineIC-mips.cpp',
-        'jit/mips/CodeGenerator-mips.cpp',
-        'jit/mips/Lowering-mips.cpp',
-        'jit/mips/MacroAssembler-mips.cpp',
-        'jit/mips/MoveEmitter-mips.cpp',
-        'jit/mips/Trampoline-mips.cpp',
+        'jit/mips-shared/Architecture-mips-shared.cpp',
+        'jit/mips-shared/Assembler-mips-shared.cpp',
+        'jit/mips-shared/Bailouts-mips-shared.cpp',
+        'jit/mips-shared/BaselineCompiler-mips-shared.cpp',
+        'jit/mips-shared/BaselineIC-mips-shared.cpp',
+        'jit/mips-shared/Lowering-mips-shared.cpp',
+        'jit/mips-shared/MoveEmitter-mips-shared.cpp',
     ]
-    if CONFIG['JS_SIMULATOR_MIPS']:
+    if CONFIG['JS_CODEGEN_MIPS32']:
         UNIFIED_SOURCES += [
-            'jit/mips/Simulator-mips.cpp'
+            'jit/mips32/Architecture-mips32.cpp',
+            'jit/mips32/Assembler-mips32.cpp',
+            'jit/mips32/Bailouts-mips32.cpp',
+            'jit/mips32/BaselineCompiler-mips32.cpp',
+            'jit/mips32/BaselineIC-mips32.cpp',
+            'jit/mips32/CodeGenerator-mips32.cpp',
+            'jit/mips32/Lowering-mips32.cpp',
+            'jit/mips32/MacroAssembler-mips32.cpp',
+            'jit/mips32/MoveEmitter-mips32.cpp',
+            'jit/mips32/SharedIC-mips32.cpp',
+            'jit/mips32/Trampoline-mips32.cpp',
         ]
+        if CONFIG['JS_SIMULATOR_MIPS32']:
+            UNIFIED_SOURCES += [
+                'jit/mips32/Simulator-mips32.cpp'
+            ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':
     SOURCES += [
@@ -600,8 +632,11 @@ if CONFIG['OS_ARCH'] == 'SunOS':
         'socket',
     ]
 
-if CONFIG['GNU_CXX']:
-    FAIL_ON_WARNINGS = True
+CFLAGS += CONFIG['MOZ_ICU_CFLAGS']
+CXXFLAGS += CONFIG['MOZ_ICU_CFLAGS']
+
+if not CONFIG['GNU_CXX']:
+    ALLOW_COMPILER_WARNINGS = True
 
 NO_EXPAND_LIBS = True
 

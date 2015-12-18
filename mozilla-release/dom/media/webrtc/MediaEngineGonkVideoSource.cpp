@@ -147,13 +147,14 @@ MediaEngineGonkVideoSource::NumCapabilities()
 
 nsresult
 MediaEngineGonkVideoSource::Allocate(const dom::MediaTrackConstraints& aConstraints,
-                                     const MediaEnginePrefs& aPrefs)
+                                     const MediaEnginePrefs& aPrefs,
+                                     const nsString& aDeviceId)
 {
   LOG((__FUNCTION__));
 
   ReentrantMonitorAutoEnter sync(mCallbackMonitor);
   if (mState == kReleased && mInitDone) {
-    ChooseCapability(aConstraints, aPrefs);
+    ChooseCapability(aConstraints, aPrefs, aDeviceId);
     NS_DispatchToMainThread(WrapRunnable(nsRefPtr<MediaEngineGonkVideoSource>(this),
                                          &MediaEngineGonkVideoSource::AllocImpl));
     mCallbackMonitor.Wait();
@@ -327,6 +328,14 @@ MediaEngineGonkVideoSource::Stop(SourceMediaStream* aSource, TrackID aID)
   return NS_OK;
 }
 
+nsresult
+MediaEngineGonkVideoSource::Restart(const dom::MediaTrackConstraints& aConstraints,
+                                    const MediaEnginePrefs& aPrefs,
+                                    const nsString& aDeviceId)
+{
+  return NS_OK;
+}
+
 /**
 * Initialization and Shutdown functions for the video source, called by the
 * constructor and destructor respectively.
@@ -409,7 +418,7 @@ MediaEngineGonkVideoSource::DeallocImpl() {
 
 // The same algorithm from bug 840244
 static int
-GetRotateAmount(ScreenOrientation aScreen, int aCameraMountAngle, bool aBackCamera) {
+GetRotateAmount(ScreenOrientationInternal aScreen, int aCameraMountAngle, bool aBackCamera) {
   int screenAngle = 0;
   switch (aScreen) {
     case eScreenOrientation_PortraitPrimary:
@@ -749,11 +758,11 @@ MediaEngineGonkVideoSource::RotateImage(layers::Image* aImage, uint32_t aWidth, 
   layers::GrallocImage* videoImage = static_cast<layers::GrallocImage*>(image.get());
   MOZ_ASSERT(mTextureClientAllocator);
   RefPtr<layers::TextureClient> textureClient
-    = mTextureClientAllocator->CreateOrRecycleForDrawing(gfx::SurfaceFormat::YUV,
-                                                         gfx::IntSize(dstWidth, dstHeight),
-                                                         gfx::BackendType::NONE,
-                                                         layers::TextureFlags::DEFAULT,
-                                                         layers::ALLOC_DISALLOW_BUFFERTEXTURECLIENT);
+    = mTextureClientAllocator->CreateOrRecycle(gfx::SurfaceFormat::YUV,
+                                               gfx::IntSize(dstWidth, dstHeight),
+                                               layers::BackendSelector::Content,
+                                               layers::TextureFlags::DEFAULT,
+                                               layers::ALLOC_DISALLOW_BUFFERTEXTURECLIENT);
   if (textureClient) {
     RefPtr<layers::GrallocTextureClientOGL> grallocTextureClient =
       static_cast<layers::GrallocTextureClientOGL*>(textureClient.get());

@@ -23,9 +23,14 @@
 #include "nsStyleConsts.h"
 #include "mozilla/Likely.h"
 #include "gfx2DGlue.h"
+#include "mozilla/gfx/Logging.h"        // for gfxCriticalError
 
 #if defined(MOZ_WIDGET_GTK)
 #include "gfxPlatformGtk.h" // xxx - for UseFcFontList
+#endif
+
+#ifdef XP_WIN
+#include "gfxWindowsPlatform.h"
 #endif
 
 #include "cairo.h"
@@ -217,7 +222,6 @@ gfxTextRun::SetPotentialLineBreaks(uint32_t aStart, uint32_t aLength,
         if (canBreak && !charGlyphs[i].IsClusterStart()) {
             // This can happen ... there is no guarantee that our linebreaking rules
             // align with the platform's idea of what constitutes a cluster.
-            NS_WARNING("Break suggested inside cluster!");
             canBreak = CompressedGlyph::FLAG_BREAK_TYPE_NONE;
         }
         changed |= charGlyphs[i].SetCanBreakBefore(canBreak);
@@ -1488,7 +1492,7 @@ gfxTextRun::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf)
 {
     // The second arg is how much gfxTextRun::AllocateStorage would have
     // allocated.
-    size_t total = mGlyphRuns.SizeOfExcludingThis(aMallocSizeOf);
+    size_t total = mGlyphRuns.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
     if (mDetailedGlyphs) {
         total += mDetailedGlyphs->SizeOfIncludingThis(aMallocSizeOf);
@@ -1532,13 +1536,14 @@ gfxTextRun::Dump(FILE* aOutput) {
 
 gfxFontGroup::gfxFontGroup(const FontFamilyList& aFontFamilyList,
                            const gfxFontStyle *aStyle,
+                           gfxTextPerfMetrics* aTextPerf,
                            gfxUserFontSet *aUserFontSet)
     : mFamilyList(aFontFamilyList)
     , mStyle(*aStyle)
     , mUnderlineOffset(UNDERLINE_OFFSET_NOT_SET)
     , mHyphenWidth(-1)
     , mUserFontSet(aUserFontSet)
-    , mTextPerf(nullptr)
+    , mTextPerf(aTextPerf)
     , mPageLang(gfxPlatform::GetFontPrefLangFor(aStyle->language))
     , mSkipDrawing(false)
     , mSkipUpdateUserFonts(false)
@@ -1724,7 +1729,12 @@ gfxFontGroup::FindPlatformFont(const nsAString& aName,
     // Not known in the user font set ==> check system fonts
     if (!family) {
         gfxPlatformFontList *fontList = gfxPlatformFontList::PlatformFontList();
+        // workaround for beta branch
+#if defined(XP_MACOSX)
+        family = fontList->FindFamilyWithStyle(aName, &mStyle);
+#else
         family = fontList->FindFamily(aName, mStyle.language, mStyle.systemFont);
+#endif
     }
 
     // if family found, do style matching and add all font entries to mFonts
@@ -1876,20 +1886,29 @@ gfxFontGroup::GetDefaultFont()
         }
     }
 
+    uint32_t numInits, loaderState;
+    pfl->GetFontlistInitInfo(numInits, loaderState);
+    NS_ASSERTION(numInits != 0,
+                 "must initialize system fontlist before getting default font!");
+
+    uint32_t numFonts = 0;
     if (!mDefaultFont) {
         // Try for a "font of last resort...."
         // Because an empty font list would be Really Bad for later code
         // that assumes it will be able to get valid metrics for layout,
         // just look for the first usable font and put in the list.
         // (see bug 554544)
-        nsAutoTArray<nsRefPtr<gfxFontFamily>,200> families;
-        pfl->GetFontFamilyList(families);
-        uint32_t count = families.Length();
-        for (uint32_t i = 0; i < count; ++i) {
-            gfxFontEntry *fe = families[i]->FindFontForStyle(mStyle,
-                                                             needsBold);
+        nsAutoTArray<nsRefPtr<gfxFontFamily>,200> familyList;
+        pfl->GetFontFamilyList(familyList);
+        numFonts = familyList.Length();
+        for (uint32_t i = 0; i < numFonts; ++i) {
+            gfxFontEntry *fe = familyList[i]->FindFontForStyle(mStyle,
+                                                               needsBold);
             if (fe) {
                 mDefaultFont = fe->FindOrMakeFont(&mStyle, needsBold);
+                if (mDefaultFont) {
+                    break;
+                }
             }
         }
     }
@@ -1897,17 +1916,29 @@ gfxFontGroup::GetDefaultFont()
     if (!mDefaultFont) {
         // an empty font list at this point is fatal; we're not going to
         // be able to do even the most basic layout operations
+
+        // annotate crash report with fontlist info
+        nsAutoCString fontInitInfo;
+        fontInitInfo.AppendPrintf("no fonts - init: %d fonts: %d loader: %d",
+                                  numInits, numFonts, loaderState);
+#ifdef XP_WIN
+        bool dwriteEnabled = gfxWindowsPlatform::GetPlatform()->DWriteEnabled();
+        double upTime = (double) GetTickCount();
+        fontInitInfo.AppendPrintf(" backend: %s system-uptime: %9.3f sec",
+                                  dwriteEnabled ? "directwrite" : "gdi", upTime/1000);
+#endif
+        gfxCriticalError() << fontInitInfo.get();
+
         char msg[256]; // CHECK buffer length if revising message below
-        nsAutoString families;
-        mFamilyList.ToString(families);
+        nsAutoString familiesString;
+        mFamilyList.ToString(familiesString);
         snprintf_literal(msg, "unable to find a usable font (%.220s)",
-                         NS_ConvertUTF16toUTF8(families).get());
+                         NS_ConvertUTF16toUTF8(familiesString).get());
         NS_RUNTIMEABORT(msg);
     }
 
     return mDefaultFont.get();
 }
-
 
 gfxFont*
 gfxFontGroup::GetFirstValidFont(uint32_t aCh)
@@ -1967,8 +1998,8 @@ gfxFontGroup::GetFirstMathFont()
 gfxFontGroup *
 gfxFontGroup::Copy(const gfxFontStyle *aStyle)
 {
-    gfxFontGroup *fg = new gfxFontGroup(mFamilyList, aStyle, mUserFontSet);
-    fg->SetTextPerfMetrics(mTextPerf);
+    gfxFontGroup *fg =
+        new gfxFontGroup(mFamilyList, aStyle, mTextPerf, mUserFontSet);
     return fg;
 }
 
@@ -2980,16 +3011,40 @@ void gfxFontGroup::ComputeRanges(nsTArray<gfxTextRange>& aRanges,
 
     aRanges[lastRangeIndex].end = aLength;
 
-#if 0
-    // dump out font matching info
-    if (mStyle.systemFont) return;
-    for (size_t i = 0, i_end = aRanges.Length(); i < i_end; i++) {
-        const gfxTextRange& r = aRanges[i];
-        printf("fontmatch %zd:%zd font: %s (%d)\n",
-               r.start, r.end,
-               (r.font.get() ?
-                    NS_ConvertUTF16toUTF8(r.font->GetName()).get() : "<null>"),
-               r.matchType);
+#ifndef RELEASE_BUILD
+    PRLogModuleInfo *log = (mStyle.systemFont ?
+                            gfxPlatform::GetLog(eGfxLog_textrunui) :
+                            gfxPlatform::GetLog(eGfxLog_textrun));
+
+    if (MOZ_UNLIKELY(MOZ_LOG_TEST(log, LogLevel::Debug))) {
+        nsAutoCString lang;
+        mStyle.language->ToUTF8String(lang);
+        nsAutoString families;
+        mFamilyList.ToString(families);
+
+        // collect the font matched for each range
+        nsAutoCString fontMatches;
+        for (size_t i = 0, i_end = aRanges.Length(); i < i_end; i++) {
+            const gfxTextRange& r = aRanges[i];
+            fontMatches.AppendPrintf(" [%u:%u] %.200s (%s)", r.start, r.end,
+                (r.font.get() ?
+                 NS_ConvertUTF16toUTF8(r.font->GetName()).get() : "<null>"),
+                (r.matchType == gfxTextRange::kFontGroup ?
+                 "list" :
+                 (r.matchType == gfxTextRange::kPrefsFallback) ?
+                  "prefs" : "sys"));
+        }
+        MOZ_LOG(log, LogLevel::Debug,\
+               ("(%s-fontmatching) fontgroup: [%s] default: %s lang: %s script: %d"
+                "%s\n",
+                (mStyle.systemFont ? "textrunui" : "textrun"),
+                NS_ConvertUTF16toUTF8(families).get(),
+                (mFamilyList.GetDefaultFontType() == eFamily_serif ?
+                 "serif" :
+                 (mFamilyList.GetDefaultFontType() == eFamily_sans_serif ?
+                  "sans-serif" : "none")),
+                lang.get(), aRunScript,
+                fontMatches.get()));
     }
 #endif
 }
@@ -3216,7 +3271,7 @@ gfxMissingFontRecorder::Flush()
             }
             mNotifiedFonts[i] |= (1 << j);
             if (!fontNeeded.IsEmpty()) {
-                fontNeeded.Append(PRUnichar(','));
+                fontNeeded.Append(char16_t(','));
             }
             uint32_t tag = GetScriptTagForCode(i * 32 + j);
             fontNeeded.Append(char16_t(tag >> 24));

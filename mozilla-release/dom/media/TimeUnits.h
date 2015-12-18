@@ -16,8 +16,8 @@
 namespace mozilla {
 namespace media {
 class TimeIntervals;
-}
-}
+} // namespace media
+} // namespace mozilla
 // CopyChooser specalization for nsTArray
 template<>
 struct nsTArray_CopyChooser<mozilla::media::TimeIntervals>
@@ -93,7 +93,9 @@ public:
     if (mozilla::IsInfinite<double>(aValue)) {
       return FromInfinity();
     }
-    double val = aValue * USECS_PER_S;
+    // Due to internal double representation, this
+    // operation is not commutative, do not attempt to simplify.
+    double val = (aValue + .0000005) * USECS_PER_S;
     if (val >= double(INT64_MAX)) {
       return FromMicroseconds(INT64_MAX);
     } else if (val <= double(INT64_MIN)) {
@@ -117,6 +119,14 @@ public:
 
   static TimeUnit FromInfinity() {
     return TimeUnit(INT64_MAX);
+  }
+
+  static TimeUnit Invalid() {
+    TimeUnit ret;
+    ret.mValue = CheckedInt64(INT64_MAX);
+    // Force an overflow to render the CheckedInt invalid.
+    ret.mValue += 1;
+    return ret;
   }
 
   int64_t ToMicroseconds() const {
@@ -187,6 +197,9 @@ public:
   }
   friend TimeUnit operator* (const TimeUnit& aUnit, int aVal) {
     return TimeUnit(aUnit.mValue * aVal);
+  }
+  friend TimeUnit operator/ (const TimeUnit& aUnit, int aVal) {
+    return TimeUnit(aUnit.mValue / aVal);
   }
 
   bool IsValid() const

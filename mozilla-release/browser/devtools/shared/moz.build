@@ -7,6 +7,11 @@
 BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
+DIRS += [
+    'redux',
+    'vendor',
+]
+
 EXTRA_JS_MODULES.devtools += [
     'AppCacheUtils.jsm',
     'Curl.jsm',
@@ -31,6 +36,7 @@ EXTRA_JS_MODULES.devtools += [
 
 EXTRA_JS_MODULES.devtools.shared += [
     'autocomplete-popup.js',
+    'browser-loader.js',
     'devices.js',
     'doorhanger.js',
     'frame-script-utils.js',

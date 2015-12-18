@@ -17,9 +17,7 @@
 #include "WebGLVertexArray.h"
 #include "WebGLVertexAttribData.h"
 
-using namespace mozilla;
-using namespace mozilla::dom;
-using namespace mozilla::gl;
+namespace mozilla {
 
 // For a Tegra workaround.
 static const int MAX_DRAW_CALLS_SINCE_FLUSH = 100;
@@ -27,9 +25,8 @@ static const int MAX_DRAW_CALLS_SINCE_FLUSH = 100;
 bool
 WebGLContext::DrawInstanced_check(const char* info)
 {
-    // This restriction was removed in GLES3, so WebGL2 shouldn't have it.
-    if (!IsWebGL2() &&
-        IsExtensionEnabled(WebGLExtensionID::ANGLE_instanced_arrays) &&
+    if ((IsWebGL2() ||
+         IsExtensionEnabled(WebGLExtensionID::ANGLE_instanced_arrays)) &&
         !mBufferFetchingHasPerVertex)
     {
         /* http://www.khronos.org/registry/gles/extensions/ANGLE/ANGLE_instanced_arrays.txt
@@ -748,7 +745,7 @@ WebGLContext::UnbindFakeBlackTextures()
     gl->fActiveTexture(LOCAL_GL_TEXTURE0 + mActiveTexture);
 }
 
-WebGLContext::FakeBlackTexture::FakeBlackTexture(GLContext* gl, TexTarget target, GLenum format)
+WebGLContext::FakeBlackTexture::FakeBlackTexture(gl::GLContext* gl, TexTarget target, GLenum format)
     : mGL(gl)
     , mGLName(0)
 {
@@ -788,3 +785,5 @@ WebGLContext::FakeBlackTexture::~FakeBlackTexture()
       mGL->fDeleteTextures(1, &mGLName);
   }
 }
+
+} // namespace mozilla

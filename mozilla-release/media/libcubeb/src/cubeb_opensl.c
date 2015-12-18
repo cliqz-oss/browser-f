@@ -641,6 +641,9 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
     return CUBEB_ERROR;
   }
 
+  // Work around wilhelm/AudioTrack badness, bug 1221228
+  (*stm->play)->SetMarkerPosition(stm->play, (SLmillisecond)0);
+
   res = (*stm->play)->SetCallbackEventsMask(stm->play, (SLuint32)SL_PLAYEVENT_HEADATMARKER);
   if (res != SL_RESULT_SUCCESS) {
     opensl_stream_destroy(stm);
@@ -651,6 +654,17 @@ opensl_stream_init(cubeb * ctx, cubeb_stream ** stream, char const * stream_name
   if (res != SL_RESULT_SUCCESS) {
     opensl_stream_destroy(stm);
     return CUBEB_ERROR;
+  }
+
+  {
+    // Enqueue a silent frame so once the player becomes playing, the frame
+    // will be consumed and kick off the buffer queue callback.
+    // Note the duration of a single frame is less than 1ms. We don't bother
+    // adjusting the playback position.
+    uint8_t *buf = stm->queuebuf[stm->queuebuf_idx++];
+    memset(buf, 0, stm->framesize);
+    res = (*stm->bufq)->Enqueue(stm->bufq, buf, stm->framesize);
+    assert(res == SL_RESULT_SUCCESS);
   }
 
   *stream = stm;
@@ -676,9 +690,6 @@ opensl_stream_destroy(cubeb_stream * stm)
 static int
 opensl_stream_start(cubeb_stream * stm)
 {
-  /* To refill the queues before starting playback in order to avoid racing
-   * with refills started by SetPlayState on OpenSLES ndk threads. */
-  bufferqueue_callback(NULL, stm);
   SLresult res = (*stm->play)->SetPlayState(stm->play, SL_PLAYSTATE_PLAYING);
   if (res != SL_RESULT_SUCCESS)
     return CUBEB_ERROR;

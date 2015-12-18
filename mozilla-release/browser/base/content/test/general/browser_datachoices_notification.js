@@ -6,8 +6,8 @@
 
 // Pass an empty scope object to the import to prevent "leaked window property"
 // errors in tests.
-let Preferences = Cu.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
-let TelemetryReportingPolicy =
+var Preferences = Cu.import("resource://gre/modules/Preferences.jsm", {}).Preferences;
+var TelemetryReportingPolicy =
   Cu.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).TelemetryReportingPolicy;
 
 XPCOMUtils.defineLazyGetter(this, "gDatareportingService",
@@ -23,6 +23,19 @@ const PREF_ACCEPTED_POLICY_VERSION = PREF_BRANCH + "dataSubmissionPolicyAccepted
 const PREF_ACCEPTED_POLICY_DATE = PREF_BRANCH + "dataSubmissionPolicyNotifiedTime";
 
 const TEST_POLICY_VERSION = 37;
+
+function fakeShowPolicyTimeout(set, clear) {
+  let reportingPolicy =
+    Cu.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).Policy;
+  reportingPolicy.setShowInfobarTimeout = set;
+  reportingPolicy.clearShowInfobarTimeout = clear;
+}
+
+function sendSessionRestoredNotification() {
+  let reportingPolicyImpl =
+    Cu.import("resource://gre/modules/TelemetryReportingPolicy.jsm", {}).TelemetryReportingPolicyImpl;
+  reportingPolicyImpl.observe(null, "sessionstore-windows-restored", null);
+}
 
 /**
  * Wait for a tick.
@@ -56,7 +69,22 @@ function promiseWaitForNotificationClose(aNotification) {
   return deferred.promise;
 }
 
-let checkInfobarButton = Task.async(function* (aNotification) {
+function triggerInfoBar(expectedTimeoutMs) {
+  let showInfobarCallback = null;
+  let timeoutMs = null;
+  fakeShowPolicyTimeout((callback, timeout) => {
+    showInfobarCallback = callback;
+    timeoutMs = timeout;
+  }, () => {});
+  sendSessionRestoredNotification();
+  Assert.ok(!!showInfobarCallback, "Must have a timer callback.");
+  if (expectedTimeoutMs !== undefined) {
+    Assert.equal(timeoutMs, expectedTimeoutMs, "Timeout should match");
+  }
+  showInfobarCallback();
+}
+
+var checkInfobarButton = Task.async(function* (aNotification) {
   // Check that the button on the data choices infobar does the right thing.
   let buttons = aNotification.getElementsByTagName("button");
   Assert.equal(buttons.length, 1, "There is 1 button in the data reporting notification.");
@@ -72,11 +100,6 @@ let checkInfobarButton = Task.async(function* (aNotification) {
   // Wait for the preferences panel to open.
   let preferenceWindow = yield paneLoadedPromise;
   yield promiseNextTick();
-  // If the prefs are being displayed in a dialog we need to close it.
-  // If in a tab (ie, in-content prefs) it closes with the window.
-  if (!Services.prefs.getBoolPref("browser.preferences.inContent")) {
-    prefWin.close();
-  }
 });
 
 add_task(function* setup(){
@@ -130,11 +153,11 @@ add_task(function* test_single_window(){
             "User not notified about datareporting policy.");
 
   let alertShownPromise = promiseWaitForAlertActive(notificationBox);
-  // This should be false and trigger the Infobar.
   Assert.ok(!TelemetryReportingPolicy.canUpload(),
-            "User should not be allowed to upload and the infobar should be triggered.");
+            "User should not be allowed to upload.");
 
   // Wait for the infobar to be displayed.
+  triggerInfoBar(10 * 1000);
   yield alertShownPromise;
 
   Assert.equal(notificationBox.allNotifications.length, 1, "Notification Displayed.");
@@ -185,10 +208,11 @@ add_task(function* test_multiple_windows(){
     promiseWaitForAlertActive(notificationBoxes[1])
   ];
 
-  // This should be false and trigger the Infobar.
   Assert.ok(!TelemetryReportingPolicy.canUpload(),
-            "User should not be allowed to upload and the infobar should be triggered.");
+            "User should not be allowed to upload.");
 
+  // Wait for the infobars.
+  triggerInfoBar(10 * 1000);
   yield Promise.all(showAlertPromises);
 
   // Both notification were displayed. Close one and check that both gets closed.

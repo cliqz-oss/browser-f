@@ -2,11 +2,12 @@
 * License, v. 2.0. If a copy of the MPL was not distributed with this file,
 * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-let Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils;
+var Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Messaging.jsm");
 Cu.import("resource://gre/modules/Services.jsm")
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.import("resource://gre/modules/TelemetryStopwatch.jsm");
 
 XPCOMUtils.defineLazyGetter(window, "gChromeWin", function()
   window.QueryInterface(Ci.nsIInterfaceRequestor)
@@ -20,9 +21,9 @@ XPCOMUtils.defineLazyGetter(window, "gChromeWin", function()
 XPCOMUtils.defineLazyModuleGetter(this, "Prompt",
                                   "resource://gre/modules/Prompt.jsm");
 
-let debug = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.d.bind(null, "AboutLogins");
+var debug = Cu.import("resource://gre/modules/AndroidLog.jsm", {}).AndroidLog.d.bind(null, "AboutLogins");
 
-let gStringBundle = Services.strings.createBundle("chrome://browser/locale/aboutLogins.properties");
+var gStringBundle = Services.strings.createBundle("chrome://browser/locale/aboutLogins.properties");
 
 function copyStringAndToast(string, notifyString) {
   try {
@@ -37,29 +38,72 @@ function copyStringAndToast(string, notifyString) {
 
 // Delay filtering while typing in MS
 const FILTER_DELAY = 500;
+/* Constants for usage telemetry */
+const LOGINS_LIST_VIEWED = 0;
+const LOGIN_VIEWED = 1;
+const LOGIN_EDITED = 2;
+const LOGIN_PW_TOGGLED = 3;
 
-let Logins = {
+var Logins = {
   _logins: [],
   _filterTimer: null,
+  _selectedLogin: null,
 
   _getLogins: function() {
     let logins;
+    let contentBody = document.getElementById("content-body");
+    let emptyBody = document.getElementById("empty-body");
+    let filterIcon = document.getElementById("filter-button");
+
+    this._toggleListBody(true);
+    emptyBody.classList.add("hidden");
+
     try {
+      TelemetryStopwatch.start("PWMGR_ABOUT_LOGINS_GET_ALL_LOGINS_MS");
       logins = Services.logins.getAllLogins();
+      TelemetryStopwatch.finish("PWMGR_ABOUT_LOGINS_GET_ALL_LOGINS_MS");
     } catch(e) {
       // Master password was not entered
       debug("Master password permissions error: " + e);
       logins = [];
+    }
+    this._toggleListBody(false);
+
+    if (!logins.length) {
+      emptyBody.classList.remove("hidden");
+
+      filterIcon.classList.add("hidden");
+      contentBody.classList.add("hidden");
+    } else {
+      emptyBody.classList.add("hidden");
+
+      filterIcon.classList.remove("hidden");
     }
 
     logins.sort((a, b) => a.hostname.localeCompare(b.hostname));
     return this._logins = logins;
   },
 
+  _toggleListBody: function(isLoading) {
+    let contentBody = document.getElementById("content-body");
+    let loadingBody = document.getElementById("logins-list-loading-body");
+
+    if (isLoading) {
+      contentBody.classList.add("hidden");
+      loadingBody.classList.remove("hidden");
+    } else {
+      loadingBody.classList.add("hidden");
+      contentBody.classList.remove("hidden");
+    }
+
+  },
+
   init: function () {
     window.addEventListener("popstate", this , false);
 
     Services.obs.addObserver(this, "passwordmgr-storage-changed", false);
+    document.getElementById("update-btn").addEventListener("click", this._onSaveEditLogin.bind(this), false);
+    document.getElementById("password-btn").addEventListener("click", this._onPasswordBtn.bind(this), false);
 
     this._loadList(this._getLogins());
 
@@ -101,6 +145,8 @@ let Logins = {
     }, false);
 
     this._showList();
+
+    this._updatePasswordBtn(true);
   },
 
   uninit: function () {
@@ -121,8 +167,147 @@ let Logins = {
   },
 
   _showList: function () {
-    let list = document.getElementById("logins-list");
-    list.removeAttribute("hidden");
+    Services.telemetry.getHistogramById("PWMGR_ABOUT_LOGINS_USAGE").add(LOGINS_LIST_VIEWED);
+    let loginsListPage = document.getElementById("logins-list-page");
+    loginsListPage.classList.remove("hidden");
+
+    let editLoginPage = document.getElementById("edit-login-page");
+    editLoginPage.classList.add("hidden");
+
+    // If the Show/Hide password button has been flipped, reset it
+    if (this._isPasswordBtnInHideMode()) {
+      this._updatePasswordBtn(true);
+    }
+  },
+
+  _onPopState: function (event) {
+    // Called when back/forward is used to change the state of the page
+    if (event.state) {
+      this._showEditLoginDialog(event.state.id);
+    } else {
+      this._selectedLogin = null;
+      this._showList();
+    }
+  },
+  _showEditLoginDialog: function (login) {
+    Services.telemetry.getHistogramById("PWMGR_ABOUT_LOGINS_USAGE").add(LOGIN_VIEWED);
+    let listPage = document.getElementById("logins-list-page");
+    listPage.classList.add("hidden");
+
+    let editLoginPage = document.getElementById("edit-login-page");
+    editLoginPage.classList.remove("hidden");
+
+    let usernameField = document.getElementById("username");
+    usernameField.value = login.username;
+    let passwordField = document.getElementById("password");
+    passwordField.value = login.password;
+    let domainField = document.getElementById("hostname");
+    domainField.value = login.hostname;
+
+    let img = document.getElementById("favicon");
+    this._loadFavicon(img, login.hostname);
+
+    let headerText = document.getElementById("edit-login-header-text");
+    if (login.hostname && (login.hostname != "")) {
+      headerText.textContent = login.hostname;
+    }
+    else {
+      headerText.textContent = gStringBundle.GetStringFromName("editLogin.fallbackTitle");
+    }
+
+    passwordField.addEventListener("input", (event) => {
+      let newPassword = passwordField.value;
+      let updateBtn = document.getElementById("update-btn");
+
+      if (newPassword === "") {
+        updateBtn.disabled = true;
+        updateBtn.classList.add("disabled-btn");
+      } else if ((newPassword !== "") && (updateBtn.disabled === true)) {
+        updateBtn.disabled = false;
+        updateBtn.classList.remove("disabled-btn");
+      }
+    }, false);
+  },
+
+  _onSaveEditLogin: function() {
+    Services.telemetry.getHistogramById("PWMGR_ABOUT_LOGINS_USAGE").add(LOGIN_EDITED);
+    let newUsername = document.getElementById("username").value;
+    let newPassword = document.getElementById("password").value;
+    let newDomain  = document.getElementById("hostname").value;
+    let origUsername = this._selectedLogin.username;
+    let origPassword = this._selectedLogin.password;
+    let origDomain = this._selectedLogin.hostname;
+
+    try {
+      if ((newUsername === origUsername) &&
+          (newPassword === origPassword) &&
+          (newDomain === origDomain) ) {
+        gChromeWin.NativeWindow.toast.show(gStringBundle.GetStringFromName("editLogin.saved1"), "short");
+        this._showList();
+        return;
+      }
+
+      let logins = Services.logins.findLogins({}, origDomain, origDomain, null);
+
+      for (let i = 0; i < logins.length; i++) {
+        if (logins[i].username == origUsername) {
+          let clone = logins[i].clone();
+          clone.username = newUsername;
+          clone.password = newPassword;
+          clone.hostname = newDomain;
+          Services.logins.removeLogin(logins[i]);
+          Services.logins.addLogin(clone);
+          break;
+        }
+      }
+    } catch (e) {
+      gChromeWin.NativeWindow.toast.show(gStringBundle.GetStringFromName("editLogin.couldNotSave"), "short");
+      return;
+    }
+    gChromeWin.NativeWindow.toast.show(gStringBundle.GetStringFromName("editLogin.saved1"), "short");
+    this._showList();
+  },
+
+  _onPasswordBtn: function () {
+    Services.telemetry.getHistogramById("PWMGR_ABOUT_LOGINS_USAGE").add(LOGIN_PW_TOGGLED);
+    this._updatePasswordBtn(this._isPasswordBtnInHideMode());
+  },
+
+  _updatePasswordBtn: function (aShouldShow) {
+    let passwordField = document.getElementById("password");
+    let button = document.getElementById("password-btn");
+    let show = gStringBundle.GetStringFromName("password-btn.show");
+    let hide = gStringBundle.GetStringFromName("password-btn.hide");
+    if (aShouldShow) {
+      passwordField.type = "password";
+      button.textContent = show;
+      button.classList.remove("password-btn-hide");
+    } else {
+      passwordField.type = "text";
+      button.textContent= hide;
+      button.classList.add("password-btn-hide");
+    }
+  },
+
+  _isPasswordBtnInHideMode: function () {
+    let button = document.getElementById("password-btn");
+    return button.classList.contains("password-btn-hide");
+  },
+
+  _showPassword: function(password) {
+    let passwordPrompt = new Prompt({
+      window: window,
+      message: password,
+      buttons: [
+        gStringBundle.GetStringFromName("loginsDialog.copy"),
+        gStringBundle.GetStringFromName("loginsDialog.cancel") ]
+      }).show((data) => {
+        switch (data.button) {
+          case 0:
+          // Corresponds to "Copy password" button.
+          copyStringAndToast(password, gStringBundle.GetStringFromName("loginsDetails.passwordCopied"));
+        }
+     });
   },
 
   _onLoginClick: function (event) {
@@ -140,6 +325,7 @@ let Logins = {
       { label: gStringBundle.GetStringFromName("loginsMenu.showPassword") },
       { label: gStringBundle.GetStringFromName("loginsMenu.copyPassword") },
       { label: gStringBundle.GetStringFromName("loginsMenu.copyUsername") },
+      { label: gStringBundle.GetStringFromName("loginsMenu.editLogin") },
       { label: gStringBundle.GetStringFromName("loginsMenu.delete") }
     ];
 
@@ -148,19 +334,7 @@ let Logins = {
       // Switch on indices of buttons, as they were added when creating login item.
       switch (data.button) {
         case 0:
-          let passwordPrompt = new Prompt({
-            window: window,
-            message: login.password,
-            buttons: [
-              gStringBundle.GetStringFromName("loginsDialog.copy"),
-              gStringBundle.GetStringFromName("loginsDialog.cancel") ]
-          }).show((data) => {
-            switch (data.button) {
-              case 0:
-                // Corresponds to "Copy password" button.
-                copyStringAndToast(login.password, gStringBundle.GetStringFromName("loginsDetails.passwordCopied"));
-            }
-          });
+          this._showPassword(login.password);
           break;
         case 1:
           copyStringAndToast(login.password, gStringBundle.GetStringFromName("loginsDetails.passwordCopied"));
@@ -169,6 +343,11 @@ let Logins = {
           copyStringAndToast(login.username, gStringBundle.GetStringFromName("loginsDetails.usernameCopied"));
           break;
         case 3:
+          this._selectedLogin = login;
+          this._showEditLoginDialog(login);
+          history.pushState({ id: login.guid }, document.title);
+          break;
+        case 4:
           let confirmPrompt = new Prompt({
             window: window,
             message: gStringBundle.GetStringFromName("loginsDialog.confirmDelete"),
@@ -187,6 +366,20 @@ let Logins = {
     });
   },
 
+  _loadFavicon: function (aImg, aHostname) {
+    // Load favicon from cache.
+    Messaging.sendRequestForResult({
+      type: "Favicon:CacheLoad",
+      url: aHostname,
+    }).then(function(faviconUrl) {
+      aImg.style.backgroundImage= "url('" + faviconUrl + "')";
+      aImg.style.visibility = "visible";
+    }, function(data) {
+      debug("Favicon cache failure : " + data);
+      aImg.style.visibility = "visible";
+    });
+  },
+
   _createItemForLogin: function (login) {
     let loginItem = document.createElement("div");
 
@@ -199,17 +392,7 @@ let Logins = {
     let img = document.createElement("div");
     img.className = "icon";
 
-    // Load favicon from cache.
-    Messaging.sendRequestForResult({
-      type: "Favicon:CacheLoad",
-      url: login.hostname,
-    }).then(function(faviconUrl) {
-      img.style.backgroundImage= "url('" + faviconUrl + "')";
-      img.style.visibility = "visible";
-    }, function(data) {
-      debug("Favicon cache failure : " + data);
-      img.style.visibility = "visible";
-    });
+    this._loadFavicon(img, login.hostname);
     loginItem.appendChild(img);
 
     // Create item details.

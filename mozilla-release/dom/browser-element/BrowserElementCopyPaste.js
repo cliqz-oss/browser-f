@@ -8,7 +8,9 @@
 
 dump("###################################### BrowserElementCopyPaste.js loaded\n");
 
-let CopyPasteAssistent = {
+var { classes: Cc, interfaces: Ci, results: Cr, utils: Cu }  = Components;
+
+var CopyPasteAssistent = {
   COMMAND_MAP: {
     'cut': 'cmd_cut',
     'copy': 'cmd_copyAndCollapseToEnd',
@@ -69,7 +71,9 @@ let CopyPasteAssistent = {
       reason: e.reason,
       collapsed: e.collapsed,
       caretVisible: e.caretVisible,
-      selectionVisible: e.selectionVisible
+      selectionVisible: e.selectionVisible,
+      selectionEditable: e.selectionEditable,
+      selectedTextContent: e.selectedTextContent
     };
 
     // Get correct geometry information if we have nested iframe.
@@ -81,6 +85,13 @@ let CopyPasteAssistent = {
       detail.rect.left += currentRect.left;
       detail.rect.right += currentRect.left;
       currentWindow = currentWindow.realFrameElement.ownerDocument.defaultView;
+
+      let targetDocShell = currentWindow
+          .QueryInterface(Ci.nsIInterfaceRequestor)
+          .getInterface(Ci.nsIWebNavigation);
+      if(targetDocShell.isBrowserOrApp) {
+        break;
+      }
     }
 
     sendAsyncMsg('caretstatechanged', detail);

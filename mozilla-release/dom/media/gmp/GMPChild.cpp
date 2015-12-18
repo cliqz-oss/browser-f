@@ -49,13 +49,6 @@ extern PRLogModuleInfo* GetGMPLog();
 
 namespace gmp {
 
-static bool
-FileExists(nsIFile* aFile)
-{
-  bool exists = false;
-  return aFile && NS_SUCCEEDED(aFile->Exists(&exists)) && exists;
-}
-
 GMPChild::GMPChild()
   : mAsyncShutdown(nullptr)
   , mGMPMessageLoop(MessageLoop::current())
@@ -433,7 +426,7 @@ GMPChild::GetUTF8LibPath(nsACString& aOutLibPath)
 }
 
 bool
-GMPChild::RecvStartPlugin()
+GMPChild::AnswerStartPlugin()
 {
   LOGD("%s", __FUNCTION__);
 

@@ -18,8 +18,10 @@
 # include "jit/x64/CodeGenerator-x64.h"
 #elif defined(JS_CODEGEN_ARM)
 # include "jit/arm/CodeGenerator-arm.h"
-#elif defined(JS_CODEGEN_MIPS)
-# include "jit/mips/CodeGenerator-mips.h"
+#elif defined(JS_CODEGEN_ARM64)
+# include "jit/arm64/CodeGenerator-arm64.h"
+#elif defined(JS_CODEGEN_MIPS32)
+# include "jit/mips32/CodeGenerator-mips32.h"
 #elif defined(JS_CODEGEN_NONE)
 # include "jit/none/CodeGenerator-none.h"
 #else
@@ -43,6 +45,7 @@ class OutOfLineIsCallable;
 class OutOfLineRegExpExec;
 class OutOfLineRegExpTest;
 class OutOfLineLambdaArrow;
+class OutOfLineRandom;
 
 class CodeGenerator : public CodeGeneratorSpecific
 {
@@ -57,6 +60,7 @@ class CodeGenerator : public CodeGeneratorSpecific
     bool generate();
     bool generateAsmJS(AsmJSFunctionLabels* labels);
     bool link(JSContext* cx, CompilerConstraintList* constraints);
+    bool linkSharedStubs(JSContext* cx);
 
     void visitOsiPoint(LOsiPoint* lir);
     void visitGoto(LGoto* lir);
@@ -104,6 +108,9 @@ class CodeGenerator : public CodeGeneratorSpecific
     void visitOutOfLineRegExpTest(OutOfLineRegExpTest* ool);
     void visitRegExpReplace(LRegExpReplace* lir);
     void visitStringReplace(LStringReplace* lir);
+    void emitSharedStub(ICStub::Kind kind, LInstruction* lir);
+    void visitBinarySharedStub(LBinarySharedStub* lir);
+    void visitUnarySharedStub(LUnarySharedStub* lir);
     void visitLambda(LLambda* lir);
     void visitOutOfLineLambdaArrow(OutOfLineLambdaArrow* ool);
     void visitLambdaArrow(LLambdaArrow* lir);
@@ -147,8 +154,6 @@ class CodeGenerator : public CodeGeneratorSpecific
     void visitUnreachable(LUnreachable* unreachable);
     void visitEncodeSnapshot(LEncodeSnapshot* lir);
     void visitGetDynamicName(LGetDynamicName* lir);
-    void visitFilterArgumentsOrEvalS(LFilterArgumentsOrEvalS* lir);
-    void visitFilterArgumentsOrEvalV(LFilterArgumentsOrEvalV* lir);
     void visitCallDirectEval(LCallDirectEval* lir);
     void visitDoubleToInt32(LDoubleToInt32* lir);
     void visitFloat32ToInt32(LFloat32ToInt32* lir);
@@ -238,6 +243,7 @@ class CodeGenerator : public CodeGeneratorSpecific
     void visitConcat(LConcat* lir);
     void visitCharCodeAt(LCharCodeAt* lir);
     void visitFromCharCode(LFromCharCode* lir);
+    void visitSinCos(LSinCos *lir);
     void visitStringSplit(LStringSplit* lir);
     void visitFunctionEnvironment(LFunctionEnvironment* lir);
     void visitCallGetProperty(LCallGetProperty* lir);
@@ -276,9 +282,9 @@ class CodeGenerator : public CodeGeneratorSpecific
     void visitLoadTypedArrayElementHole(LLoadTypedArrayElementHole* lir);
     void visitStoreUnboxedScalar(LStoreUnboxedScalar* lir);
     void visitStoreTypedArrayElementHole(LStoreTypedArrayElementHole* lir);
+    void visitAtomicIsLockFree(LAtomicIsLockFree* lir);
     void visitCompareExchangeTypedArrayElement(LCompareExchangeTypedArrayElement* lir);
-    void visitAtomicTypedArrayElementBinop(LAtomicTypedArrayElementBinop* lir);
-    void visitAtomicTypedArrayElementBinopForEffect(LAtomicTypedArrayElementBinopForEffect* lir);
+    void visitAtomicExchangeTypedArrayElement(LAtomicExchangeTypedArrayElement* lir);
     void visitClampIToUint8(LClampIToUint8* lir);
     void visitClampDToUint8(LClampDToUint8* lir);
     void visitClampVToUint8(LClampVToUint8* lir);
@@ -377,6 +383,9 @@ class CodeGenerator : public CodeGeneratorSpecific
     void visitAsmJSInterruptCheck(LAsmJSInterruptCheck* lir);
     void visitRecompileCheck(LRecompileCheck* ins);
 
+    void visitRandom(LRandom* ins);
+    void visitOutOfLineRandom(OutOfLineRandom* ool);
+
     IonScriptCounts* extractScriptCounts() {
         IonScriptCounts* counts = scriptCounts_;
         scriptCounts_ = nullptr;  // prevent delete in dtor
@@ -387,7 +396,7 @@ class CodeGenerator : public CodeGeneratorSpecific
     void addGetPropertyCache(LInstruction* ins, LiveRegisterSet liveRegs, Register objReg,
                              PropertyName* name, TypedOrValueRegister output,
                              bool monitoredResult, jsbytecode* profilerLeavePc);
-    void addGetElementCache(LInstruction* ins, Register obj, ConstantOrRegister index,
+    void addGetElementCache(LInstruction* ins, Register obj, TypedOrValueRegister index,
                             TypedOrValueRegister output, bool monitoredResult,
                             bool allowDoubleResult, jsbytecode* profilerLeavePc);
     void addSetPropertyCache(LInstruction* ins, LiveRegisterSet liveRegs, Register objReg,
@@ -476,6 +485,18 @@ class CodeGenerator : public CodeGeneratorSpecific
     void emitAssertRangeD(const Range* r, FloatRegister input, FloatRegister temp);
 
     Vector<CodeOffsetLabel, 0, JitAllocPolicy> ionScriptLabels_;
+
+    struct SharedStub {
+        ICStub::Kind kind;
+        IonICEntry entry;
+        CodeOffsetLabel label;
+
+        SharedStub(ICStub::Kind kind, IonICEntry entry, CodeOffsetLabel label)
+          : kind(kind), entry(entry), label(label)
+        {}
+    };
+
+    Vector<SharedStub, 0, SystemAllocPolicy> sharedStubs_;
 
     void branchIfInvalidated(Register temp, Label* invalidated);
 

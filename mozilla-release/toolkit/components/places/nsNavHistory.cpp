@@ -30,6 +30,7 @@
 #include "nsEscape.h"
 #include "nsIEffectiveTLDService.h"
 #include "nsIClassInfoImpl.h"
+#include "nsIIDNService.h"
 #include "nsThreadUtils.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsMathUtils.h"
@@ -226,7 +227,7 @@ protected:
   nsNavHistory& mNavHistory;
 };
 
-} // anonymouse namespace
+} // namespace
 
 
 // Queries rows indexes to bind or get values, if adding a new one, be sure to
@@ -578,7 +579,7 @@ private:
   PRTime mLastVisitDate;
 };
 
-} // anonymous namespace
+} // namespace
 
 void
 nsNavHistory::DispatchFrecencyChangedNotification(const nsACString& aSpec,
@@ -1006,7 +1007,7 @@ public:
   }
 };
 
-} // anonymous namespace
+} // namespace
 
 nsresult
 nsNavHistory::invalidateFrecencies(const nsCString& aPlaceIdsQueryString)
@@ -2280,7 +2281,7 @@ nsNavHistory::GetObservers(uint32_t* _count,
 
   // Then add the other observers.
   for (uint32_t i = 0; i < mObservers.Length(); ++i) {
-    const nsCOMPtr<nsINavHistoryObserver> &observer = mObservers.ElementAt(i);
+    const nsCOMPtr<nsINavHistoryObserver> &observer = mObservers.ElementAt(i).GetValue();
     // Skip nullified weak observers.
     if (observer)
       observers.AppendElement(observer);
@@ -3179,7 +3180,7 @@ public:
   }
 };
 
-} // anonymous namespace
+} // namespace
 
 nsresult
 nsNavHistory::DecayFrecency()
@@ -4442,7 +4443,7 @@ void ParseSearchTermsFromQueries(const nsCOMArray<nsNavHistoryQuery>& aQueries,
   }
 }
 
-} // anonymous namespace
+} // namespace
 
 
 nsresult
@@ -4508,7 +4509,7 @@ public:
   }
 };
 
-} // anonymous namespace
+} // namespace
 
 nsresult
 nsNavHistory::FixInvalidFrecencies()

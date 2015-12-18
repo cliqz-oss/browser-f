@@ -201,7 +201,6 @@ nsresult MediaOmxReader::InitOmxDecoder()
   if (!mOmxDecoder.get()) {
     //register sniffers, if they are not registered in this process.
     DataSource::RegisterDefaultSniffers();
-    mDecoder->GetResource()->SetReadMode(MediaCacheStream::MODE_METADATA);
 
     sp<DataSource> dataSource = new MediaStreamSource(mDecoder->GetResource());
     dataSource->initCheck();
@@ -210,7 +209,7 @@ nsresult MediaOmxReader::InitOmxDecoder()
     if (!mExtractor.get()) {
       return NS_ERROR_FAILURE;
     }
-    mOmxDecoder = new OmxDecoder(mDecoder->GetResource(), mDecoder);
+    mOmxDecoder = new OmxDecoder(mDecoder);
     if (!mOmxDecoder->Init(mExtractor)) {
       return NS_ERROR_FAILURE;
     }
@@ -245,7 +244,7 @@ MediaOmxReader::AsyncReadMetadata()
 
   nsRefPtr<MediaOmxReader> self = this;
   mMediaResourceRequest.Begin(mOmxDecoder->AllocateMediaResources()
-    ->Then(TaskQueue(), __func__,
+    ->Then(OwnerThread(), __func__,
       [self] (bool) -> void {
         self->mMediaResourceRequest.Complete();
         self->HandleResourceAllocated();
@@ -308,9 +307,7 @@ void MediaOmxReader::HandleResourceAllocated()
     mInitialFrame = frameSize;
     VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
     if (container) {
-      container->SetCurrentFrame(gfxIntSize(displaySize.width, displaySize.height),
-                                 nullptr,
-                                 mozilla::TimeStamp::Now());
+      container->ClearCurrentFrame(gfxIntSize(displaySize.width, displaySize.height));
     }
   }
 
@@ -476,14 +473,27 @@ void MediaOmxReader::NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset
     return;
   }
 
-  nsRefPtr<MediaByteBuffer> bytes =
-    mDecoder->GetResource()->MediaReadAt(aOffset, aLength);
-  NS_ENSURE_TRUE_VOID(bytes);
-  mMP3FrameParser.Parse(bytes->Elements(), aLength, aOffset);
-  if (!mMP3FrameParser.IsMP3()) {
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
+  nsTArray<MediaByteRange> byteRanges;
+  nsresult rv = resource->GetCachedRanges(byteRanges);
+
+  if (NS_FAILED(rv)) {
     return;
   }
 
+  IntervalSet<int64_t> intervals;
+  for (auto& range : byteRanges) {
+    intervals += mFilter.NotifyDataArrived(range.Length(), range.mStart);
+  }
+  for (const auto& interval : intervals) {
+    nsRefPtr<MediaByteBuffer> bytes =
+      resource->MediaReadAt(interval.mStart, interval.Length());
+    NS_ENSURE_TRUE_VOID(bytes);
+    mMP3FrameParser.Parse(bytes->Elements(), interval.Length(), interval.mStart);
+    if (!mMP3FrameParser.IsMP3()) {
+      return;
+    }
+  }
   int64_t duration = mMP3FrameParser.GetDuration();
   if (duration != mLastParserDuration) {
     mLastParserDuration = duration;
@@ -531,11 +541,7 @@ MediaOmxReader::Seek(int64_t aTarget, int64_t aEndTime)
 {
   MOZ_ASSERT(OnTaskQueue());
   EnsureActive();
-
-  VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
-  if (container && container->GetImageContainer()) {
-    container->GetImageContainer()->ClearAllImagesExceptFront();
-  }
+  nsRefPtr<SeekPromise> p = mSeekPromise.Ensure(__func__);
 
   if (mHasAudio && mHasVideo) {
     // The OMXDecoder seeks/demuxes audio and video streams separately. So if
@@ -547,13 +553,23 @@ MediaOmxReader::Seek(int64_t aTarget, int64_t aEndTime)
     // seek the audio stream to match the video stream's time. Otherwise, the
     // audio and video streams won't be in sync after the seek.
     mVideoSeekTimeUs = aTarget;
-    const VideoData* v = DecodeToFirstVideoData();
-    mAudioSeekTimeUs = v ? v->mTime : aTarget;
+
+    nsRefPtr<MediaOmxReader> self = this;
+    mSeekRequest.Begin(DecodeToFirstVideoData()->Then(OwnerThread(), __func__, [self] (MediaData* v) {
+      self->mSeekRequest.Complete();
+      self->mAudioSeekTimeUs = v->mTime;
+      self->mSeekPromise.Resolve(self->mAudioSeekTimeUs, __func__);
+    }, [self, aTarget] () {
+      self->mSeekRequest.Complete();
+      self->mAudioSeekTimeUs = aTarget;
+      self->mSeekPromise.Resolve(aTarget, __func__);
+    }));
   } else {
     mAudioSeekTimeUs = mVideoSeekTimeUs = aTarget;
+    mSeekPromise.Resolve(aTarget, __func__);
   }
 
-  return SeekPromise::CreateAndResolve(mAudioSeekTimeUs, __func__);
+  return p;
 }
 
 void MediaOmxReader::SetIdle() {
@@ -601,7 +617,7 @@ int64_t MediaOmxReader::ProcessCachedData(int64_t aOffset)
   if (OnTaskQueue()) {
     runnable->Run();
   } else {
-    TaskQueue()->Dispatch(runnable.forget());
+    OwnerThread()->Dispatch(runnable.forget());
   }
 
   return resourceLength - aOffset - bufferLength;

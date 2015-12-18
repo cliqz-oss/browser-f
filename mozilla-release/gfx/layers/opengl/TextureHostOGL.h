@@ -36,11 +36,11 @@ class nsIntRegion;
 namespace mozilla {
 namespace gfx {
 class DataSourceSurface;
-}
+} // namespace gfx
 
 namespace gl {
 class AndroidSurfaceTexture;
-}
+} // namespace gl
 
 namespace layers {
 
@@ -353,7 +353,7 @@ public:
     return !!aTexture;
   }
 
-  virtual TemporaryRef<gfx::DataSourceSurface> GetAsSurface() override
+  virtual already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override
   {
     return nullptr; // XXX - implement this (for MOZ_DUMP_PAINTING)
   }
@@ -447,7 +447,7 @@ public:
     return !!aTexture;
   }
 
-  virtual TemporaryRef<gfx::DataSourceSurface> GetAsSurface() override
+  virtual already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override
   {
     return nullptr; // XXX - implement this (for MOZ_DUMP_PAINTING)
   }
@@ -467,7 +467,7 @@ protected:
   RefPtr<EGLImageTextureSource> mTextureSource;
 };
 
-} // namespace
-} // namespace
+} // namespace layers
+} // namespace mozilla
 
 #endif /* MOZILLA_GFX_TEXTUREOGL_H */

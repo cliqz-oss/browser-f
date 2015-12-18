@@ -13,6 +13,7 @@
 #include "TimeUnits.h"
 #include "VorbisUtils.h"
 #include "WebMBufferedParser.h"
+#include "NesteggPacketHolder.h"
 
 #include <algorithm>
 
@@ -52,8 +53,20 @@ SoftwareWebMVideoDecoder::Create(WebMReader* aReader)
   return new SoftwareWebMVideoDecoder(aReader);
 }
 
-nsresult
+nsRefPtr<InitPromise>
 SoftwareWebMVideoDecoder::Init(unsigned int aWidth, unsigned int aHeight)
+{
+  nsresult rv = InitDecoder(aWidth, aHeight);
+
+  if (NS_SUCCEEDED(rv)) {
+    return InitPromise::CreateAndResolve(TrackType::kVideoTrack, __func__);
+  }
+
+  return InitPromise::CreateAndReject(DecoderFailureReason::INIT_ERROR, __func__);
+}
+
+nsresult
+SoftwareWebMVideoDecoder::InitDecoder(unsigned int aWidth, unsigned int aHeight)
 {
   vpx_codec_iface_t* dx = nullptr;
   switch(mReader->GetVideoCodec()) {
@@ -113,7 +126,7 @@ SoftwareWebMVideoDecoder::DecodeVideoFrame(bool &aKeyframeSkip,
   nsRefPtr<NesteggPacketHolder> next_holder(mReader->NextPacket(WebMReader::VIDEO));
   if (next_holder) {
     next_tstamp = next_holder->Timestamp();
-    mReader->PushVideoPacket(next_holder.forget());
+    mReader->PushVideoPacket(next_holder);
   } else {
     next_tstamp = tstamp;
     next_tstamp += tstamp - mReader->GetLastVideoFrameTime();

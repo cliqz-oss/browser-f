@@ -165,7 +165,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "ViewSourceBrowser",
  * |true| if we are in debug mode, |false| otherwise.
  * Debug mode is controlled by preference browser.sessionstore.debug
  */
-let gDebuggingEnabled = false;
+var gDebuggingEnabled = false;
 function debug(aMsg) {
   if (gDebuggingEnabled) {
     aMsg = ("SessionStore: " + aMsg).replace(/\S{80}/g, "$&\n");
@@ -180,6 +180,10 @@ this.SessionStore = {
 
   get canRestoreLastSession() {
     return SessionStoreInternal.canRestoreLastSession;
+  },
+
+  get crashedTabCount() {
+    return SessionStoreInternal._crashedBrowsersCount;
   },
 
   set canRestoreLastSession(val) {
@@ -302,15 +306,23 @@ this.SessionStore = {
     return SessionStoreInternal.reviveCrashedTab(aTab);
   },
 
+  reviveAllCrashedTabs() {
+    return SessionStoreInternal.reviveAllCrashedTabs();
+  },
+
   navigateAndRestore(tab, loadArguments, historyIndex) {
     return SessionStoreInternal.navigateAndRestore(tab, loadArguments, historyIndex);
+  },
+
+  getSessionHistory(tab, updatedCallback) {
+    return SessionStoreInternal.getSessionHistory(tab, updatedCallback);
   }
 };
 
 // Freeze the SessionStore object. We don't want anyone to modify it.
 Object.freeze(SessionStore);
 
-let SessionStoreInternal = {
+var SessionStoreInternal = {
   QueryInterface: XPCOMUtils.generateQI([
     Ci.nsIDOMEventListener,
     Ci.nsIObserver,
@@ -330,6 +342,9 @@ let SessionStoreInternal = {
   // here - that way we know which browsers to ignore messages from (until
   // they get restored).
   _crashedBrowsers: new WeakSet(),
+
+  // The number of crashed browsers.
+  _crashedBrowsersCount: 0,
 
   // A map (xul:browser -> nsIFrameLoader) that maps a browser to the last
   // associated frameLoader we heard about.
@@ -1408,6 +1423,10 @@ let SessionStoreInternal = {
     if (!aNoNotification) {
       this.saveStateDelayed(aWindow);
     }
+
+    if (this._crashedBrowsers.has(browser.permanentKey)) {
+      this._crashedBrowsersCount++;
+    }
   },
 
   /**
@@ -1436,6 +1455,10 @@ let SessionStoreInternal = {
 
     if (!aNoNotification) {
       this.saveStateDelayed(aWindow);
+    }
+
+    if (this._crashedBrowsers.has(browser.permanentKey)) {
+      this._crashedBrowsersCount--;
     }
   },
 
@@ -1616,6 +1639,7 @@ let SessionStoreInternal = {
    */
   onBrowserCrashed: function(aWindow, aBrowser) {
     this._crashedBrowsers.add(aBrowser.permanentKey);
+    this._crashedBrowsersCount++;
     // If we never got around to restoring this tab, clear its state so
     // that we don't try restoring if the user switches to it before
     // reviving the crashed browser. This is throwing away the information
@@ -2171,6 +2195,23 @@ let SessionStoreInternal = {
 
     let data = TabState.collect(aTab);
     this.restoreTab(aTab, data);
+
+    this._crashedBrowsersCount--;
+  },
+
+  /**
+   * Revive all crashed tabs and reset the crashed tabs count to 0.
+   */
+  reviveAllCrashedTabs() {
+    let windowsEnum = Services.wm.getEnumerator("navigator:browser");
+    while (windowsEnum.hasMoreElements()) {
+      let window = windowsEnum.getNext();
+      for (let tab of window.gBrowser.tabs) {
+        this.reviveCrashedTab(tab);
+      }
+    }
+
+    this._crashedBrowsersCount = 0;
   },
 
   /**
@@ -2223,6 +2264,34 @@ let SessionStoreInternal = {
       // Restore the state into the tab.
       this.restoreTab(tab, tabState, options);
     });
+  },
+
+  /**
+   * Retrieves the latest session history information for a tab. The cached data
+   * is returned immediately, but a callback may be provided that supplies
+   * up-to-date data when or if it is available. The callback is passed a single
+   * argument with data in the same format as the return value.
+   *
+   * @param tab tab to retrieve the session history for
+   * @param updatedCallback function to call with updated data as the single argument
+   * @returns a object containing 'index' specifying the current index, and an
+   * array 'entries' containing an object for each history item.
+   */
+  getSessionHistory(tab, updatedCallback) {
+    if (updatedCallback) {
+      TabStateFlusher.flush(tab.linkedBrowser).then(() => {
+        let sessionHistory = this.getSessionHistory(tab);
+        if (sessionHistory) {
+          updatedCallback(sessionHistory);
+        }
+      });
+    }
+
+    // Don't continue if the tab was closed before TabStateFlusher.flush resolves.
+    if (tab.linkedBrowser) {
+      let tabState = TabState.collect(tab);
+      return { index: tabState.index - 1, entries: tabState.entries }
+    }
   },
 
   /**
@@ -3750,7 +3819,7 @@ let SessionStoreInternal = {
  * pinned, visible and hidden tabs in that and FIFO order. Hidden tabs are only
  * restored with restore_hidden_tabs=true.
  */
-let TabRestoreQueue = {
+var TabRestoreQueue = {
   // The separate buckets used to store tabs.
   tabs: {priority: [], visible: [], hidden: []},
 
@@ -3887,7 +3956,7 @@ let TabRestoreQueue = {
 // A map storing a closed window's state data until it goes aways (is GC'ed).
 // This ensures that API clients can still read (but not write) states of
 // windows they still hold a reference to but we don't.
-let DyingWindowCache = {
+var DyingWindowCache = {
   _data: new WeakMap(),
 
   has: function (window) {
@@ -3909,7 +3978,7 @@ let DyingWindowCache = {
 
 // A weak set of dirty windows. We use it to determine which windows we need to
 // recollect data for when getCurrentState() is called.
-let DirtyWindows = {
+var DirtyWindows = {
   _data: new WeakMap(),
 
   has: function (window) {
@@ -3933,7 +4002,7 @@ let DirtyWindows = {
 // state is persisted and passed through to the next session during an app
 // restart to make the third party add-on warning not trash the deferred
 // session
-let LastSession = {
+var LastSession = {
   _state: null,
 
   get canRestore() {

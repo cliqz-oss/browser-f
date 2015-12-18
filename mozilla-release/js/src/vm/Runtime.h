@@ -15,6 +15,7 @@
 #include "mozilla/Scoped.h"
 #include "mozilla/ThreadLocal.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/Vector.h"
 
 #include <setjmp.h>
 
@@ -36,6 +37,7 @@
 #ifdef DEBUG
 # include "js/Proxy.h" // For AutoEnterPolicy
 #endif
+#include "js/TraceableVector.h"
 #include "js/Vector.h"
 #include "vm/CommonPropertyNames.h"
 #include "vm/DateTime.h"
@@ -65,6 +67,12 @@ extern mozilla::ThreadLocal<PerThreadData*> TlsPerThreadData;
 
 struct DtoaState;
 
+#ifdef JS_SIMULATOR_ARM64
+namespace vixl {
+class Simulator;
+}
+#endif
+
 namespace js {
 
 extern MOZ_COLD void
@@ -86,10 +94,15 @@ namespace jit {
 class JitRuntime;
 class JitActivation;
 struct PcScriptCache;
-class Simulator;
 struct AutoFlushICache;
 class CompileRuntime;
-}
+
+#ifdef JS_SIMULATOR_ARM64
+typedef vixl::Simulator Simulator;
+#elif defined(JS_SIMULATOR)
+class Simulator;
+#endif
+} // namespace jit
 
 /*
  * GetSrcNote cache to avoid O(n^2) growth in finding a source note for a
@@ -128,7 +141,7 @@ struct ScopeCoordinateNameCache {
     void purge();
 };
 
-typedef Vector<ScriptAndCounts, 0, SystemAllocPolicy> ScriptAndCountsVector;
+using ScriptAndCountsVector = TraceableVector<ScriptAndCounts, 0, SystemAllocPolicy>;
 
 struct EvalCacheEntry
 {
@@ -347,8 +360,8 @@ class NewObjectCache
 
     static void copyCachedToObject(NativeObject* dst, NativeObject* src, gc::AllocKind kind) {
         js_memcpy(dst, src, gc::Arena::thingSize(kind));
-        Shape::writeBarrierPost(dst->shape_, &dst->shape_);
-        ObjectGroup::writeBarrierPost(dst->group_, &dst->group_);
+        Shape::writeBarrierPost(&dst->shape_, nullptr, dst->shape_);
+        ObjectGroup::writeBarrierPost(&dst->group_, nullptr, dst->group_);
     }
 };
 
@@ -398,7 +411,7 @@ class FreeOp : public JSFreeOp
 
 namespace JS {
 struct RuntimeSizes;
-}
+} // namespace JS
 
 /* Various built-in or commonly-used names pinned on first context. */
 struct JSAtomState
@@ -679,12 +692,18 @@ struct JSRuntime : public JS::shadow::Runtime,
      * New activations will reset this to nullptr on construction after getting
      * the current value, and will restore the previous value on destruction.
      */
-    js::SavedFrame* asyncStackForNewActivations;
+    JS::PersistentRooted<js::SavedFrame*> asyncStackForNewActivations;
 
     /*
      * Value of asyncCause to be attached to asyncStackForNewActivations.
      */
-    JSString* asyncCauseForNewActivations;
+    JS::PersistentRooted<JSString*> asyncCauseForNewActivations;
+
+    /*
+     * True if the async call was explicitly requested, e.g. via
+     * callFunctionWithAsyncStack.
+     */
+    bool asyncCallIsExplicit;
 
     /* If non-null, report JavaScript entry points to this monitor. */
     JS::dbg::AutoEntryMonitor* entryMonitor;
@@ -1034,7 +1053,7 @@ struct JSRuntime : public JS::shadow::Runtime,
 #endif
 
     /* Strong references on scripts held for PCCount profiling API. */
-    js::ScriptAndCountsVector* scriptAndCountsVector;
+    JS::PersistentRooted<js::ScriptAndCountsVector>* scriptAndCountsVector;
 
     /* Well-known numbers held for use by this runtime's contexts. */
     const js::Value     NaNValue;
@@ -1438,11 +1457,12 @@ struct JSRuntime : public JS::shadow::Runtime,
         T* p = pod_calloc<T>(numElems);
         if (MOZ_LIKELY(!!p))
             return p;
-        if (numElems & mozilla::tl::MulOverflowMask<sizeof(T)>::value) {
+        size_t bytes;
+        if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(numElems, &bytes))) {
             reportAllocationOverflow();
             return nullptr;
         }
-        return (T*)onOutOfMemoryCanGC(js::AllocFunction::Calloc, numElems * sizeof(T));
+        return static_cast<T*>(onOutOfMemoryCanGC(js::AllocFunction::Calloc, bytes));
     }
 
     template <typename T>
@@ -1450,11 +1470,12 @@ struct JSRuntime : public JS::shadow::Runtime,
         T* p2 = pod_realloc<T>(p, oldSize, newSize);
         if (MOZ_LIKELY(!!p2))
             return p2;
-        if (newSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value) {
+        size_t bytes;
+        if (MOZ_UNLIKELY(!js::CalculateAllocSize<T>(newSize, &bytes))) {
             reportAllocationOverflow();
             return nullptr;
         }
-        return (T*)onOutOfMemoryCanGC(js::AllocFunction::Realloc, newSize * sizeof(T), p);
+        return static_cast<T*>(onOutOfMemoryCanGC(js::AllocFunction::Realloc, bytes, p));
     }
 
     /*
@@ -1473,26 +1494,32 @@ struct JSRuntime : public JS::shadow::Runtime,
        ------------------------------------------ */
     struct Stopwatch {
         /**
-         * The number of times we have entered the event loop.
-         * Used to reset counters whenever we enter the loop,
-         * which may be caused either by having completed the
-         * previous run of the event loop, or by entering a
-         * nested loop.
+         * A map used to collapse compartments belonging to the same
+         * add-on (respectively to the same webpage, to the platform)
+         * into a single group.
          *
-         * Always incremented by 1, may safely overflow.
+         * Keys: for system compartments, a `JSAddonId*` (which may be
+         * `nullptr`), and for webpages, a `JSPrincipals*` (which may
+         * not). Note that compartments may start as non-system
+         * compartments and become compartments later during their
+         * lifetime, which requires an invalidation.
+         *
+         * This map is meant to be accessed only by instances of
+         * PerformanceGroupHolder, which handle both reference-counting
+         * of the values and invalidation of the key/value pairs.
          */
-        uint64_t iteration;
+        typedef js::HashMap<void*, js::PerformanceGroup*,
+                            js::DefaultHasher<void*>,
+                            js::SystemAllocPolicy> Groups;
 
-        /**
-         * `true` if no stopwatch has been registered for the
-         * current run of the event loop, `false` until then.
-         */
-        bool isEmpty;
+        Groups& groups() {
+            return groups_;
+        }
 
         /**
          * Performance data on the entire runtime.
          */
-        js::PerformanceData performance;
+        js::PerformanceGroupHolder performance;
 
         /**
          * Callback used to ask the embedding to determine in which
@@ -1506,31 +1533,56 @@ struct JSRuntime : public JS::shadow::Runtime,
          */
         JSCurrentPerfGroupCallback currentPerfGroupCallback;
 
-        Stopwatch()
-          : iteration(0)
-          , isEmpty(true)
+        /**
+         * The number of the current iteration of the event loop.
+         */
+        uint64_t iteration() {
+            return iteration_;
+        }
+
+        explicit Stopwatch(JSRuntime* runtime)
+          : performance(runtime)
           , currentPerfGroupCallback(nullptr)
+          , totalCPOWTime(0)
           , isMonitoringJank_(false)
           , isMonitoringCPOW_(false)
+          , isMonitoringPerCompartment_(false)
+          , iteration_(0)
+          , startedAtIteration_(0)
           , idCounter_(0)
         { }
 
         /**
          * Reset the stopwatch.
          *
-         * This method is meant to be called whenever we start processing
-         * an event, to ensure that stop any ongoing measurement that would
-         * otherwise provide irrelevant results.
+         * This method is meant to be called whenever we start
+         * processing an event, to ensure that we stop any ongoing
+         * measurement that would otherwise provide irrelevant
+         * results.
          */
-        void reset() {
-            ++iteration;
-            isEmpty = true;
-        }
+        void reset();
+
+        /**
+         * Start the stopwatch.
+         *
+         * This method is meant to be called once we know that the
+         * current event contains JavaScript code to execute. Calling
+         * this several times during the same iteration is idempotent.
+         */
+        void start();
+
+        /**
+         * Commit the performance data collected since the last call
+         * to `start()`, unless `reset()` has been called since then.
+         */
+        void commit();
+
         /**
          * Activate/deactivate stopwatch measurement of jank.
          *
-         * Noop if `value` is `true` and the stopwatch is already active,
-         * or if `value` is `false` and the stopwatch is already inactive.
+         * Noop if `value` is `true` and the stopwatch is already
+         * measuring jank, or if `value` is `false` and the stopwatch
+         * is not measuring jank.
          *
          * Otherwise, any pending measurements are dropped, but previous
          * measurements remain stored.
@@ -1553,11 +1605,55 @@ struct JSRuntime : public JS::shadow::Runtime,
             return isMonitoringJank_;
         }
 
+        /**
+         * Activate/deactivate stopwatch measurement per compartment.
+         *
+         * Noop if `value` is `true` and the stopwatch is already
+         * measuring per compartment, or if `value` is `false` and the
+         * stopwatch is not measuring per compartment.
+         *
+         * Otherwise, any pending measurements are dropped, but previous
+         * measurements remain stored.
+         *
+         * May return `false` if the underlying hashtable cannot be allocated.
+         */
+        bool setIsMonitoringPerCompartment(bool value) {
+            if (isMonitoringPerCompartment_ != value)
+                reset();
+
+            if (value && !groups_.initialized()) {
+                if (!groups_.init(128))
+                    return false;
+            }
+
+            isMonitoringPerCompartment_ = value;
+            return true;
+        }
+        bool isMonitoringPerCompartment() const {
+            return isMonitoringPerCompartment_;
+        }
 
         /**
          * Activate/deactivate stopwatch measurement of CPOW.
+         *
+         * Noop if `value` is `true` and the stopwatch is already
+         * measuring CPOW, or if `value` is `false` and the stopwatch
+         * is not measuring CPOW.
+         *
+         * Otherwise, any pending measurements are dropped, but previous
+         * measurements remain stored.
+         *
+         * May return `false` if the underlying hashtable cannot be allocated.
          */
         bool setIsMonitoringCPOW(bool value) {
+            if (isMonitoringCPOW_ != value)
+                reset();
+
+            if (value && !groups_.initialized()) {
+                if (!groups_.init(128))
+                    return false;
+            }
+
             isMonitoringCPOW_ = value;
             return true;
         }
@@ -1573,61 +1669,119 @@ struct JSRuntime : public JS::shadow::Runtime,
             return idCounter_++;
         }
 
-        // Some systems have non-monotonic clocks. While we cannot
-        // improve the precision, we can make sure that our measures
-        // are monotonic nevertheless. We do this by storing the
-        // result of the latest call to the clock and making sure
-        // that the next timestamp is greater or equal.
-        struct MonotonicTimeStamp {
-            MonotonicTimeStamp()
-              : latestGood_(0)
-            {}
-            inline uint64_t monotonize(uint64_t stamp)
-            {
-                if (stamp <= latestGood_)
-                    return latestGood_;
-                latestGood_ = stamp;
-                return stamp;
-            }
-          private:
-            uint64_t latestGood_;
+        /**
+         * Mark a group as changed during the current iteration.
+         *
+         * Recent data from this group will be post-processed and
+         * committed at the end of the iteration.
+         */
+        void addChangedGroup(js::PerformanceGroup* group) {
+            MOZ_ASSERT(group->recentTicks == 0);
+            touchedGroups.append(group);
+        }
+
+        // The total amount of time spent waiting on CPOWs since the
+        // start of the process, in microseconds.
+        uint64_t totalCPOWTime;
+
+        // Data extracted by the AutoStopwatch to determine how often
+        // we reschedule the process to a different CPU during the
+        // execution of JS.
+        //
+        // Warning: These values are incremented *only* on platforms
+        // that offer a syscall/libcall to check on which CPU a
+        // process is currently executed.
+        struct TestCpuRescheduling
+        {
+            // Incremented once we have finished executing code
+            // in a group, if the CPU on which we started
+            // execution is the same as the CPU on which
+            // we finished.
+            uint64_t stayed;
+            // Incremented once we have finished executing code
+            // in a group, if the CPU on which we started
+            // execution is different from the CPU on which
+            // we finished.
+            uint64_t moved;
+            TestCpuRescheduling()
+              : stayed(0),
+                moved(0)
+            { }
         };
-        MonotonicTimeStamp systemTimeFix;
-        MonotonicTimeStamp userTimeFix;
+        TestCpuRescheduling testCpuRescheduling;
 
     private:
-        /**
-         * A map used to collapse compartments belonging to the same
-         * add-on (respectively to the same webpage, to the platform)
-         * into a single group.
-         *
-         * Keys: for system compartments, a `JSAddonId*` (which may be
-         * `nullptr`), and for webpages, a `JSPrincipals*` (which may
-         * not). Note that compartments may start as non-system
-         * compartments and become compartments later during their
-         * lifetime, which requires an invalidation.
-         *
-         * This map is meant to be accessed only by instances of
-         * PerformanceGroupHolder, which handle both reference-counting
-         * of the values and invalidation of the key/value pairs.
-         */
-        typedef js::HashMap<void*, js::PerformanceGroup*,
-                            js::DefaultHasher<void*>,
-                            js::SystemAllocPolicy> Groups;
+        Stopwatch(const Stopwatch&) = delete;
+        Stopwatch& operator=(const Stopwatch&) = delete;
 
+        // Commit a piece of data to a single group.
+        // `totalUserTimeDelta`, `totalSystemTimeDelta`, `totalCyclesDelta`
+        // represent the outer measures, taken for the entire runtime.
+        void transferDeltas(uint64_t totalUserTimeDelta,
+                            uint64_t totalSystemTimeDelta,
+                            uint64_t totalCyclesDelta,
+                            js::PerformanceGroup* destination);
+
+        // Query the OS for the time spent in CPU/kernel since process
+        // launch.
+        bool getResources(uint64_t* userTime, uint64_t* systemTime) const;
+
+    private:
         Groups groups_;
         friend struct js::PerformanceGroupHolder;
 
         /**
-         * `true` if stopwatch monitoring is active, `false` otherwise.
+         * `true` if stopwatch monitoring is active for Jank, `false` otherwise.
          */
         bool isMonitoringJank_;
+        /**
+         * `true` if stopwatch monitoring is active for CPOW, `false` otherwise.
+         */
         bool isMonitoringCPOW_;
+        /**
+         * `true` if the stopwatch should udpdate data per-compartment, in
+         * addition to data per-group.
+         */
+        bool isMonitoringPerCompartment_;
+
+        /**
+         * The number of times we have entered the event loop.
+         * Used to reset counters whenever we enter the loop,
+         * which may be caused either by having completed the
+         * previous run of the event loop, or by entering a
+         * nested loop.
+         *
+         * Always incremented by 1, may safely overflow.
+         */
+        uint64_t iteration_;
+
+        /**
+         * The iteration at which the stopwatch was last started.
+         *
+         * Used both to avoid starting the stopwatch several times
+         * during the same event loop and to avoid committing stale
+         * stopwatch results.
+         */
+        uint64_t startedAtIteration_;
 
         /**
          * A counter used to generate unique identifiers for groups.
          */
         uint64_t idCounter_;
+
+        /**
+         * The timestamps returned by `getResources()` during the call to
+         * `start()` in the current iteration of the event loop.
+         */
+        uint64_t userTimeStart_;
+        uint64_t systemTimeStart_;
+
+        /**
+         * Performance groups used during the current event.
+         *
+         * They are cleared by `commit()` and `reset()`.
+         */
+        mozilla::Vector<mozilla::RefPtr<js::PerformanceGroup>> touchedGroups;
     };
     Stopwatch stopwatch;
 };
@@ -1712,7 +1866,7 @@ FreeOp::freeLater(void* p)
  * Note that the lock may be temporarily released by use of AutoUnlockGC when
  * passed a non-const reference to this class.
  */
-class MOZ_STACK_CLASS AutoLockGC
+class MOZ_RAII AutoLockGC
 {
   public:
     explicit AutoLockGC(JSRuntime* rt
@@ -1751,7 +1905,7 @@ class MOZ_STACK_CLASS AutoLockGC
     AutoLockGC& operator=(const AutoLockGC&) = delete;
 };
 
-class MOZ_STACK_CLASS AutoUnlockGC
+class MOZ_RAII AutoUnlockGC
 {
   public:
     explicit AutoUnlockGC(AutoLockGC& lock
@@ -1774,7 +1928,7 @@ class MOZ_STACK_CLASS AutoUnlockGC
     AutoUnlockGC& operator=(const AutoUnlockGC&) = delete;
 };
 
-class MOZ_STACK_CLASS AutoKeepAtoms
+class MOZ_RAII AutoKeepAtoms
 {
     PerThreadData* pt;
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
@@ -1943,7 +2097,7 @@ extern const JSSecurityCallbacks NullSecurityCallbacks;
 
 // Debugging RAII class which marks the current thread as performing an Ion
 // compilation, for use by CurrentThreadCan{Read,Write}CompilationData
-class AutoEnterIonCompilation
+class MOZ_RAII AutoEnterIonCompilation
 {
   public:
     explicit AutoEnterIonCompilation(bool safeForMinorGC
@@ -2017,15 +2171,19 @@ class MOZ_STACK_CLASS AutoInitGCManagedObject
     }
 
     T& operator*() const {
-        return *ptr_.get();
+        return *get();
     }
 
     T* operator->() const {
-        return ptr_.get();
+        return get();
     }
 
     explicit operator bool() const {
-        return ptr_.get() != nullptr;
+        return get() != nullptr;
+    }
+
+    T* get() const {
+        return ptr_.get();
     }
 
     T* release() {

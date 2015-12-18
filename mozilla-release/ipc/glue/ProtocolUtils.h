@@ -46,16 +46,17 @@ enum {
 
     // kuint16max - 1 is used by ipc_channel.h.
 };
-}
+
+} // namespace
 
 namespace mozilla {
 namespace dom {
 class ContentParent;
-}
+} // namespace dom
 
 namespace net {
 class NeckoParent;
-}
+} // namespace net
 
 namespace ipc {
 
@@ -233,6 +234,8 @@ public:
     ProtocolId GetProtocolId() const { return mProtocolId; }
 
     void GetOpenedActors(nsTArray<IToplevelProtocol*>& aActors);
+
+    virtual MessageChannel* GetIPCChannel() = 0;
 
     // This Unsafe version should only be used when all other threads are
     // frozen, since it performs no locking. It also takes a stack-allocated

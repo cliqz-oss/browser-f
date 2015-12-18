@@ -28,6 +28,8 @@ class CodeGenerator;
 class CallInfo;
 class BaselineFrameInspector;
 
+enum class InlinableNative : uint16_t;
+
 // Records information about a baseline frame for compilation that is stable
 // when later used off thread.
 BaselineFrameInspector*
@@ -374,6 +376,8 @@ class IonBuilder
     // Creates a MDefinition based on the given def improved with type as TypeSet.
     MDefinition* ensureDefiniteTypeSet(MDefinition* def, TemporaryTypeSet* types);
 
+    void maybeMarkEmpty(MDefinition* ins);
+
     JSObject* getSingletonPrototype(JSFunction* target);
 
     MDefinition* createThisScripted(MDefinition* callee);
@@ -421,8 +425,7 @@ class IonBuilder
                                     TemporaryTypeSet* types);
     bool getPropTryArgumentsLength(bool* emitted, MDefinition* obj);
     bool getPropTryArgumentsCallee(bool* emitted, MDefinition* obj, PropertyName* name);
-    bool getPropTryConstant(bool* emitted, MDefinition* obj, PropertyName* name,
-                            TemporaryTypeSet* types);
+    bool getPropTryConstant(bool* emitted, MDefinition* obj, jsid id, TemporaryTypeSet* types);
     bool getPropTryDefiniteSlot(bool* emitted, MDefinition* obj, PropertyName* name,
                                 BarrierKind barrier, TemporaryTypeSet* types);
     bool getPropTryUnboxed(bool* emitted, MDefinition* obj, PropertyName* name,
@@ -480,6 +483,24 @@ class IonBuilder
     bool setPropTryCache(bool* emitted, MDefinition* obj,
                          PropertyName* name, MDefinition* value,
                          bool barrier, TemporaryTypeSet* objTypes);
+
+    // jsop_binary_arith helpers.
+    MBinaryArithInstruction* binaryArithInstruction(JSOp op, MDefinition* left, MDefinition* right);
+    bool binaryArithTryConcat(bool* emitted, JSOp op, MDefinition* left, MDefinition* right);
+    bool binaryArithTrySpecialized(bool* emitted, JSOp op, MDefinition* left, MDefinition* right);
+    bool binaryArithTrySpecializedOnBaselineInspector(bool* emitted, JSOp op, MDefinition* left,
+                                                      MDefinition* right);
+    bool arithTrySharedStub(bool* emitted, JSOp op, MDefinition* left, MDefinition* right);
+
+    // jsop_bitnot helpers.
+    bool bitnotTrySpecialized(bool* emitted, MDefinition* input);
+
+    // jsop_compare helpes.
+    bool compareTrySpecialized(bool* emitted, JSOp op, MDefinition* left, MDefinition* right);
+    bool compareTryBitwise(bool* emitted, JSOp op, MDefinition* left, MDefinition* right);
+    bool compareTrySpecializedOnBaselineInspector(bool* emitted, JSOp op, MDefinition* left,
+                                                  MDefinition* right);
+    bool compareTrySharedStub(bool* emitted, JSOp op, MDefinition* left, MDefinition* right);
 
     // binary data lookup helpers.
     TypedObjectPrediction typedObjectPrediction(MDefinition* typedObj);
@@ -563,6 +584,7 @@ class IonBuilder
 
     // jsop_getelem() helpers.
     bool getElemTryDense(bool* emitted, MDefinition* obj, MDefinition* index);
+    bool getElemTryGetProp(bool* emitted, MDefinition* obj, MDefinition* index);
     bool getElemTryTypedStatic(bool* emitted, MDefinition* obj, MDefinition* index);
     bool getElemTryTypedArray(bool* emitted, MDefinition* obj, MDefinition* index);
     bool getElemTryTypedObject(bool* emitted, MDefinition* obj, MDefinition* index);
@@ -587,6 +609,7 @@ class IonBuilder
                                             TypedObjectPrediction objTypeReprs,
                                             TypedObjectPrediction elemTypeReprs,
                                             int32_t elemSize);
+    TemporaryTypeSet* computeHeapType(const TemporaryTypeSet* objTypes, const jsid id);
 
     enum BoundsChecking { DoBoundsCheck, SkipBoundsCheck };
 
@@ -621,8 +644,9 @@ class IonBuilder
     bool jsop_add(MDefinition* left, MDefinition* right);
     bool jsop_bitnot();
     bool jsop_bitop(JSOp op);
-    bool jsop_binary(JSOp op);
-    bool jsop_binary(JSOp op, MDefinition* left, MDefinition* right);
+    bool jsop_binary_arith(JSOp op);
+    bool jsop_binary_arith(JSOp op, MDefinition* left, MDefinition* right);
+    bool jsop_pow();
     bool jsop_pos();
     bool jsop_neg();
     bool jsop_setarg(uint32_t arg);
@@ -644,6 +668,7 @@ class IonBuilder
     bool jsop_dup2();
     bool jsop_loophead(jsbytecode* pc);
     bool jsop_compare(JSOp op);
+    bool jsop_compare(JSOp op, MDefinition* left, MDefinition* right);
     bool getStaticName(JSObject* staticObject, PropertyName* name, bool* psucceeded,
                        MDefinition* lexicalCheck = nullptr);
     bool setStaticName(JSObject* staticObject, PropertyName* name);
@@ -692,7 +717,7 @@ class IonBuilder
     bool jsop_isnoiter();
     bool jsop_iterend();
     bool jsop_in();
-    bool jsop_in_dense(JSValueType unboxedType);
+    bool jsop_in_dense(MDefinition* obj, MDefinition* id, JSValueType unboxedType);
     bool jsop_instanceof();
     bool jsop_getaliasedvar(ScopeCoordinate sc);
     bool jsop_setaliasedvar(ScopeCoordinate sc);
@@ -719,6 +744,9 @@ class IonBuilder
 
     static InliningDecision DontInline(JSScript* targetScript, const char* reason);
 
+    // Helper function for canInlineTarget
+    bool hasCommonInliningPath(const JSScript* scriptToInline);
+
     // Oracles.
     InliningDecision canInlineTarget(JSFunction* target, CallInfo& callInfo);
     InliningDecision makeInliningDecision(JSObject* target, CallInfo& callInfo);
@@ -734,6 +762,7 @@ class IonBuilder
 
     // Array natives.
     InliningStatus inlineArray(CallInfo& callInfo);
+    InliningStatus inlineArrayIsArray(CallInfo& callInfo);
     InliningStatus inlineArrayPopShift(CallInfo& callInfo, MArrayPopShift::Mode mode);
     InliningStatus inlineArrayPush(CallInfo& callInfo);
     InliningStatus inlineArrayConcat(CallInfo& callInfo);
@@ -752,6 +781,7 @@ class IonBuilder
     InliningStatus inlineMathHypot(CallInfo& callInfo);
     InliningStatus inlineMathMinMax(CallInfo& callInfo, bool max);
     InliningStatus inlineMathPow(CallInfo& callInfo);
+    InliningStatus inlineMathPowHelper(MDefinition* lhs, MDefinition* rhs, MIRType outputType);
     InliningStatus inlineMathRandom(CallInfo& callInfo);
     InliningStatus inlineMathImul(CallInfo& callInfo);
     InliningStatus inlineMathFRound(CallInfo& callInfo);
@@ -777,10 +807,12 @@ class IonBuilder
 
     // Atomics natives.
     InliningStatus inlineAtomicsCompareExchange(CallInfo& callInfo);
+    InliningStatus inlineAtomicsExchange(CallInfo& callInfo);
     InliningStatus inlineAtomicsLoad(CallInfo& callInfo);
     InliningStatus inlineAtomicsStore(CallInfo& callInfo);
     InliningStatus inlineAtomicsFence(CallInfo& callInfo);
-    InliningStatus inlineAtomicsBinop(CallInfo& callInfo, JSFunction* target);
+    InliningStatus inlineAtomicsBinop(CallInfo& callInfo, InlinableNative target);
+    InliningStatus inlineAtomicsIsLockFree(CallInfo& callInfo);
 
     // Slot intrinsics.
     InliningStatus inlineUnsafeSetReservedSlot(CallInfo& callInfo);
@@ -810,6 +842,9 @@ class IonBuilder
     IonBuilder::InliningStatus boxSimd(CallInfo& callInfo, MInstruction* ins,
                                        InlineTypedObject* templateObj);
 
+    InliningStatus inlineSimdInt32x4(CallInfo& callInfo, JSNative native);
+    InliningStatus inlineSimdFloat32x4(CallInfo& callInfo, JSNative native);
+
     template <typename T>
     InliningStatus inlineBinarySimd(CallInfo& callInfo, JSNative native,
                                     typename T::Operation op, SimdTypeDescr::Type type);
@@ -817,6 +852,8 @@ class IonBuilder
                                   MSimdBinaryComp::Operation op, SimdTypeDescr::Type compType);
     InliningStatus inlineUnarySimd(CallInfo& callInfo, JSNative native,
                                    MSimdUnaryArith::Operation op, SimdTypeDescr::Type type);
+    InliningStatus inlineSimdExtractLane(CallInfo& callInfo, JSNative native,
+                                         SimdTypeDescr::Type type);
     InliningStatus inlineSimdReplaceLane(CallInfo& callInfo, JSNative native,
                                          SimdTypeDescr::Type type);
     InliningStatus inlineSimdSplat(CallInfo& callInfo, JSNative native, SimdTypeDescr::Type type);
@@ -923,11 +960,11 @@ class IonBuilder
 
     MGetPropertyCache* getInlineableGetPropertyCache(CallInfo& callInfo);
 
-    JSObject* testSingletonProperty(JSObject* obj, PropertyName* name);
-    JSObject* testSingletonPropertyTypes(MDefinition* obj, PropertyName* name);
+    JSObject* testSingletonProperty(JSObject* obj, jsid id);
+    JSObject* testSingletonPropertyTypes(MDefinition* obj, jsid id);
 
-    uint32_t getDefiniteSlot(TemporaryTypeSet* types, PropertyName* name, uint32_t* pnfixed,
-                             BaselineInspector::ObjectGroupVector& convertUnboxedGroups);
+    uint32_t getDefiniteSlot(TemporaryTypeSet* types, PropertyName* name, uint32_t* pnfixed);
+    MDefinition* convertUnboxedObjects(MDefinition* obj);
     MDefinition* convertUnboxedObjects(MDefinition* obj,
                                        const BaselineInspector::ObjectGroupVector& list);
     uint32_t getUnboxedOffset(TemporaryTypeSet* types, PropertyName* name,

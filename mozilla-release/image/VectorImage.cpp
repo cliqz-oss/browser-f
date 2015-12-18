@@ -27,10 +27,12 @@
 #include "nsSVGEffects.h" // for nsSVGRenderingObserver
 #include "nsWindowMemoryReporter.h"
 #include "ImageRegion.h"
+#include "LookupResult.h"
 #include "Orientation.h"
 #include "SVGDocumentWrapper.h"
 #include "nsIDOMEventListener.h"
 #include "SurfaceCache.h"
+#include "nsDocument.h"
 
 // undef the GetCurrentTime macro defined in WinBase.h from the MS Platform SDK
 #undef GetCurrentTime
@@ -46,6 +48,8 @@ namespace image {
 // Helper-class: SVGRootRenderingObserver
 class SVGRootRenderingObserver final : public nsSVGRenderingObserver {
 public:
+  NS_DECL_ISUPPORTS
+
   SVGRootRenderingObserver(SVGDocumentWrapper* aDocWrapper,
                            VectorImage*        aVectorImage)
     : nsSVGRenderingObserver()
@@ -64,10 +68,6 @@ public:
     mInObserverList = true;
   }
 
-  virtual ~SVGRootRenderingObserver()
-  {
-    StopListening();
-  }
 
   void ResumeHonoringInvalidations()
   {
@@ -75,6 +75,11 @@ public:
   }
 
 protected:
+  virtual ~SVGRootRenderingObserver()
+  {
+    StopListening();
+  }
+
   virtual Element* GetTarget() override
   {
     return mDocWrapper->GetRootSVGElem();
@@ -111,6 +116,8 @@ protected:
   VectorImage* const mVectorImage;   // Raw pointer because it owns me.
   bool mHonoringInvalidations;
 };
+
+NS_IMPL_ISUPPORTS(SVGRootRenderingObserver, nsIMutationObserver)
 
 class SVGParseCompleteListener final : public nsStubDocumentObserver {
 public:
@@ -486,7 +493,6 @@ VectorImage::SetAnimationStartTime(const TimeStamp& aTime)
 // imgIContainer methods
 
 //******************************************************************************
-/* readonly attribute int32_t width; */
 NS_IMETHODIMP
 VectorImage::GetWidth(int32_t* aWidth)
 {
@@ -502,7 +508,6 @@ VectorImage::GetWidth(int32_t* aWidth)
 }
 
 //******************************************************************************
-/* [notxpcom] void requestRefresh ([const] in TimeStamp aTime); */
 NS_IMETHODIMP_(void)
 VectorImage::RequestRefresh(const TimeStamp& aTime)
 {
@@ -552,7 +557,6 @@ VectorImage::GetImageSpaceInvalidationRect(const IntRect& aRect)
 }
 
 //******************************************************************************
-/* readonly attribute int32_t height; */
 NS_IMETHODIMP
 VectorImage::GetHeight(int32_t* aHeight)
 {
@@ -568,7 +572,6 @@ VectorImage::GetHeight(int32_t* aHeight)
 }
 
 //******************************************************************************
-/* [noscript] readonly attribute nsSize intrinsicSize; */
 NS_IMETHODIMP
 VectorImage::GetIntrinsicSize(nsSize* aSize)
 {
@@ -594,7 +597,6 @@ VectorImage::GetIntrinsicSize(nsSize* aSize)
 }
 
 //******************************************************************************
-/* [noscript] readonly attribute nsSize intrinsicRatio; */
 NS_IMETHODIMP
 VectorImage::GetIntrinsicRatio(nsSize* aRatio)
 {
@@ -618,7 +620,6 @@ VectorImage::GetOrientation()
 }
 
 //******************************************************************************
-/* readonly attribute unsigned short type; */
 NS_IMETHODIMP
 VectorImage::GetType(uint16_t* aType)
 {
@@ -629,7 +630,6 @@ VectorImage::GetType(uint16_t* aType)
 }
 
 //******************************************************************************
-/* readonly attribute boolean animated; */
 NS_IMETHODIMP
 VectorImage::GetAnimated(bool* aAnimated)
 {
@@ -642,7 +642,6 @@ VectorImage::GetAnimated(bool* aAnimated)
 }
 
 //******************************************************************************
-/* [notxpcom] int32_t getFirstFrameDelay (); */
 int32_t
 VectorImage::GetFirstFrameDelay()
 {
@@ -668,20 +667,9 @@ VectorImage::IsOpaque()
 //******************************************************************************
 /* [noscript] SourceSurface getFrame(in uint32_t aWhichFrame,
  *                                   in uint32_t aFlags; */
-NS_IMETHODIMP_(TemporaryRef<SourceSurface>)
-VectorImage::GetFrame(uint32_t aWhichFrame,
-                      uint32_t aFlags)
+NS_IMETHODIMP_(already_AddRefed<SourceSurface>)
+VectorImage::GetFrame(uint32_t aWhichFrame, uint32_t aFlags)
 {
-  MOZ_ASSERT(aWhichFrame <= FRAME_MAX_VALUE);
-
-  if (aWhichFrame > FRAME_MAX_VALUE) {
-    return nullptr;
-  }
-
-  if (mError || !mIsFullyLoaded) {
-    return nullptr;
-  }
-
   // Look up height & width
   // ----------------------
   SVGSVGElement* svgElem = mSVGDocumentWrapper->GetRootSVGElem();
@@ -696,12 +684,32 @@ VectorImage::GetFrame(uint32_t aWhichFrame,
     return nullptr;
   }
 
+  return GetFrameAtSize(imageIntSize, aWhichFrame, aFlags);
+}
+
+NS_IMETHODIMP_(already_AddRefed<SourceSurface>)
+VectorImage::GetFrameAtSize(const IntSize& aSize,
+                            uint32_t aWhichFrame,
+                            uint32_t aFlags)
+{
+  MOZ_ASSERT(aWhichFrame <= FRAME_MAX_VALUE);
+
+  if (aSize.IsEmpty()) {
+    return nullptr;
+  }
+
+  if (aWhichFrame > FRAME_MAX_VALUE) {
+    return nullptr;
+  }
+
+  if (mError || !mIsFullyLoaded) {
+    return nullptr;
+  }
+
   // Make our surface the size of what will ultimately be drawn to it.
   // (either the full image size, or the restricted region)
   RefPtr<DrawTarget> dt = gfxPlatform::GetPlatform()->
-    CreateOffscreenContentDrawTarget(IntSize(imageIntSize.width,
-                                             imageIntSize.height),
-                                     SurfaceFormat::B8G8R8A8);
+    CreateOffscreenContentDrawTarget(aSize, SurfaceFormat::B8G8R8A8);
   if (!dt) {
     NS_ERROR("Could not create a DrawTarget");
     return nullptr;
@@ -709,8 +717,8 @@ VectorImage::GetFrame(uint32_t aWhichFrame,
 
   nsRefPtr<gfxContext> context = new gfxContext(dt);
 
-  auto result = Draw(context, imageIntSize,
-                     ImageRegion::Create(imageIntSize),
+  auto result = Draw(context, aSize,
+                     ImageRegion::Create(aSize),
                      aWhichFrame, GraphicsFilter::FILTER_NEAREST,
                      Nothing(), aFlags);
 
@@ -724,7 +732,6 @@ VectorImage::IsImageContainerAvailable(LayerManager* aManager, uint32_t aFlags)
 }
 
 //******************************************************************************
-/* [noscript] ImageContainer getImageContainer(); */
 NS_IMETHODIMP_(already_AddRefed<ImageContainer>)
 VectorImage::GetImageContainer(LayerManager* aManager, uint32_t aFlags)
 {
@@ -829,18 +836,18 @@ VectorImage::Draw(gfxContext* aContext,
     return DrawResult::SUCCESS;
   }
 
-  DrawableFrameRef frameRef =
+  LookupResult result =
     SurfaceCache::Lookup(ImageKey(this),
                          VectorSurfaceKey(params.size,
                                           params.svgContext,
                                           params.animationTime));
 
   // Draw.
-  if (frameRef) {
-    RefPtr<SourceSurface> surface = frameRef->GetSurface();
+  if (result) {
+    RefPtr<SourceSurface> surface = result.DrawableRef()->GetSurface();
     if (surface) {
       nsRefPtr<gfxDrawable> svgDrawable =
-        new gfxSurfaceDrawable(surface, frameRef->GetSize());
+        new gfxSurfaceDrawable(surface, result.DrawableRef()->GetSize());
       Show(svgDrawable, params);
       return DrawResult::SUCCESS;
     }
@@ -913,8 +920,7 @@ VectorImage::CreateSurfaceAndShow(const SVGDrawingParameters& aParams)
   SurfaceCache::Insert(frame, ImageKey(this),
                        VectorSurfaceKey(aParams.size,
                                         aParams.svgContext,
-                                        aParams.animationTime),
-                       Lifetime::Persistent);
+                                        aParams.animationTime));
 
   // Draw.
   nsRefPtr<gfxDrawable> drawable =
@@ -952,7 +958,7 @@ VectorImage::RecoverFromLossOfSurfaces()
 }
 
 //******************************************************************************
-/* void requestDecode() */
+
 NS_IMETHODIMP
 VectorImage::RequestDecode()
 {
@@ -977,7 +983,7 @@ VectorImage::RequestDecodeForSize(const nsIntSize& aSize, uint32_t aFlags)
 }
 
 //******************************************************************************
-/* void lockImage() */
+
 NS_IMETHODIMP
 VectorImage::LockImage()
 {
@@ -998,7 +1004,7 @@ VectorImage::LockImage()
 }
 
 //******************************************************************************
-/* void unlockImage() */
+
 NS_IMETHODIMP
 VectorImage::UnlockImage()
 {
@@ -1024,7 +1030,7 @@ VectorImage::UnlockImage()
 }
 
 //******************************************************************************
-/* void requestDiscard() */
+
 NS_IMETHODIMP
 VectorImage::RequestDiscard()
 {
@@ -1049,7 +1055,6 @@ VectorImage::OnSurfaceDiscarded()
 }
 
 //******************************************************************************
-/* void resetAnimation (); */
 NS_IMETHODIMP
 VectorImage::ResetAnimation()
 {
@@ -1079,7 +1084,6 @@ VectorImage::GetFrameIndex(uint32_t aWhichFrame)
 // nsIRequestObserver methods
 
 //******************************************************************************
-/* void onStartRequest(in nsIRequest request, in nsISupports ctxt); */
 NS_IMETHODIMP
 VectorImage::OnStartRequest(nsIRequest* aRequest, nsISupports* aCtxt)
 {
@@ -1094,12 +1098,10 @@ VectorImage::OnStartRequest(nsIRequest* aRequest, nsISupports* aCtxt)
     return rv;
   }
 
-  // Sending StartDecode will block page load until the document's ready.  (We
-  // unblock it by sending StopDecode in OnSVGDocumentLoaded or
-  // OnSVGDocumentError.)
+  // Block page load until the document's ready.  (We unblock it in
+  // OnSVGDocumentLoaded or OnSVGDocumentError.)
   if (mProgressTracker) {
-    mProgressTracker->SyncNotifyProgress(FLAG_DECODE_STARTED |
-                                         FLAG_ONLOAD_BLOCKED);
+    mProgressTracker->SyncNotifyProgress(FLAG_ONLOAD_BLOCKED);
   }
 
   // Create a listener to wait until the SVG document is fully loaded, which
@@ -1254,6 +1256,24 @@ VectorImage::InvalidateObserversOnNextRefreshDriverTick()
     mHasPendingInvalidation = true;
   } else {
     SendInvalidationNotifications();
+  }
+}
+
+void
+VectorImage::PropagateUseCounters(nsIDocument* aParentDocument)
+{
+  nsIDocument* doc = mSVGDocumentWrapper->GetDocument();
+  if (doc) {
+    doc->PropagateUseCounters(aParentDocument);
+  }
+}
+
+void
+VectorImage::ReportUseCounters()
+{
+  nsIDocument* doc = mSVGDocumentWrapper->GetDocument();
+  if (doc) {
+    static_cast<nsDocument*>(doc)->ReportUseCounters();
   }
 }
 

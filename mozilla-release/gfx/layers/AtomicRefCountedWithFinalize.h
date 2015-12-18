@@ -27,7 +27,7 @@ class RefSet;
 
 template<typename T>
 class RefQueue;
-}
+} // namespace gl
 
 template<typename T>
 class AtomicRefCountedWithFinalize
@@ -67,9 +67,6 @@ public:
 
     template<class U>
     friend class ::mozilla::StaticRefPtr;
-
-    template<typename U>
-    friend class TemporaryRef;
 
     template<class U>
     friend class ::nsRefPtr;

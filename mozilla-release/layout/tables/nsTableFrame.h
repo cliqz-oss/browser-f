@@ -28,7 +28,7 @@ class nsStyleContext;
 namespace mozilla {
 class WritingMode;
 class LogicalMargin;
-}
+} // namespace mozilla
 
 struct nsTableReflowState;
 struct BCPropertyData;
@@ -814,7 +814,7 @@ protected:
 
   void SetColumnDimensions(nscoord aHeight, WritingMode aWM,
                            const LogicalMargin& aBorderPadding,
-                           nscoord aContainerWidth);
+                           const nsSize& aContainerSize);
 
   int32_t CollectRows(nsIFrame*                   aFrame,
                       nsTArray<nsTableRowFrame*>& aCollection);

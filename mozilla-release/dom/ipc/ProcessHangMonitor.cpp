@@ -106,7 +106,7 @@ class HangMonitorChild
  private:
   void ShutdownOnThread();
 
-  static HangMonitorChild* sInstance;
+  static Atomic<HangMonitorChild*> sInstance;
 
   const nsRefPtr<ProcessHangMonitor> mHangMonitor;
   Monitor mMonitor;
@@ -124,7 +124,7 @@ class HangMonitorChild
   bool mIPCOpen;
 };
 
-HangMonitorChild* HangMonitorChild::sInstance;
+Atomic<HangMonitorChild*> HangMonitorChild::sInstance;
 
 /* Parent process objects */
 
@@ -675,10 +675,10 @@ HangMonitoredProcess::GetHangType(uint32_t* aHangType)
     *aHangType = PLUGIN_HANG;
     break;
    default:
-    MOZ_ASSERT(false);
+    MOZ_ASSERT_UNREACHABLE("Unexpected HangData type");
     return NS_ERROR_UNEXPECTED;
-    break;
   }
+
   return NS_OK;
 }
 
@@ -750,7 +750,7 @@ HangMonitoredProcess::GetPluginName(nsACString& aPluginName)
     return NS_ERROR_UNEXPECTED;
   }
 
-  aPluginName = tag->mName;
+  aPluginName = tag->Name();
   return NS_OK;
 }
 
@@ -817,7 +817,8 @@ HangMonitoredProcess::TerminatePlugin()
   }
 
   uint32_t id = mHangData.get_PluginHangData().pluginId();
-  plugins::TerminatePlugin(id, mBrowserDumpId);
+  plugins::TerminatePlugin(id, NS_LITERAL_CSTRING("HangMonitor"),
+                           mBrowserDumpId);
 
   if (mActor) {
     mActor->CleanupPluginHang(id, false);
@@ -887,7 +888,7 @@ ProcessHangMonitor::ProcessHangMonitor()
 
   MOZ_COUNT_CTOR(ProcessHangMonitor);
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
     obs->AddObserver(this, "xpcom-shutdown", false);
   }

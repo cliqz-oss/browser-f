@@ -21,12 +21,12 @@ from marionette_driver.errors import (
         StaleElementException, ScriptTimeoutException, ElementNotVisibleException,
         NoSuchFrameException, InvalidElementStateException, NoAlertPresentException,
         InvalidCookieDomainException, UnableToSetCookieException, InvalidSelectorException,
-        MoveTargetOutOfBoundsException, FrameSendNotInitializedError, FrameSendFailureError
+        MoveTargetOutOfBoundsException
         )
 from marionette_driver.marionette import Marionette
-from mozlog.structured.structuredlog import get_default_logger
 from marionette_driver.wait import Wait
 from marionette_driver.expected import element_present, element_not_present
+from mozlog import get_default_logger
 
 
 class SkipTest(Exception):
@@ -376,7 +376,7 @@ class CommonTestCase(unittest.TestCase):
     def id(self):
         # TBPL starring requires that the "test name" field of a failure message
         # not differ over time. The test name to be used is passed to
-        # mozlog.structured via the test id, so this is overriden to maintain
+        # mozlog via the test id, so this is overriden to maintain
         # consistency.
         return self.test_name
 
@@ -655,6 +655,20 @@ class MarionetteTestCase(CommonTestCase):
 
     @classmethod
     def add_tests_to_suite(cls, mod_name, filepath, suite, testloader, marionette, testvars, **kwargs):
+        # since we use imp.load_source to load test modules, if a module
+        # is loaded with the same name as another one the module would just be
+        # reloaded.
+        #
+        # We may end up by finding too many test in a module then since
+        # reload() only update the module dict (so old keys are still there!)
+        # see https://docs.python.org/2/library/functions.html#reload
+        #
+        # we get rid of that by removing the module from sys.modules,
+        # so we ensure that it will be fully loaded by the
+        # imp.load_source call.
+        if mod_name in sys.modules:
+            del sys.modules[mod_name]
+
         test_mod = imp.load_source(mod_name, filepath)
 
         for name in dir(test_mod):

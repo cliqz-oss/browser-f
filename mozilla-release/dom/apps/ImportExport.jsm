@@ -13,6 +13,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/AppsUtils.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
 Cu.import("resource://gre/modules/Webapps.jsm");
+Cu.import("resource://gre/modules/MessageBroadcaster.jsm");
 
 Cu.importGlobalProperties(['File']);
 
@@ -131,8 +132,12 @@ this.ImportExport = {
     }
 
     let files = [];
+    debug("aApp=" + uneval(aApp));
     if (aApp.origin.startsWith("app://")) {
-      files.push("update.webapp");
+      // Apps sideloaded from WebIDE don't have an update manifest.
+      if (!aApp.sideloaded) {
+        files.push("update.webapp");
+      }
       files.push("application.zip");
     } else {
       files.push("manifest.webapp");
@@ -215,18 +220,19 @@ this.ImportExport = {
   _importPackagedApp: function(aZipReader, aManifestURL, aDir) {
     debug("Importing packaged app " + aManifestURL);
 
-    if (!aZipReader.hasEntry("update.webapp")) {
-      throw "NoUpdateManifestFound";
-    }
-
     if (!aZipReader.hasEntry("application.zip")) {
       throw "NoPackageFound";
     }
 
+    // The order matters, application.zip needs to be the last element.
+    let files = [];
+    aZipReader.hasEntry("update.webapp") && files.push("update.webapp");
+    files.push("application.zip");
+
     // Extract application.zip and update.webapp
     // We get manifest.webapp from application.zip itself.
     let file;
-    ["update.webapp", "application.zip"].forEach((aName) => {
+    files.forEach((aName) => {
       file = aDir.clone();
       file.append(aName);
       aZipReader.extract(aName, file);
@@ -470,10 +476,10 @@ this.ImportExport = {
 
       app = AppsUtils.cloneAppObject(meta);
       app.manifest = manifest;
-      DOMApplicationRegistry.broadcastMessage("Webapps:AddApp",
-                                              { id: meta.id, app: app });
-      DOMApplicationRegistry.broadcastMessage("Webapps:Install:Return:OK",
-                                              { app: app });
+      MessageBroadcaster.broadcastMessage("Webapps:AddApp",
+                                          { id: meta.id, app: app });
+      MessageBroadcaster.broadcastMessage("Webapps:Install:Return:OK",
+                                          { app: app });
       Services.obs.notifyObservers(null, "webapps-installed",
         JSON.stringify({ manifestURL: meta.manifestURL }));
 

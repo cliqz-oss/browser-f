@@ -40,7 +40,6 @@ GLScreenBuffer::Create(GLContext* gl,
         return Move(ret);
     }
 
-
     layers::TextureFlags flags = layers::TextureFlags::ORIGIN_BOTTOM_LEFT;
     if (!caps.premultAlpha) {
         flags |= layers::TextureFlags::NON_PREMULTIPLIED;
@@ -60,6 +59,7 @@ GLScreenBuffer::GLScreenBuffer(GLContext* gl,
     , mFactory(Move(factory))
     , mNeedsBlit(true)
     , mUserReadBufferMode(LOCAL_GL_BACK)
+    , mUserDrawBufferMode(LOCAL_GL_BACK)
     , mUserDrawFB(0)
     , mUserReadFB(0)
     , mInternalDrawFB(0)
@@ -446,6 +446,12 @@ GLScreenBuffer::Attach(SharedSurface* surf, const gfx::IntSize& size)
         mRead->SetReadBuffer(mUserReadBufferMode);
     }
 
+    // Update the DrawBuffer mode.
+    if (mGL->IsSupported(gl::GLFeature::draw_buffers)) {
+        BindFB(0);
+        SetDrawBuffer(mUserDrawBufferMode);
+    }
+
     RequireBlit();
 
     return true;
@@ -547,6 +553,38 @@ GLScreenBuffer::CreateRead(SharedSurface* surf)
     const SurfaceCaps& caps = mFactory->ReadCaps();
 
     return ReadBuffer::Create(gl, caps, formats, surf);
+}
+
+void
+GLScreenBuffer::SetDrawBuffer(GLenum mode)
+{
+    MOZ_ASSERT(mGL->IsSupported(gl::GLFeature::draw_buffers));
+    MOZ_ASSERT(GetDrawFB() == 0);
+
+    if (!mGL->IsSupported(GLFeature::draw_buffers))
+        return;
+
+    mUserDrawBufferMode = mode;
+
+    GLuint fb = mDraw ? mDraw->mFB : mRead->mFB;
+    GLenum internalMode;
+
+    switch (mode) {
+    case LOCAL_GL_BACK:
+        internalMode = (fb == 0) ? LOCAL_GL_BACK
+                                 : LOCAL_GL_COLOR_ATTACHMENT0;
+        break;
+
+    case LOCAL_GL_NONE:
+        internalMode = LOCAL_GL_NONE;
+        break;
+
+    default:
+        MOZ_CRASH("Bad value.");
+    }
+
+    mGL->MakeCurrent();
+    mGL->fDrawBuffers(1, &internalMode);
 }
 
 void
@@ -791,7 +829,8 @@ ReadBuffer::SetReadBuffer(GLenum userMode) const
 
     switch (userMode) {
     case LOCAL_GL_BACK:
-        internalMode = (mFB == 0) ? LOCAL_GL_BACK
+    case LOCAL_GL_FRONT:
+        internalMode = (mFB == 0) ? userMode
                                   : LOCAL_GL_COLOR_ATTACHMENT0;
         break;
 

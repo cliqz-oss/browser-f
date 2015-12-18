@@ -11,7 +11,7 @@ function run_test() {
 }
 
 add_task(function test() {
-  let { ThreadNode } = devtools.require("devtools/performance/tree-model");
+  let { ThreadNode } = require("devtools/performance/tree-model");
 
   // Create a root node from a given samples array, filtering by time.
   //
@@ -58,7 +58,7 @@ add_task(function test() {
     "The correct number of child calls were calculated for the 'A > E > F' node.");
 });
 
-let gThread = synthesizeProfileForTest([{
+var gThread = synthesizeProfileForTest([{
   time: 5,
   frames: [
     { location: "(root)" },
