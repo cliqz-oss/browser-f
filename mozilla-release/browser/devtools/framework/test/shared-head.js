@@ -3,11 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // This shared-head.js file is used for multiple directories in devtools.
+const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+const {Services} = Cu.import("resource://gre/modules/Services.jsm", {});
+const {gDevTools} = Cu.import("resource:///modules/devtools/gDevTools.jsm", {});
 const {console} = Cu.import("resource://gre/modules/devtools/Console.jsm", {});
-const {Promise: promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
-const {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 const {ScratchpadManager} = Cu.import("resource:///modules/devtools/scratchpad-manager.jsm", {});
-const {TargetFactory} = devtools;
+const {require} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
+const {TargetFactory} = require("devtools/framework/target");
+const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
+const promise = require("promise");
 
 const TEST_DIR = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
 const CHROME_URL_ROOT = TEST_DIR + "/";
@@ -29,20 +33,22 @@ function getFrameScript() {
   return mm;
 }
 
-gDevTools.testing = true;
+DevToolsUtils.testing = true;
 registerCleanupFunction(() => {
-  gDevTools.testing = false;
+  DevToolsUtils.testing = false;
   Services.prefs.clearUserPref("devtools.dump.emit");
   Services.prefs.clearUserPref("devtools.toolbox.host");
   Services.prefs.clearUserPref("devtools.toolbox.previousHost");
 });
 
-registerCleanupFunction(function cleanup() {
+registerCleanupFunction(function* cleanup() {
+  let target = TargetFactory.forTab(gBrowser.selectedTab);
+  yield gDevTools.closeToolbox(target);
+
   while (gBrowser.tabs.length > 1) {
     gBrowser.removeCurrentTab();
   }
 });
-
 
 /**
  * Add a new test tab in the browser and load the given url.
@@ -53,13 +59,12 @@ function addTab(url) {
   info("Adding a new tab with URL: '" + url + "'");
   let def = promise.defer();
 
-  let tab = gBrowser.selectedTab = gBrowser.addTab();
+  let tab = gBrowser.selectedTab = gBrowser.addTab(url);
   gBrowser.selectedBrowser.addEventListener("load", function onload() {
     gBrowser.selectedBrowser.removeEventListener("load", onload, true);
     info("URL '" + url + "' loading complete");
     def.resolve(tab);
   }, true);
-  content.location = url;
 
   return def.promise;
 }

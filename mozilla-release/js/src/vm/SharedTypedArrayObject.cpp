@@ -7,6 +7,7 @@
 #include "vm/SharedTypedArrayObject.h"
 
 #include "mozilla/Alignment.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/PodOperations.h"
 
 #include <string.h>
@@ -97,7 +98,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
     typedef SharedTypedArrayObjectTemplate<NativeType> ThisTypedArrayObject;
     typedef SharedArrayBufferObject BufferType;
 
-    static Scalar::Type ArrayTypeID() { return TypeIDOfType<NativeType>(); }
+    static MOZ_CONSTEXPR Scalar::Type ArrayTypeID() { return TypeIDOfType<NativeType>::id; }
     static bool ArrayTypeIsUnsigned() { return TypeIsUnsigned<NativeType>(); }
     static bool ArrayTypeIsFloatingPoint() { return TypeIsFloatingPoint<NativeType>(); }
 
@@ -308,7 +309,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
 
     template<Value ValueGetter(SharedTypedArrayObject* tarr)>
     static bool
-    GetterImpl(JSContext* cx, CallArgs args)
+    GetterImpl(JSContext* cx, const CallArgs& args)
     {
         MOZ_ASSERT(is(args.thisv()));
         args.rval().set(ValueGetter(&args.thisv().toObject().as<SharedTypedArrayObject>()));
@@ -327,7 +328,7 @@ class SharedTypedArrayObjectTemplate : public SharedTypedArrayObject
     }
 
     static bool
-    BufferGetterImpl(JSContext* cx, CallArgs args)
+    BufferGetterImpl(JSContext* cx, const CallArgs& args)
     {
         MOZ_ASSERT(is(args.thisv()));
         Rooted<SharedTypedArrayObject*> tarray(cx, &args.thisv().toObject().as<SharedTypedArrayObject>());
@@ -725,7 +726,7 @@ IMPL_SHARED_TYPED_ARRAY_COMBINED_UNWRAPPERS(Float64, double, double)
 {                                                                              \
     "Shared" #_typedArray,                                                     \
     JSCLASS_HAS_RESERVED_SLOTS(SharedTypedArrayObject::RESERVED_SLOTS) |       \
-    JSCLASS_HAS_PRIVATE | JSCLASS_IMPLEMENTS_BARRIERS |                        \
+    JSCLASS_HAS_PRIVATE |                                                      \
     JSCLASS_HAS_CACHED_PROTO(JSProto_Shared##_typedArray),                     \
     nullptr,                 /* addProperty */                                 \
     nullptr,                 /* delProperty */                                 \

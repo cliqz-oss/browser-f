@@ -64,6 +64,21 @@ Performance::GetPerformanceTimingFromString(const nsAString& aProperty)
   return 0;
 }
 
+void
+Performance::InsertUserEntry(PerformanceEntry* aEntry)
+{
+  if (mWorkerPrivate->PerformanceLoggingEnabled()) {
+    nsAutoCString uri;
+    nsCOMPtr<nsIURI> scriptURI = mWorkerPrivate->GetResolvedScriptURI();
+    if (!scriptURI || NS_FAILED(scriptURI->GetHost(uri))) {
+      // If we have no URI, just put in "none".
+      uri.AssignLiteral("none");
+    }
+    PerformanceBase::LogEntry(aEntry, uri);
+  }
+  PerformanceBase::InsertUserEntry(aEntry);
+}
+
 DOMHighResTimeStamp
 Performance::DeltaFromNavigationStart(DOMHighResTimeStamp aTime)
 {

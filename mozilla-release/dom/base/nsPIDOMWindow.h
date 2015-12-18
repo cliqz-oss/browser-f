@@ -36,11 +36,11 @@ namespace mozilla {
 namespace dom {
 class AudioContext;
 class Element;
-}
+} // namespace dom
 namespace gfx {
 class VRHMDInfo;
-}
-}
+} // namespace gfx
+} // namespace mozilla
 
 // Popup control state enum. The values in this enum must go from most
 // permissive to least permissive so that it's safe to push state in
@@ -62,8 +62,8 @@ enum UIStateChangeType
 };
 
 #define NS_PIDOMWINDOW_IID \
-{ 0x0df7578f, 0x31d4, 0x4391, \
-  { 0x98, 0xd4, 0xf3, 0x7d, 0x51, 0x8e, 0xa4, 0x37 } }
+{ 0x052e675a, 0xacd3, 0x48d1, \
+  { 0x8a, 0xcd, 0xbf, 0xff, 0xbd, 0x24, 0x4c, 0xed } }
 
 class nsPIDOMWindow : public nsIDOMWindowInternal
 {
@@ -185,7 +185,8 @@ public:
   float GetAudioVolume() const;
   nsresult SetAudioVolume(float aVolume);
 
-  float GetAudioGlobalVolume();
+  bool GetAudioCaptured() const;
+  nsresult SetAudioCapture(bool aCapture);
 
   virtual void SetServiceWorkersTestingEnabled(bool aEnabled)
   {
@@ -367,7 +368,7 @@ public:
   /**
    * Get the docshell in this window.
    */
-  nsIDocShell *GetDocShell()
+  nsIDocShell *GetDocShell() const
   {
     if (mOuterWindow) {
       return mOuterWindow->mDocShell;
@@ -461,24 +462,35 @@ public:
     }
   }
 
+  enum FullscreenReason
+  {
+    // Toggling the fullscreen mode requires trusted context.
+    eForFullscreenMode,
+    // Fullscreen API is the API provided to untrusted content.
+    eForFullscreenAPI,
+    // This reason can only be used with exiting fullscreen.
+    // It is otherwise identical to eForFullscreenAPI except it would
+    // suppress the fullscreen transition.
+    eForForceExitFullscreen
+  };
+
   /**
    * Moves the top-level window into fullscreen mode if aIsFullScreen is true,
-   * otherwise exits fullscreen. If aFullscreenMode is true, this method is
-   * called for fullscreen mode instead of DOM fullscreen, which means it can
-   * only change window state in a context trusted for write.
+   * otherwise exits fullscreen.
    *
    * If aHMD is not null, the window is made full screen on the given VR HMD
    * device instead of its currrent display.
    *
    * Outer windows only.
    */
-  virtual nsresult SetFullScreenInternal(bool aIsFullscreen, bool aFullscreenMode,
-                                         mozilla::gfx::VRHMDInfo *aHMD = nullptr) = 0;
+  virtual nsresult SetFullscreenInternal(
+    FullscreenReason aReason, bool aIsFullscreen,
+    mozilla::gfx::VRHMDInfo *aHMD = nullptr) = 0;
 
   /**
    * This function should be called when the fullscreen state is flipped.
    * If no widget is involved the fullscreen change, this method is called
-   * by SetFullScreenInternal, otherwise, it is called when the widget
+   * by SetFullscreenInternal, otherwise, it is called when the widget
    * finishes its change to or from fullscreen.
    *
    * @param aIsFullscreen indicates whether the widget is in fullscreen.
@@ -631,7 +643,7 @@ public:
    *
    * Inner windows only.
    */
-  virtual void EnableNetworkEvent(uint32_t aType) = 0;
+  virtual void EnableNetworkEvent(mozilla::EventMessage aEventMessage) = 0;
 
   /**
    * Tell the window that it should stop to listen to the network event of the
@@ -639,7 +651,7 @@ public:
    *
    * Inner windows only.
    */
-  virtual void DisableNetworkEvent(uint32_t aType) = 0;
+  virtual void DisableNetworkEvent(mozilla::EventMessage aEventMessage) = 0;
 #endif // MOZ_B2G
 
   /**
@@ -778,7 +790,10 @@ protected:
 
   // These members are only used on outer windows.
   nsCOMPtr<mozilla::dom::Element> mFrameElement;
-  nsIDocShell           *mDocShell;  // Weak Reference
+  // This reference is used by the subclass nsGlobalWindow, and cleared in it's
+  // DetachFromDocShell() method. This method is called by nsDocShell::Destroy(),
+  // which is called before the nsDocShell is destroyed.
+  nsIDocShell* MOZ_NON_OWNING_REF mDocShell;  // Weak Reference
 
   // mPerformance is only used on inner windows.
   nsRefPtr<nsPerformance>       mPerformance;
@@ -813,6 +828,8 @@ protected:
 
   bool                   mAudioMuted;
   float                  mAudioVolume;
+
+  bool                   mAudioCaptured;
 
   // current desktop mode flag.
   bool                   mDesktopModeViewport;

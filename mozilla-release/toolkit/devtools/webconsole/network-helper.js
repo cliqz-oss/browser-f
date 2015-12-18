@@ -56,7 +56,7 @@
 
 const {components, Cc, Ci, Cu} = require("chrome");
 loader.lazyImporter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm");
-loader.lazyImporter(this, "DevToolsUtils", "resource://gre/modules/devtools/DevToolsUtils.jsm");
+const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 
 // The cache used in the `nsIURL` function.
 const gNSURLStore = new Map();
@@ -67,7 +67,7 @@ const gNSURLStore = new Map();
  * Most of the following functions have been taken from the Firebug source. They
  * have been modified to match the Firefox coding rules.
  */
-let NetworkHelper = {
+var NetworkHelper = {
   /**
    * Converts aText with a given aCharset to unicode.
    *

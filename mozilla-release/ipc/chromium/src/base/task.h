@@ -18,7 +18,7 @@
 class Task : public tracked_objects::Tracked {
  public:
   Task() {}
-  virtual ~Task() {}
+  virtual  B2G_ACL_EXPORT ~Task() {}
 
   // Tasks are automatically deleted after Run is called.
   virtual void Run() = 0;
@@ -264,6 +264,19 @@ struct RunnableMethodTraits {
   }
   static void ReleaseCallee(T* obj) {
     obj->Release();
+  }
+};
+
+// This allows using the NewRunnableMethod() functions with a const pointer
+// to the callee object. See the similar support in nsRefPtr for a rationale
+// of why this is reasonable.
+template <class T>
+struct RunnableMethodTraits<const T> {
+  static void RetainCallee(const T* obj) {
+    const_cast<T*>(obj)->AddRef();
+  }
+  static void ReleaseCallee(const  T* obj) {
+    const_cast<T*>(obj)->Release();
   }
 };
 

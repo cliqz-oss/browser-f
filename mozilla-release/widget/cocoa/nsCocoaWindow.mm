@@ -1,4 +1,5 @@
 /* -*- Mode: Objective-C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -33,6 +34,7 @@
 #include "nsIScreenManager.h"
 #include "nsIWidgetListener.h"
 #include "nsIPresShell.h"
+#include "nsScreenCocoa.h"
 
 #include "gfxPlatform.h"
 #include "qcms.h"
@@ -45,8 +47,8 @@
 namespace mozilla {
 namespace layers {
 class LayerManager;
-}
-}
+} // namespace layers
+} // namespace mozilla
 using namespace mozilla::layers;
 using namespace mozilla::widget;
 using namespace mozilla;
@@ -101,6 +103,7 @@ nsCocoaWindow::nsCocoaWindow()
 , mDelegate(nil)
 , mSheetWindowParent(nil)
 , mPopupContentView(nil)
+, mFullscreenTransitionAnimation(nil)
 , mShadowStyle(NS_STYLE_WINDOW_SHADOW_DEFAULT)
 , mBackingScaleFactor(0.0)
 , mAnimationType(nsIWidget::eGenericWindowAnimation)
@@ -108,7 +111,6 @@ nsCocoaWindow::nsCocoaWindow()
 , mSheetNeedsShow(false)
 , mInFullScreenMode(false)
 , mInFullScreenTransition(false)
-, mInDOMFullscreenTransition(false)
 , mModal(false)
 , mSupportsNativeFullScreen(false)
 , mInNativeFullScreenMode(false)
@@ -499,12 +501,21 @@ NS_IMETHODIMP nsCocoaWindow::CreatePopupContentView(const nsIntRect &aRect)
 
 NS_IMETHODIMP nsCocoaWindow::Destroy()
 {
+  if (mOnDestroyCalled)
+    return NS_OK;
+  mOnDestroyCalled = true;
+
   // If we don't hide here we run into problems with panels, this is not ideal.
   // (Bug 891424)
   Show(false);
 
   if (mPopupContentView)
     mPopupContentView->Destroy();
+
+  if (mFullscreenTransitionAnimation) {
+    [mFullscreenTransitionAnimation stopAnimation];
+    ReleaseFullscreenTransitionAnimation();
+  }
 
   nsBaseWidget::Destroy();
   // nsBaseWidget::Destroy() calls GetParent()->RemoveChild(this). But we
@@ -1166,7 +1177,7 @@ NS_METHOD nsCocoaWindow::PlaceBehind(nsTopLevelWidgetZPlacement aPlacement,
   return NS_OK;
 }
 
-NS_METHOD nsCocoaWindow::SetSizeMode(int32_t aMode)
+NS_METHOD nsCocoaWindow::SetSizeMode(nsSizeMode aMode)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
@@ -1266,9 +1277,108 @@ NS_IMETHODIMP nsCocoaWindow::HideWindowChrome(bool aShouldHide)
   NS_OBJC_END_TRY_ABORT_BLOCK_NSRESULT;
 }
 
-void nsCocoaWindow::PrepareForDOMFullscreenTransition()
+class FullscreenTransitionData : public nsISupports
 {
-  mInDOMFullscreenTransition = true;
+public:
+  NS_DECL_ISUPPORTS
+
+  explicit FullscreenTransitionData(NSWindow* aWindow)
+    : mTransitionWindow(aWindow) { }
+
+  NSWindow* mTransitionWindow;
+
+private:
+  virtual ~FullscreenTransitionData()
+  {
+    [mTransitionWindow close];
+  }
+};
+
+NS_IMPL_ISUPPORTS0(FullscreenTransitionData)
+
+@interface FullscreenTransitionDelegate : NSObject <NSAnimationDelegate>
+{
+@public
+  nsCocoaWindow* mWindow;
+  nsIRunnable* mCallback;
+}
+@end
+
+@implementation FullscreenTransitionDelegate
+- (void)cleanupAndDispatch:(NSAnimation* )animation
+{
+  [animation setDelegate:nil];
+  [self autorelease];
+  // The caller should have added ref for us.
+  NS_DispatchToMainThread(already_AddRefed<nsIRunnable>(mCallback));
+}
+
+- (void)animationDidEnd:(NSAnimation *)animation
+{
+  MOZ_ASSERT(animation == mWindow->FullscreenTransitionAnimation(),
+             "Should be handling the only animation on the window");
+  mWindow->ReleaseFullscreenTransitionAnimation();
+  [self cleanupAndDispatch:animation];
+}
+
+- (void)animationDidStop:(NSAnimation *)animation
+{
+  [self cleanupAndDispatch:animation];
+}
+@end
+
+/* virtual */ bool
+nsCocoaWindow::PrepareForFullscreenTransition(nsISupports** aData)
+{
+  nsCOMPtr<nsIScreen> widgetScreen = GetWidgetScreen();
+  nsScreenCocoa* screen = static_cast<nsScreenCocoa*>(widgetScreen.get());
+  NSScreen* cocoaScreen = screen->CocoaScreen();
+
+  NSWindow* win =
+    [[NSWindow alloc] initWithContentRect:[cocoaScreen frame]
+                                styleMask:NSBorderlessWindowMask
+                                  backing:NSBackingStoreBuffered
+                                    defer:YES];
+  [win setBackgroundColor:[NSColor blackColor]];
+  [win setAlphaValue:0];
+  [win setIgnoresMouseEvents:YES];
+  [win setLevel:NSScreenSaverWindowLevel];
+  [win makeKeyAndOrderFront:nil];
+
+  auto data = new FullscreenTransitionData(win);
+  *aData = data;
+  NS_ADDREF(data);
+  return true;
+}
+
+/* virtual */ void
+nsCocoaWindow::PerformFullscreenTransition(FullscreenTransitionStage aStage,
+                                           uint16_t aDuration,
+                                           nsISupports* aData,
+                                           nsIRunnable* aCallback)
+{
+  auto data = static_cast<FullscreenTransitionData*>(aData);
+  FullscreenTransitionDelegate* delegate =
+    [[FullscreenTransitionDelegate alloc] init];
+  delegate->mWindow = this;
+  // Storing already_AddRefed directly could cause static checking fail.
+  delegate->mCallback = nsCOMPtr<nsIRunnable>(aCallback).forget().take();
+
+  if (mFullscreenTransitionAnimation) {
+    [mFullscreenTransitionAnimation stopAnimation];
+    ReleaseFullscreenTransitionAnimation();
+  }
+
+  NSDictionary* dict = @{
+    NSViewAnimationTargetKey: data->mTransitionWindow,
+    NSViewAnimationEffectKey: aStage == eBeforeFullscreenToggle ?
+      NSViewAnimationFadeInEffect : NSViewAnimationFadeOutEffect
+  };
+  mFullscreenTransitionAnimation =
+    [[NSViewAnimation alloc] initWithViewAnimations:@[dict]];
+  [mFullscreenTransitionAnimation setDelegate:delegate];
+  [mFullscreenTransitionAnimation setDuration:aDuration / 1000.0];
+  [mFullscreenTransitionAnimation startAnimation];
 }
 
 void nsCocoaWindow::EnteredFullScreen(bool aFullScreen, bool aNativeMode)
@@ -1285,7 +1395,9 @@ void nsCocoaWindow::EnteredFullScreen(bool aFullScreen, bool aNativeMode)
   }
 }
 
-inline bool nsCocoaWindow::ShouldToggleNativeFullscreen(bool aFullScreen)
+inline bool
+nsCocoaWindow::ShouldToggleNativeFullscreen(bool aFullScreen,
+                                            bool aUseSystemTransition)
 {
   if (!mSupportsNativeFullScreen) {
     // If we cannot use native fullscreen, don't touch it.
@@ -1295,17 +1407,30 @@ inline bool nsCocoaWindow::ShouldToggleNativeFullscreen(bool aFullScreen)
     // If we are using native fullscreen, go ahead to exit it.
     return true;
   }
-  if (mInDOMFullscreenTransition) {
-    // We shouldn't use native fullscreen for DOM fullscreen.
+  if (!aUseSystemTransition) {
+    // If we do not want the system fullscreen transition,
+    // don't use the native fullscreen.
     return false;
   }
-  // If we are using native fullscreen, we should have returned earlier,
-  // which means if we reach here for exiting fullscreen, we must be
-  // exiting from DOM fullscreen, not native fullscreen.
+  // If we are using native fullscreen, we should have returned earlier.
   return aFullScreen;
 }
 
-NS_METHOD nsCocoaWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
+NS_IMETHODIMP
+nsCocoaWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScreen)
+{
+  return DoMakeFullScreen(aFullScreen, false);
+}
+
+NS_IMETHODIMP
+nsCocoaWindow::MakeFullScreenWithNativeTransition(bool aFullScreen,
+                                                  nsIScreen* aTargetScreen)
+{
+  return DoMakeFullScreen(aFullScreen, true);
+}
+
+nsresult
+nsCocoaWindow::DoMakeFullScreen(bool aFullScreen, bool aUseSystemTransition)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
@@ -1323,7 +1448,7 @@ NS_METHOD nsCocoaWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScre
 
   mInFullScreenTransition = true;
 
-  if (ShouldToggleNativeFullscreen(aFullScreen)) {
+  if (ShouldToggleNativeFullscreen(aFullScreen, aUseSystemTransition)) {
     // If we're using native fullscreen mode and our native window is invisible,
     // our attempt to go into fullscreen mode will fail with an assertion in
     // system code, without [WindowDelegate windowDidFailToEnterFullScreen:]
@@ -1349,11 +1474,6 @@ NS_METHOD nsCocoaWindow::MakeFullScreen(bool aFullScreen, nsIScreen* aTargetScre
     NS_ENSURE_SUCCESS(rv, rv);
 
     EnteredFullScreen(aFullScreen, /* aNativeMode */ false);
-  }
-
-  if (mInDOMFullscreenTransition) {
-    // Clear the flag about DOM fullscreen.
-    mInDOMFullscreenTransition = false;
   }
 
   return NS_OK;
@@ -2157,11 +2277,6 @@ nsCocoaWindow::NotifyIMEInternal(const IMENotification& aIMENotification)
 {
   switch (aIMENotification.mMessage) {
     case NOTIFY_IME_OF_FOCUS:
-      if (mInputContext.IsPasswordEditor()) {
-        TextInputHandler::EnableSecureEventInput();
-      } else {
-        TextInputHandler::EnsureSecureEventInputDisabled();
-      }
       return NS_OK;
     case NOTIFY_IME_OF_BLUR:
       return NS_OK;
@@ -2176,16 +2291,6 @@ nsCocoaWindow::SetInputContext(const InputContext& aContext,
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
 
-  if (mWindow &&
-      [mWindow firstResponder] == mWindow &&
-      [mWindow isKeyWindow] &&
-      [[NSApplication sharedApplication] isActive]) {
-    if (aContext.IsPasswordEditor()) {
-      TextInputHandler::EnableSecureEventInput();
-    } else {
-      TextInputHandler::EnsureSecureEventInputDisabled();
-    }
-  }
   mInputContext = aContext;
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
@@ -2421,6 +2526,16 @@ nsCocoaWindow::ExecuteNativeKeyBinding(NativeKeyBindingsType aType,
   NSWindow* window = [aNotification object];
   if ([window isSheet])
     [WindowDelegate paintMenubarForWindow:window];
+
+  nsChildView* mainChildView =
+    static_cast<nsChildView*>([[(BaseWindow*)window mainChildView] widget]);
+  if (mainChildView) {
+    if (mainChildView->GetInputContext().IsPasswordEditor()) {
+      TextInputHandler::EnableSecureEventInput();
+    } else {
+      TextInputHandler::EnsureSecureEventInputDisabled();
+    }
+  }
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }

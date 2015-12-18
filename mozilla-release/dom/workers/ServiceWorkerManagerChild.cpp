@@ -42,7 +42,7 @@ ServiceWorkerManagerChild::RecvNotifySoftUpdate(
   nsRefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
   MOZ_ASSERT(swm);
 
-  swm->SoftUpdate(aOriginAttributes, NS_ConvertUTF16toUTF8(aScope));
+  swm->SoftUpdate(aOriginAttributes, NS_ConvertUTF16toUTF8(aScope), nullptr);
   return true;
 }
 
@@ -95,6 +95,6 @@ ServiceWorkerManagerChild::RecvNotifyRemoveAll()
   return true;
 }
 
-} // workers namespace
-} // dom namespace
-} // mozilla namespace
+} // namespace workers
+} // namespace dom
+} // namespace mozilla

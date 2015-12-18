@@ -4,8 +4,7 @@
 
 /**
  * Test that the reader mode button appears and works properly on
- * reader-able content, and that ReadingList button can open and close
- * its Sidebar UI.
+ * reader-able content.
  */
 const TEST_PREFS = [
   ["reader.parse-on-load.enabled", true],
@@ -14,7 +13,7 @@ const TEST_PREFS = [
 
 const TEST_PATH = "http://example.com/browser/browser/base/content/test/general/";
 
-let readerButton = document.getElementById("reader-mode-button");
+var readerButton = document.getElementById("reader-mode-button");
 
 add_task(function* test_reader_button() {
   registerCleanupFunction(function() {

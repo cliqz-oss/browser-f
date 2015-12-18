@@ -34,7 +34,7 @@ TextureClientX11::~TextureClientX11()
   MOZ_COUNT_DTOR(TextureClientX11);
 }
 
-TemporaryRef<TextureClient>
+already_AddRefed<TextureClient>
 TextureClientX11::CreateSimilar(TextureFlags aFlags,
                                 TextureAllocationFlags aAllocFlags) const
 {
@@ -151,4 +151,19 @@ TextureClientX11::BorrowDrawTarget()
   }
 
   return mDrawTarget;
+}
+
+void
+TextureClientX11::UpdateFromSurface(gfx::SourceSurface* aSurface)
+{
+  MOZ_ASSERT(CanExposeDrawTarget());
+
+  DrawTarget* dt = BorrowDrawTarget();
+
+  if (!dt) {
+    gfxCriticalError() << "Failed to borrow drawtarget for TextureClientX11::UpdateFromSurface";
+    return;
+  }
+
+  dt->CopySurface(aSurface, IntRect(IntPoint(), aSurface->GetSize()), IntPoint());
 }

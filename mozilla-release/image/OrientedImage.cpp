@@ -70,7 +70,7 @@ OrientedImage::GetIntrinsicRatio(nsSize* aRatio)
   return rv;
 }
 
-NS_IMETHODIMP_(TemporaryRef<SourceSurface>)
+NS_IMETHODIMP_(already_AddRefed<SourceSurface>)
 OrientedImage::GetFrame(uint32_t aWhichFrame,
                         uint32_t aFlags)
 {
@@ -120,6 +120,16 @@ OrientedImage::GetFrame(uint32_t aWhichFrame,
                              surfaceFormat, GraphicsFilter::FILTER_FAST);
 
   return target->Snapshot();
+}
+
+NS_IMETHODIMP_(already_AddRefed<SourceSurface>)
+OrientedImage::GetFrameAtSize(const IntSize& aSize,
+                              uint32_t aWhichFrame,
+                              uint32_t aFlags)
+{
+  // XXX(seth): It'd be nice to support downscale-during-decode for this case,
+  // but right now we just fall back to the intrinsic size.
+  return GetFrame(aWhichFrame, aFlags);
 }
 
 NS_IMETHODIMP_(bool)
@@ -334,7 +344,7 @@ OrientedImage::GetImageSpaceInvalidationRect(const nsIntRect& aRect)
   }
 
   // Transform the invalidation rect into the correct orientation.
-  gfxMatrix matrix(OrientationMatrix(innerSize, /* aInvert = */ true));
+  gfxMatrix matrix(OrientationMatrix(innerSize));
   gfxRect invalidRect(matrix.TransformBounds(gfxRect(rect.x, rect.y,
                                                      rect.width, rect.height)));
   invalidRect.RoundOut();

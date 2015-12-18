@@ -546,8 +546,13 @@ nsWindow::SetNativeData(uint32_t aDataType, uintptr_t aVal)
 {
     switch (aDataType) {
     case NS_NATIVE_OPENGL_CONTEXT:
-        // Called after primary display's GLContextEGL creation.
         GLContext* context = reinterpret_cast<GLContext*>(aVal);
+        if (!context) {
+            mScreen->SetEGLInfo(EGL_NO_DISPLAY,
+                                EGL_NO_SURFACE,
+                                nullptr);
+            return;
+        }
         mScreen->SetEGLInfo(GLContextEGL::Cast(context)->GetEGLDisplay(),
                             GLContextEGL::Cast(context)->GetEGLSurface(),
                             context);
@@ -646,7 +651,7 @@ HalFormatToSurfaceFormat(int aHalFormat, int* bytepp)
     }
 }
 
-TemporaryRef<DrawTarget>
+already_AddRefed<DrawTarget>
 nsWindow::StartRemoteDrawing()
 {
     GonkDisplay* display = GetGonkDisplay();
@@ -742,10 +747,6 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
         return mLayerManager;
     }
 
-    // Set mUseLayersAcceleration here to make it consistent with
-    // nsBaseWidget::GetLayerManager
-    mUseLayersAcceleration = ComputeShouldAccelerate(mUseLayersAcceleration);
-
     const nsTArray<nsWindow*>& windows = mScreen->GetTopWindows();
     nsWindow *topWindow = windows[0];
 
@@ -760,6 +761,22 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
     }
     MOZ_ASSERT(mLayerManager);
     return mLayerManager;
+}
+
+void
+nsWindow::DestroyCompositor()
+{
+    if (mCompositorParent && mScreen->IsPrimaryScreen()) {
+        // Unset CompositorParent
+        mComposer2D->SetCompositorParent(nullptr);
+    }
+    nsBaseWidget::DestroyCompositor();
+}
+
+CompositorParent*
+nsWindow::NewCompositorParent(int aSurfaceWidth, int aSurfaceHeight)
+{
+    return new CompositorParent(this, true, aSurfaceWidth, aSurfaceHeight);
 }
 
 void

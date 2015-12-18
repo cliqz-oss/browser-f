@@ -3,10 +3,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsISupports.idl"
-#include "nsINetworkManager.idl"
+#include "nsINetworkInterface.idl"
 
-[scriptable, uuid(e48d290b-ea3b-4987-9333-2e01f64c92ba)]
-interface nsIRilNetworkInterface : nsINetworkInterface
+[scriptable, uuid(b8bcd6aa-5b06-4362-a68c-317878429e51)]
+interface nsIRilNetworkInfo : nsINetworkInfo
 {
   readonly attribute unsigned long serviceId;
   readonly attribute DOMString iccId;
@@ -15,6 +15,17 @@ interface nsIRilNetworkInterface : nsINetworkInterface
   readonly attribute DOMString mmsc;     // Empty string if not set.
   readonly attribute DOMString mmsProxy; // Empty string if not set.
   readonly attribute long      mmsPort;  // -1 if not set.
+
+  /**
+   * Get the list of pcscf addresses, could be IPv4 or IPv6.
+   *
+   * @param count
+   *        The length of the list of pcscf addresses.
+   *
+   * @returns the list of pcscf addresses.
+   */
+  void getPcscf([optional] out unsigned long count,
+                [array, size_is(count), retval] out wstring pcscf);
 };
 
 [scriptable, function, uuid(cb2f0f5b-67f4-4c14-93e8-01e66b630464)]
@@ -55,9 +66,11 @@ interface nsIDataCallHandler : nsISupports
   void updateRILNetworkInterface();
 };
 
-[scriptable, uuid(aac54873-5771-4093-a72b-fe39967c6607)]
+[scriptable, uuid(2c46e37d-88dc-4d25-bb37-e1c0d3e9cb5f)]
 interface nsIDataCallManager : nsISupports
 {
+  readonly attribute long dataDefaultServiceId;
+
   /**
    * Get the corresponding data call handler.
    *

@@ -110,13 +110,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY showAllTabsCmd.accesskey "z">
 
 <!ENTITY fxaSignIn.label "Bei &syncBrand.shortName.label; anmelden">
+<!ENTITY fxaSignedIn.tooltip "&syncBrand.shortName.label;-Einstellungen öffnen">
 <!ENTITY fxaSignInError.label "Mit &syncBrand.shortName.label; neu verbinden">
+<!ENTITY fxaUnverified.label "Bestätigen Sie Ihr Konto">
 <!ENTITY syncStartPanel2.heading "&syncBrand.shortName.label; aktiviert">
 <!ENTITY syncStartPanel2.subTitle "&brandShortName; beginnt sofort mit dem Synchronisieren.">
-<!ENTITY syncErrorPanel.heading "Es konnte keine Verbindung mit &syncBrand.shortName.label; hergestellt werden.">
-<!ENTITY syncErrorPanel.subTitle "Bitte anmelden, um mit der Synchronisation fortzufahren.">
-<!ENTITY syncErrorPanel.signInButton.label "Anmelden">
-<!ENTITY syncErrorPanel.signInButton.accesskey "A">
 
 
 <!ENTITY fullScreenMinimize.tooltip "Minimieren">
@@ -126,10 +124,20 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fullScreenAutohide.accesskey "a">
 <!ENTITY fullScreenExit.label "Vollbild beenden">
 <!ENTITY fullScreenExit.accesskey "V">
-<!ENTITY fullscreenAllowButton.label "Erlauben">
-<!ENTITY fullscreenExitButton.label "Ablehnen">
 
-<!ENTITY fullscreenExitHint2.value "Drücken Sie jederzeit die Escape-Taste zum Verlassen.">
+<!-- LOCALIZATION NOTE (fullscreenWarning.beforeDomain.label,
+     fullscreenWarning.afterDomain.label): these two strings are used
+     respectively before and after the domain requiring fullscreen.
+     Localizers can use one of them, or both, to better adapt this
+     sentence to their language. -->
+<!ENTITY fullscreenWarning.beforeDomain.label "">
+<!ENTITY fullscreenWarning.afterDomain.label "befindet sich jetzt im Vollbildmodus.">
+<!ENTITY fullscreenWarning.generic.label "Dieses Dokument befindet sich jetzt im Vollbildmodus.">
+<!-- LOCALIZATION NOTE (exitDOMFullscreen.button,
+     exitDOMFullscreenMac.button): the "escape" button on PC keyboards
+     is uppercase, while on Mac keyboards it is lowercase -->
+<!ENTITY exitDOMFullscreen.button "Vollbild beenden (Esc)">
+<!ENTITY exitDOMFullscreenMac.button "Vollbild beenden (esc)">
 <!ENTITY leaveDOMFullScreen.label "Vollbild beenden">
 <!ENTITY leaveDOMFullScreen.accesskey "e">
 
@@ -396,6 +404,14 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.accesskey             "s">
 <!ENTITY urlbar.switchToTab.label     "Wechseln zum Tab:">
 
+<!ENTITY urlbar.searchSuggestionsNotification.question "Wollen Sie ein besseres Sucherlebnis dank Suchvorschlägen?">
+<!ENTITY urlbar.searchSuggestionsNotification.learnMore "Weitere Informationen…">
+<!ENTITY urlbar.searchSuggestionsNotification.learnMore.accesskey "W">
+<!ENTITY urlbar.searchSuggestionsNotification.disable "Nein">
+<!ENTITY urlbar.searchSuggestionsNotification.disable.accesskey "N">
+<!ENTITY urlbar.searchSuggestionsNotification.enable "Ja">
+<!ENTITY urlbar.searchSuggestionsNotification.enable.accesskey "J">
+
 <!-- 
   Comment duplicated from browser-sets.inc:
 
@@ -419,6 +435,12 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY searchFocus.commandkey       "k">
 <!ENTITY searchFocus.commandkey2      "e">
 <!ENTITY searchFocusUnix.commandkey   "j">
+
+<!-- LOCALIZATION NOTE (contentSearchInput.label, contentSearchSubmit.label):
+     These are set as the aria-label attribute for the search input box and
+     submit button in the in-content search UI, to be used by screen readers. -->
+<!ENTITY contentSearchInput.label     "Suchbegriff">
+<!ENTITY contentSearchSubmit.label    "Suche absenden">
 
 <!-- LOCALIZATION NOTE (searchFor.label, searchWith.label):
      These two strings are used to build the header above the list of one-click
@@ -444,6 +466,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      This string won't wrap, so if the translated string is longer,
      consider translating it as if it said only "Search Settings". -->
 <!ENTITY changeSearchSettings.button  "Sucheinstellungen ändern">
+
+<!ENTITY searchInNewTab.label         "In neuem Tab suchen">
+<!ENTITY searchInNewTab.accesskey     "T">
+<!ENTITY searchSetAsDefault.label     "Als Standardsuchmaschine festlegen">
+<!ENTITY searchSetAsDefault.accesskey "S">
 
 <!ENTITY tabView.commandkey           "e">
 
@@ -633,6 +660,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY closeCmd.key                   "W">  
 <!ENTITY closeCmd.accesskey             "c">
 
+<!ENTITY toggleMuteCmd.key              "M">
+
 <!ENTITY pageStyleMenu.label "Webseiten-Stil">
 <!ENTITY pageStyleMenu.accesskey "W">
 <!ENTITY pageStyleNoStyle.label "Kein Stil">
@@ -675,12 +704,39 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
 <!ENTITY identity.connectionNotSecure "Verbindung ist nicht sicher">
-<!ENTITY identity.connectionVerified "&brandShortName; hat überprüft, dass Sie über eine sichere Verbindung mit der Seite verbunden sind. Diese wird betrieben von:">
+<!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
+<!ENTITY identity.connectionVerified1 "Sie sind derzeit mit dieser Website verbunden, welche betrieben wird von:">
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
+<!ENTITY identity.insecureLoginForms "Ihre Zugangsdaten könnten in falsche Hände fallen.">
+
+<!-- Strings for connection state warnings. -->
+<!ENTITY identity.activeBlocked "&brandShortName; hat nicht sichere Inhalte dieser Seite blockiert.">
+<!ENTITY identity.passiveLoaded "Teile dieser Seite sind nicht sicher. Dies können z.B. Grafiken sein.">
+<!ENTITY identity.activeLoaded "Sie haben den Schutz vor Aktivitätenverfolgung für diese Seite deaktiviert.">
+<!ENTITY identity.weakEncryption "Diese Seite verwendet eine schwache Verschlüsselung.">
+
+<!-- Strings for connection state warnings in the subview. -->
+<!ENTITY identity.description.insecure "Ihre Verbindung zu dieser Website ist nicht vertraulich. Von Ihnen übermittelte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.">
+<!ENTITY identity.description.insecureLoginForms "Wenn Sie Ihre Zugangsdaten auf dieser Website eingeben, sind diese nicht sicher und könnten diese in falsche Hände fallen.">
+<!ENTITY identity.description.weakCipher "Ihre Verbindung zu dieser Website verwendet eine schwache Verschlüsselung.">
+<!ENTITY identity.description.weakCipher2 "Andere Personen können Ihre Informationen mitlesen oder das Verhalten der Website ändern.">
+<!ENTITY identity.description.activeBlocked "&brandShortName; hat nicht sichere Inhalte dieser Seite blockiert.">
+<!ENTITY identity.description.passiveLoaded "Ihre Verbindung ist nicht sicher und mit dieser Website geteilte Informationen können von Anderen eingesehen werden.">
+<!ENTITY identity.description.passiveLoaded2 "Diese Website enthält nicht sichere Inhalte (wie z.B. Grafiken).">
+<!ENTITY identity.description.passiveLoaded3 "Obwohl &brandShortName; Inhalte blockiert hat, enthält die Seite noch nicht sichere Inhalte (wie z.B. Grafiken).">
+<!ENTITY identity.description.activeLoaded "Diese Website enthält nicht sichere Inhalte (wie z.B. Skripte) und Ihre Verbindung ist nicht vertraulich.">
+<!ENTITY identity.description.activeLoaded2 "Mit dieser Seite geteilte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.">
+
+<!ENTITY identity.enableMixedContentBlocking.label "Schutz aktivieren">
+<!ENTITY identity.enableMixedContentBlocking.accesskey "a">
+<!ENTITY identity.disableMixedContentBlocking.label "Schutz momentan deaktivieren">
+<!ENTITY identity.disableMixedContentBlocking.accesskey "d">
+<!ENTITY identity.learnMore "Weitere Informationen">
 
 <!ENTITY identity.moreInfoLinkText2 "Weitere Informationen">
 
 <!ENTITY identity.permissions "Berechtigungen">
+<!ENTITY identity.permissionsEmpty "Der Website wurden keine besonderen Berechtigungen erteilt.">
 
 <!-- Name for the tabs toolbar as spoken by screen readers.
      The word "toolbar" is appended automatically and should not be contained below! -->
@@ -691,8 +747,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY syncBrand.shortName.label    "Sync">
 
-<!ENTITY syncSetup.label              "&syncBrand.shortName.label; einrichten…">
-<!ENTITY syncSetup.accesskey          "Y">
+<!ENTITY syncSignIn.label             "Bei &syncBrand.shortName.label; anmelden…">
+<!ENTITY syncSignIn.accesskey         "Y">
 <!ENTITY syncSyncNowItem.label        "Jetzt synchronisieren">
 <!ENTITY syncSyncNowItem.accesskey    "J">
 <!ENTITY syncReAuthItem.label         "Wieder mit &syncBrand.shortName.label; verbinden…">
@@ -753,20 +809,25 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY getUserMedia.selectCamera.accesskey "K">
 <!ENTITY getUserMedia.selectMicrophone.label "Zugriff auf folgendes Mikrofon erlauben:">
 <!ENTITY getUserMedia.selectMicrophone.accesskey "M">
+<!ENTITY getUserMedia.audioCapture.label "Audio des Tabs wird weitergegeben.">
 <!ENTITY getUserMedia.allWindowsShared.message "Alle sichtbaren Fenster auf dem Bildschirm werden weitergegeben.">
 
-<!-- Bad Content Blocker Doorhanger Notification -->
-<!ENTITY badContentBlocked.moreinfo "Die meisten Websites funktionieren ohne Probleme, auch wenn Inhalt blockiert wird.">
-
-<!ENTITY mixedContentBlocked2.message "Unsicherer Inhalt">
-<!ENTITY mixedContentBlocked2.moreinfo "Einige unverschlüsselt übertragene Elemente dieser Webseite wurden blockiert.">
-<!ENTITY mixedContentBlocked2.learnMore "Weitere Informationen">
-<!ENTITY mixedContentBlocked2.options "Einstellungen">
-<!ENTITY mixedContentBlocked2.unblock.label "Schutz für den Moment aufheben">
-<!ENTITY mixedContentBlocked2.unblock.accesskey "M">
-<!ENTITY mixedContentBlocked2.block.label "Schutz aktivieren">
-<!ENTITY mixedContentBlocked2.block.accesskey "a">
-<!ENTITY mixedContentBlocked2.disabled.message "Schutz ist deaktiviert">
+<!ENTITY trackingProtection.title "Schutz vor Aktitvitätenverfolgung">
+<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Teile der Seite, die Ihre Surfaktivitäten verfolgen könnten.">
+<!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die Ihre Surfaktivitäten verfolgen könnten. Sie haben den Schutz deaktiviert.">
+<!ENTITY trackingProtection.notDetected3 "Keine Inhalte zur Aktivitätenverfolgung auf dieser Seite gefunden.">
+<!-- LOCALIZATION NOTE (trackingProtection.unblock.label, trackingProtection.unblock.accesskey):
+     The associated button with this label and accesskey is only shown when opening the control
+     center while looking at a site with trackers in NON-private browsing mode. -->
+<!ENTITY trackingProtection.unblock.label "Schutz für diese Seite deaktivieren">
+<!ENTITY trackingProtection.unblock.accesskey "d">
+<!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate.label, trackingProtection.unblockPrivate.accesskey):
+     The associated button with this label and accesskey is only shown when opening the control
+     center while looking at a site with trackers in PRIVATE browsing mode. -->
+<!ENTITY trackingProtection.unblockPrivate.label "Schutz für diese Sitzung deaktivieren">
+<!ENTITY trackingProtection.unblockPrivate.accesskey "d">
+<!ENTITY trackingProtection.block2.label "Schutz aktivieren">
+<!ENTITY trackingProtection.block2.accesskey "a">
 
 <!ENTITY trackingContentBlocked.message "Schutz vor Verfolgung von Aktivitäten">
 <!ENTITY trackingContentBlocked.moreinfo "Die Elemente der Seite, welche Ihre Online-Aktivitäten verfolgen, wurden blockiert.">
@@ -839,18 +900,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY emeNotificationsNotNow.accesskey         "N">
 <!ENTITY emeNotificationsDontAskAgain.label       "Nicht mehr nachfragen">
 <!ENTITY emeNotificationsDontAskAgain.accesskey   "m">
-
-<!ENTITY readingList.label                        "Leseliste">
-<!ENTITY readingList.sidebar.commandKey           "R">
-<!ENTITY readingList.showSidebar.label            "Leselisten-Sidebar anzeigen">
-<!-- Pre-landed string for bug 1124153 -->
-<!ENTITY readingList.sidebar.showMore.label       "Mehr anzeigen…">
-<!-- Pre-landed string for bug 1133662 -->
-<!ENTITY readingList.sidebar.emptyText            "Fügen Sie Artikel zu Ihrer Leseliste hinzu, um sie für später zu speichern und leicht wiederzufinden, wenn Sie diese benötigen.">
-<!ENTITY readingList.sidebar.delete.tooltip       "Aus Leseliste entfernen">
-<!-- Pre-landed strings for bug 1123519 -->
-<!ENTITY readingList.sidebar.add.label            "Zur Leseliste hinzufügen">
-<!ENTITY readingList.sidebar.add.tooltip          "Diese Seite zur Leseliste hinzufügen">
 
 <!-- LOCALIZATION NOTE (saveToPocketCmd.label, saveLinkToPocketCmd.label, pocketMenuitem.label): Pocket is a brand name -->
 <!ENTITY saveToPocketCmd.label     "Seite bei Pocket speichern">

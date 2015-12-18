@@ -670,7 +670,8 @@ public:
   EmptyBlobImpl(const nsAString& aName,
                 const nsAString& aContentType,
                 int64_t aLastModifiedDate)
-    : BlobImplBase(aName, aContentType, 0, aLastModifiedDate)
+    : BlobImplBase(aName, aContentType, 0, aLastModifiedDate,
+                   BlobDirState::eIsNotDir)
   {
     mImmutable = true;
   }
@@ -709,75 +710,20 @@ private:
   }
 };
 
-// This is only needed for IndexedDB BlobImplSnapshot.
-class SameProcessInputStreamBlobImpl final
-  : public BlobImplBase
-{
-  nsCOMPtr<nsIInputStream> mInputStream;
-
-public:
-  SameProcessInputStreamBlobImpl(const nsAString& aContentType,
-                                 uint64_t aLength,
-                                 nsIInputStream* aInputStream)
-    : BlobImplBase(aContentType, aLength)
-    , mInputStream(aInputStream)
-  {
-    MOZ_ASSERT(aLength != UINT64_MAX);
-    MOZ_ASSERT(aInputStream);
-
-    mImmutable = true;
-  }
-
-  SameProcessInputStreamBlobImpl(const nsAString& aName,
-                                 const nsAString& aContentType,
-                                 uint64_t aLength,
-                                 int64_t aLastModifiedDate,
-                                 nsIInputStream* aInputStream)
-    : BlobImplBase(aName, aContentType, aLength, aLastModifiedDate)
-    , mInputStream(aInputStream)
-  {
-    MOZ_ASSERT(aLength != UINT64_MAX);
-    MOZ_ASSERT(aLastModifiedDate != INT64_MAX);
-    MOZ_ASSERT(aInputStream);
-
-    mImmutable = true;
-  }
-
-private:
-  virtual already_AddRefed<BlobImpl>
-  CreateSlice(uint64_t /* aStart */,
-              uint64_t /* aLength */,
-              const nsAString& /* aContentType */,
-              ErrorResult& /* aRv */) override
-  {
-    MOZ_CRASH("Not implemented");
-  }
-
-  virtual void
-  GetInternalStream(nsIInputStream** aStream, ErrorResult& aRv) override
-  {
-    if (NS_WARN_IF(!aStream)) {
-      aRv.Throw(NS_ERROR_FAILURE);
-      return;
-    }
-
-    nsCOMPtr<nsIInputStream> inputStream = mInputStream;
-    inputStream.forget(aStream);
-  }
-};
-
 struct MOZ_STACK_CLASS CreateBlobImplMetadata final
 {
   nsString mContentType;
   nsString mName;
   uint64_t mLength;
   int64_t mLastModifiedDate;
+  BlobDirState mDirState;
   bool mHasRecursed;
   const bool mIsSameProcessActor;
 
   explicit CreateBlobImplMetadata(bool aIsSameProcessActor)
     : mLength(0)
     , mLastModifiedDate(0)
+    , mDirState(BlobDirState::eUnknownIfDir)
     , mHasRecursed(false)
     , mIsSameProcessActor(aIsSameProcessActor)
   {
@@ -874,40 +820,6 @@ CreateBlobImpl(const nsTArray<uint8_t>& aMemoryData,
 }
 
 already_AddRefed<BlobImpl>
-CreateBlobImpl(intptr_t aAddRefedInputStream,
-               const CreateBlobImplMetadata& aMetadata)
-{
-  MOZ_ASSERT(gProcessType == GeckoProcessType_Default);
-  MOZ_ASSERT(aMetadata.mIsSameProcessActor);
-  MOZ_ASSERT(aAddRefedInputStream);
-
-  nsCOMPtr<nsIInputStream> inputStream =
-    dont_AddRef(
-      reinterpret_cast<nsIInputStream*>(aAddRefedInputStream));
-
-  nsRefPtr<BlobImpl> blobImpl;
-  if (!aMetadata.mHasRecursed && aMetadata.IsFile()) {
-    blobImpl =
-      new SameProcessInputStreamBlobImpl(aMetadata.mName,
-                                         aMetadata.mContentType,
-                                         aMetadata.mLength,
-                                         aMetadata.mLastModifiedDate,
-                                         inputStream);
-  } else {
-    blobImpl =
-      new SameProcessInputStreamBlobImpl(aMetadata.mContentType,
-                                         aMetadata.mLength,
-                                         inputStream);
-  }
-
-  DebugOnly<bool> isMutable;
-  MOZ_ASSERT(NS_SUCCEEDED(blobImpl->GetMutable(&isMutable)));
-  MOZ_ASSERT(!isMutable);
-
-  return blobImpl.forget();
-}
-
-already_AddRefed<BlobImpl>
 CreateBlobImpl(const nsTArray<BlobData>& aBlobData,
                CreateBlobImplMetadata& aMetadata);
 
@@ -927,11 +839,6 @@ CreateBlobImplFromBlobData(const BlobData& aBlobData,
 
     case BlobData::TArrayOfuint8_t: {
       blobImpl = CreateBlobImpl(aBlobData.get_ArrayOfuint8_t(), aMetadata);
-      break;
-    }
-
-    case BlobData::Tintptr_t: {
-      blobImpl = CreateBlobImpl(aBlobData.get_intptr_t(), aMetadata);
       break;
     }
 
@@ -1054,6 +961,7 @@ CreateBlobImpl(const ParentBlobConstructorParams& aParams,
     metadata.mName = params.name();
     metadata.mLength = params.length();
     metadata.mLastModifiedDate = params.modDate();
+    metadata.mDirState = BlobDirState(params.dirState());
   }
 
   nsRefPtr<BlobImpl> blobImpl =
@@ -1070,6 +978,8 @@ BlobDataFromBlobImpl(BlobImpl* aBlobImpl, BlobData& aBlobData)
   const nsTArray<nsRefPtr<BlobImpl>>* subBlobs = aBlobImpl->GetSubBlobImpls();
 
   if (subBlobs) {
+    MOZ_ASSERT(subBlobs->Length());
+
     aBlobData = nsTArray<BlobData>();
 
     nsTArray<BlobData>& subBlobDatas = aBlobData.get_ArrayOfBlobData();
@@ -1092,8 +1002,6 @@ BlobDataFromBlobImpl(BlobImpl* aBlobImpl, BlobData& aBlobData)
     aBlobData = actor->ParentID();
     return;
   }
-
-  MOZ_ASSERT(aBlobImpl->IsMemoryFile());
 
   ErrorResult rv;
   nsCOMPtr<nsIInputStream> inputStream;
@@ -1484,7 +1392,7 @@ RemoteInputStream::BlockAndGetInternalStream()
   return mStream;
 }
 
-} // anonymous namespace
+} // namespace
 
 StaticAutoPtr<BlobParent::IDTable> BlobParent::sIDTable;
 StaticAutoPtr<Mutex> BlobParent::sIDTableMutex;
@@ -1855,7 +1763,8 @@ public:
                  const nsAString& aName,
                  const nsAString& aContentType,
                  uint64_t aLength,
-                 int64_t aModDate);
+                 int64_t aModDate,
+                 BlobDirState aDirState);
 
   // For Blob.
   RemoteBlobImpl(BlobChild* aActor,
@@ -1868,7 +1777,8 @@ public:
                  const nsAString& aName,
                  const nsAString& aContentType,
                  uint64_t aLength,
-                 int64_t aModDate);
+                 int64_t aModDate,
+                 BlobDirState aDirState);
 
   // For same-process blobs.
   RemoteBlobImpl(BlobChild* aActor,
@@ -2107,12 +2017,6 @@ public:
   virtual int64_t
   GetFileId() override;
 
-  virtual void
-  AddFileInfo(FileInfo* aFileInfo) override;
-
-  virtual FileInfo*
-  GetFileInfo(FileManager* aFileManager) override;
-
   virtual nsresult
   GetSendInfo(nsIInputStream** aBody,
               uint64_t* aContentLength,
@@ -2129,7 +2033,8 @@ public:
   SetLazyData(const nsAString& aName,
               const nsAString& aContentType,
               uint64_t aLength,
-              int64_t aLastModifiedDate) override;
+              int64_t aLastModifiedDate,
+              BlobDirState aDirState) override;
 
   virtual bool
   IsMemoryFile() const override;
@@ -2142,6 +2047,18 @@ public:
 
   virtual bool
   IsFile() const override;
+
+  virtual void
+  LookupAndCacheIsDirectory() override;
+
+  virtual void
+  SetIsDirectory(bool aIsDir) override;
+
+  virtual bool
+  IsDirectory() const override;
+
+  virtual BlobDirState
+  GetDirState() const override;
 
   virtual bool
   MayBeClonedToOtherThreads() const override;
@@ -2172,8 +2089,9 @@ RemoteBlobImpl::RemoteBlobImpl(BlobChild* aActor,
                                const nsAString& aName,
                                const nsAString& aContentType,
                                uint64_t aLength,
-                               int64_t aModDate)
-  : BlobImplBase(aName, aContentType, aLength, aModDate)
+                               int64_t aModDate,
+                               BlobDirState aDirState)
+  : BlobImplBase(aName, aContentType, aLength, aModDate, aDirState)
   , mIsSlice(false)
 {
   CommonInit(aActor);
@@ -2195,8 +2113,9 @@ RemoteBlobImpl::RemoteBlobImpl(BlobChild* aActor,
                                const nsAString& aName,
                                const nsAString& aContentType,
                                uint64_t aLength,
-                               int64_t aModDate)
-  : BlobImplBase(aName, aContentType, aLength, aModDate)
+                               int64_t aModDate,
+                               BlobDirState aDirState)
+  : BlobImplBase(aName, aContentType, aLength, aModDate, aDirState)
   , mSameProcessBlobImpl(aSameProcessBlobImpl)
   , mIsSlice(false)
 {
@@ -2838,20 +2757,6 @@ RemoteBlobImpl::GetFileId()
   return mBlobImpl->GetFileId();
 }
 
-void
-BlobParent::
-RemoteBlobImpl::AddFileInfo(FileInfo* aFileInfo)
-{
-  return mBlobImpl->AddFileInfo(aFileInfo);
-}
-
-FileInfo*
-BlobParent::
-RemoteBlobImpl::GetFileInfo(FileManager* aFileManager)
-{
-  return mBlobImpl->GetFileInfo(aFileManager);
-}
-
 nsresult
 BlobParent::
 RemoteBlobImpl::GetSendInfo(nsIInputStream** aBody,
@@ -2884,7 +2789,8 @@ BlobParent::
 RemoteBlobImpl::SetLazyData(const nsAString& aName,
                             const nsAString& aContentType,
                             uint64_t aLength,
-                            int64_t aLastModifiedDate)
+                            int64_t aLastModifiedDate,
+                            BlobDirState aDirState)
 {
   MOZ_CRASH("This should never be called!");
 }
@@ -2915,6 +2821,34 @@ BlobParent::
 RemoteBlobImpl::IsFile() const
 {
   return mBlobImpl->IsFile();
+}
+
+void
+BlobParent::
+RemoteBlobImpl::LookupAndCacheIsDirectory()
+{
+  return mBlobImpl->LookupAndCacheIsDirectory();
+}
+
+void
+BlobParent::
+RemoteBlobImpl::SetIsDirectory(bool aIsDir)
+{
+  return mBlobImpl->SetIsDirectory(aIsDir);
+}
+
+bool
+BlobParent::
+RemoteBlobImpl::IsDirectory() const
+{
+  return mBlobImpl->IsDirectory();
+}
+
+BlobDirState
+BlobParent::
+RemoteBlobImpl::GetDirState() const
+{
+  return mBlobImpl->GetDirState();
 }
 
 bool
@@ -3107,7 +3041,8 @@ BlobChild::CommonInit(BlobChild* aOther, BlobImpl* aBlobImpl)
     int64_t modDate = otherImpl->GetLastModified(rv);
     MOZ_ASSERT(!rv.Failed());
 
-    remoteBlob = new RemoteBlobImpl(this, name, contentType, length, modDate);
+    remoteBlob = new RemoteBlobImpl(this, name, contentType, length, modDate,
+                                    otherImpl->GetDirState());
   } else {
     remoteBlob = new RemoteBlobImpl(this, contentType, length);
   }
@@ -3149,7 +3084,8 @@ BlobChild::CommonInit(const ChildBlobConstructorParams& aParams)
                                       params.name(),
                                       params.contentType(),
                                       params.length(),
-                                      params.modDate());
+                                      params.modDate(),
+                                      BlobDirState(params.dirState()));
       break;
     }
 
@@ -3183,7 +3119,8 @@ BlobChild::CommonInit(const ChildBlobConstructorParams& aParams)
                              name,
                              contentType,
                              size,
-                             lastModifiedDate);
+                             lastModifiedDate,
+                             blobImpl->GetDirState());
       } else {
         remoteBlob = new RemoteBlobImpl(this, blobImpl, contentType, size);
       }
@@ -3250,7 +3187,7 @@ BlobChild::AssertIsOnOwningThread() const
 void
 BlobChild::Startup(const FriendKey& /* aKey */)
 {
-  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_Default);
+  MOZ_ASSERT(!XRE_IsParentProcess());
 
   CommonStartup();
 }
@@ -3307,6 +3244,16 @@ BlobChild::GetOrCreateFromImpl(ChildManagerType* aManager,
   MOZ_ASSERT(aManager);
   MOZ_ASSERT(aBlobImpl);
 
+  // If the blob represents a wrapper around real blob implementation (so called
+  // snapshot) then we need to get the real one.
+  if (nsCOMPtr<PIBlobImplSnapshot> snapshot = do_QueryInterface(aBlobImpl)) {
+    aBlobImpl = snapshot->GetBlobImpl();
+    if (!aBlobImpl) {
+      // The snapshot is not valid anymore.
+      return nullptr;
+    }
+  }
+
   // If the blob represents a remote blob then we can simply pass its actor back
   // here.
   if (nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryInterface(aBlobImpl)) {
@@ -3327,18 +3274,7 @@ BlobChild::GetOrCreateFromImpl(ChildManagerType* aManager,
 
   AnyBlobConstructorParams blobParams;
 
-  nsCOMPtr<nsIInputStream> snapshotInputStream;
-
   if (gProcessType == GeckoProcessType_Default) {
-    nsCOMPtr<PIBlobImplSnapshot> snapshot = do_QueryInterface(aBlobImpl);
-    if (snapshot) {
-      ErrorResult rv;
-      aBlobImpl->GetInternalStream(getter_AddRefs(snapshotInputStream), rv);
-      MOZ_ALWAYS_TRUE(!rv.Failed());
-    }
-  }
-
-  if (gProcessType == GeckoProcessType_Default && !snapshotInputStream) {
     nsRefPtr<BlobImpl> sameProcessImpl = aBlobImpl;
     auto addRefedBlobImpl =
       reinterpret_cast<intptr_t>(sameProcessImpl.forget().take());
@@ -3346,12 +3282,7 @@ BlobChild::GetOrCreateFromImpl(ChildManagerType* aManager,
     blobParams = SameProcessBlobConstructorParams(addRefedBlobImpl);
   } else {
     BlobData blobData;
-    if (snapshotInputStream) {
-      blobData =
-        reinterpret_cast<intptr_t>(snapshotInputStream.forget().take());
-    } else {
-      BlobDataFromBlobImpl(aBlobImpl, blobData);
-    }
+    BlobDataFromBlobImpl(aBlobImpl, blobData);
 
     nsString contentType;
     aBlobImpl->GetType(contentType);
@@ -3368,7 +3299,8 @@ BlobChild::GetOrCreateFromImpl(ChildManagerType* aManager,
       MOZ_ASSERT(!rv.Failed());
 
       blobParams =
-        FileBlobConstructorParams(name, contentType, length, modDate, blobData);
+        FileBlobConstructorParams(name, contentType, length, modDate,
+                                  aBlobImpl->GetDirState(), blobData);
     } else {
       blobParams = NormalBlobConstructorParams(contentType, length, blobData);
     }
@@ -3541,19 +3473,22 @@ bool
 BlobChild::SetMysteryBlobInfo(const nsString& aName,
                               const nsString& aContentType,
                               uint64_t aLength,
-                              int64_t aLastModifiedDate)
+                              int64_t aLastModifiedDate,
+                              BlobDirState aDirState)
 {
   AssertIsOnOwningThread();
   MOZ_ASSERT(mBlobImpl);
   MOZ_ASSERT(mRemoteBlobImpl);
   MOZ_ASSERT(aLastModifiedDate != INT64_MAX);
 
-  mBlobImpl->SetLazyData(aName, aContentType, aLength, aLastModifiedDate);
+  mBlobImpl->SetLazyData(aName, aContentType, aLength, aLastModifiedDate,
+                         aDirState);
 
   FileBlobConstructorParams params(aName,
                                    aContentType,
                                    aLength,
                                    aLastModifiedDate,
+                                   aDirState,
                                    void_t() /* optionalBlobData */);
   return SendResolveMystery(params);
 }
@@ -3568,7 +3503,8 @@ BlobChild::SetMysteryBlobInfo(const nsString& aContentType, uint64_t aLength)
   nsString voidString;
   voidString.SetIsVoid(true);
 
-  mBlobImpl->SetLazyData(voidString, aContentType, aLength, INT64_MAX);
+  mBlobImpl->SetLazyData(voidString, aContentType, aLength, INT64_MAX,
+                         BlobDirState::eUnknownIfDir);
 
   NormalBlobConstructorParams params(aContentType,
                                      aLength,
@@ -3773,7 +3709,7 @@ BlobParent::AssertIsOnOwningThread() const
 void
 BlobParent::Startup(const FriendKey& /* aKey */)
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   CommonStartup();
 
@@ -3855,6 +3791,8 @@ BlobParent::GetOrCreateFromImpl(ParentManagerType* aManager,
   MOZ_ASSERT(aManager);
   MOZ_ASSERT(aBlobImpl);
 
+  MOZ_ASSERT(!nsCOMPtr<PIBlobImplSnapshot>(do_QueryInterface(aBlobImpl)));
+
   // If the blob represents a remote blob for this manager then we can simply
   // pass its actor back here.
   if (nsCOMPtr<nsIRemoteBlob> remoteBlob = do_QueryInterface(aBlobImpl)) {
@@ -3869,20 +3807,9 @@ BlobParent::GetOrCreateFromImpl(ParentManagerType* aManager,
     return nullptr;
   }
 
-  const bool isSameProcessActor = ActorManagerIsSameProcess(aManager);
-
   AnyBlobConstructorParams blobParams;
 
-  bool isSnapshot;
-
-  if (isSameProcessActor) {
-    nsCOMPtr<PIBlobImplSnapshot> snapshot = do_QueryInterface(aBlobImpl);
-    isSnapshot = !!snapshot;
-  } else {
-    isSnapshot = false;
-  }
-
-  if (isSameProcessActor && !isSnapshot) {
+  if (ActorManagerIsSameProcess(aManager)) {
     nsRefPtr<BlobImpl> sameProcessImpl = aBlobImpl;
     auto addRefedBlobImpl =
       reinterpret_cast<intptr_t>(sameProcessImpl.forget().take());
@@ -3910,7 +3837,8 @@ BlobParent::GetOrCreateFromImpl(ParentManagerType* aManager,
         MOZ_ASSERT(!rv.Failed());
 
         blobParams =
-          FileBlobConstructorParams(name, contentType, length, modDate, void_t());
+          FileBlobConstructorParams(name, contentType, length, modDate,
+                                    aBlobImpl->GetDirState(), void_t());
       } else {
         blobParams = NormalBlobConstructorParams(contentType, length, void_t());
       }
@@ -4388,7 +4316,8 @@ BlobParent::RecvResolveMystery(const ResolveMysteryParams& aParams)
       mBlobImpl->SetLazyData(voidString,
                              params.contentType(),
                              params.length(),
-                             INT64_MAX);
+                             INT64_MAX,
+                             BlobDirState::eUnknownIfDir);
       return true;
     }
 
@@ -4413,7 +4342,8 @@ BlobParent::RecvResolveMystery(const ResolveMysteryParams& aParams)
       mBlobImpl->SetLazyData(params.name(),
                              params.contentType(),
                              params.length(),
-                             params.modDate());
+                             params.modDate(),
+                             BlobDirState(params.dirState()));
       return true;
     }
 

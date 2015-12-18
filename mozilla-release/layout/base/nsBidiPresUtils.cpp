@@ -734,42 +734,31 @@ nsBidiPresUtils::ResolveParagraph(nsBlockFrame* aBlockFrame,
 #endif
 #endif
 
-  nsIFrame* frame0 = frameCount > 0 ? aBpd->FrameAt(0) : nullptr;
-
-  // Non-bidi frames
-  if (runCount == 1 &&
+  if (runCount == 1 && frameCount == 1 &&
       aBpd->mParagraphDepth == 0 && aBpd->GetDirection() == NSBIDI_LTR &&
-      aBpd->GetParaLevel() == 0 &&
-      frame0 && frame0 != NS_BIDI_CONTROL_FRAME &&
-      !frame0->Properties().Get(nsIFrame::EmbeddingLevelProperty()) &&
-      !frame0->Properties().Get(nsIFrame::BaseLevelProperty())) {
-    // We have a left-to-right frame in a left-to-right paragraph,
+      aBpd->GetParaLevel() == 0) {
+    // We have a single left-to-right frame in a left-to-right paragraph,
     // without bidi isolation from the surrounding text.
-    // The embedding level and base level frame properties aren't
+    // Make sure that the embedding level and base level frame properties aren't
     // set (because if they are this frame used to have some other direction,
-    // so we can't do this optimization)
-
-    // Make all continuations fluid within this run
-    for (int i = 0; i < frameCount; ++i) {
-      nsIFrame* frame = aBpd->FrameAt(i);
-      if (frame && frame != NS_BIDI_CONTROL_FRAME) {
-        JoinInlineAncestors(frame);
-      }
-    }
-
+    // so we can't do this optimization), and we're done.
+    nsIFrame* frame = aBpd->FrameAt(0);
+    if (frame != NS_BIDI_CONTROL_FRAME &&
+        !frame->Properties().Get(nsIFrame::EmbeddingLevelProperty()) &&
+        !frame->Properties().Get(nsIFrame::BaseLevelProperty())) {
 #ifdef DEBUG
 #ifdef NOISY_BIDI
-    printf("early return for single direction frame %p\n", (void*)frame);
+      printf("early return for single direction frame %p\n", (void*)frame);
 #endif
 #endif
-
-    return NS_OK;
+      frame->AddStateBits(NS_FRAME_IS_BIDI);
+      return NS_OK;
+    }
   }
 
   nsIFrame* firstFrame = nullptr;
   nsIFrame* lastFrame = nullptr;
 
-  // Bidi frames
   for (; ;) {
     if (fragmentLength <= 0) {
       // Get the next frame from mLogicalFrames
@@ -1464,10 +1453,11 @@ nsBidiPresUtils::RepositionRubyContentFrame(
 
   // When ruby-align is not "start", if the content does not fill this
   // frame, we need to center the children.
+  const nsSize dummyContainerSize;
   for (nsIFrame* child : childList) {
-    LogicalRect rect = child->GetLogicalRect(aFrameWM, 0);
+    LogicalRect rect = child->GetLogicalRect(aFrameWM, dummyContainerSize);
     rect.IStart(aFrameWM) += residualISize / 2;
-    child->SetRect(aFrameWM, rect, 0);
+    child->SetRect(aFrameWM, rect, dummyContainerSize);
   }
 }
 
@@ -1577,19 +1567,22 @@ nsBidiPresUtils::RepositionFrame(nsIFrame* aFrame,
   // Since the visual order of frame could be different from the
   // continuation order, we need to remove any border/padding first,
   // so that we can get the correct isize of the current frame.
-  if (!aFrame->GetPrevContinuation()) {
-    frameISize -= borderPadding.IStart(frameWM);
-  }
-  if (!aFrame->GetNextContinuation()) {
-    frameISize -= borderPadding.IEnd(frameWM);
-  }
-  if (!isFirst) {
-    frameMargin.IStart(frameWM) = 0;
-    borderPadding.IStart(frameWM) = 0;
-  }
-  if (!isLast) {
-    frameMargin.IEnd(frameWM) = 0;
-    borderPadding.IEnd(frameWM) = 0;
+  if (aFrame->StyleBorder()->mBoxDecorationBreak ==
+        NS_STYLE_BOX_DECORATION_BREAK_SLICE) {
+    if (!aFrame->GetPrevContinuation()) {
+      frameISize -= borderPadding.IStart(frameWM);
+    }
+    if (!aFrame->GetNextContinuation()) {
+      frameISize -= borderPadding.IEnd(frameWM);
+    }
+    if (!isFirst) {
+      frameMargin.IStart(frameWM) = 0;
+      borderPadding.IStart(frameWM) = 0;
+    }
+    if (!isLast) {
+      frameMargin.IEnd(frameWM) = 0;
+      borderPadding.IEnd(frameWM) = 0;
+    }
   }
   frameISize += borderPadding.IStartEnd(frameWM);
 
@@ -1617,28 +1610,23 @@ nsBidiPresUtils::RepositionFrame(nsIFrame* aFrame,
       frameWM.IsOrthogonalTo(aContainerWM) ? aFrame->BSize() : frameISize;
   }
 
-  // LogicalRect doesn't correctly calculate the vertical position
-  // in vertical writing modes with right-to-left direction (Bug 1131451).
-  // This does the correct calculation ad hoc pending the fix for that.
-  nsRect rect = aFrame->GetRect();
-
-  LogicalMargin margin = frameMargin.ConvertTo(aContainerWM, frameWM);
   // In the following variables, if aContainerReverseDir is true, i.e.
   // the container is positioning its children in reverse of its logical
   // direction, the "StartOrEnd" refers to the distance from the frame
   // to the inline end edge of the container, elsewise, it refers to the
   // distance to the inline start edge.
-  nscoord marginStartOrEnd = aContainerReverseDir ?
-    margin.IEnd(aContainerWM) : margin.IStart(aContainerWM);
+  const LogicalMargin margin = frameMargin.ConvertTo(aContainerWM, frameWM);
+  nscoord marginStartOrEnd =
+    aContainerReverseDir ? margin.IEnd(aContainerWM)
+                         : margin.IStart(aContainerWM);
   nscoord frameStartOrEnd = aStartOrEnd + marginStartOrEnd;
-  // Whether we are placing frames from right to left.
-  // e.g. If the frames are placed reversely in LTR mode, they are
-  // actually placed from right to left.
-  bool orderingRTL = aContainerReverseDir == aContainerWM.IsBidiLTR();
-  (aContainerWM.IsVertical() ? rect.y : rect.x) = orderingRTL ?
-    lineSize - (frameStartOrEnd + icoord) : frameStartOrEnd;
-  (aContainerWM.IsVertical() ? rect.height : rect.width) = icoord;
-  aFrame->SetRect(rect);
+
+  LogicalRect rect = aFrame->GetLogicalRect(aContainerWM, aContainerSize);
+  rect.ISize(aContainerWM) = icoord;
+  rect.IStart(aContainerWM) =
+    aContainerReverseDir ? lineSize - frameStartOrEnd - icoord
+                         : frameStartOrEnd;
+  aFrame->SetRect(aContainerWM, rect, aContainerSize);
 
   return icoord + margin.IStartEnd(aContainerWM);
 }

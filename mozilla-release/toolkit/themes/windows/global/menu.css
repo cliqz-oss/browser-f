@@ -216,7 +216,6 @@ menulist > menupopup > menuitem > .menu-iconic-left,
 menulist > menupopup > menucaption > .menu-iconic-left,
 menulist > menupopup > menu > .menu-iconic-left {
   display: none;
-  padding-top: 0px;
 }
 
 menulist > menupopup > menuitem > label,

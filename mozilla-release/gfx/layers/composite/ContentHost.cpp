@@ -20,7 +20,7 @@
 namespace mozilla {
 namespace gfx {
 class Matrix4x4;
-}
+} // namespace gfx
 using namespace gfx;
 
 namespace layers {
@@ -35,7 +35,8 @@ ContentHostBase::~ContentHostBase()
 }
 
 void
-ContentHostTexture::Composite(EffectChain& aEffectChain,
+ContentHostTexture::Composite(LayerComposite* aLayer,
+                              EffectChain& aEffectChain,
                               float aOpacity,
                               const gfx::Matrix4x4& aTransform,
                               const Filter& aFilter,
@@ -218,10 +219,20 @@ ContentHostTexture::Composite(EffectChain& aEffectChain,
 }
 
 void
-ContentHostTexture::UseTextureHost(TextureHost* aTexture)
+ContentHostTexture::UseTextureHost(const nsTArray<TimedTexture>& aTextures)
 {
-  ContentHostBase::UseTextureHost(aTexture);
-  mTextureHost = aTexture;
+  ContentHostBase::UseTextureHost(aTextures);
+  MOZ_ASSERT(aTextures.Length() == 1);
+  const TimedTexture& t = aTextures[0];
+  MOZ_ASSERT(t.mPictureRect.IsEqualInterior(
+      nsIntRect(nsIntPoint(0, 0), nsIntSize(t.mTexture->GetSize()))),
+      "Only default picture rect supported");
+
+  if (t.mTexture != mTextureHost) {
+    mReceivedNewHost = true;
+  }
+
+  mTextureHost = t.mTexture;
   mTextureHostOnWhite = nullptr;
   mTextureSourceOnWhite = nullptr;
   if (mTextureHost) {
@@ -324,6 +335,11 @@ ContentHostSingleBuffered::UpdateThebes(const ThebesBufferData& aData,
 
   // updated is in screen coordinates. Convert it to buffer coordinates.
   nsIntRegion destRegion(aUpdated);
+
+  if (mReceivedNewHost) {
+    destRegion.Or(destRegion, aOldValidRegionBack);
+    mReceivedNewHost = false;
+  }
   destRegion.MoveBy(-aData.rect().TopLeft());
 
   if (!aData.rect().Contains(aUpdated.GetBounds()) ||
@@ -444,7 +460,7 @@ ContentHostTexture::GetRenderState()
   return result;
 }
 
-TemporaryRef<TexturedEffect>
+already_AddRefed<TexturedEffect>
 ContentHostTexture::GenEffect(const gfx::Filter& aFilter)
 {
   if (!mTextureHost) {
@@ -465,7 +481,7 @@ ContentHostTexture::GenEffect(const gfx::Filter& aFilter)
                               GetRenderState());
 }
 
-TemporaryRef<gfx::DataSourceSurface>
+already_AddRefed<gfx::DataSourceSurface>
 ContentHostTexture::GetAsSurface()
 {
   if (!mTextureHost) {

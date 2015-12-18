@@ -1,10 +1,10 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-let {Log} = Cu.import("resource://gre/modules/Log.jsm", {});
-let {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
-let {fxAccounts} = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
-let FxAccountsCommon = {};
+var {Log} = Cu.import("resource://gre/modules/Log.jsm", {});
+var {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
+var {fxAccounts} = Cu.import("resource://gre/modules/FxAccounts.jsm", {});
+var FxAccountsCommon = {};
 Cu.import("resource://gre/modules/FxAccountsCommon.js", FxAccountsCommon);
 
 const TEST_ROOT = "http://example.com/browser/browser/base/content/test/general/";
@@ -16,7 +16,7 @@ const TEST_ROOT = "http://example.com/browser/browser/base/content/test/general/
 
   // The stub functions.
   let stubs = {
-    updateAppMenuItem() {
+    updateAppMenuItem: function() {
       return unstubs['updateAppMenuItem'].call(gFxAccounts).then(() => {
         Services.obs.notifyObservers(null, "test:browser_fxaccounts:updateAppMenuItem", null);
       });
@@ -25,11 +25,8 @@ const TEST_ROOT = "http://example.com/browser/browser/base/content/test/general/
     // due to the promises it fires off at load time  and there's no clear way to
     // know when they are done.
     // So just ensure openPreferences is called rather than whether it opens.
-    openPreferences() {
+    openPreferences: function() {
       Services.obs.notifyObservers(null, "test:browser_fxaccounts:openPreferences", null);
-    },
-    openAccountsPage(action, params) {
-      Services.obs.notifyObservers(null, "test:browser_fxaccounts:openAccountsPage", null);
     }
   };
 
@@ -47,16 +44,14 @@ const TEST_ROOT = "http://example.com/browser/browser/base/content/test/general/
 })();
 
 // Other setup/cleanup
-let newTab;
+var newTab;
 
 Services.prefs.setCharPref("identity.fxaccounts.remote.signup.uri",
                            TEST_ROOT + "accounts_testRemoteCommands.html");
-Services.prefs.setBoolPref("identity.fxaccounts.profile_image.enabled", false);
 
 registerCleanupFunction(() => {
   Services.prefs.clearUserPref("identity.fxaccounts.remote.signup.uri");
   Services.prefs.clearUserPref("identity.fxaccounts.remote.profile.uri");
-  Services.prefs.clearUserPref("identity.fxaccounts.profile_image.enabled");
   gBrowser.removeTab(newTab);
 });
 
@@ -69,9 +64,9 @@ add_task(function* initialize() {
 });
 
 // The elements we care about.
-let panelUILabel = document.getElementById("PanelUI-fxa-label");
-let panelUIStatus = document.getElementById("PanelUI-fxa-status");
-let panelUIFooter = document.getElementById("PanelUI-footer-fxa");
+var panelUILabel = document.getElementById("PanelUI-fxa-label");
+var panelUIStatus = document.getElementById("PanelUI-fxa-status");
+var panelUIFooter = document.getElementById("PanelUI-footer-fxa");
 
 // The tests
 add_task(function* test_nouser() {
@@ -89,9 +84,9 @@ add_task(function* test_nouser() {
   Assert.ok(!panelUIFooter.hasAttribute("fxastatus"), "no fxsstatus when signed out");
   Assert.ok(!panelUIFooter.hasAttribute("fxaprofileimage"), "no fxaprofileimage when signed out");
 
-  let promiseAccountsOpen = promiseObserver("test:browser_fxaccounts:openAccountsPage");
+  let promisePreferencesOpened = promiseObserver("test:browser_fxaccounts:openPreferences");
   panelUIStatus.click();
-  yield promiseAccountsOpen;
+  yield promisePreferencesOpened;
 });
 
 /*
@@ -117,7 +112,11 @@ add_task(function* test_unverifiedUser() {
 */
 
 add_task(function* test_verifiedUserEmptyProfile() {
-  let promiseUpdateDone = promiseObserver("test:browser_fxaccounts:updateAppMenuItem", 1);
+  // We see 2 updateAppMenuItem() calls - one for the signedInUser and one after
+  // we first fetch the profile. We want them both to fire or we aren't testing
+  // the state we think we are testing.
+  let promiseUpdateDone = promiseObserver("test:browser_fxaccounts:updateAppMenuItem", 2);
+  configureProfileURL({}); // successful but empty profile.
   yield setSignedInUser(true); // this will fire the observer that does the update.
   yield promiseUpdateDone;
 
@@ -131,6 +130,35 @@ add_task(function* test_verifiedUserEmptyProfile() {
   let promisePreferencesOpened = promiseObserver("test:browser_fxaccounts:openPreferences");
   panelUIStatus.click();
   yield promisePreferencesOpened;
+  yield signOut();
+});
+
+add_task(function* test_verifiedUserDisplayName() {
+  let promiseUpdateDone = promiseObserver("test:browser_fxaccounts:updateAppMenuItem", 2);
+  configureProfileURL({ displayName: "Test User Display Name" });
+  yield setSignedInUser(true); // this will fire the observer that does the update.
+  yield promiseUpdateDone;
+
+  Assert.ok(isFooterVisible())
+  Assert.equal(panelUILabel.getAttribute("label"), "Test User Display Name");
+  Assert.equal(panelUIStatus.getAttribute("tooltiptext"),
+               panelUIStatus.getAttribute("signedinTooltiptext"));
+  Assert.equal(panelUIFooter.getAttribute("fxastatus"), "signedin");
+  yield signOut();
+});
+
+add_task(function* test_verifiedUserProfileFailure() {
+  // profile failure means only one observer fires.
+  let promiseUpdateDone = promiseObserver("test:browser_fxaccounts:updateAppMenuItem", 1);
+  configureProfileURL(null, 500);
+  yield setSignedInUser(true); // this will fire the observer that does the update.
+  yield promiseUpdateDone;
+
+  Assert.ok(isFooterVisible())
+  Assert.equal(panelUILabel.getAttribute("label"), "foo@example.com");
+  Assert.equal(panelUIStatus.getAttribute("tooltiptext"),
+               panelUIStatus.getAttribute("signedinTooltiptext"));
+  Assert.equal(panelUIFooter.getAttribute("fxastatus"), "signedin");
   yield signOut();
 });
 
@@ -175,7 +203,7 @@ function promiseWaitForEvent(node, type, capturing) {
   });
 }
 
-let promiseTabOpen = Task.async(function*(urlBase) {
+var promiseTabOpen = Task.async(function*(urlBase) {
   info("Waiting for tab to open...");
   let event = yield promiseWaitForEvent(gBrowser.tabContainer, "TabOpen", true);
   let tab = event.target;
@@ -219,7 +247,7 @@ function setSignedInUser(verified) {
   return fxAccounts.setSignedInUser(data);
 }
 
-let signOut = Task.async(function* () {
+var signOut = Task.async(function* () {
   // This test needs to make sure that any updates for the logout have
   // completed before starting the next test, or we see the observer
   // notifications get out of sync.

@@ -8,7 +8,7 @@
    VariablesViewController, Task */
 
 const {Cu, Ci} = require("chrome");
-const {Promise: promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
+const promise = require("promise");
 const {Spectrum} = require("devtools/shared/widgets/Spectrum");
 const {CubicBezierWidget} =
       require("devtools/shared/widgets/CubicBezierWidget");
@@ -19,9 +19,8 @@ const {colorUtils} = require("devtools/css-color");
 const Heritage = require("sdk/core/heritage");
 const {Eyedropper} = require("devtools/eyedropper/eyedropper");
 const Editor = require("devtools/sourceeditor/editor");
-const {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 
-devtools.lazyRequireGetter(this, "beautify", "devtools/jsbeautify");
+loader.lazyRequireGetter(this, "beautify", "devtools/jsbeautify");
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -98,7 +97,7 @@ OptionsStore.prototype = {
 /**
  * The low level structure of a tooltip is a XUL element (a <panel>).
  */
-let PanelFactory = {
+var PanelFactory = {
   /**
    * Get a new XUL panel instance.
    * @param {XULDocument} doc
@@ -863,8 +862,9 @@ Tooltip.prototype = {
    * that resolves to the instance of the widget when ready.
    */
   setFilterContent: function(filter) {
-    let dimensions = {width: "350", height: "350"};
+    let dimensions = {width: "500", height: "200"};
     let panel = this.panel;
+
     return this.setIFrameContent(dimensions, FILTER_FRAME).then(onLoaded);
 
     function onLoaded(iframe) {
@@ -874,14 +874,8 @@ Tooltip.prototype = {
       let container = win.document.getElementById("container");
       let widget = new CSSFilterEditorWidget(container, filter);
 
-      iframe.height = doc.offsetHeight;
-
-      widget.on("render", () => {
-        iframe.height = doc.offsetHeight;
-      });
-
       // Resolve to the widget instance whenever the popup becomes visible
-      if (panel.state == "open") {
+      if (panel.state === "open") {
         def.resolve(widget);
       } else {
         panel.addEventListener("popupshown", function shown() {
@@ -1030,6 +1024,7 @@ SwatchBasedEditorTooltip.prototype = {
    * @param {object} callbacks
    *        Callbacks that will be executed when the editor wants to preview a
    *        value change, or revert a change, or commit a change.
+   *        - onShow: will be called when one of the swatch tooltip is shown
    *        - onPreview: will be called when one of the sub-classes calls
    *        preview
    *        - onRevert: will be called when the user ESCapes out of the tooltip
@@ -1037,6 +1032,9 @@ SwatchBasedEditorTooltip.prototype = {
    *        outside the tooltip.
    */
   addSwatch: function(swatchEl, callbacks={}) {
+    if (!callbacks.onShow) {
+      callbacks.onShow = function() {};
+    }
     if (!callbacks.onPreview) {
       callbacks.onPreview = function() {};
     }
@@ -1074,6 +1072,7 @@ SwatchBasedEditorTooltip.prototype = {
     if (swatch) {
       this.activeSwatch = event.target;
       this.show();
+      swatch.callbacks.onShow();
       event.stopPropagation();
     }
   },
@@ -1715,7 +1714,7 @@ SwatchFilterTooltip.prototype = Heritage.extend(SwatchBasedEditorTooltip.prototy
 function L10N() {}
 L10N.prototype = {};
 
-let l10n = new L10N();
+var l10n = new L10N();
 
 loader.lazyGetter(L10N.prototype, "strings", () => {
   return Services.strings.createBundle(

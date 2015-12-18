@@ -9,11 +9,15 @@
  * to the top window.
  */
 Cu.import("resource://gre/modules/PerformanceStats.jsm", this);
+Cu.import("resource://gre/modules/Services.jsm", this);
 Cu.import("resource://testing-common/ContentTask.jsm", this);
+
 
 const URL = "http://example.com/browser/toolkit/components/perfmonitoring/tests/browser/browser_compartments.html?test=" + Math.random();
 const PARENT_TITLE = `Main frame for test browser_compartments.js ${Math.random()}`;
 const FRAME_TITLE = `Subframe for test browser_compartments.js ${Math.random()}`;
+
+const PARENT_PID = Services.appinfo.processID;
 
 // This function is injected as source as a frameScript
 function frameScript() {
@@ -22,18 +26,18 @@ function frameScript() {
 
     const { utils: Cu, classes: Cc, interfaces: Ci } = Components;
     Cu.import("resource://gre/modules/PerformanceStats.jsm");
-
+    Cu.import("resource://gre/modules/Services.jsm");
     let performanceStatsService =
       Cc["@mozilla.org/toolkit/performance-stats-service;1"].
       getService(Ci.nsIPerformanceStatsService);
 
     // Make sure that the stopwatch is now active.
-    let monitor = PerformanceStats.getMonitor(["jank", "cpow", "ticks"]);
+    let monitor = PerformanceStats.getMonitor(["jank", "cpow", "ticks", "compartments"]);
 
     addMessageListener("compartments-test:getStatistics", () => {
       try {
         monitor.promiseSnapshot().then(snapshot => {
-          sendAsyncMessage("compartments-test:getStatistics", snapshot);
+          sendAsyncMessage("compartments-test:getStatistics", {snapshot, pid: Services.appinfo.processID});
         });
       } catch (ex) {
         Cu.reportError("Error in content (getStatistics): " + ex);
@@ -62,7 +66,7 @@ function frameScript() {
 
 // A variant of `Assert` that doesn't spam the logs
 // in case of success.
-let SilentAssert = {
+var SilentAssert = {
   equal: function(a, b, msg) {
     if (a == b) {
       return;
@@ -86,7 +90,7 @@ let SilentAssert = {
   }
 };
 
-
+var isShuttingDown = false;
 function monotinicity_tester(source, testName) {
   // In the background, check invariants:
   // - numeric data can only ever increase;
@@ -130,20 +134,26 @@ function monotinicity_tester(source, testName) {
   };
   let iteration = 0;
   let frameCheck = Task.async(function*() {
+    if (isShuttingDown) {
+      window.clearInterval(interval);
+      return;
+    }
     let name = `${testName}: ${iteration++}`;
-    let snapshot = yield source();
-    if (!snapshot) {
+    let result = yield source();
+    if (!result) {
       // This can happen at the end of the test when we attempt
       // to communicate too late with the content process.
       window.clearInterval(interval);
       return;
     }
+    let {pid, snapshot} = result;
 
     // Sanity check on the process data.
     sanityCheck(previous.processData, snapshot.processData);
     SilentAssert.equal(snapshot.processData.isSystem, true);
     SilentAssert.equal(snapshot.processData.name, "<process>");
     SilentAssert.equal(snapshot.processData.addonId, "");
+    SilentAssert.equal(snapshot.processData.processId, pid);
     previous.procesData = snapshot.processData;
 
     // Sanity check on components data.
@@ -154,13 +164,40 @@ function monotinicity_tester(source, testName) {
         ["jank", "totalSystemTime"],
         ["cpow", "totalCPOWTime"]
       ]) {
-        SilentAssert.leq(item[probe][k], snapshot.processData[probe][k],
-          `Sanity check (${testName}): component has a lower ${k} than process`);
+        // Note that we cannot expect components data to be always smaller
+        // than process data, as `getrusage` & co are not monotonic.
+        SilentAssert.leq(item[probe][k], 3 * snapshot.processData[probe][k],
+          `Sanity check (${name}): ${k} of component is not impossibly larger than that of process`);
       }
 
+      let isCorrectPid = (item.processId == pid && !item.isChildProcess)
+        || (item.processId != pid && item.isChildProcess);
+      SilentAssert.ok(isCorrectPid, `Pid check (${name}): the item comes from the right process`);
+
       let key = item.groupId;
-      SilentAssert.ok(!map.has(key), "The component hasn't been seen yet.");
+      if (map.has(key)) {
+        let old = map.get(key);
+        Assert.ok(false, `Component ${key} has already been seen. Latest: ${item.title||item.addonId||item.name}, previous: ${old.title||old.addonId||old.name}`);
+      }
       map.set(key, item);
+    }
+    for (let item of snapshot.componentsData) {
+      if (!item.parentId) {
+        continue;
+      }
+      let parent = map.get(item.parentId);
+      SilentAssert.ok(parent, `The parent exists ${item.parentId}`);
+
+      for (let [probe, k] of [
+        ["jank", "totalUserTime"],
+        ["jank", "totalSystemTime"],
+        ["cpow", "totalCPOWTime"]
+      ]) {
+        // Note that we cannot expect components data to be always smaller
+        // than parent data, as `getrusage` & co are not monotonic.
+        SilentAssert.leq(item[probe][k], 2 * parent[probe][k],
+          `Sanity check (${testName}): ${k} of component is not impossibly larger than that of parent`);
+      }
     }
     for (let [key, item] of map) {
       sanityCheck(previous.componentsMap.get(key), item);
@@ -195,7 +232,7 @@ add_task(function* test() {
     info("Deactivating sanity checks under Windows (bug 1151240)");
   } else {
     info("Setting up sanity checks");
-    monotinicity_tester(() => monitor.promiseSnapshot(), "parent process");
+    monotinicity_tester(() => monitor.promiseSnapshot().then(snapshot => ({snapshot, pid: PARENT_PID})), "parent process");
     monotinicity_tester(() => promiseContentResponseOrNull(browser, "compartments-test:getStatistics", null), "content process" );
   }
 
@@ -215,7 +252,7 @@ add_task(function* test() {
     });
     info("Titles set");
 
-    let stats = (yield promiseContentResponse(browser, "compartments-test:getStatistics", null));
+    let {snapshot: stats} = (yield promiseContentResponse(browser, "compartments-test:getStatistics", null));
 
     let titles = [for(stat of stats.componentsData) stat.title];
 
@@ -236,13 +273,20 @@ add_task(function* test() {
       info("Searching by title, we didn't find the main frame");
       continue;
     }
+    info("Found the main frame");
 
-    if (skipTotalUserTime || parent.jank.totalUserTime > 1000) {
+    if (skipTotalUserTime) {
+      info("Not looking for total user time on this platform, we're done");
+      break;
+    } else if (parent.jank.totalUserTime > 1000) {
+      info("Enough CPU time detected, we're done");
       break;
     } else {
-      info(`Not enough CPU time detected: ${parent.jank.totalUserTime}`)
+      info(`Not enough CPU time detected: ${parent.jank.totalUserTime}`);
+      info(`Details: ${JSON.stringify(parent, null, "\t")}`);
     }
   }
+  isShuttingDown = true;
 
   // Cleanup
   gBrowser.removeTab(newTab);

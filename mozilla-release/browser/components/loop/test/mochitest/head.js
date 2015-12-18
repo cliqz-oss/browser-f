@@ -7,7 +7,7 @@ const HAWK_TOKEN_LENGTH = 64;
 const {
   LOOP_SESSION_TYPE,
   MozLoopServiceInternal,
-  MozLoopService,
+  MozLoopService
 } = Cu.import("resource:///modules/loop/MozLoopService.jsm", {});
 const {LoopCalls} = Cu.import("resource:///modules/loop/LoopCalls.jsm", {});
 const {LoopRooms} = Cu.import("resource:///modules/loop/LoopRooms.jsm", {});
@@ -131,8 +131,8 @@ function loadLoopPanel(aOverrideOptions = {}) {
 
 function promiseOAuthParamsSetup(baseURL, params) {
   return new Promise((resolve, reject) => {
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-                createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(
+              Ci.nsIXMLHttpRequest);
     xhr.open("POST", baseURL + "/setup_params", true);
     xhr.setRequestHeader("X-Params", JSON.stringify(params));
     xhr.addEventListener("load", () => resolve(xhr));
@@ -173,8 +173,8 @@ function checkLoggedOutState() {
 
 function promiseDeletedOAuthParams(baseURL) {
   return new Promise((resolve, reject) => {
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-                createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(
+              Ci.nsIXMLHttpRequest);
     xhr.open("DELETE", baseURL + "/setup_params", true);
     xhr.addEventListener("load", () => resolve(xhr));
     xhr.addEventListener("error", reject);
@@ -197,8 +197,8 @@ function promiseObserverNotified(aTopic, aExpectedData = null) {
  */
 function promiseOAuthGetRegistration(baseURL) {
   return new Promise((resolve, reject) => {
-    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].
-                createInstance(Ci.nsIXMLHttpRequest);
+    let xhr = Cc["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(
+              Ci.nsIXMLHttpRequest);
     xhr.open("GET", baseURL + "/get_registration", true);
     xhr.responseType = "json";
     xhr.addEventListener("load", () => resolve(xhr));
@@ -216,7 +216,7 @@ function getLoopString(stringID) {
  * MozLoopService tests. There is only one object created per test instance, as
  * once registration has taken place, the object cannot currently be changed.
  */
-let mockPushHandler = {
+var mockPushHandler = {
   // This sets the registration result to be returned when initialize
   // is called. By default, it is equivalent to success.
   registrationResult: null,

@@ -34,41 +34,39 @@ namespace dom {
  * beacon            | TYPE_BEACON
  * cspreport         | TYPE_CSP_REPORT
  * download          |
- * embed             | TYPE_OBJECT
+ * embed             | TYPE_INTERNAL_EMBED
  * eventsource       |
  * favicon           |
  * fetch             | TYPE_FETCH
  * font              | TYPE_FONT
  * form              |
- * frame             | TYPE_SUBDOCUMENT
+ * frame             | TYPE_INTERNAL_FRAME
  * hyperlink         |
- * iframe            | TYPE_SUBDOCUMENT
+ * iframe            | TYPE_INTERNAL_IFRAME
  * image             | TYPE_IMAGE
  * imageset          | TYPE_IMAGESET
  * import            | Not supported by Gecko
  * internal          | TYPE_DOCUMENT, TYPE_XBL, TYPE_OTHER
  * location          |
  * manifest          | TYPE_WEB_MANIFEST
- * object            | TYPE_OBJECT
+ * object            | TYPE_INTERNAL_OBJECT
  * ping              | TYPE_PING
  * plugin            | TYPE_OBJECT_SUBREQUEST
  * prefetch          |
- * script            | TYPE_SCRIPT
- * sharedworker      |
+ * script            | TYPE_INTERNAL_SCRIPT
+ * sharedworker      | TYPE_INTERNAL_SHARED_WORKER
  * subresource       | Not supported by Gecko
  * style             | TYPE_STYLESHEET
  * track             | TYPE_INTERNAL_TRACK
  * video             | TYPE_INTERNAL_VIDEO
- * worker            |
- * xmlhttprequest    | TYPE_XMLHTTPREQUEST
+ * worker            | TYPE_INTERNAL_WORKER
+ * xmlhttprequest    | TYPE_INTERNAL_XMLHTTPREQUEST
+ * eventsource       | TYPE_INTERNAL_EVENTSOURCE
  * xslt              | TYPE_XSLT
  *
  * TODO: Figure out if TYPE_REFRESH maps to anything useful
  * TODO: Figure out if TYPE_DTD maps to anything useful
- * TODO: Split TYPE_XMLHTTPREQUEST and TYPE_DATAREQUEST for EventSource
  * TODO: Figure out if TYPE_WEBSOCKET maps to anything useful
- * TODO: Differentiate between frame and iframe
- * TODO: Add content types for different kinds of workers
  * TODO: Add a content type for prefetch
  * TODO: Use the content type for manifest when it becomes available
  * TODO: Add a content type for location
@@ -76,7 +74,6 @@ namespace dom {
  * TODO: Add a content type for form
  * TODO: Add a content type for favicon
  * TODO: Add a content type for download
- * TODO: Split TYPE_OBJECT into TYPE_EMBED and TYPE_OBJECT
  */
 
 class Request;
@@ -95,6 +92,7 @@ public:
     RESPONSETAINT_BASIC,
     RESPONSETAINT_CORS,
     RESPONSETAINT_OPAQUE,
+    RESPONSETAINT_OPAQUEREDIRECT,
   };
 
   explicit InternalRequest()
@@ -105,6 +103,7 @@ public:
     , mCredentialsMode(RequestCredentials::Omit)
     , mResponseTainting(RESPONSETAINT_BASIC)
     , mCacheMode(RequestCache::Default)
+    , mRedirectMode(RequestRedirect::Follow)
     , mAuthenticationFlag(false)
     , mForceOriginHeader(false)
     , mPreserveContentCodings(false)
@@ -267,6 +266,18 @@ public:
     mCacheMode = aCacheMode;
   }
 
+  RequestRedirect
+  GetRedirectMode() const
+  {
+    return mRedirectMode;
+  }
+
+  void
+  SetRedirectMode(RequestRedirect aRedirectMode)
+  {
+    mRedirectMode = aRedirectMode;
+  }
+
   nsContentPolicyType
   ContentPolicyType() const
   {
@@ -322,7 +333,7 @@ public:
   SetBody(nsIInputStream* aStream)
   {
     // A request's body may not be reset once set.
-    MOZ_ASSERT(!mBodyStream);
+    MOZ_ASSERT_IF(aStream, !mBodyStream);
     mBodyStream = aStream;
   }
 
@@ -357,6 +368,18 @@ public:
     mCreatedByFetchEvent = false;
   }
 
+  bool
+  IsNavigationRequest() const;
+
+  bool
+  IsWorkerRequest() const;
+
+  bool
+  IsClientRequest() const;
+
+  static RequestMode
+  MapChannelToRequestMode(nsIChannel* aChannel);
+
 private:
   // Does not copy mBodyStream.  Use fallible Clone() for complete copy.
   explicit InternalRequest(const InternalRequest& aOther);
@@ -366,7 +389,14 @@ private:
   static RequestContext
   MapContentPolicyTypeToRequestContext(nsContentPolicyType aContentPolicyType);
 
+  static bool
+  IsNavigationContentPolicy(nsContentPolicyType aContentPolicyType);
+
+  static bool
+  IsWorkerContentPolicy(nsContentPolicyType aContentPolicyType);
+
   nsCString mMethod;
+  // mURL always stores the url with the ref stripped
   nsCString mURL;
   nsRefPtr<InternalHeaders> mHeaders;
   nsCOMPtr<nsIInputStream> mBodyStream;
@@ -382,6 +412,7 @@ private:
   RequestCredentials mCredentialsMode;
   ResponseTainting mResponseTainting;
   RequestCache mCacheMode;
+  RequestRedirect mRedirectMode;
 
   bool mAuthenticationFlag;
   bool mForceOriginHeader;

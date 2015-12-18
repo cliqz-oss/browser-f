@@ -1,5 +1,5 @@
 $inherits:
-  from: 'tasks/build.yml'
+  from: 'tasks/builds/mobile_base.yml'
   variables:
     build_name: 'android'
     build_type: 'opt'
@@ -8,21 +8,26 @@ task:
       name: '[TC] Android armv7 API 11+'
       description: 'Android armv7 API 11+'
 
-  workerType: b2g-desktop-opt
+  workerType: android-api-11
 
   routes:
     - 'index.buildbot.branches.{{project}}.android-api-11'
     - 'index.buildbot.revisions.{{head_rev}}.{{project}}.android-api-11'
 
   scopes:
-    - 'docker-worker:cache:build-android-api-11-workspace'
+    - 'docker-worker:cache:build-android-api-11-c6-workspace'
     - 'docker-worker:cache:tooltool-cache'
+    - 'docker-worker:relengapi-proxy:tooltool.download.internal'
+    - 'docker-worker:relengapi-proxy:tooltool.download.public'
 
   payload:
     image: '{{#docker_image}}desktop-build{{/docker_image}}'
     cache:
-      build-android-api-11-workspace: '/home/worker/workspace'
+      build-android-api-11-c6-workspace: '/home/worker/workspace'
       tooltool-cache: '/home/worker/tooltool-cache'
+
+    features:
+      relengAPIProxy: true
 
     env:
       # inputs to mozharness

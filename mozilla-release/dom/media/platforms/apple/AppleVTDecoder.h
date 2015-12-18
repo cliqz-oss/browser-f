@@ -16,19 +16,21 @@ namespace mozilla {
 class AppleVTDecoder : public AppleVDADecoder {
 public:
   AppleVTDecoder(const VideoInfo& aConfig,
-                 FlushableMediaTaskQueue* aVideoTaskQueue,
+                 FlushableTaskQueue* aVideoTaskQueue,
                  MediaDataDecoderCallback* aCallback,
                  layers::ImageContainer* aImageContainer);
   virtual ~AppleVTDecoder();
-  virtual nsresult Init() override;
+  virtual nsRefPtr<InitPromise> Init() override;
   virtual nsresult Input(MediaRawData* aSample) override;
-  virtual nsresult Flush() override;
-  virtual nsresult Drain() override;
-  virtual nsresult Shutdown() override;
-  virtual bool IsHardwareAccelerated() const override
+  virtual bool IsHardwareAccelerated(nsACString& aFailureReason) const override
   {
     return mIsHardwareAccelerated;
   }
+
+protected:
+  void ProcessFlush() override;
+  void ProcessDrain() override;
+  void ProcessShutdown() override;
 
 private:
   CMVideoFormatDescriptionRef mFormat;

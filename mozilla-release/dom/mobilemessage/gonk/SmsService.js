@@ -9,7 +9,7 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
-let RIL = {};
+var RIL = {};
 Cu.import("resource://gre/modules/ril_consts.js", RIL);
 
 const GONK_SMSSERVICE_CONTRACTID = "@mozilla.org/sms/gonksmsservice;1";
@@ -119,7 +119,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "gSmsMessenger",
                                    "@mozilla.org/ril/system-messenger-helper;1",
                                    "nsISmsMessenger");
 
-let DEBUG = RIL.DEBUG_RIL;
+var DEBUG = RIL.DEBUG_RIL;
 function debug(s) {
   dump("SmsService: " + s);
 }
@@ -1031,7 +1031,9 @@ SmsService.prototype = {
                                                    null,
                                                    (aResponse) => {
       if (!aResponse.errorMsg) {
-        aRequest.notifyGetSmscAddress(aResponse.smscAddress);
+        aRequest.notifyGetSmscAddress(aResponse.smscAddress,
+                                      aResponse.typeOfNumber,
+                                      aResponse.numberPlanIdentification);
       } else {
         aRequest.notifyGetSmscAddressFailed(
           Ci.nsIMobileMessageCallback.NOT_FOUND_ERROR);
@@ -1307,19 +1309,19 @@ SmsSendingScheduler.prototype = {
   observe: function(aSubject, aTopic, aData) {
     switch (aTopic) {
       case kSmsDeletedObserverTopic:
+        let deletedInfo = aSubject.QueryInterface(Ci.nsIDeletedMessageInfo);
         if (DEBUG) {
           debug("Observe " + kSmsDeletedObserverTopic + ": " +
-            JSON.stringify(aSubject));
+            JSON.stringify(deletedInfo));
         }
 
-        if (aSubject && aSubject.deletedMessageIds) {
-          for (let id of aSubject.deletedMessageIds) {
-            for (let i = 0; i < this._queue.length; i++) {
-              if (this._queue[i].messageId === id) {
-                if (DEBUG) debug("Deleting message with id=" + id);
-                this._queue.splice(i, 1)[0].onCancel(
-                  Ci.nsIMobileMessageCallback.NOT_FOUND_ERROR);
-              }
+        if (deletedInfo && deletedInfo.deletedMessageIds) {
+          for (let i = 0; i < this._queue.length; i++) {
+            let id = this._queue[i].messageId;
+            if (deletedInfo.deletedMessageIds.includes(id)) {
+              if (DEBUG) debug("Deleting message with id=" + id);
+              this._queue.splice(i, 1)[0].onCancel(
+                Ci.nsIMobileMessageCallback.NOT_FOUND_ERROR);
             }
           }
         }

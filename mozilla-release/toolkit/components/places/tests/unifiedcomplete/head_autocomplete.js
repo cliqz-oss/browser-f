@@ -7,6 +7,8 @@ const Cc = Components.classes;
 const Cr = Components.results;
 const Cu = Components.utils;
 
+const FRECENCY_DEFAULT = 10000;
+
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://testing-common/httpd.js");
 
@@ -216,8 +218,10 @@ function* check_autocomplete(test) {
         image: controller.getImageAt(i),
       }
       do_print(`Looking for "${result.value}", "${result.comment}" in expected results...`);
-      let j;
-      for (j = firstIndexToCheck; j < matches.length; j++) {
+      let lowerBound = test.checkSorting ? i : firstIndexToCheck;
+      let upperBound = test.checkSorting ? i + 1 : matches.length;
+      let found = false;
+      for (let j = lowerBound; j < upperBound; ++j) {
         // Skip processed expected results
         if (matches[j] == undefined)
           continue;
@@ -225,12 +229,12 @@ function* check_autocomplete(test) {
           do_print("Got a match at index " + j + "!");
           // Make it undefined so we don't process it again
           matches[j] = undefined;
+          found = true;
           break;
         }
       }
 
-      // We didn't hit the break, so we must have not found it
-      if (j == matches.length)
+      if (!found)
         do_throw(`Didn't find the current result ("${result.value}", "${result.comment}") in matches`); //' (Emacs syntax highlighting fix)
     }
 
@@ -257,7 +261,7 @@ function* check_autocomplete(test) {
   }
 }
 
-let addBookmark = Task.async(function* (aBookmarkObj) {
+var addBookmark = Task.async(function* (aBookmarkObj) {
   Assert.ok(!!aBookmarkObj.uri, "Bookmark object contains an uri");
   let parentId = aBookmarkObj.parentId ? aBookmarkObj.parentId
                                        : PlacesUtils.unfiledBookmarksFolderId;
@@ -355,13 +359,17 @@ function makeSearchMatch(input, extra = {}) {
   let params = {
     engineName: extra.engineName || "MozSearch",
     input,
-    searchQuery: extra.searchQuery || input,
+    searchQuery: "searchQuery" in extra ? extra.searchQuery : input,
     alias: extra.alias, // may be undefined which is expected.
+  }
+  let style = [ "action", "searchengine" ];
+  if (extra.heuristic) {
+    style.push("heuristic");
   }
   return {
     uri: makeActionURI("searchengine", params),
     title: params.engineName,
-    style: [ "action", "searchengine" ],
+    style,
   }
 }
 
@@ -375,10 +383,14 @@ function makeVisitMatch(input, url, extra = {}) {
     url,
     input,
   }
+  let style = [ "action", "visiturl" ];
+  if (extra.heuristic) {
+    style.push("heuristic");
+  }
   return {
     uri: makeActionURI("visiturl", params),
     title: extra.title || url,
-    style: [ "action", "visiturl" ],
+    style,
   }
 }
 

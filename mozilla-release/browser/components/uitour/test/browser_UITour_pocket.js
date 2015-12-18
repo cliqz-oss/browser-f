@@ -3,18 +3,16 @@
 
 "use strict";
 
-let gTestTab;
-let gContentAPI;
-let gContentWindow;
-let button;
-
-Components.utils.import("resource:///modules/UITour.jsm");
+var gTestTab;
+var gContentAPI;
+var gContentWindow;
+var button;
 
 function test() {
   UITourTest();
 }
 
-let tests = [
+var tests = [
   taskify(function* test_menu_show_navbar() {
     is(button.open, false, "Menu should initially be closed");
     gContentAPI.showMenu("pocket");

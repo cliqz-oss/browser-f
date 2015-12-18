@@ -30,25 +30,10 @@ XPCOMUtils.defineLazyGetter(this, "RIL", function () {
   return obj;
 });
 
-// Ril quirk to attach data registration on demand.
-let RILQUIRKS_DATA_REGISTRATION_ON_DEMAND =
-  libcutils.property_get("ro.moz.ril.data_reg_on_demand", "false") == "true";
-
-// Ril quirk to control the uicc/data subscription.
-let RILQUIRKS_SUBSCRIPTION_CONTROL =
-  libcutils.property_get("ro.moz.ril.subscription_control", "false") == "true";
-
 // Ril quirk to always turn the radio off for the client without SIM card
 // except hw default client.
-let RILQUIRKS_RADIO_OFF_WO_CARD =
+var RILQUIRKS_RADIO_OFF_WO_CARD =
   libcutils.property_get("ro.moz.ril.radio_off_wo_card", "false") == "true";
-
-// Ril quirk to enable IPv6 protocol/roaming protocol in APN settings.
-let RILQUIRKS_HAVE_IPV6 =
-  libcutils.property_get("ro.moz.ril.ipv6", "false") == "true";
-
-let RILQUIRKS_SIGNAL_EXTRA_INT32 =
-  libcutils.property_get("ro.moz.ril.signal_extra_int", "false") == "true";
 
 const RADIOINTERFACELAYER_CID =
   Components.ID("{2d831c8d-6017-435b-a80c-e5d422810cea}");
@@ -75,19 +60,8 @@ const kPrefRilDebuggingEnabled = "ril.debugging.enabled";
 const RADIO_POWER_OFF_TIMEOUT = 30000;
 const HW_DEFAULT_CLIENT_ID = 0;
 
-const NETWORK_TYPE_UNKNOWN     = Ci.nsINetworkInterface.NETWORK_TYPE_UNKNOWN;
-const NETWORK_TYPE_WIFI        = Ci.nsINetworkInterface.NETWORK_TYPE_WIFI;
-const NETWORK_TYPE_MOBILE      = Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE;
-const NETWORK_TYPE_MOBILE_MMS  = Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE_MMS;
-const NETWORK_TYPE_MOBILE_SUPL = Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE_SUPL;
-const NETWORK_TYPE_MOBILE_IMS  = Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE_IMS;
-const NETWORK_TYPE_MOBILE_DUN  = Ci.nsINetworkInterface.NETWORK_TYPE_MOBILE_DUN;
-
-// TODO: Bug 815526, deprecate RILContentHelper.
-const RIL_IPC_ICCMANAGER_MSG_NAMES = [
-  "RIL:ReadIccContacts",
-  "RIL:UpdateIccContact",
-];
+const NETWORK_TYPE_WIFI        = Ci.nsINetworkInfo.NETWORK_TYPE_WIFI;
+const NETWORK_TYPE_MOBILE      = Ci.nsINetworkInfo.NETWORK_TYPE_MOBILE;
 
 // set to true in ril_consts.js to see debug messages
 var DEBUG = RIL.DEBUG_RIL;
@@ -163,204 +137,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "gDataCallInterfaceService",
 XPCOMUtils.defineLazyServiceGetter(this, "gStkCmdFactory",
                                    "@mozilla.org/icc/stkcmdfactory;1",
                                    "nsIStkCmdFactory");
-
-// TODO: Bug 815526, deprecate RILContentHelper.
-XPCOMUtils.defineLazyGetter(this, "gMessageManager", function() {
-  return {
-    QueryInterface: XPCOMUtils.generateQI([Ci.nsIMessageListener,
-                                           Ci.nsIObserver]),
-
-    ril: null,
-
-    // Manage message targets in terms of topic. Only the authorized and
-    // registered contents can receive related messages.
-    targetsByTopic: {},
-    topics: [],
-
-    targetMessageQueue: [],
-    ready: false,
-
-    init: function(ril) {
-      this.ril = ril;
-
-      Services.obs.addObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
-      Services.obs.addObserver(this, kSysMsgListenerReadyObserverTopic, false);
-      this._registerMessageListeners();
-    },
-
-    _shutdown: function() {
-      this.ril = null;
-
-      Services.obs.removeObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID);
-      this._unregisterMessageListeners();
-    },
-
-    _registerMessageListeners: function() {
-      ppmm.addMessageListener("child-process-shutdown", this);
-      for (let msgName of RIL_IPC_ICCMANAGER_MSG_NAMES) {
-        ppmm.addMessageListener(msgName, this);
-      }
-    },
-
-    _unregisterMessageListeners: function() {
-      ppmm.removeMessageListener("child-process-shutdown", this);
-      for (let msgName of RIL_IPC_ICCMANAGER_MSG_NAMES) {
-        ppmm.removeMessageListener(msgName, this);
-      }
-      ppmm = null;
-    },
-
-    _registerMessageTarget: function(topic, target) {
-      let targets = this.targetsByTopic[topic];
-      if (!targets) {
-        targets = this.targetsByTopic[topic] = [];
-        let list = this.topics;
-        if (list.indexOf(topic) == -1) {
-          list.push(topic);
-        }
-      }
-
-      if (targets.indexOf(target) != -1) {
-        if (DEBUG) debug("Already registered this target!");
-        return;
-      }
-
-      targets.push(target);
-      if (DEBUG) debug("Registered " + topic + " target: " + target);
-    },
-
-    _unregisterMessageTarget: function(topic, target) {
-      if (topic == null) {
-        // Unregister the target for every topic when no topic is specified.
-        for (let type of this.topics) {
-          this._unregisterMessageTarget(type, target);
-        }
-        return;
-      }
-
-      // Unregister the target for a specified topic.
-      let targets = this.targetsByTopic[topic];
-      if (!targets) {
-        return;
-      }
-
-      let index = targets.indexOf(target);
-      if (index != -1) {
-        targets.splice(index, 1);
-        if (DEBUG) debug("Unregistered " + topic + " target: " + target);
-      }
-    },
-
-    _enqueueTargetMessage: function(topic, message, options) {
-      let msg = { topic : topic,
-                  message : message,
-                  options : options };
-      // Remove previous queued message with the same message type and client Id
-      // , only one message per (message type + client Id) is allowed in queue.
-      let messageQueue = this.targetMessageQueue;
-      for(let i = 0; i < messageQueue.length; i++) {
-        if (messageQueue[i].message === message &&
-            messageQueue[i].options.clientId === options.clientId) {
-          messageQueue.splice(i, 1);
-          break;
-        }
-      }
-
-      messageQueue.push(msg);
-    },
-
-    _sendTargetMessage: function(topic, message, options) {
-      if (!this.ready) {
-        this._enqueueTargetMessage(topic, message, options);
-        return;
-      }
-
-      let targets = this.targetsByTopic[topic];
-      if (!targets) {
-        return;
-      }
-
-      for (let target of targets) {
-        target.sendAsyncMessage(message, options);
-      }
-    },
-
-    _resendQueuedTargetMessage: function() {
-      this.ready = true;
-
-      // Here uses this._sendTargetMessage() to resend message, which will
-      // enqueue message if listener is not ready.
-      // So only resend after listener is ready, or it will cause infinate loop and
-      // hang the system.
-
-      // Dequeue and resend messages.
-      for each (let msg in this.targetMessageQueue) {
-        this._sendTargetMessage(msg.topic, msg.message, msg.options);
-      }
-      this.targetMessageQueue = null;
-    },
-
-    /**
-     * nsIMessageListener interface methods.
-     */
-
-    receiveMessage: function(msg) {
-      if (DEBUG) debug("Received '" + msg.name + "' message from content process");
-      if (msg.name == "child-process-shutdown") {
-        // By the time we receive child-process-shutdown, the child process has
-        // already forgotten its permissions so we need to unregister the target
-        // for every permission.
-        this._unregisterMessageTarget(null, msg.target);
-        return null;
-      }
-
-      if (RIL_IPC_ICCMANAGER_MSG_NAMES.indexOf(msg.name) != -1) {
-        if (!msg.target.assertPermission("mobileconnection")) {
-          if (DEBUG) {
-            debug("IccManager message " + msg.name +
-                  " from a content process with no 'mobileconnection' privileges.");
-          }
-          return null;
-        }
-      } else {
-        if (DEBUG) debug("Ignoring unknown message type: " + msg.name);
-        return null;
-      }
-
-      let clientId = msg.json.clientId || 0;
-      let radioInterface = this.ril.getRadioInterface(clientId);
-      if (!radioInterface) {
-        if (DEBUG) debug("No such radio interface: " + clientId);
-        return null;
-      }
-
-      return radioInterface.receiveMessage(msg);
-    },
-
-    /**
-     * nsIObserver interface methods.
-     */
-
-    observe: function(subject, topic, data) {
-      switch (topic) {
-        case kSysMsgListenerReadyObserverTopic:
-          Services.obs.removeObserver(this, kSysMsgListenerReadyObserverTopic);
-          this._resendQueuedTargetMessage();
-          break;
-        case NS_XPCOM_SHUTDOWN_OBSERVER_ID:
-          this._shutdown();
-          break;
-      }
-    },
-
-    sendIccMessage: function(message, clientId, data) {
-      this._sendTargetMessage("icc", message, {
-        clientId: clientId,
-        data: data
-      });
-    }
-  };
-});
 
 XPCOMUtils.defineLazyGetter(this, "gRadioEnabledController", function() {
   let _ril = null;
@@ -616,7 +392,8 @@ DataCall.prototype = {
   ifname: null,
   addreses: null,
   dnses: null,
-  gateways: null
+  gateways: null,
+  pcscf: null
 };
 
 function RadioInterfaceLayer() {
@@ -634,7 +411,6 @@ function RadioInterfaceLayer() {
   Services.obs.addObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
   Services.prefs.addObserver(kPrefRilDebuggingEnabled, this, false);
 
-  gMessageManager.init(this); // TODO: Bug 815526, deprecate RILContentHelper.
   gRadioEnabledController.init(this);
 }
 RadioInterfaceLayer.prototype = {
@@ -737,16 +513,21 @@ WorkerMessenger.prototype = {
         simAppStateExtraFields:
           libcutils.property_get("ro.moz.ril.simstate_extra_field", "false") === "true",
         extraUint2ndCall:
-          libcutils.property_get("ro.moz.ril.extra_int_2nd_call", "false") == "true",
+          libcutils.property_get("ro.moz.ril.extra_int_2nd_call", "false") === "true",
         haveQueryIccLockRetryCount:
-          libcutils.property_get("ro.moz.ril.query_icc_count", "false") == "true",
+          libcutils.property_get("ro.moz.ril.query_icc_count", "false") === "true",
         sendStkProfileDownload:
-          libcutils.property_get("ro.moz.ril.send_stk_profile_dl", "false") == "true",
+          libcutils.property_get("ro.moz.ril.send_stk_profile_dl", "false") === "true",
         smscAddressFormat:
           libcutils.property_get("ro.moz.ril.smsc_address_format", "text"),
-        dataRegistrationOnDemand: RILQUIRKS_DATA_REGISTRATION_ON_DEMAND,
-        subscriptionControl: RILQUIRKS_SUBSCRIPTION_CONTROL,
-        signalExtraInt: RILQUIRKS_SIGNAL_EXTRA_INT32
+        dataRegistrationOnDemand:
+          libcutils.property_get("ro.moz.ril.data_reg_on_demand", "false") === "true",
+        subscriptionControl:
+          libcutils.property_get("ro.moz.ril.subscription_control", "false") === "true",
+        signalExtraInt:
+          libcutils.property_get("ro.moz.ril.signal_extra_int", "false") === "true",
+        availableNetworkExtraStr:
+          libcutils.property_get("ro.moz.ril.avlbl_nw_extra_str", "false") === "true",
       }
     };
 
@@ -856,39 +637,13 @@ WorkerMessenger.prototype = {
 
     message.rilMessageType = rilMessageType;
     this.worker.postMessage(message);
-  },
-
-  /**
-   * Send message to worker and return worker reply to RILContentHelper.
-   *
-   * @param msg
-   *        A message object from ppmm.
-   * @param rilMessageType
-   *        A text string for worker message type.
-   * @param ipcType [optinal]
-   *        A text string for ipc message type. "msg.name" if omitted.
-   *
-   * @TODO: Bug 815526 - deprecate RILContentHelper.
-   */
-  sendWithIPCMessage: function(clientId, msg, rilMessageType, ipcType) {
-    this.send(clientId, rilMessageType, msg.json.data, (function(reply) {
-      ipcType = ipcType || msg.name;
-      msg.target.sendAsyncMessage(ipcType, {
-        clientId: clientId,
-        data: reply
-      });
-      return false;
-    }).bind(this));
   }
 };
 
 function RadioInterface(aClientId, aWorkerMessenger) {
   this.clientId = aClientId;
   this.workerMessenger = {
-    send: aWorkerMessenger.send.bind(aWorkerMessenger, aClientId),
-    // TODO: Bug 815526, deprecate RILContentHelper.
-    sendWithIPCMessage:
-      aWorkerMessenger.sendWithIPCMessage.bind(aWorkerMessenger, aClientId),
+    send: aWorkerMessenger.send.bind(aWorkerMessenger, aClientId)
   };
   aWorkerMessenger.registerClient(aClientId, this);
 
@@ -954,23 +709,6 @@ RadioInterface.prototype = {
     let cardState = icc ? icc.cardState : Ci.nsIIcc.CARD_STATE_UNKNOWN;
     return cardState !== Ci.nsIIcc.CARD_STATE_UNDETECTED &&
       cardState !== Ci.nsIIcc.CARD_STATE_UNKNOWN;
-  },
-
-  /**
-   * Process a message from the content process.
-   *
-   * TODO: Bug 815526, deprecate RILContentHelper
-   */
-  receiveMessage: function(msg) {
-    switch (msg.name) {
-      case "RIL:ReadIccContacts":
-        this.workerMessenger.sendWithIPCMessage(msg, "readICCContacts");
-        break;
-      case "RIL:UpdateIccContact":
-        this.workerMessenger.sendWithIPCMessage(msg, "updateICCContact");
-        break;
-    }
-    return null;
   },
 
   handleUnsolicitedWorkerMessage: function(message) {
@@ -1411,21 +1149,21 @@ RadioInterface.prototype = {
         this._sntp.updateOffset(offset);
         break;
       case kNetworkConnStateChangedTopic:
-        let network = subject.QueryInterface(Ci.nsINetworkInterface);
-        if (network.state != Ci.nsINetworkInterface.NETWORK_STATE_CONNECTED) {
+        let networkInfo = subject.QueryInterface(Ci.nsINetworkInfo);
+        if (networkInfo.state != Ci.nsINetworkInfo.NETWORK_STATE_CONNECTED) {
           return;
         }
 
         // SNTP can only update when we have mobile or Wifi connections.
-        if (network.type != NETWORK_TYPE_WIFI &&
-            network.type != NETWORK_TYPE_MOBILE) {
+        if (networkInfo.type != NETWORK_TYPE_WIFI &&
+            networkInfo.type != NETWORK_TYPE_MOBILE) {
           return;
         }
 
         // If the network comes from RIL, make sure the RIL service is matched.
-        if (subject instanceof Ci.nsIRilNetworkInterface) {
-          network = subject.QueryInterface(Ci.nsIRilNetworkInterface);
-          if (network.serviceId != this.clientId) {
+        if (subject instanceof Ci.nsIRilNetworkInfo) {
+          networkInfo = subject.QueryInterface(Ci.nsIRilNetworkInfo);
+          if (networkInfo.serviceId != this.clientId) {
             return;
           }
         }
@@ -1505,8 +1243,9 @@ RadioInterface.prototype = {
         // Set the latest cached NITZ time if it's available.
         if (this._lastNitzMessage) {
           this.setClockByNitz(this._lastNitzMessage);
-        } else if (gNetworkManager.active && gNetworkManager.active.state ==
-                 Ci.nsINetworkInterface.NETWORK_STATE_CONNECTED) {
+        } else if (gNetworkManager.activeNetworkInfo &&
+                   gNetworkManager.activeNetworkInfo.state ==
+                   Ci.nsINetworkInfo.NETWORK_STATE_CONNECTED) {
           // Set the latest cached SNTP time if it's available.
           if (!this._sntp.isExpired()) {
             this.setClockBySntp(this._sntp.getOffset());

@@ -1,46 +1,96 @@
-/* This Source Code Form is subject to the terms of the Mozilla Public
- * License, v. 2.0. If a copy of the MPL was not distributed with this
- * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/*
+ * Test that the Tracking Protection section is never visible in the
+ * Control Center when the feature is off.
+ * See also Bugs 1175327, 1043801, 1178985.
+ */
 
-// Test that the Tracking Protection Doorhanger does not ever appear
-// when the feature is off (Bug 1043801)
+const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+const PREF = "privacy.trackingprotection.enabled";
+const PB_PREF = "privacy.trackingprotection.pbmode.enabled";
+const BENIGN_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/benignPage.html";
+const TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/trackingPage.html";
+var TrackingProtection = null;
+var tabbrowser = null;
 
-var PREF = "privacy.trackingprotection.enabled";
-var BENIGN_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/benignPage.html";
-var TRACKING_PAGE = "http://tracking.example.org/browser/browser/base/content/test/general/trackingPage.html";
+var {UrlClassifierTestUtils} = Cu.import("resource://testing-common/UrlClassifierTestUtils.jsm", {});
 
-function testTrackingPageOFF(gTestBrowser)
-{
-  // Make sure the doorhanger does NOT appear
-  var notification = PopupNotifications.getNotification("bad-content", gTestBrowser);
-  is(notification, null, "Tracking Content Doorhanger did NOT appear when protection was OFF and tracking was present");
-}
-
-function testBenignPageOFF(gTestBrowser)
-{
-  // Make sure the doorhanger does NOT appear
-  var notification = PopupNotifications.getNotification("bad-content", gTestBrowser);
-  is(notification, null, "Tracking Content Doorhanger did NOT appear when protection was OFF and tracking was NOT present");
-}
-
-add_task(function* () {
-  registerCleanupFunction(function() {
-    Services.prefs.clearUserPref(PREF);
+registerCleanupFunction(function() {
+  TrackingProtection = tabbrowser = null;
+  UrlClassifierTestUtils.cleanupTestTrackers();
+  Services.prefs.clearUserPref(PREF);
+  Services.prefs.clearUserPref(PB_PREF);
+  while (gBrowser.tabs.length > 1) {
     gBrowser.removeCurrentTab();
-  });
+  }
+});
 
-  yield updateTrackingProtectionDatabase();
+function hidden(el) {
+  let win = el.ownerDocument.defaultView;
+  let display = win.getComputedStyle(el).getPropertyValue("display", null);
+  let opacity = win.getComputedStyle(el).getPropertyValue("opacity", null);
 
-  let tab = gBrowser.selectedTab = gBrowser.addTab();
+  return display === "none" || opacity === "0";
+}
 
-  // Disable Tracking Protection
+add_task(function* testNormalBrowsing() {
+  yield UrlClassifierTestUtils.addTestTrackers();
+
+  tabbrowser = gBrowser;
+  let {gIdentityHandler} = tabbrowser.ownerGlobal;
+  let tab = tabbrowser.selectedTab = tabbrowser.addTab();
+
+  TrackingProtection = tabbrowser.ownerGlobal.TrackingProtection;
+  ok(TrackingProtection, "TP is attached to the browser window");
+  is(TrackingProtection.enabled, Services.prefs.getBoolPref(PREF),
+    "TP.enabled is based on the original pref value");
+
+  Services.prefs.setBoolPref(PREF, true);
+  ok(TrackingProtection.enabled, "TP is enabled after setting the pref");
+
   Services.prefs.setBoolPref(PREF, false);
+  ok(!TrackingProtection.enabled, "TP is disabled after setting the pref");
 
-  // Point tab to a test page containing tracking elements
+  info("Load a test page containing tracking elements");
   yield promiseTabLoadEvent(tab, TRACKING_PAGE);
-  testTrackingPageOFF(gBrowser.getBrowserForTab(tab));
+  gIdentityHandler._identityBox.click();
+  ok(hidden(TrackingProtection.container), "The container is hidden");
+  gIdentityHandler._identityPopup.hidden = true;
 
-  // Point tab to a test page NOT containing tracking elements
+  info("Load a test page not containing tracking elements");
   yield promiseTabLoadEvent(tab, BENIGN_PAGE);
-  testBenignPageOFF(gBrowser.getBrowserForTab(tab));
+  gIdentityHandler._identityBox.click();
+  ok(hidden(TrackingProtection.container), "The container is hidden");
+  gIdentityHandler._identityPopup.hidden = true;
+});
+
+add_task(function* testPrivateBrowsing() {
+  let privateWin = yield promiseOpenAndLoadWindow({private: true}, true);
+  tabbrowser = privateWin.gBrowser;
+  let {gIdentityHandler} = tabbrowser.ownerGlobal;
+  let tab = tabbrowser.selectedTab = tabbrowser.addTab();
+
+  TrackingProtection = tabbrowser.ownerGlobal.TrackingProtection;
+  ok(TrackingProtection, "TP is attached to the private window");
+  is(TrackingProtection.enabled, Services.prefs.getBoolPref(PB_PREF),
+    "TP.enabled is based on the pb pref value");
+
+  Services.prefs.setBoolPref(PB_PREF, true);
+  ok(TrackingProtection.enabled, "TP is enabled after setting the pref");
+
+  Services.prefs.setBoolPref(PB_PREF, false);
+  ok(!TrackingProtection.enabled, "TP is disabled after setting the pref");
+
+  info("Load a test page containing tracking elements");
+  yield promiseTabLoadEvent(tab, TRACKING_PAGE);
+  gIdentityHandler._identityBox.click();
+  ok(hidden(TrackingProtection.container), "The container is hidden");
+  gIdentityHandler._identityPopup.hidden = true;
+
+  info("Load a test page not containing tracking elements");
+  gIdentityHandler._identityBox.click();
+  yield promiseTabLoadEvent(tab, BENIGN_PAGE);
+  ok(hidden(TrackingProtection.container), "The container is hidden");
+  gIdentityHandler._identityPopup.hidden = true;
+
+  privateWin.close();
 });

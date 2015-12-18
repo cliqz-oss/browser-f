@@ -240,9 +240,7 @@ void OggReader::SetupTargetTheora(TheoraState* aTheoraState)
 
     VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
     if (container) {
-      container->SetCurrentFrame(gfxIntSize(displaySize.width, displaySize.height),
-                                 nullptr,
-                                 TimeStamp::Now());
+      container->ClearCurrentFrame(gfxIntSize(displaySize.width, displaySize.height));
     }
 
     // Copy Theora info data for time computations on other threads.
@@ -474,9 +472,9 @@ nsresult OggReader::ReadMetadata(MediaInfo* aInfo,
   if (HasAudio() || HasVideo()) {
     ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
 
-    if (mInfo.mMetadataDuration.isNothing() && !mDecoder->IsShutdown() &&
-        mResource.GetLength() >= 0 && mDecoder->IsMediaSeekable())
-    {
+    if (mInfo.mMetadataDuration.isNothing() &&
+        !mDecoder->IsOggDecoderShutdown() &&
+        mResource.GetLength() >= 0) {
       // We didn't get a duration from the index or a Content-Duration header.
       // Seek to the end of file to find the end time.
       int64_t length = mResource.GetLength();
@@ -816,11 +814,11 @@ bool OggReader::ReadOggChain()
   if (chained) {
     SetChained(true);
     {
-      nsAutoPtr<MediaInfo> info(new MediaInfo());
-      *info = mInfo;
-      ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-      mDecoder->QueueMetadata((mDecodedAudioFrames * USECS_PER_S) / mInfo.mAudio.mRate,
-                              info, tags);
+      auto t = mDecodedAudioFrames * USECS_PER_S / mInfo.mAudio.mRate;
+      mTimedMetadataEvent.Notify(
+        TimedMetadata(media::TimeUnit::FromMicroseconds(t),
+                      Move(tags),
+                      nsAutoPtr<MediaInfo>(new MediaInfo(mInfo))));
     }
     return true;
   }
@@ -854,48 +852,40 @@ nsresult OggReader::DecodeTheora(ogg_packet* aPacket, int64_t aTimeThreshold)
     return NS_OK;
   }
 
-  if (ret == TH_DUPFRAME) {
-    nsRefPtr<VideoData> v = VideoData::CreateDuplicate(mResource.Tell(),
-                                                       time,
-                                                       endTime - time,
-                                                       aPacket->granulepos);
-    mVideoQueue.Push(v);
-  } else if (ret == 0) {
-    th_ycbcr_buffer buffer;
-    ret = th_decode_ycbcr_out(mTheoraState->mCtx, buffer);
-    NS_ASSERTION(ret == 0, "th_decode_ycbcr_out failed");
-    bool isKeyframe = th_packet_iskeyframe(aPacket) == 1;
-    VideoData::YCbCrBuffer b;
-    for (uint32_t i=0; i < 3; ++i) {
-      b.mPlanes[i].mData = buffer[i].data;
-      b.mPlanes[i].mHeight = buffer[i].height;
-      b.mPlanes[i].mWidth = buffer[i].width;
-      b.mPlanes[i].mStride = buffer[i].stride;
-      b.mPlanes[i].mOffset = b.mPlanes[i].mSkip = 0;
-    }
-
-    nsRefPtr<VideoData> v = VideoData::Create(mInfo.mVideo,
-                                              mDecoder->GetImageContainer(),
-                                              mResource.Tell(),
-                                              time,
-                                              endTime - time,
-                                              b,
-                                              isKeyframe,
-                                              aPacket->granulepos,
-                                              mPicture);
-    if (!v) {
-      // There may be other reasons for this error, but for
-      // simplicity just assume the worst case: out of memory.
-      NS_WARNING("Failed to allocate memory for video frame");
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
-    mVideoQueue.Push(v);
+  th_ycbcr_buffer buffer;
+  ret = th_decode_ycbcr_out(mTheoraState->mCtx, buffer);
+  NS_ASSERTION(ret == 0, "th_decode_ycbcr_out failed");
+  bool isKeyframe = th_packet_iskeyframe(aPacket) == 1;
+  VideoData::YCbCrBuffer b;
+  for (uint32_t i=0; i < 3; ++i) {
+    b.mPlanes[i].mData = buffer[i].data;
+    b.mPlanes[i].mHeight = buffer[i].height;
+    b.mPlanes[i].mWidth = buffer[i].width;
+    b.mPlanes[i].mStride = buffer[i].stride;
+    b.mPlanes[i].mOffset = b.mPlanes[i].mSkip = 0;
   }
+
+  nsRefPtr<VideoData> v = VideoData::Create(mInfo.mVideo,
+                                            mDecoder->GetImageContainer(),
+                                            mResource.Tell(),
+                                            time,
+                                            endTime - time,
+                                            b,
+                                            isKeyframe,
+                                            aPacket->granulepos,
+                                            mPicture);
+  if (!v) {
+    // There may be other reasons for this error, but for
+    // simplicity just assume the worst case: out of memory.
+    NS_WARNING("Failed to allocate memory for video frame");
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  mVideoQueue.Push(v);
   return NS_OK;
 }
 
 bool OggReader::DecodeVideoFrame(bool &aKeyframeSkip,
-                                     int64_t aTimeThreshold)
+                                 int64_t aTimeThreshold)
 {
   MOZ_ASSERT(OnTaskQueue());
 
@@ -1349,11 +1339,8 @@ nsresult OggReader::SeekInBufferedRange(int64_t aTarget,
     do {
       bool skip = false;
       eof = !DecodeVideoFrame(skip, 0);
-      {
-        ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-        if (mDecoder->IsShutdown()) {
-          return NS_ERROR_FAILURE;
-        }
+      if (mDecoder->IsOggDecoderShutdown()) {
+        return NS_ERROR_FAILURE;
       }
     } while (!eof &&
              mVideoQueue.GetSize() == 0);
@@ -1499,8 +1486,7 @@ nsresult OggReader::SeekInternal(int64_t aTarget, int64_t aEndTime)
       // forwards until we find a keyframe.
       bool skip = true;
       while (DecodeVideoFrame(skip, 0) && skip) {
-        ReentrantMonitorAutoEnter mon(mDecoder->GetReentrantMonitor());
-        if (mDecoder->IsShutdown()) {
+        if (mDecoder->IsOggDecoderShutdown()) {
           return NS_ERROR_FAILURE;
         }
       }
@@ -1842,7 +1828,9 @@ nsresult OggReader::SeekBisection(int64_t aTarget,
 media::TimeIntervals OggReader::GetBuffered()
 {
   MOZ_ASSERT(OnTaskQueue());
-  NS_ENSURE_TRUE(HaveStartTime(), media::TimeIntervals());
+  if (!HaveStartTime()) {
+    return media::TimeIntervals();
+  }
   {
     mozilla::ReentrantMonitorAutoEnter mon(mMonitor);
     if (mIsChained) {
@@ -1969,14 +1957,14 @@ VideoData* OggReader::FindStartTime(int64_t& aOutStartTime)
   VideoData* videoData = nullptr;
 
   if (HasVideo()) {
-    videoData = DecodeToFirstVideoData();
+    videoData = SyncDecodeToFirstVideoData();
     if (videoData) {
       videoStartTime = videoData->mTime;
       LOG(LogLevel::Debug, ("OggReader::FindStartTime() video=%lld", videoStartTime));
     }
   }
   if (HasAudio()) {
-    AudioData* audioData = DecodeToFirstAudioData();
+    AudioData* audioData = SyncDecodeToFirstAudioData();
     if (audioData) {
       audioStartTime = audioData->mTime;
       LOG(LogLevel::Debug, ("OggReader::FindStartTime() audio=%lld", audioStartTime));
@@ -1991,15 +1979,12 @@ VideoData* OggReader::FindStartTime(int64_t& aOutStartTime)
   return videoData;
 }
 
-AudioData* OggReader::DecodeToFirstAudioData()
+AudioData* OggReader::SyncDecodeToFirstAudioData()
 {
   bool eof = false;
   while (!eof && AudioQueue().GetSize() == 0) {
-    {
-      ReentrantMonitorAutoEnter decoderMon(mDecoder->GetReentrantMonitor());
-      if (mDecoder->IsShutdown()) {
-        return nullptr;
-      }
+    if (mDecoder->IsOggDecoderShutdown()) {
+      return nullptr;
     }
     eof = !DecodeAudioData();
   }
@@ -2008,6 +1993,23 @@ AudioData* OggReader::DecodeToFirstAudioData()
   }
   AudioData* d = nullptr;
   return (d = AudioQueue().PeekFront()) ? d : nullptr;
+}
+
+VideoData* OggReader::SyncDecodeToFirstVideoData()
+{
+  bool eof = false;
+  while (!eof && VideoQueue().GetSize() == 0) {
+    if (mDecoder->IsOggDecoderShutdown()) {
+      return nullptr;
+    }
+    bool keyframeSkip = false;
+    eof = !DecodeVideoFrame(keyframeSkip, 0);
+  }
+  if (eof) {
+    VideoQueue().Finish();
+  }
+  VideoData* d = nullptr;
+  return (d = VideoQueue().PeekFront()) ? d : nullptr;
 }
 
 OggCodecStore::OggCodecStore()

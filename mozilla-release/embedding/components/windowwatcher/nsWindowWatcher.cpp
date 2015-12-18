@@ -11,6 +11,10 @@
 
 #include "nsCRT.h"
 #include "nsNetUtil.h"
+#include "nsIAuthPrompt.h"
+#include "nsIAuthPrompt2.h"
+#include "nsISimpleEnumerator.h"
+#include "nsIInterfaceRequestorUtils.h"
 #include "nsJSUtils.h"
 #include "plstr.h"
 
@@ -480,7 +484,7 @@ nsWindowWatcher::OpenWindowInternal(nsIDOMWindow* aParent,
   }
 
   MOZ_ASSERT_IF(openedFromRemoteTab,
-                XRE_GetProcessType() == GeckoProcessType_Default);
+                XRE_IsParentProcess());
   NS_ENSURE_ARG_POINTER(aResult);
   *aResult = 0;
 
@@ -491,7 +495,10 @@ nsWindowWatcher::OpenWindowInternal(nsIDOMWindow* aParent,
 
   GetWindowTreeOwner(aParent, getter_AddRefs(parentTreeOwner));
 
-  if (aUrl) {
+  // We expect TabParent to have provided us the absolute URI of the window
+  // we're to open, so there's no need to call URIfromURL (or more importantly,
+  // to check for a chrome URI, which cannot be opened from a remote tab).
+  if (aUrl && !openedFromRemoteTab) {
     rv = URIfromURL(aUrl, aParent, getter_AddRefs(uriToLoad));
     if (NS_FAILED(rv)) {
       return rv;
@@ -503,6 +510,8 @@ nsWindowWatcher::OpenWindowInternal(nsIDOMWindow* aParent,
   if (aName) {
     CopyUTF8toUTF16(aName, name);
     nameSpecified = true;
+  } else {
+    name.SetIsVoid(true);
   }
 
   bool featuresSpecified = false;
@@ -510,6 +519,8 @@ nsWindowWatcher::OpenWindowInternal(nsIDOMWindow* aParent,
     features.Assign(aFeatures);
     featuresSpecified = true;
     features.StripWhitespace();
+  } else {
+    features.SetIsVoid(true);
   }
 
   // We only want to check for existing named windows if:
@@ -558,7 +569,8 @@ nsWindowWatcher::OpenWindowInternal(nsIDOMWindow* aParent,
   // security checks.
   chromeFlags = CalculateChromeFlags(aParent, features.get(), featuresSpecified,
                                      aDialog, uriToLoadIsChrome,
-                                     hasChromeParent, openedFromRemoteTab);
+                                     hasChromeParent, aCalledFromJS,
+                                     openedFromRemoteTab);
 
   // If we are opening a window from a remote browser, the resulting window
   // should also be remote.
@@ -1462,8 +1474,8 @@ nsWindowWatcher::URIfromURL(const char* aURL,
 
 #define NS_CALCULATE_CHROME_FLAG_FOR(feature, flag)                            \
   prefBranch->GetBoolPref(feature, &forceEnable);                              \
-  if (forceEnable && !(aDialog && isCallerChrome) &&                           \
-      !(isCallerChrome && aHasChromeParent) && !aChromeURL) {                  \
+  if (forceEnable && !(aDialog && !openedFromContentScript) &&                 \
+      !(!openedFromContentScript && aHasChromeParent) && !aChromeURL) {                  \
     chromeFlags |= flag;                                                       \
   } else {                                                                     \
     chromeFlags |=                                                             \
@@ -1487,25 +1499,29 @@ nsWindowWatcher::CalculateChromeFlags(nsIDOMWindow* aParent,
                                       bool aDialog,
                                       bool aChromeURL,
                                       bool aHasChromeParent,
+                                      bool aCalledFromJS,
                                       bool aOpenedFromRemoteTab)
 {
+  const bool inContentProcess = XRE_IsContentProcess();
   uint32_t chromeFlags = 0;
-  bool isCallerChrome =
-    nsContentUtils::IsCallerChrome() && !aOpenedFromRemoteTab;
 
-  bool onlyPrivateFlag = aFeaturesSpecified && aFeatures && isCallerChrome &&
-    nsCRT::strcasecmp(aFeatures, "private") == 0;
-  if (!aFeaturesSpecified || !aFeatures || onlyPrivateFlag) {
+  if (!aFeaturesSpecified || !aFeatures) {
     chromeFlags = nsIWebBrowserChrome::CHROME_ALL;
     if (aDialog) {
       chromeFlags |= nsIWebBrowserChrome::CHROME_OPENAS_DIALOG |
                      nsIWebBrowserChrome::CHROME_OPENAS_CHROME;
     }
-    if (onlyPrivateFlag) {
-      chromeFlags |= nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
+
+    if (inContentProcess) {
+      return chromeFlags;
     }
-    return chromeFlags;
+  } else {
+    chromeFlags = nsIWebBrowserChrome::CHROME_WINDOW_BORDERS;
   }
+
+  bool openedFromContentScript =
+    aOpenedFromRemoteTab ? aCalledFromJS
+                         : !nsContentUtils::IsCallerChrome();
 
   /* This function has become complicated since browser windows and
      dialogs diverged. The difference is, browser windows assume all
@@ -1516,30 +1532,32 @@ nsWindowWatcher::CalculateChromeFlags(nsIDOMWindow* aParent,
      in the standards-compliant window.(normal)open. */
 
   bool presenceFlag = false;
-
-  chromeFlags = nsIWebBrowserChrome::CHROME_WINDOW_BORDERS;
   if (aDialog && WinHasOption(aFeatures, "all", 0, &presenceFlag)) {
     chromeFlags = nsIWebBrowserChrome::CHROME_ALL;
   }
 
   /* Next, allow explicitly named options to override the initial settings */
 
-  // Determine whether the window is a private browsing window
-  if (isCallerChrome) {
+  if (!inContentProcess && !openedFromContentScript) {
+    // Determine whether the window is a private browsing window
     chromeFlags |= WinHasOption(aFeatures, "private", 0, &presenceFlag) ?
       nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW : 0;
     chromeFlags |= WinHasOption(aFeatures, "non-private", 0, &presenceFlag) ?
       nsIWebBrowserChrome::CHROME_NON_PRIVATE_WINDOW : 0;
   }
 
-  // Determine whether the window should have remote tabs.
-  if (isCallerChrome || aOpenedFromRemoteTab) {
-    bool remote;
-    if (BrowserTabsRemoteAutostart()) {
-      remote = !WinHasOption(aFeatures, "non-remote", 0, &presenceFlag);
-    } else {
-      remote = WinHasOption(aFeatures, "remote", 0, &presenceFlag);
+  if (!inContentProcess) {
+    // Determine whether the window should have remote tabs.
+    bool remote = BrowserTabsRemoteAutostart();
+
+    if (!openedFromContentScript) {
+      if (remote) {
+        remote = !WinHasOption(aFeatures, "non-remote", 0, &presenceFlag);
+      } else {
+        remote = WinHasOption(aFeatures, "remote", 0, &presenceFlag);
+      }
     }
+
     if (remote) {
       chromeFlags |= nsIWebBrowserChrome::CHROME_REMOTE_WINDOW;
     }
@@ -1599,7 +1617,7 @@ nsWindowWatcher::CalculateChromeFlags(nsIDOMWindow* aParent,
     }
   }
 
-  if (aDialog && !presenceFlag) {
+  if (aDialog && aFeaturesSpecified && !presenceFlag) {
     chromeFlags = nsIWebBrowserChrome::CHROME_DEFAULT;
   }
 
@@ -1640,7 +1658,7 @@ nsWindowWatcher::CalculateChromeFlags(nsIDOMWindow* aParent,
   if (aParent) {
     aParent->GetFullScreen(&isFullScreen);
   }
-  if (isFullScreen && !isCallerChrome) {
+  if (isFullScreen && openedFromContentScript) {
     // If the parent window is in fullscreen & the caller context is content,
     // dialog feature is disabled. (see bug 803675)
     disableDialogFeature = true;
@@ -1667,7 +1685,7 @@ nsWindowWatcher::CalculateChromeFlags(nsIDOMWindow* aParent,
    */
 
   // Check security state for use in determing window dimensions
-  if (!isCallerChrome || !aHasChromeParent) {
+  if (openedFromContentScript || !aHasChromeParent) {
     // If priv check fails (or if we're called from chrome, but the
     // parent is not a chrome window), set all elements to minimum
     // reqs., else leave them alone.
@@ -2266,12 +2284,19 @@ nsWindowWatcher::GetWindowOpenLocation(nsIDOMWindow* aParent,
       return nsIBrowserDOMWindow::OPEN_NEWWINDOW;
     }
 
-    if (restrictionPref == 2 &&
-        // Only continue if there are no size/position features and no special
-        // chrome flags.
-        (aChromeFlags != nsIWebBrowserChrome::CHROME_ALL ||
-         aPositionSpecified || aSizeSpecified)) {
-      return nsIBrowserDOMWindow::OPEN_NEWWINDOW;
+    if (restrictionPref == 2) {
+      // Only continue if there are no size/position features and no special
+      // chrome flags - with the exception of the remoteness and private flags,
+      // which might have been automatically flipped by Gecko.
+      int32_t uiChromeFlags = aChromeFlags;
+      uiChromeFlags &= ~(nsIWebBrowserChrome::CHROME_REMOTE_WINDOW |
+                         nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW |
+                         nsIWebBrowserChrome::CHROME_NON_PRIVATE_WINDOW |
+                         nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME);
+      if (uiChromeFlags != nsIWebBrowserChrome::CHROME_ALL ||
+          aPositionSpecified || aSizeSpecified) {
+        return nsIBrowserDOMWindow::OPEN_NEWWINDOW;
+      }
     }
   }
 

@@ -8,10 +8,13 @@ this.EXPORTED_SYMBOLS = ["MSMigrationUtils"];
 
 const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 
+Cu.import("resource://gre/modules/AppConstants.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource:///modules/MigrationUtils.jsm");
+Cu.import("resource://gre/modules/NetUtil.jsm");
+Cu.import("resource://gre/modules/LoginHelper.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
                                   "resource://gre/modules/PlacesUtils.jsm");
@@ -23,54 +26,73 @@ XPCOMUtils.defineLazyModuleGetter(this, "ctypes",
 const EDGE_COOKIE_PATH_OPTIONS = ["", "#!001\\", "#!002\\"];
 const EDGE_COOKIES_SUFFIX = "MicrosoftEdge\\Cookies";
 const EDGE_FAVORITES = "AC\\MicrosoftEdge\\User\\Default\\Favorites";
+const EDGE_READINGLIST = "AC\\MicrosoftEdge\\User\\Default\\DataStore\\Data\\";
+const FREE_CLOSE_FAILED = 0;
+const INTERNET_EXPLORER_EDGE_GUID = [0x3CCD5499,
+                                     0x4B1087A8,
+                                     0x886015A2,
+                                     0x553BDD88];
+const RESULT_SUCCESS = 0;
+const VAULT_ENUMERATE_ALL_ITEMS = 512;
+const WEB_CREDENTIALS_VAULT_ID = [0x4BF4C442,
+                                  0x41A09B8A,
+                                  0x4ADD80B3,
+                                  0x28DB4D70];
 
 Cu.importGlobalProperties(["File"]);
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Helpers.
 
-let CtypesHelpers = {
-  _structs: {},
-  _functions: {},
-  _libs: {},
+const wintypes = {
+  BOOL: ctypes.int,
+  DWORD: ctypes.uint32_t,
+  DWORDLONG: ctypes.uint64_t,
+  CHAR: ctypes.char,
+  PCHAR: ctypes.char.ptr,
+  LPCWSTR: ctypes.char16_t.ptr,
+  PDWORD: ctypes.uint32_t.ptr,
+  VOIDP: ctypes.voidptr_t,
+  WORD: ctypes.uint16_t,
+}
 
-  /**
-   * Must be invoked once before first use of any of the provided helpers.
-   */
-  initialize() {
-    const WORD = ctypes.uint16_t;
-    const DWORD = ctypes.uint32_t;
-    const BOOL = ctypes.int;
+// TODO: Bug 1202978 - Refactor MSMigrationUtils ctypes helpers
+function CtypesKernelHelpers() {
+  this._structs = {};
+  this._functions = {};
+  this._libs = {};
 
-    this._structs.SYSTEMTIME = new ctypes.StructType('SYSTEMTIME', [
-      {wYear: WORD},
-      {wMonth: WORD},
-      {wDayOfWeek: WORD},
-      {wDay: WORD},
-      {wHour: WORD},
-      {wMinute: WORD},
-      {wSecond: WORD},
-      {wMilliseconds: WORD}
-    ]);
+  this._structs.SYSTEMTIME = new ctypes.StructType("SYSTEMTIME", [
+    {wYear: wintypes.WORD},
+    {wMonth: wintypes.WORD},
+    {wDayOfWeek: wintypes.WORD},
+    {wDay: wintypes.WORD},
+    {wHour: wintypes.WORD},
+    {wMinute: wintypes.WORD},
+    {wSecond: wintypes.WORD},
+    {wMilliseconds: wintypes.WORD}
+  ]);
 
-    this._structs.FILETIME = new ctypes.StructType('FILETIME', [
-      {dwLowDateTime: DWORD},
-      {dwHighDateTime: DWORD}
-    ]);
+  this._structs.FILETIME = new ctypes.StructType("FILETIME", [
+    {dwLowDateTime: wintypes.DWORD},
+    {dwHighDateTime: wintypes.DWORD}
+  ]);
 
-    try {
-      this._libs.kernel32 = ctypes.open("Kernel32");
-      this._functions.FileTimeToSystemTime =
-        this._libs.kernel32.declare("FileTimeToSystemTime",
-                                    ctypes.default_abi,
-                                    BOOL,
-                                    this._structs.FILETIME.ptr,
-                                    this._structs.SYSTEMTIME.ptr);
-    } catch (ex) {
-      this.finalize();
-    }
-  },
+  try {
+    this._libs.kernel32 = ctypes.open("Kernel32");
 
+    this._functions.FileTimeToSystemTime =
+      this._libs.kernel32.declare("FileTimeToSystemTime",
+                                  ctypes.default_abi,
+                                  wintypes.BOOL,
+                                  this._structs.FILETIME.ptr,
+                                  this._structs.SYSTEMTIME.ptr);
+  } catch (ex) {
+    this.finalize();
+  }
+}
+
+CtypesKernelHelpers.prototype = {
   /**
    * Must be invoked once after last use of any of the provided helpers.
    */
@@ -85,7 +107,7 @@ let CtypesHelpers = {
     this._libs = {};
   },
 
-  /**
+   /**
    * Converts a FILETIME struct (2 DWORDS), to a SYSTEMTIME struct,
    * and then deduces the number of seconds since the epoch (which
    * is the data we want for the cookie expiry date).
@@ -118,6 +140,135 @@ let CtypesHelpers = {
   }
 };
 
+function CtypesVaultHelpers() {
+  this._structs = {};
+  this._functions = {};
+  // the size of the vault handle in 32 bits version is 32 and 64 in 64 bits version
+  if (wintypes.VOIDP.size == 4) {
+    this._vaultHandleType = wintypes.DWORD;
+  } else {
+    this._vaultHandleType = wintypes.DWORDLONG;
+  }
+
+  this._structs.GUID = new ctypes.StructType("GUID", [
+    {id: wintypes.DWORD.array(4)},
+  ]);
+
+  this._structs.VAULT_ITEM_ELEMENT = new ctypes.StructType("VAULT_ITEM_ELEMENT", [
+    // not documented
+    {schemaElementId: wintypes.DWORD},
+    // not documented
+    {unknown1: wintypes.DWORD},
+    // vault type
+    {type: wintypes.DWORD},
+    // not documented
+    {unknown2: wintypes.DWORD},
+    // value of the item
+    {itemValue: wintypes.LPCWSTR},
+    // not documented
+    {unknown3: wintypes.CHAR.array(12)},
+  ]);
+
+  this._structs.VAULT_ELEMENT = new ctypes.StructType("VAULT_ELEMENT", [
+    // vault item schemaId
+    {schemaId: this._structs.GUID},
+    // a pointer to the name of the browser VAULT_ITEM_ELEMENT
+    {pszCredentialFriendlyName: wintypes.LPCWSTR},
+    // a pointer to the url VAULT_ITEM_ELEMENT
+    {pResourceElement: this._structs.VAULT_ITEM_ELEMENT.ptr},
+    // a pointer to the username VAULT_ITEM_ELEMENT
+    {pIdentityElement: this._structs.VAULT_ITEM_ELEMENT.ptr},
+    // not documented
+    {pAuthenticatorElement: this._structs.VAULT_ITEM_ELEMENT.ptr},
+    // not documented
+    {pPackageSid: this._structs.VAULT_ITEM_ELEMENT.ptr},
+    // time stamp in local format
+    {lowLastModified: wintypes.DWORD},
+    {highLastModified: wintypes.DWORD},
+    // not documented
+    {flags: wintypes.DWORD},
+    // not documented
+    {dwPropertiesCount: wintypes.DWORD},
+    // not documented
+    {pPropertyElements: this._structs.VAULT_ITEM_ELEMENT.ptr},
+  ]);
+
+  try {
+    this._vaultcliLib = ctypes.open("vaultcli.dll");
+
+    this._functions.VaultOpenVault =
+      this._vaultcliLib.declare("VaultOpenVault",
+                                ctypes.winapi_abi,
+                                wintypes.DWORD,
+                                // GUID
+                                this._structs.GUID.ptr,
+                                // Flags
+                                wintypes.DWORD,
+                                // Vault Handle
+                                this._vaultHandleType.ptr);
+    this._functions.VaultEnumerateItems =
+      this._vaultcliLib.declare("VaultEnumerateItems",
+                                ctypes.winapi_abi,
+                                wintypes.DWORD,
+                                // Vault Handle
+                                this._vaultHandleType,
+                                // Flags
+                                wintypes.DWORD,
+                                // Items Count
+                                wintypes.PDWORD,
+                                // Items
+                                ctypes.voidptr_t);
+    this._functions.VaultCloseVault =
+      this._vaultcliLib.declare("VaultCloseVault",
+                                ctypes.winapi_abi,
+                                wintypes.DWORD,
+                                // Vault Handle
+                                this._vaultHandleType);
+    this._functions.VaultGetItem =
+      this._vaultcliLib.declare("VaultGetItem",
+                                ctypes.winapi_abi,
+                                wintypes.DWORD,
+                                // Vault Handle
+                                this._vaultHandleType,
+                                // Schema Id
+                                this._structs.GUID.ptr,
+                                // Resource
+                                this._structs.VAULT_ITEM_ELEMENT.ptr,
+                                // Identity
+                                this._structs.VAULT_ITEM_ELEMENT.ptr,
+                                // Package Sid
+                                this._structs.VAULT_ITEM_ELEMENT.ptr,
+                                // HWND Owner
+                                wintypes.DWORD,
+                                // Flags
+                                wintypes.DWORD,
+                                // Items
+                                this._structs.VAULT_ELEMENT.ptr.ptr);
+    this._functions.VaultFree =
+      this._vaultcliLib.declare("VaultFree",
+                                ctypes.winapi_abi,
+                                wintypes.DWORD,
+                                // Memory
+                                this._structs.VAULT_ELEMENT.ptr);
+  } catch (ex) {
+    this.finalize();
+  }
+}
+
+CtypesVaultHelpers.prototype = {
+  /**
+   * Must be invoked once after last use of any of the provided helpers.
+   */
+  finalize() {
+    this._structs = {};
+    this._functions = {};
+    try {
+      this._vaultcliLib.close();
+    } catch (ex) {}
+    this._vaultcliLib = null;
+  }
+}
+
 /**
  * Checks whether an host is an IP (v4 or v6) address.
  *
@@ -134,7 +285,7 @@ function hostIsIPAddress(aHost) {
   return false;
 }
 
-let gEdgeDir;
+var gEdgeDir;
 function getEdgeLocalDataFolder() {
   if (gEdgeDir) {
     return gEdgeDir.clone();
@@ -164,7 +315,7 @@ function getEdgeLocalDataFolder() {
     Cu.reportError("Exception trying to find the Edge favorites directory: " + ex);
   }
   return null;
-}
+};
 
 
 function Bookmarks(migrationType) {
@@ -226,6 +377,10 @@ Bookmarks.prototype = {
           yield MigrationUtils.createImportedBookmarksFolder(this.importedAppLabel, folderGuid);
       }
       yield this._migrateFolder(this._favoritesFolder, folderGuid);
+
+      if (this._migrationType == MSMigrationUtils.MIGRATION_TYPE_EDGE) {
+        yield this._migrateEdgeReadingList(PlacesUtils.bookmarks.menuGuid);
+      }
     }.bind(this)).then(() => aCallback(true),
                         e => { Cu.reportError(e); aCallback(false) });
   },
@@ -287,7 +442,80 @@ Bookmarks.prototype = {
         Components.utils.reportError("Unable to import " + this.importedAppLabel + " favorite (" + entry.leafName + "): " + ex);
       }
     }
-  })
+  }),
+
+  _migrateEdgeReadingList: Task.async(function*(parentGuid) {
+    let edgeDir = getEdgeLocalDataFolder();
+    if (!edgeDir) {
+      return;
+    }
+
+    this._readingListExtractor = Cc["@mozilla.org/profile/migrator/edgereadinglistextractor;1"].
+                                 createInstance(Ci.nsIEdgeReadingListExtractor);
+    edgeDir.appendRelativePath(EDGE_READINGLIST);
+    if (edgeDir.exists() && edgeDir.isReadable() && edgeDir.isDirectory()) {
+      let expectedDir = edgeDir.clone();
+      expectedDir.appendRelativePath("nouser1\\120712-0049");
+      if (expectedDir.exists() && expectedDir.isReadable() && expectedDir.isDirectory()) {
+        yield this._migrateEdgeReadingListDB(expectedDir, parentGuid);
+      } else {
+        let getSubdirs = someDir => {
+          let subdirs = someDir.directoryEntries;
+          let rv = [];
+          while (subdirs.hasMoreElements()) {
+            let subdir = subdirs.getNext().QueryInterface(Ci.nsIFile);
+            if (subdir.isDirectory() && subdir.isReadable()) {
+              rv.push(subdir);
+            }
+          }
+          return rv;
+        };
+        let dirs = getSubdirs(edgeDir).map(getSubdirs);
+        for (let dir of dirs) {
+          yield this._migrateEdgeReadingListDB(dir, parentGuid);
+        }
+      }
+    }
+  }),
+  _migrateEdgeReadingListDB: Task.async(function*(dbFile, parentGuid) {
+    dbFile.appendRelativePath("DBStore\\spartan.edb");
+    if (!dbFile.exists() || !dbFile.isReadable() || !dbFile.isFile()) {
+      return;
+    }
+    let readingListItems;
+    try {
+      readingListItems = this._readingListExtractor.extract(dbFile.path);
+    } catch (ex) {
+      Cu.reportError("Failed to extract Edge reading list information from " +
+                     "the database at " + dbPath + " due to the following error: " + ex);
+      return;
+    }
+    if (!readingListItems.length) {
+      return;
+    }
+    let destFolderGuid = yield this._ensureEdgeReadingListFolder(parentGuid);
+    for (let i = 0; i < readingListItems.length; i++) {
+      let readingListItem = readingListItems.queryElementAt(i, Ci.nsIPropertyBag2);
+      let url = readingListItem.get("uri");
+      let title = readingListItem.get("title");
+      let time = readingListItem.get("time");
+      // time is a PRTime, which is microseconds (since unix epoch), or null.
+      // We need milliseconds for the date constructor, so divide by 1000:
+      let dateAdded = time ? new Date(time / 1000) : new Date();
+      yield PlacesUtils.bookmarks.insert({
+        parentGuid: destFolderGuid, url: url, title, dateAdded
+      });
+    }
+  }),
+
+  _ensureEdgeReadingListFolder: Task.async(function*(parentGuid) {
+    if (!this.__edgeReadingListFolderGuid) {
+      let folderTitle = MigrationUtils.getLocalizedString("importedEdgeReadingList");
+      let folderSpec = {type: PlacesUtils.bookmarks.TYPE_FOLDER, parentGuid, title: folderTitle};
+      this.__edgeReadingListFolderGuid = (yield PlacesUtils.bookmarks.insert(folderSpec)).guid;
+    }
+    return this.__edgeReadingListFolderGuid;
+  }),
 };
 
 function Cookies(migrationType) {
@@ -355,7 +583,7 @@ Cookies.prototype = {
   },
 
   migrate(aCallback) {
-    CtypesHelpers.initialize();
+    this.ctypesKernelHelpers = new CtypesKernelHelpers();
 
     let cookiesGenerator = (function genCookie() {
       let success = false;
@@ -382,7 +610,7 @@ Cookies.prototype = {
         }
       }
 
-      CtypesHelpers.finalize();
+      this.ctypesKernelHelpers.finalize();
 
       aCallback(success);
     }).apply(this);
@@ -458,8 +686,15 @@ Cookies.prototype = {
           host = "." + host;
       }
 
-      let expireTime = CtypesHelpers.fileTimeToSecondsSinceEpoch(Number(expireTimeHi),
-                                                                 Number(expireTimeLo));
+      // Fallback: expire in 1h
+      let expireTime = (Date.now() + 3600 * 1000) * 1000;
+      try {
+        expireTime = this.ctypesKernelHelpers.fileTimeToSecondsSinceEpoch(Number(expireTimeHi),
+                                                                          Number(expireTimeLo));
+      } catch (ex) {
+        Cu.reportError("Failed to get expiry time for cookie for " + host);
+      }
+
       Services.cookies.add(host,
                            path,
                            name,
@@ -472,14 +707,218 @@ Cookies.prototype = {
   }
 };
 
+function getTypedURLs(registryKeyPath) {
+  // The list of typed URLs is a sort of annotation stored in the registry.
+  // The number of entries stored is not UI-configurable, but has changed
+  // between different Windows versions. We just keep reading up to the first
+  // non-existing entry to support different limits / states of the registry.
+  let typedURLs = new Map();
+  let typedURLKey = Cc["@mozilla.org/windows-registry-key;1"].
+                    createInstance(Ci.nsIWindowsRegKey);
+  let typedURLTimeKey = Cc["@mozilla.org/windows-registry-key;1"].
+                        createInstance(Ci.nsIWindowsRegKey);
+  let cTypes = new CtypesKernelHelpers();
+  try {
+    typedURLKey.open(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
+                     registryKeyPath + "\\TypedURLs",
+                     Ci.nsIWindowsRegKey.ACCESS_READ);
+    try {
+      typedURLTimeKey.open(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
+                           registryKeyPath + "\\TypedURLsTime",
+                           Ci.nsIWindowsRegKey.ACCESS_READ);
+    } catch (ex) {
+      typedURLTimeKey = null;
+    }
+    let entryName;
+    for (let entry = 1; typedURLKey.hasValue((entryName = "url" + entry)); entry++) {
+      let url = typedURLKey.readStringValue(entryName);
+      let timeTyped = 0;
+      if (typedURLTimeKey && typedURLTimeKey.hasValue(entryName)) {
+        let urlTime = "";
+        try {
+          urlTime = typedURLTimeKey.readBinaryValue(entryName);
+        } catch (ex) {
+          Cu.reportError("Couldn't read url time for " + entryName);
+        }
+        if (urlTime.length == 8) {
+          let urlTimeHex = [];
+          for (let i = 0; i < 8; i++) {
+            let c = urlTime.charCodeAt(i).toString(16);
+            if (c.length == 1)
+              c = "0" + c;
+            urlTimeHex.unshift(c);
+          }
+          try {
+            let hi = parseInt(urlTimeHex.slice(0, 4).join(''), 16);
+            let lo = parseInt(urlTimeHex.slice(4, 8).join(''), 16);
+            timeTyped = cTypes.fileTimeToSecondsSinceEpoch(hi, lo);
+            // Callers expect PRTime, which is microseconds since epoch:
+            timeTyped *= 1000 * 1000;
+          } catch (ex) {}
+        }
+      }
+      typedURLs.set(url, timeTyped);
+    }
+  } catch (ex) {
+    Cu.reportError("Error reading typed URL history: " + ex);
+  } finally {
+    typedURLKey.close();
+    typedURLTimeKey.close();
+    cTypes.finalize();
+  }
+  return typedURLs;
+}
 
-let MSMigrationUtils = {
+
+// Migrator for form passwords on Windows 8 and higher.
+function WindowsVaultFormPasswords () {
+}
+
+WindowsVaultFormPasswords.prototype = {
+  type: MigrationUtils.resourceTypes.PASSWORDS,
+
+  get exists() {
+    // work only on windows 8+
+    if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2")) {
+      // check if there are passwords available for migration.
+      return this.migrate(() => {}, true);
+    }
+    return false;
+  },
+
+  /**
+   * If aOnlyCheckExists is false, import the form passwords on Windows 8 and higher from the vault
+   * and then call the aCallback.
+   * Otherwise, check if there are passwords in the vault.
+   * @param {function} aCallback - a callback called when the migration is done.
+   * @param {boolean} [aOnlyCheckExists=false] - if aOnlyCheckExists is true, just check if there are some
+   * passwords to migrate. Import the passwords from the vault and call aCallback otherwise.
+   * @return true if there are passwords in the vault and aOnlyCheckExists is set to true,
+   * false if there is no password in the vault and aOnlyCheckExists is set to true, undefined if
+   * aOnlyCheckExists is set to false.
+   */
+  migrate(aCallback, aOnlyCheckExists = false) {
+    // check if the vault item is an IE/Edge one
+    function _isIEOrEdgePassword(id) {
+      return id[0] == INTERNET_EXPLORER_EDGE_GUID[0] &&
+             id[1] == INTERNET_EXPLORER_EDGE_GUID[1] &&
+             id[2] == INTERNET_EXPLORER_EDGE_GUID[2] &&
+             id[3] == INTERNET_EXPLORER_EDGE_GUID[3];
+    }
+
+    let ctypesVaultHelpers = new CtypesVaultHelpers();
+    let ctypesKernelHelpers = new CtypesKernelHelpers();
+    let migrationSucceeded = true;
+    let successfulVaultOpen = false;
+    let error, vault;
+    try {
+
+      // web credentials vault id
+      let vaultGuid = new ctypesVaultHelpers._structs.GUID(WEB_CREDENTIALS_VAULT_ID);
+      // number of available vaults
+      let vaultCount = new wintypes.DWORD;
+      error = new wintypes.DWORD;
+      // web credentials vault
+      vault = new ctypesVaultHelpers._vaultHandleType;
+      // open the current vault using the vaultGuid
+      error = ctypesVaultHelpers._functions.VaultOpenVault(vaultGuid.address(), 0, vault.address());
+      if (error != RESULT_SUCCESS) {
+        throw new Error("Unable to open Vault: " + error);
+      }
+      successfulVaultOpen = true;
+
+      let item = new ctypesVaultHelpers._structs.VAULT_ELEMENT.ptr;
+      let itemCount = new wintypes.DWORD;
+      // enumerate all the available items. This api is going to return a table of all the
+      // available items and item is going to point to the first element of this table.
+      error = ctypesVaultHelpers._functions.VaultEnumerateItems(vault, VAULT_ENUMERATE_ALL_ITEMS,
+                                                                itemCount.address(),
+                                                                item.address());
+      if (error != RESULT_SUCCESS) {
+        throw new Error("Unable to enumerate Vault items: " + error);
+      }
+      for (let j = 0; j < itemCount.value; j++) {
+        try {
+          // if it's not an ie/edge password, skip it
+          if (!_isIEOrEdgePassword(item.contents.schemaId.id)) {
+            continue;
+          }
+          // if aOnlyCheckExists is set to true, the purpose of the call is to return true if there is at
+          // least a password which is true in this case because a password was by now already found
+          if (aOnlyCheckExists) {
+            return true;
+          }
+          let url = item.contents.pResourceElement.contents.itemValue.readString();
+          let username = item.contents.pIdentityElement.contents.itemValue.readString();
+          // the current login credential object
+          let credential = new ctypesVaultHelpers._structs.VAULT_ELEMENT.ptr;
+          error = ctypesVaultHelpers._functions.VaultGetItem(vault,
+                                                             item.contents.schemaId.address(),
+                                                             item.contents.pResourceElement,
+                                                             item.contents.pIdentityElement, null,
+                                                             0, 0, credential.address());
+          if (error != RESULT_SUCCESS) {
+            throw new Error("Unable to get item: " + error);
+          }
+
+          let password = credential.contents.pAuthenticatorElement.contents.itemValue.readString();
+          let creation = ctypesKernelHelpers.
+                         fileTimeToSecondsSinceEpoch(item.contents.highLastModified,
+                                                     item.contents.lowLastModified) * 1000;
+          // create a new login
+          let login = {
+            username, password,
+            hostname: NetUtil.newURI(url).prePath,
+            timeCreated: creation,
+          };
+          LoginHelper.maybeImportLogin(login);
+
+          // close current item
+          error = ctypesVaultHelpers._functions.VaultFree(credential);
+          if (error == FREE_CLOSE_FAILED) {
+            throw new Error("Unable to free item: " + error);
+          }
+        } catch (e) {
+          migrationSucceeded = false;
+          Cu.reportError(e);
+        } finally {
+          // move to next item in the table returned by VaultEnumerateItems
+          item = item.increment();
+        }
+      }
+    } catch (e) {
+      Cu.reportError(e);
+      migrationSucceeded = false;
+    } finally {
+      if (successfulVaultOpen) {
+        // close current vault
+        error = ctypesVaultHelpers._functions.VaultCloseVault(vault);
+        if (error == FREE_CLOSE_FAILED) {
+          Cu.reportError("Unable to close vault: " + error);
+        }
+      }
+      ctypesKernelHelpers.finalize();
+      ctypesVaultHelpers.finalize();
+      aCallback(migrationSucceeded);
+    }
+    if (aOnlyCheckExists) {
+      return false;
+    }
+  }
+};
+
+var MSMigrationUtils = {
   MIGRATION_TYPE_IE: 1,
   MIGRATION_TYPE_EDGE: 2,
+  CtypesKernelHelpers: CtypesKernelHelpers,
   getBookmarksMigrator(migrationType = this.MIGRATION_TYPE_IE) {
     return new Bookmarks(migrationType);
   },
   getCookiesMigrator(migrationType = this.MIGRATION_TYPE_IE) {
     return new Cookies(migrationType);
   },
+  getWindowsVaultFormPasswordsMigrator() {
+    return new WindowsVaultFormPasswords();
+  },
+  getTypedURLs,
 };

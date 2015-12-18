@@ -27,7 +27,7 @@ registerCleanupFunction(function () {
   delete window.Troubleshoot;
 });
 
-let tests = [
+var tests = [
 
   function snapshotSchema(done) {
     Troubleshoot.snapshot(function (snapshot) {
@@ -131,6 +131,9 @@ const SNAPSHOT_SCHEMA = {
         numRemoteWindows: {
           type: "number",
         },
+        safeMode: {
+          type: "boolean",
+        },
       },
     },
     crashes: {
@@ -216,7 +219,7 @@ const SNAPSHOT_SCHEMA = {
           type: "boolean",
         },
         supportsHardwareH264: {
-          type: "boolean",
+          type: "string",
         },
         numAcceleratedWindowsMessage: {
           type: "array",

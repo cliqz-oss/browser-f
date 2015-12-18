@@ -14,26 +14,26 @@ Cu.import("resource://testing-common/MockRegistrar.jsm");
 // === Mocks ===
 
 // Globals representing server state
-let passwordResetOnServer = false;
-let deletedOnServer = false;
+var passwordResetOnServer = false;
+var deletedOnServer = false;
 
 // Global representing FxAccounts state
-let certExpired = false;
+var certExpired = false;
 
 // Mock RP
 function makePrincipal(origin, appId) {
   let secMan = Cc["@mozilla.org/scriptsecuritymanager;1"]
                  .getService(Ci.nsIScriptSecurityManager);
   let uri = Services.io.newURI(origin, null, null);
-  return secMan.getAppCodebasePrincipal(uri, appId, false);
+  return secMan.createCodebasePrincipal(uri, {appId: appId});
 }
-let principal = makePrincipal('app://settings.gaiamobile.org', 27, false);
+var principal = makePrincipal('app://settings.gaiamobile.org', 27, false);
 
 // For override FxAccountsUIGlue.
-let fakeFxAccountsUIGlueCID;
+var fakeFxAccountsUIGlueCID;
 
 // FxAccountsUIGlue fake component.
-let FxAccountsUIGlue = {
+var FxAccountsUIGlue = {
   _reject: false,
 
   _error: 'error',
@@ -101,6 +101,7 @@ FxAccountsManager._fxAccounts = {
 
   _error: 'error',
   _assertion: 'assertion',
+  _keys: 'keys',
   _signedInUser: null,
 
   _reset: function() {
@@ -139,6 +140,13 @@ FxAccountsManager._fxAccounts = {
     return deferred.promise;
   },
 
+  getKeys: function() {
+    let deferred = Promise.defer();
+    this._reject ? deferred.reject(this._error)
+                 : deferred.resolve(this._keys);
+    return deferred.promise;
+  },
+
   resendVerificationEmail: function() {
     return this.getSignedInUser().then(data => {
       if (data) {
@@ -169,7 +177,7 @@ FxAccountsManager._fxAccounts = {
 const kFxAccountsClient = FxAccountsManager._getFxAccountsClient;
 
 // and change it for a fake client factory.
-let FakeFxAccountsClient = {
+var FakeFxAccountsClient = {
   _reject: false,
   _recoveryEmailStatusCalled: false,
   _signInCalled: false,
@@ -388,6 +396,7 @@ add_test(function() {
       do_throw("Unexpected success");
     },
     error => {
+      do_check_eq(error.error, ERROR_OFFLINE);
       FxAccountsManager._fxAccounts._reset();
       Services.io.offline = false;
       certExpired = false;
@@ -898,4 +907,74 @@ add_test(function() {
     do_check_null(FxAccountsManager._activeSession);
     run_next_test();
   });
+});
+
+add_test(function(test_getKeys_sync_disabled) {
+  do_print("= getKeys sync disabled =");
+  Services.prefs.setBoolPref("services.sync.enabled", false);
+  FxAccountsManager.getKeys().then(
+    result => {
+      do_throw("Unexpected success");
+    },
+    error => {
+      do_check_eq(error, ERROR_SYNC_DISABLED);
+      Services.prefs.clearUserPref("services.sync.enabled");
+      run_next_test();
+    }
+  );
+});
+
+add_test(function(test_getKeys_no_session) {
+  do_print("= getKeys no session =");
+  Services.prefs.setBoolPref("services.sync.enabled", true);
+  FxAccountsManager._fxAccounts._signedInUser = null;
+  FxAccountsManager._activeSession = null;
+  FxAccountsManager.getKeys().then(
+    result => {
+      do_check_null(result);
+      FxAccountsManager._fxAccounts._reset();
+      Services.prefs.clearUserPref("services.sync.enabled");
+      run_next_test();
+    },
+    error => {
+      do_throw("Unexpected error: " + error);
+    }
+  );
+});
+
+add_test(function(test_getKeys_unverified_account) {
+  do_print("= getKeys unverified =");
+  Services.prefs.setBoolPref("services.sync.enabled", true);
+  FakeFxAccountsClient._verified = false;
+  FxAccountsManager.signIn("user@domain.org", "password").then(result => {
+    do_check_false(result.verified);
+    return FxAccountsManager.getKeys();
+  }).then(result => {
+      do_throw("Unexpected success");
+    },
+    error => {
+      do_check_eq(error.error, ERROR_UNVERIFIED_ACCOUNT);
+      FxAccountsManager._fxAccounts._reset();
+      Services.prefs.clearUserPref("services.sync.enabled");
+      FxAccountsManager.signOut().then(run_next_test)
+    }
+  );
+});
+
+add_test(function(test_getKeys_success) {
+  do_print("= getKeys success =");
+  Services.prefs.setBoolPref("services.sync.enabled", true);
+  FakeFxAccountsClient._verified = true;
+  FxAccountsManager.signIn("user@domain.org", "password").then(result => {
+    return FxAccountsManager.getKeys();
+  }).then(result => {
+      do_check_eq(result, FxAccountsManager._fxAccounts._keys);
+      FxAccountsManager._fxAccounts._reset();
+      Services.prefs.clearUserPref("services.sync.enabled");
+      run_next_test();
+    },
+    error => {
+      do_throw("Unexpected error " + error);
+    }
+  );
 });

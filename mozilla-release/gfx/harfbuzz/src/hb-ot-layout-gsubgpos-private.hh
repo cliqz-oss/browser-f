@@ -266,7 +266,8 @@ struct hb_add_coverage_context_t
 #define TRACE_APPLY(this) \
 	hb_auto_trace_t<HB_DEBUG_APPLY, bool> trace \
 	(&c->debug_depth, c->get_name (), this, HB_FUNC, \
-	 "idx %d codepoint %u", c->buffer->idx, c->buffer->cur().codepoint);
+	 "idx %d gid %u lookup %d", \
+	 c->buffer->idx, c->buffer->cur().codepoint, (int) c->lookup_index);
 
 struct hb_apply_context_t
 {
@@ -328,8 +329,7 @@ struct hb_apply_context_t
 
       if (unlikely (_hb_glyph_info_is_default_ignorable (&info) &&
 		    (ignore_zwnj || !_hb_glyph_info_is_zwnj (&info)) &&
-		    (ignore_zwj || !_hb_glyph_info_is_zwj (&info)) &&
-		    !_hb_glyph_info_ligated (&info)))
+		    (ignore_zwj || !_hb_glyph_info_is_zwj (&info))))
 	return SKIP_MAYBE;
 
       return SKIP_NO;
@@ -482,6 +482,7 @@ struct hb_apply_context_t
   const GDEF &gdef;
   bool has_glyph_classes;
   skipping_iterator_t iter_input, iter_context;
+  unsigned int lookup_index;
   unsigned int debug_depth;
 
 
@@ -500,12 +501,13 @@ struct hb_apply_context_t
 			has_glyph_classes (gdef.has_glyph_classes ()),
 			iter_input (),
 			iter_context (),
+			lookup_index ((unsigned int) -1),
 			debug_depth (0) {}
 
   inline void set_lookup_mask (hb_mask_t mask) { lookup_mask = mask; }
   inline void set_auto_zwj (bool auto_zwj_) { auto_zwj = auto_zwj_; }
   inline void set_recurse_func (recurse_func_t func) { recurse_func = func; }
-  inline void set_lookup (const Lookup &l) { set_lookup_props (l.get_props ()); }
+  inline void set_lookup_index (unsigned int lookup_index_) { lookup_index = lookup_index_; }
   inline void set_lookup_props (unsigned int lookup_props_)
   {
     lookup_props = lookup_props_;
@@ -720,7 +722,7 @@ static inline bool match_input (hb_apply_context_t *c,
 {
   TRACE_APPLY (NULL);
 
-  if (unlikely (count > MAX_CONTEXT_LENGTH)) TRACE_RETURN (false);
+  if (unlikely (count > MAX_CONTEXT_LENGTH)) return TRACE_RETURN (false);
 
   hb_buffer_t *buffer = c->buffer;
 
@@ -2165,7 +2167,7 @@ struct ExtensionFormat1
   {
     TRACE_DISPATCH (this, format);
     if (unlikely (!c->may_dispatch (this, this))) TRACE_RETURN (c->default_return_value ());
-    return get_subtable<typename T::LookupSubTable> ().dispatch (c, get_type ());
+    return TRACE_RETURN (get_subtable<typename T::LookupSubTable> ().dispatch (c, get_type ()));
   }
 
   /* This is called from may_dispatch() above with hb_sanitize_context_t. */

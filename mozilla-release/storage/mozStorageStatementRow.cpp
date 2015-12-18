@@ -44,7 +44,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
                           JSContext *aCtx,
                           JSObject *aScopeObj,
                           jsid aId,
-                          jsval *_vp,
+                          JS::Value *_vp,
                           bool *_retval)
 {
   NS_ENSURE_TRUE(mStatement, NS_ERROR_NOT_INITIALIZED);
@@ -80,7 +80,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
         *_retval = false;
         return NS_OK;
       }
-      *_vp = STRING_TO_JSVAL(str);
+      _vp->setString(str);
     }
     else if (type == mozIStorageValueArray::VALUE_TYPE_BLOB) {
       uint32_t length;
@@ -91,7 +91,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
         *_retval = false;
         return NS_OK;
       }
-      *_vp = OBJECT_TO_JSVAL(obj);
+      _vp->setObject(*obj);
 
       // Copy the blob over to the JS array.
       for (uint32_t i = 0; i < length; i++) {
@@ -102,7 +102,7 @@ StatementRow::GetProperty(nsIXPConnectWrappedNative *aWrapper,
       }
     }
     else if (type == mozIStorageValueArray::VALUE_TYPE_NULL) {
-      *_vp = JSVAL_NULL;
+      _vp->setNull();
     }
     else {
       NS_ERROR("unknown column type returned, what's going on?");
@@ -152,4 +152,4 @@ StatementRow::Resolve(nsIXPConnectWrappedNative *aWrapper,
 }
 
 } // namespace storage
-} // namescape mozilla
+} // namespace mozilla

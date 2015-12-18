@@ -26,6 +26,7 @@
 <!ENTITY projectMenu_showPrefs_accesskey "E">
 <!ENTITY projectMenu_manageComponents_label "Zusätzliche Komponenten verwalten">
 <!ENTITY projectMenu_manageComponents_accesskey "Z">
+<!ENTITY projectMenu_refreshTabs_label "Tabs neu laden">
 
 <!ENTITY runtimeMenu_label "Laufzeitumgebung">
 <!ENTITY runtimeMenu_accesskey "L">

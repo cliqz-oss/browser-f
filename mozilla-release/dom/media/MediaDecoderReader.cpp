@@ -63,12 +63,12 @@ public:
 };
 
 MediaDecoderReader::MediaDecoderReader(AbstractMediaDecoder* aDecoder,
-                                       MediaTaskQueue* aBorrowedTaskQueue)
+                                       TaskQueue* aBorrowedTaskQueue)
   : mAudioCompactor(mAudioQueue)
   , mDecoder(aDecoder)
   , mTaskQueue(aBorrowedTaskQueue ? aBorrowedTaskQueue
-                                  : new MediaTaskQueue(GetMediaThreadPool(MediaThreadType::PLAYBACK),
-                                                       /* aSupportsTailDispatch = */ true))
+                                  : new TaskQueue(GetMediaThreadPool(MediaThreadType::PLAYBACK),
+                                                  /* aSupportsTailDispatch = */ true))
   , mWatchManager(this, mTaskQueue)
   , mTimer(new MediaTimer())
   , mBuffered(mTaskQueue, TimeIntervals(), "MediaDecoderReader::mBuffered (Canonical)")
@@ -147,24 +147,33 @@ nsresult MediaDecoderReader::ResetDecode()
   return NS_OK;
 }
 
-VideoData* MediaDecoderReader::DecodeToFirstVideoData()
+nsRefPtr<MediaDecoderReader::VideoDataPromise>
+MediaDecoderReader::DecodeToFirstVideoData()
 {
-  bool eof = false;
-  while (!eof && VideoQueue().GetSize() == 0) {
-    {
-      ReentrantMonitorAutoEnter decoderMon(mDecoder->GetReentrantMonitor());
-      if (mDecoder->IsShutdown()) {
-        return nullptr;
-      }
+  MOZ_ASSERT(OnTaskQueue());
+  typedef MediaDecoderReader::VideoDataPromise PromiseType;
+  nsRefPtr<PromiseType::Private> p = new PromiseType::Private(__func__);
+  nsRefPtr<MediaDecoderReader> self = this;
+  InvokeUntil([self] () -> bool {
+    MOZ_ASSERT(self->OnTaskQueue());
+    NS_ENSURE_TRUE(!self->mShutdown, false);
+    bool skip = false;
+    if (!self->DecodeVideoFrame(skip, 0)) {
+      self->VideoQueue().Finish();
+      return !!self->VideoQueue().PeekFront();
     }
-    bool keyframeSkip = false;
-    eof = !DecodeVideoFrame(keyframeSkip, 0);
-  }
-  if (eof) {
-    VideoQueue().Finish();
-  }
-  VideoData* d = nullptr;
-  return (d = VideoQueue().PeekFront()) ? d : nullptr;
+    return true;
+  }, [self] () -> bool {
+    MOZ_ASSERT(self->OnTaskQueue());
+    return self->VideoQueue().GetSize();
+  })->Then(OwnerThread(), __func__, [self, p] () {
+    p->Resolve(self->VideoQueue().PeekFront(), __func__);
+  }, [p] () {
+    // We don't have a way to differentiate EOS, error, and shutdown here. :-(
+    p->Reject(END_OF_STREAM, __func__);
+  });
+
+  return p.forget();
 }
 
 void
@@ -183,6 +192,8 @@ MediaDecoderReader::ThrottledNotifyDataArrived(const Interval<int64_t>& aInterva
 
   if (mThrottledInterval.isNothing()) {
     mThrottledInterval.emplace(aInterval);
+  } else if (mThrottledInterval.ref().Contains(aInterval)) {
+    return;
   } else if (!mThrottledInterval.ref().Contiguous(aInterval)) {
     DoThrottledNotify();
     mThrottledInterval.emplace(aInterval);
@@ -198,7 +209,7 @@ MediaDecoderReader::ThrottledNotifyDataArrived(const Interval<int64_t>& aInterva
     nsRefPtr<MediaDecoderReader> self = this;
     mThrottledNotify.Begin(
       mTimer->WaitUntil(mLastThrottledNotify + mThrottleDuration, __func__)
-      ->Then(TaskQueue(), __func__,
+      ->Then(OwnerThread(), __func__,
              [self] () -> void {
                self->mThrottledNotify.Complete();
                NS_ENSURE_TRUE_VOID(!self->mShutdown);
@@ -227,14 +238,16 @@ media::TimeIntervals
 MediaDecoderReader::GetBuffered()
 {
   MOZ_ASSERT(OnTaskQueue());
-  NS_ENSURE_TRUE(HaveStartTime(), media::TimeIntervals());
+  if (!HaveStartTime()) {
+    return media::TimeIntervals();
+  }
   AutoPinned<MediaResource> stream(mDecoder->GetResource());
 
-  if (!mDuration.ReadOnWrongThread().isSome()) {
+  if (!mDuration.Ref().isSome()) {
     return TimeIntervals();
   }
 
-  return GetEstimatedBufferedTimeRanges(stream, mDuration.ReadOnWrongThread().ref().ToMicroseconds());
+  return GetEstimatedBufferedTimeRanges(stream, mDuration.Ref().ref().ToMicroseconds());
 }
 
 nsRefPtr<MediaDecoderReader::MetadataPromise>

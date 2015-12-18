@@ -18,6 +18,7 @@ class TestCapabilities(MarionetteTestCase):
         self.assertIn("browserVersion", self.caps)
         self.assertIn("platformName", self.caps)
         self.assertIn("platformVersion", self.caps)
+        self.assertIn("specificationLevel", self.caps)
 
         self.assertEqual(self.caps["browserName"], self.appinfo["name"])
         self.assertEqual(self.caps["browserVersion"], self.appinfo["version"])
@@ -85,3 +86,7 @@ class TestCapabilities(MarionetteTestCase):
         # Start a new session just to make sure we leave the browser in the
         # same state it was before it started the test
         self.marionette.start_session()
+
+    def test_we_get_valid_uuid_4_when_creating_a_session(self):
+        self.assertNotIn("{", self.marionette.session_id, 'Session ID has {} in it. %s ' \
+                         % self.marionette.session_id)

@@ -6,9 +6,9 @@
 "use strict";
 
 const { Cc, Ci, Cu, Cr } = require("chrome");
-const { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
+const promise = require("promise");
 const EventEmitter = require("devtools/toolkit/event-emitter");
-const { DevToolsUtils } = Cu.import("resource://gre/modules/devtools/DevToolsUtils.jsm", {});
+const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 
 function DebuggerPanel(iframeWindow, toolbox) {
   this.panelWin = iframeWindow;
@@ -26,7 +26,7 @@ function DebuggerPanel(iframeWindow, toolbox) {
   this.unhighlightWhenResumed = this.unhighlightWhenResumed.bind(this);
 
   EventEmitter.decorate(this);
-};
+}
 
 exports.DebuggerPanel = DebuggerPanel;
 

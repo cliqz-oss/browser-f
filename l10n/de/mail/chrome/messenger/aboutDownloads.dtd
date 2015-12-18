@@ -17,5 +17,8 @@
 <!ENTITY cmd.open.accesskey                        "Ö">
 <!ENTITY cmd.removeFromHistory.label               "Aus Liste entfernen">
 <!ENTITY cmd.removeFromHistory.accesskey           "e">
-<!ENTITY cmd.clearDownloads.label                  "Liste leeren">
-<!ENTITY cmd.clearDownloads.accesskey              "L">
+<!ENTITY cmd.clearList.label                       "Liste leeren">
+<!ENTITY cmd.clearList.accesskey                   "L">
+<!ENTITY cmd.clearList.tooltip                     "Alle abgeschlossenen Downloads entfernen">
+<!ENTITY cmd.searchDownloads.label                 "Suchen…">
+<!ENTITY cmd.searchDownloads.key                   "F">

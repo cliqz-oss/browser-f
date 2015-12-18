@@ -4,8 +4,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "AudioChannelAgent.h"
+#include "AudioChannelService.h"
 #include "AudioSegment.h"
 #include "nsSpeechTask.h"
+#include "nsSynthVoiceRegistry.h"
 #include "SpeechSynthesis.h"
 
 // GetCurrentTime is defined in winbase.h as zero argument macro forwarding to
@@ -33,15 +36,15 @@ public:
   void DoNotifyStarted()
   {
     if (mSpeechTask) {
-      mSpeechTask->DispatchStartImpl();
+      mSpeechTask->DispatchStartInner();
     }
   }
 
   void DoNotifyFinished()
   {
     if (mSpeechTask) {
-      mSpeechTask->DispatchEndImpl(mSpeechTask->GetCurrentTime(),
-                                   mSpeechTask->GetCurrentCharOffset());
+      mSpeechTask->DispatchEndInner(mSpeechTask->GetCurrentTime(),
+                                    mSpeechTask->GetCurrentCharOffset());
     }
   }
 
@@ -88,6 +91,7 @@ NS_IMPL_CYCLE_COLLECTION(nsSpeechTask, mSpeechSynthesis, mUtterance, mCallback);
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsSpeechTask)
   NS_INTERFACE_MAP_ENTRY(nsISpeechTask)
+  NS_INTERFACE_MAP_ENTRY(nsIAudioChannelAgentCallback)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsISpeechTask)
 NS_INTERFACE_MAP_END
 
@@ -96,6 +100,9 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(nsSpeechTask)
 
 nsSpeechTask::nsSpeechTask(SpeechSynthesisUtterance* aUtterance)
   : mUtterance(aUtterance)
+  , mInited(false)
+  , mPrePaused(false)
+  , mPreCanceled(false)
   , mCallback(nullptr)
   , mIndirectAudio(false)
 {
@@ -107,6 +114,9 @@ nsSpeechTask::nsSpeechTask(float aVolume, const nsAString& aText)
   : mUtterance(nullptr)
   , mVolume(aVolume)
   , mText(aText)
+  , mInited(false)
+  , mPrePaused(false)
+  , mPreCanceled(false)
   , mCallback(nullptr)
   , mIndirectAudio(false)
 {
@@ -130,10 +140,20 @@ nsSpeechTask::~nsSpeechTask()
 }
 
 void
-nsSpeechTask::BindStream(ProcessedMediaStream* aStream)
+nsSpeechTask::InitDirectAudio()
 {
-  mStream = MediaStreamGraph::GetInstance()->CreateSourceStream(nullptr);
-  mPort = aStream->AllocateInputPort(mStream, 0);
+  mStream = MediaStreamGraph::GetInstance(MediaStreamGraph::AUDIO_THREAD_DRIVER,
+                                          AudioChannel::Normal)->
+    CreateSourceStream(nullptr);
+  mIndirectAudio = false;
+  mInited = true;
+}
+
+void
+nsSpeechTask::InitIndirectAudio()
+{
+  mIndirectAudio = true;
+  mInited = true;
 }
 
 void
@@ -146,26 +166,29 @@ NS_IMETHODIMP
 nsSpeechTask::Setup(nsISpeechTaskCallback* aCallback,
                     uint32_t aChannels, uint32_t aRate, uint8_t argc)
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   LOG(LogLevel::Debug, ("nsSpeechTask::Setup"));
 
   mCallback = aCallback;
 
   if (mIndirectAudio) {
+    MOZ_ASSERT(!mStream);
     if (argc > 0) {
       NS_WARNING("Audio info arguments in Setup() are ignored for indirect audio services.");
     }
     return NS_OK;
   }
 
-  // mStream is set up in BindStream() that should be called before this.
+  // mStream is set up in Init() that should be called before this.
   MOZ_ASSERT(mStream);
 
   mStream->AddListener(new SynthStreamListener(this));
 
   // XXX: Support more than one channel
-  NS_ENSURE_TRUE(aChannels == 1, NS_ERROR_FAILURE);
+  if(NS_WARN_IF(!(aChannels == 1))) {
+    return NS_ERROR_FAILURE;
+  }
 
   mChannels = aChannels;
 
@@ -195,12 +218,20 @@ NS_IMETHODIMP
 nsSpeechTask::SendAudio(JS::Handle<JS::Value> aData, JS::Handle<JS::Value> aLandmarks,
                         JSContext* aCx)
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
-  NS_ENSURE_TRUE(mStream, NS_ERROR_NOT_AVAILABLE);
-  NS_ENSURE_FALSE(mStream->IsDestroyed(), NS_ERROR_NOT_AVAILABLE);
-  NS_ENSURE_TRUE(mChannels, NS_ERROR_FAILURE);
-  NS_ENSURE_TRUE(aData.isObject(), NS_ERROR_INVALID_ARG);
+  if(NS_WARN_IF(!(mStream))) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if(NS_WARN_IF(mStream->IsDestroyed())) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if(NS_WARN_IF(!(mChannels))) {
+    return NS_ERROR_FAILURE;
+  }
+  if(NS_WARN_IF(!(aData.isObject()))) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
   if (mIndirectAudio) {
     NS_WARNING("Can't call SendAudio from an indirect audio speech service.");
@@ -237,11 +268,17 @@ nsSpeechTask::SendAudio(JS::Handle<JS::Value> aData, JS::Handle<JS::Value> aLand
 NS_IMETHODIMP
 nsSpeechTask::SendAudioNative(int16_t* aData, uint32_t aDataLen)
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
-  NS_ENSURE_TRUE(mStream, NS_ERROR_NOT_AVAILABLE);
-  NS_ENSURE_FALSE(mStream->IsDestroyed(), NS_ERROR_NOT_AVAILABLE);
-  NS_ENSURE_TRUE(mChannels, NS_ERROR_FAILURE);
+  if(NS_WARN_IF(!(mStream))) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if(NS_WARN_IF(mStream->IsDestroyed())) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if(NS_WARN_IF(!(mChannels))) {
+    return NS_ERROR_FAILURE;
+  }
 
   if (mIndirectAudio) {
     NS_WARNING("Can't call SendAudio from an indirect audio speech service.");
@@ -278,6 +315,15 @@ nsSpeechTask::DispatchStart()
     return NS_ERROR_FAILURE;
   }
 
+  return DispatchStartInner();
+}
+
+nsresult
+nsSpeechTask::DispatchStartInner()
+{
+  CreateAudioChannelAgent();
+
+  nsSynthVoiceRegistry::GetInstance()->SetIsSpeaking(true);
   return DispatchStartImpl();
 }
 
@@ -293,8 +339,9 @@ nsSpeechTask::DispatchStartImpl(const nsAString& aUri)
   LOG(LogLevel::Debug, ("nsSpeechTask::DispatchStart"));
 
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_TRUE(mUtterance->mState == SpeechSynthesisUtterance::STATE_PENDING,
-                 NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(!(mUtterance->mState == SpeechSynthesisUtterance::STATE_PENDING))) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   mUtterance->mState = SpeechSynthesisUtterance::STATE_SPEAKING;
   mUtterance->mChosenVoiceURI = aUri;
@@ -312,6 +359,18 @@ nsSpeechTask::DispatchEnd(float aElapsedTime, uint32_t aCharIndex)
     return NS_ERROR_FAILURE;
   }
 
+  return DispatchEndInner(aElapsedTime, aCharIndex);
+}
+
+nsresult
+nsSpeechTask::DispatchEndInner(float aElapsedTime, uint32_t aCharIndex)
+{
+  DestroyAudioChannelAgent();
+
+  if (!mPreCanceled) {
+    nsSynthVoiceRegistry::GetInstance()->SpeakNext();
+  }
+
   return DispatchEndImpl(aElapsedTime, aCharIndex);
 }
 
@@ -321,8 +380,9 @@ nsSpeechTask::DispatchEndImpl(float aElapsedTime, uint32_t aCharIndex)
   LOG(LogLevel::Debug, ("nsSpeechTask::DispatchEnd\n"));
 
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_FALSE(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED,
-                  NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED)) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   // XXX: This should not be here, but it prevents a crash in MSG.
   if (mStream) {
@@ -363,14 +423,19 @@ nsSpeechTask::DispatchPauseImpl(float aElapsedTime, uint32_t aCharIndex)
 {
   LOG(LogLevel::Debug, ("nsSpeechTask::DispatchPause"));
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_FALSE(mUtterance->mPaused, NS_ERROR_NOT_AVAILABLE);
-  NS_ENSURE_FALSE(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED,
-                  NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(mUtterance->mPaused)) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if(NS_WARN_IF(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED)) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   mUtterance->mPaused = true;
-  mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("pause"),
-                                           aCharIndex, aElapsedTime,
-                                           EmptyString());
+  if (mUtterance->mState == SpeechSynthesisUtterance::STATE_SPEAKING) {
+    mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("pause"),
+                                             aCharIndex, aElapsedTime,
+                                             EmptyString());
+  }
   return NS_OK;
 }
 
@@ -390,14 +455,20 @@ nsSpeechTask::DispatchResumeImpl(float aElapsedTime, uint32_t aCharIndex)
 {
   LOG(LogLevel::Debug, ("nsSpeechTask::DispatchResume"));
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_TRUE(mUtterance->mPaused, NS_ERROR_NOT_AVAILABLE);
-  NS_ENSURE_FALSE(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED,
-                  NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(!(mUtterance->mPaused))) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  if(NS_WARN_IF(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED)) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   mUtterance->mPaused = false;
-  mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("resume"),
-                                           aCharIndex, aElapsedTime,
-                                           EmptyString());
+  if (mUtterance->mState == SpeechSynthesisUtterance::STATE_SPEAKING) {
+    mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("resume"),
+                                             aCharIndex, aElapsedTime,
+                                             EmptyString());
+  }
+
   return NS_OK;
 }
 
@@ -416,8 +487,9 @@ nsresult
 nsSpeechTask::DispatchErrorImpl(float aElapsedTime, uint32_t aCharIndex)
 {
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_FALSE(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED,
-                  NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(mUtterance->mState == SpeechSynthesisUtterance::STATE_ENDED)) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   mUtterance->mState = SpeechSynthesisUtterance::STATE_ENDED;
   mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("error"),
@@ -443,8 +515,9 @@ nsSpeechTask::DispatchBoundaryImpl(const nsAString& aName,
                                    float aElapsedTime, uint32_t aCharIndex)
 {
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_TRUE(mUtterance->mState == SpeechSynthesisUtterance::STATE_SPEAKING,
-                 NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(!(mUtterance->mState == SpeechSynthesisUtterance::STATE_SPEAKING))) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("boundary"),
                                            aCharIndex, aElapsedTime,
@@ -469,8 +542,9 @@ nsSpeechTask::DispatchMarkImpl(const nsAString& aName,
                                float aElapsedTime, uint32_t aCharIndex)
 {
   MOZ_ASSERT(mUtterance);
-  NS_ENSURE_TRUE(mUtterance->mState == SpeechSynthesisUtterance::STATE_SPEAKING,
-                 NS_ERROR_NOT_AVAILABLE);
+  if(NS_WARN_IF(!(mUtterance->mState == SpeechSynthesisUtterance::STATE_SPEAKING))) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   mUtterance->DispatchSpeechSynthesisEvent(NS_LITERAL_STRING("mark"),
                                            aCharIndex, aElapsedTime,
@@ -481,7 +555,7 @@ nsSpeechTask::DispatchMarkImpl(const nsAString& aName,
 void
 nsSpeechTask::Pause()
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   if (mCallback) {
     DebugOnly<nsresult> rv = mCallback->OnPause();
@@ -489,7 +563,14 @@ nsSpeechTask::Pause()
   }
 
   if (mStream) {
-    mStream->ChangeExplicitBlockerCount(1);
+    mStream->Suspend();
+  }
+
+  if (!mInited) {
+    mPrePaused = true;
+  }
+
+  if (!mIndirectAudio) {
     DispatchPauseImpl(GetCurrentTime(), GetCurrentCharOffset());
   }
 }
@@ -497,7 +578,7 @@ nsSpeechTask::Pause()
 void
 nsSpeechTask::Resume()
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   if (mCallback) {
     DebugOnly<nsresult> rv = mCallback->OnResume();
@@ -505,7 +586,15 @@ nsSpeechTask::Resume()
   }
 
   if (mStream) {
-    mStream->ChangeExplicitBlockerCount(-1);
+    mStream->Resume();
+  }
+
+  if (mPrePaused) {
+    mPrePaused = false;
+    nsSynthVoiceRegistry::GetInstance()->ResumeQueue();
+  }
+
+  if (!mIndirectAudio) {
     DispatchResumeImpl(GetCurrentTime(), GetCurrentCharOffset());
   }
 }
@@ -513,7 +602,7 @@ nsSpeechTask::Resume()
 void
 nsSpeechTask::Cancel()
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   LOG(LogLevel::Debug, ("nsSpeechTask::Cancel"));
 
@@ -523,9 +612,30 @@ nsSpeechTask::Cancel()
   }
 
   if (mStream) {
-    mStream->ChangeExplicitBlockerCount(1);
-    DispatchEndImpl(GetCurrentTime(), GetCurrentCharOffset());
+    mStream->Suspend();
   }
+
+  if (!mInited) {
+    mPreCanceled = true;
+  }
+
+  if (!mIndirectAudio) {
+    DispatchEndInner(GetCurrentTime(), GetCurrentCharOffset());
+  }
+}
+
+void
+nsSpeechTask::ForceEnd()
+{
+  if (mStream) {
+    mStream->Suspend();
+  }
+
+  if (!mInited) {
+    mPreCanceled = true;
+  }
+
+  DispatchEndInner(GetCurrentTime(), GetCurrentCharOffset());
 }
 
 float
@@ -544,6 +654,61 @@ void
 nsSpeechTask::SetSpeechSynthesis(SpeechSynthesis* aSpeechSynthesis)
 {
   mSpeechSynthesis = aSpeechSynthesis;
+}
+
+void
+nsSpeechTask::CreateAudioChannelAgent()
+{
+  if (!mUtterance) {
+    return;
+  }
+
+  if (mAudioChannelAgent) {
+    mAudioChannelAgent->NotifyStoppedPlaying(nsIAudioChannelAgent::AUDIO_AGENT_NOTIFY);
+  }
+
+  mAudioChannelAgent = new AudioChannelAgent();
+  mAudioChannelAgent->InitWithWeakCallback(mUtterance->GetOwner(),
+                                           static_cast<int32_t>(AudioChannelService::GetDefaultAudioChannel()),
+                                           this);
+  float volume = 0.0f;
+  bool muted = true;
+  mAudioChannelAgent->NotifyStartedPlaying(nsIAudioChannelAgent::AUDIO_AGENT_NOTIFY, &volume, &muted);
+  WindowVolumeChanged(volume, muted);
+}
+
+void
+nsSpeechTask::DestroyAudioChannelAgent()
+{
+  if (mAudioChannelAgent) {
+    mAudioChannelAgent->NotifyStoppedPlaying(nsIAudioChannelAgent::AUDIO_AGENT_NOTIFY);
+    mAudioChannelAgent = nullptr;
+  }
+}
+
+NS_IMETHODIMP
+nsSpeechTask::WindowVolumeChanged(float aVolume, bool aMuted)
+{
+  SetAudioOutputVolume(aMuted ? 0.0 : mVolume * aVolume);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSpeechTask::WindowAudioCaptureChanged()
+{
+  // This is not supported yet.
+  return NS_OK;
+}
+
+void
+nsSpeechTask::SetAudioOutputVolume(float aVolume)
+{
+  if (mStream) {
+    mStream->SetAudioOutputVolume(this, aVolume);
+  }
+  if (mIndirectAudio) {
+    mCallback->OnVolumeChanged(aVolume);
+  }
 }
 
 } // namespace dom

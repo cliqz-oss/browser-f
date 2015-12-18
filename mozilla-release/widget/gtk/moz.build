@@ -14,13 +14,13 @@ EXPORTS += [
 ]
 
 UNIFIED_SOURCES += [
+    'IMContextWrapper.cpp',
     'mozcontainer.c',
     'NativeKeyBindings.cpp',
     'nsAppShell.cpp',
     'nsBidiKeyboard.cpp',
     'nsColorPicker.cpp',
     'nsFilePicker.cpp',
-    'nsGtkIMModule.cpp',
     'nsGtkKeyUtils.cpp',
     'nsImageToPixbuf.cpp',
     'nsLookAndFeel.cpp',
@@ -60,7 +60,8 @@ if CONFIG['MOZ_X11']:
         'nsDragService.cpp',
     ]
 
-FAIL_ON_WARNINGS = True
+if CONFIG['GNU_CC']:
+    CFLAGS += ['-Wshadow']
 
 if CONFIG['ACCESSIBILITY']:
     UNIFIED_SOURCES += [

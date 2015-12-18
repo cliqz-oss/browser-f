@@ -8,10 +8,10 @@ const {Cc, Ci, Cu, Cr} = require("chrome");
 
 Cu.import("resource://gre/modules/Services.jsm");
 
-let promise = require("resource://gre/modules/Promise.jsm").Promise;
-let EventEmitter = require("devtools/toolkit/event-emitter");
-let clipboard = require("sdk/clipboard");
-let {HostType} = require("devtools/framework/toolbox").Toolbox;
+var promise = require("promise");
+var EventEmitter = require("devtools/toolkit/event-emitter");
+var clipboard = require("sdk/clipboard");
+var {HostType} = require("devtools/framework/toolbox").Toolbox;
 
 loader.lazyGetter(this, "MarkupView", () => require("devtools/markupview/markup-view").MarkupView);
 loader.lazyGetter(this, "HTMLBreadcrumbs", () => require("devtools/inspector/breadcrumbs").HTMLBreadcrumbs);
@@ -977,6 +977,36 @@ InspectorPanel.prototype = {
   },
 
   /**
+   * Use in Console.
+   *
+   * Takes the currently selected node in the inspector and assigns it to a
+   * temp variable on the content window.  Also opens the split console and
+   * autofills it with the temp variable.
+   */
+  useInConsole: function() {
+    this._toolbox.openSplitConsole().then(() => {
+      let panel = this._toolbox.getPanel("webconsole");
+      let jsterm = panel.hud.jsterm;
+
+      let evalString = `let i = 0;
+        while (window.hasOwnProperty("temp" + i) && i < 1000) {
+          i++;
+        }
+        window["temp" + i] = $0;
+        "temp" + i;
+      `;
+
+      let options = {
+        selectedNodeActor: this.selection.nodeFront.actorID,
+      };
+      jsterm.requestEvaluation(evalString, options).then((res) => {
+        jsterm.setInputValue(res.result);
+        this.emit("console-var-ready");
+      });
+    });
+  },
+
+  /**
    * Clear any pseudo-class locks applied to the current hierarchy.
    */
   clearPseudoClasses: function() {
@@ -1047,7 +1077,7 @@ InspectorPanel.prototype = {
     if (!this.selection.isNode()) {
       return;
     }
-    this._copyLongStr(this.walker.innerHTML(this.selection.nodeFront));
+    this._copyLongString(this.walker.innerHTML(this.selection.nodeFront));
   },
 
   /**
@@ -1057,8 +1087,21 @@ InspectorPanel.prototype = {
     if (!this.selection.isNode()) {
       return;
     }
+    let node = this.selection.nodeFront;
 
-    this._copyLongStr(this.walker.outerHTML(this.selection.nodeFront));
+    switch (node.nodeType) {
+      case Ci.nsIDOMNode.ELEMENT_NODE :
+        this._copyLongString(this.walker.outerHTML(node));
+        break;
+      case Ci.nsIDOMNode.COMMENT_NODE :
+        this._getLongString(node.getNodeValue()).then(comment => {
+          clipboardHelper.copyString("<!--" + comment + "-->");
+        });
+        break;
+      case Ci.nsIDOMNode.DOCUMENT_TYPE_NODE :
+        clipboardHelper.copyString(node.doctypeString);
+        break;
+    }
   },
 
   /**
@@ -1071,13 +1114,29 @@ InspectorPanel.prototype = {
     }
   },
 
-  _copyLongStr: function(promise) {
-    return promise.then(longstr => {
-      return longstr.string().then(toCopy => {
-        longstr.release().then(null, console.error);
-        clipboardHelper.copyString(toCopy);
+  /**
+   * Copy the content of a longString (via a promise resolving a LongStringActor) to the clipboard
+   * @param  {Promise} longStringActorPromise promise expected to resolve a LongStringActor instance
+   * @return {Promise} promise resolving (with no argument) when the string is sent to the clipboard
+   */
+  _copyLongString: function(longStringActorPromise) {
+    return this._getLongString(longStringActorPromise).then(string => {
+      clipboardHelper.copyString(string);
+    }).catch(Cu.reportError);
+  },
+
+  /**
+   * Retrieve the content of a longString (via a promise resolving a LongStringActor)
+   * @param  {Promise} longStringActorPromise promise expected to resolve a LongStringActor instance
+   * @return {Promise} promise resolving with the retrieved string as argument
+   */
+  _getLongString: function(longStringActorPromise) {
+    return longStringActorPromise.then(longStringActor => {
+      return longStringActor.string().then(string => {
+        longStringActor.release().catch(Cu.reportError);
+        return string;
       });
-    }).then(null, console.error);
+    }).catch(Cu.reportError);
   },
 
   /**
@@ -1147,12 +1206,24 @@ InspectorPanel.prototype = {
 
   /**
    * This method is here for the benefit of the node-menu-link-follow menu item
-   * in the inspector contextual-menu. It's behavior depends on which node was
-   * right-clicked when the menu was opened.
+   * in the inspector contextual-menu.
    */
-  followAttributeLink: function(e) {
+  onFollowLink: function() {
     let type = this.panelDoc.popupNode.dataset.type;
     let link = this.panelDoc.popupNode.dataset.link;
+
+    this.followAttributeLink(type, link);
+  },
+
+  /**
+   * Given a type and link found in a node's attribute in the markup-view,
+   * attempt to follow that link (which may result in opening a new tab, the
+   * style editor or debugger).
+   */
+  followAttributeLink: function(type, link) {
+    if (!type || !link) {
+      return;
+    }
 
     if (type === "uri" || type === "cssresource" || type === "jsresource") {
       // Open link in a new tab.
@@ -1184,11 +1255,18 @@ InspectorPanel.prototype = {
 
   /**
    * This method is here for the benefit of the node-menu-link-copy menu item
-   * in the inspector contextual-menu. It's behavior depends on which node was
-   * right-clicked when the menu was opened.
+   * in the inspector contextual-menu.
    */
-  copyAttributeLink: function(e) {
+  onCopyLink: function() {
     let link = this.panelDoc.popupNode.dataset.link;
+
+    this.copyAttributeLink(link);
+  },
+
+  /**
+   * This method is here for the benefit of copying links.
+   */
+  copyAttributeLink: function(link) {
     // When the inspector menu was setup on click (see _setupNodeLinkMenu), we
     // already checked that resolveRelativeURL existed.
     this.inspector.resolveRelativeURL(link, this.selection.nodeFront).then(url => {

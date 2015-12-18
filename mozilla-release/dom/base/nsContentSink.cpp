@@ -20,6 +20,8 @@
 #include "nsCPrefetchService.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
+#include "nsIMIMEHeaderParam.h"
+#include "nsIProtocolHandler.h"
 #include "nsIHttpChannel.h"
 #include "nsIContent.h"
 #include "nsIPresShell.h"
@@ -48,6 +50,16 @@
 #include "mozilla/Preferences.h"
 #include "nsParserConstants.h"
 #include "nsSandboxFlags.h"
+
+static PRLogModuleInfo*
+GetSriLog()
+{
+  static PRLogModuleInfo *gSriPRLog;
+  if (!gSriPRLog) {
+    gSriPRLog = PR_NewLogModule("SRI");
+  }
+  return gSriPRLog;
+}
 
 using namespace mozilla;
 
@@ -750,12 +762,23 @@ nsContentSink::ProcessStyleLink(nsIContent* aElement,
                aElement->NodeType() == nsIDOMNode::PROCESSING_INSTRUCTION_NODE,
                "We only expect processing instructions here");
 
+  nsAutoString integrity;
+  if (aElement) {
+    aElement->GetAttr(kNameSpaceID_None, nsGkAtoms::integrity, integrity);
+  }
+  if (!integrity.IsEmpty()) {
+    MOZ_LOG(GetSriLog(), mozilla::LogLevel::Debug,
+            ("nsContentSink::ProcessStyleLink, integrity=%s",
+             NS_ConvertUTF16toUTF8(integrity).get()));
+  }
+
   // If this is a fragment parser, we don't want to observe.
   // We don't support CORS for processing instructions
   bool isAlternate;
   rv = mCSSLoader->LoadStyleLink(aElement, url, aTitle, aMedia, aAlternate,
                                  CORS_NONE, mDocument->GetReferrerPolicy(),
-                                 mRunsToCompletion ? nullptr : this, &isAlternate);
+                                 integrity, mRunsToCompletion ? nullptr : this,
+                                 &isAlternate);
   NS_ENSURE_SUCCESS(rv, rv);
   
   if (!isAlternate && !mRunsToCompletion) {
@@ -1038,6 +1061,12 @@ nsContentSink::ProcessOfflineManifest(const nsAString& aManifestSpec)
   // Don't bother processing offline manifest for documents
   // without a docshell
   if (!mDocShell) {
+    return;
+  }
+
+  // If this document has been interecepted, let's skip the processing of the
+  // manifest.
+  if (nsContentUtils::IsControlledByServiceWorker(mDocument)) {
     return;
   }
 

@@ -12,6 +12,7 @@
 
 #include "jit/Ion.h"
 #include "jit/MIR.h"
+#include "jit/MIRGenerator.h"
 
 #include "vm/HelperThreads.h"
 
@@ -74,7 +75,7 @@ class IonSpewer
     }
 };
 
-class AutoLockIonSpewerOutput
+class MOZ_RAII AutoLockIonSpewerOutput
 {
   private:
     MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
@@ -238,6 +239,15 @@ IonSpewer::~IonSpewer()
     release();
 }
 
+GraphSpewer::GraphSpewer(TempAllocator *alloc)
+  : graph_(nullptr),
+    c1Printer_(alloc->lifoAlloc()),
+    jsonPrinter_(alloc->lifoAlloc()),
+    c1Spewer_(c1Printer_),
+    jsonSpewer_(jsonPrinter_)
+{
+}
+
 void
 GraphSpewer::init(MIRGraph* graph, JSScript* function)
 {
@@ -394,6 +404,7 @@ jit::CheckLogging()
             "  alias      Alias analysis\n"
             "  gvn        Global Value Numbering\n"
             "  licm       Loop invariant code motion\n"
+            "  sincos     Replace sin/cos by sincos\n"
             "  sink       Sink transformation\n"
             "  regalloc   Register allocation\n"
             "  inline     Inlining\n"
@@ -445,6 +456,8 @@ jit::CheckLogging()
         EnableChannel(JitSpew_Unrolling);
     if (ContainsFlag(env, "licm"))
         EnableChannel(JitSpew_LICM);
+    if (ContainsFlag(env, "sincos"))
+        EnableChannel(JitSpew_Sincos);
     if (ContainsFlag(env, "sink"))
         EnableChannel(JitSpew_Sink);
     if (ContainsFlag(env, "regalloc"))
