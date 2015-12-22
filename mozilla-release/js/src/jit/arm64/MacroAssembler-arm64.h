@@ -59,29 +59,10 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     bool enoughMemory_;
     uint32_t framePushed_;
 
-    // TODO: Can this be moved out of the MacroAssembler and into some shared code?
-    // TODO: All the code seems to be arch-independent, and it's weird to have this here.
-    bool inCall_;
-    bool usedOutParam_;
-    uint32_t args_;
-    uint32_t passedIntArgs_;
-    uint32_t passedFloatArgs_;
-    uint32_t passedArgTypes_;
-    uint32_t stackForCall_;
-    bool dynamicAlignment_;
-
     MacroAssemblerCompat()
       : vixl::MacroAssembler(),
         enoughMemory_(true),
-        framePushed_(0),
-        inCall_(false),
-        usedOutParam_(false),
-        args_(0),
-        passedIntArgs_(0),
-        passedFloatArgs_(0),
-        passedArgTypes_(0),
-        stackForCall_(0),
-        dynamicAlignment_(false)
+        framePushed_(0)
     { }
 
   protected:
@@ -179,9 +160,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
             vixl::MacroAssembler::Push(scratch64);
         }
     }
-    void push(ImmMaybeNurseryPtr imm) {
-        push(noteMaybeNurseryPtr(imm));
-    }
     void push(ARMRegister reg) {
         vixl::MacroAssembler::Push(reg);
     }
@@ -229,9 +207,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         vixl::MacroAssembler::Pop(r0, r1, r2, r3);
     }
 
-    void pushReturnAddress() {
-        push(lr);
-    }
     void pop(const ValueOperand& v) {
         pop(v.valueReg());
     }
@@ -809,12 +784,21 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         BufferOffset load = movePatchablePtr(ImmPtr(imm.value), dest);
         writeDataRelocation(imm, load);
     }
-    void movePtr(ImmMaybeNurseryPtr imm, Register dest) {
-        movePtr(noteMaybeNurseryPtr(imm), dest);
+    void move64(Register64 src, Register64 dest) {
+        movePtr(src.reg, dest.reg);
     }
 
     void mov(ImmWord imm, Register dest) {
         movePtr(imm, dest);
+    }
+    void mov(ImmPtr imm, Register dest) {
+        movePtr(imm, dest);
+    }
+    void mov(AsmJSImmPtr imm, Register dest) {
+        movePtr(imm, dest);
+    }
+    void mov(Register src, Register dest) {
+        movePtr(src, dest);
     }
 
     void move32(Imm32 imm, Register dest) {
@@ -830,9 +814,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     BufferOffset movePatchablePtr(ImmWord ptr, Register dest);
     BufferOffset movePatchablePtr(ImmPtr ptr, Register dest);
 
-    void not32(Register reg) {
-        Orn(ARMRegister(reg, 32), vixl::wzr, ARMRegister(reg, 32));
-    }
     void neg32(Register reg) {
         Negs(ARMRegister(reg, 32), Operand(ARMRegister(reg, 32)));
     }
@@ -872,10 +853,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
 
         Ldr(dest64, MemOperand(ARMRegister(base, 64), index64, vixl::LSL, scale));
     }
-    void loadPrivate(const Address& src, Register dest) {
-        loadPtr(src, dest);
-        lshiftPtr(Imm32(1), dest);
-    }
+    void loadPrivate(const Address& src, Register dest);
 
     void store8(Register src, const Address& address) {
         Strb(ARMRegister(src, 32), MemOperand(ARMRegister(address.base, 64), address.offset));
@@ -1011,6 +989,10 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         Str(scratch32, MemOperand(ARMRegister(address.base, 64), address.offset));
     }
 
+    void store64(Register64 src, Address address) {
+        storePtr(src.reg, address);
+    }
+
     // SIMD.
     void loadInt32x1(const Address& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
     void loadInt32x1(const BaseIndex& addr, FloatRegister dest) { MOZ_CRASH("NYI"); }
@@ -1057,10 +1039,8 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     template <typename T>
     void subStackPtrFrom(T t) { subPtr(getStackPointer(), t); }
 
-    template <typename T>
-    void andToStackPtr(T t) { andPtr(t, getStackPointer()); syncStackPtr(); }
-    template <typename T>
-    void andStackPtrTo(T t) { andPtr(getStackPointer(), t); }
+    template <typename T> void andToStackPtr(T t);
+    template <typename T> void andStackPtrTo(T t);
 
     template <typename T>
     void moveToStackPtr(T t) { movePtr(t, getStackPointer()); syncStackPtr(); }
@@ -1084,84 +1064,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     template <typename T>
     void branchStackPtrRhs(Condition cond, T lhs, Label* label) {
         branchPtr(cond, lhs, getStackPointer(), label);
-    }
-
-    void rshiftPtr(Imm32 imm, Register dest) {
-        Lsr(ARMRegister(dest, 64), ARMRegister(dest, 64), imm.value);
-    }
-    void rshiftPtr(Imm32 imm, Register src, Register dest) {
-        Lsr(ARMRegister(dest, 64), ARMRegister(src, 64), imm.value);
-    }
-
-    void rshiftPtrArithmetic(Imm32 imm, Register dest) {
-        Asr(ARMRegister(dest, 64), ARMRegister(dest, 64), imm.value);
-    }
-    void lshiftPtr(Imm32 imm, Register dest) {
-        Lsl(ARMRegister(dest, 64), ARMRegister(dest, 64), imm.value);
-    }
-    void xorPtr(Imm32 imm, Register dest) {
-        Eor(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(imm.value));
-    }
-    void xor32(Imm32 imm, Register dest) {
-        Eor(ARMRegister(dest, 32), ARMRegister(dest, 32), Operand(imm.value));
-    }
-
-    void xorPtr(Register src, Register dest) {
-        Eor(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(ARMRegister(src, 64)));
-    }
-    void orPtr(ImmWord imm, Register dest) {
-        Orr(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(imm.value));
-    }
-    void orPtr(Imm32 imm, Register dest) {
-        Orr(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(imm.value));
-    }
-    void orPtr(Register src, Register dest) {
-        Orr(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(ARMRegister(src, 64)));
-    }
-    void or32(Imm32 imm, Register dest) {
-        Orr(ARMRegister(dest, 32), ARMRegister(dest, 32), Operand(imm.value));
-    }
-    void or32(Register src, Register dest) {
-        Orr(ARMRegister(dest, 32), ARMRegister(dest, 32), Operand(ARMRegister(src, 32)));
-    }
-    void or32(Imm32 imm, const Address& dest) {
-        vixl::UseScratchRegisterScope temps(this);
-        const ARMRegister scratch32 = temps.AcquireW();
-        MOZ_ASSERT(scratch32.asUnsized() != dest.base);
-        load32(dest, scratch32.asUnsized());
-        Orr(scratch32, scratch32, Operand(imm.value));
-        store32(scratch32.asUnsized(), dest);
-    }
-    void andPtr(Imm32 imm, Register dest) {
-        And(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(imm.value));
-    }
-    void andPtr(Register src, Register dest) {
-        And(ARMRegister(dest, 64), ARMRegister(dest, 64), Operand(ARMRegister(src, 64)));
-    }
-    void and32(Imm32 imm, Register dest) {
-        And(ARMRegister(dest, 32), ARMRegister(dest, 32), Operand(imm.value));
-    }
-    void and32(Imm32 imm, Register src, Register dest) {
-        And(ARMRegister(dest, 32), ARMRegister(src, 32), Operand(imm.value));
-    }
-
-    void and32(Register src, Register dest) {
-        And(ARMRegister(dest, 32), ARMRegister(dest, 32), Operand(ARMRegister(src, 32)));
-    }
-    void and32(Imm32 mask, Address dest) {
-        vixl::UseScratchRegisterScope temps(this);
-        const ARMRegister scratch32 = temps.AcquireW();
-        MOZ_ASSERT(scratch32.asUnsized() != dest.base);
-        load32(dest, scratch32.asUnsized());
-        And(scratch32, scratch32, Operand(mask.value));
-        store32(scratch32.asUnsized(), dest);
-    }
-    void and32(Address src, Register dest) {
-        vixl::UseScratchRegisterScope temps(this);
-        const ARMRegister scratch32 = temps.AcquireW();
-        MOZ_ASSERT(scratch32.asUnsized() != src.base);
-        load32(src, scratch32.asUnsized());
-        And(ARMRegister(dest, 32), ARMRegister(dest, 32), Operand(scratch32));
     }
 
     void testPtr(Register lhs, Register rhs) {
@@ -1218,9 +1120,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         movePtr(rhs, scratch);
         cmpPtr(lhs, scratch);
     }
-    void cmpPtr(Register lhs, ImmMaybeNurseryPtr rhs) {
-        cmpPtr(lhs, noteMaybeNurseryPtr(rhs));
-    }
 
     void cmpPtr(const Address& lhs, Register rhs) {
         vixl::UseScratchRegisterScope temps(this);
@@ -1253,7 +1152,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     }
 
     void loadDouble(const Address& src, FloatRegister dest) {
-        Ldr(ARMFPRegister(dest, 64), MemOperand(ARMRegister(src.base,64), src.offset));
+        Ldr(ARMFPRegister(dest, 64), MemOperand(src));
     }
     void loadDouble(const BaseIndex& src, FloatRegister dest) {
         ARMRegister base(src.base, 64);
@@ -1397,6 +1296,9 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         movePtr(ImmWord((uintptr_t)address.addr), scratch64.asUnsized());
         ldr(ARMRegister(dest, 32), MemOperand(scratch64));
     }
+    void load64(const Address& address, Register64 dest) {
+        loadPtr(address, dest.reg);
+    }
 
     void load8SignExtend(const Address& address, Register dest) {
         Ldrsb(ARMRegister(dest, 32), MemOperand(ARMRegister(address.base, 64), address.offset));
@@ -1456,6 +1358,9 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         Ldr(scratch32, MemOperand(ARMRegister(dest.base, 64), dest.offset));
         Adds(scratch32, scratch32, Operand(imm.value));
         Str(scratch32, MemOperand(ARMRegister(dest.base, 64), dest.offset));
+    }
+    void add64(Imm32 imm, Register64 dest) {
+        Add(ARMRegister(dest.reg, 64), ARMRegister(dest.reg, 64), Operand(imm.value));
     }
 
     void sub32(Imm32 imm, Register dest) {
@@ -1557,15 +1462,12 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         Ret(vixl::ip0);
     }
 
-    void j(Condition code, Label* dest) {
-        b(dest, code);
-    }
-    void j(Label* dest) {
-        b(dest, Always);
+    void j(Condition cond, Label* dest) {
+        B(dest, cond);
     }
 
     void branch(Condition cond, Label* label) {
-        b(label, cond);
+        B(label, cond);
     }
     void branch(JitCode* target) {
         syncStackPtr();
@@ -1573,27 +1475,23 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         b(-1); // The jump target will be patched by executableCopy().
     }
 
-    void branch16(Condition cond, Register lhs, Register rhs, Label* label) {
-        MOZ_CRASH("branch16");
-    }
-
     void branch32(Condition cond, const Operand& lhs, Register rhs, Label* label) {
         // since rhs is an operand, do the compare backwards
         Cmp(ARMRegister(rhs, 32), lhs);
-        b(label, Assembler::InvertCmpCondition(cond));
+        B(label, Assembler::InvertCmpCondition(cond));
     }
     void branch32(Condition cond, const Operand& lhs, Imm32 rhs, Label* label) {
         ARMRegister l = lhs.reg();
         Cmp(l, Operand(rhs.value));
-        b(label, cond);
+        B(label, cond);
     }
     void branch32(Condition cond, Register lhs, Register rhs, Label* label) {
         cmp32(lhs, rhs);
-        b(label, cond);
+        B(label, cond);
     }
     void branch32(Condition cond, Register lhs, Imm32 imm, Label* label) {
         cmp32(lhs, imm);
-        b(label, cond);
+        B(label, cond);
     }
     void branch32(Condition cond, const Address& lhs, Register rhs, Label* label) {
         vixl::UseScratchRegisterScope temps(this);
@@ -1637,28 +1535,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         branch32(cond, scratch32.asUnsized(), rhs, label);
     }
 
-    void branchSub32(Condition cond, const Address& lhs, Register rhs, Label* label) {
-        MOZ_CRASH("branchSub32");
-    }
-    void branchSub32(Condition cond, const Address& lhs, Imm32 imm, Label* label) {
-        MOZ_CRASH("branchSub32");
-    }
-    void branchSub32(Condition cond, Register lhs, Imm32 imm, Label* label) {
-        MOZ_CRASH("branchSub32");
-    }
-    void branchSub32(Condition cond, Register lhs, Register rhs, Label* label) {
-        MOZ_CRASH("branchSub32");
-    }
-    void branchSub32(Condition cond, AbsoluteAddress lhs, Imm32 rhs, Label* label) {
-        MOZ_CRASH("branchSub32");
-    }
-    void branchSub32(Condition cond, AbsoluteAddress lhs, Register rhs, Label* label) {
-        MOZ_CRASH("branchSub32");
-    }
-
-    void branchTest16(Condition cond, Register lhs, Register rhs, Label* label) {
-        MOZ_CRASH("branchTest16");
-    }
     void branchTest32(Condition cond, Register lhs, Register rhs, Label* label) {
         MOZ_ASSERT(cond == Zero || cond == NonZero || cond == Signed || cond == NotSigned);
         // x86 prefers |test foo, foo| to |cmp foo, #0|.
@@ -1687,7 +1563,9 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         loadPtr(address, scratch);
         branchTest32(cond, scratch, imm, label);
     }
-    CodeOffsetJump jumpWithPatch(RepatchLabel* label, Condition cond = Always) {
+    CodeOffsetJump jumpWithPatch(RepatchLabel* label, Condition cond = Always,
+                                 Label* documentation = nullptr)
+    {
         ARMBuffer::PoolEntry pe;
         BufferOffset load_bo;
         BufferOffset branch_bo;
@@ -1702,7 +1580,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         MOZ_ASSERT(!label->bound());
         if (cond != Always) {
             Label notTaken;
-            b(&notTaken, Assembler::InvertCondition(cond));
+            B(&notTaken, Assembler::InvertCondition(cond));
             branch_bo = b(-1);
             bind(&notTaken);
         } else {
@@ -1712,8 +1590,8 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         label->use(branch_bo.getOffset());
         return CodeOffsetJump(load_bo.getOffset(), pe.index());
     }
-    CodeOffsetJump backedgeJump(RepatchLabel* label) {
-        return jumpWithPatch(label);
+    CodeOffsetJump backedgeJump(RepatchLabel* label, Label* documentation = nullptr) {
+        return jumpWithPatch(label, Always, documentation);
     }
     template <typename T>
     CodeOffsetJump branchPtrWithPatch(Condition cond, Register reg, T ptr, RepatchLabel* label) {
@@ -1793,9 +1671,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         cmp(scratch2_64, scratch1_64);
         B(cond, label);
 
-    }
-    void branchPtr(Condition cond, Address lhs, ImmMaybeNurseryPtr ptr, Label* label) {
-        branchPtr(cond, lhs, noteMaybeNurseryPtr(ptr), label);
     }
     void branchPtr(Condition cond, Register lhs, Register rhs, Label* label) {
         Cmp(ARMRegister(lhs, 64), ARMRegister(rhs, 64));
@@ -2031,6 +1906,9 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         loadValue(valaddr, scratch64.asUnsized());
         Cmp(ARMRegister(value.valueReg(), 64), Operand(scratch64));
         B(label, cond);
+    }
+    void branchTest64(Condition cond, Register64 lhs, Register64 rhs, Register temp, Label* label) {
+        branchTestPtr(cond, lhs.reg, rhs.reg, label);
     }
 
     void compareDouble(DoubleCondition cond, FloatRegister lhs, FloatRegister rhs) {
@@ -2565,7 +2443,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
             Label onFalse;
             branch(Zero, &onFalse);
             branch(Overflow, &onFalse);
-            b(label);
+            B(label);
             bind(&onFalse);
         }
     }
@@ -2682,66 +2560,12 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
             Add(dest64, dest64, Operand(address.offset));
     }
 
-  private:
-    void setupABICall(uint32_t args);
-
   public:
-    // Setup a call to C/C++ code, given the number of general arguments it
-    // takes. Note that this only supports cdecl.
-    //
-    // In order for alignment to work correctly, the MacroAssembler must have a
-    // consistent view of the stack displacement. It is okay to call "push"
-    // manually, however, if the stack alignment were to change, the macro
-    // assembler should be notified before starting a call.
-    void setupAlignedABICall(uint32_t args) {
-        MOZ_CRASH("setupAlignedABICall");
-    }
-
-    // Sets up an ABI call for when the alignment is not known. This may need a
-    // scratch register.
-    void setupUnalignedABICall(uint32_t args, Register scratch);
-
-    // Arguments must be assigned to a C/C++ call in order. They are moved
-    // in parallel immediately before performing the call. This process may
-    // temporarily use more stack, in which case sp-relative addresses will be
-    // automatically adjusted. It is extremely important that sp-relative
-    // addresses are computed *after* setupABICall(). Furthermore, no
-    // operations should be emitted while setting arguments.
-    void passABIArg(const MoveOperand& from, MoveOp::Type type);
-    void passABIArg(Register reg);
-    void passABIArg(FloatRegister reg, MoveOp::Type type);
-    void passABIOutParam(Register reg);
-
-  private:
-    void callWithABIPre(uint32_t* stackAdjust);
-    void callWithABIPost(uint32_t stackAdjust, MoveOp::Type result);
-
-  public:
-    // Emits a call to a C/C++ function, resolving all argument moves.
-    void callWithABI(void* fun, MoveOp::Type result = MoveOp::GENERAL);
-    void callWithABI(Register fun, MoveOp::Type result = MoveOp::GENERAL);
-    void callWithABI(AsmJSImmPtr imm, MoveOp::Type result = MoveOp::GENERAL);
-    void callWithABI(Address fun, MoveOp::Type result = MoveOp::GENERAL);
-
     CodeOffsetLabel labelForPatch() {
         return CodeOffsetLabel(nextOffset().getOffset());
     }
 
     void handleFailureWithHandlerTail(void* handler);
-
-    // FIXME: This is the same on all platforms. Can be common code?
-    void makeFrameDescriptor(Register frameSizeReg, FrameType type) {
-        lshiftPtr(Imm32(FRAMESIZE_SHIFT), frameSizeReg);
-        orPtr(Imm32(type), frameSizeReg);
-    }
-
-    void callWithExitFrame(JitCode* target, Register dynStack) {
-        add32(Imm32(framePushed()), dynStack);
-        makeFrameDescriptor(dynStack, JitFrame_IonJS);
-        Push(dynStack); // descriptor
-
-        call(target);
-    }
 
     // FIXME: See CodeGeneratorX64 calls to noteAsmJSGlobalAccess.
     void patchAsmJSGlobalAccess(CodeOffsetLabel patchAt, uint8_t* code,
@@ -2762,85 +2586,13 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void branchPtrInNurseryRange(Condition cond, Register ptr, Register temp, Label* label);
     void branchValueIsNurseryObject(Condition cond, ValueOperand value, Register temp, Label* label);
 
-    // Builds an exit frame on the stack, with a return address to an internal
-    // non-function. Returns offset to be passed to markSafepointAt().
-    void buildFakeExitFrame(Register scratch, uint32_t* offset);
-
-    void callWithExitFrame(Label* target) {
-        uint32_t descriptor = MakeFrameDescriptor(framePushed(), JitFrame_IonJS);
-        Push(Imm32(descriptor)); // descriptor
-
-        call(target);
-    }
-
-    void callWithExitFrame(JitCode* target);
-
-    void callJit(Register callee) {
-        // AArch64 cannot read from the PC, so pushing must be handled callee-side.
-        syncStackPtr();
-        Blr(ARMRegister(callee, 64));
-    }
-
     void appendCallSite(const CallSiteDesc& desc) {
         MOZ_CRASH("appendCallSite");
     }
 
-    void call(const CallSiteDesc& desc, Label* label) {
-        syncStackPtr();
-        call(label);
-        append(desc, currentOffset(), framePushed_);
-    }
-    void call(const CallSiteDesc& desc, Register reg) {
-        syncStackPtr();
-        call(reg);
-        append(desc, currentOffset(), framePushed_);
-    }
-    void call(const CallSiteDesc& desc, AsmJSImmPtr imm) {
-        syncStackPtr();
-        call(imm);
-        append(desc, currentOffset(), framePushed_);
-    }
-
-    void call(AsmJSImmPtr imm) {
-        vixl::UseScratchRegisterScope temps(this);
-        const Register scratch = temps.AcquireX().asUnsized();
-        syncStackPtr();
-        movePtr(imm, scratch);
-        call(scratch);
-    }
-
-    void call(Register target) {
-        syncStackPtr();
-        Blr(ARMRegister(target, 64));
-    }
-    // Call a target JitCode, which must be traceable, and may be movable.
-    void call(JitCode* target) {
-        vixl::UseScratchRegisterScope temps(this);
-        const ARMRegister scratch64 = temps.AcquireX();
-        syncStackPtr();
-        BufferOffset off = immPool64(scratch64, uint64_t(target->raw()));
-        addPendingJump(off, ImmPtr(target->raw()), Relocation::JITCODE);
-        blr(scratch64);
-    }
-    // Call a target native function, which is neither traceable nor movable.
-    void call(ImmPtr target) {
-        syncStackPtr();
-        movePtr(target, ip0);
-        Blr(vixl::ip0);
-    }
-    void call(Label* target) {
-        syncStackPtr();
-        Bl(target);
-    }
     void callExit(AsmJSImmPtr imm, uint32_t stackArgBytes) {
         MOZ_CRASH("callExit");
     }
-
-    void callJitFromAsmJS(Register reg) {
-        Blr(ARMRegister(reg, 64));
-    }
-
-    void callAndPushReturnAddress(Label* label);
 
     void profilerEnterFrame(Register framePtr, Register scratch) {
         AbsoluteAddress activation(GetJitContext()->runtime->addressOfProfilingActivation());
@@ -2918,6 +2670,19 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     void compareExchange32(const T& mem, Register oldval, Register newval, Register output)  {
         compareExchange(4, false, mem, oldval, newval, output);
     }
+    template <typename T>
+    void atomicExchange32(const T& mem, Register value, Register output) {
+        MOZ_CRASH("atomicExchang32");
+    }
+
+    template <typename T>
+    void atomicExchange8ZeroExtend(const T& mem, Register value, Register output) {
+        MOZ_CRASH("atomicExchange8ZeroExtend");
+    }
+    template <typename T>
+    void atomicExchange8SignExtend(const T& mem, Register value, Register output) {
+        MOZ_CRASH("atomicExchange8SignExtend");
+    }
 
     template <typename T, typename S>
     void atomicFetchAdd8SignExtend(const S& value, const T& mem, Register temp, Register output) {
@@ -2951,6 +2716,15 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     template <typename T, typename S>
     void atomicAdd32(const S& value, const T& mem) {
         atomicEffectOp(4, AtomicFetchAddOp, value, mem);
+    }
+
+    template <typename T>
+    void atomicExchange16ZeroExtend(const T& mem, Register value, Register output) {
+        MOZ_CRASH("atomicExchange16ZeroExtend");
+    }
+    template <typename T>
+    void atomicExchange16SignExtend(const T& mem, Register value, Register output) {
+        MOZ_CRASH("atomicExchange16SignExtend");
     }
 
     template <typename T, typename S>
@@ -3092,6 +2866,10 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     // Emit a BLR or NOP instruction. ToggleCall can be used to patch
     // this instruction.
     CodeOffsetLabel toggledCall(JitCode* target, bool enabled) {
+        // The returned offset must be to the first instruction generated,
+        // for the debugger to match offset with Baseline's pcMappingEntries_.
+        BufferOffset offset = nextOffset();
+
         // TODO: Random pool insertion between instructions below is terrible.
         // Unfortunately, we can't forbid pool prevention, because we're trying
         // to add an entry to a pool. So as a temporary fix, just flush the pool
@@ -3101,7 +2879,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
 
         syncStackPtr();
 
-        BufferOffset offset = nextOffset();
         BufferOffset loadOffset;
         {
             vixl::UseScratchRegisterScope temps(this);
@@ -3180,6 +2957,27 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
         Add(xdest, xsrc, Operand(xsrc, vixl::LSL, 1));
     }
 
+    void mul64(Imm64 imm, const Register64& dest) {
+        vixl::UseScratchRegisterScope temps(this);
+        const ARMRegister scratch64 = temps.AcquireX();
+        MOZ_ASSERT(dest.reg != scratch64.asUnsized());
+        mov(ImmWord(imm.value), scratch64.asUnsized());
+        Mul(ARMRegister(dest.reg, 64), ARMRegister(dest.reg, 64), scratch64);
+    }
+
+    void convertUInt64ToDouble(Register64 src, Register temp, FloatRegister dest) {
+        Ucvtf(ARMFPRegister(dest, 64), ARMRegister(src.reg, 64));
+    }
+    void mulDoublePtr(ImmPtr imm, Register temp, FloatRegister dest) {
+        vixl::UseScratchRegisterScope temps(this);
+        const Register scratch = temps.AcquireX().asUnsized();
+        MOZ_ASSERT(temp != scratch);
+        movePtr(imm, scratch);
+        const ARMFPRegister scratchDouble = temps.AcquireD();
+        Ldr(scratchDouble, MemOperand(Address(scratch, 0)));
+        fmul(ARMFPRegister(dest, 64), ARMFPRegister(dest, 64), scratchDouble);
+    }
+
     template <typename T>
     void branchAdd32(Condition cond, T src, Register dest, Label* label) {
         adds32(src, dest);
@@ -3193,13 +2991,6 @@ class MacroAssemblerCompat : public vixl::MacroAssembler
     }
     void clampCheck(Register r, Label* handleNotAnInt) {
         MOZ_CRASH("clampCheck");
-    }
-
-    void memMove32(Address Source, Address Dest) {
-        MOZ_CRASH("memMove32");
-    }
-    void memMove64(Address Source, Address Dest) {
-        MOZ_CRASH("memMove64");
     }
 
     void stackCheck(ImmWord limitAddr, Label* label) {

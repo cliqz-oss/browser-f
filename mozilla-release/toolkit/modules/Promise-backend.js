@@ -40,9 +40,13 @@
 // that Components is not defined in worker threads, so no instance of Cu can
 // be obtained.
 
-let Cu = this.require ? require("chrome").Cu : Components.utils;
-let Cc = this.require ? require("chrome").Cc : Components.classes;
-let Ci = this.require ? require("chrome").Ci : Components.interfaces;
+var Cu = this.require ? require("chrome").Cu : Components.utils;
+var Cc = this.require ? require("chrome").Cc : Components.classes;
+var Ci = this.require ? require("chrome").Ci : Components.interfaces;
+// If we can access Components, then we use it to capture an async
+// parent stack trace; see scheduleWalkerLoop.  However, as it might
+// not be available (see above), users of this must check it first.
+var Components_ = this.require ? require("chrome").components : Components;
 
 // If Cu is defined, use it to lazily define the FinalizationWitnessService.
 if (Cu) {
@@ -100,7 +104,7 @@ const DOMPromise = Cu ? Promise : null;
 // In this snippet, the error is reported both by p1 and by p2.
 //
 
-let PendingErrors = {
+var PendingErrors = {
   // An internal counter, used to generate unique id.
   _counter: 0,
   // Functions registered to be notified when a pending error
@@ -737,7 +741,15 @@ this.PromiseWalker = {
     // If Cu is defined, this file is loaded on the main thread. Otherwise, it
     // is loaded on the worker thread.
     if (Cu) {
-      DOMPromise.resolve().then(() => this.walkerLoop());
+      let stack = Components_ ? Components_.stack : null;
+      if (stack) {
+        DOMPromise.resolve().then(() => {
+          Cu.callFunctionWithAsyncStack(this.walkerLoop.bind(this), stack,
+                                        "Promise")
+        });
+      } else {
+        DOMPromise.resolve().then(() => this.walkerLoop());
+      }
     } else {
       setImmediate(this.walkerLoop);
     }

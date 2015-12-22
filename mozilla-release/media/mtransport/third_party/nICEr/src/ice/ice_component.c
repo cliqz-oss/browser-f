@@ -226,49 +226,59 @@ static int nr_ice_component_initialize_udp(struct nr_ice_ctx_ *ctx,nr_ice_compon
 
       if(r=nr_ice_socket_create(ctx,component,sock,NR_ICE_SOCKET_TYPE_DGRAM,&isock))
         ABORT(r);
-      /* Create one host candidate */
-      if(r=nr_ice_candidate_create(ctx,component,isock,sock,HOST,0,0,
-        component->component_id,&cand))
-        ABORT(r);
 
-      TAILQ_INSERT_TAIL(&component->candidates,cand,entry_comp);
-      component->candidate_ct++;
-      cand=0;
-
-      /* And a srvrflx candidate for each STUN server */
-      for(j=0;j<ctx->stun_server_ct;j++){
-        if(r=nr_ice_candidate_create(ctx,component,
-          isock,sock,SERVER_REFLEXIVE,0,
-          &ctx->stun_servers[j],component->component_id,&cand))
+      if (!(ctx->flags & NR_ICE_CTX_FLAGS_RELAY_ONLY)) {
+        /* Create one host candidate */
+        if(r=nr_ice_candidate_create(ctx,component,isock,sock,HOST,0,0,
+          component->component_id,&cand))
           ABORT(r);
+
         TAILQ_INSERT_TAIL(&component->candidates,cand,entry_comp);
         component->candidate_ct++;
         cand=0;
+
+        /* And a srvrflx candidate for each STUN server */
+        for(j=0;j<ctx->stun_server_ct;j++){
+          /* Skip non-UDP */
+          if(ctx->stun_servers[j].transport!=IPPROTO_UDP)
+            continue;
+
+          if(r=nr_ice_candidate_create(ctx,component,
+            isock,sock,SERVER_REFLEXIVE,0,
+            &ctx->stun_servers[j],component->component_id,&cand))
+            ABORT(r);
+          TAILQ_INSERT_TAIL(&component->candidates,cand,entry_comp);
+          component->candidate_ct++;
+          cand=0;
+        }
       }
 
 #ifdef USE_TURN
-      /* And both a srvrflx and relayed candidate for each TURN server */
+      /* And both a srvrflx and relayed candidate for each TURN server (unless
+         we're in relay-only mode, in which case just the relayed one) */
       for(j=0;j<ctx->turn_server_ct;j++){
         nr_socket *turn_sock;
-        nr_ice_candidate *srvflx_cand;
+        nr_ice_candidate *srvflx_cand=0;
 
         /* Skip non-UDP */
         if (ctx->turn_servers[j].turn_server.transport != IPPROTO_UDP)
           continue;
 
-        /* srvrflx */
-        if(r=nr_ice_candidate_create(ctx,component,
-          isock,sock,SERVER_REFLEXIVE,0,
-          &ctx->turn_servers[j].turn_server,component->component_id,&cand))
-          ABORT(r);
-        cand->state=NR_ICE_CAND_STATE_INITIALIZING; /* Don't start */
-        cand->done_cb=nr_ice_gather_finished_cb;
-        cand->cb_arg=cand;
+        if (!(ctx->flags & NR_ICE_CTX_FLAGS_RELAY_ONLY)) {
+          /* srvrflx */
+          if(r=nr_ice_candidate_create(ctx,component,
+            isock,sock,SERVER_REFLEXIVE,0,
+            &ctx->turn_servers[j].turn_server,component->component_id,&cand))
+            ABORT(r);
+          cand->state=NR_ICE_CAND_STATE_INITIALIZING; /* Don't start */
+          cand->done_cb=nr_ice_gather_finished_cb;
+          cand->cb_arg=cand;
 
-        TAILQ_INSERT_TAIL(&component->candidates,cand,entry_comp);
-        component->candidate_ct++;
-        srvflx_cand=cand;
-
+          TAILQ_INSERT_TAIL(&component->candidates,cand,entry_comp);
+          component->candidate_ct++;
+          srvflx_cand=cand;
+          cand=0;
+        }
         /* relayed*/
         if(r=nr_socket_turn_create(sock, &turn_sock))
           ABORT(r);
@@ -403,6 +413,9 @@ static int nr_ice_component_initialize_tcp(struct nr_ice_ctx_ *ctx,nr_ice_compon
     if ((r=NR_reg_get_char(NR_ICE_REG_ICE_TCP_DISABLE, &ice_tcp_disabled))) {
       if (r != R_NOT_FOUND)
         ABORT(r);
+    }
+    if (ctx->flags & NR_ICE_CTX_FLAGS_RELAY_ONLY) {
+      ice_tcp_disabled = 1;
     }
 
     for(i=0;i<addr_ct;i++){
@@ -590,15 +603,15 @@ int nr_ice_component_initialize(struct nr_ice_ctx_ *ctx,nr_ice_component *compon
 
     /* Initialize the UDP candidates */
     if (r=nr_ice_component_initialize_udp(ctx, component, addrs, addr_ct, lufrag, &pwd))
-      ABORT(r);
+      r_log(LOG_ICE,LOG_INFO,"ICE(%s): failed to create UDP candidates with error %d",ctx->label,r);
     /* And the TCP candidates */
     if (r=nr_ice_component_initialize_tcp(ctx, component, addrs, addr_ct, lufrag, &pwd))
-      ABORT(r);
+      r_log(LOG_ICE,LOG_INFO,"ICE(%s): failed to create TCP candidates with error %d",ctx->label,r);
 
     /* count the candidates that will be initialized */
     cand=TAILQ_FIRST(&component->candidates);
     if(!cand){
-      r_log(LOG_ICE,LOG_DEBUG,"ICE(%s): couldn't create any valid candidates",ctx->label);
+      r_log(LOG_ICE,LOG_ERR,"ICE(%s): couldn't create any valid candidates",ctx->label);
       ABORT(R_NOT_FOUND);
     }
 
@@ -654,8 +667,9 @@ int nr_ice_component_maybe_prune_candidate(nr_ice_ctx *ctx, nr_ice_component *co
          !nr_transport_addr_cmp(&c1->addr,&c2->addr,NR_TRANSPORT_ADDR_CMP_MODE_ALL)){
 
         if((c1->type == c2->type) ||
-           (c1->type==HOST && c2->type == SERVER_REFLEXIVE) ||
-           (c2->type==HOST && c1->type == SERVER_REFLEXIVE)){
+           (!(ctx->flags & NR_ICE_CTX_FLAGS_ONLY_DEFAULT_ADDRS) &&
+            ((c1->type==HOST && c2->type == SERVER_REFLEXIVE) ||
+             (c2->type==HOST && c1->type == SERVER_REFLEXIVE)))){
 
           /*
              These are redundant. Remove the lower pri one, or if pairing has
@@ -736,7 +750,7 @@ static int nr_ice_component_process_incoming_check(nr_ice_component *comp, nr_tr
         /* OK, there is a conflict. Who's right? */
         r_log(LOG_ICE,LOG_INFO,"ICE-PEER(%s): role conflict, both controlled",comp->stream->pctx->label);
 
-        if(attr->u.ice_controlling < comp->stream->pctx->tiebreaker){
+        if(attr->u.ice_controlled < comp->stream->pctx->tiebreaker){
           /* Update the peer ctx. This will propagate to all candidate pairs
              in the context. */
           nr_ice_peer_ctx_switch_controlling_role(comp->stream->pctx);
@@ -999,6 +1013,9 @@ int nr_ice_component_pair_candidate(nr_ice_peer_ctx *pctx, nr_ice_component *pco
         continue;
       if (lcand->tcp_type == TCP_TYPE_PASSIVE)
         continue;
+      if(pcand->addr.ip_version != lcand->addr.ip_version)
+        continue;
+
       /*
         Two modes, depending on |pair_all_remote|
 
@@ -1332,5 +1349,46 @@ int nr_ice_component_insert_pair(nr_ice_component *pcomp, nr_ice_cand_pair *pair
     _status=0;
   abort:
     return(_status);
+  }
+
+int nr_ice_component_get_default_candidate(nr_ice_component *comp, nr_ice_candidate **candp, int ip_version)
+  {
+    int _status;
+    nr_ice_candidate *cand;
+    nr_ice_candidate *best_cand = NULL;
+
+    /* We have the component. Now find the "best" candidate, making
+       use of the fact that more "reliable" candidate types have
+       higher numbers. So, we sort by type and then priority within
+       type
+    */
+    cand=TAILQ_FIRST(&comp->candidates);
+    while(cand){
+      if (!nr_ice_ctx_hide_candidate(comp->ctx, cand) &&
+          cand->addr.ip_version == ip_version) {
+        if (!best_cand) {
+          best_cand = cand;
+        }
+        else if (best_cand->type < cand->type) {
+          best_cand = cand;
+        } else if (best_cand->type == cand->type &&
+                   best_cand->priority < cand->priority) {
+          best_cand = cand;
+        }
+      }
+
+      cand=TAILQ_NEXT(cand,entry_comp);
+    }
+
+    /* No candidates */
+    if (!best_cand)
+      ABORT(R_NOT_FOUND);
+
+    *candp = best_cand;
+
+    _status=0;
+  abort:
+    return(_status);
+
   }
 

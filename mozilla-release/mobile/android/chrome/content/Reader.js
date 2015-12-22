@@ -7,7 +7,7 @@
 
 /*globals MAX_URI_LENGTH, MAX_TITLE_LENGTH */
 
-let Reader = {
+var Reader = {
   // These values should match those defined in BrowserContract.java.
   STATUS_UNFETCHED: 0,
   STATUS_FETCH_FAILED_TEMPORARY: 1,
@@ -58,6 +58,10 @@ let Reader = {
           // Make sure the target browser is still alive before trying to send data back.
           if (message.target.messageManager) {
             message.target.messageManager.sendAsyncMessage("Reader:ArticleData", { article: article });
+          }
+        }, e => {
+          if (e && e.newURL) {
+            message.target.loadURI("about:reader?url=" + encodeURIComponent(e.newURL));
           }
         });
         break;
@@ -289,6 +293,10 @@ let Reader = {
     // Article hasn't been found in the cache, we need to
     // download the page and parse the article out of it.
     return yield ReaderMode.downloadAndParseDocument(url).catch(e => {
+      if (e && e.newURL) {
+        // Pass up the error so we can navigate the browser in question to the new URL:
+        throw e;
+      }
       Cu.reportError("Error downloading and parsing document: " + e);
       return null;
     });

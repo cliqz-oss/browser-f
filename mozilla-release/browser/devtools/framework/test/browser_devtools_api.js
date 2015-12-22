@@ -13,13 +13,12 @@ thisTestLeaksUncaughtRejectionsAndShouldBeFixed("TypeError: this.doc is undefine
 
 // Tests devtools API
 
-const Cu = Components.utils;
 const toolId1 = "test-tool-1";
 const toolId2 = "test-tool-2";
 
-let tempScope = {};
+var tempScope = {};
 Cu.import("resource://gre/modules/devtools/event-emitter.js", tempScope);
-let EventEmitter = tempScope.EventEmitter;
+var EventEmitter = tempScope.EventEmitter;
 
 function test() {
   addTab("about:blank").then(runTests1);

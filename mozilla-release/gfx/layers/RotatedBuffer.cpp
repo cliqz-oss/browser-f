@@ -177,7 +177,7 @@ RotatedBuffer::DrawBufferWithRotation(gfx::DrawTarget *aTarget, ContextSource aS
   DrawBufferQuadrant(aTarget, RIGHT, BOTTOM, aSource, aOpacity, aOperator,aMask, aMaskTransform);
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 SourceRotatedBuffer::GetSourceSurface(ContextSource aSource) const
 {
   RefPtr<SourceSurface> surf;
@@ -734,6 +734,7 @@ RotatedContentBuffer::BorrowDrawTargetForPainting(PaintState& aPaintState,
   if (!result) {
     return nullptr;
   }
+
   nsIntRegion* drawPtr = &aPaintState.mRegionToDraw;
   if (aIter) {
     // The iterators draw region currently only contains the bounds of the region,
@@ -743,6 +744,8 @@ RotatedContentBuffer::BorrowDrawTargetForPainting(PaintState& aPaintState,
   }
   if (result->GetBackendType() == BackendType::DIRECT2D ||
       result->GetBackendType() == BackendType::DIRECT2D1_1) {
+    // Simplify the draw region to avoid hitting expensive drawing paths
+    // for complex regions.
     drawPtr->SimplifyOutwardByArea(100 * 100);
   }
 
@@ -773,7 +776,7 @@ RotatedContentBuffer::BorrowDrawTargetForPainting(PaintState& aPaintState,
   return result;
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 RotatedContentBuffer::GetSourceSurface(ContextSource aSource) const
 {
   MOZ_ASSERT(mDTBuffer);
@@ -786,6 +789,6 @@ RotatedContentBuffer::GetSourceSurface(ContextSource aSource) const
   }
 }
 
-}
-}
+} // namespace layers
+} // namespace mozilla
 

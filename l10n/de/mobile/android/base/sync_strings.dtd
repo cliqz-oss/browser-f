@@ -197,6 +197,7 @@
 
 <!ENTITY fxaccount_status_header2 'Firefox-Konto'>
 <!ENTITY fxaccount_status_signed_in_as 'Angemeldet als'>
+<!ENTITY fxaccount_status_manage_account 'Benutzerkonto verwalten'>
 <!ENTITY fxaccount_status_auth_server 'Konto-Server'>
 <!ENTITY fxaccount_status_sync_now 'Jetzt synchronisieren'>
 <!ENTITY fxaccount_status_syncing2 'Synchronisierung durchführen…'>
@@ -230,6 +231,7 @@
 <!ENTITY fxaccount_remove_account_toast 'Firefox-Konto &formatS; entfernt'>
 
 <!ENTITY fxaccount_remove_account_menu_item 'Konto entfernen'>
+<!ENTITY fxaccount_enable_debug_mode 'Debug-Modus aktivieren'>
 
 <!-- Localization note: this is the name shown by the Android system
      itself for a Firefox Account. Don't localize this. -->

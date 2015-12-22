@@ -23,7 +23,6 @@ public:
   virtual ~NeckoChild();
 
   static void InitNeckoChild();
-  static void DestroyNeckoChild();
 
 protected:
   virtual PHttpChannelChild*
@@ -49,7 +48,7 @@ protected:
   virtual PTCPServerSocketChild*
     AllocPTCPServerSocketChild(const uint16_t& aLocalPort,
                                const uint16_t& aBacklog,
-                               const nsString& aBinaryType) override;
+                               const bool& aUseArrayBuffers) override;
   virtual bool DeallocPTCPServerSocketChild(PTCPServerSocketChild*) override;
   virtual PUDPSocketChild* AllocPUDPSocketChild(const Principal& aPrincipal,
                                                 const nsCString& aFilter) override;

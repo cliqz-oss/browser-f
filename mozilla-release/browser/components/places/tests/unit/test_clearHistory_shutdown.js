@@ -17,7 +17,7 @@ const URIS = [
 
 const TOPIC_CONNECTION_CLOSED = "places-connection-closed";
 
-let EXPECTED_NOTIFICATIONS = [
+var EXPECTED_NOTIFICATIONS = [
   "places-shutdown"
 , "places-will-close-connection"
 , "places-expiration-finished"
@@ -36,7 +36,7 @@ var formHistoryStartup = Cc["@mozilla.org/satchel/form-history-startup;1"].
                          getService(Ci.nsIObserver);
 formHistoryStartup.observe(null, "profile-after-change", null);
 
-let timeInMicroseconds = Date.now() * 1000;
+var timeInMicroseconds = Date.now() * 1000;
 
 function run_test() {
   run_next_test();
@@ -57,7 +57,6 @@ add_task(function* test_execute() {
   Services.prefs.setBoolPref("privacy.clearOnShutdown.downloads", true);
   Services.prefs.setBoolPref("privacy.clearOnShutdown.cookies", true);
   Services.prefs.setBoolPref("privacy.clearOnShutdown.formData", true);
-  Services.prefs.setBoolPref("privacy.clearOnShutdown.passwords", true);
   Services.prefs.setBoolPref("privacy.clearOnShutdown.sessions", true);
   Services.prefs.setBoolPref("privacy.clearOnShutdown.siteSettings", true);
 

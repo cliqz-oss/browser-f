@@ -11,24 +11,6 @@
 <!ENTITY window.title "Web-Konsole">
 <!ENTITY browserConsole.title "Browser-Konsole">
 
-<!ENTITY networkPanel.requestURLColon             "Request-URL:">
-<!ENTITY networkPanel.requestMethodColon          "Request-Methode:">
-<!ENTITY networkPanel.statusCodeColon             "Status-Code:">
-
-<!ENTITY networkPanel.requestHeaders              "Request-Header">
-<!ENTITY networkPanel.requestCookie               "Gesendetes Cookie">
-<!ENTITY networkPanel.requestBody                 "Request-Body">
-<!ENTITY networkPanel.requestFormData             "Gesendete Formulardaten">
-
-<!ENTITY networkPanel.responseHeaders             "Response-Header">
-<!ENTITY networkPanel.responseCookie              "Empfangenes Cookie">
-<!ENTITY networkPanel.responseBody                "Response-Body">
-<!ENTITY networkPanel.responseBodyCached          "Gecachte Daten">
-<!ENTITY networkPanel.responseBodyUnknownType     "Unbekannter Content-Typ">
-<!ENTITY networkPanel.responseNoBody              "Kein Response-Body">
-<!ENTITY networkPanel.responseImage               "Empfangene Grafik">
-<!ENTITY networkPanel.responseImageCached         "Gecachte Grafik">
-
 <!-- LOCALIZATION NOTE (saveBodies.label): You can see this string in the Web
    - Console context menu. -->
 <!ENTITY saveBodies.label     "Anfrage- und Antwort-Inhalte aufzeichnen">
@@ -75,6 +57,17 @@
 <!ENTITY btnConsoleLog          "Log">
 <!ENTITY btnConsoleXhr          "XMLHttpRequests (XHR)">
 <!ENTITY btnConsoleReflows      "DOM-Neuberechnungen">
+
+<!-- LOCALIZATION NOTE (btnServerLogging): This is used as the text of the
+  -  the toolbar. It shows or hides messages that the web developer inserted on
+  -  the page for debugging purposes, using calls on the HTTP server. -->
+<!ENTITY btnServerLogging.label       "Server">
+<!ENTITY btnServerLogging.tooltip     "Vom Web-Server empfangene Mitteilungen aufzeichnen">
+<!ENTITY btnServerLogging.accesskey   "v">
+<!ENTITY btnServerErrors              "Fehler">
+<!ENTITY btnServerInfo                "Informationen">
+<!ENTITY btnServerWarnings            "Warnungen">
+<!ENTITY btnServerLog                 "Log">
 
 <!-- LOCALIZATION NODE (btnConsoleSharedWorkers) the term "Shared Workers"
   -  should not be translated. -->

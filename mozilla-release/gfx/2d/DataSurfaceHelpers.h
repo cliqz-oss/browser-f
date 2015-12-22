@@ -83,7 +83,7 @@ CopyRect(DataSourceSurface* aSrc, DataSourceSurface* aDest,
  *
  * @return a dss allocated by Factory that contains a copy a aSource.
  */
-TemporaryRef<DataSourceSurface>
+already_AddRefed<DataSourceSurface>
 CreateDataSourceSurfaceByCloning(DataSourceSurface* aSource);
 
 /**
@@ -102,7 +102,7 @@ DataAtOffset(DataSourceSurface* aSurface,
 bool
 SurfaceContainsPoint(SourceSurface* aSurface, const IntPoint& aPoint);
 
-}
-}
+} // namespace gfx
+} // namespace mozilla
 
 #endif // _MOZILLA_GFX_DATASURFACEHELPERS_H

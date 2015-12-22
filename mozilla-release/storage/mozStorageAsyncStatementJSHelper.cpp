@@ -28,7 +28,7 @@ nsresult
 AsyncStatementJSHelper::getParams(AsyncStatement *aStatement,
                                   JSContext *aCtx,
                                   JSObject *aScopeObj,
-                                  jsval *_params)
+                                  JS::Value *_params)
 {
   MOZ_ASSERT(NS_IsMainThread());
   nsresult rv;
@@ -48,7 +48,7 @@ AsyncStatementJSHelper::getParams(AsyncStatement *aStatement,
     JS::RootedObject scope(aCtx, aScopeObj);
     nsCOMPtr<nsIXPConnectJSObjectHolder> holder;
     nsCOMPtr<nsIXPConnect> xpc(Service::getXPConnect());
-    rv = xpc->WrapNative(
+    rv = xpc->WrapNativeHolder(
       aCtx,
       ::JS_GetGlobalForObject(aCtx, scope),
       params,
@@ -66,7 +66,7 @@ AsyncStatementJSHelper::getParams(AsyncStatement *aStatement,
   obj = aStatement->mStatementParamsHolder->GetJSObject();
   NS_ENSURE_STATE(obj);
 
-  *_params = OBJECT_TO_JSVAL(obj);
+  _params->setObject(*obj);
   return NS_OK;
 }
 
@@ -91,7 +91,7 @@ AsyncStatementJSHelper::GetProperty(nsIXPConnectWrappedNative *aWrapper,
                                     JSContext *aCtx,
                                     JSObject *aScopeObj,
                                     jsid aId,
-                                    jsval *_result,
+                                    JS::Value *_result,
                                     bool *_retval)
 {
   if (!JSID_IS_STRING(aId))

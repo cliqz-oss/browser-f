@@ -11,7 +11,8 @@
 #include "mozilla/unused.h"
 #include "nsIFile.h"
 #include "nsIUUIDGenerator.h"
-#include "nsNetUtil.h"
+#include "nsNetCID.h"
+#include "nsISimpleEnumerator.h"
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
@@ -36,7 +37,7 @@ nsresult
 BodyIdToFile(nsIFile* aBaseDir, const nsID& aId, BodyFileType aType,
              nsIFile** aBodyFileOut);
 
-} // anonymous namespace
+} // namespace
 
 // static
 nsresult
@@ -317,7 +318,7 @@ BodyIdToFile(nsIFile* aBaseDir, const nsID& aId, BodyFileType aType,
   return rv;
 }
 
-} // anonymous namespace
+} // namespace
 
 nsresult
 BodyDeleteOrphanedFiles(nsIFile* aBaseDir, nsTArray<nsID>& aKnownBodyIdList)
@@ -437,7 +438,7 @@ GetMarkerFileHandle(const QuotaInfo& aQuotaInfo, nsIFile** aFileOut)
   return rv;
 }
 
-} // anonymous namespace
+} // namespace
 
 nsresult
 CreateMarkerFile(const QuotaInfo& aQuotaInfo)

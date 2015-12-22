@@ -9,6 +9,7 @@
 #include "mozilla/FloatingPoint.h"
 #include "AnimationCommon.h"
 #include "nsCSSPropertySet.h"
+#include "nsCSSProps.h" // For nsCSSProps::PropHasFlags
 
 namespace mozilla {
 
@@ -74,6 +75,20 @@ NS_INTERFACE_MAP_END_INHERITING(AnimationEffectReadOnly)
 NS_IMPL_ADDREF_INHERITED(KeyframeEffectReadOnly, AnimationEffectReadOnly)
 NS_IMPL_RELEASE_INHERITED(KeyframeEffectReadOnly, AnimationEffectReadOnly)
 
+KeyframeEffectReadOnly::KeyframeEffectReadOnly(
+  nsIDocument* aDocument,
+  Element* aTarget,
+  nsCSSPseudoElements::Type aPseudoType,
+  const AnimationTiming& aTiming)
+  : AnimationEffectReadOnly(aDocument)
+  , mTarget(aTarget)
+  , mTiming(aTiming)
+  , mPseudoType(aPseudoType)
+{
+  MOZ_ASSERT(aTarget, "null animation target is not yet supported");
+  ResetIsRunningOnCompositor();
+}
+
 JSObject*
 KeyframeEffectReadOnly::WrapObject(JSContext* aCx,
                                    JS::Handle<JSObject*> aGivenProto)
@@ -85,6 +100,17 @@ void
 KeyframeEffectReadOnly::SetParentTime(Nullable<TimeDuration> aParentTime)
 {
   mParentTime = aParentTime;
+}
+
+void
+KeyframeEffectReadOnly::SetTiming(const AnimationTiming& aTiming,
+                                  Animation& aOwningAnimation)
+{
+  if (mTiming == aTiming) {
+    return;
+  }
+  mTiming = aTiming;
+  aOwningAnimation.NotifyEffectTimingUpdated();
 }
 
 ComputedTiming
@@ -236,8 +262,7 @@ KeyframeEffectReadOnly::ActiveDuration(const AnimationTiming& aTiming)
 bool
 KeyframeEffectReadOnly::IsInPlay(const Animation& aAnimation) const
 {
-  if (IsFinishedTransition() ||
-      aAnimation.PlayState() == AnimationPlayState::Finished) {
+  if (aAnimation.PlayState() == AnimationPlayState::Finished) {
     return false;
   }
 
@@ -248,8 +273,7 @@ KeyframeEffectReadOnly::IsInPlay(const Animation& aAnimation) const
 bool
 KeyframeEffectReadOnly::IsCurrent(const Animation& aAnimation) const
 {
-  if (IsFinishedTransition() ||
-      aAnimation.PlayState() == AnimationPlayState::Finished) {
+  if (aAnimation.PlayState() == AnimationPlayState::Finished) {
     return false;
   }
 
@@ -261,10 +285,6 @@ KeyframeEffectReadOnly::IsCurrent(const Animation& aAnimation) const
 bool
 KeyframeEffectReadOnly::IsInEffect() const
 {
-  if (IsFinishedTransition()) {
-    return false;
-  }
-
   ComputedTiming computedTiming = GetComputedTiming();
   return computedTiming.mProgress != ComputedTiming::kNullProgress;
 }
@@ -299,9 +319,8 @@ KeyframeEffectReadOnly::HasAnimationOfProperties(
 }
 
 void
-KeyframeEffectReadOnly::ComposeStyle(
-                          nsRefPtr<css::AnimValuesStyleRule>& aStyleRule,
-                          nsCSSPropertySet& aSetProperties)
+KeyframeEffectReadOnly::ComposeStyle(nsRefPtr<AnimValuesStyleRule>& aStyleRule,
+                                     nsCSSPropertySet& aSetProperties)
 {
   ComputedTiming computedTiming = GetComputedTiming();
 
@@ -370,7 +389,7 @@ KeyframeEffectReadOnly::ComposeStyle(
 
     if (!aStyleRule) {
       // Allocate the style rule now that we know we have animation data.
-      aStyleRule = new css::AnimValuesStyleRule();
+      aStyleRule = new AnimValuesStyleRule();
     }
 
     double positionInSegment =
@@ -389,6 +408,51 @@ KeyframeEffectReadOnly::ComposeStyle(
                                        segment->mToValue,
                                        valuePosition, *val);
     MOZ_ASSERT(result, "interpolate must succeed now");
+  }
+}
+
+bool
+KeyframeEffectReadOnly::IsRunningOnCompositor() const
+{
+  // We consider animation is running on compositor if there is at least
+  // one property running on compositor.
+  // Animation.IsRunningOnCompotitor will return more fine grained
+  // information in bug 1196114.
+  for (bool isPropertyRunningOnCompositor : mIsPropertyRunningOnCompositor) {
+    if (isPropertyRunningOnCompositor) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void
+KeyframeEffectReadOnly::SetIsRunningOnCompositor(nsCSSProperty aProperty,
+                                                 bool aIsRunning)
+{
+  static_assert(
+    MOZ_ARRAY_LENGTH(LayerAnimationInfo::sRecords) ==
+      MOZ_ARRAY_LENGTH(mIsPropertyRunningOnCompositor),
+    "The length of mIsPropertyRunningOnCompositor should equal to"
+    "the length of LayserAnimationInfo::sRecords");
+  MOZ_ASSERT(nsCSSProps::PropHasFlags(aProperty,
+                                      CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR),
+             "Property being animated on compositor is a recognized "
+             "compositor-animatable property");
+  const auto& info = LayerAnimationInfo::sRecords;
+  for (size_t i = 0; i < ArrayLength(mIsPropertyRunningOnCompositor); i++) {
+    if (info[i].mProperty == aProperty) {
+      mIsPropertyRunningOnCompositor[i] = aIsRunning;
+      return;
+    }
+  }
+}
+
+void
+KeyframeEffectReadOnly::ResetIsRunningOnCompositor()
+{
+  for (bool& isPropertyRunningOnCompositor : mIsPropertyRunningOnCompositor) {
+    isPropertyRunningOnCompositor = false;
   }
 }
 

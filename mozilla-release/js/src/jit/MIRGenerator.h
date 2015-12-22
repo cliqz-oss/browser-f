@@ -62,10 +62,11 @@ class MIRGenerator
     }
 
     template <typename T>
-    T * allocate(size_t count = 1) {
-        if (count & mozilla::tl::MulOverflowMask<sizeof(T)>::value)
+    T* allocate(size_t count = 1) {
+        size_t bytes;
+        if (MOZ_UNLIKELY(!CalculateAllocSize<T>(count, &bytes)))
             return nullptr;
-        return reinterpret_cast<T*>(alloc().allocate(sizeof(T) * count));
+        return static_cast<T*>(alloc().allocate(bytes));
     }
 
     // Set an error state and prints a message. Returns false so errors can be
@@ -151,13 +152,6 @@ class MIRGenerator
     // Traverses the graph to find if there's any SIMD instruction. Costful but
     // the value is cached, so don't worry about calling it several times.
     bool usesSimd();
-    void initMinAsmJSHeapLength(uint32_t len) {
-        MOZ_ASSERT(minAsmJSHeapLength_ == 0);
-        minAsmJSHeapLength_ = len;
-    }
-    uint32_t minAsmJSHeapLength() const {
-        return minAsmJSHeapLength_;
-    }
 
     bool modifiesFrameArguments() const {
         return modifiesFrameArguments_;
@@ -192,7 +186,6 @@ class MIRGenerator
     bool performsCall_;
     bool usesSimd_;
     bool usesSimdCached_;
-    uint32_t minAsmJSHeapLength_;
 
     // Keep track of whether frame arguments are modified during execution.
     // RegAlloc needs to know this as spilling values back to their register

@@ -89,6 +89,11 @@ gfxContext::gfxContext(DrawTarget *aTarget, const Point& aDeviceOffset)
 /* static */ already_AddRefed<gfxContext>
 gfxContext::ContextForDrawTarget(DrawTarget* aTarget)
 {
+  if (!aTarget || !aTarget->IsValid()) {
+    gfxWarning() << "Invalid target in gfxContext::ContextForDrawTarget";
+    return nullptr;
+  }
+
   Matrix transform = aTarget->GetTransform();
   nsRefPtr<gfxContext> result = new gfxContext(aTarget);
   result->SetMatrix(ThebesMatrix(transform));
@@ -201,7 +206,7 @@ gfxContext::ClosePath()
   mPathBuilder->Close();
 }
 
-TemporaryRef<Path> gfxContext::GetPath()
+already_AddRefed<Path> gfxContext::GetPath()
 {
   EnsurePath();
   RefPtr<Path> path(mPath);
@@ -969,7 +974,7 @@ gfxContext::PopGroup()
   return pat.forget();
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 gfxContext::PopGroupToSurface(Matrix* aTransform)
 {
   RefPtr<SourceSurface> src = mDT->Snapshot();

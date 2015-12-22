@@ -44,7 +44,7 @@ const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const kPrefCustomizationDebug = "browser.uiCustomization.debug";
 const kWidePanelItemClass = "panel-wide-item";
 
-let gModuleName = "[CustomizableWidgets]";
+var gModuleName = "[CustomizableWidgets]";
 #include logging.js
 
 function setAttributes(aNode, aAttrs) {
@@ -315,8 +315,8 @@ const CustomizableWidgets = [
       let win = aEvent.target &&
                 aEvent.target.ownerDocument &&
                 aEvent.target.ownerDocument.defaultView;
-      if (win && typeof win.saveDocument == "function") {
-        win.saveDocument(win.gBrowser.selectedBrowser.contentDocumentAsCPOW);
+      if (win && typeof win.saveBrowser == "function") {
+        win.saveBrowser(win.gBrowser.selectedBrowser);
       }
     }
   }, {
@@ -957,9 +957,8 @@ const CustomizableWidgets = [
     type: "custom",
     label: "loop-call-button3.label",
     tooltiptext: "loop-call-button3.tooltiptext",
+    privateBrowsingTooltiptext: "loop-call-button3-pb.tooltiptext",
     defaultArea: CustomizableUI.AREA_NAVBAR,
-    // Not in private browsing, see bug 1108187.
-    showInPrivateBrowsing: false,
     introducedInVersion: 4,
     onBuild: function(aDocument) {
       // If we're not supposed to see the button, return zip.
@@ -967,13 +966,21 @@ const CustomizableWidgets = [
         return null;
       }
 
+      let isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(aDocument.defaultView);
+
       let node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
       node.setAttribute("id", this.id);
       node.classList.add("toolbarbutton-1");
       node.classList.add("chromeclass-toolbar-additional");
       node.classList.add("badged-button");
       node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
-      node.setAttribute("tooltiptext", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
+      if (isWindowPrivate)
+        node.setAttribute("disabled", "true");
+      let tooltiptext = isWindowPrivate ?
+        CustomizableUI.getLocalizedProperty(this, "privateBrowsingTooltiptext",
+          [CustomizableUI.getLocalizedProperty(this, "label")]) :
+        CustomizableUI.getLocalizedProperty(this, "tooltiptext");
+      node.setAttribute("tooltiptext", tooltiptext);
       node.setAttribute("removable", "true");
       node.addEventListener("command", function(event) {
         aDocument.defaultView.LoopUI.togglePanel(event);
@@ -1122,7 +1129,7 @@ if (Services.prefs.getBoolPref("browser.pocket.enabled")) {
 }
 
 #ifdef E10S_TESTING_ONLY
-let e10sDisabled = false;
+var e10sDisabled = false;
 #ifdef XP_MACOSX
 // On OS X, "Disable Hardware Acceleration" also disables OMTC and forces
 // a fallback to Basic Layers. This is incompatible with e10s.

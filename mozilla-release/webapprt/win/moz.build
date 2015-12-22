@@ -14,8 +14,8 @@ SOURCES += [
 ]
 
 DEFINES['XPCOM_GLUE'] = True
-if CONFIG['DEBUG']:
-    DEFINES['DEBUG'] = True
+
+DEFINES['APP_VERSION'] = CONFIG['FIREFOX_VERSION']
 
 # Statically link against the CRT
 USE_STATIC_LIBS = True
@@ -55,5 +55,3 @@ DISABLE_STL_WRAPPING = True
 OS_LIBS += [
     'shell32',
 ]
-
-FAIL_ON_WARNINGS = True

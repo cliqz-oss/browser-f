@@ -21,6 +21,7 @@
     "gMozLoopAPI": true,
     "mockDb": true,
     "mockPushHandler": true,
+    "OpenBrowserWindow": true,
     "promiseDeletedOAuthParams": false,
     "promiseOAuthGetRegistration": false,
     "promiseOAuthParamsSetup": false,
@@ -31,5 +32,8 @@
     "MozLoopServiceInternal": true,
     "LoopRoomsInternal": true,
     "LoopUI": false,
+    // Other items
+    "Chat": true,
+    "WebChannel": true
   }
 }

@@ -7,7 +7,7 @@
 #define MOZILLA_GFX_PersistentBUFFERPROVIDER_H
 
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
-#include "mozilla/RefPtr.h"             // for RefPtr, TemporaryRef, etc
+#include "mozilla/RefPtr.h"             // for RefPtr, already_AddRefed, etc
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/gfx/Types.h"
@@ -48,7 +48,7 @@ public:
    */
   virtual bool ReturnAndUseDT(gfx::DrawTarget* aDT) = 0;
 
-  virtual TemporaryRef<gfx::SourceSurface> GetSnapshot() = 0;
+  virtual already_AddRefed<gfx::SourceSurface> GetSnapshot() = 0;
 protected:
 };
 
@@ -57,19 +57,20 @@ class PersistentBufferProviderBasic : public PersistentBufferProvider
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(PersistentBufferProviderBasic)
 
-  PersistentBufferProviderBasic(LayerManager* aManager, gfx::IntSize aSize,
-                                gfx::SurfaceFormat aFormat, gfx::BackendType aBackend);
+  PersistentBufferProviderBasic(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
+                                gfx::BackendType aBackend);
   explicit PersistentBufferProviderBasic(gfx::DrawTarget* aTarget) : mDrawTarget(aTarget) {}
 
   bool IsValid() { return !!mDrawTarget; }
   virtual LayersBackend GetType() { return LayersBackend::LAYERS_BASIC; }
   gfx::DrawTarget* GetDT(const gfx::IntRect& aPersistedRect) { return mDrawTarget; }
   bool ReturnAndUseDT(gfx::DrawTarget* aDT) { MOZ_ASSERT(mDrawTarget == aDT); return true; }
-  virtual TemporaryRef<gfx::SourceSurface> GetSnapshot() { return mDrawTarget->Snapshot(); }
+  virtual already_AddRefed<gfx::SourceSurface> GetSnapshot() { return mDrawTarget->Snapshot(); }
 private:
   RefPtr<gfx::DrawTarget> mDrawTarget;
 };
 
-}
-}
+} // namespace layers
+} // namespace mozilla
+
 #endif

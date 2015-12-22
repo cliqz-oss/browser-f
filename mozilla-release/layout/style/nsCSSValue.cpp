@@ -23,6 +23,7 @@
 #include "nsPresContext.h"
 #include "nsStyleUtil.h"
 #include "nsDeviceContext.h"
+#include "nsStyleSet.h"
 
 using namespace mozilla;
 
@@ -828,7 +829,7 @@ private:
   nsCSSValue::Serialization mValueSerialization;
 };
 
-} // anonymous namespace
+} // namespace
 
 void
 nsCSSValue::AppendPolygonToString(nsCSSProperty aProperty, nsAString& aResult,
@@ -2525,7 +2526,7 @@ nsCSSValueGradient::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) con
   n += mAngle.SizeOfExcludingThis(aMallocSizeOf);
   n += mRadialValues[0].SizeOfExcludingThis(aMallocSizeOf);
   n += mRadialValues[1].SizeOfExcludingThis(aMallocSizeOf);
-  n += mStops.SizeOfExcludingThis(aMallocSizeOf);
+  n += mStops.ShallowSizeOfExcludingThis(aMallocSizeOf);
   for (uint32_t i = 0; i < mStops.Length(); i++) {
     n += mStops[i].SizeOfExcludingThis(aMallocSizeOf);
   }
@@ -2537,6 +2538,7 @@ nsCSSValueGradient::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) con
 nsCSSValueTokenStream::nsCSSValueTokenStream()
   : mPropertyID(eCSSProperty_UNKNOWN)
   , mShorthandPropertyID(eCSSProperty_UNKNOWN)
+  , mLevel(nsStyleSet::eSheetTypeCount)
 {
   MOZ_COUNT_CTOR(nsCSSValueTokenStream);
 }
@@ -2685,7 +2687,7 @@ nsCSSCornerSizes::corners[4] = {
 size_t
 mozilla::css::GridTemplateAreasValue::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
 {
-  size_t n = mNamedAreas.SizeOfExcludingThis(aMallocSizeOf);
-  n += mTemplates.SizeOfExcludingThis(aMallocSizeOf);
+  size_t n = mNamedAreas.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  n += mTemplates.ShallowSizeOfExcludingThis(aMallocSizeOf);
   return n;
 }

@@ -55,12 +55,6 @@ describe("loop.StandaloneMozLoop", function() {
 
       expect(localStorage.getItem("fakePref")).eql("fakeValue");
     });
-
-    it("should not store the value of seenToS", function() {
-      mozLoop.setLoopPref("seenToS", "fakeValue1");
-
-      expect(localStorage.getItem("seenToS")).eql(null);
-    });
   });
 
   describe("#getLoopPref", function() {
@@ -89,8 +83,7 @@ describe("loop.StandaloneMozLoop", function() {
 
       var roomDetails = {
         roomName: "fakeName",
-        roomUrl: "http://invalid",
-        roomOwner: "gavin"
+        roomUrl: "http://invalid"
       };
 
       requests[0].respond(200, {"Content-Type": "application/json"},

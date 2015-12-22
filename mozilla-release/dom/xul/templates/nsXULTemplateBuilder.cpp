@@ -57,7 +57,7 @@
 #include "jsapi.h"
 #include "mozilla/Logging.h"
 #include "rdf.h"
-#include "pldhash.h"
+#include "PLDHashTable.h"
 #include "plhash.h"
 #include "nsDOMClassInfoID.h"
 #include "nsPIDOMWindow.h"
@@ -1093,7 +1093,8 @@ nsXULTemplateBuilder::AttributeChanged(nsIDocument* aDocument,
                                        Element*     aElement,
                                        int32_t      aNameSpaceID,
                                        nsIAtom*     aAttribute,
-                                       int32_t      aModType)
+                                       int32_t      aModType,
+                                       const nsAttrValue* aOldValue)
 {
     if (aElement == mRoot && aNameSpaceID == kNameSpaceID_None) {
         // Check for a change to the 'ref' attribute on an atom, in which

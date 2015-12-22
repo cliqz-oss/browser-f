@@ -64,7 +64,7 @@ ValueToCallable(JSContext* cx, HandleValue v, int numToSkip = -1,
  * VM stack.
  */
 extern bool
-Invoke(JSContext* cx, CallArgs args, MaybeConstruct construct = NO_CONSTRUCT);
+Invoke(JSContext* cx, const CallArgs& args, MaybeConstruct construct = NO_CONSTRUCT);
 
 /*
  * This Invoke overload places the least requirements on the caller: it may be
@@ -80,22 +80,31 @@ Invoke(JSContext* cx, const Value& thisv, const Value& fval, unsigned argc, cons
  * getter/setter calls.
  */
 extern bool
-InvokeGetter(JSContext* cx, JSObject* obj, Value fval, MutableHandleValue rval);
+InvokeGetter(JSContext* cx, const Value& thisv, Value fval, MutableHandleValue rval);
 
 extern bool
 InvokeSetter(JSContext* cx, const Value& thisv, Value fval, HandleValue v);
 
-/*
- * InvokeConstructor implement a function call from a constructor context
- * (e.g. 'new') handling the the creation of the new 'this' object.
- */
+// ES6 7.3.13 Construct(F, argumentsList, newTarget).  All parameters are
+// required, hopefully forcing callers to be careful not to (say) blindly pass
+// callee as |newTarget| when a different value should have been passed.
+//
+// NOTE: As with the ES6 spec operation, it's the caller's responsibility to
+//       ensure |fval| and |newTarget| are both |IsConstructor|.
 extern bool
-InvokeConstructor(JSContext* cx, CallArgs args);
+Construct(JSContext* cx, HandleValue fval, const ConstructArgs& args, HandleValue newTarget,
+          MutableHandleValue rval);
 
-/* See the fval overload of Invoke. */
+// Call Construct(fval, args, newTarget), but use the given |thisv| as |this|
+// during construction of |fval|.
+//
+// This method exists only for very rare cases where a |this| was created
+// caller-side for construction of |fval|: basically only for JITs using
+// |CreateThis|.  If that's not you, use Construct()!
 extern bool
-InvokeConstructor(JSContext* cx, Value fval, unsigned argc, const Value* argv,
-                  bool newTargetInArgv, MutableHandleValue rval);
+InternalConstructWithProvidedThis(JSContext* cx, HandleValue fval, HandleValue thisv,
+                                  const ConstructArgs& args, HandleValue newTarget,
+                                  MutableHandleValue rval);
 
 /*
  * Executes a script with the given scopeChain/this. The 'type' indicates
@@ -200,12 +209,12 @@ class ExecuteState : public RunState
 // Data to invoke a function.
 class InvokeState : public RunState
 {
-    CallArgs& args_;
+    const CallArgs& args_;
     InitialFrameFlags initial_;
     bool createSingleton_;
 
   public:
-    InvokeState(JSContext* cx, CallArgs& args, InitialFrameFlags initial)
+    InvokeState(JSContext* cx, const CallArgs& args, InitialFrameFlags initial)
       : RunState(cx, Invoke, args.callee().as<JSFunction>().nonLazyScript()),
         args_(args),
         initial_(initial),
@@ -216,7 +225,7 @@ class InvokeState : public RunState
     void setCreateSingleton() { createSingleton_ = true; }
 
     bool constructing() const { return InitialFrameFlagsAreConstructing(initial_); }
-    CallArgs& args() const { return args_; }
+    const CallArgs& args() const { return args_; }
 
     virtual InterpreterFrame* pushInterpreterFrame(JSContext* cx);
 
@@ -393,6 +402,9 @@ ModValues(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, Mutable
 
 bool
 UrshValues(JSContext* cx, MutableHandleValue lhs, MutableHandleValue rhs, MutableHandleValue res);
+
+bool
+AtomicIsLockFree(JSContext* cx, HandleValue in, int* out);
 
 template <bool strict>
 bool

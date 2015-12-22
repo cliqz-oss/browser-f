@@ -19,6 +19,7 @@
 #include "nsIConstraintValidation.h"
 #include "mozilla/dom/HTMLFormElement.h" // for HasEverTriedInvalidSubmit()
 #include "mozilla/dom/HTMLInputElementBinding.h"
+#include "mozilla/dom/Promise.h"
 #include "nsIFilePicker.h"
 #include "nsIContentPrefService2.h"
 #include "mozilla/Decimal.h"
@@ -148,7 +149,7 @@ public:
   NS_IMETHOD SaveState() override;
   virtual bool RestoreState(nsPresState* aState) override;
   virtual bool AllowDrop() override;
-  virtual bool IsDisabledForEvents(uint32_t aMessage) override;
+  virtual bool IsDisabledForEvents(EventMessage aMessage) override;
 
   virtual void FieldSetDisabledChanged(bool aNotify) override;
 
@@ -685,6 +686,22 @@ public:
                     ErrorResult& aRv, int32_t aSelectionStart = -1,
                     int32_t aSelectionEnd = -1);
 
+  bool DirectoryAttr() const
+  {
+    return HasAttr(kNameSpaceID_None, nsGkAtoms::directory);
+  }
+
+  void SetDirectoryAttr(bool aValue, ErrorResult& aRv)
+  {
+    SetHTMLBoolAttr(nsGkAtoms::directory, aValue, aRv);
+  }
+
+  bool IsFilesAndDirectoriesSupported() const;
+
+  already_AddRefed<Promise> GetFilesAndDirectories(ErrorResult& aRv);
+
+  void ChooseDirectory(ErrorResult& aRv);
+
   // XPCOM GetAlign() is OK
   void SetAlign(const nsAString& aValue, ErrorResult& aRv)
   {
@@ -848,7 +865,7 @@ protected:
    * Called when an attribute is about to be changed
    */
   virtual nsresult BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
-                                 const nsAttrValueOrString* aValue,
+                                 nsAttrValueOrString* aValue,
                                  bool aNotify) override;
   /**
    * Called when an attribute has just been changed

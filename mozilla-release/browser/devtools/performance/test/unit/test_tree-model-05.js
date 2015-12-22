@@ -6,9 +6,9 @@
  * array.
  */
 
-let time = 1;
+var time = 1;
 
-let gThread = synthesizeProfileForTest([{
+var gThread = synthesizeProfileForTest([{
   time: time++,
   frames: [
     { location: "(root)" },
@@ -47,7 +47,7 @@ function run_test() {
 }
 
 add_task(function test() {
-  let { ThreadNode } = devtools.require("devtools/performance/tree-model");
+  let { ThreadNode } = require("devtools/performance/tree-model");
 
   let root = new ThreadNode(gThread, { invertTree: true, startTime: 0, endTime: 4 });
 

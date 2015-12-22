@@ -11,6 +11,9 @@
 
 namespace mozilla {
 namespace dom {
+
+class FileHandleBase;
+
 namespace indexedDB {
 
 class ThreadLocal;
@@ -71,6 +74,12 @@ protected:
   virtual bool
   DeallocPFileDescriptorSetChild(PFileDescriptorSetChild* aActor) override;
 
+  virtual PCamerasChild*
+  AllocPCamerasChild() override;
+
+  virtual bool
+  DeallocPCamerasChild(PCamerasChild* aActor) override;
+
   virtual PVsyncChild*
   AllocPVsyncChild() override;
 
@@ -85,7 +94,7 @@ protected:
 
   virtual PBroadcastChannelChild*
   AllocPBroadcastChannelChild(const PrincipalInfo& aPrincipalInfo,
-                              const nsString& aOrigin,
+                              const nsCString& aOrigin,
                               const nsString& aChannel,
                               const bool& aPrivateBrowsing) override;
 
@@ -122,6 +131,20 @@ protected:
 
   virtual bool
   DeallocPMessagePortChild(PMessagePortChild* aActor) override;
+
+  virtual PNuwaChild*
+  AllocPNuwaChild() override;
+
+  virtual bool
+  DeallocPNuwaChild(PNuwaChild* aActor) override;
+
+  virtual PAsmJSCacheEntryChild*
+  AllocPAsmJSCacheEntryChild(const dom::asmjscache::OpenMode& aOpenMode,
+                             const dom::asmjscache::WriteParams& aWriteParams,
+                             const PrincipalInfo& aPrincipalInfo) override;
+
+  virtual bool
+  DeallocPAsmJSCacheEntryChild(PAsmJSCacheEntryChild* aActor) override;
 };
 
 class BackgroundChildImpl::ThreadLocal final
@@ -130,6 +153,7 @@ class BackgroundChildImpl::ThreadLocal final
 
 public:
   nsAutoPtr<mozilla::dom::indexedDB::ThreadLocal> mIndexedDBThreadLocal;
+  mozilla::dom::FileHandleBase* mCurrentFileHandle;
 
 public:
   ThreadLocal();

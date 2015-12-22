@@ -48,7 +48,7 @@ DrawTargetTiled::Init(const TileSet& aTiles)
   return true;
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetTiled::Snapshot()
 {
   return MakeAndAddRef<SnapshotTiled>(mTiles, mRect);
@@ -305,5 +305,5 @@ DrawTargetTiled::Fill(const Path* aPath, const Pattern& aPattern, const DrawOpti
   }
 }
 
-}
-}
+} // namespace gfx
+} // namespace mozilla

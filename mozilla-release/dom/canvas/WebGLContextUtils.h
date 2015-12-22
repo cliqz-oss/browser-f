@@ -7,9 +7,11 @@
 #define WEBGL_CONTEXT_UTILS_H_
 
 #include "WebGLContext.h"
-#include "WebGLStrongTypes.h"
+
 #include "mozilla/Assertions.h"
 #include "mozilla/dom/BindingUtils.h"
+
+#include "WebGLStrongTypes.h"
 
 namespace mozilla {
 
@@ -58,6 +60,9 @@ TexTarget TexImageTargetToTexTarget(TexImageTarget texImageTarget);
 
 // Helper function to create a JS::Value from a C string
 JS::Value StringValue(JSContext* cx, const char* str, ErrorResult& rv);
+
+bool IsCompressedTextureFormat(GLenum format);
+bool IsTextureFormatCompressed(TexInternalFormat format);
 
 struct GLComponents
 {

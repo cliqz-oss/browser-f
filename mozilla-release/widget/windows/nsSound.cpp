@@ -16,6 +16,7 @@
 #include "nsSound.h"
 #include "nsIURL.h"
 #include "nsNetUtil.h"
+#include "nsIChannel.h"
 #include "nsContentUtils.h"
 #include "nsCRT.h"
 
@@ -123,10 +124,9 @@ nsSound::~nsSound()
 
 void nsSound::ShutdownOldPlayerThread()
 {
-  if (mPlayerThread) {
-    mPlayerThread->Shutdown();
-    mPlayerThread = nullptr;
-  }
+  nsCOMPtr<nsIThread> playerThread(mPlayerThread.forget());
+  if (playerThread)
+    playerThread->Shutdown();
 }
 
 void nsSound::PurgeLastSound() 

@@ -4,15 +4,16 @@
 
 const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 
-let { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
-let { Task } = Cu.import("resource://gre/modules/Task.jsm", {});
-let { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
-let { gDevTools } = Cu.import("resource:///modules/devtools/gDevTools.jsm", {});
-let { devtools } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
-let { CurlUtils } = Cu.import("resource:///modules/devtools/Curl.jsm", {});
-let NetworkHelper = devtools.require("devtools/toolkit/webconsole/network-helper");
-let TargetFactory = devtools.TargetFactory;
-let Toolbox = devtools.Toolbox;
+var { Services } = Cu.import("resource://gre/modules/Services.jsm", {});
+var { Task } = Cu.import("resource://gre/modules/Task.jsm", {});
+var { gDevTools } = Cu.import("resource:///modules/devtools/gDevTools.jsm", {});
+var { require } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
+var { CurlUtils } = Cu.import("resource:///modules/devtools/Curl.jsm", {});
+var promise = require("promise");
+var NetworkHelper = require("devtools/toolkit/webconsole/network-helper");
+var DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
+var { TargetFactory } = require("devtools/framework/target");
+var { Toolbox } = require("devtools/framework/toolbox");
 
 const EXAMPLE_URL = "http://example.com/browser/browser/devtools/netmonitor/test/";
 
@@ -54,9 +55,9 @@ const TEST_IMAGE_DATA_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAA
 
 const FRAME_SCRIPT_UTILS_URL = "chrome://browser/content/devtools/frame-script-utils.js"
 
-gDevTools.testing = true;
+DevToolsUtils.testing = true;
 SimpleTest.registerCleanupFunction(() => {
-  gDevTools.testing = false;
+  DevToolsUtils.testing = false;
 });
 
 // All tests are asynchronous.

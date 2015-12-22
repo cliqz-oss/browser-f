@@ -10,11 +10,10 @@
 const {utils: Cu, interfaces: Ci, classes: Cc} = Components;
 
 Cu.import("resource://gre/modules/Task.jsm");
-Cu.import("resource://gre/modules/devtools/Loader.jsm");
+const {require} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 Cu.import("resource://gre/modules/devtools/Console.jsm");
 Cu.import("resource:///modules/devtools/ViewHelpers.jsm");
 
-const {require} = devtools;
 const {InplaceEditor, editableItem} = require("devtools/shared/inplace-editor");
 const {ReflowFront} = require("devtools/server/actors/layout");
 
@@ -545,9 +544,9 @@ LayoutView.prototype = {
   }
 };
 
-let elts;
+var elts;
 
-let onmouseover = function(e) {
+var onmouseover = function(e) {
   let region = e.target.getAttribute("data-box");
   if (!region) {
     return false;
@@ -562,7 +561,7 @@ let onmouseover = function(e) {
   return false;
 }.bind(window);
 
-let onmouseout = function() {
+var onmouseout = function() {
   this.layoutview.hideBoxModel();
   return false;
 }.bind(window);

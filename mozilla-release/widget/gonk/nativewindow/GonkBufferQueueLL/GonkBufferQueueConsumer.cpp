@@ -520,7 +520,7 @@ void GonkBufferQueueConsumer::dumpToString(String8& result, const char* prefix) 
     mCore->dump(result, prefix);
 }
 
-TemporaryRef<GonkBufferSlot::TextureClient>
+already_AddRefed<GonkBufferSlot::TextureClient>
 GonkBufferQueueConsumer::getTextureClientFromBuffer(ANativeWindowBuffer* buffer)
 {
     Mutex::Autolock _l(mCore->mMutex);
@@ -555,4 +555,5 @@ GonkBufferQueueConsumer::getSlotFromTextureClientLocked(GonkBufferSlot::TextureC
     ALOGE("getSlotFromBufferLocked: unknown TextureClient: %p", client);
     return BAD_VALUE;
 }
+
 } // namespace android

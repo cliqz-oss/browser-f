@@ -20,6 +20,114 @@ try {
   FAKE_ENABLED = true;
 }
 
+/**
+ * This class provides helpers around analysing the audio content in a stream
+ * using WebAudio AnalyserNodes.
+ *
+ * @constructor
+ * @param {object} stream
+ *                 A MediaStream object whose audio track we shall analyse.
+ */
+function AudioStreamAnalyser(ac, stream) {
+  if (stream.getAudioTracks().length === 0) {
+    throw new Error("No audio track in stream");
+  }
+  this.audioContext = ac;
+  this.stream = stream;
+  this.sourceNode = this.audioContext.createMediaStreamSource(this.stream);
+  this.analyser = this.audioContext.createAnalyser();
+  this.sourceNode.connect(this.analyser);
+  this.data = new Uint8Array(this.analyser.frequencyBinCount);
+}
+
+AudioStreamAnalyser.prototype = {
+  /**
+   * Get an array of frequency domain data for our stream's audio track.
+   *
+   * @returns {array} A Uint8Array containing the frequency domain data.
+   */
+  getByteFrequencyData: function() {
+    this.analyser.getByteFrequencyData(this.data);
+    return this.data;
+  },
+
+  /**
+   * Append a canvas to the DOM where the frequency data are drawn.
+   * Useful to debug tests.
+   */
+  enableDebugCanvas: function() {
+    var cvs = document.createElement("canvas");
+    document.getElementById("content").appendChild(cvs);
+
+    // Easy: 1px per bin
+    cvs.width = this.analyser.frequencyBinCount;
+    cvs.height = 256;
+    cvs.style.border = "1px solid red";
+
+    var c = cvs.getContext('2d');
+
+    var self = this;
+    function render() {
+      c.clearRect(0, 0, cvs.width, cvs.height);
+      var array = self.getByteFrequencyData();
+      for (var i = 0; i < array.length; i++) {
+        c.fillRect(i, (256 - (array[i])), 1, 256);
+      }
+      requestAnimationFrame(render);
+    }
+    requestAnimationFrame(render);
+  },
+
+  /**
+   * Return a Promise, that will be resolved when the function passed as
+   * argument, when called, returns true (meaning the analysis was a
+   * success).
+   *
+   * @param {function} analysisFunction
+   *        A fonction that performs an analysis, and returns true if the
+   *        analysis was a success (i.e. it found what it was looking for)
+   */
+  waitForAnalysisSuccess: function(analysisFunction) {
+    var self = this;
+    return new Promise((resolve, reject) => {
+      function analysisLoop() {
+        var success = analysisFunction(self.getByteFrequencyData());
+        if (success) {
+          resolve();
+          return;
+        }
+        // else, we need more time
+        requestAnimationFrame(analysisLoop);
+      }
+      analysisLoop();
+    });
+  },
+
+  /**
+   * Return the FFT bin index for a given frequency.
+   *
+   * @param {double} frequency
+   *        The frequency for whicht to return the bin number.
+   * @returns {integer} the index of the bin in the FFT array.
+   */
+  binIndexForFrequency: function(frequency) {
+    return 1 + Math.round(frequency *
+                          this.analyser.fftSize /
+                          this.audioContext.sampleRate);
+  },
+
+  /**
+   * Reverse operation, get the frequency for a bin index.
+   *
+   * @param {integer} index an index in an FFT array
+   * @returns {double} the frequency for this bin
+   */
+  frequencyForBinIndex: function(index) {
+    return (index - 1) *
+           this.audioContext.sampleRate /
+           this.analyser.fftSize;
+  }
+};
 
 /**
  * Create the necessary HTML elements for head and body as used by Mochitests
@@ -99,17 +207,13 @@ function createMediaElement(type, label) {
 
 
 /**
- * Wrapper function for mozGetUserMedia to allow a singular area of control
- * for determining whether we run this with fake devices or not.
+ * Wrapper function for mediaDevices.getUserMedia used by some tests. Whether
+ * to use fake devices or not is now determined in pref further below instead.
  *
  * @param {Dictionary} constraints
  *        The constraints for this mozGetUserMedia callback
  */
 function getUserMedia(constraints) {
-  if (!("fake" in constraints) && FAKE_ENABLED) {
-    constraints["fake"] = FAKE_ENABLED;
-  }
-
   info("Call getUserMedia for " + JSON.stringify(constraints));
   return navigator.mediaDevices.getUserMedia(constraints);
 }
@@ -130,16 +234,17 @@ function setupEnvironment() {
   window.finish = () => SimpleTest.finish();
   SpecialPowers.pushPrefEnv({
     'set': [
-      ['canvas.capturestream.enabled', true],
-      ['dom.messageChannel.enabled', true],
       ['media.peerconnection.enabled', true],
       ['media.peerconnection.identity.enabled', true],
       ['media.peerconnection.identity.timeout', 120000],
       ['media.peerconnection.ice.stun_client_maximum_transmits', 14],
       ['media.peerconnection.ice.trickle_grace_period', 30000],
       ['media.navigator.permission.disabled', true],
+      ['media.navigator.streams.fake', FAKE_ENABLED],
       ['media.getusermedia.screensharing.enabled', true],
-      ['media.getusermedia.screensharing.allowed_domains', "mochi.test"]
+      ['media.getusermedia.screensharing.allowed_domains', "mochi.test"],
+      ['media.getusermedia.audiocapture.enabled', true],
+      ['media.recorder.audio_node.enabled', true]
     ]
   }, setTestOptions);
 
@@ -151,13 +256,13 @@ function setupEnvironment() {
 // This is called by steeplechase; which provides the test configuration options
 // directly to the test through this function.  If we're not on steeplechase,
 // the test is configured directly and immediately.
-function run_test(is_initiator) {
+function run_test(is_initiator,timeout) {
   var options = { is_local: is_initiator,
                   is_remote: !is_initiator };
 
   setTimeout(() => {
-    unexpectedEventArrived(new Error("PeerConnectionTest timed out after 30s"));
-  }, 30000);
+    unexpectedEventArrived(new Error("PeerConnectionTest timed out after "+timeout+"s"));
+  }, timeout);
 
   // Also load the steeplechase test code.
   var s = document.createElement("script");

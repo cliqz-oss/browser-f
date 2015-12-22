@@ -8,7 +8,6 @@
 #define WMFAudioOutputSource_h_
 
 #include "WMF.h"
-#include "MP4Reader.h"
 #include "MFTDecoder.h"
 #include "mozilla/RefPtr.h"
 #include "WMFMediaDataDecoder.h"
@@ -20,7 +19,7 @@ public:
   WMFAudioMFTManager(const AudioInfo& aConfig);
   ~WMFAudioMFTManager();
 
-  virtual TemporaryRef<MFTDecoder> Init() override;
+  bool Init();
 
   virtual HRESULT Input(MediaRawData* aSample) override;
 
@@ -32,20 +31,21 @@ public:
 
   virtual void Shutdown() override;
 
+  virtual TrackInfo::TrackType GetType() override {
+    return TrackInfo::kAudioTrack;
+  }
+
 private:
 
   HRESULT UpdateOutputType();
-
-  // IMFTransform wrapper that performs the decoding.
-  RefPtr<MFTDecoder> mDecoder;
 
   uint32_t mAudioChannels;
   uint32_t mAudioRate;
   nsTArray<BYTE> mUserData;
 
-  // The offset, in audio frames, at which playback started since the
+  // The offset, at which playback started since the
   // last discontinuity.
-  int64_t mAudioFrameOffset;
+  media::TimeUnit mAudioTimeOffset;
   // The number of audio frames that we've played since the last
   // discontinuity.
   int64_t mAudioFrameSum;
@@ -60,7 +60,7 @@ private:
   const GUID& GetMFTGUID();
   const GUID& GetMediaSubtypeGUID();
 
-  // True if we need to re-initialize mAudioFrameOffset and mAudioFrameSum
+  // True if we need to re-initialize mAudioTimeOffset and mAudioFrameSum
   // from the next audio packet we decode. This happens after a seek, since
   // WMF doesn't mark a stream as having a discontinuity after a seek(0).
   bool mMustRecaptureAudioPosition;

@@ -36,6 +36,7 @@ EXTRA_JS_MODULES += [
     'InlineSpellChecker.jsm',
     'InlineSpellCheckerContent.jsm',
     'LoadContextInfo.jsm',
+    'Locale.jsm',
     'Log.jsm',
     'NewTabUtils.jsm',
     'ObjectUtils.jsm',
@@ -48,6 +49,7 @@ EXTRA_JS_MODULES += [
     'ProfileAge.jsm',
     'Promise-backend.js',
     'Promise.jsm',
+    'PromiseMessage.jsm',
     'PromiseUtils.jsm',
     'PropertyListUtils.jsm',
     'RemoteController.jsm',
@@ -103,11 +105,11 @@ for var in ('ANDROID_PACKAGE_NAME',
             'MOZ_APP_VERSION_DISPLAY',
             'MOZ_WIDGET_TOOLKIT',
             'DLL_PREFIX',
-            'DLL_SUFFIX'):
+            'DLL_SUFFIX',
+            'DEBUG_JS_MODULES'):
             DEFINES[var] = CONFIG[var]
 
-for var in ('MOZILLA_OFFICIAL',
-            'MOZ_TOOLKIT_SEARCH',
+for var in ('MOZ_TOOLKIT_SEARCH',
             'MOZ_UPDATER'):
     if CONFIG[var]:
         DEFINES[var] = True

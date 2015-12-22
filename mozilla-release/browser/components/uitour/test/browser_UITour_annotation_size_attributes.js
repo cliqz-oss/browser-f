@@ -7,19 +7,17 @@
 
 "use strict";
 
-let gTestTab;
-let gContentAPI;
-let gContentWindow;
-let highlight = document.getElementById("UITourHighlightContainer");
-let tooltip = document.getElementById("UITourTooltip");
-
-Components.utils.import("resource:///modules/UITour.jsm");
+var gTestTab;
+var gContentAPI;
+var gContentWindow;
+var highlight = document.getElementById("UITourHighlightContainer");
+var tooltip = document.getElementById("UITourTooltip");
 
 function test() {
   UITourTest();
 }
 
-let tests = [
+var tests = [
   function test_highlight_size_attributes(done) {
     gContentAPI.showHighlight("appMenu");
     waitForElementToBeVisible(highlight, function moveTheHighlight() {
