@@ -21,8 +21,10 @@ struct gfxRGBA;
 namespace mozilla {
 namespace gfx {
 class Matrix4x4;
-template <class units> struct RectTyped;
-}
+template <class units, class F> struct RectTyped;
+} // namespace gfx
+
+enum class ImageFormat;
 
 namespace layers {
 
@@ -210,6 +212,14 @@ void
 AppendToString(std::stringstream& aStream, mozilla::gfx::SurfaceFormat format,
                const char* pfx="", const char* sfx="");
 
+void
+AppendToString(std::stringstream& aStream, gfx::SurfaceType format,
+               const char* pfx="", const char* sfx="");
+
+void
+AppendToString(std::stringstream& aStream, ImageFormat format,
+               const char* pfx="", const char* sfx="");
+
 // Sometimes, you just want a string from a single value.
 template <typename T>
 std::string
@@ -220,8 +230,8 @@ Stringify(const T& obj)
   return ss.str();
 }
 
-} // namespace
-} // namespace
+} // namespace layers
+} // namespace mozilla
 
 // versions of printf_stderr and fprintf_stderr that deal with line
 // truncation on android by printing individual lines out of the

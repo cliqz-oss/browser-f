@@ -268,6 +268,23 @@ const CommandFunc NetworkUtils::sNetworkInterfaceSetAlarmChain[] = {
   NetworkUtils::networkInterfaceAlarmSuccess
 };
 
+const CommandFunc NetworkUtils::sTetheringInterfaceSetAlarmChain[] = {
+  NetworkUtils::setGlobalAlarm,
+  NetworkUtils::removeAlarm,
+  NetworkUtils::networkInterfaceAlarmSuccess
+};
+
+const CommandFunc NetworkUtils::sTetheringInterfaceRemoveAlarmChain[] = {
+  NetworkUtils::removeGlobalAlarm,
+  NetworkUtils::setAlarm,
+  NetworkUtils::networkInterfaceAlarmSuccess
+};
+
+const CommandFunc NetworkUtils::sTetheringGetStatusChain[] = {
+  NetworkUtils::tetheringStatus,
+  NetworkUtils::defaultAsyncSuccessHandler
+};
+
 /**
  * Helper function to get the mask from given prefix length.
  */
@@ -722,6 +739,36 @@ void NetworkUtils::setAlarm(CommandChain* aChain,
   doCommand(command, aChain, aCallback);
 }
 
+void NetworkUtils::removeAlarm(CommandChain* aChain,
+                            CommandCallback aCallback,
+                            NetworkResultOptions& aResult)
+{
+  char command[MAX_COMMAND_SIZE];
+  PR_snprintf(command, MAX_COMMAND_SIZE - 1, "bandwidth removeinterfacealert %s", GET_CHAR(mIfname));
+
+  doCommand(command, aChain, aCallback);
+}
+
+void NetworkUtils::setGlobalAlarm(CommandChain* aChain,
+                                  CommandCallback aCallback,
+                                  NetworkResultOptions& aResult)
+{
+  char command[MAX_COMMAND_SIZE];
+
+  PR_snprintf(command, MAX_COMMAND_SIZE - 1, "bandwidth setglobalalert %ld", GET_FIELD(mThreshold));
+  doCommand(command, aChain, aCallback);
+}
+
+void NetworkUtils::removeGlobalAlarm(CommandChain* aChain,
+                                     CommandCallback aCallback,
+                                     NetworkResultOptions& aResult)
+{
+  char command[MAX_COMMAND_SIZE];
+
+  PR_snprintf(command, MAX_COMMAND_SIZE - 1, "bandwidth removeglobalalert");
+  doCommand(command, aChain, aCallback);
+}
+
 void NetworkUtils::setInterfaceUp(CommandChain* aChain,
                                   CommandCallback aCallback,
                                   NetworkResultOptions& aResult)
@@ -819,7 +866,9 @@ void NetworkUtils::postTetherInterfaceList(CommandChain* aChain,
 
   char buf[BUF_SIZE];
   NS_ConvertUTF16toUTF8 reason(aResult.mResultReason);
-  memcpy(buf, reason.get(), reason.Length() + 1);
+
+  size_t length = reason.Length() + 1 < BUF_SIZE ? reason.Length() + 1 : BUF_SIZE;
+  memcpy(buf, reason.get(), length);
   split(buf, INTERFACE_DELIMIT, GET_FIELD(mInterfaceList));
 
   doCommand(command, aChain, aCallback);
@@ -1609,6 +1658,9 @@ void NetworkUtils::ExecuteCommand(NetworkParams aOptions)
     BUILD_ENTRY(setNetworkInterfaceAlarm),
     BUILD_ENTRY(enableNetworkInterfaceAlarm),
     BUILD_ENTRY(disableNetworkInterfaceAlarm),
+    BUILD_ENTRY(setTetheringAlarm),
+    BUILD_ENTRY(removeTetheringAlarm),
+    BUILD_ENTRY(getTetheringStatus),
     BUILD_ENTRY(setWifiOperationMode),
     BUILD_ENTRY(setDhcpServer),
     BUILD_ENTRY(setWifiTethering),
@@ -1954,13 +2006,6 @@ CommandResult NetworkUtils::setDefaultRoute(NetworkParams& aOptions)
 CommandResult NetworkUtils::setDefaultRouteLegacy(NetworkParams& aOptions)
 {
   NS_ConvertUTF16toUTF8 autoIfname(aOptions.mIfname);
-
-  if (!aOptions.mOldIfname.IsEmpty()) {
-    // Remove IPv4's default route.
-    WARN_IF_FAILED(mNetUtils->do_ifc_remove_default_route(GET_CHAR(mOldIfname)));
-    // Remove IPv6's default route.
-    WARN_IF_FAILED(mNetUtils->do_ifc_remove_route(GET_CHAR(mOldIfname), "::", 0, NULL));
-  }
 
   uint32_t length = aOptions.mGateways.Length();
   if (length > 0) {
@@ -2352,6 +2397,27 @@ CommandResult NetworkUtils::disableNetworkInterfaceAlarm(NetworkParams& aOptions
 {
   NU_DBG("disableNetworkInterfaceAlarms: %s", GET_CHAR(mIfname));
   runChain(aOptions, sNetworkInterfaceDisableAlarmChain, networkInterfaceAlarmFail);
+  return CommandResult::Pending();
+}
+
+CommandResult NetworkUtils::setTetheringAlarm(NetworkParams& aOptions)
+{
+  NU_DBG("setTetheringAlarm");
+  runChain(aOptions, sTetheringInterfaceSetAlarmChain, networkInterfaceAlarmFail);
+  return CommandResult::Pending();
+}
+
+CommandResult NetworkUtils::removeTetheringAlarm(NetworkParams& aOptions)
+{
+  NU_DBG("removeTetheringAlarm");
+  runChain(aOptions, sTetheringInterfaceRemoveAlarmChain, networkInterfaceAlarmFail);
+  return CommandResult::Pending();
+}
+
+CommandResult NetworkUtils::getTetheringStatus(NetworkParams& aOptions)
+{
+  NU_DBG("getTetheringStatus");
+  runChain(aOptions, sTetheringGetStatusChain, networkInterfaceAlarmFail);
   return CommandResult::Pending();
 }
 

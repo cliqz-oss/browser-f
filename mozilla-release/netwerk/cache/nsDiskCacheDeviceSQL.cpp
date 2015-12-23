@@ -15,6 +15,7 @@
 
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
+#include "nsIURI.h"
 #include "nsAutoPtr.h"
 #include "nsEscape.h"
 #include "nsIPrefBranch.h"
@@ -1327,7 +1328,7 @@ GetJARIdentifier(nsIURI *aURI,
     return AppendJARIdentifier(_result, appId, isInBrowserElement);
 }
 
-} // anon namespace
+} // namespace
 
 // static
 nsresult

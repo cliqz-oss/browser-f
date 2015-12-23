@@ -19,6 +19,7 @@ loader.lazyGetter(this, "StyleEditorPanel", () => require("devtools/styleeditor/
 loader.lazyGetter(this, "ShaderEditorPanel", () => require("devtools/shadereditor/panel").ShaderEditorPanel);
 loader.lazyGetter(this, "CanvasDebuggerPanel", () => require("devtools/canvasdebugger/panel").CanvasDebuggerPanel);
 loader.lazyGetter(this, "WebAudioEditorPanel", () => require("devtools/webaudioeditor/panel").WebAudioEditorPanel);
+loader.lazyGetter(this, "MemoryPanel", () => require("devtools/memory/panel").MemoryPanel);
 loader.lazyGetter(this, "PerformancePanel", () => require("devtools/performance/panel").PerformancePanel);
 loader.lazyGetter(this, "NetMonitorPanel", () => require("devtools/netmonitor/panel").NetMonitorPanel);
 loader.lazyGetter(this, "StoragePanel", () => require("devtools/storage/panel").StoragePanel);
@@ -33,13 +34,13 @@ const styleEditorProps = "chrome://browser/locale/devtools/styleeditor.propertie
 const shaderEditorProps = "chrome://browser/locale/devtools/shadereditor.properties";
 const canvasDebuggerProps = "chrome://browser/locale/devtools/canvasdebugger.properties";
 const webAudioEditorProps = "chrome://browser/locale/devtools/webaudioeditor.properties";
-const profilerProps = "chrome://browser/locale/devtools/profiler.properties";
+const performanceProps = "chrome://browser/locale/devtools/performance.properties";
 const netMonitorProps = "chrome://browser/locale/devtools/netmonitor.properties";
 const storageProps = "chrome://browser/locale/devtools/storage.properties";
 const scratchpadProps = "chrome://browser/locale/devtools/scratchpad.properties";
 
 loader.lazyGetter(this, "toolboxStrings", () => Services.strings.createBundle(toolboxProps));
-loader.lazyGetter(this, "profilerStrings",() => Services.strings.createBundle(profilerProps));
+loader.lazyGetter(this, "performanceStrings",() => Services.strings.createBundle(performanceProps));
 loader.lazyGetter(this, "webConsoleStrings", () => Services.strings.createBundle(webConsoleProps));
 loader.lazyGetter(this, "debuggerStrings", () => Services.strings.createBundle(debuggerProps));
 loader.lazyGetter(this, "styleEditorStrings", () => Services.strings.createBundle(styleEditorProps));
@@ -51,7 +52,7 @@ loader.lazyGetter(this, "netMonitorStrings", () => Services.strings.createBundle
 loader.lazyGetter(this, "storageStrings", () => Services.strings.createBundle(storageProps));
 loader.lazyGetter(this, "scratchpadStrings", () => Services.strings.createBundle(scratchpadProps));
 
-let Tools = {};
+var Tools = {};
 exports.Tools = Tools;
 
 // Definitions
@@ -94,7 +95,7 @@ Tools.inspector = {
   },
   inMenu: true,
   commands: [
-    "devtools/resize-commands",
+    "devtools/responsivedesign/resize-commands",
     "devtools/inspector/inspector-commands",
     "devtools/eyedropper/commands.js"
   ],
@@ -254,14 +255,14 @@ Tools.performance = {
   highlightedicon: "chrome://browser/skin/devtools/tool-profiler-active.svg",
   url: "chrome://browser/content/devtools/performance.xul",
   visibilityswitch: "devtools.performance.enabled",
-  label: l10n("profiler.label2", profilerStrings),
-  panelLabel: l10n("profiler.panelLabel2", profilerStrings),
+  label: l10n("performance.label", performanceStrings),
+  panelLabel: l10n("performance.panelLabel", performanceStrings),
   get tooltip() {
-    return l10n("profiler.tooltip3", profilerStrings,
+    return l10n("performance.tooltip", performanceStrings,
     "Shift+" + functionkey(this.key));
   },
-  accesskey: l10n("profiler.accesskey", profilerStrings),
-  key: l10n("profiler.commandkey2", profilerStrings),
+  accesskey: l10n("performance.accesskey", performanceStrings),
+  key: l10n("performance.commandkey", performanceStrings),
   modifiers: "shift",
   inMenu: true,
 
@@ -271,6 +272,31 @@ Tools.performance = {
 
   build: function (frame, target) {
     return new PerformancePanel(frame, target);
+  }
+};
+
+Tools.memory = {
+  id: "memory",
+  ordinal: 8,
+  icon: "chrome://browser/skin/devtools/tool-styleeditor.svg",
+  invertIconForLightTheme: true,
+  url: "chrome://browser/content/devtools/memory.xhtml",
+  visibilityswitch: "devtools.memory.enabled",
+  label: "Memory",
+  panelLabel: "Memory Panel",
+  tooltip: "Memory (keyboardshortcut)",
+  hiddenInOptions: true,
+
+  isTargetSupported: function (target) {
+    // TODO 1201907
+    // Once Fx44 lands, we should add a root trait `heapSnapshots`
+    // to indicate that the memory actor can handle this.
+    // Shouldn't make this change until Fx44, however.
+    return true; // target.getTrait("heapSnapshots");
+  },
+
+  build: function (frame, target) {
+    return new MemoryPanel(frame, target);
   }
 };
 
@@ -373,7 +399,7 @@ Tools.scratchpad = {
   }
 };
 
-let defaultTools = [
+var defaultTools = [
   Tools.options,
   Tools.webConsole,
   Tools.inspector,
@@ -385,7 +411,8 @@ let defaultTools = [
   Tools.performance,
   Tools.netMonitor,
   Tools.storage,
-  Tools.scratchpad
+  Tools.scratchpad,
+  Tools.memory,
 ];
 
 exports.defaultTools = defaultTools;

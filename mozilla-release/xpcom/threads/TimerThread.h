@@ -22,7 +22,7 @@
 
 namespace mozilla {
 class TimeStamp;
-}
+} // namespace mozilla
 
 class TimerThread final
   : public nsIRunnable
@@ -67,6 +67,8 @@ private:
   int32_t AddTimerInternal(nsTimerImpl* aTimer);
   bool    RemoveTimerInternal(nsTimerImpl* aTimer);
   void    ReleaseTimerInternal(nsTimerImpl* aTimer);
+
+  already_AddRefed<nsTimerImpl> PostTimerEvent(already_AddRefed<nsTimerImpl> aTimerRef);
 
   nsCOMPtr<nsIThread> mThread;
   Monitor mMonitor;

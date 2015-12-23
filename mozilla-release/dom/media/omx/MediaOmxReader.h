@@ -44,8 +44,11 @@ class MediaOmxReader : public MediaOmxCommonReader
   // If mIsShutdown is false, and mShutdownMutex is held, then
   // AbstractMediaDecoder::mDecoder will be non-null.
   bool mIsShutdown;
-  MediaPromiseHolder<MediaDecoderReader::MetadataPromise> mMetadataPromise;
-  MediaPromiseRequestHolder<MediaResourcePromise> mMediaResourceRequest;
+  MozPromiseHolder<MediaDecoderReader::MetadataPromise> mMetadataPromise;
+  MozPromiseRequestHolder<MediaResourcePromise> mMediaResourceRequest;
+
+  MozPromiseHolder<MediaDecoderReader::SeekPromise> mSeekPromise;
+  MozPromiseRequestHolder<MediaDecoderReader::VideoDataPromise> mSeekRequest;
 protected:
   android::sp<android::OmxDecoder> mOmxDecoder;
   android::sp<android::MediaExtractor> mExtractor;
@@ -73,6 +76,13 @@ protected:
   virtual void NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset) override;
 public:
 
+  virtual nsresult ResetDecode()
+  {
+    mSeekRequest.DisconnectIfExists();
+    mSeekPromise.RejectIfExists(NS_OK, __func__);
+    return MediaDecoderReader::ResetDecode();
+  }
+
   virtual bool DecodeAudioData();
   virtual bool DecodeVideoFrame(bool &aKeyframeSkip,
                                 int64_t aTimeThreshold);
@@ -87,7 +97,6 @@ public:
     return mHasVideo;
   }
 
-  virtual bool IsDormantNeeded() { return true;}
   virtual void ReleaseMediaResources();
 
   virtual nsRefPtr<MediaDecoderReader::MetadataPromise> AsyncReadMetadata() override;
@@ -104,7 +113,7 @@ public:
   android::sp<android::MediaSource> GetAudioOffloadTrack();
 
   // This method is intended only for private use but public only for
-  // MediaPromise::InvokeCallbackMethod().
+  // MozPromise::InvokeCallbackMethod().
   void ReleaseDecoder();
 
 private:
@@ -119,6 +128,8 @@ private:
   int64_t ProcessCachedData(int64_t aOffset);
 
   already_AddRefed<AbstractMediaDecoder> SafeGetDecoder();
+
+  NotifyDataArrivedFilter mFilter;
 };
 
 } // namespace mozilla

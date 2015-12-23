@@ -7,11 +7,10 @@ const { ViewHelpers } = require("resource:///modules/devtools/ViewHelpers.jsm");
 
 /**
  * Localization convenience methods.
- + TODO: merge these into a single file: Bug 1082695.
  */
 const L10N = new ViewHelpers.MultiL10N([
-  "chrome://browser/locale/devtools/timeline.properties",
-  "chrome://browser/locale/devtools/profiler.properties"
+  "chrome://browser/locale/devtools/markers.properties",
+  "chrome://browser/locale/devtools/performance.properties"
 ]);
 
 /**
@@ -19,12 +18,15 @@ const L10N = new ViewHelpers.MultiL10N([
  * if somebody edits edits about:config or the prefs change somewhere else.
  */
 const PREFS = new ViewHelpers.Prefs("devtools.performance", {
+  "show-triggers-for-gc-types": ["Char", "ui.show-triggers-for-gc-types"],
   "show-platform-data": ["Bool", "ui.show-platform-data"],
   "hidden-markers": ["Json", "timeline.hidden-markers"],
   "memory-sample-probability": ["Float", "memory.sample-probability"],
   "memory-max-log-length": ["Int", "memory.max-log-length"],
   "profiler-buffer-size": ["Int", "profiler.buffer-size"],
   "profiler-sample-frequency": ["Int", "profiler.sample-frequency-khz"],
+  // TODO re-enable once we flame charts via bug 1148663
+  "enable-memory-flame": ["Bool", "ui.enable-memory-flame"],
 }, {
   monitorChanges: true
 });

@@ -73,8 +73,6 @@ static constexpr FloatRegister ScratchSimdReg = InvalidFloatReg;
 // StackPointer is intentionally undefined on ARM64 to prevent misuse:
 //  using sp as a base register is only valid if sp % 16 == 0.
 static constexpr Register RealStackPointer = { Registers::sp };
-// TODO: We're not quite there yet.
-static constexpr Register StackPointer = { Registers::sp };
 
 static constexpr Register PseudoStackPointer = { Registers::x28 };
 static constexpr ARMRegister PseudoStackPointer64 = { Registers::x28, 64 };
@@ -553,10 +551,10 @@ GetTempRegForIntArg(uint32_t usedIntArgs, uint32_t usedFloatArgs, Register* out)
         return false;
     *out = CallTempNonArgRegs[usedIntArgs];
     return true;
-
 }
 
-void PatchJump(CodeLocationJump& jump_, CodeLocationLabel label);
+void PatchJump(CodeLocationJump& jump_, CodeLocationLabel label,
+               ReprotectCode reprotect = DontReprotect);
 
 static inline void
 PatchBackedge(CodeLocationJump& jump_, CodeLocationLabel label, JitRuntime::BackedgeTarget target)

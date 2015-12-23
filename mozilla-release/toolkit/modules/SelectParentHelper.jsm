@@ -8,7 +8,7 @@ this.EXPORTED_SYMBOLS = [
   "SelectParentHelper"
 ];
 
-let currentBrowser = null;
+var currentBrowser = null;
 
 this.SelectParentHelper = {
   populate: function(menulist, items, selectedIndex, zoom) {
@@ -86,6 +86,7 @@ function populateChildren(menulist, options, selectedIndex, zoom, startIndex = 0
     item.setAttribute("label", option.textContent);
     item.style.direction = option.textDirection;
     item.style.fontSize = adjustedTextSize;
+    item.setAttribute("tooltiptext", option.tooltip);
 
     element.appendChild(item);
 

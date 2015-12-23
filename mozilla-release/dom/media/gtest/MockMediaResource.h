@@ -68,14 +68,17 @@ public:
   void MockClearBufferedRanges();
   void MockAddBufferedRange(int64_t aStart, int64_t aEnd);
 
-private:
+protected:
   virtual ~MockMediaResource();
+
+private:
   FILE* mFileHandle;
   const char* mFileName;
   nsTArray<MediaByteRange> mRanges;
   Atomic<int> mEntry;
   nsCString mContentType;
 };
-}
+
+} // namespace mozilla
 
 #endif

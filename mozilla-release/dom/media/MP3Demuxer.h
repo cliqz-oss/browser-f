@@ -19,7 +19,6 @@ public:
   // MediaDataDemuxer interface.
   explicit MP3Demuxer(MediaResource* aSource);
   nsRefPtr<InitPromise> Init() override;
-  already_AddRefed<MediaDataDemuxer> Clone() const override;
   bool HasTrackType(TrackInfo::TrackType aType) const override;
   uint32_t GetNumberTracks(TrackInfo::TrackType aType) const override;
   already_AddRefed<MediaTrackDemuxer> GetTrackDemuxer(
@@ -61,8 +60,11 @@ public:
     // The ID3 flags field.
     uint8_t Flags() const;
 
-    // The derived size based on the provides size fields.
+    // The derived size based on the provided size fields.
     uint32_t Size() const;
+
+    // Returns the size of an ID3v2.4 footer if present and zero otherwise.
+    uint8_t FooterSize() const;
 
     // Returns whether the parsed data is a valid ID3 header up to the given
     // byte position.
@@ -106,6 +108,11 @@ public:
 private:
   // The currently parsed ID3 header. Reset via Reset, updated via Parse.
   ID3Header mHeader;
+};
+
+struct FrameParserResult {
+  const uint8_t* mBufferPos;
+  const uint32_t mBytesToSkip;
 };
 
 // MPEG audio frame parser.
@@ -282,9 +289,11 @@ public:
   // - resets ID3Header if no valid header was parsed yet
   void EndFrameSession();
 
-  // Parses given buffer [aBeg, aEnd) for a valid frame header.
-  // Returns begin of frame header if a frame header was found or aEnd otherwise.
-  const uint8_t* Parse(const uint8_t* aBeg, const uint8_t* aEnd);
+  // Parses given buffer [aBeg, aEnd) for a valid frame header and returns a FrameParserResult.
+  // FrameParserResult.mBufferPos points to begin of frame header if a frame header was found
+  // or to aEnd otherwise. FrameParserResult.mBytesToSkip indicates whether additional bytes need to
+  // be skipped in order to jump across an ID3 tag that stretches beyond the given buffer.
+  FrameParserResult Parse(const uint8_t* aBeg, const uint8_t* aEnd);
 
   // Parses given buffer [aBeg, aEnd) for a valid VBR header.
   // Returns whether a valid VBR header was found.
@@ -345,7 +354,6 @@ public:
     media::TimeUnit aTimeThreshold) override;
   int64_t GetResourceOffset() const override;
   media::TimeIntervals GetBuffered() override;
-  int64_t GetEvictionOffset(media::TimeUnit aTime) override;
 
 private:
   // Destructor.
@@ -410,7 +418,7 @@ private:
   UniquePtr<AudioInfo> mInfo;
 };
 
-}  // namespace mp3
-}  // namespace mozilla
+} // namespace mp3
+} // namespace mozilla
 
 #endif

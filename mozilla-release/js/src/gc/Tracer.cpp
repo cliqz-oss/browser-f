@@ -24,6 +24,7 @@
 #include "vm/Shape.h"
 #include "vm/Symbol.h"
 
+#include "jscompartmentinlines.h"
 #include "jsgcinlines.h"
 
 #include "vm/ObjectGroup-inl.h"
@@ -52,13 +53,13 @@ DoCallback(JS::CallbackTracer* trc, T* thingp, const char* name)
 }
 #define INSTANTIATE_ALL_VALID_TRACE_FUNCTIONS(name, type, _) \
     template type* DoCallback<type*>(JS::CallbackTracer*, type**, const char*);
-FOR_EACH_GC_LAYOUT(INSTANTIATE_ALL_VALID_TRACE_FUNCTIONS);
+JS_FOR_EACH_TRACEKIND(INSTANTIATE_ALL_VALID_TRACE_FUNCTIONS);
 #undef INSTANTIATE_ALL_VALID_TRACE_FUNCTIONS
 
 template <typename S>
 struct DoCallbackFunctor : public IdentityDefaultAdaptor<S> {
     template <typename T> S operator()(T* t, JS::CallbackTracer* trc, const char* name) {
-        return js::gc::RewrapValueOrId<S, T*>::wrap(DoCallback(trc, &t, name));
+        return js::gc::RewrapTaggedPointer<S, T*>::wrap(DoCallback(trc, &t, name));
     }
 };
 
@@ -76,6 +77,14 @@ DoCallback<jsid>(JS::CallbackTracer* trc, jsid* idp, const char* name)
 {
     *idp = DispatchIdTyped(DoCallbackFunctor<jsid>(), *idp, trc, name);
     return *idp;
+}
+
+template <>
+TaggedProto
+DoCallback<TaggedProto>(JS::CallbackTracer* trc, TaggedProto* protop, const char* name)
+{
+    *protop = DispatchTaggedProtoTyped(DoCallbackFunctor<TaggedProto>(), *protop, trc, name);
+    return *protop;
 }
 
 void
@@ -175,9 +184,9 @@ JS_CallTenuredObjectTracer(JSTracer* trc, JS::TenuredHeap<JSObject*>* objp, cons
 }
 
 JS_PUBLIC_API(void)
-JS_TraceChildren(JSTracer* trc, void* thing, JS::TraceKind kind)
+JS::TraceChildren(JSTracer* trc, GCCellPtr thing)
 {
-    js::TraceChildren(trc, thing, kind);
+    js::TraceChildren(trc, thing.asCell(), thing.kind());
 }
 
 struct TraceChildrenFunctor {
@@ -192,7 +201,7 @@ js::TraceChildren(JSTracer* trc, void* thing, JS::TraceKind kind)
 {
     MOZ_ASSERT(thing);
     TraceChildrenFunctor f;
-    CallTyped(f, kind, trc, thing);
+    DispatchTraceKindTyped(f, kind, trc, thing);
 }
 
 JS_PUBLIC_API(void)
@@ -330,23 +339,23 @@ struct ObjectGroupCycleCollectorTracer : public JS::CallbackTracer
 void
 ObjectGroupCycleCollectorTracer::onChild(const JS::GCCellPtr& thing)
 {
-    if (thing.isObject() || thing.isScript()) {
+    if (thing.is<JSObject>() || thing.is<JSScript>()) {
         // Invoke the inner cycle collector callback on this child. It will not
         // recurse back into TraceChildren.
         innerTracer->onChild(thing);
         return;
     }
 
-    if (thing.isObjectGroup()) {
+    if (thing.is<ObjectGroup>()) {
         // If this group is required to be in an ObjectGroup chain, trace it
         // via the provided worklist rather than continuing to recurse.
-        ObjectGroup* group = static_cast<ObjectGroup*>(thing.asCell());
-        if (group->maybeUnboxedLayout()) {
+        ObjectGroup& group = thing.as<ObjectGroup>();
+        if (group.maybeUnboxedLayout()) {
             for (size_t i = 0; i < seen.length(); i++) {
-                if (seen[i] == group)
+                if (seen[i] == &group)
                     return;
             }
-            if (seen.append(group) && worklist.append(group)) {
+            if (seen.append(&group) && worklist.append(&group)) {
                 return;
             } else {
                 // If append fails, keep tracing normally. The worst that will

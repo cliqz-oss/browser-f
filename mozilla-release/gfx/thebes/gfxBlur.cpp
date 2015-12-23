@@ -116,7 +116,7 @@ DrawBlur(gfxContext* aDestinationCtx,
     }
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 gfxAlphaBoxBlur::DoBlur(DrawTarget* aDT, IntPoint* aTopLeft)
 {
     mBlur->Blur(mData);
@@ -264,7 +264,7 @@ class BlurCache final : public nsExpirationTracker<BlurCacheData,4>
 {
   public:
     BlurCache()
-      : nsExpirationTracker<BlurCacheData, 4>(GENERATION_MS)
+      : nsExpirationTracker<BlurCacheData, 4>(GENERATION_MS, "BlurCache")
     {
     }
 
@@ -382,7 +382,7 @@ CacheBlur(DrawTarget& aDT,
 }
 
 // Blurs a small surface and creates the mask.
-static TemporaryRef<SourceSurface>
+static already_AddRefed<SourceSurface>
 CreateBlurMask(const IntSize& aRectSize,
                RectCornerRadii* aCornerRadii,
                gfxIntSize aBlurRadius,
@@ -430,7 +430,7 @@ CreateBlurMask(const IntSize& aRectSize,
   return result.forget();
 }
 
-static TemporaryRef<SourceSurface>
+static already_AddRefed<SourceSurface>
 CreateBoxShadow(DrawTarget& aDT, SourceSurface* aBlurMask, const gfxRGBA& aShadowColor)
 {
   IntSize blurredSize = aBlurMask->GetSize();
@@ -441,8 +441,6 @@ CreateBoxShadow(DrawTarget& aDT, SourceSurface* aBlurMask, const gfxRGBA& aShado
   if (!boxShadowDT) {
     return nullptr;
   }
-
-  MOZ_ASSERT(boxShadowDT->GetType() == aDT.GetType());
 
   ColorPattern shadowColor(ToDeviceColor(aShadowColor));
   boxShadowDT->MaskSurface(shadowColor, aBlurMask, Point(0, 0));

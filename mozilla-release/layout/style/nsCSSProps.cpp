@@ -199,13 +199,11 @@ nsCSSProps::AddRefTable(void)
 
 #ifdef DEBUG
     {
-      // Assert that if CSS_PROPERTY_ALWAYS_ENABLED_IN_UA_SHEETS or
-      // CSS_PROPERTY_ALWAYS_ENABLED_IN_CHROME_OR_CERTIFIED_APP is used on
-      // a shorthand property that all of its component longhands also
-      // has the flag.
+      // Assert that if CSS_PROPERTY_ALWAYS_ENABLED_IN_UA_SHEETS is used
+      // on a shorthand property that all of its component longhands
+      // also has the flag.
       static uint32_t flagsToCheck[] = {
-        CSS_PROPERTY_ALWAYS_ENABLED_IN_UA_SHEETS,
-        CSS_PROPERTY_ALWAYS_ENABLED_IN_CHROME_OR_CERTIFIED_APP
+        CSS_PROPERTY_ALWAYS_ENABLED_IN_UA_SHEETS
       };
       for (nsCSSProperty shorthand = eCSSProperty_COUNT_no_shorthands;
            shorthand < eCSSProperty_COUNT;
@@ -745,6 +743,7 @@ const KTableValue nsCSSProps::kAppearanceKTable[] = {
   eCSSKeyword__moz_mac_vibrancy_dark,         NS_THEME_MAC_VIBRANCY_DARK,
   eCSSKeyword__moz_mac_disclosure_button_open,   NS_THEME_MAC_DISCLOSURE_BUTTON_OPEN,
   eCSSKeyword__moz_mac_disclosure_button_closed, NS_THEME_MAC_DISCLOSURE_BUTTON_CLOSED,
+  eCSSKeyword__moz_gtk_info_bar,              NS_THEME_GTK_INFO_BAR,
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -954,6 +953,7 @@ const KTableValue nsCSSProps::kColorKTable[] = {
   eCSSKeyword__moz_dialog, LookAndFeel::eColorID__moz_dialog,
   eCSSKeyword__moz_dialogtext, LookAndFeel::eColorID__moz_dialogtext,
   eCSSKeyword__moz_dragtargetzone, LookAndFeel::eColorID__moz_dragtargetzone,
+  eCSSKeyword__moz_gtk_info_bar_text, LookAndFeel::eColorID__moz_gtk_info_bar_text,
   eCSSKeyword__moz_hyperlinktext, NS_COLOR_MOZ_HYPERLINKTEXT,
   eCSSKeyword__moz_html_cellhighlight, LookAndFeel::eColorID__moz_html_cellhighlight,
   eCSSKeyword__moz_html_cellhighlighttext, LookAndFeel::eColorID__moz_html_cellhighlighttext,
@@ -1835,6 +1835,7 @@ const KTableValue nsCSSProps::kUserSelectKTable[] = {
   eCSSKeyword_tri_state,  NS_STYLE_USER_SELECT_TRI_STATE,
   eCSSKeyword__moz_all,   NS_STYLE_USER_SELECT_MOZ_ALL,
   eCSSKeyword__moz_none,  NS_STYLE_USER_SELECT_NONE,
+  eCSSKeyword__moz_text,  NS_STYLE_USER_SELECT_MOZ_TEXT,
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -1908,6 +1909,12 @@ const KTableValue nsCSSProps::kWritingModeKTable[] = {
   eCSSKeyword_horizontal_tb, NS_STYLE_WRITING_MODE_HORIZONTAL_TB,
   eCSSKeyword_vertical_lr, NS_STYLE_WRITING_MODE_VERTICAL_LR,
   eCSSKeyword_vertical_rl, NS_STYLE_WRITING_MODE_VERTICAL_RL,
+  eCSSKeyword_lr, NS_STYLE_WRITING_MODE_HORIZONTAL_TB,
+  eCSSKeyword_lr_tb, NS_STYLE_WRITING_MODE_HORIZONTAL_TB,
+  eCSSKeyword_rl, NS_STYLE_WRITING_MODE_HORIZONTAL_TB,
+  eCSSKeyword_rl_tb, NS_STYLE_WRITING_MODE_HORIZONTAL_TB,
+  eCSSKeyword_tb, NS_STYLE_WRITING_MODE_VERTICAL_RL,
+  eCSSKeyword_tb_rl, NS_STYLE_WRITING_MODE_VERTICAL_RL,
   eCSSKeyword_UNKNOWN, -1
 };
 
@@ -2372,12 +2379,12 @@ static const nsCSSProperty gBorderColorSubpropTable[] = {
   eCSSProperty_UNKNOWN
 };
 
-static const nsCSSProperty gBorderEndSubpropTable[] = {
+static const nsCSSProperty gBorderInlineEndSubpropTable[] = {
   // Declaration.cpp output the subproperties in this order.
   // It also depends on the color being third.
-  eCSSProperty_border_end_width,
-  eCSSProperty_border_end_style,
-  eCSSProperty_border_end_color,
+  eCSSProperty_border_inline_end_width,
+  eCSSProperty_border_inline_end_style,
+  eCSSProperty_border_inline_end_color,
   eCSSProperty_UNKNOWN
 };
 
@@ -2399,12 +2406,12 @@ static const nsCSSProperty gBorderRightSubpropTable[] = {
   eCSSProperty_UNKNOWN
 };
 
-static const nsCSSProperty gBorderStartSubpropTable[] = {
+static const nsCSSProperty gBorderInlineStartSubpropTable[] = {
   // Declaration.cpp outputs the subproperties in this order.
   // It also depends on the color being third.
-  eCSSProperty_border_start_width,
-  eCSSProperty_border_start_style,
-  eCSSProperty_border_start_color,
+  eCSSProperty_border_inline_start_width,
+  eCSSProperty_border_inline_start_style,
+  eCSSProperty_border_inline_start_color,
   eCSSProperty_UNKNOWN
 };
 
@@ -2927,6 +2934,21 @@ nsCSSProps::gPropertyEnabled[eCSSProperty_COUNT_with_aliases] = {
     true,
   #include "nsCSSPropAliasList.h"
   #undef CSS_PROP_ALIAS
+};
+
+#include "../../dom/base/PropertyUseCounterMap.inc"
+
+/* static */ const UseCounter
+nsCSSProps::gPropertyUseCounter[eCSSProperty_COUNT_no_shorthands] = {
+  #define CSS_PROP_PUBLIC_OR_PRIVATE(publicname_, privatename_) privatename_
+  #define CSS_PROP_LIST_INCLUDE_LOGICAL
+  #define CSS_PROP(name_, id_, method_, flags_, pref_, parsevariant_,     \
+                   kwtable_, stylestruct_, stylestructoffset_, animtype_) \
+    static_cast<UseCounter>(USE_COUNTER_FOR_CSS_PROPERTY_##method_),
+  #include "nsCSSPropList.h"
+  #undef CSS_PROP
+  #undef CSS_PROP_LIST_INCLUDE_LOGICAL
+  #undef CSS_PROP_PUBLIC_OR_PRIVATE
 };
 
 // Check that all logical property flags are used appropriately.

@@ -114,7 +114,7 @@ loop.store = loop.store || {};
         activeRoom: this.activeRoomStore ? this.activeRoomStore.getStoreState() : {},
         error: null,
         pendingCreation: false,
-        pendingInitialRetrieval: false,
+        pendingInitialRetrieval: true,
         rooms: [],
         savingContext: false
       };
@@ -264,7 +264,6 @@ loop.store = loop.store || {};
         decryptedContext: {
           roomName: this._generateNewRoomName(actionData.nameTemplate)
         },
-        roomOwner: actionData.roomOwner,
         maxSize: this.maxRoomCreationSize
       };
 
@@ -325,7 +324,7 @@ loop.store = loop.store || {};
       this._notifications.set({
         id: "create-room-error",
         level: "error",
-        message: mozL10n.get("generic_failure_title")
+        message: mozL10n.get("generic_failure_message")
       });
     },
 
@@ -370,16 +369,11 @@ loop.store = loop.store || {};
 
       switch (providerOrigin) {
         case "mail.google.com":
-          shareTitle = mozL10n.get("share_email_subject5", {
-            clientShortname2: mozL10n.get("clientShortname2")
+          shareTitle = mozL10n.get("share_email_subject6");
+          shareBody = mozL10n.get("share_email_body6", {
+            callUrl: actionData.roomUrl
           });
-          shareBody = mozL10n.get("share_email_body5", {
-            callUrl: actionData.roomUrl,
-            brandShortname: mozL10n.get("brandShortname"),
-            clientShortname2: mozL10n.get("clientShortname2"),
-            clientSuperShortname: mozL10n.get("clientSuperShortname"),
-            learnMoreUrl: this._mozLoop.getLoopPref("learnMoreUrl")
-          });
+          shareBody += mozL10n.get("share_email_footer");
           break;
         case "twitter.com":
         default:
@@ -432,7 +426,6 @@ loop.store = loop.store || {};
      * Gather the list of all available rooms from the MozLoop API.
      */
     getAllRooms: function() {
-      this.setStoreState({pendingInitialRetrieval: true});
       this._mozLoop.rooms.getAll(null, function(err, rawRoomList) {
         var action;
 
@@ -501,7 +494,7 @@ loop.store = loop.store || {};
         var context = room.decryptedContext;
         var oldRoomName = context.roomName;
         var newRoomName = actionData.newRoomName.trim();
-        if (newRoomName && oldRoomName != newRoomName) {
+        if (newRoomName && oldRoomName !== newRoomName) {
           roomData.roomName = newRoomName;
         }
         var oldRoomURLs = context.urls;
@@ -524,7 +517,9 @@ loop.store = loop.store || {};
           var isValidURL = false;
           try {
             isValidURL = new URL(newRoomURL.location);
-          } catch(ex) {}
+          } catch(ex) {
+            // URL may throw, default to false;
+          }
           if (isValidURL) {
             roomData.urls = [newRoomURL];
           }

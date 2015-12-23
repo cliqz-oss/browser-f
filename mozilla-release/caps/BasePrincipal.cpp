@@ -6,16 +6,20 @@
 
 #include "mozilla/BasePrincipal.h"
 
+#include "nsIAddonPolicyService.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
 
 #include "nsPrincipal.h"
 #include "nsNetUtil.h"
+#include "nsIURIWithPrincipal.h"
 #include "nsNullPrincipal.h"
 #include "nsScriptSecurityManager.h"
+#include "nsServiceManagerUtils.h"
 
 #include "mozilla/dom/CSPDictionariesBinding.h"
+#include "mozilla/dom/quota/QuotaManager.h"
 #include "mozilla/dom/ToJSValue.h"
 #include "mozilla/dom/URLSearchParams.h"
 
@@ -26,10 +30,15 @@ using dom::URLParams;
 void
 OriginAttributes::CreateSuffix(nsACString& aStr) const
 {
-  MOZ_RELEASE_ASSERT(mAppId != nsIScriptSecurityManager::UNKNOWN_APP_ID);
-
   UniquePtr<URLParams> params(new URLParams());
   nsAutoString value;
+
+  //
+  // Important: While serializing any string-valued attributes, perform a
+  // release-mode assertion to make sure that they don't contain characters that
+  // will break the quota manager when it uses the serialization for file
+  // naming (see addonId below).
+  //
 
   if (mAppId != nsIScriptSecurityManager::NO_APP_ID) {
     value.AppendInt(mAppId);
@@ -40,13 +49,31 @@ OriginAttributes::CreateSuffix(nsACString& aStr) const
     params->Set(NS_LITERAL_STRING("inBrowser"), NS_LITERAL_STRING("1"));
   }
 
+  if (!mAddonId.IsEmpty()) {
+    MOZ_RELEASE_ASSERT(mAddonId.FindCharInSet(dom::quota::QuotaManager::kReplaceChars) == kNotFound);
+    params->Set(NS_LITERAL_STRING("addonId"), mAddonId);
+  }
+
+  if (mUserContextId != nsIScriptSecurityManager::DEFAULT_USER_CONTEXT_ID) {
+    value.Truncate();
+    value.AppendInt(mUserContextId);
+    params->Set(NS_LITERAL_STRING("userContextId"), value);
+  }
+
   aStr.Truncate();
 
   params->Serialize(value);
   if (!value.IsEmpty()) {
-    aStr.AppendLiteral("!");
+    aStr.AppendLiteral("^");
     aStr.Append(NS_ConvertUTF16toUTF8(value));
   }
+
+// In debug builds, check the whole string for illegal characters too (just in case).
+#ifdef DEBUG
+  nsAutoCString str;
+  str.Assign(aStr);
+  MOZ_ASSERT(str.FindCharInSet(dom::quota::QuotaManager::kReplaceChars) == kNotFound);
+#endif
 }
 
 namespace {
@@ -71,10 +98,6 @@ public:
         return false;
       }
 
-      if (mOriginAttributes->mAppId == nsIScriptSecurityManager::UNKNOWN_APP_ID) {
-        return false;
-      }
-
       return true;
     }
 
@@ -87,6 +110,22 @@ public:
       return true;
     }
 
+    if (aName.EqualsLiteral("addonId")) {
+      MOZ_RELEASE_ASSERT(mOriginAttributes->mAddonId.IsEmpty());
+      mOriginAttributes->mAddonId.Assign(aValue);
+      return true;
+    }
+
+    if (aName.EqualsLiteral("userContextId")) {
+      nsresult rv;
+      mOriginAttributes->mUserContextId = aValue.ToInteger(&rv);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return false;
+      }
+
+      return true;
+    }
+
     // No other attributes are supported.
     return false;
   }
@@ -95,7 +134,7 @@ private:
   OriginAttributes* mOriginAttributes;
 };
 
-} // anonymous namespace
+} // namespace
 
 bool
 OriginAttributes::PopulateFromSuffix(const nsACString& aStr)
@@ -104,7 +143,7 @@ OriginAttributes::PopulateFromSuffix(const nsACString& aStr)
     return true;
   }
 
-  if (aStr[0] != '!') {
+  if (aStr[0] != '^') {
     return false;
   }
 
@@ -121,7 +160,7 @@ OriginAttributes::PopulateFromOrigin(const nsACString& aOrigin,
 {
   // RFindChar is only available on nsCString.
   nsCString origin(aOrigin);
-  int32_t pos = origin.RFindChar('!');
+  int32_t pos = origin.RFindChar('^');
 
   if (pos == kNotFound) {
     aOriginNoSuffix = origin;
@@ -130,12 +169,6 @@ OriginAttributes::PopulateFromOrigin(const nsACString& aOrigin,
 
   aOriginNoSuffix = Substring(origin, 0, pos);
   return PopulateFromSuffix(Substring(origin, pos));
-}
-
-void
-OriginAttributes::CookieJar(nsACString& aStr)
-{
-  mozilla::GetJarPrefix(mAppId, mInBrowser, aStr);
 }
 
 BasePrincipal::BasePrincipal()
@@ -149,14 +182,6 @@ BasePrincipal::GetOrigin(nsACString& aOrigin)
 {
   nsresult rv = GetOriginInternal(aOrigin);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  // OriginAttributes::CreateSuffix asserts against UNKNOWN_APP_ID. It's trivial
-  // to trigger this getter from script on such a principal, so we handle it
-  // here at the API entry point.
-  if (mOriginAttributes.mAppId == nsIScriptSecurityManager::UNKNOWN_APP_ID) {
-    NS_WARNING("Refusing to provide canonical origin string to principal with UNKNOWN_APP_ID");
-    return NS_ERROR_FAILURE;
-  }
 
   nsAutoCString suffix;
   mOriginAttributes.CreateSuffix(suffix);
@@ -253,9 +278,7 @@ BasePrincipal::GetIsNullPrincipal(bool* aIsNullPrincipal)
 NS_IMETHODIMP
 BasePrincipal::GetJarPrefix(nsACString& aJarPrefix)
 {
-  MOZ_ASSERT(AppId() != nsIScriptSecurityManager::UNKNOWN_APP_ID);
-
-  mOriginAttributes.CookieJar(aJarPrefix);
+  mozilla::GetJarPrefix(mOriginAttributes.mAppId, mOriginAttributes.mInBrowser, aJarPrefix);
   return NS_OK;
 }
 
@@ -272,13 +295,6 @@ NS_IMETHODIMP
 BasePrincipal::GetOriginSuffix(nsACString& aOriginAttributes)
 {
   mOriginAttributes.CreateSuffix(aOriginAttributes);
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-BasePrincipal::GetCookieJar(nsACString& aCookieJar)
-{
-  mOriginAttributes.CookieJar(aCookieJar);
   return NS_OK;
 }
 
@@ -305,6 +321,13 @@ BasePrincipal::GetAppId(uint32_t* aAppId)
   }
 
   *aAppId = AppId();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+BasePrincipal::GetUserContextId(uint32_t* aUserContextId)
+{
+  *aUserContextId = UserContextId();
   return NS_OK;
 }
 
@@ -352,6 +375,21 @@ BasePrincipal::CreateCodebasePrincipal(nsIURI* aURI, OriginAttributes& aAttrs)
   rv = codebase->Init(aURI, aAttrs);
   NS_ENSURE_SUCCESS(rv, nullptr);
   return codebase.forget();
+}
+
+bool
+BasePrincipal::AddonAllowsLoad(nsIURI* aURI)
+{
+  if (mOriginAttributes.mAddonId.IsEmpty()) {
+    return false;
+  }
+
+  nsCOMPtr<nsIAddonPolicyService> aps = do_GetService("@mozilla.org/addons/policy-service;1");
+  NS_ENSURE_TRUE(aps, false);
+
+  bool allowed = false;
+  nsresult rv = aps->AddonMayLoadURI(mOriginAttributes.mAddonId, aURI, &allowed);
+  return NS_SUCCEEDED(rv) && allowed;
 }
 
 } // namespace mozilla

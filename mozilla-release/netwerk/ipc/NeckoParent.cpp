@@ -271,7 +271,7 @@ NeckoParent::AllocPFTPChannelParent(const PBrowserOrId& aBrowser,
     return nullptr;
   }
   PBOverrideStatus overrideStatus = PBOverrideStatusFromLoadContext(aSerialized);
-  FTPChannelParent *p = new FTPChannelParent(loadContext, overrideStatus);
+  FTPChannelParent *p = new FTPChannelParent(aBrowser, loadContext, overrideStatus);
   p->AddRef();
   return p;
 }
@@ -457,10 +457,10 @@ NeckoParent::DeallocPTCPSocketParent(PTCPSocketParent* actor)
 
 PTCPServerSocketParent*
 NeckoParent::AllocPTCPServerSocketParent(const uint16_t& aLocalPort,
-                                   const uint16_t& aBacklog,
-                                   const nsString& aBinaryType)
+                                         const uint16_t& aBacklog,
+                                         const bool& aUseArrayBuffers)
 {
-  TCPServerSocketParent* p = new TCPServerSocketParent();
+  TCPServerSocketParent* p = new TCPServerSocketParent(this, aLocalPort, aBacklog, aUseArrayBuffers);
   p->AddIPDLReference();
   return p;
 }
@@ -469,10 +469,10 @@ bool
 NeckoParent::RecvPTCPServerSocketConstructor(PTCPServerSocketParent* aActor,
                                              const uint16_t& aLocalPort,
                                              const uint16_t& aBacklog,
-                                             const nsString& aBinaryType)
+                                             const bool& aUseArrayBuffers)
 {
-  return static_cast<TCPServerSocketParent*>(aActor)->
-      Init(this, aLocalPort, aBacklog, aBinaryType);
+  static_cast<TCPServerSocketParent*>(aActor)->Init();
+  return true;
 }
 
 bool
@@ -580,7 +580,17 @@ NeckoParent::AllocPRemoteOpenFileParent(const SerializedLoadContext& aSerialized
       }
     }
 
+    nsCOMPtr<nsIURI> appUri = DeserializeURI(aAppURI);
+
     if (!haveValidBrowser) {
+      // Extension loads come from chrome and have no valid browser, so we check
+      // for these early on.
+      bool fromExtension = false;
+      if (NS_SUCCEEDED(appsService->IsExtensionResource(appUri, &fromExtension)) &&
+          fromExtension) {
+        RemoteOpenFileParent* parent = new RemoteOpenFileParent(fileURL);
+        return parent;
+      }
       return nullptr;
     }
 
@@ -591,7 +601,6 @@ NeckoParent::AllocPRemoteOpenFileParent(const SerializedLoadContext& aSerialized
     // Check if we load the whitelisted app uri for the neterror page.
     bool netErrorWhiteList = false;
 
-    nsCOMPtr<nsIURI> appUri = DeserializeURI(aAppURI);
     if (appUri) {
       nsAdoptingString netErrorURI;
       netErrorURI = Preferences::GetString("b2g.neterror.url");
@@ -782,7 +791,7 @@ CallbackMap()
   static std::map<uint64_t, nsCOMPtr<nsIAuthPromptCallback> > sCallbackMap;
   return sCallbackMap;
 }
-} // anonymous namespace
+} // namespace
 
 NS_IMPL_ISUPPORTS(NeckoParent::NestedFrameAuthPrompt, nsIAuthPrompt2)
 
@@ -799,7 +808,7 @@ NeckoParent::NestedFrameAuthPrompt::AsyncPromptAuth(
   nsIAuthInformation* aInfo, nsICancelable**)
 {
   static uint64_t callbackId = 0;
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
   nsCOMPtr<nsIURI> uri;
   nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -970,4 +979,21 @@ NeckoParent::OfflineNotification(nsISupports *aSubject)
   return NS_OK;
 }
 
-}} // mozilla::net
+bool
+NeckoParent::RecvRemoveSchedulingContext(const nsCString& scid)
+{
+  nsCOMPtr<nsISchedulingContextService> scsvc =
+    do_GetService("@mozilla.org/network/scheduling-context-service;1");
+  if (!scsvc) {
+    return true;
+  }
+
+  nsID id;
+  id.Parse(scid.BeginReading());
+  scsvc->RemoveSchedulingContext(id);
+
+  return true;
+}
+
+} // namespace net
+} // namespace mozilla

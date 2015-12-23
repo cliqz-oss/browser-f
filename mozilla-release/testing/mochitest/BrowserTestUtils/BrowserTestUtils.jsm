@@ -49,14 +49,15 @@ this.BrowserTestUtils = {
    *        the tab is loaded. The first argument passed to the function is a
    *        reference to the browser object for the new tab.
    *
-   * @return {Promise}
+   * @return {} Returns the value that is returned from taskFn.
    * @resolves When the tab has been closed.
    * @rejects Any exception from taskFn is propagated.
    */
   withNewTab: Task.async(function* (options, taskFn) {
     let tab = yield BrowserTestUtils.openNewForegroundTab(options.gBrowser, options.url);
-    yield taskFn(tab.linkedBrowser);
+    let result = yield taskFn(tab.linkedBrowser);
     options.gBrowser.removeTab(tab);
+    return Promise.resolve(result);
   }),
 
   /**
@@ -188,6 +189,21 @@ this.BrowserTestUtils = {
       });
     });
   },
+
+  /**
+   * Waits for the next browser window to open and be fully loaded.
+   *
+   * @return {Promise}
+   *         A Promise which resolves the next time that a DOM window
+   *         opens and the delayed startup observer notification fires.
+   */
+  waitForNewWindow: Task.async(function* (delayedStartup=true) {
+    let win = yield this.domWindowOpened();
+
+    yield TestUtils.topicObserved("browser-delayed-startup-finished",
+                                   subject => subject == win);
+    return win;
+  }),
 
   /**
    * Loads a new URI in the given browser and waits until we really started

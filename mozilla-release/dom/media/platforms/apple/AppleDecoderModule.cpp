@@ -15,14 +15,6 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Logging.h"
 
-PRLogModuleInfo* GetAppleMediaLog() {
-  static PRLogModuleInfo* log = nullptr;
-  if (!log) {
-    log = PR_NewLogModule("AppleMedia");
-  }
-  return log;
-}
-
 namespace mozilla {
 
 bool AppleDecoderModule::sInitialized = false;
@@ -80,7 +72,7 @@ already_AddRefed<MediaDataDecoder>
 AppleDecoderModule::CreateVideoDecoder(const VideoInfo& aConfig,
                                        layers::LayersBackend aLayersBackend,
                                        layers::ImageContainer* aImageContainer,
-                                       FlushableMediaTaskQueue* aVideoTaskQueue,
+                                       FlushableTaskQueue* aVideoTaskQueue,
                                        MediaDataDecoderCallback* aCallback)
 {
   nsRefPtr<MediaDataDecoder> decoder;
@@ -106,7 +98,7 @@ AppleDecoderModule::CreateVideoDecoder(const VideoInfo& aConfig,
 
 already_AddRefed<MediaDataDecoder>
 AppleDecoderModule::CreateAudioDecoder(const AudioInfo& aConfig,
-                                       FlushableMediaTaskQueue* aAudioTaskQueue,
+                                       FlushableTaskQueue* aAudioTaskQueue,
                                        MediaDataDecoderCallback* aCallback)
 {
   nsRefPtr<MediaDataDecoder> decoder =

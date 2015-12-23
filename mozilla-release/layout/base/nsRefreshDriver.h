@@ -29,13 +29,15 @@ class nsPresContext;
 class nsIPresShell;
 class nsIDocument;
 class imgIRequest;
+class nsIDOMEvent;
+class nsINode;
 
 namespace mozilla {
 class RefreshDriverTimer;
 namespace layout {
 class VsyncChild;
-}
-}
+} // namespace layout
+} // namespace mozilla
 
 /**
  * An abstract base class to be implemented by callers wanting to be
@@ -213,14 +215,25 @@ public:
   }
 
   /**
-   * Add a document for which we have nsIFrameRequestCallbacks
+   * Add a document for which we have FrameRequestCallbacks
    */
   void ScheduleFrameRequestCallbacks(nsIDocument* aDocument);
 
   /**
-   * Remove a document for which we have nsIFrameRequestCallbacks
+   * Remove a document for which we have FrameRequestCallbacks
    */
   void RevokeFrameRequestCallbacks(nsIDocument* aDocument);
+
+  /**
+   * Queue a new event to dispatch in next tick before the style flush
+   */
+  void ScheduleEventDispatch(nsINode* aTarget, nsIDOMEvent* aEvent);
+
+  /**
+   * Cancel all pending events scheduled by ScheduleEventDispatch which
+   * targets any node in aDocument.
+   */
+  void CancelPendingEvents(nsIDocument* aDocument);
 
   /**
    * Tell the refresh driver that it is done driving refreshes and
@@ -308,7 +321,9 @@ private:
   };
   typedef nsClassHashtable<nsUint32HashKey, ImageStartData> ImageStartTable;
 
-  void RunFrameRequestCallbacks(int64_t aNowEpoch, mozilla::TimeStamp aNowTime);
+  void DispatchPendingEvents();
+  void DispatchAnimationEvents();
+  void RunFrameRequestCallbacks(mozilla::TimeStamp aNowTime);
 
   void Tick(int64_t aNowEpoch, mozilla::TimeStamp aNowTime);
 
@@ -322,16 +337,12 @@ private:
 
   uint32_t ObserverCount() const;
   uint32_t ImageRequestCount() const;
-  static PLDHashOperator ImageRequestEnumerator(nsISupportsHashKey* aEntry,
-                                                void* aUserArg);
   static PLDHashOperator StartTableRequestCounter(const uint32_t& aKey,
                                                   ImageStartData* aEntry,
                                                   void* aUserArg);
   static PLDHashOperator StartTableRefresh(const uint32_t& aKey,
                                            ImageStartData* aEntry,
                                            void* aUserArg);
-  static PLDHashOperator BeginRefreshingImages(nsISupportsHashKey* aEntry,
-                                               void* aUserArg);
   ObserverArray& ArrayFor(mozFlushType aFlushType);
   // Trigger a refresh immediately, if haven't been disconnected or frozen.
   void DoRefresh();
@@ -403,6 +414,11 @@ private:
   RequestTable mRequests;
   ImageStartTable mStartTable;
 
+  struct PendingEvent {
+    nsCOMPtr<nsINode> mTarget;
+    nsCOMPtr<nsIDOMEvent> mEvent;
+  };
+
   nsAutoTArray<nsIPresShell*, 16> mStyleFlushObservers;
   nsAutoTArray<nsIPresShell*, 16> mLayoutFlushObservers;
   nsAutoTArray<nsIPresShell*, 16> mPresShellsToInvalidateIfHidden;
@@ -410,6 +426,7 @@ private:
   nsTArray<nsIDocument*> mFrameRequestCallbackDocs;
   nsTArray<nsIDocument*> mThrottledFrameRequestCallbackDocs;
   nsTObserverArray<nsAPostRefreshObserver*> mPostRefreshObservers;
+  nsTArray<PendingEvent> mPendingEvents;
 
   // Helper struct for processing image requests
   struct ImageRequestParameters {
@@ -418,6 +435,9 @@ private:
     RequestTable* mRequests;
     mozilla::TimeStamp mDesired;
   };
+
+  static void BeginRefreshingImages(RequestTable& aEntries,
+                                    ImageRequestParameters* aParms);
 
   friend class mozilla::RefreshDriverTimer;
 

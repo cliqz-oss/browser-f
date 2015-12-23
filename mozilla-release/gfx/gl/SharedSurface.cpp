@@ -9,6 +9,7 @@
 #include "GLBlitHelper.h"
 #include "GLContext.h"
 #include "GLReadTexImageHelper.h"
+#include "GLScreenBuffer.h"
 #include "nsThreadUtils.h"
 #include "ScopedGLHelpers.h"
 #include "SharedSurfaceGL.h"
@@ -219,6 +220,12 @@ SharedSurface::SharedSurface(SharedSurfaceType type,
 #endif
 { }
 
+layers::TextureFlags
+SharedSurface::GetTextureFlags() const
+{
+    return layers::TextureFlags::NO_FLAGS;
+}
+
 void
 SharedSurface::LockProd()
 {
@@ -327,7 +334,7 @@ SurfaceFactory::~SurfaceFactory()
     mRecycleFreePool.clear();
 }
 
-TemporaryRef<layers::SharedSurfaceTextureClient>
+already_AddRefed<layers::SharedSurfaceTextureClient>
 SurfaceFactory::NewTexClient(const gfx::IntSize& size)
 {
     while (!mRecycleFreePool.empty()) {
@@ -623,5 +630,6 @@ ReadPixel(SharedSurface* src)
     return pixel;
 }
 
-} /* namespace gfx */
+} // namespace gl
+
 } /* namespace mozilla */

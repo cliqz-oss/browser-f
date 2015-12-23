@@ -64,7 +64,7 @@ static char *RCSSTRING __UNUSED__="$Id: ice_candidate.c,v 1.2 2008/04/28 17:59:0
 #include "nr_socket.h"
 #include "nr_socket_multi_tcp.h"
 
-static int next_automatic_preference = 224;
+static int next_automatic_preference = 127;
 
 static int nr_ice_candidate_initialize2(nr_ice_candidate *cand);
 static int nr_ice_get_foundation(nr_ice_ctx *ctx,nr_ice_candidate *cand);
@@ -134,6 +134,7 @@ static int nr_ice_candidate_format_stun_label(char *label, size_t size, nr_ice_c
 
 int nr_ice_candidate_create(nr_ice_ctx *ctx,nr_ice_component *comp,nr_ice_socket *isock, nr_socket *osock, nr_ice_candidate_type ctype, nr_socket_tcp_type tcp_type, nr_ice_stun_server *stun_server, UCHAR component_id, nr_ice_candidate **candp)
   {
+    assert(!(ctx->flags & NR_ICE_CTX_FLAGS_RELAY_ONLY) || ctype == RELAYED);
     nr_ice_candidate *cand=0;
     nr_ice_candidate *tmp=0;
     int r,_status;
@@ -470,8 +471,12 @@ int nr_ice_candidate_compute_priority(nr_ice_candidate *cand)
           if (r=NR_reg_set2_uchar(NR_ICE_REG_PREF_INTERFACE_PRFX,cand->base.ifname,next_automatic_preference)){
             ABORT(r);
           }
-          interface_preference=next_automatic_preference;
+          interface_preference=next_automatic_preference << 1;
           next_automatic_preference--;
+          if (cand->base.ip_version == NR_IPV6) {
+            /* Prefer IPV6 over IPV4 on the same interface. */
+            interface_preference += 1;
+          }
         }
         else {
           ABORT(r);
@@ -550,6 +555,11 @@ int nr_ice_candidate_initialize(nr_ice_candidate *cand, NR_async_cb ready_cb, vo
         cand->state=NR_ICE_CAND_STATE_INITIALIZING;
 
         if(cand->stun_server->type == NR_ICE_STUN_SERVER_TYPE_ADDR) {
+          if(nr_transport_addr_cmp(&cand->base,&cand->stun_server->u.addr,NR_TRANSPORT_ADDR_CMP_MODE_PROTOCOL)) {
+            r_log(LOG_ICE, LOG_INFO, "ICE-CANDIDATE(%s): Skipping srflx/relayed candidate because of IP version/transport mis-match with STUN/TURN server (%u/%s - %u/%s).", cand->label,cand->base.ip_version,cand->base.protocol==IPPROTO_UDP?"UDP":"TCP",cand->stun_server->u.addr.ip_version,cand->stun_server->u.addr.protocol==IPPROTO_UDP?"UDP":"TCP");
+            ABORT(R_NOT_FOUND); /* Same error code when DNS lookup fails */
+          }
+
           /* Just copy the address */
           if (r=nr_transport_addr_copy(&cand->stun_server_addr,
                                        &cand->stun_server->u.addr)) {
@@ -566,6 +576,17 @@ int nr_ice_candidate_initialize(nr_ice_candidate *cand, NR_async_cb ready_cb, vo
           resource.port=cand->stun_server->u.dnsname.port;
           resource.stun_turn=protocol;
           resource.transport_protocol=cand->stun_server->transport;
+
+          switch (cand->base.ip_version) {
+            case NR_IPV4:
+              resource.address_family=AF_INET;
+              break;
+            case NR_IPV6:
+              resource.address_family=AF_INET6;
+              break;
+            default:
+              ABORT(R_BAD_ARGS);
+          }
 
           /* Try to resolve */
           if(!cand->ctx->resolver) {
@@ -901,6 +922,7 @@ int nr_ice_format_candidate_attribute(nr_ice_candidate *cand, char *attr, int ma
     char addr[64];
     int port;
     int len;
+    nr_transport_addr *raddr;
 
     assert(!strcmp(nr_ice_candidate_type_names[HOST], "host"));
     assert(!strcmp(nr_ice_candidate_type_names[RELAYED], "relay"));
@@ -909,6 +931,9 @@ int nr_ice_format_candidate_attribute(nr_ice_candidate *cand, char *attr, int ma
       ABORT(r);
     if(r=nr_transport_addr_get_port(&cand->addr,&port))
       ABORT(r);
+    /* https://tools.ietf.org/html/rfc6544#section-4.5 */
+    if (cand->base.protocol==IPPROTO_TCP && cand->tcp_type==TCP_TYPE_ACTIVE)
+      port=9;
     snprintf(attr,maxlen,"candidate:%s %d %s %u %s %d typ %s",
       cand->foundation, cand->component_id, cand->addr.protocol==IPPROTO_UDP?"UDP":"TCP",cand->priority, addr, port,
       nr_ctype_name(cand->type));
@@ -916,23 +941,27 @@ int nr_ice_format_candidate_attribute(nr_ice_candidate *cand, char *attr, int ma
     len=strlen(attr); attr+=len; maxlen-=len;
 
     /* raddr, rport */
+    raddr = (cand->stream->ctx->flags &
+             (NR_ICE_CTX_FLAGS_RELAY_ONLY |
+              NR_ICE_CTX_FLAGS_ONLY_DEFAULT_ADDRS)) ?
+      &cand->addr : &cand->base;
+
     switch(cand->type){
       case HOST:
         break;
       case SERVER_REFLEXIVE:
       case PEER_REFLEXIVE:
-        if(r=nr_transport_addr_get_addrstring(&cand->base,addr,sizeof(addr)))
+        if(r=nr_transport_addr_get_addrstring(raddr,addr,sizeof(addr)))
           ABORT(r);
-        if(r=nr_transport_addr_get_port(&cand->base,&port))
+        if(r=nr_transport_addr_get_port(raddr,&port))
           ABORT(r);
-
         snprintf(attr,maxlen," raddr %s rport %d",addr,port);
         break;
       case RELAYED:
         // comes from XorMappedAddress via AllocateResponse
-        if(r=nr_transport_addr_get_addrstring(&cand->base,addr,sizeof(addr)))
+        if(r=nr_transport_addr_get_addrstring(raddr,addr,sizeof(addr)))
           ABORT(r);
-        if(r=nr_transport_addr_get_port(&cand->base,&port))
+        if(r=nr_transport_addr_get_port(raddr,&port))
           ABORT(r);
 
         snprintf(attr,maxlen," raddr %s rport %d",addr,port);

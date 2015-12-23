@@ -7,9 +7,12 @@
 #include "ServiceWorkerManagerParent.h"
 #include "ServiceWorkerManagerService.h"
 #include "mozilla/AppProcessChecker.h"
+#include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/ServiceWorkerRegistrar.h"
 #include "mozilla/ipc/BackgroundParent.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/unused.h"
+#include "nsThreadUtils.h"
 
 namespace mozilla {
 
@@ -142,7 +145,7 @@ private:
   nsCOMPtr<nsIThread> mBackgroundThread;
 };
 
-} // anonymous namespace
+} // namespace
 
 ServiceWorkerManagerParent::ServiceWorkerManagerParent()
   : mService(ServiceWorkerManagerService::GetOrCreate())
@@ -310,6 +313,6 @@ ServiceWorkerManagerParent::ActorDestroy(ActorDestroyReason aWhy)
   }
 }
 
-} // workers namespace
-} // dom namespace
-} // mozilla namespace
+} // namespace workers
+} // namespace dom
+} // namespace mozilla

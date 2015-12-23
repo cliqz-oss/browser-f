@@ -19,8 +19,8 @@ Services.perms.add(NetUtil.newURI("https://example.org/"), "install",
                    Ci.nsIPermissionManager.ALLOW_ACTION);
 
 registerCleanupFunction(() => {
-  Services.perms.remove("example.com", "install");
-  Services.perms.remove("example.org", "install");
+  Services.perms.remove(NetUtil.newURI("https://example.com/"), "install");
+  Services.perms.remove(NetUtil.newURI("https://example.org/"), "install");
 });
 
 function clickLink(frameLoader, id) {

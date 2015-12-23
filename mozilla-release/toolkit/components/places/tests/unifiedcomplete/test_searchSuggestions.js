@@ -6,8 +6,8 @@ const SUGGEST_PREF = "browser.urlbar.suggest.searches";
 const SUGGEST_ENABLED_PREF = "browser.search.suggest.enabled";
 const SUGGEST_RESTRICT_TOKEN = "$";
 
-let suggestionsFn;
-let previousSuggestionsFn;
+var suggestionsFn;
+var previousSuggestionsFn;
 
 function setSuggestionsFn(fn) {
   previousSuggestionsFn = suggestionsFn;
@@ -47,11 +47,33 @@ add_task(function* setUp() {
   Services.search.currentEngine = engine;
 });
 
-add_task(function* disabled() {
+add_task(function* disabled_urlbarSuggestions() {
   Services.prefs.setBoolPref(SUGGEST_PREF, false);
+  Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
   yield check_autocomplete({
     search: "hello",
     matches: [],
+  });
+  yield cleanUpSuggestions();
+});
+
+add_task(function* disabled_allSuggestions() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, true);
+  Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, false);
+  yield check_autocomplete({
+    search: "hello",
+    matches: [],
+  });
+  yield cleanUpSuggestions();
+});
+
+add_task(function* disabled_privateWindow() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, true);
+  Services.prefs.setBoolPref(SUGGEST_ENABLED_PREF, true);
+  yield check_autocomplete({
+    search: "hello",
+    matches: [],
+    searchParam: "private-window",
   });
   yield cleanUpSuggestions();
 });
@@ -280,6 +302,209 @@ add_task(function* restrictToken() {
         style: ["action", "searchengine"],
         icon: "",
       }
+    ],
+  });
+
+  yield cleanUpSuggestions();
+});
+
+add_task(function* mixup_frecency() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, true);
+
+  // Add a visit and a bookmark.  Actually, make the bookmark visited too so
+  // that it's guaranteed, with its higher frecency, to appear above the search
+  // suggestions.
+  yield PlacesTestUtils.addVisits([
+    { uri: NetUtil.newURI("http://example.com/lo0"),
+      title: "low frecency 0" },
+    { uri: NetUtil.newURI("http://example.com/lo1"),
+      title: "low frecency 1" },
+    { uri: NetUtil.newURI("http://example.com/lo2"),
+      title: "low frecency 2" },
+    { uri: NetUtil.newURI("http://example.com/lo3"),
+      title: "low frecency 3" },
+    { uri: NetUtil.newURI("http://example.com/lo4"),
+      title: "low frecency 4" },
+  ]);
+
+  for (let i = 0; i < 4; i++) {
+    let href = `http://example.com/lo${i}`;
+    let frecency = frecencyForUrl(href);
+    Assert.ok(frecency < FRECENCY_DEFAULT,
+              `frecency for ${href}: ${frecency}, should be lower than ${FRECENCY_DEFAULT}`);
+  }
+
+  for (let i = 0; i < 5; i++) {
+    yield PlacesTestUtils.addVisits([
+      { uri: NetUtil.newURI("http://example.com/hi0"),
+        title: "high frecency 0",
+        transition: TRANSITION_TYPED },
+      { uri: NetUtil.newURI("http://example.com/hi1"),
+        title: "high frecency 1",
+        transition: TRANSITION_TYPED },
+      { uri: NetUtil.newURI("http://example.com/hi2"),
+        title: "high frecency 2",
+        transition: TRANSITION_TYPED },
+      { uri: NetUtil.newURI("http://example.com/hi3"),
+        title: "high frecency 3",
+        transition: TRANSITION_TYPED },
+    ]);
+  }
+
+  for (let i = 0; i < 4; i++) {
+    let href = `http://example.com/hi${i}`;
+    yield addBookmark({ uri: href, title: `high frecency ${i}` });
+    let frecency = frecencyForUrl(href);
+    Assert.ok(frecency > FRECENCY_DEFAULT,
+              `frecency for ${href}: ${frecency}, should be higher than ${FRECENCY_DEFAULT}`);
+  }
+
+  // Do an unrestricted search to make sure everything appears in it, including
+  // the visit and bookmark.
+  yield check_autocomplete({
+    checkSorting: true,
+    search: "frecency",
+    matches: [
+      { uri: NetUtil.newURI("http://example.com/hi3"),
+        title: "high frecency 3",
+        style: [ "bookmark" ] },
+      { uri: NetUtil.newURI("http://example.com/hi2"),
+        title: "high frecency 2",
+        style: [ "bookmark" ] },
+      { uri: NetUtil.newURI("http://example.com/hi1"),
+        title: "high frecency 1",
+        style: [ "bookmark" ] },
+      { uri: NetUtil.newURI("http://example.com/hi0"),
+        title: "high frecency 0",
+        style: [ "bookmark" ] },
+      { uri: NetUtil.newURI("http://example.com/lo4"),
+        title: "low frecency 4" },
+      { uri: NetUtil.newURI("http://example.com/lo3"),
+        title: "low frecency 3" },
+      {
+        uri: makeActionURI(("searchengine"), {
+          engineName: ENGINE_NAME,
+          input: "frecency foo",
+          searchQuery: "frecency",
+          searchSuggestion: "frecency foo",
+        }),
+        title: ENGINE_NAME,
+        style: ["action", "searchengine"],
+        icon: "",
+      },
+      {
+        uri: makeActionURI(("searchengine"), {
+          engineName: ENGINE_NAME,
+          input: "frecency bar",
+          searchQuery: "frecency",
+          searchSuggestion: "frecency bar",
+        }),
+        title: ENGINE_NAME,
+        style: ["action", "searchengine"],
+        icon: "",
+      },
+      { uri: NetUtil.newURI("http://example.com/lo2"),
+        title: "low frecency 2" },
+      { uri: NetUtil.newURI("http://example.com/lo1"),
+        title: "low frecency 1" },
+      { uri: NetUtil.newURI("http://example.com/lo0"),
+        title: "low frecency 0" },
+    ],
+  });
+
+  yield cleanUpSuggestions();
+});
+
+add_task(function* prohibit_suggestions() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, true);
+
+  yield check_autocomplete({
+    search: "localhost",
+    matches: [
+      {
+        uri: makeActionURI(("searchengine"), {
+          engineName: ENGINE_NAME,
+          input: "localhost foo",
+          searchQuery: "localhost",
+          searchSuggestion: "localhost foo",
+        }),
+        title: ENGINE_NAME,
+        style: ["action", "searchengine"],
+        icon: "",
+      },
+      {
+        uri: makeActionURI(("searchengine"), {
+          engineName: ENGINE_NAME,
+          input: "localhost bar",
+          searchQuery: "localhost",
+          searchSuggestion: "localhost bar",
+        }),
+        title: ENGINE_NAME,
+        style: ["action", "searchengine"],
+        icon: "",
+      },
+    ],
+  });
+  Services.prefs.setBoolPref("browser.fixup.domainwhitelist.localhost", true);
+  do_register_cleanup(() => {
+    Services.prefs.clearUserPref("browser.fixup.domainwhitelist.localhost");
+  });
+  yield check_autocomplete({
+    search: "localhost",
+    matches: [],
+  });
+
+  yield check_autocomplete({
+    search: "1.2.3.4",
+    matches: [],
+  });
+  yield check_autocomplete({
+    search: "[2001::1]:30",
+    matches: [],
+  });
+  yield check_autocomplete({
+    search: "user:pass@test",
+    matches: [],
+  });
+  yield check_autocomplete({
+    search: "test/test",
+    matches: [],
+  });
+  yield check_autocomplete({
+    search: "data:text/plain,Content",
+    matches: [],
+  });
+
+  yield check_autocomplete({
+    search: "a",
+    matches: [],
+  });
+
+  yield cleanUpSuggestions();
+});
+
+add_task(function* avoid_url_suggestions() {
+  Services.prefs.setBoolPref(SUGGEST_PREF, true);
+
+  setSuggestionsFn(searchStr => {
+    let suffixes = [".com", "/test", ":1]", "@test", ". com"];
+    return suffixes.map(s => searchStr + s);
+  });
+
+  yield check_autocomplete({
+    search: "test",
+    matches: [
+      {
+        uri: makeActionURI(("searchengine"), {
+          engineName: ENGINE_NAME,
+          input: "test. com",
+          searchQuery: "test",
+          searchSuggestion: "test. com",
+        }),
+        title: ENGINE_NAME,
+        style: ["action", "searchengine"],
+        icon: "",
+      },
     ],
   });
 

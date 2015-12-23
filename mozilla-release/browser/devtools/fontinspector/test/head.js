@@ -4,52 +4,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const Cu = Components.utils;
-const Ci = Components.interfaces;
-const Cc = Components.classes;
-
-const { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
-
-let {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
-let TargetFactory = devtools.TargetFactory;
+// shared-head.js handles imports, constants, and utility functions
+Services.scriptloader.loadSubScript("chrome://mochitests/content/browser/browser/devtools/framework/test/shared-head.js", this);
 
 const BASE_URI = "http://mochi.test:8888/browser/browser/devtools/fontinspector/test/"
-
-// All test are asynchronous
-waitForExplicitFinish();
-
-gDevTools.testing = true;
-SimpleTest.registerCleanupFunction(() => {
-  gDevTools.testing = false;
-});
-
-registerCleanupFunction(function*() {
-  let target = TargetFactory.forTab(gBrowser.selectedTab);
-  yield gDevTools.closeToolbox(target);
-
-  while (gBrowser.tabs.length > 1) {
-    gBrowser.removeCurrentTab();
-  }
-});
-
-/**
- * Add a new test tab in the browser and load the given url.
- * @param {String} url The url to be loaded in the new tab
- * @return a promise that resolves to the tab object when the url is loaded
- */
-function loadTab(url) {
-  let deferred = promise.defer();
-
-  let tab = gBrowser.selectedTab = gBrowser.addTab(url);
-  let browser = gBrowser.getBrowserForTab(tab);
-
-  browser.addEventListener("load", function onLoad() {
-    browser.removeEventListener("load", onLoad, true);
-    deferred.resolve({tab: tab, browser: browser});
-  }, true);
-
-  return deferred.promise;
-}
 
 /**
  * Open the toolbox, with the inspector tool visible.
@@ -57,7 +15,7 @@ function loadTab(url) {
  * promise
  * @return a promise that resolves when the inspector is ready
  */
-let openInspector = Task.async(function*(cb) {
+var openInspector = Task.async(function*(cb) {
   info("Opening the inspector");
   let target = TargetFactory.forTab(gBrowser.selectedTab);
 
@@ -111,9 +69,9 @@ let openInspector = Task.async(function*(cb) {
  *    fontInspector
  *  }
  */
-let openFontInspectorForURL = Task.async(function* (url) {
+var openFontInspectorForURL = Task.async(function* (url) {
   info("Opening tab " + url);
-  yield loadTab(url);
+  yield addTab(url);
 
   let { toolbox, inspector } = yield openInspector();
 
@@ -149,7 +107,7 @@ let openFontInspectorForURL = Task.async(function* (url) {
 /**
  * Select a node in the inspector given its selector.
  */
-let selectNode = Task.async(function*(selector, inspector, reason="test") {
+var selectNode = Task.async(function*(selector, inspector, reason="test") {
   info("Selecting the node for '" + selector + "'");
   let nodeFront = yield getNodeFront(selector, inspector);
   let updated = inspector.once("inspector-updated");

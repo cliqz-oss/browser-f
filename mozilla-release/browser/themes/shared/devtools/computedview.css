@@ -61,7 +61,7 @@ body {
   background-size: 5px 8px;
 }
 
-@media (min-resolution: 1.25dppx) {
+@media (min-resolution: 1.1dppx) {
   .property-value, .other-property-value {
     background-image: url(arrow-e@2x.png);
   }
@@ -122,11 +122,6 @@ body {
 
 .matchedselectors > p:last-of-type {
   border-bottom-width: 1px;
-}
-
-/* This rule is necessary because Templater.jsm breaks LTR TDs in RTL docs */
-.rule-text {
-  direction: ltr;
 }
 
 .matched {

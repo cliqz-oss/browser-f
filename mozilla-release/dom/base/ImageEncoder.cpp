@@ -10,7 +10,9 @@
 #include "mozilla/gfx/DataSurfaceHelpers.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SyncRunnable.h"
+#include "mozilla/unused.h"
 #include "gfxUtils.h"
+#include "nsNetUtil.h"
 
 using namespace mozilla::gfx;
 
@@ -22,7 +24,7 @@ namespace dom {
 // template parameter, we need to move this class outside.
 class SurfaceHelper : public nsRunnable {
 public:
-  explicit SurfaceHelper(TemporaryRef<layers::Image> aImage) : mImage(aImage) {}
+  explicit SurfaceHelper(already_AddRefed<layers::Image> aImage) : mImage(aImage) {}
 
   // It retrieves a SourceSurface reference and convert color format on main
   // thread and passes DataSourceSurface to caller thread.
@@ -41,7 +43,7 @@ public:
     return NS_OK;
   }
 
-  TemporaryRef<gfx::DataSourceSurface> GetDataSurfaceSafe() {
+  already_AddRefed<gfx::DataSourceSurface> GetDataSurfaceSafe() {
     nsCOMPtr<nsIThread> mainThread = do_GetMainThread();
     MOZ_ASSERT(mainThread);
     SyncRunnable::DispatchToThread(mainThread, this, false);
@@ -59,10 +61,10 @@ private:
 // image formats should be referenced or dereferenced on main thread, it uses a
 // sync class SurfaceHelper to retrieve SourceSurface and convert to B8G8R8A8 on
 // main thread.
-TemporaryRef<DataSourceSurface>
-GetBRGADataSourceSurfaceSync(TemporaryRef<layers::Image> aImage)
+already_AddRefed<DataSourceSurface>
+GetBRGADataSourceSurfaceSync(already_AddRefed<layers::Image> aImage)
 {
-  nsRefPtr<SurfaceHelper> helper = new SurfaceHelper(aImage);
+  nsRefPtr<SurfaceHelper> helper = new SurfaceHelper(Move(aImage));
   return helper->GetDataSurfaceSafe();
 }
 
@@ -205,7 +207,7 @@ public:
     rv = NS_DispatchToMainThread(mEncodingCompleteEvent);
     if (NS_FAILED(rv)) {
       // Better to leak than to crash.
-      mEncodingCompleteEvent.forget();
+      unused << mEncodingCompleteEvent.forget();
       return rv;
     }
 

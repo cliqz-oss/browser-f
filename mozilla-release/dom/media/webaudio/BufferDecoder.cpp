@@ -33,7 +33,7 @@ BufferDecoder::~BufferDecoder()
 }
 
 void
-BufferDecoder::BeginDecoding(MediaTaskQueue* aTaskQueueIdentity)
+BufferDecoder::BeginDecoding(TaskQueue* aTaskQueueIdentity)
 {
   MOZ_ASSERT(!mTaskQueueIdentity && aTaskQueueIdentity);
   mTaskQueueIdentity = aTaskQueueIdentity;
@@ -125,18 +125,6 @@ BufferDecoder::MetadataLoaded(nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags
 
 void
 BufferDecoder::FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo, MediaDecoderEventVisibility aEventVisibility)
-{
-  // ignore
-}
-
-void
-BufferDecoder::QueueMetadata(int64_t aTime, nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags)
-{
-  // ignore
-}
-
-void
-BufferDecoder::RemoveMediaTracks()
 {
   // ignore
 }

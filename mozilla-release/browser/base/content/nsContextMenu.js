@@ -5,6 +5,7 @@
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Components.utils.import("resource://gre/modules/InlineSpellChecker.jsm");
+Components.utils.import("resource://gre/modules/LoginManagerContextMenu.jsm");
 Components.utils.import("resource://gre/modules/BrowserUtils.jsm");
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 
@@ -12,6 +13,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
   "resource:///modules/CustomizableUI.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Pocket",
   "resource:///modules/Pocket.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
+  "resource://gre/modules/LoginHelper.jsm");
 
 var gContextMenuContentData = null;
 
@@ -67,6 +70,7 @@ nsContextMenu.prototype = {
     InlineSpellCheckerUI.clearSuggestionsFromMenu();
     InlineSpellCheckerUI.clearDictionaryListFromMenu();
     InlineSpellCheckerUI.uninit();
+    LoginManagerContextMenu.clearLoginsFromMenu(document);
 
     // This handler self-deletes, only run it if it is still there:
     if (this._onPopupHiding) {
@@ -86,6 +90,7 @@ nsContextMenu.prototype = {
     this.initMediaPlayerItems();
     this.initLeaveDOMFullScreenItems();
     this.initClickToPlayItems();
+    this.initPasswordManagerItems();
   },
 
   initPageMenuSeparator: function CM_initPageMenuSeparator() {
@@ -500,6 +505,55 @@ nsContextMenu.prototype = {
     this.showItem("context-sep-ctp", this.onCTPPlugin);
   },
 
+  initPasswordManagerItems: function() {
+    let loginFillInfo = gContextMenuContentData && gContextMenuContentData.loginFillInfo;
+
+    // If we could not find a password field we
+    // don't want to show the form fill option.
+    let showFill = loginFillInfo && loginFillInfo.passwordField.found;
+
+    // Disable the fill option if the user has set a master password
+    // or if the password field or target field are disabled.
+    let disableFill = !loginFillInfo ||
+                      !Services.logins ||
+                      !Services.logins.isLoggedIn ||
+                      loginFillInfo.passwordField.disabled ||
+                      (!this.onPassword && loginFillInfo.usernameField.disabled);
+
+    this.showItem("fill-login-separator", showFill);
+    this.showItem("fill-login", showFill);
+    this.setItemAttr("fill-login", "disabled", disableFill);
+
+    // Set the correct label for the fill menu
+    let fillMenu = document.getElementById("fill-login");
+    if (this.onPassword) {
+      fillMenu.setAttribute("label", fillMenu.getAttribute("label-password"));
+      fillMenu.setAttribute("accesskey", fillMenu.getAttribute("accesskey-password"));
+    } else {
+      fillMenu.setAttribute("label", fillMenu.getAttribute("label-login"));
+      fillMenu.setAttribute("accesskey", fillMenu.getAttribute("accesskey-login"));
+    }
+
+    if (!showFill || disableFill) {
+      return;
+    }
+    let documentURI = gContextMenuContentData.documentURIObject;
+    let fragment = LoginManagerContextMenu.addLoginsToMenu(this.target, this.browser, documentURI);
+
+    this.showItem("fill-login-no-logins", !fragment);
+
+    if (!fragment) {
+      return;
+    }
+    let popup = document.getElementById("fill-login-popup");
+    let insertBeforeElement = document.getElementById("fill-login-no-logins");
+    popup.insertBefore(fragment, insertBeforeElement);
+  },
+
+  openPasswordManager: function() {
+    LoginHelper.openPasswordManager(window, gContextMenuContentData.documentURIObject.host);
+  },
+
   inspectNode: function CM_inspectNode() {
     let {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
     let gBrowser = this.browser.ownerDocument.defaultView.gBrowser;
@@ -571,6 +625,7 @@ nsContextMenu.prototype = {
     this.isDesignMode      = false;
     this.onCTPPlugin       = false;
     this.canSpellCheck     = false;
+    this.onPassword        = false;
 
     if (this.isRemote) {
       this.selectionInfo = gContextMenuContentData.selectionInfo;
@@ -668,6 +723,7 @@ nsContextMenu.prototype = {
         this.onTextInput = (editFlags & SpellCheckHelper.TEXTINPUT) !== 0;
         this.onNumeric = (editFlags & SpellCheckHelper.NUMERIC) !== 0;
         this.onEditableArea = (editFlags & SpellCheckHelper.EDITABLE) !== 0;
+        this.onPassword = (editFlags & SpellCheckHelper.PASSWORD) !== 0;
         if (this.onEditableArea) {
           if (this.isRemote) {
             InlineSpellCheckerUI.initFromRemote(gContextMenuContentData.spellInfo);
@@ -971,27 +1027,8 @@ nsContextMenu.prototype = {
 
   // View Partial Source
   viewPartialSource: function(aContext) {
-    var focusedWindow = document.commandDispatcher.focusedWindow;
-    if (focusedWindow == window)
-      focusedWindow = gBrowser.selectedBrowser.contentWindowAsCPOW;
-
-    var docCharset = null;
-    if (focusedWindow)
-      docCharset = "charset=" + focusedWindow.document.characterSet;
-
-    // "View Selection Source" and others such as "View MathML Source"
-    // are mutually exclusive, with the precedence given to the selection
-    // when there is one
-    var reference = null;
-    if (aContext == "selection")
-      reference = focusedWindow.getSelection();
-    else if (aContext == "mathml")
-      reference = this.target;
-    else
-      throw "not reached";
-
-    let inTab = Services.prefs.getBoolPref("view_source.tab");
-    if (inTab) {
+    let inWindow = !Services.prefs.getBoolPref("view_source.tab");
+    let openSelectionFn = inWindow ? null : function() {
       let tabBrowser = gBrowser;
       // In the case of sidebars and chat windows, gBrowser is defined but null,
       // because no #content element exists.  For these cases, we need to find
@@ -1006,22 +1043,11 @@ nsContextMenu.prototype = {
         relatedToCurrent: true,
         inBackground: false
       });
-      let viewSourceBrowser = tabBrowser.getBrowserForTab(tab);
-      if (aContext == "selection") {
-        top.gViewSourceUtils
-           .viewSourceFromSelectionInBrowser(reference, viewSourceBrowser);
-      } else {
-        top.gViewSourceUtils
-           .viewSourceFromFragmentInBrowser(reference, aContext,
-                                            viewSourceBrowser);
-      }
-    } else {
-      // unused (and play nice for fragments generated via XSLT too)
-      var docUrl = null;
-      window.openDialog("chrome://global/content/viewPartialSource.xul",
-                        "_blank", "scrollbars,resizable,chrome,dialog=no",
-                        docUrl, docCharset, reference, aContext);
+      return tabBrowser.getBrowserForTab(tab);
     }
+
+    let target = aContext == "mathml" ? this.target : null;
+    top.gViewSourceUtils.viewPartialSourceInBrowser(gBrowser.selectedBrowser, target, openSelectionFn);
   },
 
   // Open new "view source" window with the frame's URL.
@@ -1051,7 +1077,8 @@ nsContextMenu.prototype = {
   },
 
   viewFrameInfo: function() {
-    BrowserPageInfo(this.target.ownerDocument);
+    BrowserPageInfo(this.target.ownerDocument, null, null,
+                    this.frameOuterWindowID);
   },
 
   reloadImage: function() {
@@ -1181,7 +1208,7 @@ nsContextMenu.prototype = {
 
   // Save URL of clicked-on frame.
   saveFrame: function () {
-    saveDocument(this.target.ownerDocument);
+    saveBrowser(this.browser, false, this.frameOuterWindowID);
   },
 
   // Helper function to wait for appropriate MIME-type headers and
@@ -1444,9 +1471,11 @@ nsContextMenu.prototype = {
   },
 
   copyLink: function() {
+    // If we're in a view source tab, remove the view-source: prefix
+    let linkURL = this.linkURL.replace(/^view-source:/, "");
     var clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].
                     getService(Ci.nsIClipboardHelper);
-    clipboard.copyString(this.linkURL);
+    clipboard.copyString(linkURL);
   },
 
   ///////////////
@@ -1669,7 +1698,7 @@ nsContextMenu.prototype = {
   },
 
   savePageAs: function CM_savePageAs() {
-    saveDocument(this.browser.contentDocumentAsCPOW);
+    saveBrowser(this.browser);
   },
 
   saveLinkToPocket: function CM_saveLinkToPocket() {
@@ -1681,7 +1710,7 @@ nsContextMenu.prototype = {
   },
 
   printFrame: function CM_printFrame() {
-    PrintUtils.print(this.target.ownerDocument.defaultView, this.browser);
+    PrintUtils.printWindow(this.frameOuterWindowID, this.browser);
   },
 
   switchPageDirection: function CM_switchPageDirection() {

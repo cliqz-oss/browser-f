@@ -13,6 +13,7 @@
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/BlobSet.h"
 #include "mozilla/dom/File.h"
+#include "mozilla/dom/FetchUtil.h"
 #include "mozilla/dom/XMLHttpRequestUploadBinding.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
@@ -28,6 +29,12 @@
 #include "nsIURI.h"
 #include "nsILoadGroup.h"
 #include "nsNetUtil.h"
+#include "nsStringStream.h"
+#include "nsIAuthPrompt.h"
+#include "nsIAuthPrompt2.h"
+#include "nsIOutputStream.h"
+#include "nsISupportsPrimitives.h"
+#include "nsIInterfaceRequestorUtils.h"
 #include "nsStreamUtils.h"
 #include "nsThreadUtils.h"
 #include "nsIUploadChannel.h"
@@ -479,7 +486,6 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(nsXMLHttpRequest,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mContext)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mChannel)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mResponseXML)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCORSPreflightChannel)
 
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mXMLParserStreamListener)
 
@@ -501,7 +507,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(nsXMLHttpRequest,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mContext)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mChannel)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mResponseXML)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mCORSPreflightChannel)
 
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mXMLParserStreamListener)
 
@@ -574,7 +579,6 @@ nsXMLHttpRequest::SizeOfEventTargetIncludingThis(
   // - lots
 }
 
-/* readonly attribute nsIChannel channel; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetChannel(nsIChannel **aChannel)
 {
@@ -596,7 +600,6 @@ static void LogMessage(const char* aWarning, nsPIDOMWindow* aWindow)
                                   aWarning);
 }
 
-/* readonly attribute nsIDOMDocument responseXML; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetResponseXML(nsIDOMDocument **aResponseXML)
 {
@@ -710,7 +713,6 @@ nsXMLHttpRequest::AppendToResponseText(const char * aSrcBuffer,
   return NS_OK;
 }
 
-/* readonly attribute AString responseText; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetResponseText(nsAString& aResponseText)
 {
@@ -828,7 +830,6 @@ nsXMLHttpRequest::CreatePartialBlob()
   mResponseBlob = mBlobSet->GetBlobInternal(GetOwner(), contentType);
 }
 
-/* attribute AString responseType; */
 NS_IMETHODIMP nsXMLHttpRequest::GetResponseType(nsAString& aResponseType)
 {
   switch (mResponseType) {
@@ -889,7 +890,6 @@ nsXMLHttpRequest::StaticAssertions()
 }
 #endif
 
-/* attribute AString responseType; */
 NS_IMETHODIMP nsXMLHttpRequest::SetResponseType(const nsAString& aResponseType)
 {
   nsXMLHttpRequest::ResponseTypeEnum responseType;
@@ -958,7 +958,6 @@ nsXMLHttpRequest::SetResponseType(nsXMLHttpRequest::ResponseTypeEnum aResponseTy
 
 }
 
-/* readonly attribute jsval response; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetResponse(JSContext *aCx, JS::MutableHandle<JS::Value> aResult)
 {
@@ -1087,7 +1086,6 @@ nsXMLHttpRequest::IsDeniedCrossSiteRequest()
   return false;
 }
 
-/* readonly attribute AString responseURL; */
 void
 nsXMLHttpRequest::GetResponseURL(nsAString& aUrl)
 {
@@ -1116,7 +1114,6 @@ nsXMLHttpRequest::GetResponseURL(nsAString& aUrl)
   CopyUTF8toUTF16(temp, aUrl);
 }
 
-/* readonly attribute unsigned long status; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetStatus(uint32_t *aStatus)
 {
@@ -1211,9 +1208,6 @@ nsXMLHttpRequest::CloseRequestWithError(const nsAString& aType,
   if (mChannel) {
     mChannel->Cancel(NS_BINDING_ABORTED);
   }
-  if (mCORSPreflightChannel) {
-    mCORSPreflightChannel->Cancel(NS_BINDING_ABORTED);
-  }
   if (mTimeoutTimer) {
     mTimeoutTimer->Cancel();
   }
@@ -1253,7 +1247,6 @@ nsXMLHttpRequest::CloseRequestWithError(const nsAString& aType,
   mState &= ~XML_HTTP_REQUEST_SYNCLOOPING;
 }
 
-/* void abort (); */
 void
 nsXMLHttpRequest::Abort()
 {
@@ -1323,7 +1316,6 @@ nsXMLHttpRequest::IsSafeHeader(const nsACString& header, nsIHttpChannel* httpCha
   return isSafe;
 }
 
-/* ByteString getAllResponseHeaders(); */
 IMPL_CSTRING_GETTER(GetAllResponseHeaders)
 void
 nsXMLHttpRequest::GetAllResponseHeaders(nsCString& aResponseHeaders)
@@ -1471,12 +1463,8 @@ nsXMLHttpRequest::GetLoadGroup() const
 nsresult
 nsXMLHttpRequest::CreateReadystatechangeEvent(nsIDOMEvent** aDOMEvent)
 {
-  nsresult rv = EventDispatcher::CreateEvent(this, nullptr, nullptr,
-                                             NS_LITERAL_STRING("Events"),
-                                             aDOMEvent);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
+  nsRefPtr<Event> event = NS_NewDOMEvent(this, nullptr, nullptr);
+  event.forget(aDOMEvent);
 
   (*aDOMEvent)->InitEvent(NS_LITERAL_STRING(READYSTATE_STR),
                           false, false);
@@ -1625,31 +1613,10 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
 
   NS_ENSURE_TRUE(mPrincipal, NS_ERROR_NOT_INITIALIZED);
 
-  // Disallow HTTP/1.1 TRACE method (see bug 302489)
-  // and MS IIS equivalent TRACK (see bug 381264)
-  // and CONNECT
-  if (inMethod.LowerCaseEqualsLiteral("trace") ||
-      inMethod.LowerCaseEqualsLiteral("connect") ||
-      inMethod.LowerCaseEqualsLiteral("track")) {
-    return NS_ERROR_DOM_SECURITY_ERR;
-  }
-
   nsAutoCString method;
-  // GET, POST, DELETE, HEAD, OPTIONS, PUT methods normalized to upper case
-  if (inMethod.LowerCaseEqualsLiteral("get")) {
-    method.AssignLiteral("GET");
-  } else if (inMethod.LowerCaseEqualsLiteral("post")) {
-    method.AssignLiteral("POST");
-  } else if (inMethod.LowerCaseEqualsLiteral("delete")) {
-    method.AssignLiteral("DELETE");
-  } else if (inMethod.LowerCaseEqualsLiteral("head")) {
-    method.AssignLiteral("HEAD");
-  } else if (inMethod.LowerCaseEqualsLiteral("options")) {
-    method.AssignLiteral("OPTIONS");
-  } else if (inMethod.LowerCaseEqualsLiteral("put")) {
-    method.AssignLiteral("PUT");
-  } else {
-    method = inMethod; // other methods are not normalized
+  nsresult rv = FetchUtil::GetValidRequestMethod(inMethod, method);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
   }
 
   // sync request is not allowed using withCredential or responseType
@@ -1670,7 +1637,6 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
     return NS_ERROR_DOM_INVALID_ACCESS_ERR;
   }
 
-  nsresult rv;
   nsCOMPtr<nsIURI> uri;
 
   if (mState & (XML_HTTP_REQUEST_OPENED |
@@ -1715,7 +1681,7 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
   rv = CheckInnerWindowCorrectness();
   NS_ENSURE_SUCCESS(rv, rv);
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  rv = NS_CheckContentLoadPolicy(nsIContentPolicy::TYPE_XMLHTTPREQUEST,
+  rv = NS_CheckContentLoadPolicy(nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST,
                                  uri,
                                  mPrincipal,
                                  doc,
@@ -1769,7 +1735,7 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
                        uri,
                        doc,
                        secFlags,
-                       nsIContentPolicy::TYPE_XMLHTTPREQUEST,
+                       nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST,
                        loadGroup,
                        nullptr,   // aCallbacks
                        nsIRequest::LOAD_BACKGROUND);
@@ -1779,7 +1745,7 @@ nsXMLHttpRequest::Open(const nsACString& inMethod, const nsACString& url,
                        uri,
                        mPrincipal,
                        secFlags,
-                       nsIContentPolicy::TYPE_XMLHTTPREQUEST,
+                       nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST,
                        loadGroup,
                        nullptr,   // aCallbacks
                        nsIRequest::LOAD_BACKGROUND);
@@ -1978,7 +1944,6 @@ nsXMLHttpRequest::OnDataAvailable(nsIRequest *request,
   return NS_OK;
 }
 
-/* void onStartRequest (in nsIRequest request, in nsISupports ctxt); */
 NS_IMETHODIMP
 nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
 {
@@ -2213,7 +2178,6 @@ nsXMLHttpRequest::OnStartRequest(nsIRequest *request, nsISupports *ctxt)
   return NS_OK;
 }
 
-/* void onStopRequest (in nsIRequest request, in nsISupports ctxt, in nsresult status, in wstring statusArg); */
 NS_IMETHODIMP
 nsXMLHttpRequest::OnStopRequest(nsIRequest *request, nsISupports *ctxt, nsresult status)
 {
@@ -2378,7 +2342,6 @@ nsXMLHttpRequest::ChangeStateToDone()
     // methods/members will not throw.
     // This matches what IE does.
     mChannel = nullptr;
-    mCORSPreflightChannel = nullptr;
   }
 }
 
@@ -2628,7 +2591,6 @@ nsXMLHttpRequest::GetRequestBody(nsIVariant* aVariant,
   return NS_OK;
 }
 
-/* void send (in nsIVariant aBody); */
 NS_IMETHODIMP
 nsXMLHttpRequest::Send(nsIVariant *aBody)
 {
@@ -2886,26 +2848,22 @@ nsXMLHttpRequest::Send(nsIVariant* aVariant, const Nullable<RequestBody>& aBody)
   NS_ASSERTION(listener != this,
                "Using an object as a listener that can't be exposed to JS");
 
-  // Bypass the network cache in cases where it makes no sense:
-  // POST responses are always unique, and we provide no API that would
-  // allow our consumers to specify a "cache key" to access old POST
-  // responses, so they are not worth caching.
-  if (method.EqualsLiteral("POST")) {
-    AddLoadFlags(mChannel,
-        nsIRequest::LOAD_BYPASS_CACHE | nsIRequest::INHIBIT_CACHING);
-  } else {
-    // When we are sync loading, we need to bypass the local cache when it would
-    // otherwise block us waiting for exclusive access to the cache.  If we don't
-    // do this, then we could dead lock in some cases (see bug 309424).
-    //
-    // Also don't block on the cache entry on async if it is busy - favoring parallelism
-    // over cache hit rate for xhr. This does not disable the cache everywhere -
-    // only in cases where more than one channel for the same URI is accessed
-    // simultanously.
+  // When we are sync loading, we need to bypass the local cache when it would
+  // otherwise block us waiting for exclusive access to the cache.  If we don't
+  // do this, then we could dead lock in some cases (see bug 309424).
+  //
+  // Also don't block on the cache entry on async if it is busy - favoring parallelism
+  // over cache hit rate for xhr. This does not disable the cache everywhere -
+  // only in cases where more than one channel for the same URI is accessed
+  // simultanously.
 
-    AddLoadFlags(mChannel,
-                 nsICachingChannel::LOAD_BYPASS_LOCAL_CACHE_IF_BUSY);
-  }
+  AddLoadFlags(mChannel,
+               nsICachingChannel::LOAD_BYPASS_LOCAL_CACHE_IF_BUSY);
+
+  // While it would be optimal to bypass the cache in case of POST requests
+  // since they are never cached, our ServiceWorker interception implementation
+  // on single-process systems is implemented via the HTTP cache, so DO NOT
+  // bypass the cache based on method!
 
   // Since we expect XML data, set the type hint accordingly
   // if the channel doesn't know any content type.
@@ -2927,44 +2885,33 @@ nsXMLHttpRequest::Send(nsIVariant* aVariant, const Nullable<RequestBody>& aBody)
     // Check to see if this initial OPTIONS request has already been cached
     // in our special Access Control Cache.
 
-    rv = NS_StartCORSPreflight(mChannel, listener,
-                               mPrincipal, withCredentials,
-                               mCORSUnsafeHeaders,
-                               getter_AddRefs(mCORSPreflightChannel));
+    rv = internalHttpChannel->SetCorsPreflightParameters(mCORSUnsafeHeaders,
+                                                         withCredentials, mPrincipal);
     NS_ENSURE_SUCCESS(rv, rv);
   }
-  else {
-    mIsMappedArrayBuffer = false;
-    if (mResponseType == XML_HTTP_RESPONSE_TYPE_ARRAYBUFFER &&
-        Preferences::GetBool("dom.mapped_arraybuffer.enabled", false)) {
-      nsCOMPtr<nsIURI> uri;
-      nsAutoCString scheme;
 
-      rv = mChannel->GetURI(getter_AddRefs(uri));
-      if (NS_SUCCEEDED(rv)) {
-        uri->GetScheme(scheme);
-        if (scheme.LowerCaseEqualsLiteral("app") ||
-            scheme.LowerCaseEqualsLiteral("jar")) {
-          mIsMappedArrayBuffer = true;
-          if (XRE_GetProcessType() != GeckoProcessType_Default) {
-            nsCOMPtr<nsIJARChannel> jarChannel = do_QueryInterface(mChannel);
-            // For memory mapping from child process, we need to get file
-            // descriptor of the JAR file opened remotely on the parent proess.
-            // Set this to make sure that file descriptor can be obtained by
-            // child process.
-            jarChannel->EnsureChildFd();
-          }
-        }
+  mIsMappedArrayBuffer = false;
+  if (mResponseType == XML_HTTP_RESPONSE_TYPE_ARRAYBUFFER &&
+      Preferences::GetBool("dom.mapped_arraybuffer.enabled", false)) {
+    nsCOMPtr<nsIURI> uri;
+    nsAutoCString scheme;
+
+    rv = mChannel->GetURI(getter_AddRefs(uri));
+    if (NS_SUCCEEDED(rv)) {
+      uri->GetScheme(scheme);
+      if (scheme.LowerCaseEqualsLiteral("app") ||
+          scheme.LowerCaseEqualsLiteral("jar")) {
+        mIsMappedArrayBuffer = true;
       }
     }
-    // Start reading from the channel
-    rv = mChannel->AsyncOpen(listener, nullptr);
   }
 
-  if (NS_FAILED(rv)) {
+  // Start reading from the channel
+  rv = mChannel->AsyncOpen(listener, nullptr);
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     // Drop our ref to the channel to avoid cycles
     mChannel = nullptr;
-    mCORSPreflightChannel = nullptr;
     return rv;
   }
 
@@ -3040,7 +2987,6 @@ nsXMLHttpRequest::Send(nsIVariant* aVariant, const Nullable<RequestBody>& aBody)
   return rv;
 }
 
-/* void setRequestHeader (in ByteString header, in ByteString value); */
 // http://dvcs.w3.org/hg/xhr/raw-file/tip/Overview.html#dom-xmlhttprequest-setrequestheader
 NS_IMETHODIMP
 nsXMLHttpRequest::SetRequestHeader(const nsACString& header,
@@ -3056,19 +3002,6 @@ nsXMLHttpRequest::SetRequestHeader(const nsACString& header,
   // Make sure we don't store an invalid header name in mCORSUnsafeHeaders
   if (!NS_IsValidHTTPToken(header)) {
     return NS_ERROR_DOM_SYNTAX_ERR;
-  }
-
-  // Check that we haven't already opened the channel. We can't rely on
-  // the channel throwing from mChannel->SetRequestHeader since we might
-  // still be waiting for mCORSPreflightChannel to actually open mChannel
-  if (mCORSPreflightChannel) {
-    bool pending;
-    nsresult rv = mCORSPreflightChannel->IsPending(&pending);
-    NS_ENSURE_SUCCESS(rv, rv);
-    
-    if (pending) {
-      return NS_ERROR_IN_PROGRESS;
-    }
   }
 
   if (!mChannel)             // open() initializes mChannel, and open()
@@ -3128,8 +3061,13 @@ nsXMLHttpRequest::SetRequestHeader(const nsACString& header,
     mergeHeaders = false;
   }
 
-  // Merge headers depending on what we decided above.
-  nsresult rv = httpChannel->SetRequestHeader(header, value, mergeHeaders);
+  nsresult rv;
+  if (value.IsEmpty()) {
+    rv = httpChannel->SetEmptyRequestHeader(header);
+  } else {
+    // Merge headers depending on what we decided above.
+    rv = httpChannel->SetRequestHeader(header, value, mergeHeaders);
+  }
   if (rv == NS_ERROR_INVALID_ARG) {
     return NS_ERROR_DOM_SYNTAX_ERR;
   }
@@ -3146,7 +3084,6 @@ nsXMLHttpRequest::SetRequestHeader(const nsACString& header,
   return rv;
 }
 
-/* attribute unsigned long timeout; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetTimeout(uint32_t *aTimeout)
 {
@@ -3210,7 +3147,6 @@ nsXMLHttpRequest::StartTimeoutTimer()
   );
 }
 
-/* readonly attribute unsigned short readyState; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetReadyState(uint16_t *aState)
 {
@@ -3238,7 +3174,6 @@ nsXMLHttpRequest::ReadyState()
   return DONE;
 }
 
-/* void overrideMimeType(in DOMString mimetype); */
 NS_IMETHODIMP
 nsXMLHttpRequest::SlowOverrideMimeType(const nsAString& aMimeType)
 {
@@ -3246,7 +3181,6 @@ nsXMLHttpRequest::SlowOverrideMimeType(const nsAString& aMimeType)
   return NS_OK;
 }
 
-/* attribute boolean mozBackgroundRequest; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetMozBackgroundRequest(bool *_retval)
 {
@@ -3289,7 +3223,6 @@ nsXMLHttpRequest::SetMozBackgroundRequest(bool aMozBackgroundRequest, nsresult& 
   }
 }
 
-/* attribute boolean withCredentials; */
 NS_IMETHODIMP
 nsXMLHttpRequest::GetWithCredentials(bool *_retval)
 {
@@ -3475,9 +3408,13 @@ nsXMLHttpRequest::OnRedirectVerifyCallback(nsresult result)
       // Ensure all original headers are duplicated for the new channel (bug #553888)
       for (uint32_t i = mModifiedRequestHeaders.Length(); i > 0; ) {
         --i;
-        httpChannel->SetRequestHeader(mModifiedRequestHeaders[i].header,
-                                      mModifiedRequestHeaders[i].value,
-                                      false);
+        if (mModifiedRequestHeaders[i].value.IsEmpty()) {
+          httpChannel->SetEmptyRequestHeader(mModifiedRequestHeaders[i].header);
+        } else {
+          httpChannel->SetRequestHeader(mModifiedRequestHeaders[i].header,
+                                        mModifiedRequestHeaders[i].value,
+                                        false);
+        }
       }
     }
   } else {
@@ -3561,7 +3498,7 @@ nsXMLHttpRequest::OnProgress(nsIRequest *aRequest, nsISupports *aContext, int64_
     mUploadTransferred = loaded;
     mProgressSinceLastProgressEvent = true;
 
-    MaybeDispatchProgressEvents(false);
+    MaybeDispatchProgressEvents((mUploadTransferred == mUploadTotal));
   } else {
     mLoadLengthComputable = lengthComputable;
     mLoadTotal = lengthComputable ? aProgressMax : 0;

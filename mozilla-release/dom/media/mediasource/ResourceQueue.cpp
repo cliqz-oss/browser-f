@@ -4,16 +4,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "ResourceQueue.h"
 #include "nsDeque.h"
 #include "MediaData.h"
+#include "mozilla/ErrorResult.h"
 #include "mozilla/Logging.h"
 
 extern PRLogModuleInfo* GetSourceBufferResourceLog();
-
-/* Polyfill __func__ on MSVC to pass to the log. */
-#ifdef _MSC_VER
-#define __func__ __FUNCTION__
-#endif
 
 #define SBR_DEBUG(arg, ...) MOZ_LOG(GetSourceBufferResourceLog(), mozilla::LogLevel::Debug, ("ResourceQueue(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
 #define SBR_DEBUGV(arg, ...) MOZ_LOG(GetSourceBufferResourceLog(), mozilla::LogLevel::Verbose, ("ResourceQueue(%p)::%s: " arg, this, __func__, ##__VA_ARGS__))
@@ -32,7 +29,7 @@ ResourceItem::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
   size_t size = aMallocSizeOf(this);
 
   // size excluding this
-  size += mData->SizeOfExcludingThis(aMallocSizeOf);
+  size += mData->ShallowSizeOfExcludingThis(aMallocSizeOf);
 
   return size;
 }

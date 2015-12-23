@@ -11,13 +11,13 @@
 #include "nsPresContext.h"
 #include "nsMappedAttributes.h"
 #include "nsSize.h"
+#include "nsDocument.h"
 #include "nsIDocument.h"
 #include "nsIDOMMutationEvent.h"
 #include "nsIScriptContext.h"
 #include "nsIURL.h"
 #include "nsIIOService.h"
 #include "nsIServiceManager.h"
-#include "nsNetUtil.h"
 #include "nsContentUtils.h"
 #include "nsContainerFrame.h"
 #include "nsNodeInfoManager.h"
@@ -28,6 +28,7 @@
 #include "mozilla/dom/HTMLFormElement.h"
 #include "nsAttrValueOrString.h"
 #include "imgLoader.h"
+#include "Image.h"
 
 // Responsive images!
 #include "mozilla/dom/HTMLSourceElement.h"
@@ -376,7 +377,7 @@ HTMLImageElement::GetAttributeMappingFunction() const
 
 nsresult
 HTMLImageElement::BeforeSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
-                                const nsAttrValueOrString* aValue,
+                                nsAttrValueOrString* aValue,
                                 bool aNotify)
 {
 
@@ -468,12 +469,8 @@ HTMLImageElement::PreHandleEvent(EventChainPreVisitor& aVisitor)
   // twice, once by the image frame for the map and once by the Anchor
   // element. (bug 39723)
   WidgetMouseEvent* mouseEvent = aVisitor.mEvent->AsMouseEvent();
-  if (mouseEvent && mouseEvent->IsLeftClickEvent()) {
-    bool isMap = false;
-    GetIsMap(&isMap);
-    if (isMap) {
-      aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
-    }
+  if (mouseEvent && mouseEvent->IsLeftClickEvent() && IsMap()) {
+    aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
   }
   return nsGenericHTMLElement::PreHandleEvent(aVisitor);
 }
@@ -755,7 +752,7 @@ HTMLImageElement::NaturalHeight()
 
   if (mResponsiveSelector) {
     double density = mResponsiveSelector->GetSelectedImageDensity();
-    MOZ_ASSERT(IsFinite(density) && density > 0.0);
+    MOZ_ASSERT(density >= 0.0);
     height = NSToIntRound(double(height) / density);
     height = std::max(height, 0u);
   }
@@ -783,7 +780,7 @@ HTMLImageElement::NaturalWidth()
 
   if (mResponsiveSelector) {
     double density = mResponsiveSelector->GetSelectedImageDensity();
-    MOZ_ASSERT(IsFinite(density) && density > 0.0);
+    MOZ_ASSERT(density >= 0.0);
     width = NSToIntRound(double(width) / density);
     width = std::max(width, 0u);
   }
@@ -801,10 +798,30 @@ HTMLImageElement::GetNaturalWidth(uint32_t* aNaturalWidth)
 nsresult
 HTMLImageElement::CopyInnerTo(Element* aDest)
 {
-  if (aDest->OwnerDoc()->IsStaticDocument()) {
-    CreateStaticImageClone(static_cast<HTMLImageElement*>(aDest));
+  bool destIsStatic = aDest->OwnerDoc()->IsStaticDocument();
+  auto dest = static_cast<HTMLImageElement*>(aDest);
+  if (destIsStatic) {
+    CreateStaticImageClone(dest);
   }
-  return nsGenericHTMLElement::CopyInnerTo(aDest);
+
+  nsresult rv = nsGenericHTMLElement::CopyInnerTo(aDest);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
+  if (!destIsStatic) {
+    // In SetAttr (called from nsGenericHTMLElement::CopyInnerTo), dest skipped
+    // doing the image load because we passed in false for aNotify.  But we
+    // really do want it to do the load, so set it up to happen once the cloning
+    // reaches a stable state.
+    if (!dest->InResponsiveMode() &&
+        dest->HasAttr(kNameSpaceID_None, nsGkAtoms::src)) {
+      nsContentUtils::AddScriptRunner(
+        NS_NewRunnableMethod(dest, &HTMLImageElement::MaybeLoadImage));
+    }
+  }
+
+  return NS_OK;
 }
 
 CORSMode
@@ -1280,6 +1297,18 @@ void
 HTMLImageElement::MediaFeatureValuesChanged()
 {
   QueueImageLoadTask();
+}
+
+void
+HTMLImageElement::FlushUseCounters()
+{
+  nsCOMPtr<imgIRequest> request;
+  GetRequest(CURRENT_REQUEST, getter_AddRefs(request));
+
+  nsCOMPtr<imgIContainer> container;
+  request->GetImage(getter_AddRefs(container));
+
+  static_cast<image::Image*>(container.get())->ReportUseCounters();
 }
 
 } // namespace dom

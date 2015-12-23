@@ -7,6 +7,7 @@ package org.mozilla.gecko;
 
 import java.util.HashSet;
 
+import android.text.TextUtils;
 import android.widget.PopupWindow;
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -112,8 +113,12 @@ public class DoorHangerPopup extends AnchoredPopup
         final String id = json.getString("value");
 
         final String typeString = json.optString("category");
-        final boolean isLogin = DoorHanger.Type.LOGIN.toString().equals(typeString);
-        final DoorHanger.Type doorhangerType = isLogin ? DoorHanger.Type.LOGIN : DoorHanger.Type.DEFAULT;
+        DoorHanger.Type doorhangerType = DoorHanger.Type.DEFAULT;
+        if (DoorHanger.Type.LOGIN.toString().equals(typeString)) {
+            doorhangerType = DoorHanger.Type.LOGIN;
+        } else if (DoorHanger.Type.GEOLOCATION.toString().equals(typeString)) {
+            doorhangerType = DoorHanger.Type.GEOLOCATION;
+        }
 
         final DoorhangerConfig config = new DoorhangerConfig(tabId, id, doorhangerType, this);
 
@@ -304,7 +309,13 @@ public class DoorHangerPopup extends AnchoredPopup
             return;
         }
 
-        firstDoorhanger.showTitle(tab.getFavicon(), tab.getBaseDomain());
+        final String baseDomain = tab.getBaseDomain();
+
+        if (TextUtils.isEmpty(baseDomain)) {
+            firstDoorhanger.hideTitle();
+        } else {
+            firstDoorhanger.showTitle(tab.getFavicon(), baseDomain);
+        }
 
         // Make the popup focusable for accessibility. This gets done here
         // so the node can be accessibility focused, but on pre-ICS devices this

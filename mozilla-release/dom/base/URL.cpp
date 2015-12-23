@@ -23,41 +23,33 @@
 namespace mozilla {
 namespace dom {
 
-NS_IMPL_CYCLE_COLLECTION_CLASS(URL)
-
-NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(URL)
-  if (tmp->mSearchParams) {
-    NS_IMPL_CYCLE_COLLECTION_UNLINK(mSearchParams)
-  }
-NS_IMPL_CYCLE_COLLECTION_UNLINK_END
-
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(URL)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mSearchParams)
-NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(URL, mParent, mSearchParams)
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(URL)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(URL)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(URL)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-URL::URL(already_AddRefed<nsIURI> aURI)
-  : mURI(aURI)
+URL::URL(nsISupports* aParent, already_AddRefed<nsIURI> aURI)
+  : mParent(aParent)
+  , mURI(aURI)
 {
 }
 
-bool
-URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector)
+JSObject*
+URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return URLBinding::Wrap(aCx, this, aGivenProto, aReflector);
+  return URLBinding::Wrap(aCx, this, aGivenProto);
 }
 
 /* static */ already_AddRefed<URL>
 URL::Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
                  URL& aBase, ErrorResult& aRv)
 {
-  return Constructor(aUrl, aBase.GetURI(), aRv);
+  return Constructor(aGlobal.GetAsSupports(), aUrl, aBase.GetURI(), aRv);
 }
 
 /* static */ already_AddRefed<URL>
@@ -65,22 +57,22 @@ URL::Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
                  const Optional<nsAString>& aBase, ErrorResult& aRv)
 {
   if (aBase.WasPassed()) {
-    return Constructor(aUrl, aBase.Value(), aRv);
+    return Constructor(aGlobal.GetAsSupports(), aUrl, aBase.Value(), aRv);
   }
 
-  return Constructor(aUrl, nullptr, aRv);
+  return Constructor(aGlobal.GetAsSupports(), aUrl, nullptr, aRv);
 }
 
 /* static */ already_AddRefed<URL>
 URL::Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
                  const nsAString& aBase, ErrorResult& aRv)
 {
-  return Constructor(aUrl, aBase, aRv);
+  return Constructor(aGlobal.GetAsSupports(), aUrl, aBase, aRv);
 }
 
 /* static */ already_AddRefed<URL>
-URL::Constructor(const nsAString& aUrl, const nsAString& aBase,
-                 ErrorResult& aRv)
+URL::Constructor(nsISupports* aParent, const nsAString& aUrl,
+                 const nsAString& aBase, ErrorResult& aRv)
 {
   nsCOMPtr<nsIURI> baseUri;
   nsresult rv = NS_NewURI(getter_AddRefs(baseUri), aBase, nullptr, nullptr,
@@ -90,12 +82,13 @@ URL::Constructor(const nsAString& aUrl, const nsAString& aBase,
     return nullptr;
   }
 
-  return Constructor(aUrl, baseUri, aRv);
+  return Constructor(aParent, aUrl, baseUri, aRv);
 }
 
 /* static */
 already_AddRefed<URL>
-URL::Constructor(const nsAString& aUrl, nsIURI* aBase, ErrorResult& aRv)
+URL::Constructor(nsISupports* aParent, const nsAString& aUrl, nsIURI* aBase,
+                 ErrorResult& aRv)
 {
   nsCOMPtr<nsIURI> uri;
   nsresult rv = NS_NewURI(getter_AddRefs(uri), aUrl, nullptr, aBase,
@@ -105,7 +98,7 @@ URL::Constructor(const nsAString& aUrl, nsIURI* aBase, ErrorResult& aRv)
     return nullptr;
   }
 
-  nsRefPtr<URL> url = new URL(uri.forget());
+  nsRefPtr<URL> url = new URL(aParent, uri.forget());
   return url.forget();
 }
 
@@ -430,8 +423,15 @@ URL::GetPathname(nsAString& aPathname, ErrorResult& aRv) const
 
   nsCOMPtr<nsIURL> url(do_QueryInterface(mURI));
   if (!url) {
-    // Do not throw!  Not having a valid URI or URL should result in an empty
-    // string.
+    nsAutoCString path;
+    nsresult rv = mURI->GetPath(path);
+    if (NS_FAILED(rv)){
+      // Do not throw!  Not having a valid URI or URL should result in an empty
+      // string.
+      return;
+    }
+
+    CopyUTF8toUTF16(path, aPathname);
     return;
   }
 
@@ -533,10 +533,10 @@ void
 URL::CreateSearchParamsIfNeeded()
 {
   if (!mSearchParams) {
-    mSearchParams = new URLSearchParams(this);
+    mSearchParams = new URLSearchParams(mParent, this);
     UpdateURLSearchParams();
   }
 }
 
-}
-}
+} // namespace dom
+} // namespace mozilla

@@ -28,11 +28,24 @@ android {
     sourceSets {
         main {
             java {
-                exclude 'org/mozilla/gecko/tests/**'
                 exclude 'org/mozilla/gecko/resources/**'
+
                 if (!mozconfig.substs.MOZ_CRASHREPORTER) {
                     exclude 'org/mozilla/gecko/CrashReporter.java'
                 }
+
+                if (!mozconfig.substs.MOZ_NATIVE_DEVICES) {
+                    exclude 'org/mozilla/gecko/ChromeCast.java'
+                    exclude 'org/mozilla/gecko/GeckoMediaPlayer.java'
+                    exclude 'org/mozilla/gecko/MediaPlayerManager.java'
+                }
+
+                if (mozconfig.substs.MOZ_WEBRTC) {
+                    srcDir 'src/webrtc_audio_device'
+                    srcDir 'src/webrtc_video_capture'
+                    srcDir 'src/webrtc_video_render'
+                }
+
                 // Adjust helpers are included in the preprocessed_code project.
                 exclude 'org/mozilla/gecko/adjust/**'
             }
@@ -41,6 +54,16 @@ android {
                 if (mozconfig.substs.MOZ_CRASHREPORTER) {
                     srcDir "src/crashreporter/res"
                 }
+            }
+        }
+
+        test {
+            java {
+                srcDir "src/background_junit4"
+            }
+
+            resources {
+                srcDir "resources/background_junit4"
             }
         }
     }
@@ -53,18 +76,18 @@ dependencies {
     if (mozconfig.substs.MOZ_NATIVE_DEVICES) {
         compile 'com.android.support:appcompat-v7:22.2.0'
         compile 'com.android.support:mediarouter-v7:22.2.0'
-        compile 'com.google.android.gms:play-services-base:6.5.+'
-        compile 'com.google.android.gms:play-services-cast:6.5.+'
+        compile 'com.google.android.gms:play-services-base:7.8.0'
+        compile 'com.google.android.gms:play-services-cast:7.8.0'
     }
 
     compile project(':branding')
     compile project(':preprocessed_code')
     compile project(':preprocessed_resources')
     compile project(':thirdparty')
-}
 
-android.libraryVariants.all { variant ->
-    variant.checkManifest.dependsOn rootProject.generateCodeAndResources
+    testCompile 'junit:junit:4.12'
+    testCompile 'org.robolectric:robolectric:3.0'
+    testCompile 'org.simpleframework:simple-http:4.1.13'
 }
 
 apply plugin: 'idea'
@@ -72,6 +95,5 @@ apply plugin: 'idea'
 idea {
     module {
         excludeDirs += file('org/mozilla/gecko/resources')
-        excludeDirs += file('org/mozilla/gecko/tests')
     }
 }

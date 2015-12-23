@@ -21,11 +21,11 @@ namespace mozilla {
 
 namespace ipc {
 class Shmem;
-}
+} // namespace ipc
 
 namespace layout {
 class RenderFrameParent;
-}
+} // namespace layout
 
 namespace layers {
 
@@ -110,6 +110,7 @@ protected:
                           const uint32_t& paintSequenceNumber,
                           const bool& isRepeatTransaction,
                           const mozilla::TimeStamp& aTransactionStart,
+                          const int32_t& aPaintSyncId,
                           EditReplyArray* reply) override;
 
   virtual bool RecvUpdateNoSwap(EditArray&& cset,
@@ -120,7 +121,8 @@ protected:
                                 const bool& scheduleComposite,
                                 const uint32_t& paintSequenceNumber,
                                 const bool& isRepeatTransaction,
-                                const mozilla::TimeStamp& aTransactionStart) override;
+                                const mozilla::TimeStamp& aTransactionStart,
+                                const int32_t& aPaintSyncId) override;
 
   virtual bool RecvClearCachedResources() override;
   virtual bool RecvForceComposite() override;

@@ -55,7 +55,7 @@ const PR_TRUNCATE = 0x20;
 const RW_OWNER = parseInt("0600", 8);
 
 const NUMBER_OF_THREADS_TO_LAUNCH = 30;
-let gNumberOfThreadsLaunched = 0;
+var gNumberOfThreadsLaunched = 0;
 
 const MS_IN_ONE_HOUR  = 60 * 60 * 1000;
 const MS_IN_ONE_DAY   = 24 * MS_IN_ONE_HOUR;
@@ -74,7 +74,7 @@ XPCOMUtils.defineLazyGetter(this, "DATAREPORTING_PATH", function() {
   return OS.Path.join(OS.Constants.Path.profileDir, DATAREPORTING_DIR);
 });
 
-let gClientID = null;
+var gClientID = null;
 
 function generateUUID() {
   let str = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator).generateUUID().toString();
@@ -100,7 +100,7 @@ function sendPing() {
   }
 }
 
-let clearPendingPings = Task.async(function*() {
+var clearPendingPings = Task.async(function*() {
   const pending = yield TelemetryStorage.loadPendingPingList();
   for (let p of pending) {
     yield TelemetryStorage.removePendingPing(p.id);
@@ -1048,7 +1048,7 @@ add_task(function* test_environmentChange() {
   Preferences.reset(PREF_TEST);
 
   const PREFS_TO_WATCH = new Map([
-    [PREF_TEST, TelemetryEnvironment.RECORD_PREF_VALUE],
+    [PREF_TEST, {what: TelemetryEnvironment.RECORD_PREF_VALUE}],
   ]);
 
   // Setup.
@@ -1153,7 +1153,7 @@ add_task(function* test_savedSessionData() {
   const PREF_TEST = "toolkit.telemetry.test.pref1";
   Preferences.reset(PREF_TEST);
   const PREFS_TO_WATCH = new Map([
-    [PREF_TEST, TelemetryEnvironment.RECORD_PREF_VALUE],
+    [PREF_TEST, {what: TelemetryEnvironment.RECORD_PREF_VALUE}],
   ]);
 
   // We expect one new subsession when starting TelemetrySession and one after triggering
@@ -1508,7 +1508,7 @@ add_task(function* test_schedulerEnvironmentReschedules() {
   const PREF_TEST = "toolkit.telemetry.test.pref1";
   Preferences.reset(PREF_TEST);
   const PREFS_TO_WATCH = new Map([
-    [PREF_TEST, TelemetryEnvironment.RECORD_PREF_VALUE],
+    [PREF_TEST, {what: TelemetryEnvironment.RECORD_PREF_VALUE}],
   ]);
 
   yield clearPendingPings();
@@ -1678,6 +1678,106 @@ add_task(function* test_schedulerUserIdle() {
   fakeNow(now);
   fakeIdleNotification("idle");
   Assert.equal(schedulerTimeout, 10 * 60 * 1000);
+
+  yield TelemetrySession.shutdown();
+});
+
+add_task(function* test_DailyDueAndIdle() {
+  if (gIsAndroid || gIsGonk) {
+    // We don't have the aborted session or the daily ping here.
+    return;
+  }
+
+  yield TelemetrySession.reset();
+  clearPendingPings();
+  PingServer.clearRequests();
+
+  let receivedPingRequest = null;
+  // Register a ping handler that will assert when receiving multiple daily pings.
+  PingServer.registerPingHandler(req => {
+    Assert.ok(!receivedPingRequest, "Telemetry must only send one daily ping.");
+    receivedPingRequest = req;
+  });
+
+  let schedulerTickCallback = null;
+  let now = new Date(2030, 1, 1, 0, 0, 0);
+  fakeNow(now);
+  // Fake scheduler functions to control daily collection flow in tests.
+  fakeSchedulerTimer(callback => schedulerTickCallback = callback, () => {});
+  yield TelemetrySession.setup();
+
+  // Trigger the daily ping.
+  let firstDailyDue = new Date(2030, 1, 2, 0, 0, 0);
+  fakeNow(firstDailyDue);
+
+  // Run a scheduler tick: it should trigger the daily ping.
+  Assert.ok(!!schedulerTickCallback);
+  let tickPromise = schedulerTickCallback();
+
+  // Send an idle and then an active user notification.
+  fakeIdleNotification("idle");
+  fakeIdleNotification("active");
+
+  // Wait on the tick promise.
+  yield tickPromise;
+
+  yield TelemetrySend.testWaitOnOutgoingPings();
+
+  // Decode the ping contained in the request and check that's a daily ping.
+  Assert.ok(receivedPingRequest, "Telemetry must send one daily ping.");
+  const receivedPing = decodeRequestPayload(receivedPingRequest);
+  checkPingFormat(receivedPing, PING_TYPE_MAIN, true, true);
+  Assert.equal(receivedPing.payload.info.reason, REASON_DAILY);
+
+  yield TelemetrySession.shutdown();
+});
+
+add_task(function* test_userIdleAndSchedlerTick() {
+  if (gIsAndroid || gIsGonk) {
+    // We don't have the aborted session or the daily ping here.
+    return;
+  }
+
+  yield TelemetrySession.reset();
+  clearPendingPings();
+  PingServer.clearRequests();
+
+  let receivedPingRequest = null;
+  // Register a ping handler that will assert when receiving multiple daily pings.
+  PingServer.registerPingHandler(req => {
+    Assert.ok(!receivedPingRequest, "Telemetry must only send one daily ping.");
+    receivedPingRequest = req;
+  });
+
+  let schedulerTickCallback = null;
+  let now = new Date(2030, 1, 1, 0, 0, 0);
+  fakeNow(now);
+  // Fake scheduler functions to control daily collection flow in tests.
+  fakeSchedulerTimer(callback => schedulerTickCallback = callback, () => {});
+  yield TelemetrySession.setup();
+
+  // Move the current date/time to midnight.
+  let firstDailyDue = new Date(2030, 1, 2, 0, 0, 0);
+  fakeNow(firstDailyDue);
+
+  // The active notification should trigger a scheduler tick. The latter will send the
+  // due daily ping.
+  fakeIdleNotification("active");
+
+  // Immediately running another tick should not send a daily ping again.
+  Assert.ok(!!schedulerTickCallback);
+  yield schedulerTickCallback();
+
+  // A new "idle" notification should not send a new daily ping.
+  fakeIdleNotification("idle");
+
+  yield TelemetrySend.testWaitOnOutgoingPings();
+
+  // Decode the ping contained in the request and check that's a daily ping.
+  Assert.ok(receivedPingRequest, "Telemetry must send one daily ping.");
+  const receivedPing = decodeRequestPayload(receivedPingRequest);
+  checkPingFormat(receivedPing, PING_TYPE_MAIN, true, true);
+  Assert.equal(receivedPing.payload.info.reason, REASON_DAILY);
 
   yield TelemetrySession.shutdown();
 });

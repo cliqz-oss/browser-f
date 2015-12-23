@@ -38,7 +38,6 @@
 #include "mozilla/net/DataChannel.h"
 #include "VideoUtils.h"
 #include "VideoSegment.h"
-#include "nsNSSShutDown.h"
 #include "mozilla/dom/RTCStatsReportBinding.h"
 #include "nsIPrincipal.h"
 #include "mozilla/PeerIdentity.h"
@@ -78,6 +77,7 @@ class DOMMediaStream;
 #endif
 
 namespace dom {
+class RTCCertificate;
 struct RTCConfiguration;
 struct RTCIceServer;
 struct RTCOfferOptions;
@@ -146,9 +146,13 @@ class PCUuidGenerator : public mozilla::JsepUuidGenerator {
   nsCOMPtr<nsIUUIDGenerator> mGenerator;
 };
 
-class IceConfiguration
+class PeerConnectionConfiguration
 {
 public:
+  PeerConnectionConfiguration()
+  : mBundlePolicy(kBundleBalanced),
+    mIceTransportPolicy(NrIceCtx::ICE_POLICY_ALL) {}
+
   bool addStunServer(const std::string& addr, uint16_t port,
                      const char* transport)
   {
@@ -182,9 +186,21 @@ public:
   void addTurnServer(const NrIceTurnServer& server) { mTurnServers.push_back (server); }
   const std::vector<NrIceStunServer>& getStunServers() const { return mStunServers; }
   const std::vector<NrIceTurnServer>& getTurnServers() const { return mTurnServers; }
+  void setBundlePolicy(JsepBundlePolicy policy) { mBundlePolicy = policy;}
+  JsepBundlePolicy getBundlePolicy() const { return mBundlePolicy; }
+  void setIceTransportPolicy(NrIceCtx::Policy policy) { mIceTransportPolicy = policy;}
+  NrIceCtx::Policy getIceTransportPolicy() const { return mIceTransportPolicy; }
+
+#ifndef MOZILLA_EXTERNAL_LINKAGE
+  nsresult Init(const RTCConfiguration& aSrc);
+  nsresult AddIceServer(const RTCIceServer& aServer);
+#endif
+
 private:
   std::vector<NrIceStunServer> mStunServers;
   std::vector<NrIceTurnServer> mTurnServers;
+  JsepBundlePolicy mBundlePolicy;
+  NrIceCtx::Policy mIceTransportPolicy;
 };
 
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
@@ -232,7 +248,6 @@ class RTCStatsQuery {
 class PeerConnectionImpl final : public nsISupports,
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
                                  public mozilla::DataChannelConnection::DataConnectionListener,
-                                 public nsNSSShutDownObject,
                                  public DOMMediaStream::PrincipalChangeObserver,
 #endif
                                  public sigslot::has_slots<>
@@ -262,10 +277,6 @@ public:
   static already_AddRefed<PeerConnectionImpl>
       Constructor(const mozilla::dom::GlobalObject& aGlobal, ErrorResult& rv);
   static PeerConnectionImpl* CreatePeerConnection();
-  static nsresult ConvertRTCConfiguration(const RTCConfiguration& aSrc,
-                                          IceConfiguration *aDst);
-  static nsresult AddIceServer(const RTCIceServer& aServer,
-                               IceConfiguration* aDst);
   already_AddRefed<DOMMediaStream> MakeMediaStream();
 
   nsresult CreateRemoteSourceStreamInfo(nsRefPtr<RemoteSourceStreamInfo>* aInfo,
@@ -288,6 +299,11 @@ public:
 
   // Configure the ability to use localhost.
   void SetAllowIceLoopback(bool val) { mAllowIceLoopback = val; }
+  bool GetAllowIceLoopback() const { return mAllowIceLoopback; }
+
+  // Configure the ability to use IPV6 link-local addresses.
+  void SetAllowIceLinkLocal(bool val) { mAllowIceLinkLocal = val; }
+  bool GetAllowIceLinkLocal() const { return mAllowIceLinkLocal; }
 
   // Handle system to allow weak references to be passed through C code
   virtual const std::string& GetHandle();
@@ -322,34 +338,34 @@ public:
     return mSTSThread;
   }
 
-  // Get the DTLS identity (local side)
-  mozilla::RefPtr<DtlsIdentity> const GetIdentity() const;
-
   nsPIDOMWindow* GetWindow() const {
     PC_AUTO_ENTER_API_CALL_NO_CHECK();
     return mWindow;
   }
 
-  // Initialize PeerConnection from an IceConfiguration object (unit-tests)
+  // Initialize PeerConnection from a PeerConnectionConfiguration object
+  // (used directly by unit-tests, and indirectly by the JS entry point)
+  // This is necessary because RTCConfiguration can't be used by unit-tests
   nsresult Initialize(PeerConnectionObserver& aObserver,
                       nsGlobalWindow* aWindow,
-                      const IceConfiguration& aConfiguration,
-                      nsIThread* aThread) {
-    return Initialize(aObserver, aWindow, &aConfiguration, nullptr, aThread);
-  }
+                      const PeerConnectionConfiguration& aConfiguration,
+                      nsISupports* aThread);
 
+#ifndef MOZILLA_EXTERNAL_LINKAGE
   // Initialize PeerConnection from an RTCConfiguration object (JS entrypoint)
   void Initialize(PeerConnectionObserver& aObserver,
                   nsGlobalWindow& aWindow,
                   const RTCConfiguration& aConfiguration,
                   nsISupports* aThread,
-                  ErrorResult &rv)
-  {
-    nsresult r = Initialize(aObserver, &aWindow, nullptr, &aConfiguration, aThread);
-    if (NS_FAILED(r)) {
-      rv.Throw(r);
-    }
-  }
+                  ErrorResult &rv);
+#endif
+
+#if !defined(MOZILLA_EXTERNAL_LINKAGE)
+  void SetCertificate(mozilla::dom::RTCCertificate& aCertificate);
+  const nsRefPtr<mozilla::dom::RTCCertificate>& Certificate() const;
+#endif
+  // This is a hack to support external linkage.
+  mozilla::RefPtr<DtlsIdentity> Identity() const;
 
   NS_IMETHODIMP_TO_ERRORRESULT(CreateOffer, ErrorResult &rv,
                                const RTCOfferOptions& aOptions)
@@ -405,7 +421,7 @@ public:
 
   NS_IMETHODIMP_TO_ERRORRESULT(AddTrack, ErrorResult &rv,
       mozilla::dom::MediaStreamTrack& aTrack,
-      const mozilla::dom::Sequence<mozilla::dom::OwningNonNull<DOMMediaStream>>& aStreams)
+      const mozilla::dom::Sequence<mozilla::OwningNonNull<DOMMediaStream>>& aStreams)
   {
     rv = AddTrack(aTrack, aStreams);
   }
@@ -616,13 +632,8 @@ private:
   virtual ~PeerConnectionImpl();
   PeerConnectionImpl(const PeerConnectionImpl&rhs);
   PeerConnectionImpl& operator=(PeerConnectionImpl);
-  NS_IMETHODIMP Initialize(PeerConnectionObserver& aObserver,
-                           nsGlobalWindow* aWindow,
-                           const IceConfiguration* aConfiguration,
-                           const RTCConfiguration* aRTCConfiguration,
-                           nsISupports* aThread);
   nsresult CalculateFingerprint(const std::string& algorithm,
-                                std::vector<uint8_t>& fingerprint) const;
+                                std::vector<uint8_t>* fingerprint) const;
   nsresult ConfigureJsepSessionCodecs();
 
   NS_IMETHODIMP EnsureDataConnection(uint16_t aNumstreams);
@@ -647,8 +658,6 @@ private:
   }
 
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
-  void virtualDestroyNSSReference() final;
-  void destructorSafeDestroyNSSReference();
   nsresult GetTimeSinceEpoch(DOMHighResTimeStamp *result);
 #endif
 
@@ -663,6 +672,15 @@ private:
   nsresult GetDatachannelParameters(
       const mozilla::JsepApplicationCodecDescription** codec,
       uint16_t* level) const;
+
+  static void DeferredAddTrackToJsepSession(const std::string& pcHandle,
+                                            SdpMediaSection::MediaType type,
+                                            const std::string& streamId,
+                                            const std::string& trackId);
+
+  nsresult AddTrackToJsepSession(SdpMediaSection::MediaType type,
+                                 const std::string& streamId,
+                                 const std::string& trackId);
 
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
   static void GetStatsForPCObserver_s(
@@ -715,11 +733,14 @@ private:
   std::string mRemoteFingerprint;
 
   // identity-related fields
-  mozilla::RefPtr<DtlsIdentity> mIdentity;
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
   // The entity on the other end of the peer-to-peer connection;
   // void if they are not yet identified, and no identity setting has been set
   nsAutoPtr<PeerIdentity> mPeerIdentity;
+  // The certificate we are using.
+  nsRefPtr<mozilla::dom::RTCCertificate> mCertificate;
+#else
+  mozilla::RefPtr<DtlsIdentity> mIdentity;
 #endif
   // Whether an app should be prevented from accessing media produced by the PC
   // If this is true, then media will not be sent until mPeerIdentity matches
@@ -745,6 +766,7 @@ private:
 #endif
 
   bool mAllowIceLoopback;
+  bool mAllowIceLinkLocal;
   nsRefPtr<PeerConnectionMedia> mMedia;
 
   // The JSEP negotiation session.
@@ -764,6 +786,7 @@ private:
   // Bug 840728.
   int mNumAudioStreams;
   int mNumVideoStreams;
+  bool mHaveConfiguredCodecs;
 
   bool mHaveDataStream;
 

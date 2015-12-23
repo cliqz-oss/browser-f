@@ -57,7 +57,7 @@
 #include "nsRefreshDriver.h"
 #include "Layers.h"
 #include "ClientLayerManager.h"
-#include "nsIDOMEvent.h"
+#include "mozilla/dom/NotifyPaintEvent.h"
 #include "gfxPrefs.h"
 #include "nsIDOMChromeWindow.h"
 #include "nsFrameLoader.h"
@@ -123,7 +123,7 @@ private:
   nsCString mCharSet;
 };
 
-} // anonymous namespace
+} // namespace
 
 nscolor
 nsPresContext::MakeColorPref(const nsString& aColor)
@@ -360,6 +360,7 @@ nsPresContext::LastRelease()
 NS_IMPL_CYCLE_COLLECTION_CLASS(nsPresContext)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsPresContext)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mAnimationManager);
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDocument);
   // NS_IMPL_CYCLE_COLLECTION_TRAVERSE_RAWPTR(mDeviceContext); // not xpcom
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEventManager);
@@ -372,6 +373,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsPresContext)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(nsPresContext)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mAnimationManager);
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDocument);
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mDeviceContext); // worth bothering?
   // NS_RELEASE(tmp->mLanguage); // an atom
@@ -926,16 +928,16 @@ nsPresContext::PreferenceChanged(const char* aPrefName)
   // we use a zero-delay timer to coalesce multiple pref updates
   if (!mPrefChangedTimer)
   {
-    mPrefChangedTimer = do_CreateInstance("@mozilla.org/timer;1");
-    if (!mPrefChangedTimer)
-      return;
     // We will end up calling InvalidatePreferenceSheets one from each pres
     // context, but all it's doing is clearing its cached sheet pointers,
     // so it won't be wastefully recreating the sheet multiple times.
     // The first pres context that has its mPrefChangedTimer called will
     // be the one to cause the reconstruction of the pref style sheet.
     nsLayoutStylesheetCache::InvalidatePreferenceSheets();
-    mPrefChangedTimer->InitWithFuncCallback(nsPresContext::PrefChangedUpdateTimerCallback, (void*)this, 0, nsITimer::TYPE_ONE_SHOT);
+    mPrefChangedTimer = CreateTimer(PrefChangedUpdateTimerCallback, 0);
+    if (!mPrefChangedTimer) {
+      return;
+    }
   }
   if (prefName.EqualsLiteral("nglayout.debug.paint_flashing") ||
       prefName.EqualsLiteral("nglayout.debug.paint_flashing_chrome")) {
@@ -948,6 +950,12 @@ void
 nsPresContext::UpdateAfterPreferencesChanged()
 {
   mPrefChangedTimer = nullptr;
+
+  if (!mContainer) {
+    // Delay updating until there is a container
+    mNeedsPrefUpdate = true;
+    return;
+  }
 
   nsCOMPtr<nsIDocShellTreeItem> docShell(mContainer);
   if (docShell && nsIDocShellTreeItem::typeChrome == docShell->ItemType()) {
@@ -1570,7 +1578,15 @@ void
 nsPresContext::SetContainer(nsIDocShell* aDocShell)
 {
   if (aDocShell) {
+    NS_ASSERTION(!(mContainer && mNeedsPrefUpdate),
+                 "Should only need pref update if mContainer is null.");
     mContainer = static_cast<nsDocShell*>(aDocShell);
+    if (mNeedsPrefUpdate) {
+      if (!mPrefChangedTimer) {
+        mPrefChangedTimer = CreateTimer(PrefChangedUpdateTimerCallback, 0);
+      }
+      mNeedsPrefUpdate = false;
+    }
   } else {
     mContainer = WeakPtr<nsDocShell>();
   }
@@ -1992,7 +2008,7 @@ nsPresContext::MediaFeatureValuesChanged(nsRestyleHint aRestyleHint,
     // Note that we intentionally send the notifications to media query
     // list in the order they were created and, for each list, to the
     // listeners in the order added.
-    MediaQueryList::NotifyList notifyList;
+    nsTArray<MediaQueryList::HandleChangeData> notifyList;
     for (PRCList *l = PR_LIST_HEAD(mDocument->MediaQueryLists());
          l != mDocument->MediaQueryLists(); l = PR_NEXT_LINK(l)) {
       MediaQueryList *mql = static_cast<MediaQueryList*>(l);
@@ -2099,7 +2115,8 @@ nsPresContext::UpdateIsChrome()
 }
 
 /* virtual */ bool
-nsPresContext::HasAuthorSpecifiedRules(nsIFrame *aFrame, uint32_t ruleTypeMask) const
+nsPresContext::HasAuthorSpecifiedRules(const nsIFrame *aFrame,
+                                       uint32_t ruleTypeMask) const
 {
   return
     nsRuleNode::HasAuthorSpecifiedRules(aFrame->StyleContext(),
@@ -2239,23 +2256,20 @@ nsPresContext::FireDOMPaintEvent(nsInvalidateRequestList* aList)
   }
   // Events sent to the window get propagated to the chrome event handler
   // automatically.
-  nsCOMPtr<nsIDOMEvent> event;
+  //
   // This will empty our list in case dispatching the event causes more damage
   // (hopefully it won't, or we're likely to get an infinite loop! At least
   // it won't be blocking app execution though).
-  NS_NewDOMNotifyPaintEvent(getter_AddRefs(event), eventTarget, this, nullptr,
-                            NS_AFTERPAINT, aList);
-  if (!event) {
-    return;
-  }
+  nsRefPtr<NotifyPaintEvent> event =
+    NS_NewDOMNotifyPaintEvent(eventTarget, this, nullptr, eAfterPaint, aList);
 
   // Even if we're not telling the window about the event (so eventTarget is
   // the chrome event handler, not the window), the window is still
   // logically the event target.
   event->SetTarget(eventTarget);
   event->SetTrusted(true);
-  EventDispatcher::DispatchDOMEvent(dispatchTarget, nullptr, event, this,
-                                    nullptr);
+  EventDispatcher::DispatchDOMEvent(dispatchTarget, nullptr,
+                                    static_cast<Event*>(event), this, nullptr);
 }
 
 static bool
@@ -2531,6 +2545,22 @@ nsPresContext::HasCachedStyleData()
   return mShell && mShell->StyleSet()->HasCachedStyleData();
 }
 
+already_AddRefed<nsITimer>
+nsPresContext::CreateTimer(nsTimerCallbackFunc aCallback,
+                           uint32_t aDelay)
+{
+  nsCOMPtr<nsITimer> timer = do_CreateInstance("@mozilla.org/timer;1");
+  if (timer) {
+    nsresult rv = timer->InitWithFuncCallback(aCallback, this, aDelay,
+                                              nsITimer::TYPE_ONE_SHOT);
+    if (NS_SUCCEEDED(rv)) {
+      return timer.forget();
+    }
+  }
+
+  return nullptr;
+}
+
 static bool sGotInterruptEnv = false;
 enum InterruptMode {
   ModeRandom,
@@ -2764,7 +2794,7 @@ nsPresContext::IsCrossProcessRootContentDocument()
     return false;
   }
 
-  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+  if (XRE_IsParentProcess()) {
     return true;
   }
 
@@ -2814,6 +2844,15 @@ nsPresContext::IsDeviceSizePageSize()
   return isDeviceSizePageSize;
 }
 
+uint64_t
+nsPresContext::GetRestyleGeneration() const
+{
+  if (!mRestyleManager) {
+    return 0;
+  }
+  return mRestyleManager->GetRestyleGeneration();
+}
+
 nsRootPresContext::nsRootPresContext(nsIDocument* aDocument,
                                      nsPresContextType aType)
   : nsPresContext(aDocument, aType),
@@ -2849,23 +2888,6 @@ nsRootPresContext::UnregisterPluginForGeometryUpdates(nsIContent* aPlugin)
   mRegisteredPlugins.RemoveEntry(aPlugin);
 }
 
-static PLDHashOperator
-SetPluginHidden(nsRefPtrHashKey<nsIContent>* aEntry, void* userArg)
-{
-  nsIFrame* root = static_cast<nsIFrame*>(userArg);
-  nsPluginFrame* f = static_cast<nsPluginFrame*>(aEntry->GetKey()->GetPrimaryFrame());
-  if (!f) {
-    NS_WARNING("Null frame in SetPluginHidden");
-    return PL_DHASH_NEXT;
-  }
-  if (!nsLayoutUtils::IsAncestorFrameCrossDoc(root, f)) {
-    // f is not managed by this frame so we should ignore it.
-    return PL_DHASH_NEXT;
-  }
-  f->SetEmptyWidgetConfiguration();
-  return PL_DHASH_NEXT;
-}
-
 void
 nsRootPresContext::ComputePluginGeometryUpdates(nsIFrame* aFrame,
                                                 nsDisplayListBuilder* aBuilder,
@@ -2878,7 +2900,18 @@ nsRootPresContext::ComputePluginGeometryUpdates(nsIFrame* aFrame,
   // Initially make the next state for each plugin descendant of aFrame be
   // "hidden". Plugins that are visible will have their next state set to
   // unhidden by nsDisplayPlugin::ComputeVisibility.
-  mRegisteredPlugins.EnumerateEntries(SetPluginHidden, aFrame);
+  for (auto iter = mRegisteredPlugins.Iter(); !iter.Done(); iter.Next()) {
+    auto f = static_cast<nsPluginFrame*>(iter.Get()->GetKey()->GetPrimaryFrame());
+    if (!f) {
+      NS_WARNING("Null frame in ComputePluginGeometryUpdates");
+      continue;
+    }
+    if (!nsLayoutUtils::IsAncestorFrameCrossDoc(aFrame, f)) {
+      // f is not managed by this frame so we should ignore it.
+      continue;
+    }
+    f->SetEmptyWidgetConfiguration();
+  }
 
   nsIFrame* rootFrame = FrameManager()->GetRootFrame();
 
@@ -2900,7 +2933,7 @@ nsRootPresContext::ComputePluginGeometryUpdates(nsIFrame* aFrame,
   // This is not happening during a paint event.
   ApplyPluginGeometryUpdates();
 #else
-  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+  if (XRE_IsParentProcess()) {
     InitApplyPluginGeometryTimer();
   }
 #endif
@@ -2926,13 +2959,8 @@ nsRootPresContext::InitApplyPluginGeometryTimer()
   // so set a backup timer to do this too.  We want to make sure this
   // won't fire before our normal paint notifications, if those would
   // update the geometry, so set it for double the refresh driver interval.
-  mApplyPluginGeometryTimer = do_CreateInstance("@mozilla.org/timer;1");
-  if (mApplyPluginGeometryTimer) {
-    mApplyPluginGeometryTimer->
-      InitWithFuncCallback(ApplyPluginGeometryUpdatesCallback, this,
-                           nsRefreshDriver::DefaultInterval() * 2,
-                           nsITimer::TYPE_ONE_SHOT);
-  }
+  mApplyPluginGeometryTimer = CreateTimer(ApplyPluginGeometryUpdatesCallback,
+                                          nsRefreshDriver::DefaultInterval() * 2);
 }
 
 void
@@ -3014,35 +3042,33 @@ SortConfigurations(nsTArray<nsIWidget::Configuration>* aConfigurations)
   }
 }
 
-struct PluginGetGeometryUpdateClosure {
-  nsTArray<nsIWidget::Configuration> mConfigurations;
-};
-static PLDHashOperator
-PluginGetGeometryUpdate(nsRefPtrHashKey<nsIContent>* aEntry, void* userArg)
+static void
+PluginGetGeometryUpdate(nsTHashtable<nsRefPtrHashKey<nsIContent>>& aPlugins,
+                        nsTArray<nsIWidget::Configuration>* aConfigurations)
 {
-  PluginGetGeometryUpdateClosure* closure =
-    static_cast<PluginGetGeometryUpdateClosure*>(userArg);
-  nsPluginFrame* f = static_cast<nsPluginFrame*>(aEntry->GetKey()->GetPrimaryFrame());
-  if (!f) {
-    NS_WARNING("Null frame in GetPluginGeometryUpdate");
-    return PL_DHASH_NEXT;
+  for (auto iter = aPlugins.Iter(); !iter.Done(); iter.Next()) {
+    auto f = static_cast<nsPluginFrame*>(iter.Get()->GetKey()->GetPrimaryFrame());
+    if (!f) {
+      NS_WARNING("Null frame in PluginGeometryUpdate");
+      continue;
+    }
+    f->GetWidgetConfiguration(aConfigurations);
   }
-  f->GetWidgetConfiguration(&closure->mConfigurations);
-  return PL_DHASH_NEXT;
 }
 
 #endif  // #ifndef XP_MACOSX
 
-static PLDHashOperator
-PluginDidSetGeometryEnumerator(nsRefPtrHashKey<nsIContent>* aEntry, void* userArg)
+static void
+PluginDidSetGeometry(nsTHashtable<nsRefPtrHashKey<nsIContent>>& aPlugins)
 {
-  nsPluginFrame* f = static_cast<nsPluginFrame*>(aEntry->GetKey()->GetPrimaryFrame());
-  if (!f) {
-    NS_WARNING("Null frame in PluginDidSetGeometryEnumerator");
-    return PL_DHASH_NEXT;
+  for (auto iter = aPlugins.Iter(); !iter.Done(); iter.Next()) {
+    auto f = static_cast<nsPluginFrame*>(iter.Get()->GetKey()->GetPrimaryFrame());
+    if (!f) {
+      NS_WARNING("Null frame in PluginDidSetGeometry");
+      continue;
+    }
+    f->DidSetWidgetGeometry();
   }
-  f->DidSetWidgetGeometry();
-  return PL_DHASH_NEXT;
 }
 
 void
@@ -3051,18 +3077,18 @@ nsRootPresContext::ApplyPluginGeometryUpdates()
 #ifndef XP_MACOSX
   CancelApplyPluginGeometryTimer();
 
-  PluginGetGeometryUpdateClosure closure;
-  mRegisteredPlugins.EnumerateEntries(PluginGetGeometryUpdate, &closure);
+  nsTArray<nsIWidget::Configuration> configurations;
+  PluginGetGeometryUpdate(mRegisteredPlugins, &configurations);
   // Walk mRegisteredPlugins and ask each plugin for its configuration
-  if (!closure.mConfigurations.IsEmpty()) {
-    nsIWidget* widget = closure.mConfigurations[0].mChild->GetParent();
+  if (!configurations.IsEmpty()) {
+    nsIWidget* widget = configurations[0].mChild->GetParent();
     NS_ASSERTION(widget, "Plugins must have a parent window");
-    SortConfigurations(&closure.mConfigurations);
-    widget->ConfigureChildren(closure.mConfigurations);
+    SortConfigurations(&configurations);
+    widget->ConfigureChildren(configurations);
   }
 #endif  // #ifndef XP_MACOSX
 
-  mRegisteredPlugins.EnumerateEntries(PluginDidSetGeometryEnumerator, nullptr);
+  PluginDidSetGeometry(mRegisteredPlugins);
 }
 
 void
@@ -3073,17 +3099,18 @@ nsRootPresContext::CollectPluginGeometryUpdates(LayerManager* aLayerManager)
   // for transmission to the chrome process.
   NS_ASSERTION(aLayerManager, "layer manager is invalid!");
   mozilla::layers::ClientLayerManager* clm = aLayerManager->AsClientLayerManager();
-  PluginGetGeometryUpdateClosure closure;
-  mRegisteredPlugins.EnumerateEntries(PluginGetGeometryUpdate, &closure);
-  if (closure.mConfigurations.IsEmpty()) {
-    mRegisteredPlugins.EnumerateEntries(PluginDidSetGeometryEnumerator, nullptr);
+
+  nsTArray<nsIWidget::Configuration> configurations;
+  PluginGetGeometryUpdate(mRegisteredPlugins, &configurations);
+  if (configurations.IsEmpty()) {
+    PluginDidSetGeometry(mRegisteredPlugins);
     return;
   }
-  SortConfigurations(&closure.mConfigurations);
+  SortConfigurations(&configurations);
   if (clm) {
-    clm->StorePluginWidgetConfigurations(closure.mConfigurations);
+    clm->StorePluginWidgetConfigurations(configurations);
   }
-  mRegisteredPlugins.EnumerateEntries(PluginDidSetGeometryEnumerator, nullptr);
+  PluginDidSetGeometry(mRegisteredPlugins);
 #endif  // #ifndef XP_MACOSX
 }
 
@@ -3103,11 +3130,8 @@ nsRootPresContext::EnsureEventualDidPaintEvent()
 {
   if (mNotifyDidPaintTimer)
     return;
-  mNotifyDidPaintTimer = do_CreateInstance("@mozilla.org/timer;1");
-  if (!mNotifyDidPaintTimer)
-    return;
-  mNotifyDidPaintTimer->InitWithFuncCallback(NotifyDidPaintForSubtreeCallback,
-                                             (void*)this, 100, nsITimer::TYPE_ONE_SHOT);
+
+  mNotifyDidPaintTimer = CreateTimer(NotifyDidPaintForSubtreeCallback, 100);
 }
 
 void

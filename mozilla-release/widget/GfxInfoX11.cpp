@@ -14,7 +14,6 @@
 #include "prenv.h"
 
 #include "GfxInfoX11.h"
-#include "mozilla/X11Util.h"
 
 #ifdef MOZ_CRASHREPORTER
 #include "nsExceptionHandler.h"
@@ -391,21 +390,18 @@ GfxInfo::GetDWriteEnabled(bool *aEnabled)
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString DWriteVersion; */
 NS_IMETHODIMP
 GfxInfo::GetDWriteVersion(nsAString & aDwriteVersion)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString cleartypeParameters; */
 NS_IMETHODIMP
 GfxInfo::GetCleartypeParameters(nsAString & aCleartypeParams)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterDescription; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDescription(nsAString & aAdapterDescription)
 {
@@ -414,14 +410,12 @@ GfxInfo::GetAdapterDescription(nsAString & aAdapterDescription)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterDescription2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDescription2(nsAString & aAdapterDescription)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterRAM; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterRAM(nsAString & aAdapterRAM)
 {
@@ -429,14 +423,12 @@ GfxInfo::GetAdapterRAM(nsAString & aAdapterRAM)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterRAM2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterRAM2(nsAString & aAdapterRAM)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterDriver; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriver(nsAString & aAdapterDriver)
 {
@@ -444,14 +436,12 @@ GfxInfo::GetAdapterDriver(nsAString & aAdapterDriver)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterDriver2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriver2(nsAString & aAdapterDriver)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterDriverVersion; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverVersion(nsAString & aAdapterDriverVersion)
 {
@@ -460,14 +450,12 @@ GfxInfo::GetAdapterDriverVersion(nsAString & aAdapterDriverVersion)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterDriverVersion2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverVersion2(nsAString & aAdapterDriverVersion)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterDriverDate; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverDate(nsAString & aAdapterDriverDate)
 {
@@ -475,14 +463,12 @@ GfxInfo::GetAdapterDriverDate(nsAString & aAdapterDriverDate)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterDriverDate2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDriverDate2(nsAString & aAdapterDriverDate)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterVendorID; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterVendorID(nsAString & aAdapterVendorID)
 {
@@ -491,14 +477,12 @@ GfxInfo::GetAdapterVendorID(nsAString & aAdapterVendorID)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterVendorID2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterVendorID2(nsAString & aAdapterVendorID)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterDeviceID; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID(nsAString & aAdapterDeviceID)
 {
@@ -507,60 +491,28 @@ GfxInfo::GetAdapterDeviceID(nsAString & aAdapterDeviceID)
   return NS_OK;
 }
 
-/* readonly attribute DOMString adapterDeviceID2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterDeviceID2(nsAString & aAdapterDeviceID)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterSubsysID; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterSubsysID(nsAString & aAdapterSubsysID)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute DOMString adapterSubsysID2; */
 NS_IMETHODIMP
 GfxInfo::GetAdapterSubsysID2(nsAString & aAdapterSubsysID)
 {
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute boolean isGPU2Active; */
 NS_IMETHODIMP
 GfxInfo::GetIsGPU2Active(bool* aIsGPU2Active)
 {
   return NS_ERROR_FAILURE;
-}
-
-nsresult
-GfxInfo::FindMonitors(JSContext* aCx, JS::HandleObject aOutArray)
-{
-#if defined(MOZ_WIDGET_GTK)
-  // No display in xpcshell mode.
-  if (!gdk_display_get_default()) {
-    return NS_OK;
-  }
-#endif
-
-  // Note: this doesn't support Xinerama. Two physical displays will be
-  // reported as one monitor covering the entire virtual screen.
-  Display* display = DefaultXDisplay();
-  Screen* screen = DefaultScreenOfDisplay(display);
-
-  JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
-
-  JS::Rooted<JS::Value> screenWidth(aCx, JS::Int32Value(WidthOfScreen(screen)));
-  JS_SetProperty(aCx, obj, "screenWidth", screenWidth);
-
-  JS::Rooted<JS::Value> screenHeight(aCx, JS::Int32Value(HeightOfScreen(screen)));
-  JS_SetProperty(aCx, obj, "screenHeight", screenHeight);
-
-  JS::Rooted<JS::Value> element(aCx, JS::ObjectValue(*obj));
-  JS_SetElement(aCx, aOutArray, 0, element);
-  return NS_OK;
 }
 
 #ifdef DEBUG
@@ -568,28 +520,24 @@ GfxInfo::FindMonitors(JSContext* aCx, JS::HandleObject aOutArray)
 // Implement nsIGfxInfoDebug
 // We don't support spoofing anything on Linux
 
-/* void spoofVendorID (in DOMString aVendorID); */
 NS_IMETHODIMP GfxInfo::SpoofVendorID(const nsAString & aVendorID)
 {
   CopyUTF16toUTF8(aVendorID, mVendor);
   return NS_OK;
 }
 
-/* void spoofDeviceID (in unsigned long aDeviceID); */
 NS_IMETHODIMP GfxInfo::SpoofDeviceID(const nsAString & aDeviceID)
 {
   CopyUTF16toUTF8(aDeviceID, mRenderer);
   return NS_OK;
 }
 
-/* void spoofDriverVersion (in DOMString aDriverVersion); */
 NS_IMETHODIMP GfxInfo::SpoofDriverVersion(const nsAString & aDriverVersion)
 {
   CopyUTF16toUTF8(aDriverVersion, mVersion);
   return NS_OK;
 }
 
-/* void spoofOSVersion (in unsigned long aVersion); */
 NS_IMETHODIMP GfxInfo::SpoofOSVersion(uint32_t aVersion)
 {
   // We don't support OS versioning on Linux. There's just "Linux".

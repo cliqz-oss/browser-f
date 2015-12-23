@@ -91,6 +91,11 @@ public:
     return NS_OK;
   }
 
+  NS_IMETHOD OnVolumeChanged(float aVolume) override
+  {
+    return NS_OK;
+  }
+
 private:
   virtual ~FakeSynthCallback() { }
 
@@ -287,7 +292,9 @@ AddVoices(nsISpeechService* aService, const VoiceDetails* aVoices, uint32_t aLen
     NS_ConvertUTF8toUTF16 name(aVoices[i].name);
     NS_ConvertUTF8toUTF16 uri(aVoices[i].uri);
     NS_ConvertUTF8toUTF16 lang(aVoices[i].lang);
-    registry->AddVoice(aService, uri, name, lang, true);
+    // These services can handle more than one utterance at a time and have
+    // several speaking simultaniously. So, aQueuesUtterances == false
+    registry->AddVoice(aService, uri, name, lang, true, false);
     if (aVoices[i].defaultVoice) {
       registry->SetDefaultVoice(uri, true);
     }
@@ -311,7 +318,9 @@ nsFakeSynthServices::Observe(nsISupports* aSubject, const char* aTopic,
                              const char16_t* aData)
 {
   MOZ_ASSERT(NS_IsMainThread());
-  NS_ENSURE_TRUE(!strcmp(aTopic, "profile-after-change"), NS_ERROR_UNEXPECTED);
+  if(NS_WARN_IF(!(!strcmp(aTopic, "profile-after-change")))) {
+    return NS_ERROR_UNEXPECTED;
+  }
 
   if (Preferences::GetBool("media.webspeech.synth.test")) {
     Init();
@@ -326,7 +335,7 @@ nsFakeSynthServices*
 nsFakeSynthServices::GetInstance()
 {
   MOZ_ASSERT(NS_IsMainThread());
-  if (XRE_GetProcessType() != GeckoProcessType_Default) {
+  if (!XRE_IsParentProcess()) {
     MOZ_ASSERT(false, "nsFakeSynthServices can only be started on main gecko process");
     return nullptr;
   }

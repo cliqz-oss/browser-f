@@ -68,9 +68,25 @@ MediaEngineDefaultVideoSource::GetUUID(nsACString& aUUID)
   return;
 }
 
+uint32_t
+MediaEngineDefaultVideoSource::GetBestFitnessDistance(
+    const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets,
+    const nsString& aDeviceId)
+{
+  uint32_t distance = 0;
+#ifdef MOZ_WEBRTC
+  for (const dom::MediaTrackConstraintSet* cs : aConstraintSets) {
+    distance = GetMinimumFitnessDistance(*cs, false, aDeviceId);
+    break; // distance is read from first entry only
+  }
+#endif
+  return distance;
+}
+
 nsresult
 MediaEngineDefaultVideoSource::Allocate(const dom::MediaTrackConstraints &aConstraints,
-                                        const MediaEnginePrefs &aPrefs)
+                                        const MediaEnginePrefs &aPrefs,
+                                        const nsString& aDeviceId)
 {
   if (mState != kReleased) {
     return NS_ERROR_FAILURE;
@@ -185,6 +201,14 @@ MediaEngineDefaultVideoSource::Stop(SourceMediaStream *aSource, TrackID aID)
   return NS_OK;
 }
 
+nsresult
+MediaEngineDefaultVideoSource::Restart(const dom::MediaTrackConstraints& aConstraints,
+                                       const MediaEnginePrefs &aPrefs,
+                                       const nsString& aDeviceId)
+{
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 MediaEngineDefaultVideoSource::Notify(nsITimer* aTimer)
 {
@@ -226,9 +250,15 @@ MediaEngineDefaultVideoSource::Notify(nsITimer* aTimer)
 		     0, 0);
 #endif
 
-  ycbcr_image->SetData(data);
+  bool setData = ycbcr_image->SetData(data);
+  MOZ_ASSERT(setData);
+
   // SetData copies data, so we can free the frame
   ReleaseFrame(data);
+
+  if (!setData) {
+    return NS_ERROR_FAILURE;
+  }
 
   MonitorAutoLock lock(mMonitor);
 
@@ -348,9 +378,25 @@ MediaEngineDefaultAudioSource::GetUUID(nsACString& aUUID)
   return;
 }
 
+uint32_t
+MediaEngineDefaultAudioSource::GetBestFitnessDistance(
+    const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets,
+    const nsString& aDeviceId)
+{
+  uint32_t distance = 0;
+#ifdef MOZ_WEBRTC
+  for (const dom::MediaTrackConstraintSet* cs : aConstraintSets) {
+    distance = GetMinimumFitnessDistance(*cs, false, aDeviceId);
+    break; // distance is read from first entry only
+  }
+#endif
+  return distance;
+}
+
 nsresult
 MediaEngineDefaultAudioSource::Allocate(const dom::MediaTrackConstraints &aConstraints,
-                                        const MediaEnginePrefs &aPrefs)
+                                        const MediaEnginePrefs &aPrefs,
+                                        const nsString& aDeviceId)
 {
   if (mState != kReleased) {
     return NS_ERROR_FAILURE;
@@ -435,6 +481,14 @@ MediaEngineDefaultAudioSource::Stop(SourceMediaStream *aSource, TrackID aID)
   }
 
   mState = kStopped;
+  return NS_OK;
+}
+
+nsresult
+MediaEngineDefaultAudioSource::Restart(const dom::MediaTrackConstraints& aConstraints,
+                                       const MediaEnginePrefs &aPrefs,
+                                       const nsString& aDeviceId)
+{
   return NS_OK;
 }
 

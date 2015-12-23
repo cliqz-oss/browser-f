@@ -19,8 +19,8 @@ function toggleAllTools(state) {
 
 function getChromeActors(callback)
 {
-  let { DebuggerServer } = Cu.import("resource://gre/modules/devtools/dbg-server.jsm", {});
-  let { DebuggerClient } = Cu.import("resource://gre/modules/devtools/dbg-client.jsm", {});
+  let { DebuggerServer } = require("devtools/server/main");
+  let { DebuggerClient } = require("devtools/toolkit/client/main");
 
   if (!DebuggerServer.initialized) {
     DebuggerServer.init();
@@ -127,7 +127,7 @@ function synthesizeKeyElement(el) {
  * expected values
  * @param {Toolbox}
  * @param {HostType} hostType
- *        One of {SIDE, BOTTOM, WINDOW} from devtools.Toolbox.HostType
+ *        One of {SIDE, BOTTOM, WINDOW} from Toolbox.HostType
  * @param {HostType} Optional previousHostType
  *        The host that will be switched to when calling switchToPreviousHost
  */

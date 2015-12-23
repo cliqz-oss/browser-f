@@ -15,7 +15,7 @@ const LOOP_SESSION_TYPE = {
   FXA: 2
 };
 
-/***
+/**
  * Values that we segment 2-way media connection length telemetry probes
  * into.
  *
@@ -87,6 +87,16 @@ const ROOM_CONTEXT_ADD = {
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL = "loop.debug.loglevel";
+
+const kChatboxHangupButton = {
+  id: "loop-hangup",
+  visibleWhenUndocked: false,
+  onCommand: function(e, chatbox) {
+    let window = chatbox.content.contentWindow;
+    let event = new window.CustomEvent("LoopHangupNow");
+    window.dispatchEvent(event);
+  }
+};
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -173,23 +183,23 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
 });
 
 function setJSONPref(aName, aValue) {
-  let value = !!aValue ? JSON.stringify(aValue) : "";
+  let value = aValue ? JSON.stringify(aValue) : "";
   Services.prefs.setCharPref(aName, value);
 }
 
 function getJSONPref(aName) {
   let value = Services.prefs.getCharPref(aName);
-  return !!value ? JSON.parse(value) : null;
+  return value ? JSON.parse(value) : null;
 }
 
-let gHawkClient = null;
-let gLocalizedStrings = new Map();
-let gFxAEnabled = true;
-let gFxAOAuthClientPromise = null;
-let gFxAOAuthClient = null;
-let gErrors = new Map();
-let gLastWindowId = 0;
-let gConversationWindowData = new Map();
+var gHawkClient = null;
+var gLocalizedStrings = new Map();
+var gFxAEnabled = true;
+var gFxAOAuthClientPromise = null;
+var gFxAOAuthClient = null;
+var gErrors = new Map();
+var gLastWindowId = 0;
+var gConversationWindowData = new Map();
 
 /**
  * Internal helper methods and state
@@ -198,12 +208,13 @@ let gConversationWindowData = new Map();
  * and register with the push server. Then we need to take the result of that
  * and register with the Loop server.
  */
-let MozLoopServiceInternal = {
+var MozLoopServiceInternal = {
   conversationContexts: new Map(),
   pushURLs: new Map(),
 
   mocks: {
-    pushHandler: undefined
+    pushHandler: undefined,
+    isChatWindowOpen: undefined
   },
 
   /**
@@ -345,7 +356,7 @@ let MozLoopServiceInternal = {
       detailsString = "try_again_later";
       detailsButtonLabelString = "retry_button";
     } else {
-      messageString = "generic_failure_title";
+      messageString = "generic_failure_message";
     }
 
     error.friendlyMessage = this.localizedStrings.get(messageString);
@@ -658,7 +669,8 @@ let MozLoopServiceInternal = {
               return this.hawkRequestInternal(sessionType, path, method, payloadObj, false);
             },
             () => {
-              return handle401Error(error); //Process the original error that triggered the retry.
+              // Process the original error that triggered the retry.
+              return handle401Error(error);
             }
           );
         }
@@ -871,6 +883,22 @@ let MozLoopServiceInternal = {
   },
 
   /**
+   * Determines if a chat window is already open for a given window id.
+   *
+   * @param  {String}  chatWindowId The window id.
+   * @return {Boolean}              True if the window is opened.
+   */
+  isChatWindowOpen: function(chatWindowId) {
+    if (this.mocks.isChatWindowOpen !== undefined) {
+      return this.mocks.isChatWindowOpen;
+    }
+
+    let chatUrl = this.getChatURL(chatWindowId);
+
+    return [...Chat.chatboxes].some(chatbox => chatbox.src == chatUrl);
+  },
+
+  /**
    * Opens the chat window
    *
    * @param {Object} conversationWindowData The data to be obtained by the
@@ -887,6 +915,8 @@ let MozLoopServiceInternal = {
 
     let url = this.getChatURL(windowId);
 
+    Chat.registerButton(kChatboxHangupButton);
+
     let callback = chatbox => {
       // We need to use DOMContentLoaded as otherwise the injection will happen
       // in about:blank and then get lost.
@@ -897,7 +927,7 @@ let MozLoopServiceInternal = {
         return;
       }
 
-      chatbox.addEventListener("DOMContentLoaded", function loaded(event) {
+      let loaded = event => {
         if (event.target != chatbox.contentDocument) {
           return;
         }
@@ -963,10 +993,10 @@ let MozLoopServiceInternal = {
             // Not ideal but insert our data amidst existing data like this:
             // - 000 (id=00 url=http)
             // + 000 (session=000 call=000 id=00 url=http)
-            var pair = pc.id.split("(");  //)
+            var pair = pc.id.split("(");
             if (pair.length == 2) {
               pc.id = pair[0] + "(session=" + context.sessionId +
-                  (context.callId ? " call=" + context.callId : "") + " " + pair[1]; //)
+                  (context.callId ? " call=" + context.callId : "") + " " + pair[1];
             }
           }
 
@@ -986,7 +1016,8 @@ let MozLoopServiceInternal = {
         pc_static.registerPeerConnectionLifecycleCallback(onPCLifecycleChange);
 
         UITour.notify("Loop:ChatWindowOpened");
-      }.bind(this), true);
+      };
+      chatbox.addEventListener("DOMContentLoaded", loaded, true);
     };
 
     let chatboxInstance = Chat.open(null, origin, "", url, undefined, undefined,
@@ -995,11 +1026,11 @@ let MozLoopServiceInternal = {
       return null;
     // It's common for unit tests to overload Chat.open.
     } else if (chatboxInstance.setAttribute) {
-      // Set properties that influence visual appeara nce of the chatbox right
+      // Set properties that influence visual appearance of the chatbox right
       // away to circumvent glitches.
-      chatboxInstance.setAttribute("dark", true);
       chatboxInstance.setAttribute("customSize", "loopDefault");
       chatboxInstance.parentNode.setAttribute("customSize", "loopDefault");
+      Chat.loadButtonSet(chatboxInstance, "minimize,swap," + kChatboxHangupButton.id);
     }
     return windowId;
   },
@@ -1143,7 +1174,7 @@ let MozLoopServiceInternal = {
 Object.freeze(MozLoopServiceInternal);
 
 
-let gInitializeTimerFunc = (deferredInitialization) => {
+var gInitializeTimerFunc = (deferredInitialization) => {
   // Kick off the push notification service into registering after a timeout.
   // This ensures we're not doing too much straight after the browser's finished
   // starting up.
@@ -1152,7 +1183,7 @@ let gInitializeTimerFunc = (deferredInitialization) => {
              MozLoopServiceInternal.initialRegistrationDelayMilliseconds);
 };
 
-let gServiceInitialized = false;
+var gServiceInitialized = false;
 
 /**
  * Public API
@@ -1208,6 +1239,9 @@ this.MozLoopService = {
     // Do this here, rather than immediately after definition, so that we can
     // stub out API functions for unit testing
     Object.freeze(this);
+
+    // Initialise anything that needs it in rooms.
+    LoopRooms.init();
 
     // Don't do anything if loop is not enabled.
     if (!Services.prefs.getBoolPref("loop.enabled")) {
@@ -1370,6 +1404,16 @@ this.MozLoopService = {
    */
   openChatWindow: function(conversationWindowData) {
     return MozLoopServiceInternal.openChatWindow(conversationWindowData);
+  },
+
+  /**
+   * Determines if a chat window is already open for a given window id.
+   *
+   * @param  {String}  chatWindowId The window id.
+   * @return {Boolean}              True if the window is opened.
+   */
+  isChatWindowOpen: function(chatWindowId) {
+    return MozLoopServiceInternal.isChatWindowOpen(chatWindowId);
   },
 
   /**

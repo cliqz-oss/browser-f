@@ -16,7 +16,6 @@
 #include "nsGlobalWindow.h"
 #include "nsIScriptContext.h"
 #include "nsIScriptObjectPrincipal.h"
-#include "nsIScriptSecurityManager.h"
 #include "nsIURI.h"
 #include "nsJSUtils.h"
 #include "nsNetUtil.h"
@@ -30,6 +29,7 @@
 #include "Crypto.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/BlobBinding.h"
+#include "mozilla/dom/cache/CacheStorage.h"
 #include "mozilla/dom/CSSBinding.h"
 #include "mozilla/dom/indexedDB/IndexedDatabaseManager.h"
 #include "mozilla/dom/Fetch.h"
@@ -37,7 +37,9 @@
 #include "mozilla/dom/PromiseBinding.h"
 #include "mozilla/dom/RequestBinding.h"
 #include "mozilla/dom/ResponseBinding.h"
+#ifdef MOZ_WEBRTC
 #include "mozilla/dom/RTCIdentityProviderRegistrar.h"
+#endif
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/TextDecoderBinding.h"
 #include "mozilla/dom/TextEncoderBinding.h"
@@ -108,7 +110,7 @@ xpc::NewSandboxConstructor()
 }
 
 static bool
-SandboxDump(JSContext* cx, unsigned argc, jsval* vp)
+SandboxDump(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -145,7 +147,7 @@ SandboxDump(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-SandboxDebug(JSContext* cx, unsigned argc, jsval* vp)
+SandboxDebug(JSContext* cx, unsigned argc, Value* vp)
 {
 #ifdef DEBUG
     return SandboxDump(cx, argc, vp);
@@ -226,6 +228,7 @@ SandboxCreateCrypto(JSContext* cx, JS::HandleObject obj)
     return JS_DefineProperty(cx, obj, "crypto", wrapped, JSPROP_ENUMERATE);
 }
 
+#ifdef MOZ_WEBRTC
 static bool
 SandboxCreateRTCIdentityProvider(JSContext* cx, JS::HandleObject obj)
 {
@@ -239,6 +242,7 @@ SandboxCreateRTCIdentityProvider(JSContext* cx, JS::HandleObject obj)
     JS::RootedObject wrapped(cx, registrar->WrapObject(cx, nullptr));
     return JS_DefineProperty(cx, obj, "rtcIdentityProvider", wrapped, JSPROP_ENUMERATE);
 }
+#endif
 
 static bool
 SetFetchRequestFromValue(JSContext *cx, RequestOrUSVString& request,
@@ -287,15 +291,15 @@ SandboxFetch(JSContext* cx, JS::HandleObject scope, const CallArgs& args)
         FetchRequest(global, Constify(request), Constify(options), rv);
     rv.WouldReportJSException();
     if (rv.Failed()) {
-        return ThrowMethodFailedWithDetails(cx, rv, "Sandbox", "fetch");
+        return ThrowMethodFailed(cx, rv);
     }
-    if (!GetOrCreateDOMReflector(cx, scope, response, args.rval())) {
+    if (!GetOrCreateDOMReflector(cx, response, args.rval())) {
         return false;
     }
     return true;
 }
 
-static bool SandboxFetchPromise(JSContext* cx, unsigned argc, jsval* vp)
+static bool SandboxFetchPromise(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     RootedObject callee(cx, &args.callee());
@@ -319,7 +323,7 @@ SandboxCreateFetch(JSContext* cx, HandleObject obj)
 }
 
 static bool
-SandboxIsProxy(JSContext* cx, unsigned argc, jsval* vp)
+SandboxIsProxy(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     if (args.length() < 1) {
@@ -346,7 +350,7 @@ SandboxIsProxy(JSContext* cx, unsigned argc, jsval* vp)
  *                         [optional] object options)
  */
 static bool
-SandboxExportFunction(JSContext* cx, unsigned argc, jsval* vp)
+SandboxExportFunction(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     if (args.length() < 2) {
@@ -359,7 +363,7 @@ SandboxExportFunction(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-SandboxCreateObjectIn(JSContext* cx, unsigned argc, jsval* vp)
+SandboxCreateObjectIn(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     if (args.length() < 1) {
@@ -385,7 +389,7 @@ SandboxCreateObjectIn(JSContext* cx, unsigned argc, jsval* vp)
 }
 
 static bool
-SandboxCloneInto(JSContext* cx, unsigned argc, jsval* vp)
+SandboxCloneInto(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
     if (args.length() < 2) {
@@ -440,7 +444,7 @@ static bool
 sandbox_convert(JSContext* cx, HandleObject obj, JSType type, MutableHandleValue vp)
 {
     if (type == JSTYPE_OBJECT) {
-        vp.set(OBJECT_TO_JSVAL(obj));
+        vp.setObject(*obj);
         return true;
     }
 
@@ -824,7 +828,7 @@ xpc::SandboxProxyHandler::hasOwn(JSContext* cx, JS::Handle<JSObject*> proxy,
 
 bool
 xpc::SandboxProxyHandler::get(JSContext* cx, JS::Handle<JSObject*> proxy,
-                              JS::Handle<JSObject*> receiver,
+                              JS::Handle<JS::Value> receiver,
                               JS::Handle<jsid> id,
                               JS::MutableHandle<Value> vp) const
 {
@@ -898,10 +902,14 @@ xpc::GlobalProperties::Parse(JSContext* cx, JS::HandleObject obj)
             File = true;
         } else if (!strcmp(name.ptr(), "crypto")) {
             crypto = true;
+#ifdef MOZ_WEBRTC
         } else if (!strcmp(name.ptr(), "rtcIdentityProvider")) {
             rtcIdentityProvider = true;
+#endif
         } else if (!strcmp(name.ptr(), "fetch")) {
             fetch = true;
+        } else if (!strcmp(name.ptr(), "caches")) {
+            caches = true;
         } else {
             JS_ReportError(cx, "Unknown property name: %s", name.ptr());
             return false;
@@ -916,7 +924,7 @@ xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj)
     if (CSS && !dom::CSSBinding::GetConstructorObject(cx, obj))
         return false;
 
-    if (indexedDB && AccessCheck::isChrome(obj) &&
+    if (indexedDB &&
         !IndexedDatabaseManager::DefineIndexedDB(cx, obj))
         return false;
 
@@ -959,10 +967,15 @@ xpc::GlobalProperties::Define(JSContext* cx, JS::HandleObject obj)
     if (crypto && !SandboxCreateCrypto(cx, obj))
         return false;
 
+#ifdef MOZ_WEBRTC
     if (rtcIdentityProvider && !SandboxCreateRTCIdentityProvider(cx, obj))
         return false;
+#endif
 
     if (fetch && !SandboxCreateFetch(cx, obj))
+        return false;
+
+    if (caches && !dom::cache::CacheStorage::DefineCaches(cx, obj))
         return false;
 
     return true;
@@ -1021,8 +1034,9 @@ xpc::CreateSandboxObject(JSContext* cx, MutableHandleValue vp, nsISupports* prin
     if (!sandbox)
         return NS_ERROR_FAILURE;
 
-    CompartmentPrivate::Get(sandbox)->writeToGlobalPrototype =
-      options.writeToGlobalPrototype;
+    CompartmentPrivate* priv = CompartmentPrivate::Get(sandbox);
+    priv->allowWaivers = options.allowWaivers;
+    priv->writeToGlobalPrototype = options.writeToGlobalPrototype;
 
     // Set up the wantXrays flag, which indicates whether xrays are desired even
     // for same-origin access.
@@ -1033,7 +1047,7 @@ xpc::CreateSandboxObject(JSContext* cx, MutableHandleValue vp, nsISupports* prin
     // Arguably we should just flip the default for chrome and still honor the
     // flag, but such a change would break code in subtle ways for minimal
     // benefit. So we just switch it off here.
-    CompartmentPrivate::Get(sandbox)->wantXrays =
+    priv->wantXrays =
       AccessCheck::isChrome(sandbox) ? false : options.wantXrays;
 
     {
@@ -1044,15 +1058,26 @@ xpc::CreateSandboxObject(JSContext* cx, MutableHandleValue vp, nsISupports* prin
             if (!ok)
                 return NS_ERROR_XPC_UNEXPECTED;
 
-            // Now check what sort of thing we've got in |proto|
-            JSObject* unwrappedProto = js::CheckedUnwrap(options.proto, false);
-            if (!unwrappedProto) {
-                JS_ReportError(cx, "Sandbox must subsume sandboxPrototype");
-                return NS_ERROR_INVALID_ARG;
+            // Now check what sort of thing we've got in |proto|, and figure out
+            // if we need a SandboxProxyHandler.
+            //
+            // Note that, in the case of a window, we can't require that the
+            // Sandbox subsumes the prototype, because we have to hold our
+            // reference to it via an outer window, and the window may navigate
+            // at any time. So we have to handle that case separately.
+            bool useSandboxProxy = !!WindowOrNull(js::UncheckedUnwrap(options.proto, false));
+            if (!useSandboxProxy) {
+                JSObject* unwrappedProto = js::CheckedUnwrap(options.proto, false);
+                if (!unwrappedProto) {
+                    JS_ReportError(cx, "Sandbox must subsume sandboxPrototype");
+                    return NS_ERROR_INVALID_ARG;
+                }
+                const js::Class* unwrappedClass = js::GetObjectClass(unwrappedProto);
+                useSandboxProxy = IS_WN_CLASS(unwrappedClass) ||
+                                  mozilla::dom::IsDOMClass(Jsvalify(unwrappedClass));
             }
-            const js::Class* unwrappedClass = js::GetObjectClass(unwrappedProto);
-            if (IS_WN_CLASS(unwrappedClass) ||
-                mozilla::dom::IsDOMClass(Jsvalify(unwrappedClass))) {
+
+            if (useSandboxProxy) {
                 // Wrap it up in a proxy that will do the right thing in terms
                 // of this-binding for methods.
                 RootedValue priv(cx, ObjectValue(*options.proto));
@@ -1173,15 +1198,15 @@ ParsePrincipal(JSContext* cx, HandleString codebase, nsIPrincipal** principal)
         return false;
     }
 
-    nsCOMPtr<nsIScriptSecurityManager> secman =
-        do_GetService(kScriptSecurityManagerContractID);
-    NS_ENSURE_TRUE(secman, false);
-
     // We could allow passing in the app-id and browser-element info to the
     // sandbox constructor. But creating a sandbox based on a string is a
     // deprecated API so no need to add features to it.
-    rv = secman->GetNoAppCodebasePrincipal(uri, principal);
-    if (NS_FAILED(rv) || !*principal) {
+    OriginAttributes attrs;
+    nsCOMPtr<nsIPrincipal> prin =
+        BasePrincipal::CreateCodebasePrincipal(uri, attrs);
+    prin.forget(principal);
+
+    if (!*principal) {
         JS_ReportError(cx, "Creating Principal from URI failed");
         return false;
     }
@@ -1472,6 +1497,7 @@ SandboxOptions::Parse()
 {
     bool ok = ParseObject("sandboxPrototype", &proto) &&
               ParseBoolean("wantXrays", &wantXrays) &&
+              ParseBoolean("allowWaivers", &allowWaivers) &&
               ParseBoolean("wantComponents", &wantComponents) &&
               ParseBoolean("wantExportHelpers", &wantExportHelpers) &&
               ParseString("sandboxName", sandboxName) &&

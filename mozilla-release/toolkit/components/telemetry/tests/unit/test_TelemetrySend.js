@@ -52,7 +52,7 @@ function fakePingId(type, number) {
   return id;
 }
 
-let checkPingsSaved = Task.async(function* (pingIds) {
+var checkPingsSaved = Task.async(function* (pingIds) {
   let allFound = true;
   for (let id of pingIds) {
     const path = OS.Path.join(TelemetryStorage.pingDirectoryPath, id);
@@ -267,7 +267,6 @@ add_task(function* test_evictedOnServerErrors() {
   const TEST_TYPE = "test-evicted";
 
   yield TelemetrySend.reset();
-  Assert.equal(TelemetrySend.pendingPingCount, 0, "Should have no pending pings yet");
 
   // Write a custom ping handler which will return 403. This will trigger ping eviction
   // on client side.

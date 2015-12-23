@@ -34,7 +34,7 @@
 namespace mozilla {
 namespace gfx {
 class Matrix4x4;
-}
+} // namespace gfx
 
 namespace layers {
 
@@ -52,8 +52,6 @@ public:
   // essentially, this is a sentinel used to represent an invalid or blank
   // tile.
   TileHost()
-  : x(-1)
-  , y(-1)
   {}
 
   // Constructs a TileHost from a gfxSharedReadLock and TextureHost.
@@ -67,8 +65,6 @@ public:
     , mTextureHostOnWhite(aTextureHostOnWhite)
     , mTextureSource(aSource)
     , mTextureSourceOnWhite(aSourceOnWhite)
-    , x(-1)
-    , y(-1)
   {}
 
   TileHost(const TileHost& o) {
@@ -77,9 +73,7 @@ public:
     mTextureSource = o.mTextureSource;
     mTextureSourceOnWhite = o.mTextureSourceOnWhite;
     mSharedLock = o.mSharedLock;
-    mPreviousSharedLock = o.mPreviousSharedLock;
-    x = o.x;
-    y = o.y;
+    mTilePosition = o.mTilePosition;
   }
   TileHost& operator=(const TileHost& o) {
     if (this == &o) {
@@ -90,9 +84,7 @@ public:
     mTextureSource = o.mTextureSource;
     mTextureSourceOnWhite = o.mTextureSourceOnWhite;
     mSharedLock = o.mSharedLock;
-    mPreviousSharedLock = o.mPreviousSharedLock;
-    x = o.x;
-    y = o.y;
+    mTilePosition = o.mTilePosition;
     return *this;
   }
 
@@ -112,13 +104,6 @@ public:
     }
   }
 
-  void ReadUnlockPrevious() {
-    if (mPreviousSharedLock) {
-      mPreviousSharedLock->ReadUnlock();
-      mPreviousSharedLock = nullptr;
-    }
-  }
-
   void Dump(std::stringstream& aStream) {
     aStream << "TileHost(...)"; // fill in as needed
   }
@@ -129,14 +114,12 @@ public:
   }
 
   RefPtr<gfxSharedReadLock> mSharedLock;
-  RefPtr<gfxSharedReadLock> mPreviousSharedLock;
   CompositableTextureHostRef mTextureHost;
   CompositableTextureHostRef mTextureHostOnWhite;
   mutable CompositableTextureSourceRef mTextureSource;
   mutable CompositableTextureSourceRef mTextureSourceOnWhite;
   // This is not strictly necessary but makes debugging whole lot easier.
-  int x;
-  int y;
+  TileIntPoint mTilePosition;
 };
 
 class TiledLayerBufferComposite
@@ -154,6 +137,9 @@ public:
 
   void Clear();
 
+  void MarkTilesForUnlock();
+  void ProcessDelayedUnlocks();
+
   TileHost GetPlaceholderTile() const { return TileHost(); }
 
   // Stores the absolute resolution of the containing frame, calculated
@@ -167,9 +153,9 @@ public:
   static void RecycleCallback(TextureHost* textureHost, void* aClosure);
 
 protected:
-  void SwapTiles(TileHost& aTileA, TileHost& aTileB) { std::swap(aTileA, aTileB); }
 
   CSSToParentLayerScale2D mFrameResolution;
+  nsTArray<RefPtr<gfxSharedReadLock>> mDelayedUnlocks;
 };
 
 /**
@@ -192,8 +178,7 @@ protected:
  * buffer after compositing a new one. Rendering takes us to RenderTile which
  * is similar to Composite for non-tiled ContentHosts.
  */
-class TiledContentHost : public ContentHost,
-                         public TiledLayerComposer
+class TiledContentHost : public ContentHost
 {
 public:
   explicit TiledContentHost(const TextureInfo& aTextureInfo);
@@ -204,6 +189,25 @@ protected:
 public:
   virtual LayerRenderState GetRenderState() override
   {
+    // If we have exactly one high precision tile, then we can support hwc.
+    if (mTiledBuffer.GetTileCount() == 1 &&
+        mLowPrecisionTiledBuffer.GetTileCount() == 0) {
+      TextureHost* host = mTiledBuffer.GetTile(0).mTextureHost;
+      if (host) {
+        MOZ_ASSERT(!mTiledBuffer.GetTile(0).mTextureHostOnWhite, "Component alpha not supported!");
+
+        gfx::IntPoint offset = mTiledBuffer.GetTileOffset(mTiledBuffer.GetPlacement().TilePosition(0));
+
+        // Don't try to use HWC if the content doesn't start at the top-left of the tile.
+        if (offset != GetValidRegion().GetBounds().TopLeft()) {
+          return LayerRenderState();
+        }
+
+        LayerRenderState state = host->GetRenderState();
+        state.SetOffset(offset);
+        return state;
+      }
+    }
     return LayerRenderState();
   }
 
@@ -217,12 +221,12 @@ public:
     return false;
   }
 
-  const nsIntRegion& GetValidLowPrecisionRegion() const override
+  const nsIntRegion& GetValidLowPrecisionRegion() const
   {
     return mLowPrecisionTiledBuffer.GetValidRegion();
   }
 
-  const nsIntRegion& GetValidRegion() const override
+  const nsIntRegion& GetValidRegion() const
   {
     return mTiledBuffer.GetValidRegion();
   }
@@ -235,19 +239,20 @@ public:
     mLowPrecisionTiledBuffer.SetCompositor(aCompositor);
   }
 
-  virtual bool UseTiledLayerBuffer(ISurfaceAllocator* aAllocator,
-                                   const SurfaceDescriptorTiles& aTiledDescriptor) override;
+  bool UseTiledLayerBuffer(ISurfaceAllocator* aAllocator,
+                           const SurfaceDescriptorTiles& aTiledDescriptor);
 
-  void Composite(EffectChain& aEffectChain,
-                 float aOpacity,
-                 const gfx::Matrix4x4& aTransform,
-                 const gfx::Filter& aFilter,
-                 const gfx::Rect& aClipRect,
-                 const nsIntRegion* aVisibleRegion = nullptr) override;
+  virtual void Composite(LayerComposite* aLayer,
+                         EffectChain& aEffectChain,
+                         float aOpacity,
+                         const gfx::Matrix4x4& aTransform,
+                         const gfx::Filter& aFilter,
+                         const gfx::Rect& aClipRect,
+                         const nsIntRegion* aVisibleRegion = nullptr) override;
 
   virtual CompositableType GetType() override { return CompositableType::CONTENT_TILED; }
 
-  virtual TiledLayerComposer* AsTiledLayerComposer() override { return this; }
+  virtual TiledContentHost* AsTiledContentHost() override { return this; }
 
   virtual void Attach(Layer* aLayer,
                       Compositor* aCompositor,
@@ -291,7 +296,7 @@ private:
   TiledLayerBufferComposite    mLowPrecisionTiledBuffer;
 };
 
-}
-}
+} // namespace layers
+} // namespace mozilla
 
 #endif

@@ -4,13 +4,13 @@
 "use strict";
 
 const { L10N } = require("devtools/performance/global");
-const { Formatters, CollapseFunctions: collapse } = require("devtools/performance/marker-utils");
+const { Formatters } = require("devtools/performance/marker-utils");
 
 /**
  * A simple schema for mapping markers to the timeline UI. The keys correspond
  * to marker names, while the values are objects with the following format:
  *
- * - group: The row index in the timeline overview graph; multiple markers
+ * - group: The row index in the overview graph; multiple markers
  *          can be added on the same row. @see <overview.js/buildGraphImage>
  * - label: The label used in the waterfall to identify the marker. Can be a
  *          string or just a function that accepts the marker and returns a
@@ -23,19 +23,11 @@ const { Formatters, CollapseFunctions: collapse } = require("devtools/performanc
  *              for `.marker-details-bullet.{COLORNAME}` for the equivilent
  *              entry in ./browser/themes/shared/devtools/performance.inc.css
  *              https://developer.mozilla.org/en-US/docs/Tools/DevToolsColors
- * - collapseFunc: A function determining how markers are collapsed together.
- *                 Invoked with 3 arguments: the current parent marker, the
- *                 current marker and a method for peeking i markers ahead. If
- *                 nothing is returned, the marker is added as a standalone entry
- *                 in the waterfall. Otherwise, an object needs to be returned
- *                 with the following properties:
- *                 - toParent: The marker to be made a new parent. Can use the current
- *                             marker, becoming a parent itself, or make a new marker-esque
- *                             object.
- *                 - collapse: Whether or not this current marker should be nested within
- *                             the current parent.
- *                 - finalize: Whether or not the current parent should be finalized and popped
- *                             off the stack.
+ * - collapsible: Whether or not this marker can contain other markers it
+ *                eclipses, and becomes collapsible to reveal its nestable children.
+ *                Defaults to true.
+ * - nestable: Whether or not this marker can be nested inside an eclipsing
+ *             collapsible marker. Defaults to true.
  * - fields: An optional array of marker properties you wish to display in the
  *           marker details view. For example, a field in the array such as
  *           { property: "aCauseName", label: "Cause" } would render a string
@@ -61,80 +53,76 @@ const TIMELINE_BLUEPRINT = {
   "UNKNOWN": {
     group: 2,
     colorName: "graphs-grey",
-    collapseFunc: collapse.child,
-    label: Formatters.UnknownLabel
+    label: Formatters.UnknownLabel,
   },
 
   /* Group 0 - Reflow and Rendering pipeline */
   "Styles": {
     group: 0,
     colorName: "graphs-purple",
-    collapseFunc: collapse.child,
-    label: L10N.getStr("timeline.label.styles2"),
+    label: L10N.getStr("marker.label.styles"),
     fields: Formatters.StylesFields,
   },
   "Reflow": {
     group: 0,
     colorName: "graphs-purple",
-    collapseFunc: collapse.child,
-    label: L10N.getStr("timeline.label.reflow2"),
+    label: L10N.getStr("marker.label.reflow"),
   },
   "Paint": {
     group: 0,
     colorName: "graphs-green",
-    collapseFunc: collapse.child,
-    label: L10N.getStr("timeline.label.paint"),
+    label: L10N.getStr("marker.label.paint"),
+  },
+  "Composite": {
+    group: 0,
+    colorName: "graphs-green",
+    label: L10N.getStr("marker.label.composite"),
+  },
+  "CompositeForwardTransaction": {
+    group: 0,
+    colorName: "graphs-bluegrey",
+    label: L10N.getStr("marker.label.compositeForwardTransaction"),
   },
 
   /* Group 1 - JS */
   "DOMEvent": {
     group: 1,
     colorName: "graphs-yellow",
-    collapseFunc: collapse.parent,
-    label: L10N.getStr("timeline.label.domevent"),
+    label: L10N.getStr("marker.label.domevent"),
     fields: Formatters.DOMEventFields,
   },
   "Javascript": {
     group: 1,
     colorName: "graphs-yellow",
-    collapseFunc: either(collapse.parent, collapse.child),
     label: Formatters.JSLabel,
     fields: Formatters.JSFields
   },
   "Parse HTML": {
     group: 1,
     colorName: "graphs-yellow",
-    collapseFunc: either(collapse.parent, collapse.child),
-    label: L10N.getStr("timeline.label.parseHTML"),
+    label: L10N.getStr("marker.label.parseHTML"),
   },
   "Parse XML": {
     group: 1,
     colorName: "graphs-yellow",
-    collapseFunc: either(collapse.parent, collapse.child),
-    label: L10N.getStr("timeline.label.parseXML"),
+    label: L10N.getStr("marker.label.parseXML"),
   },
   "GarbageCollection": {
     group: 1,
     colorName: "graphs-red",
-    collapseFunc: either(collapse.parent, collapse.child),
     label: Formatters.GCLabel,
-    fields: [
-      { property: "causeName", label: "Reason:" },
-      { property: "nonincrementalReason", label: "Non-incremental Reason:" }
-    ],
+    fields: Formatters.GCFields,
   },
   "nsCycleCollector::Collect": {
     group: 1,
     colorName: "graphs-red",
-    collapseFunc: either(collapse.parent, collapse.child),
-    label: "Cycle Collection",
+    label: L10N.getStr("marker.label.cycleCollection"),
     fields: Formatters.CycleCollectionFields,
   },
   "nsCycleCollector::ForgetSkippable": {
     group: 1,
     colorName: "graphs-red",
-    collapseFunc: either(collapse.parent, collapse.child),
-    label: "Cycle Collection",
+    label: L10N.getStr("marker.label.cycleCollection.forgetSkippable"),
     fields: Formatters.CycleCollectionFields,
   },
 
@@ -142,38 +130,25 @@ const TIMELINE_BLUEPRINT = {
   "ConsoleTime": {
     group: 2,
     colorName: "graphs-blue",
-    label: sublabelForProperty(L10N.getStr("timeline.label.consoleTime"), "causeName"),
+    label: sublabelForProperty(L10N.getStr("marker.label.consoleTime"), "causeName"),
     fields: [{
       property: "causeName",
-      label: L10N.getStr("timeline.markerDetail.consoleTimerName")
+      label: L10N.getStr("marker.field.consoleTimerName")
     }],
+    nestable: false,
+    collapsible: false,
   },
   "TimeStamp": {
     group: 2,
     colorName: "graphs-blue",
-    collapseFunc: collapse.child,
-    label: sublabelForProperty(L10N.getStr("timeline.label.timestamp"), "causeName"),
+    label: sublabelForProperty(L10N.getStr("marker.label.timestamp"), "causeName"),
     fields: [{
       property: "causeName",
       label: "Label:"
     }],
+    collapsible: false,
   },
 };
-
-/**
- * Helper for creating a function that returns the first defined result from
- * a list of functions passed in as params, in order.
- * @param ...function fun
- * @return any
- */
-function either(...fun) {
-  return function() {
-    for (let f of fun) {
-      let result = f.apply(null, arguments);
-      if (result !== undefined) return result;
-    }
-  }
-}
 
 /**
  * Takes a main label (like "Timestamp") and a property,

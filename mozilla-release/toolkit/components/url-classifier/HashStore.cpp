@@ -35,6 +35,7 @@
 #include "nsIStreamConverterService.h"
 #include "nsNetUtil.h"
 #include "nsCheckSummedOutputStream.h"
+#include "prio.h"
 #include "mozilla/Logging.h"
 #include "zlib.h"
 
@@ -1053,5 +1054,5 @@ HashStore::AugmentAdds(const nsTArray<uint32_t>& aPrefixes)
   return NS_OK;
 }
 
-}
-}
+} // namespace safebrowsing
+} // namespace mozilla

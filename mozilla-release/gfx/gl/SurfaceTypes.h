@@ -13,7 +13,7 @@
 namespace mozilla {
 namespace layers {
 class ISurfaceAllocator;
-}
+} // namespace layers
 
 namespace gl {
 
@@ -76,6 +76,7 @@ enum class SharedSurfaceType : uint8_t {
     DXGLInterop2,
     Gralloc,
     IOSurface,
+    GLXDrawable,
 
     Max
 };
@@ -89,7 +90,8 @@ enum class AttachmentType : uint8_t {
     Max
 };
 
-} /* namespace gfx */
+} // namespace gl
+
 } /* namespace mozilla */
 
 #endif /* SURFACE_TYPES_H_ */

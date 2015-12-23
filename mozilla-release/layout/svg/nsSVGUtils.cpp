@@ -1171,7 +1171,7 @@ PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
   gfxMatrix outerSVGToUser;
   if (nsSVGUtils::GetNonScalingStrokeTransform(aFrame, &outerSVGToUser)) {
     outerSVGToUser.Invert();
-    matrix *= outerSVGToUser;
+    matrix.PreMultiply(outerSVGToUser);
   }
 
   double dx = style_expansion * (fabs(matrix._11) + fabs(matrix._21));
@@ -1197,8 +1197,7 @@ nsSVGUtils::PathExtentsToMaxStrokeExtents(const gfxRect& aPathExtents,
                                           const gfxMatrix& aMatrix)
 {
   bool strokeMayHaveCorners =
-    !aFrame->GetContent()->IsAnyOfSVGElements(nsGkAtoms::circle,
-                                              nsGkAtoms::ellipse);
+    !SVGContentUtils::ShapeTypeHasNoCorners(aFrame->GetContent());
 
   // For a shape without corners the stroke can only extend half the stroke
   // width from the path in the x/y-axis directions. For shapes with corners

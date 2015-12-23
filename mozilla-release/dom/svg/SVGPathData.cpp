@@ -34,11 +34,9 @@ static bool IsMoveto(uint16_t aSegType)
 nsresult
 SVGPathData::CopyFrom(const SVGPathData& rhs)
 {
-  if (!mData.SetCapacity(rhs.mData.Length(), fallible)) {
-    // Yes, we do want fallible alloc here
+  if (!mData.Assign(rhs.mData, fallible)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
-  mData = rhs.mData;
   return NS_OK;
 }
 
@@ -257,7 +255,7 @@ ApproximateZeroLengthSubpathSquareCaps(PathBuilder* aPB,
   // line is rather arbitrary, other than being chosen to meet the requirements
   // described in the comment above.
 
-  Float tinyLength = aStrokeWidth / 512;
+  Float tinyLength = aStrokeWidth / SVG_ZERO_LENGTH_PATH_FIX_FACTOR;
 
   aPB->LineTo(aPoint + Point(tinyLength, 0));
   aPB->MoveTo(aPoint);
@@ -273,7 +271,7 @@ ApproximateZeroLengthSubpathSquareCaps(PathBuilder* aPB,
     }                                                                         \
   } while(0)
 
-TemporaryRef<Path>
+already_AddRefed<Path>
 SVGPathData::BuildPath(PathBuilder* builder,
                        uint8_t aStrokeLineCap,
                        Float aStrokeWidth) const
@@ -507,7 +505,7 @@ SVGPathData::BuildPath(PathBuilder* builder,
   return builder->Finish();
 }
 
-TemporaryRef<Path>
+already_AddRefed<Path>
 SVGPathData::BuildPathForMeasuring() const
 {
   // Since the path that we return will not be used for painting it doesn't
@@ -863,7 +861,7 @@ SVGPathData::GetMarkerPositioningData(nsTArray<nsSVGMark> *aMarks) const
 size_t
 SVGPathData::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const
 {
-  return mData.SizeOfExcludingThis(aMallocSizeOf);
+  return mData.ShallowSizeOfExcludingThis(aMallocSizeOf);
 }
 
 size_t

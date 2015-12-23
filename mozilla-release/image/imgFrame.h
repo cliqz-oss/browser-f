@@ -157,19 +157,6 @@ public:
                             GraphicsFilter aFilter,
                             uint32_t aImageFlags);
 
-  /**
-   * Reinitializes an existing imgFrame with new parameters. You must be holding
-   * a RawAccessFrameRef to the imgFrame, and it must never have been written
-   * to, marked finished, or aborted.
-   *
-   * XXX(seth): We will remove this in bug 1117607.
-   */
-  nsresult ReinitForDecoder(const nsIntSize& aImageSize,
-                            const nsIntRect& aRect,
-                            SurfaceFormat aFormat,
-                            uint8_t aPaletteDepth = 0,
-                            bool aNonPremult = false);
-
   DrawableFrameRef DrawableRef();
   RawAccessFrameRef RawAccessRef();
 
@@ -274,11 +261,11 @@ public:
   Color SinglePixelColor() const;
   bool IsSinglePixel() const;
 
-  TemporaryRef<SourceSurface> GetSurface();
-  TemporaryRef<DrawTarget> GetDrawTarget();
+  already_AddRefed<SourceSurface> GetSurface();
+  already_AddRefed<DrawTarget> GetDrawTarget();
 
-  size_t SizeOfExcludingThis(gfxMemoryLocation aLocation,
-                             MallocSizeOf aMallocSizeOf) const;
+  void AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf, size_t& aHeapSizeOut,
+                              size_t& aNonHeapSizeOut) const;
 
 private: // methods
 
@@ -287,7 +274,6 @@ private: // methods
   nsresult LockImageData();
   nsresult UnlockImageData();
   nsresult Optimize();
-  nsresult Deoptimize();
 
   void AssertImageDataLocked() const;
 
@@ -297,7 +283,7 @@ private: // methods
   uint32_t GetImageBytesPerRow() const;
   uint32_t GetImageDataLength() const;
   int32_t GetStride() const;
-  TemporaryRef<SourceSurface> GetSurfaceInternal();
+  already_AddRefed<SourceSurface> GetSurfaceInternal();
 
   uint32_t PaletteDataLength() const
   {
@@ -355,6 +341,7 @@ private: // data
 
   bool mHasNoAlpha;
   bool mAborted;
+  bool mOptimizable;
 
 
   //////////////////////////////////////////////////////////////////////////////
@@ -384,7 +371,6 @@ private: // data
 
   bool mSinglePixel;
   bool mCompositingFailed;
-  bool mOptimizable;
 };
 
 /**
@@ -444,6 +430,8 @@ public:
   }
 
 private:
+  DrawableFrameRef(const DrawableFrameRef& aOther) = delete;
+
   nsRefPtr<imgFrame> mFrame;
   VolatileBufferPtr<uint8_t> mRef;
 };
@@ -459,6 +447,9 @@ private:
  * This may be considerably more expensive than is necessary just for drawing,
  * so only use this when you need to read or write the raw underlying image data
  * that the imgFrame holds.
+ *
+ * Once all an imgFrame's RawAccessFrameRefs go out of scope, new
+ * RawAccessFrameRefs cannot be created.
  */
 class RawAccessFrameRef final
 {
@@ -526,6 +517,8 @@ public:
   }
 
 private:
+  RawAccessFrameRef(const RawAccessFrameRef& aOther) = delete;
+
   nsRefPtr<imgFrame> mFrame;
 };
 

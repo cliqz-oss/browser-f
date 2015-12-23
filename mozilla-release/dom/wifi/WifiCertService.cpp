@@ -22,6 +22,7 @@
 #include "nsIDOMBlob.h"
 #include "nsIWifiService.h"
 #include "nsNetUtil.h"
+#include "nsIInputStream.h"
 #include "nsServiceManagerUtils.h"
 #include "nsXULAppAPI.h"
 #include "ScopedNSSTypes.h"
@@ -443,7 +444,7 @@ WifiCertService::~WifiCertService()
 already_AddRefed<WifiCertService>
 WifiCertService::FactoryCreate()
 {
-  if (XRE_GetProcessType() != GeckoProcessType_Default) {
+  if (!XRE_IsParentProcess()) {
     return nullptr;
   }
 

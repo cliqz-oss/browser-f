@@ -19,7 +19,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "gServiceWorkerManager",
                                   "nsIServiceWorkerManager");
 
 function debug(aMsg) {
-  // dump("AboutServiceWorkers - " + aMsg + "\n");
+  dump("AboutServiceWorkers - " + aMsg + "\n");
 }
 
 function serializeServiceWorkerInfo(aServiceWorkerInfo) {
@@ -149,16 +149,15 @@ this.AboutServiceWorkers = {
             !message.principal.origin ||
             !message.principal.originAttributes ||
             !message.principal.originAttributes.appId ||
-            !message.principal.originAttributes.isInBrowser) {
+            (message.principal.originAttributes.inBrowser == null)) {
           self.sendError(message.id, "MissingPrincipal");
           return;
         }
 
-        let principal = Services.scriptSecurityManager.getAppCodebasePrincipal(
+        let principal = Services.scriptSecurityManager.createCodebasePrincipal(
+          // TODO: Bug 1196652. use originNoSuffix
           Services.io.newURI(message.principal.origin, null, null),
-          message.principal.originAttributes.appId,
-          message.principal.originAttributes.isInBrowser
-        );
+          message.principal.originAttributes);
 
         if (!message.scope) {
           self.sendError(message.id, "MissingScope");
