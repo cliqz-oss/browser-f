@@ -13,7 +13,7 @@ function init(aEvent)
     return;
 
   try {
-    var distroId = Services.prefs.getCharPref("distribution.id");
+    var distroId = Services.prefs.getCharPref("distribution.about");
     if (distroId) {
       var distroVersion = Services.prefs.getCharPref("distribution.version");
 
