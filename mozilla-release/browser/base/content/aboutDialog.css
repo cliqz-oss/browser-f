@@ -10,8 +10,8 @@
   background-image: url("chrome://branding/content/about-wordmark.svg");
   background-repeat: no-repeat;
   /* padding-top creates room for the wordmark */
-  padding-top: 38px;
-  margin-top:20px;
+  margin-top: 20px;
+  margin-bottom: 38px;
 }
 
 #rightBox:-moz-locale-dir(rtl) {
