@@ -1356,7 +1356,8 @@ BrowserGlue.prototype = {
     // There are several cases where we won't show a dialog here:
     // 1. There is only 1 tab open in 1 window
     // 2. The session will be restored at startup, indicated by
-    //    browser.startup.page == 3 or browser.sessionstore.resume_session_once == true
+    //    browser.startup.restoreTabs == true or
+    //    browser.sessionstore.resume_session_once == true
     // 3. browser.warnOnQuit == false
     // 4. The browser is currently in Private Browsing mode
     // 5. The browser will be restarted.
@@ -1401,8 +1402,9 @@ BrowserGlue.prototype = {
     // browser.showQuitWarning specifically covers quitting
     // browser.tabs.warnOnClose is the global "warn when closing multiple tabs" pref
 
-    var sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
+    var sessionWillBeRestored =
+        Services.prefs.getBoolPref("browser.startup.restoreTabs") ||
+        Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
     if (sessionWillBeRestored || !Services.prefs.getBoolPref("browser.warnOnQuit"))
       return;
 
@@ -1474,7 +1476,7 @@ BrowserGlue.prototype = {
       this._saveSession = true;
       if (neverAsk.value) {
         // always save state when shutting down
-        Services.prefs.setIntPref("browser.startup.page", 3);
+        Services.prefs.setBoolPref("browser.startup.restoreTabs", true);
       }
       break;
     }

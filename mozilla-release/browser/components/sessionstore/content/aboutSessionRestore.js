@@ -170,7 +170,7 @@ function restoreSession() {
 
 function startNewSession() {
   var prefBranch = Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
-  if (prefBranch.getIntPref("browser.startup.page") == 0)
+  if (!prefBranch.getBoolPref("browser.startup.restoreTabs"))
     getBrowserWindow().gBrowser.loadURI("about:blank");
   else
     getBrowserWindow().BrowserHome();
