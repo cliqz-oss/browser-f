@@ -19,10 +19,11 @@
 #endif
     locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
     locale/browser/aboutTabCrashed.dtd             (%chrome/browser/aboutTabCrashed.dtd)
-#ifdef MOZ_SERVICES_SYNC
+# TODO: Wrap in ifdef MOZ_SERVICES_SYNC
+# Needs fixing other places which use these DTDs
     locale/browser/syncCustomize.dtd               (%chrome/browser/syncCustomize.dtd)
     locale/browser/aboutSyncTabs.dtd               (%chrome/browser/aboutSyncTabs.dtd)
-#endif
+# TODO: endif
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)
     locale/browser/baseMenuOverlay.dtd             (%chrome/browser/baseMenuOverlay.dtd)
     locale/browser/browser.properties              (%chrome/browser/browser.properties)
