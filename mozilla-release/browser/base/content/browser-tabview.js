@@ -13,7 +13,8 @@ var TabView = {
   _initFrameCallbacks: [],
   PREF_BRANCH: "browser.panorama.",
   PREF_FIRST_RUN: "browser.panorama.experienced_first_run",
-  PREF_STARTUP_PAGE: "browser.startup.page",
+  PREF_RESTORE_SESSION: "browser.startup.restoreTabs",
+  PREF_ADD_FRESH_TAB: "browser.startup.addFreshTab",
   PREF_RESTORE_ENABLED_ONCE: "browser.panorama.session_restore_enabled_once",
   GROUPS_IDENTIFIER: "tabview-groups",
   VISIBILITY_IDENTIFIER: "tabview-visibility",
@@ -456,8 +457,8 @@ var TabView = {
     this.sessionRestoreEnabledOnce = true;
 
     // enable session restore if necessary
-    if (Services.prefs.getIntPref(this.PREF_STARTUP_PAGE) != 3) {
-      Services.prefs.setIntPref(this.PREF_STARTUP_PAGE, 3);
+    if (!Services.prefs.getBoolPref(this.PREF_RESTORE_SESSION)) {
+      Services.prefs.setBoolPref(this.PREF_RESTORE_SESSION, true);
 
       // show banner
       this._window.UI.notifySessionRestoreEnabled();

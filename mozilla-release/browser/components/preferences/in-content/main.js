@@ -15,8 +15,13 @@ var gMainPane = {
   {
     function setEventListener(aId, aEventType, aCallback)
     {
-      document.getElementById(aId)
-              .addEventListener(aEventType, aCallback.bind(gMainPane));
+      try {
+        document.getElementById(aId)
+            .addEventListener(aEventType, aCallback.bind(gMainPane));
+      }
+      catch (e) {
+          Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
+      }
     }
 
 #ifdef HAVE_SHELL_SERVICE
@@ -31,11 +36,12 @@ var gMainPane = {
 #endif
 #endif
 
+// Firefox homepage settings are disabled in Cliqz.
+#if 0
     // set up the "use current page" label-changing listener
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this), false);
-
-    this.updateBrowserStartupLastSession();
+#endif
 
 #ifdef XP_WIN
     // Functionality for "Show tabs in taskbar" on Windows 7 and up.
@@ -65,12 +71,15 @@ var gMainPane = {
     setEventListener("setDefaultButton", "command",
                      gMainPane.setDefaultBrowser);
 #endif
+// Replaced with own controls in Cliqz browser.
+#if 0
     setEventListener("useCurrent", "command",
                      gMainPane.setHomePageToCurrent);
     setEventListener("useBookmark", "command",
                      gMainPane.setHomePageToBookmark);
     setEventListener("restoreDefaultHomePage", "command",
                      gMainPane.restoreDefaultHomePage);
+#endif
     setEventListener("chooseFolder", "command",
                      gMainPane.chooseFolder);
 
@@ -247,17 +256,9 @@ var gMainPane = {
    * browser.startup.homepage
    * - the user's home page, as a string; if the home page is a set of tabs,
    *   this will be those URLs separated by the pipe character "|"
-   * browser.startup.page
-   * - what page(s) to show when the user starts the application, as an integer:
-   *
-   *     0: a blank page
-   *     1: the home page (as set by the browser.startup.homepage pref)
-   *     2: the last page the user visited (DEPRECATED)
-   *     3: windows and tabs from the last session (a.k.a. session restore)
-   *
-   *   The deprecated option is not exposed in UI; however, if the user has it
-   *   selected and doesn't change the UI for this preference, the deprecated
-   *   option is preserved.
+   * browser.startup.restoreTabs
+   * - whether to restore windows and tabs from the last session (a.k.a. session
+   *   restore)
    */
 
   syncFromHomePref: function ()
@@ -329,6 +330,8 @@ var gMainPane = {
     }
   },
 
+// Firefox homepage settings are disabled in Cliqz.
+#if 0
   /**
    * Switches the "Use Current Page" button between its singular and plural
    * forms.
@@ -351,6 +354,7 @@ var gMainPane = {
 
     useCurrent.disabled = !tabs.length
   },
+#endif
 
   _getTabsForHomePage: function ()
   {
@@ -617,17 +621,14 @@ var gMainPane = {
   updateBrowserStartupLastSession: function()
   {
     let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let startupPref = document.getElementById("browser.startup.page");
-    let menu = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
+    let restorePref = document.getElementById("browser.startup.restoreTabs");
+    let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     if (pbAutoStartPref.value) {
-      option.setAttribute("disabled", "true");
-      if (option.selected) {
-        menu.selectedItem = document.getElementById("browserStartupHomePage");
-      }
+      restoreCheckbox.setAttribute("disabled", "true");
+      restoreCheckbox.checked = false;
     } else {
-      option.removeAttribute("disabled");
-      startupPref.updateElements(); // select the correct index in the startup menulist
+      restoreCheckbox.removeAttribute("disabled");
+      restorePref.updateElements(); // Update corresponding checkbox.
     }
   },
 

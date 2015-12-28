@@ -19,9 +19,12 @@
 #endif
 
     <!-- Startup -->
-    <preference id="browser.startup.page"
-                name="browser.startup.page"
-                type="int"/>
+    <preference id="browser.startup.restoreTabs"
+                name="browser.startup.restoreTabs"
+                type="bool"/>
+    <preference id="browser.startup.addFreshTab"
+                name="browser.startup.addFreshTab"
+                type="bool"/>
     <preference id="browser.startup.homepage"
                 name="browser.startup.homepage"
                 type="wstring"/>
@@ -137,7 +140,8 @@
   <vbox id="defaultBrowserBox">
     <hbox align="center">
       <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
-                label="&alwaysCheckDefault2.label;" accesskey="&alwaysCheckDefault2.accesskey;"/>
+                label="&alwaysCheckDefault2.label;"
+                accesskey="&alwaysCheckDefault2.accesskey;"/>
     </hbox>
     <deck id="setDefaultPane">
       <hbox align="center" class="indent">
@@ -154,6 +158,8 @@
   </vbox>
 #endif
 
+# Replaced by own UI in Cliqz.
+#if 0
   <html:table id="startupTable">
     <html:tr>
       <html:td class="label-cell">
@@ -217,6 +223,19 @@
       </html:td>
     </html:tr>
   </html:table>
+#endif
+
+  <vbox id="startupPagesBox">
+    <checkbox
+        id="restoreSessionCheckbox"
+        preference="browser.startup.restoreTabs"
+        label="&startupLastSession.label;"/>
+    <checkbox
+        id="addCliqzFrashTabCheckbox"
+        preference="browser.startup.addFreshTab"
+        label="&startupHomePage.label;"/>
+  </vbox>
+
 </groupbox>
 
 <!-- Downloads -->

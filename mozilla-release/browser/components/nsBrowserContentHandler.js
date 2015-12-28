@@ -571,6 +571,9 @@ nsBrowserContentHandler.prototype = {
       }
     }
 
+    var startPage = this.startPage;
+// Disabled in Cliqz.
+#if 0
     var startPage = "";
     try {
       var choice = prefb.getIntPref("browser.startup.page");
@@ -579,6 +582,7 @@ nsBrowserContentHandler.prototype = {
     } catch (e) {
       Components.utils.reportError(e);
     }
+#endif
 
     if (startPage == "about:blank")
       startPage = "";
