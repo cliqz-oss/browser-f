@@ -5,6 +5,11 @@
 %endif
 @namespace html "http://www.w3.org/1999/xhtml";
 
+#help-button {
+  /* Hidden in Cliqz, probably because it leads to Mozilla URL */
+  display: none !important;
+}
+
 #mainPrefPane {
   max-width: 800px;
   padding: 0;
@@ -90,9 +95,12 @@ treecol {
 /* General Pane */
 
 #startupTable {
+  display: none !important;  /* Startup prefs table is hidden in Cliqz. */
   border-collapse: collapse;
 }
 
+/* Startup prefs table is hidden in Cliqz. */
+%if 0
 #startupTable > tr > td {
   padding: 0; /* remove the padding from html.css */
 }
@@ -125,6 +133,7 @@ treecol {
 #startupTable > tr > .homepage-buttons > .content-cell-item {
   flex-grow: 1;
 }
+%endif
 
 #useFirefoxSync  {
   font-size: 90%;
@@ -262,6 +271,13 @@ description > html|a {
   margin-top: 8px;
   margin-bottom: 8px;
 }
+
+/* Hidden in Cliqz */
+#FHRLearnMore,
+#crashReporterLearnMore {
+  display: none !important;
+}
+
 
 .indent {
   -moz-margin-start: 33px;

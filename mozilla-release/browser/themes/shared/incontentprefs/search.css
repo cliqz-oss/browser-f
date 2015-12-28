@@ -2,6 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#suggestionsInSearchFieldsCheckbox {
+  display: none !important;  /* Hidden in Cliqz. We have search! */
+}
+
  #defaultEngine {
    -moz-margin-start: 0;
  }
@@ -60,4 +64,8 @@
 #restoreDefaultSearchEngines {
   margin-right: 0;
   margin-left: 0;
+}
+
+#restoreDefaultSearchEngines {
+  display: none !important;  /* Hidden in Cliqz */
 }

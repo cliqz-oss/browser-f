@@ -424,7 +424,7 @@
         <button id="ctrlTab-showAll" class="ctrlTab-preview" noicon="true"/>
       </hbox>
     </panel>
-
+#ifdef MOZ_SERVICES_SYNC
     <!-- Sync Panel -->
     <panel id="sync-start-panel" class="sync-panel" type="arrow" hidden="true"
            noautofocus="true" onclick="this.hidePopup();"
@@ -461,7 +461,7 @@
         </vbox>
       </hbox>
     </panel>
-
+#endif
     <!-- Bookmarks and history tooltip -->
     <tooltip id="bhTooltip"/>
 

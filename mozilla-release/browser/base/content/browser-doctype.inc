@@ -19,7 +19,9 @@
 #endif
 <!ENTITY % aboutHomeDTD SYSTEM "chrome://browser/locale/aboutHome.dtd">
 %aboutHomeDTD;
+#ifdef MOZ_SERVICES_SYNC
 <!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
 %syncBrandDTD;
+#endif
 ]>
 
