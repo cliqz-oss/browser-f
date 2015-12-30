@@ -51,7 +51,9 @@ function init_all() {
   register_module("paneAdvanced", gAdvancedPane);
   register_module("paneApplications", gApplicationsPane);
   register_module("paneContent", gContentPane);
+#ifdef MOZ_SERVICES_SYNC
   register_module("paneSync", gSyncPane);
+#endif
   register_module("paneSecurity", gSecurityPane);
 
   let categories = document.getElementById("categories");
