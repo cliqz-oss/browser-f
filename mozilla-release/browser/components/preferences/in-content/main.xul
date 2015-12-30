@@ -158,9 +158,19 @@
   </vbox>
 #endif
 
-# Replaced by own UI in Cliqz.
-#if 0
+  <vbox id="startupPagesBox">
+    <checkbox
+        id="restoreSessionCheckbox"
+        preference="browser.startup.restoreTabs"
+        label="&startupLastSession.label;"/>
+    <checkbox
+        id="addCliqzFrashTabCheckbox"
+        preference="browser.startup.addFreshTab"
+        label="&startupFreshTab.label;"/>
+  </vbox>
   <html:table id="startupTable">
+# Replaced by two checkboxes above.
+#if 0
     <html:tr>
       <html:td class="label-cell">
         <label accesskey="&startupPage.accesskey;"
@@ -184,6 +194,7 @@
         </menulist>
       </html:td>
     </html:tr>
+#endif
     <html:tr>
       <html:td class="label-cell">
         <label accesskey="&homepage.accesskey;"
@@ -223,18 +234,6 @@
       </html:td>
     </html:tr>
   </html:table>
-#endif
-
-  <vbox id="startupPagesBox">
-    <checkbox
-        id="restoreSessionCheckbox"
-        preference="browser.startup.restoreTabs"
-        label="&startupLastSession.label;"/>
-    <checkbox
-        id="addCliqzFrashTabCheckbox"
-        preference="browser.startup.addFreshTab"
-        label="&startupHomePage.label;"/>
-  </vbox>
 
 </groupbox>
 

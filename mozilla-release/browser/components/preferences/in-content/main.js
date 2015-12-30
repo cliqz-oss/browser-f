@@ -36,12 +36,9 @@ var gMainPane = {
 #endif
 #endif
 
-// Firefox homepage settings are disabled in Cliqz.
-#if 0
     // set up the "use current page" label-changing listener
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this), false);
-#endif
 
 #ifdef XP_WIN
     // Functionality for "Show tabs in taskbar" on Windows 7 and up.
@@ -71,15 +68,12 @@ var gMainPane = {
     setEventListener("setDefaultButton", "command",
                      gMainPane.setDefaultBrowser);
 #endif
-// Replaced with own controls in Cliqz browser.
-#if 0
     setEventListener("useCurrent", "command",
                      gMainPane.setHomePageToCurrent);
     setEventListener("useBookmark", "command",
                      gMainPane.setHomePageToBookmark);
     setEventListener("restoreDefaultHomePage", "command",
                      gMainPane.restoreDefaultHomePage);
-#endif
     setEventListener("chooseFolder", "command",
                      gMainPane.chooseFolder);
 
@@ -330,8 +324,6 @@ var gMainPane = {
     }
   },
 
-// Firefox homepage settings are disabled in Cliqz.
-#if 0
   /**
    * Switches the "Use Current Page" button between its singular and plural
    * forms.
@@ -354,7 +346,6 @@ var gMainPane = {
 
     useCurrent.disabled = !tabs.length
   },
-#endif
 
   _getTabsForHomePage: function ()
   {
