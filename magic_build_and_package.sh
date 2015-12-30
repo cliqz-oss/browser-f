@@ -61,6 +61,11 @@ export MOZ_AUTOMATION_UPLOAD=1
 
 ./mach clobber
 
+# Clean old compiled python files
+# Can be removed after merge with Firefox 43
+# Fixed by https://bugzilla.mozilla.org/show_bug.cgi?id=1184696
+find . -name \*.pyc -delete
+
 if [ $CQZ_GOOGLE_API_KEY ]; then
   echo $CQZ_GOOGLE_API_KEY > ../google-api-key
   echo "ac_add_options --with-google-api-keyfile=\"$PWD/../google-api-key\"" >> $MOZCONFIG
