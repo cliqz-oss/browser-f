@@ -37,6 +37,8 @@ check_updates () {
           platform_dirname=`echo $product | tr '[A-Z]' '[a-z]'`
           updater="updater"
           binary_file_pattern='^Binary files'
+          # Bug 1209376. Linux updater linked against other libraries in the installation directory
+          export LD_LIBRARY_PATH=$PWD/source/$platform_dirname
           ;;
   esac
 
@@ -62,7 +64,7 @@ check_updates () {
 
   if [ "$update_status" != "succeeded" ]
   then
-    echo "FAIL: update status was not succeeded: $update_status"
+    echo "FAIL: update status was not successful: $update_status"
     return 1
   fi
 

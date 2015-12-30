@@ -80,14 +80,14 @@ def verify_configs(configs_dir, revision, hghost, configs_repo, changesets,
 
     success = True
     try:
-        official_configs = urllib2.urlopen(configs_url)
+        official_configs = urllib2.urlopen(configs_url, timeout=10)
         log.info("Comparing tagged revision %s to on-disk %s ..." % (
             configs_url, filename))
         if not compare(official_configs, release_config_file):
             log.error("local configs do not match tagged revisions in repo")
             success = False
             error_tally.add('verify_configs')
-        l10n_changesets = urllib2.urlopen(l10n_url)
+        l10n_changesets = urllib2.urlopen(l10n_url, timeout=10)
         log.info("Comparing tagged revision %s to on-disk %s ..." % (
             l10n_url, changesets))
         if not compare(l10n_changesets, l10n_changesets_file):
@@ -95,7 +95,7 @@ def verify_configs(configs_dir, revision, hghost, configs_repo, changesets,
                       " in repo")
             success = False
             error_tally.add('verify_configs')
-    except urllib2.HTTPError:
+    except (urllib2.HTTPError, urllib2.URLError):
         log.error("cannot find configs in repo %s" % configs_url)
         log.error("cannot find configs in repo %s" % l10n_url)
         success = False
@@ -120,7 +120,7 @@ def query_locale_revisions(l10n_changesets):
 
 def get_l10n_changesets(locale_url):
     try:
-        urllib2.urlopen(locale_url)
+        urllib2.urlopen(locale_url, timeout=10)
         return True
     except urllib2.HTTPError, e:
         reason = ""
@@ -129,6 +129,9 @@ def get_l10n_changesets(locale_url):
             reason = e.reason
         log.error("error checking l10n changeset %s: %d %s" % (locale_url, e.code, reason))
         raise e
+    except urllib2.URLError:
+        log.error("timeout checking l10n changeset %s" % locale_url)
+        raise
 
 
 def verify_l10n_changesets(hgHost, l10n_changesets):
@@ -148,7 +151,7 @@ def verify_l10n_changesets(hgHost, l10n_changesets):
 
         success = retry(get_l10n_changesets,
                         kwargs=dict(locale_url=locale_url), attempts=3,
-                        sleeptime=1, retry_exceptions=(urllib2.HTTPError,))
+                        sleeptime=1, retry_exceptions=(urllib2.HTTPError, urllib2.URLError))
         if not success:
             error_tally.add('verify_l10n')
     return success
@@ -171,7 +174,7 @@ def verify_l10n_dashboard(l10n_changesets, l10n_dashboard_version=None):
              % (dash_url, l10n_changesets))
     try:
         dash_changesets = {}
-        for line in urllib2.urlopen(dash_url):
+        for line in urllib2.urlopen(dash_url, timeout=10):
             locale, revision = line.split()
             dash_changesets[locale] = revision
         for locale in locales:
@@ -191,7 +194,7 @@ def verify_l10n_dashboard(l10n_changesets, l10n_dashboard_version=None):
             log.error("\tlocale %s missing in config" % locale)
             success = False
             error_tally.add('verify_l10n_dashboard')
-    except urllib2.HTTPError:
+    except (urllib2.HTTPError, urllib2.URLError):
         log.error("cannot find l10n dashboard at %s" % dash_url)
         success = False
         error_tally.add('verify_l10n_dashboard')

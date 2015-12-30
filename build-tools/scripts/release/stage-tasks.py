@@ -251,8 +251,8 @@ def update_bouncer_alias(tuxedoServerUrl, auth, version,
 
     # Wrap the real call to hide credentials from retry's logging
     def do_update_bouncer_alias():
-        requests.post(url, data=data, auth=auth, config={'danger_mode': True},
-                      verify=False)
+        r = requests.post(url, data=data, auth=auth, verify=False)
+        r.raise_for_status()
 
     retry(do_update_bouncer_alias)
 
@@ -376,25 +376,6 @@ if __name__ == '__main__':
                              cleanup_dir=makeCandidatesDir(productName, version, buildNumber))
 
     if 'postrelease' in actions:
-        if createIndexFiles:
-            deleteIndexFiles(stageServer=stageServer,
-                             stageUsername=stageUsername,
-                             stageSshKey=stageSshKey,
-                             cleanup_dir=makeReleasesDir(productName, version))
-        if ftpSymlinkName:
-            updateSymlink(stageServer=stageServer,
-                          stageUsername=stageUsername,
-                          stageSshKey=stageSshKey,
-                          productName=productName,
-                          version=version,
-                          target=ftpSymlinkName)
-        if syncPartnerBundles:
-            doSyncPartnerBundles(stageServer=stageServer,
-                                 stageUsername=stageUsername,
-                                 stageSshKey=stageSshKey,
-                                 productName=productName,
-                                 version=version,
-                                 buildNumber=buildNumber)
         if bouncer_aliases and productName != 'xulrunner':
             credentials_file = path.join(os.getcwd(), "oauth.txt")
             credentials = readConfig(

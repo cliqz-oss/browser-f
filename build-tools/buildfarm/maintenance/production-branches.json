@@ -6,13 +6,6 @@
     ],
     "repo_type": "hg"
   },
-  "maple": {
-    "repo": "https://hg.mozilla.org/projects/maple",
-    "graph_branches": [
-      "Maple"
-    ],
-    "repo_type": "hg"
-  },
   "ash": {
     "repo": "https://hg.mozilla.org/projects/ash",
     "graph_branches": [
@@ -27,24 +20,10 @@
     ],
     "repo_type": "hg"
   },
-  "mozilla-esr31": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-esr31",
-    "graph_branches": [
-      "Mozilla-Esr31"
-    ],
-    "repo_type": "hg"
-  },
   "mozilla-esr38": {
     "repo": "https://hg.mozilla.org/releases/mozilla-esr38",
     "graph_branches": [
       "Mozilla-Esr38"
-    ],
-    "repo_type": "hg"
-  },
-  "comm-esr31": {
-    "repo": "https://hg.mozilla.org/releases/comm-esr31",
-    "graph_branches": [
-      "Thunderbird-Esr31"
     ],
     "repo_type": "hg"
   },
@@ -55,31 +34,24 @@
     ],
     "repo_type": "hg"
   },
-  "mozilla-b2g32_v2_0": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-b2g32_v2_0",
-    "graph_branches": [
-      "Mozilla-B2g32-v2.0"
-    ],
-    "repo_type": "hg"
-  },
-  "mozilla-b2g34_v2_1": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-b2g34_v2_1",
-    "graph_branches": [
-      "Mozilla-B2g34-v2.1"
-    ],
-    "repo_type": "hg"
-  },
-  "mozilla-b2g34_v2_1s": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-b2g34_v2_1s",
-    "graph_branches": [
-      "Mozilla-B2g34-v2.1s"
-    ],
-    "repo_type": "hg"
-  },
   "mozilla-b2g37_v2_2": {
     "repo": "https://hg.mozilla.org/releases/mozilla-b2g37_v2_2",
     "graph_branches": [
       "Mozilla-B2g37-v2.2"
+    ],
+    "repo_type": "hg"
+  },
+  "mozilla-b2g37_v2_2r": {
+    "repo": "https://hg.mozilla.org/releases/mozilla-b2g37_v2_2r",
+    "graph_branches": [
+      "Mozilla-B2g37-v2.2r"
+    ],
+    "repo_type": "hg"
+  },
+  "mozilla-b2g44_v2_5": {
+    "repo": "https://hg.mozilla.org/releases/mozilla-b2g44_v2_5",
+    "graph_branches": [
+      "Mozilla-B2g44-v2.5"
     ],
     "repo_type": "hg"
   },
@@ -111,13 +83,6 @@
     ],
     "repo_type": "hg"
   },
-  "holly": {
-    "repo": "https://hg.mozilla.org/projects/holly",
-    "graph_branches": [
-      "Holly"
-    ],
-    "repo_type": "hg"
-  },
   "mozilla-inbound": {
     "repo": "https://hg.mozilla.org/integration/mozilla-inbound",
     "graph_branches": [
@@ -129,6 +94,13 @@
     "repo": "https://hg.mozilla.org/integration/b2g-inbound",
     "graph_branches": [
       "B2g-Inbound"
+    ],
+    "repo_type": "hg"
+  },
+  "b2g-ota": {
+    "repo": "https://hg.mozilla.org/releases/b2g-ota",
+    "graph_branches": [
+      "B2g-Ota"
     ],
     "repo_type": "hg"
   },
