@@ -9,6 +9,7 @@
 <!ENTITY startupPage.label         "Wenn &brandShortName; gestartet wird:">
 <!ENTITY startupPage.accesskey     "W">
 <!ENTITY startupHomePage.label     "Startseite anzeigen">
+<!ENTITY startupFreshTab.label     "Show FreshTab">  <!-- TODO: Translate! -->
 <!ENTITY startupBlankPage.label    "Leere Seite anzeigen">
 <!ENTITY startupLastSession.label  "Fenster und Tabs der letzten Sitzung anzeigen">
 

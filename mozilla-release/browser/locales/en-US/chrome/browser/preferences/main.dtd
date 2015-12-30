@@ -9,7 +9,8 @@
 
 <!ENTITY startupPage.label         "When &brandShortName; starts:">
 <!ENTITY startupPage.accesskey     "s">
-<!ENTITY startupHomePage.label     "Show FreshTab">
+<!ENTITY startupHomePage.label     "Show my home page">
+<!ENTITY startupFreshTab.label     "Show FreshTab">
 <!ENTITY startupBlankPage.label    "Show a blank page">
 <!ENTITY startupLastSession.label  "Show my windows and tabs from last time">
 
