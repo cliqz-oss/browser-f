@@ -166,13 +166,13 @@ def remote_signfile(options, urls, filename, fmt, token, dest=None):
                     nonce = e.headers['X-Nonce']
                     open(options.noncefile, 'wb').write(nonce)
                 if e.code != 202:
-                    log.info("%s: error uploading file for signing: %s %s",
-                             filehash, e.code, e.msg)
+                    log.exception("%s: error uploading file for signing: %s %s",
+                                  filehash, e.code, e.msg)
                     urls.pop(0)
                     urls.append(url)
             except (urllib2.URLError, socket.error, httplib.BadStatusLine):
                 # Try again in a little while
-                log.info("%s: connection error; trying again soon", filehash)
+                log.exception("%s: connection error; trying again soon", filehash)
                 # Move the current url to the back
                 urls.pop(0)
                 urls.append(url)
@@ -180,7 +180,7 @@ def remote_signfile(options, urls, filename, fmt, token, dest=None):
             continue
         except (urllib2.URLError, socket.error):
             # Try again in a little while
-            log.info("%s: connection error; trying again soon", filehash)
+            log.exception("%s: connection error; trying again soon", filehash)
             # Move the current url to the back
             urls.pop(0)
             urls.append(url)
@@ -228,6 +228,7 @@ def buildValidatingOpener(ca_certs):
                                         self.cert_file,
                                         cert_reqs=ssl.CERT_REQUIRED,
                                         ca_certs=ca_certs,
+                                        ssl_version=ssl.PROTOCOL_TLSv1,
                                         )
 
     # wraps https connections with ssl certificate verification

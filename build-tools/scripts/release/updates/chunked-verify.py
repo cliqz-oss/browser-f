@@ -27,6 +27,11 @@ def validate(options, args):
     assert options.chunks and options.thisChunk, \
         "chunks and this-chunk are required"
 
+    if options.verifyConfig:
+        assert path.isfile(options.verifyConfig), "Update verify config must exist!"
+        # Don't need to validate the releaseConfig if we passed the update config
+        return {}
+
     releaseConfigFile = path.join("buildbot-configs", options.releaseConfig)
     releaseConfig = readReleaseConfig(releaseConfigFile,
                                       required=(options.configDict,))
@@ -47,6 +52,7 @@ if __name__ == "__main__":
         thisChunk=None,
     )
     parser.add_option("--config-dict", dest="configDict")
+    parser.add_option("--verify-config", dest="verifyConfig")
     parser.add_option("-t", "--release-tag", dest="releaseTag")
     parser.add_option("-r", "--release-config", dest="releaseConfig")
     parser.add_option("-b", "--buildbot-configs", dest="buildbotConfigs")
@@ -56,10 +62,13 @@ if __name__ == "__main__":
     parser.add_option("--this-chunk", dest="thisChunk", type="int")
 
     options, args = parser.parse_args()
-    mercurial(options.buildbotConfigs, "buildbot-configs")
-    update("buildbot-configs", revision=options.releaseTag)
-    releaseConfig = validate(options, args)
-    verifyConfigFile = releaseConfig[options.configDict][options.release_channel]["verifyConfigs"][options.platform]
+    if not options.verifyConfig:
+        mercurial(options.buildbotConfigs, "buildbot-configs")
+        update("buildbot-configs", revision=options.releaseTag)
+        releaseConfig = validate(options, args)
+        verifyConfigFile = releaseConfig[options.configDict][options.release_channel]["verifyConfigs"][options.platform]
+    else:
+        verifyConfigFile = options.verifyConfig
 
     fd, configFile = mkstemp()
     fh = os.fdopen(fd, "w")

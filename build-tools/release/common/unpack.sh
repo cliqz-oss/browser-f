@@ -45,7 +45,7 @@ unpack_build () {
             fi
             update_settings_file=`find . -name update-settings.ini`
             ;;
-        win32|win64|WINNT_x86-msvc|WINNT_x86_64-msvc)
+        win32|win64|WINNT_x86-msvc|WINNT_x86-msvc-x86|WINNT_x86-msvc-x64|WINNT_x86_64-msvc|WINNT_x86_64-msvc-x64)
             7z x ../"$pkg_file" > /dev/null
             if [ -d localized ]
             then

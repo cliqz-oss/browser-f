@@ -14,7 +14,7 @@ ul {
     padding-left: 25px;
 }
 
-.result_value {
+.result {
     background: lightgray;
     border-style: inset;
 }
@@ -51,6 +51,10 @@ ul {
 
 label {
     cursor: pointer;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
 }
 #wrapper {
     margin: 0 auto;

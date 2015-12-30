@@ -33,7 +33,7 @@ class API(object):
         self.auth = auth
         self.verify = ca_certs
         self.timeout = timeout
-        self.config = dict(danger_mode=raise_exceptions)
+        self.raise_exceptions = raise_exceptions
         self.session = requests.session()
         self.csrf_token = None
         self.retries = retry_attempts
@@ -44,21 +44,26 @@ class API(object):
             if not self.csrf_token or is_csrf_token_expired(self.csrf_token):
                 res = self.session.request(
                     method='HEAD', url=self.api_root + '/csrf_token',
-                    config=self.config, timeout=self.timeout,
-                    auth=self.auth)
+                    timeout=self.timeout, auth=self.auth)
+                if self.raise_exceptions:
+                    res.raise_for_status()
                 self.csrf_token = res.headers['X-CSRF-Token']
             data['csrf_token'] = self.csrf_token
         log.debug('Request to %s' % url)
         log.debug('Data sent: %s' % data)
         try:
-            return retry(self.session.request, sleeptime=5, max_sleeptime=15,
-                         retry_exceptions=(requests.HTTPError, 
+            def _req():
+                r = self.session.request(
+                    method=method, url=url, data=data, timeout=self.timeout,
+                    auth=self.auth, params=params)
+                if self.raise_exceptions:
+                    r.raise_for_status()
+                return r
+
+            return retry(_req, sleeptime=5, max_sleeptime=15,
+                         retry_exceptions=(requests.HTTPError,
                                            requests.ConnectionError),
-                         attempts=self.retries,
-                         kwargs=dict(method=method, url=url, data=data,
-                                     config=self.config, timeout=self.timeout,
-                                     auth=self.auth, params=params)
-                        )
+                         attempts=self.retries)
         except requests.HTTPError, e:
             log.error('Caught HTTPError: %d %s' % 
                      (e.response.status_code, e.response.content), 

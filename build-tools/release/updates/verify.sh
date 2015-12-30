@@ -146,7 +146,7 @@ do
         fi
         from_path=`echo $from | sed "s/%locale%/${locale}/"`
         to_path=`echo $to | sed "s/%locale%/${locale}/"`
-        download_builds "${ftp_server_from}/${from_path}" "${ftp_server_to}/${to_path}"
+        download_builds "${ftp_server_from}${from_path}" "${ftp_server_to}${to_path}"
         err=$?
         if [ "$err" != "0" ]; then
           echo "FAIL: download_builds returned non-zero exit code: $err"

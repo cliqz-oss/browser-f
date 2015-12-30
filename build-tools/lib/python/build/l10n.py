@@ -40,7 +40,7 @@ def getAllLocales(appName, sourceRepo, rev="default",
 
 def compareLocales(repo, locale, l10nRepoDir, localeSrcDir, l10nIni,
                    revision="default", merge=True):
-    retry(mercurial, args=(repo, "compare-locales"))
+    mercurial(repo, "compare-locales")
     update("compare-locales", revision=revision)
     mergeDir = path.join(localeSrcDir, "merged")
     if path.exists(mergeDir):
@@ -91,7 +91,11 @@ def l10nRepackPrep(sourceRepoName, objdir, mozconfigPath, srcMozconfigPath,
                     cwd=path.join(sourceRepoName, objdir, path.dirname(dir)),
                     env=env)
         else:
-            run_cmd(make,
+            target = []
+            if path.basename(dir) == 'config':
+                # context: https://bugzil.la/1169937
+                target = ['export']
+            run_cmd(make + target,
                     cwd=path.join(sourceRepoName, objdir, dir),
                     env=env)
 
@@ -104,7 +108,7 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
                  mozillaDir=None, mozillaSrcDir=None):
     repo = "/".join([l10nBaseRepo, locale])
     localeDir = path.join(l10nRepoDir, locale)
-    retry(mercurial, args=(repo, localeDir))
+    mercurial(repo, localeDir)
     update(localeDir, revision=revision)
 
     # It's a bad assumption to make, but the source dir is currently always
@@ -161,18 +165,16 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
         candidates_dir = makeCandidatesDir(productName, version, buildNumber,
                                            protocol="http", server=stageServer)
         if not path.isfile(msys2windows(mar)):
-            marUrl = "%(c_dir)s/mar-tools/%(platform)s/%(mar)s" % \
-                dict(c_dir=candidates_dir, platform=platform,
-                     mar=path.basename(mar))
+            marUrl = '/'.join([p.strip('/') for p in [candidates_dir, 'mar-tools',
+                                                      platform, path.basename(mar)]])
             run_cmd(['mkdir', '-p', path.dirname(mar)])
             log.info("Downloading %s to %s", marUrl, mar)
             urlretrieve(marUrl, msys2windows(mar))
             if not sys.platform.startswith('win'):
                 run_cmd(['chmod', '755', mar])
         if not path.isfile(msys2windows(mbsdiff)):
-            mbsdiffUrl = "%(c_dir)s/mar-tools/%(platform)s/%(mbsdiff)s" % \
-                dict(c_dir=candidates_dir, platform=platform,
-                     mbsdiff=path.basename(mbsdiff))
+            mbsdiffUrl = '/'.join([p.strip('/') for p in [candidates_dir, 'mar-tools',
+                                                          platform, path.basename(mbsdiff)]])
             run_cmd(['mkdir', '-p', path.dirname(mbsdiff)])
             log.info("Downloading %s to %s", mbsdiffUrl, mbsdiff)
             urlretrieve(mbsdiffUrl, msys2windows(mbsdiff))
@@ -207,7 +209,7 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
                     current], cwd=nativeDistDir, env=env)
             if os.environ.get('MOZ_SIGN_CMD'):
                 run_cmd(['bash', '-c',
-                        '%s -f mar -f gpg "%s"' %
+                        '%s -f mar "%s"' %
                         (os.environ['MOZ_SIGN_CMD'], partial_mar)],
                         env=env)
                 UPLOAD_EXTRA_FILES.append(

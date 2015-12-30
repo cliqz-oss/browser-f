@@ -65,7 +65,7 @@ def tag(repo, revision, tags, username):
 def tagRepo(config, repo, reponame, revision, tags, bumpFiles, relbranch,
             pushAttempts, defaultBranch='default'):
     remote = make_hg_url(HG, repo)
-    retry(mercurial, args=(remote, reponame))
+    mercurial(remote, reponame)
 
     def bump_and_tag(repo, attempt, config, relbranch, revision, tags,
                      defaultBranch):
@@ -148,7 +148,7 @@ def tagRepo(config, repo, reponame, revision, tags, bumpFiles, relbranch,
 
 def tagOtherRepo(config, repo, reponame, revision, pushAttempts):
     remote = make_hg_url(HG, repo)
-    retry(mercurial, args=(remote, reponame))
+    mercurial(remote, reponame)
 
     def tagRepo(repo, attempt, config, revision, tags):
         # set totalChangesets=1 because tag() generates exactly 1 commit
@@ -248,7 +248,7 @@ if __name__ == '__main__':
                       help="Tag the other repo(s).")
 
     options, args = parser.parse_args()
-    retry(mercurial, args=(options.buildbot_configs, 'buildbot-configs'))
+    mercurial(options.buildbot_configs, 'buildbot-configs')
     update('buildbot-configs', revision=options.release_tag)
     config = validate(options, args)
     configDir = path.dirname(options.configfile)

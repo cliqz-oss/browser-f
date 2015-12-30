@@ -1,4 +1,3 @@
-from copy import copy
 import os
 import re
 from util.algorithms import getChunk
@@ -14,16 +13,16 @@ class UpdateVerifyConfig(object):
                        "channel", "patch_types", "from", "aus_server",
                        "ftp_server_from", "ftp_server_to", "to",
                        "mar_channel_IDs")
-    global_keys = ("product", "platform", "channel", "aus_server", "to")
+    global_keys = ("product", "channel", "aus_server", "to")
     release_keys = ("release", "build_id", "locales", "patch_types", "from",
-                    "ftp_server_from", "ftp_server_to", "mar_channel_IDs")
+                    "ftp_server_from", "ftp_server_to", "mar_channel_IDs",
+                    "platform")
     first_only_keys = ("from", "aus_server", "to")
     compare_attrs = global_keys + ("releases",)
 
-    def __init__(self, product=None, platform=None, channel=None,
+    def __init__(self, product=None, channel=None,
                  aus_server=None, to=None):
         self.product = product
-        self.platform = platform
         self.channel = channel
         self.aus_server = aus_server
         self.to = to
@@ -103,7 +102,7 @@ class UpdateVerifyConfig(object):
     def addRelease(self, release=None, build_id=None, locales=[],
                    patch_types=['complete'], from_path=None,
                    ftp_server_from=None, ftp_server_to=None,
-                   mar_channel_IDs=None):
+                   mar_channel_IDs=None, platform=None):
         """Locales and patch_types can be passed as either a string or a list.
            If a string is passed, they will be converted to a list for internal
            storage"""
@@ -122,6 +121,7 @@ class UpdateVerifyConfig(object):
             "ftp_server_from": ftp_server_from,
             "ftp_server_to": ftp_server_to,
             "mar_channel_IDs": mar_channel_IDs,
+            "platform": platform,
         })
 
     def addLocaleToRelease(self, build_id, locale, from_path=None):
@@ -155,9 +155,8 @@ class UpdateVerifyConfig(object):
         allTests = getChunk(fullTests, chunks, thisChunk)
         allTests.extend(getChunk(quickTests, chunks, thisChunk))
 
-        newConfig = UpdateVerifyConfig(self.product, self.platform,
-                                       self.channel, self.aus_server,
-                                       self.to)
+        newConfig = UpdateVerifyConfig(self.product, self.channel,
+                                       self.aus_server, self.to)
         for t in allTests:
             build_id, locale, from_path = t
             if from_path == "None":
@@ -168,7 +167,8 @@ class UpdateVerifyConfig(object):
                                      ftp_server_from=r["ftp_server_from"],
                                      ftp_server_to=r["ftp_server_to"],
                                      patch_types=r["patch_types"], from_path=from_path,
-                                     mar_channel_IDs=r["mar_channel_IDs"])
+                                     mar_channel_IDs=r["mar_channel_IDs"],
+                                     platform=r["platform"])
             except UpdateVerifyError:
                 pass
             newConfig.addLocaleToRelease(build_id, locale, from_path)

@@ -57,6 +57,11 @@ pushd src; GOT_REVISION=`hg parent --template={node} | cut -c1-12`; popd
 echo "revision: $GOT_REVISION" > properties/revision
 echo "got_revision: $GOT_REVISION" > properties/got_revision
 
+if [ -f src/build/valgrind/valgrind.sh ]; then
+    bash src/build/valgrind/valgrind.sh
+    exit $?
+fi
+
 srcdir=$PWD/src
 objdir=${MOZ_OBJDIR-objdir}
 
