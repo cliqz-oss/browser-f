@@ -27,14 +27,18 @@ import tempfile
 from threading import Thread
 import time
 
-# Add mar.py's location to the path.
-sys.path.append(
-    path.join(path.dirname(path.realpath(__file__)), "../buildfarm/utils"))
 logging.basicConfig(
     stream=sys.stdout, level=logging.INFO, format="%(message)s")
 log = logging.getLogger(__name__)
 
-from mar import BZ2MarFile
+try:
+    # the future - https://github.com/mozilla/build-mar via a venv
+    from mardor.marfile import BZ2MarFile
+except:
+    # the past - http://hg.mozilla.org/build/tools/file/default/buildfarm/utils/mar.py
+    sys.path.append(
+        path.join(path.dirname(path.realpath(__file__)), "../buildfarm/utils"))
+    from mar import BZ2MarFile
 
 SEVENZIP = "7za"
 

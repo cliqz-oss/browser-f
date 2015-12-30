@@ -19,6 +19,7 @@ def postUploadCmdPrefix(upload_dir=None,
                         to_mobile_candidates=False,
                         nightly_dir=None,
                         signed=False,
+                        bucket_prefix=None,
                         ):
     """Returns a post_upload.py command line for the given arguments.
     It is expected that the returned value is augmented with the list of files
@@ -65,5 +66,7 @@ def postUploadCmdPrefix(upload_dir=None,
         cmd.append("--nightly-dir=%s" % nightly_dir)
     if signed:
             cmd.append("--signed")
+    if bucket_prefix:
+        cmd.extend(['--bucket-prefix', bucket_prefix])
 
     return str(" ".join(cmd))

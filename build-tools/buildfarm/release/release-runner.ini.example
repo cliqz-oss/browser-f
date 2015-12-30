@@ -25,6 +25,7 @@ verbose: true
 sleeptime: 30
 ssh_username: cltbld
 ssh_key: /home/cltbld/.ssh/release-runner
+docker_worker_key: /home/cltbld/docker-worker-public.pem
 
 [symlinks]
 production_config.py: {buildbot_configs}/mozilla/localconfig.py

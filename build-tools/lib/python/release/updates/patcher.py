@@ -131,7 +131,6 @@ class PatcherConfig(dict):
         for version in fromVersions:
             r = self['release'][version]
             for platform in r['platforms']:
-                p = r['platforms'][platform]
                 for locale in r['locales']:
                     # The exception lists are a little weird. If a locale is
                     # not in the exception list at all, it is applicable to all

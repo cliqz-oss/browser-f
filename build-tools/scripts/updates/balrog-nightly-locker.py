@@ -7,7 +7,7 @@ import sys
 
 site.addsitedir(path.join(path.dirname(__file__), "../../lib/python"))
 # Use explicit version of python-requests
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../lib/python/vendor/requests-0.10.8"))
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../lib/python/vendor/requests-2.7.0"))
 
 from balrog.submitter.api import Rule, Release
 
@@ -61,8 +61,6 @@ if __name__ == '__main__':
     execfile(args.credentials_file, credentials)
     auth = (args.username, credentials['balrog_credentials'][args.username])
 
-    rule_api = Rule(args.api_root, auth)
-
     if args.action == ["lock"]:
         my_args = args.action_args
         if len(my_args) > 1:
@@ -74,10 +72,12 @@ if __name__ == '__main__':
                 release_name = args[0]
 
             if not release_name:
-                rule_data, _ = rule_api.get_data(rule_id)
+                rule_data, _ = Rule(api_root=args.api_root, auth=auth,
+                                    rule_id=rule_id).get_data()
                 latest_blob_name = rule_data["mapping"]
-                release_api = Release(args.api_root, auth)
-                release_data, _ = release_api.get_data(latest_blob_name)
+                release = Release(api_root=args.api_root, auth=auth,
+                                  name=latest_blob_name)
+                release_data, _ = release.get_data()
                 buildid = None
                 for p in release_data["platforms"].values():
                     enUS = p.get("locales", {}).get("en-US", {})
@@ -93,7 +93,8 @@ if __name__ == '__main__':
 
             if not args.dry_run:
                 logging.info("Locking rule %s to %s", rule_id, release_name)
-                rule_api.update_rule(rule_id, mapping=release_name)
+                Rule(api_root=args.api_root, auth=auth, rule_id=rule_id
+                     ).update_rule(mapping=release_name)
             else:
                 logging.info("Would've locked rule %s to %s", rule_id, release_name)
 
@@ -102,12 +103,13 @@ if __name__ == '__main__':
             parser.error("Unlock command does not accept any args.")
 
         for rule_id in args.rule_ids:
-            rule_data, _ = rule_api.get_data(rule_id)
+            rule = Rule(api_root=args.api_root, auth=auth, rule_id=rule_id)
+            rule_data, _ = rule.get_data()
             root_name = "-".join(rule_data["mapping"].split("-")[:-1])
             release_name = "%s-latest" % root_name
 
             if not args.dry_run:
                 logging.info("Unlocking rule %s back to %s", rule_id, release_name)
-                rule_api.update_rule(rule_id, mapping=release_name)
+                rule.update_rule(mapping=release_name)
             else:
                 logging.info("Would've unlocked rule %s back to %s", rule_id, release_name)

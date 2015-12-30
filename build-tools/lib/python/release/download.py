@@ -5,30 +5,17 @@ import socket
 from urllib import urlretrieve
 from urllib2 import urlopen, HTTPError, URLError
 
-from release.platforms import ftp_platform_map, buildbot2ftp
+from redo import retrier
+import requests
+
+from release.platforms import buildbot2ftp
 from release.l10n import makeReleaseRepackUrls
 from release.paths import makeCandidatesDir
 from util.paths import windows2msys, msys2windows
-from util.file import directoryContains
 from util.commands import run_cmd
 
 import logging
 log = logging.getLogger(__name__)
-
-installer_ext_map = {
-    'win32': ".exe",
-    'win64': ".exe",
-    'macosx': ".dmg",
-    'macosx64': ".dmg",
-    'linux': ".tar.bz2",
-    'linux64': ".tar.bz2",
-}
-
-
-def getInstallerExt(platform):
-    """ Return the file extension of the installer file on a given platform,
-    raising a KeyError if the platform is not found """
-    return installer_ext_map[platform]
 
 
 def downloadReleaseBuilds(stageServer, productName, brandName, version,
@@ -45,7 +32,19 @@ def downloadReleaseBuilds(stageServer, productName, brandName, version,
         url = '/'.join([p.strip('/') for p in [candidatesDir,
                                                urllib.quote(remoteFile)]])
         log.info("Downloading %s to %s", url, fileName)
-        urlretrieve(url, fileName)
+        for _ in retrier():
+            with open(fileName, "wb") as f:
+                try:
+                    r = requests.get(url, stream=True, timeout=15)
+                    r.raise_for_status()
+                    for chunk in r.iter_content(chunk_size=5*1024**2):
+                        f.write(chunk)
+                    r.close()
+                    break
+                except (requests.HTTPError, requests.ConnectionError,
+                        requests.Timeout):
+                    log.exception("Caught exception downloading")
+
         if fileName.endswith('exe'):
             if usePymake:
                 env['WIN32_INSTALLER_IN'] = msys2windows(path.join(os.getcwd(),
@@ -73,12 +72,19 @@ def downloadUpdate(stageServer, productName, version, buildNumber,
     url = '/'.join([p.strip('/') for p in [
         candidatesDir, 'update', platformDir, locale, fileName]])
     log.info("Downloading %s to %s", url, destFileName)
-    remote_f = urlopen(url)
+    remote_f = urlopen(url, timeout=20)
     local_f = open(destFileName, "wb")
     local_f.write(remote_f.read())
     local_f.close()
-    return destFileName
 
+    expected_size = int(remote_f.info()['Content-Length'])
+    actual_size =  os.path.getsize(destFileName)
+    if expected_size != actual_size:
+        log.info("File is truncated, got %s of %s bytes" % (actual_size,
+                                                            expected_size))
+        raise HTTPError
+
+    return destFileName
 
 def downloadUpdateIgnore404(*args, **kwargs):
     try:
@@ -90,22 +96,6 @@ def downloadUpdateIgnore404(*args, **kwargs):
             return None
         else:
             raise
-
-
-def rsyncFilesByPattern(server, userName, sshKey, source_dir, target_dir,
-                        pattern):
-    cmd = ['rsync', '-e',
-           'ssh -l %s -oIdentityFile=%s' % (userName, sshKey),
-           '-av', '--include=%s' % pattern, '--include=*/', '--exclude=*',
-           '%s:%s' % (server, source_dir), target_dir]
-    run_cmd(cmd)
-
-
-def rsyncFiles(files, server, userName, sshKey, target_dir):
-    cmd = ['rsync', '-e',
-           'ssh -l %s -oIdentityFile=%s' % (userName, sshKey),
-           '-av'] + files + ['%s:%s' % (server, target_dir)]
-    run_cmd(cmd)
 
 
 def url_exists(url, timeout=10):
