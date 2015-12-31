@@ -166,7 +166,7 @@
     <checkbox
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
-        label="&startupFreshTab.label;"/>
+        label="&startupHomePage.label;"/>
   </vbox>
   <html:table id="startupTable">
 # Replaced by two checkboxes above.

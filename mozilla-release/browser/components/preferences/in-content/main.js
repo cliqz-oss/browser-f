@@ -20,7 +20,7 @@ var gMainPane = {
             .addEventListener(aEventType, aCallback.bind(gMainPane));
       }
       catch (e) {
-          Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
+        Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
       }
     }
 
