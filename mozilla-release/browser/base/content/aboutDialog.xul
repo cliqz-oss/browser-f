@@ -44,8 +44,6 @@
       <vbox id="rightBox" flex="1">
         <label id="distribution" class="text-blurb"/>
         <label id="distributionId" class="text-blurb"/>
-#expand <label id="version">&version.basedon;__MOZ_APP_VERSION__</label>
-
         <vbox id="detailsBox">
           <vbox id="updateBox">
 #ifdef MOZ_UPDATER
