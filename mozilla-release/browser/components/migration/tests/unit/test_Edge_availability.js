@@ -1,6 +1,8 @@
 const EDGE_AVAILABLE_MIGRATIONS = 
   MigrationUtils.resourceTypes.COOKIES |
-  MigrationUtils.resourceTypes.BOOKMARKS;
+  MigrationUtils.resourceTypes.BOOKMARKS |
+  MigrationUtils.resourceTypes.HISTORY |
+  MigrationUtils.resourceTypes.PASSWORDS;
 
 add_task(function* () {
   let migrator = MigrationUtils.getMigrator("edge");

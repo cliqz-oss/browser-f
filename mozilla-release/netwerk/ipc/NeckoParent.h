@@ -8,7 +8,9 @@
 #include "mozilla/net/PNeckoParent.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "mozilla/net/OfflineObserver.h"
+#include "nsIAuthPrompt2.h"
 #include "nsINetworkPredictor.h"
+#include "nsNetUtil.h"
 
 #ifndef mozilla_net_NeckoParent_h
 #define mozilla_net_NeckoParent_h
@@ -144,11 +146,11 @@ protected:
   virtual PTCPServerSocketParent*
     AllocPTCPServerSocketParent(const uint16_t& aLocalPort,
                                 const uint16_t& aBacklog,
-                                const nsString& aBinaryType) override;
+                                const bool& aUseArrayBuffers) override;
   virtual bool RecvPTCPServerSocketConstructor(PTCPServerSocketParent*,
                                                const uint16_t& aLocalPort,
                                                const uint16_t& aBacklog,
-                                               const nsString& aBinaryType) override;
+                                               const bool& aUseArrayBuffers) override;
   virtual bool DeallocPTCPServerSocketParent(PTCPServerSocketParent*) override;
   virtual PUDPSocketParent* AllocPUDPSocketParent(const Principal& aPrincipal,
                                                   const nsCString& aFilter) override;
@@ -221,6 +223,8 @@ protected:
                              const PredictorPredictReason& aReason,
                              const IPC::SerializedLoadContext& aLoadContext) override;
   virtual bool RecvPredReset() override;
+
+  virtual bool RecvRemoveSchedulingContext(const nsCString& scid) override;
 
 private:
   nsCString mCoreAppsBasePath;

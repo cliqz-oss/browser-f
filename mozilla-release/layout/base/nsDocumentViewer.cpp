@@ -17,7 +17,6 @@
 #include "nsIDocumentViewerPrint.h"
 #include "nsIDOMBeforeUnloadEvent.h"
 #include "nsIDocument.h"
-#include "nsIDOMWindowUtils.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
 #include "nsStyleSet.h"
@@ -69,6 +68,7 @@
 #include "nsIClipboardHelper.h"
 
 #include "nsPIDOMWindow.h"
+#include "nsGlobalWindow.h"
 #include "nsDOMNavigationTiming.h"
 #include "nsPIWindowRoot.h"
 #include "nsJSEnvironment.h"
@@ -166,8 +166,7 @@ public:
 
                        nsDocViewerSelectionListener()
                        : mDocViewer(nullptr)
-                       , mGotSelectionState(false)
-                       , mSelectionWasCollapsed(false)
+                       , mSelectionWasCollapsed(true)
                        {
                        }
 
@@ -177,8 +176,7 @@ protected:
 
   virtual              ~nsDocViewerSelectionListener() {}
 
-  nsDocumentViewer*  mDocViewer;
-  bool                 mGotSelectionState;
+  nsDocumentViewer*    mDocViewer;
   bool                 mSelectionWasCollapsed;
 
 };
@@ -950,7 +948,7 @@ nsDocumentViewer::LoadComplete(nsresult aStatus)
   if(window &&
      (NS_SUCCEEDED(aStatus) || aStatus == NS_ERROR_PARSED_DATA_CACHED)) {
     nsEventStatus status = nsEventStatus_eIgnore;
-    WidgetEvent event(true, NS_LOAD);
+    WidgetEvent event(true, eLoad);
     event.mFlags.mBubbles = false;
     event.mFlags.mCancelable = false;
      // XXX Dispatching to |window|, but using |document| as the target.
@@ -1115,23 +1113,23 @@ nsDocumentViewer::PermitUnloadInternal(bool aCallerClosesWindow,
   // onbeforeunload event, don't let that happen. (see also bug#331040)
   nsRefPtr<nsDocumentViewer> kungFuDeathGrip(this);
 
+  bool dialogsAreEnabled = false;
   {
     // Never permit popups from the beforeunload handler, no matter
     // how we get here.
     nsAutoPopupStatePusher popupStatePusher(openAbused, true);
 
     // Never permit dialogs from the beforeunload handler
-    nsCOMPtr<nsIDOMWindowUtils> utils = do_GetInterface(window);
-    bool dialogsWereEnabled = false;
-    utils->AreDialogsEnabled(&dialogsWereEnabled);
-    utils->DisableDialogs();
+    nsGlobalWindow *globalWindow = static_cast<nsGlobalWindow*>(window);
+    dialogsAreEnabled = globalWindow->AreDialogsEnabled();
+    globalWindow->DisableDialogs();
 
     mInPermitUnload = true;
     EventDispatcher::DispatchDOMEvent(window, nullptr, event, mPresContext,
                                       nullptr);
     mInPermitUnload = false;
-    if (dialogsWereEnabled) {
-      utils->EnableDialogs();
+    if (dialogsAreEnabled) {
+      globalWindow->EnableDialogs();
     }
   }
 
@@ -1139,7 +1137,7 @@ nsDocumentViewer::PermitUnloadInternal(bool aCallerClosesWindow,
   nsAutoString text;
   beforeUnload->GetReturnValue(text);
 
-  if (!sIsBeforeUnloadDisabled && *aShouldPrompt &&
+  if (!sIsBeforeUnloadDisabled && *aShouldPrompt && dialogsAreEnabled &&
       (event->GetInternalNSEvent()->mFlags.mDefaultPrevented ||
        !text.IsEmpty())) {
     // Ask the user if it's ok to unload the current page
@@ -1333,7 +1331,7 @@ nsDocumentViewer::PageHide(bool aIsUnload)
 
     // Now, fire an Unload event to the document...
     nsEventStatus status = nsEventStatus_eIgnore;
-    WidgetEvent event(true, NS_PAGE_UNLOAD);
+    WidgetEvent event(true, eUnload);
     event.mFlags.mBubbles = false;
     // XXX Dispatching to |window|, but using |document| as the target.
     event.target = mDocument;
@@ -2502,10 +2500,11 @@ nsDocumentViewer::FindContainerView()
               static_cast<nsSubDocumentFrame*>(subdocFrame)->EnsureInnerView();
             containerView = innerView;
           } else {
-            NS_WARNING("Subdocument container has non-subdocument frame");
+            NS_WARN_IF_FALSE(!subdocFrame->GetType(),
+                             "Subdocument container has non-subdocument frame");
           }
         } else {
-          // XXX Silenced by default in bug 117528
+          // XXX Silenced by default in bug 1175289
           LAYOUT_WARNING("Subdocument container has no frame");
         }
       }
@@ -2621,7 +2620,8 @@ NS_IMETHODIMP nsDocumentViewer::SelectAll()
 
 NS_IMETHODIMP nsDocumentViewer::CopySelection()
 {
-  nsCopySupport::FireClipboardEvent(NS_COPY, nsIClipboard::kGlobalClipboard, mPresShell, nullptr);
+  nsCopySupport::FireClipboardEvent(eCopy, nsIClipboard::kGlobalClipboard,
+                                    mPresShell, nullptr);
   return NS_OK;
 }
 
@@ -2669,7 +2669,6 @@ NS_IMETHODIMP nsDocumentViewer::GetCopyable(bool *aCopyable)
   return NS_OK;
 }
 
-/* AString getContents (in string mimeType, in boolean selectionOnly); */
 NS_IMETHODIMP nsDocumentViewer::GetContents(const char *mimeType, bool selectionOnly, nsAString& aOutValue)
 {
   aOutValue.Truncate();
@@ -2694,7 +2693,6 @@ NS_IMETHODIMP nsDocumentViewer::GetContents(const char *mimeType, bool selection
                                     mDocument, aOutValue);
 }
 
-/* readonly attribute boolean canGetContents; */
 NS_IMETHODIMP nsDocumentViewer::GetCanGetContents(bool *aCanGetContents)
 {
   NS_ENSURE_ARG_POINTER(aCanGetContents);
@@ -3573,13 +3571,13 @@ NS_IMETHODIMP nsDocViewerSelectionListener::NotifySelectionChanged(nsIDOMDocumen
 
   bool selectionCollapsed;
   selection->GetIsCollapsed(&selectionCollapsed);
-  // we only call UpdateCommands when the selection changes from collapsed
-  // to non-collapsed or vice versa. We might need another update string
-  // for simple selection changes, but that would be expenseive.
-  if (!mGotSelectionState || mSelectionWasCollapsed != selectionCollapsed)
+  // We only call UpdateCommands when the selection changes from collapsed to
+  // non-collapsed or vice versa, however we skip the initializing collapse. We
+  // might need another update string for simple selection changes, but that
+  // would be expenseive.
+  if (mSelectionWasCollapsed != selectionCollapsed)
   {
     domWindow->UpdateCommands(NS_LITERAL_STRING("select"), selection, aReason);
-    mGotSelectionState = true;
     mSelectionWasCollapsed = selectionCollapsed;
   }
 
@@ -3693,7 +3691,11 @@ nsDocumentViewer::Print(nsIPrintSettings*       aPrintSettings,
   if (GetIsPrinting()) {
     // Let the user know we are not ready to print.
     rv = NS_ERROR_NOT_AVAILABLE;
-    nsPrintEngine::ShowPrintErrorDialog(rv);
+
+    if (mPrintEngine) {
+      mPrintEngine->FirePrintingErrorEvent(rv);
+    }
+
     return rv;
   }
 
@@ -3913,14 +3915,12 @@ nsDocumentViewer::PrintPreviewNavigate(int16_t aType, int32_t aPageNum)
 
 }
 
-/* readonly attribute nsIPrintSettings globalPrintSettings; */
 NS_IMETHODIMP
 nsDocumentViewer::GetGlobalPrintSettings(nsIPrintSettings * *aGlobalPrintSettings)
 {
   return nsPrintEngine::GetGlobalPrintSettings(aGlobalPrintSettings);
 }
 
-/* readonly attribute boolean doingPrint; */
 // XXX This always returns false for subdocuments
 NS_IMETHODIMP
 nsDocumentViewer::GetDoingPrint(bool *aDoingPrint)
@@ -3935,7 +3935,6 @@ nsDocumentViewer::GetDoingPrint(bool *aDoingPrint)
   return NS_OK;
 }
 
-/* readonly attribute boolean doingPrintPreview; */
 // XXX This always returns false for subdocuments
 NS_IMETHODIMP
 nsDocumentViewer::GetDoingPrintPreview(bool *aDoingPrintPreview)
@@ -3949,7 +3948,6 @@ nsDocumentViewer::GetDoingPrintPreview(bool *aDoingPrintPreview)
   return NS_OK;
 }
 
-/* readonly attribute nsIPrintSettings currentPrintSettings; */
 NS_IMETHODIMP
 nsDocumentViewer::GetCurrentPrintSettings(nsIPrintSettings * *aCurrentPrintSettings)
 {
@@ -3962,7 +3960,6 @@ nsDocumentViewer::GetCurrentPrintSettings(nsIPrintSettings * *aCurrentPrintSetti
 }
 
 
-/* readonly attribute nsIDOMWindow currentChildDOMWindow; */
 NS_IMETHODIMP 
 nsDocumentViewer::GetCurrentChildDOMWindow(nsIDOMWindow * *aCurrentChildDOMWindow)
 {
@@ -3971,7 +3968,6 @@ nsDocumentViewer::GetCurrentChildDOMWindow(nsIDOMWindow * *aCurrentChildDOMWindo
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-/* void cancel (); */
 NS_IMETHODIMP
 nsDocumentViewer::Cancel()
 {
@@ -3979,7 +3975,6 @@ nsDocumentViewer::Cancel()
   return mPrintEngine->Cancelled();
 }
 
-/* void exitPrintPreview (); */
 NS_IMETHODIMP
 nsDocumentViewer::ExitPrintPreview()
 {
@@ -4010,7 +4005,6 @@ nsDocumentViewer::EnumerateDocumentNames(uint32_t* aCount,
 #endif
 }
 
-/* readonly attribute boolean isFramesetFrameSelected; */
 NS_IMETHODIMP 
 nsDocumentViewer::GetIsFramesetFrameSelected(bool *aIsFramesetFrameSelected)
 {
@@ -4024,7 +4018,6 @@ nsDocumentViewer::GetIsFramesetFrameSelected(bool *aIsFramesetFrameSelected)
 #endif
 }
 
-/* readonly attribute long printPreviewNumPages; */
 NS_IMETHODIMP
 nsDocumentViewer::GetPrintPreviewNumPages(int32_t *aPrintPreviewNumPages)
 {
@@ -4038,7 +4031,6 @@ nsDocumentViewer::GetPrintPreviewNumPages(int32_t *aPrintPreviewNumPages)
 #endif
 }
 
-/* readonly attribute boolean isFramesetDocument; */
 NS_IMETHODIMP
 nsDocumentViewer::GetIsFramesetDocument(bool *aIsFramesetDocument)
 {
@@ -4052,7 +4044,6 @@ nsDocumentViewer::GetIsFramesetDocument(bool *aIsFramesetDocument)
 #endif
 }
 
-/* readonly attribute boolean isIFrameSelected; */
 NS_IMETHODIMP 
 nsDocumentViewer::GetIsIFrameSelected(bool *aIsIFrameSelected)
 {
@@ -4066,7 +4057,6 @@ nsDocumentViewer::GetIsIFrameSelected(bool *aIsIFrameSelected)
 #endif
 }
 
-/* readonly attribute boolean isRangeSelection; */
 NS_IMETHODIMP 
 nsDocumentViewer::GetIsRangeSelection(bool *aIsRangeSelection)
 {

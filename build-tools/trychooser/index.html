@@ -16,8 +16,11 @@
 
     <form name="trychooser" method="get" action="#">
     <p>Trychooser is also a mercurial extension, <a href="https://github.com/pbiggar/trychooser">trychooser</a>, can help you use a CLI and also will push to try for you.</p>
+    <p>By using the mach try command, you can automatically generate parts of try syntax and restrict tests to certain directories. <br>Learn more by running |./mach help try|.</p>
     <strong>Computed Syntax:</strong><br>
-    <textarea class="result_value" cols="80"></textarea>
+    <textarea id="result_try" class="result" cols="80"></textarea><br><br>
+    <strong>Computed Command:</strong><br>
+    <textarea id="result_mach" class="result" cols="80"></textarea>
 
     <div id='try-options'>
         <div id="col1">
@@ -155,6 +158,11 @@
                 <span id="build_emulator-l" class="build_queue">N/A</span>
             </li>
             <li>
+                <label><input type="checkbox" name="platform" value="emulator-x86-kk" data-project="b2g">emulator-x86-kk (B2G x86, KK)</label>
+                <span id="test_emulator-x86-kk" class="test_queue">N/A</span>
+                <span id="build_emulator-x86-kk" class="build_queue">N/A</span>
+            </li>
+            <li>
                 <label><input type="checkbox" name="platform" value="linux32_gecko" data-project="b2g">b2g desktop (linux)</label>
                 <span id="test_linux32_gecko" class="test_queue">N/A</span>
                 <span id="build_linux32_gecko" class="build_queue">N/A</span>
@@ -204,6 +212,43 @@
                 <span id="test_win64_horizon" class="test_queue">N/A</span>
                 <span id="build_win64_horizon" class="build_queue">N/A</span>
             </li>
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-arm-sim">Spidermonkey arm-sim</label>
+                <span id="test_sm-arm-sim" class="test_queue">N/A</span>
+                <span id="build_sm-arm-sim" class="build_queue">N/A</span>
+            </li>
+            <!-- TODO: Currently not supported, enable when it is
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-arm-sim-osx">Spidermonkey arm-sim-osx</label>
+                <span id="test_sm-arm-sim-osx" class="test_queue">N/A</span>
+                <span id="build_sm-arm-sim-osx" class="build_queue">N/A</span>
+            </li>
+            -->
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-compacting">Spidermonkey compacting</label>
+                <span id="test_sm-compacting" class="test_queue">N/A</span>
+                <span id="build_sm-compacting" class="build_queue">N/A</span>
+            </li>
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-generational">Spidermonkey generational</label>
+                <span id="test_sm-generational" class="test_queue">N/A</span>
+                <span id="build_sm-generational" class="build_queue">N/A</span>
+            </li>
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-plain">Spidermonkey plain</label>
+                <span id="test_sm-plain" class="test_queue">N/A</span>
+                <span id="build_sm-plain" class="build_queue">N/A</span>
+            </li>
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-rootanalysis">Spidermonkey rootanalysis</label>
+                <span id="test_sm-rootanalysis" class="test_queue">N/A</span>
+                <span id="build_sm-rootanalysis" class="build_queue">N/A</span>
+            </li>
+            <li>
+                <label><input type="checkbox" name="platform" value="sm-warnaserr">Spidermonkey warnaserr</label>
+                <span id="test_sm-warnaserr" class="test_queue">N/A</span>
+                <span id="build_sm-warnaserr" class="build_queue">N/A</span>
+            </li>
             </ul>
             <p>Looking for PGO builds? See <a href="https://wiki.mozilla.org/ReleaseEngineering/TryChooser#What_if_I_want_PGO_for_my_build">this page</a>.</p>
             </div>
@@ -233,7 +278,7 @@
             </li>
 
             <li>
-              <label><input type="checkbox" value="Windows XP">WinXP (win32)</label>
+              <label><input type="checkbox" value="Windows XP">WinXP (win32) - <a href="https://bugzilla.mozilla.org/show_bug.cgi?id=1219434">disabled when not explicitly checked</a></label>
             </li>
 
             <li>
@@ -245,7 +290,7 @@
             </li>
 
             <li>
-              <label><input type="checkbox" value="Android">Android</label>
+              <label><input type="checkbox" value="Android">Android - <a href="https://bugzil.la/1184117">4.0 API11+ disabled when not explicity checked</a></label>
             </li>
 
             <li>
@@ -318,6 +363,10 @@
                     <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-1">mochitest-e10s-browser-chrome-1</label></li>
                     <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-2">mochitest-e10s-browser-chrome-2</label></li>
                     <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-3">mochitest-e10s-browser-chrome-3</label></li>
+                    <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-4">mochitest-e10s-browser-chrome-4</label></li>
+                    <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-5">mochitest-e10s-browser-chrome-5</label></li>
+                    <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-6">mochitest-e10s-browser-chrome-6</label></li>
+                    <li><label><input type="checkbox" value="mochitest-e10s-browser-chrome-7">mochitest-e10s-browser-chrome-7</label></li>
                     <li><label><input type="checkbox" value="mochitest-e10s-devtools-chrome">mochitest-e10s-devtools-chrome</label></li>
                     </ul>
                 </div>
@@ -328,7 +377,20 @@
                     <li><label><input type="checkbox" value="web-platform-tests-2">web-platform-tests-2</label></li>
                     <li><label><input type="checkbox" value="web-platform-tests-3">web-platform-tests-3</label></li>
                     <li><label><input type="checkbox" value="web-platform-tests-4">web-platform-tests-4</label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-5">web-platform-tests-5<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-6">web-platform-tests-6<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-7">web-platform-tests-7<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-8">web-platform-tests-8<span class="info">(debug only)</span></label></li>
                     <li><label><input type="checkbox" value="web-platform-tests-reftests">web-platform-tests-reftests</label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-1">web-platform-tests-e10s-1</label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-2">web-platform-tests-e10s-2</label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-3">web-platform-tests-e10s-3</label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-4">web-platform-tests-e10s-4</label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-5">web-platform-tests-e10s-5<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-6">web-platform-tests-e10s-6<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-7">web-platform-tests-e10s-7<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-8">web-platform-tests-e10s-8<span class="info">(debug only)</span></label></li>
+                    <li><label><input type="checkbox" value="web-platform-tests-e10s-reftests">web-platform-tests-e10s-reftests</label></li>
                 </ul>
                 </div>
             </ul>
@@ -388,18 +450,13 @@
             <li><label><input type="checkbox" value="xpcshell-1">xpcshell-1</label></li>
             <li><label><input type="checkbox" value="xpcshell-2">xpcshell-2</label></li>
             <li><label><input type="checkbox" value="xpcshell-3">xpcshell-3</label></li>
-            <div class='option-subgroup'>
-            <li><label><input type="checkbox" class="subgroup-selector subgroup-all-selector" value="autophone-tests">Autophone-tests (all)</label></li>
-              <ul>OR
-                  <li><label><input type="checkbox" value="autophone-smoketest">autophone-smoketest</label></li>
-                  <li><label><input type="checkbox" value="autophone-s1s2">autophone-s1s2</label></li>
-                  <li><label><input type="checkbox" value="autophone-webapp">autophone-webapp</label></li>
-                  <li><label><input type="checkbox" value="autophone-mochitest-dom-browser-element">autophone-mochitest-dom-browser-element</label></li>
-                  <li><label><input type="checkbox" value="autophone-mochitest-dom-media">autophone-mochitest-dom-media</label></li>
-                  <li><label><input type="checkbox" value="autophone-mochitest-skia">autophone-mochitest-skia</label></li>
-                  <li><label><input type="checkbox" value="autophone-mochitest-toolkit-widgets">autophone-mochitest-toolkit-widgets</label></li>
-              </ul>
-            </div>
+            <li><label><input type="checkbox" value="autophone-smoketest">autophone-smoketest</label></li>
+            <li><label><input type="checkbox" value="autophone-s1s2">autophone-s1s2</label></li>
+            <li><label><input type="checkbox" value="autophone-webapp">autophone-webapp</label></li>
+            <li><label><input type="checkbox" value="autophone-mochitest-dom-browser-element">autophone-mochitest-dom-browser-element</label></li>
+            <li><label><input type="checkbox" value="autophone-mochitest-dom-media">autophone-mochitest-dom-media</label></li>
+            <li><label><input type="checkbox" value="autophone-mochitest-skia">autophone-mochitest-skia</label></li>
+            <li><label><input type="checkbox" value="autophone-mochitest-toolkit-widgets">autophone-mochitest-toolkit-widgets</label></li>
             </ul>
             <h4>B2G-Only Unittest Suites</h4>
             <ul>
@@ -442,6 +499,13 @@
         <div id="col3">
             <h4>Profiling</h4>
             <label><input type="checkbox" class="profile">profile</label> (<a href="https://wiki.mozilla.org/Buildbot/Talos/Profiling" title="Help">?</a>)
+            <h4>Additional test options</h4>
+            <li><label><input type="checkbox" class="no-retry">Do not retrigger failed tests</label></li>
+            <li><label><input type="checkbox" class="rebuild-talos">To compare talos numbers we need 5 retriggers. Do you want to retrigger talos jobs 5 times?</label></li>
+            <p>Retrigger all test jobs (up to 20 times):</p>
+            <label><input type="text" class="rebuilds"></label>
+            <p>Restrict tests to tag:</p>
+            <label><input type="text" class="tags"></label>
             <h4>Talos Suites</h4>
             <div class='option-group' try-section='t'>
             <label><input type="checkbox" class="group-selector all-selector">All</label>
@@ -449,22 +513,29 @@
             <ul>
                 <li><label><input type="checkbox" name="talos_suite" value="chromez">chromez</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="dromaeojs">dromaeojs</label></li>
-                <li><label><input type="checkbox" name="talos_suite" value="other_nol64">other (no linux 64)</label></li>
-                <li><label><input type="checkbox" name="talos_suite" value="other_l64">other (linux 64 - includes mediatests)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="other">other</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="g1">g1</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="g2">g2</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="svgr">svgr</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="tp5o">tp5o</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="xperf">xperf <span class="info">(win7 only)</span></label></li>
+
+            </ul>
+            <label><input type="checkbox" class="group-selector none-selector" CHECKED>None</label>
+            <ul>
+                <li><label><input type="checkbox" name="talos_suite" value="chromez-e10s">chromez (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="dromaeojs-e10s">dromaeojs (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="other-e10s">other (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="g1-e10s">g1 (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="g2-e10s">g2 (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="svgr-e10s">svgr (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="tp5o-e10s">tp5o (e10s)</label></li>
+                <li><label><input type="checkbox" name="talos_suite" value="xperf-e10s">xperf (e10s)<span class="info"> (win7 only)</span></label></li>
             </ul>
             <h4>Android-Only Talos Suites:</h4>
             <ul>
-                <li><label><input type="checkbox" name="talos_suite" value="remote-trobocheck2">remote-trobocheck2</label></li>
-                <li><label><input type="checkbox" name="talos_suite" value="remote-trobopan">remote-trobopan</label></li>
-                <li><label><input type="checkbox" name="talos_suite" value="remote-troboprovider">remote-troboprovider</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="remote-tsvg">remote-tsvg</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="remote-tp4m_nochrome">remote-tp4m_nochrome</label></li>
-                <li><label><input type="checkbox" name="talos_suite" value="remote-ts">remote-ts</label></li>
             </ul>
             </div>
 

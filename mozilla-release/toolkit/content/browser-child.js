@@ -2,9 +2,9 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-let Cc = Components.classes;
-let Ci = Components.interfaces;
-let Cu = Components.utils;
+var Cc = Components.classes;
+var Ci = Components.interfaces;
+var Cu = Components.utils;
 
 Cu.import("resource://gre/modules/AppConstants.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
@@ -21,7 +21,14 @@ if (AppConstants.MOZ_CRASHREPORTER) {
                                      "nsICrashReporter");
 }
 
-let WebProgressListener = {
+function makeInputStream(aString) {
+  let stream = Cc["@mozilla.org/io/string-input-stream;1"].
+               createInstance(Ci.nsISupportsCString);
+  stream.data = aString;
+  return stream; // XPConnect will QI this to nsIInputStream for us.
+}
+
+var WebProgressListener = {
   init: function() {
     this._filter = Cc["@mozilla.org/appshell/component/browser-status-filter;1"]
                      .createInstance(Ci.nsIWebProgress);
@@ -202,7 +209,7 @@ addEventListener("unload", () => {
   WebProgressListener.uninit();
 });
 
-let WebNavigation =  {
+var WebNavigation =  {
   init: function() {
     addMessageListener("WebNavigation:GoBack", this);
     addMessageListener("WebNavigation:GoForward", this);
@@ -243,6 +250,7 @@ let WebNavigation =  {
       case "WebNavigation:LoadURI":
         this.loadURI(message.data.uri, message.data.flags,
                      message.data.referrer, message.data.referrerPolicy,
+                     message.data.postData, message.data.headers,
                      message.data.baseURI);
         break;
       case "WebNavigation:Reload":
@@ -269,7 +277,7 @@ let WebNavigation =  {
     this.webNavigation.gotoIndex(index);
   },
 
-  loadURI: function(uri, flags, referrer, referrerPolicy, baseURI) {
+  loadURI: function(uri, flags, referrer, referrerPolicy, postData, headers, baseURI) {
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
       let annotation = uri;
       try {
@@ -283,10 +291,14 @@ let WebNavigation =  {
     }
     if (referrer)
       referrer = Services.io.newURI(referrer, null, null);
+    if (postData)
+      postData = makeInputStream(postData);
+    if (headers)
+      headers = makeInputStream(headers);
     if (baseURI)
       baseURI = Services.io.newURI(baseURI, null, null);
     this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                          null, null, baseURI);
+                                          postData, headers, baseURI);
   },
 
   reload: function(flags) {
@@ -300,7 +312,7 @@ let WebNavigation =  {
 
 WebNavigation.init();
 
-let SecurityUI = {
+var SecurityUI = {
   getSSLStatusAsString: function() {
     let status = docShell.securityUI.QueryInterface(Ci.nsISSLStatusProvider).SSLStatus;
 
@@ -316,7 +328,7 @@ let SecurityUI = {
   }
 };
 
-let ControllerCommands = {
+var ControllerCommands = {
   init: function () {
     addMessageListener("ControllerCommands:Do", this);
   },
@@ -489,7 +501,7 @@ addMessageListener("Browser:Thumbnail:CheckState", function (aMessage) {
 
 // The AddonsChild needs to be rooted so that it stays alive as long as
 // the tab.
-let AddonsChild = RemoteAddonsChild.init(this);
+var AddonsChild = RemoteAddonsChild.init(this);
 if (AddonsChild) {
   addEventListener("unload", () => {
     RemoteAddonsChild.uninit(AddonsChild);
@@ -503,7 +515,7 @@ addMessageListener("NetworkPrioritizer:AdjustPriority", (msg) => {
   loadGroup.adjustPriority(msg.data.adjustment);
 });
 
-let AutoCompletePopup = {
+var AutoCompletePopup = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIAutoCompletePopup]),
 
   init: function() {
@@ -581,10 +593,10 @@ let AutoCompletePopup = {
 
 // We may not get any responses to Browser:Init if the browser element
 // is torn down too quickly.
-let outerWindowID = content.QueryInterface(Ci.nsIInterfaceRequestor)
+var outerWindowID = content.QueryInterface(Ci.nsIInterfaceRequestor)
                            .getInterface(Ci.nsIDOMWindowUtils)
                            .outerWindowID;
-let initData = sendSyncMessage("Browser:Init", {outerWindowID: outerWindowID});
+var initData = sendSyncMessage("Browser:Init", {outerWindowID: outerWindowID});
 if (initData.length) {
   docShell.useGlobalHistory = initData[0].useGlobalHistory;
   if (initData[0].initPopup) {

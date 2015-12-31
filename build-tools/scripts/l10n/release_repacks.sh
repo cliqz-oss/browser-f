@@ -68,6 +68,8 @@ if $JSONTOOL -k properties.locale $PROPERTIES_FILE; then
     unset IFS
 fi
 
+export MBSDIFF_HOOK="$MY_DIR/mbsdiff_hook.sh -c $workdir/fs-cache"
+
 $PYTHON $MY_DIR/create-release-repacks.py -c $branchConfig -r $releaseConfig \
   -b $BUILDBOT_CONFIGS -t $releaseTag -p $platform \
   --properties-dir $outputPropertiesDir \

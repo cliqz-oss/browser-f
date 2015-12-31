@@ -97,7 +97,7 @@ nsUnknownContentTypeDialogProgressListener.prototype = {
 const PREF_BD_USEDOWNLOADDIR = "browser.download.useDownloadDir";
 const nsITimer = Components.interfaces.nsITimer;
 
-let downloadModule = {};
+var downloadModule = {};
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 Components.utils.import("resource://gre/modules/DownloadLastDir.jsm", downloadModule);
 Components.utils.import("resource://gre/modules/DownloadPaths.jsm");
@@ -228,7 +228,21 @@ nsUnknownContentTypeDialog.prototype = {
       // because the original one is definitely gone (and nsIFilePicker doesn't like
       // a null parent):
       gDownloadLastDir = this._mDownloadDir;
-      parent = Services.wm.getMostRecentWindow("");
+      let windowsEnum = Services.wm.getEnumerator("");
+      while (windowsEnum.hasMoreElements()) {
+        let someWin = windowsEnum.getNext();
+        // We need to make sure we don't end up with this dialog, because otherwise
+        // that's going to go away when the user clicks "Save", and that breaks the
+        // windows file picker that's supposed to show up if we let the user choose
+        // where to save files...
+        if (someWin != this.mDialog) {
+          parent = someWin;
+        }
+      }
+      if (!parent) {
+        Cu.reportError("No candidate parent windows were found for the save filepicker." +
+                       "This should never happen.");
+      }
     }
 
     Task.spawn(function() {

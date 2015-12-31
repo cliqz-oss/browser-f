@@ -84,6 +84,7 @@ nsJPEGDecoder::nsJPEGDecoder(RasterImage* aImage,
                              Decoder::DecodeStyle aDecodeStyle)
  : Decoder(aImage)
  , mDecodeStyle(aDecodeStyle)
+ , mSampleSize(0)
 {
   mState = JPEG_HEADER;
   mReading = true;
@@ -135,25 +136,11 @@ nsJPEGDecoder::SpeedHistogram()
   return Telemetry::IMAGE_DECODE_SPEED_JPEG;
 }
 
-nsresult
-nsJPEGDecoder::SetTargetSize(const nsIntSize& aSize)
-{
-  // Make sure the size is reasonable.
-  if (MOZ_UNLIKELY(aSize.width <= 0 || aSize.height <= 0)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // Create a downscaler that we'll filter our output through.
-  mDownscaler.emplace(aSize);
-
-  return NS_OK;
-}
-
 void
 nsJPEGDecoder::InitInternal()
 {
   mCMSMode = gfxPlatform::GetCMSMode();
-  if (GetDecodeFlags() & imgIContainer::FLAG_DECODE_NO_COLORSPACE_CONVERSION) {
+  if (GetSurfaceFlags() & SurfaceFlags::NO_COLORSPACE_CONVERSION) {
     mCMSMode = eCMSMode_Off;
   }
 
@@ -195,7 +182,7 @@ nsJPEGDecoder::FinishInternal()
   // If we're not in any sort of error case, force our state to JPEG_DONE.
   if ((mState != JPEG_DONE && mState != JPEG_SINK_NON_JPEG_TRAILER) &&
       (mState != JPEG_ERROR) &&
-      !IsSizeDecode()) {
+      !IsMetadataDecode()) {
     mState = JPEG_DONE;
   }
 }
@@ -248,10 +235,10 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
         return; // I/O suspension
       }
 
-      int sampleSize = mImage->GetRequestedSampleSize();
-      if (sampleSize > 0) {
+      // If we have a sample size specified for -moz-sample-size, use it.
+      if (mSampleSize > 0) {
         mInfo.scale_num = 1;
-        mInfo.scale_denom = sampleSize;
+        mInfo.scale_denom = mSampleSize;
       }
 
       // Used to set up image size so arrays can be allocated
@@ -266,8 +253,8 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
         return;
       }
 
-      // If we're doing a size decode, we're done.
-      if (IsSizeDecode()) {
+      // If we're doing a metadata decode, we're done.
+      if (IsMetadataDecode()) {
         return;
       }
 
@@ -396,16 +383,22 @@ nsJPEGDecoder::WriteInternal(const char* aBuffer, uint32_t aCount)
     mInfo.buffered_image = mDecodeStyle == PROGRESSIVE &&
                            jpeg_has_multiple_scans(&mInfo);
 
-    if (!mImageData) {
+    MOZ_ASSERT(!mImageData, "Already have a buffer allocated?");
+    nsIntSize targetSize = mDownscaler ? mDownscaler->TargetSize() : GetSize();
+    nsresult rv = AllocateFrame(0, targetSize,
+                                nsIntRect(nsIntPoint(), targetSize),
+                                gfx::SurfaceFormat::B8G8R8A8);
+    if (NS_FAILED(rv)) {
       mState = JPEG_ERROR;
-      PostDecoderError(NS_ERROR_OUT_OF_MEMORY);
       MOZ_LOG(GetJPEGDecoderAccountingLog(), LogLevel::Debug,
              ("} (could not initialize image frame)"));
       return;
     }
 
+    MOZ_ASSERT(mImageData, "Should have a buffer now");
+
     if (mDownscaler) {
-      nsresult rv = mDownscaler->BeginFrame(GetSize(),
+      nsresult rv = mDownscaler->BeginFrame(GetSize(), Nothing(),
                                             mImageData,
                                             /* aHasAlpha = */ false);
       if (NS_FAILED(rv)) {

@@ -24,7 +24,7 @@ class nsIPrefBranch;
 class nsICancelable;
 class nsICookieService;
 class nsIIOService;
-class nsIObserverService;
+class nsISchedulingContextService;
 class nsISiteSecurityService;
 class nsIStreamConverterService;
 class nsITimer;
@@ -65,12 +65,12 @@ public:
     nsHttpHandler();
 
     nsresult Init();
-    nsresult AddStandardRequestHeaders(nsHttpHeaderArray *);
+    nsresult AddStandardRequestHeaders(nsHttpHeaderArray *, bool isForYouTube);
     nsresult AddConnectionHeader(nsHttpHeaderArray *,
                                  uint32_t capabilities);
     bool     IsAcceptableEncoding(const char *encoding);
 
-    const nsAFlatCString &UserAgent();
+    const nsAFlatCString &UserAgent(bool isForYouTube = false);
 
     nsHttpVersion  HttpVersion()             { return mHttpVersion; }
     nsHttpVersion  ProxyHttpVersion()        { return mProxyHttpVersion; }
@@ -167,7 +167,6 @@ public:
     nsHttpConnectionMgr *ConnMgr()   { return mConnMgr; }
 
     // cache support
-    bool UseCache() const { return mUseCache; }
     uint32_t GenerateUniqueID() { return ++mLastUniqueID; }
     uint32_t SessionStartTime() { return mSessionStartTime; }
 
@@ -337,6 +336,11 @@ public:
     void SetCacheSkippedUntil(TimeStamp arg) { mCacheSkippedUntil = arg; }
     void ClearCacheSkippedUntil() { mCacheSkippedUntil = TimeStamp(); }
 
+    nsISchedulingContextService *GetSchedulingContextService()
+    {
+        return mSchedulingContextService.get();
+    }
+
 private:
     virtual ~nsHttpHandler();
 
@@ -361,7 +365,6 @@ private:
     // cached services
     nsMainThreadPtrHandle<nsIIOService>              mIOService;
     nsMainThreadPtrHandle<nsIStreamConverterService> mStreamConvSvc;
-    nsMainThreadPtrHandle<nsIObserverService>        mObserverService;
     nsMainThreadPtrHandle<nsICookieService>          mCookieService;
     nsMainThreadPtrHandle<nsISiteSecurityService>    mSSService;
 
@@ -452,9 +455,12 @@ private:
 
     nsCString      mUserAgent;
     nsXPIDLCString mUserAgentOverride;
+    bool           mOverrideYouTubeUserAgent;
+    nsCString      mYouTubeUserAgent;
+    nsCString      mOverrideYouTubeUserAgentFrom;
+    nsCString      mOverrideYouTubeUserAgentTo;
     bool           mUserAgentIsDirty; // true if mUserAgent should be rebuilt
 
-    bool           mUseCache;
 
     bool           mPromptTempRedirect;
     // mSendSecureXSiteReferrer: default is false,
@@ -545,6 +551,8 @@ private:
     // incorrect content lengths or malformed chunked encodings
     FrameCheckLevel mEnforceH1Framing;
 
+    nsCOMPtr<nsISchedulingContextService> mSchedulingContextService;
+
 private:
     // For Rate Pacing Certain Network Events. Only assign this pointer on
     // socket thread.
@@ -604,6 +612,7 @@ public:
     nsresult Init();
 };
 
-}} // namespace mozilla::net
+} // namespace net
+} // namespace mozilla
 
 #endif // nsHttpHandler_h__

@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY  pageInfoWindow.width  "600">
+<!ENTITY  pageInfoWindow.width  "610">
 <!ENTITY  pageInfoWindow.height "600">
 
 <!ENTITY  copy.key              "C">

@@ -13,3 +13,4 @@
 <!ENTITY showAllUnreadMessagesCount.accesskey  "u">
 <!ENTITY dockIconBadge.label                   "Zähler am Dock-Symbol">
 <!ENTITY dockIconShow.label                    "Inhalt des Zählers am Dock-Symbol:">
+<!ENTITY directNotificationSettings.label      "Der Zähler kann in der Mitteilungen-Ansicht der Systemeinstellungen deaktiviert werden.">

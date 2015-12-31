@@ -17,6 +17,7 @@ const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/LoginRecipes.jsm");
+Cu.import("resource://gre/modules/LoginHelper.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "DownloadPaths",
                                   "resource://gre/modules/DownloadPaths.jsm");
@@ -56,7 +57,7 @@ function run_test()
 // used, on Windows these might still be pending deletion on the physical file
 // system.  Thus, start from a new base number every time, to make a collision
 // with a file that is still pending deletion highly unlikely.
-let gFileCounter = Math.floor(Math.random() * 1000000);
+var gFileCounter = Math.floor(Math.random() * 1000000);
 
 /**
  * Returns a reference to a temporary file, that is guaranteed not to exist, and
@@ -120,7 +121,7 @@ function newPropertyBag(aProperties)
 
 const RecipeHelpers = {
   initNewParent() {
-    return (new LoginRecipesParent({ defaults: false })).initializationPromise;
+    return (new LoginRecipesParent({ defaults: null })).initializationPromise;
   },
 };
 
@@ -128,11 +129,11 @@ const MockDocument = {
   /**
    * Create a document for the given URL containing the given HTML with the ownerDocument of all <form>s having a mocked location.
    */
-  createTestDocument(aDocumentURL, aHTML = "<form>") {
+  createTestDocument(aDocumentURL, aContent = "<form>", aType = "text/html") {
     let parser = Cc["@mozilla.org/xmlextras/domparser;1"].
                  createInstance(Ci.nsIDOMParser);
     parser.init();
-    let parsedDoc = parser.parseFromString(aHTML, "text/html");
+    let parsedDoc = parser.parseFromString(aContent, aType);
 
     for (let element of parsedDoc.forms) {
       this.mockOwnerDocumentProperty(element, parsedDoc, aDocumentURL);

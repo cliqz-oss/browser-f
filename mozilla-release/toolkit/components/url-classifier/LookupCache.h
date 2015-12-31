@@ -12,6 +12,7 @@
 #include "nsCOMPtr.h"
 #include "nsIFile.h"
 #include "nsIFileStreams.h"
+#include "mozilla/nsRefPtr.h"
 #include "nsUrlClassifierPrefixSet.h"
 #include "mozilla/Logging.h"
 
@@ -136,7 +137,7 @@ private:
   nsRefPtr<nsUrlClassifierPrefixSet> mPrefixSet;
 };
 
-}
-}
+} // namespace safebrowsing
+} // namespace mozilla
 
 #endif

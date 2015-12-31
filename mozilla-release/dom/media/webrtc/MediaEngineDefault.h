@@ -18,12 +18,13 @@
 #include "AudioSegment.h"
 #include "StreamBuffer.h"
 #include "MediaStreamGraph.h"
+#include "MediaTrackConstraints.h"
 
 namespace mozilla {
 
 namespace layers {
 class ImageContainer;
-}
+} // namespace layers
 
 class MediaEngineDefault;
 
@@ -31,7 +32,8 @@ class MediaEngineDefault;
  * The default implementation of the MediaEngine interface.
  */
 class MediaEngineDefaultVideoSource : public nsITimerCallback,
-                                      public MediaEngineVideoSource
+                                      public MediaEngineVideoSource,
+                                      private MediaConstraintsHelper
 {
 public:
   MediaEngineDefaultVideoSource();
@@ -42,10 +44,14 @@ public:
   virtual void GetUUID(nsACString&) override;
 
   virtual nsresult Allocate(const dom::MediaTrackConstraints &aConstraints,
-                            const MediaEnginePrefs &aPrefs) override;
+                            const MediaEnginePrefs &aPrefs,
+                            const nsString& aDeviceId) override;
   virtual nsresult Deallocate() override;
   virtual nsresult Start(SourceMediaStream*, TrackID) override;
   virtual nsresult Stop(SourceMediaStream*, TrackID) override;
+  virtual nsresult Restart(const dom::MediaTrackConstraints& aConstraints,
+                           const MediaEnginePrefs &aPrefs,
+                           const nsString& aDeviceId) override;
   virtual void SetDirectListeners(bool aHasDirectListeners) override {};
   virtual nsresult Config(bool aEchoOn, uint32_t aEcho,
                           bool aAgcOn, uint32_t aAGC,
@@ -56,10 +62,8 @@ public:
                           TrackID aId,
                           StreamTime aDesiredTime) override;
   virtual uint32_t GetBestFitnessDistance(
-      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets) override
-  {
-    return true;
-  }
+      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets,
+      const nsString& aDeviceId) override;
 
   virtual bool IsFake() override {
     return true;
@@ -101,7 +105,8 @@ protected:
 class SineWaveGenerator;
 
 class MediaEngineDefaultAudioSource : public nsITimerCallback,
-                                      public MediaEngineAudioSource
+                                      public MediaEngineAudioSource,
+                                      private MediaConstraintsHelper
 {
 public:
   MediaEngineDefaultAudioSource();
@@ -112,10 +117,14 @@ public:
   virtual void GetUUID(nsACString&) override;
 
   virtual nsresult Allocate(const dom::MediaTrackConstraints &aConstraints,
-                            const MediaEnginePrefs &aPrefs) override;
+                            const MediaEnginePrefs &aPrefs,
+                            const nsString& aDeviceId) override;
   virtual nsresult Deallocate() override;
   virtual nsresult Start(SourceMediaStream*, TrackID) override;
   virtual nsresult Stop(SourceMediaStream*, TrackID) override;
+  virtual nsresult Restart(const dom::MediaTrackConstraints& aConstraints,
+                           const MediaEnginePrefs &aPrefs,
+                           const nsString& aDeviceId) override;
   virtual void SetDirectListeners(bool aHasDirectListeners) override {};
   virtual nsresult Config(bool aEchoOn, uint32_t aEcho,
                           bool aAgcOn, uint32_t aAGC,
@@ -138,6 +147,10 @@ public:
   {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
+
+  virtual uint32_t GetBestFitnessDistance(
+      const nsTArray<const dom::MediaTrackConstraintSet*>& aConstraintSets,
+      const nsString& aDeviceId) override;
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSITIMERCALLBACK
@@ -187,6 +200,6 @@ private:
   nsTArray<nsRefPtr<MediaEngineAudioSource> > mASources;
 };
 
-}
+} // namespace mozilla
 
 #endif /* NSMEDIAENGINEDEFAULT_H_ */

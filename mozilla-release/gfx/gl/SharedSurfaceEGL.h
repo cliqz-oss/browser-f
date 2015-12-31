@@ -63,6 +63,8 @@ protected:
 public:
     virtual ~SharedSurface_EGLImage();
 
+    virtual layers::TextureFlags GetTextureFlags() const override;
+
     virtual void LockProdImpl() override {}
     virtual void UnlockProdImpl() override {}
 
@@ -111,7 +113,8 @@ public:
     }
 };
 
-} /* namespace gfx */
+} // namespace gl
+
 } /* namespace mozilla */
 
 #endif /* SHARED_SURFACE_EGL_H_ */

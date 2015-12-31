@@ -16,7 +16,7 @@
 #include "mozStorageCID.h"
 #include "nsIFile.h"
 #include "nsIURI.h"
-#include "nsNetUtil.h"
+#include "nsIFileURL.h"
 #include "nsThreadUtils.h"
 
 namespace mozilla {
@@ -170,7 +170,7 @@ DBAction::OpenConnection(const QuotaInfo& aQuotaInfo, nsIFile* aDBDir,
   int32_t schemaVersion = 0;
   rv = conn->GetSchemaVersion(&schemaVersion);
   if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }
-  if (schemaVersion > 0 && schemaVersion < db::kMaxWipeSchemaVersion) {
+  if (schemaVersion > 0 && schemaVersion < db::kFirstShippedSchemaVersion) {
     conn = nullptr;
     rv = WipeDatabase(dbFile, aDBDir);
     if (NS_WARN_IF(NS_FAILED(rv))) { return rv; }

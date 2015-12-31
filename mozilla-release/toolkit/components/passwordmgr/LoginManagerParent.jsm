@@ -152,7 +152,9 @@ var LoginManagerParent = {
 
     XPCOMUtils.defineLazyGetter(this, "recipeParentPromise", () => {
       const { LoginRecipesParent } = Cu.import("resource://gre/modules/LoginRecipes.jsm", {});
-      this._recipeManager = new LoginRecipesParent();
+      this._recipeManager = new LoginRecipesParent({
+        defaults: Services.prefs.getComplexValue("signon.recipes.path", Ci.nsISupportsString).data,
+      });
       return this._recipeManager.initializationPromise;
     });
 
@@ -233,7 +235,7 @@ var LoginManagerParent = {
    * Trigger a login form fill and send relevant data (e.g. logins and recipes)
    * to the child process (LoginManagerContent).
    */
-  fillForm: Task.async(function* ({ browser, loginFormOrigin, login }) {
+  fillForm: Task.async(function* ({ browser, loginFormOrigin, login, inputElement }) {
     let recipes = [];
     if (loginFormOrigin) {
       let formHost;
@@ -249,11 +251,13 @@ var LoginManagerParent = {
     // Convert the array of nsILoginInfo to vanilla JS objects since nsILoginInfo
     // doesn't support structured cloning.
     let jsLogins = JSON.parse(JSON.stringify([login]));
+
+    let objects = inputElement ? {inputElement} : null;
     browser.messageManager.sendAsyncMessage("RemoteLogins:fillForm", {
       loginFormOrigin,
       logins: jsLogins,
       recipes,
-    });
+    }, objects);
   }),
 
   /**
@@ -274,22 +278,30 @@ var LoginManagerParent = {
     }
 
     if (!showMasterPassword && !Services.logins.isLoggedIn) {
-      target.sendAsyncMessage("RemoteLogins:loginsFound", {
-        requestId: requestId,
-        logins: [],
-        recipes,
-      });
+      try {
+        target.sendAsyncMessage("RemoteLogins:loginsFound", {
+          requestId: requestId,
+          logins: [],
+          recipes,
+        });
+      } catch (e) {
+        log("error sending message to target", e);
+      }
       return;
     }
 
     let allLoginsCount = Services.logins.countLogins(formOrigin, "", null);
     // If there are no logins for this site, bail out now.
     if (!allLoginsCount) {
-      target.sendAsyncMessage("RemoteLogins:loginsFound", {
-        requestId: requestId,
-        logins: [],
-        recipes,
-      });
+      try {
+        target.sendAsyncMessage("RemoteLogins:loginsFound", {
+          requestId: requestId,
+          logins: [],
+          recipes,
+        });
+      } catch (e) {
+        log("error sending message to target", e);
+      }
       return;
     }
 
@@ -509,6 +521,10 @@ var LoginManagerParent = {
       // Change password if needed.
       if (existingLogin.password != formLogin.password) {
         log("...passwords differ, prompting to change.");
+        prompter = getPrompter();
+        prompter.promptToChangePassword(existingLogin, formLogin);
+      } else if (!existingLogin.username && formLogin.username) {
+        log("...empty username update, prompting to change.");
         prompter = getPrompter();
         prompter.promptToChangePassword(existingLogin, formLogin);
       } else {

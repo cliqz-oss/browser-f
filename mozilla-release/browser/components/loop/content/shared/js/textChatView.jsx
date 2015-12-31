@@ -6,11 +6,13 @@ var loop = loop || {};
 loop.shared = loop.shared || {};
 loop.shared.views = loop.shared.views || {};
 loop.shared.views.chat = (function(mozL10n) {
+  "use strict";
+
   var sharedActions = loop.shared.actions;
   var sharedMixins = loop.shared.mixins;
   var sharedViews = loop.shared.views;
   var CHAT_MESSAGE_TYPES = loop.store.CHAT_MESSAGE_TYPES;
-  var CHAT_CONTENT_TYPES = loop.store.CHAT_CONTENT_TYPES;
+  var CHAT_CONTENT_TYPES = loop.shared.utils.CHAT_CONTENT_TYPES;
 
   /**
    * Renders an individual entry for the text chat entries view.
@@ -74,13 +76,12 @@ loop.shared.views.chat = (function(mozL10n) {
     mixins: [React.addons.PureRenderMixin],
 
     propTypes: {
-      message: React.PropTypes.string.isRequired,
-      useDesktopPaths: React.PropTypes.bool.isRequired
+      message: React.PropTypes.string.isRequired
     },
 
     render: function() {
       return (
-        <div className="text-chat-entry special room-name">
+        <div className="text-chat-header special room-name">
           <p>{mozL10n.get("rooms_welcome_title", {conversationName: this.props.message})}</p>
         </div>
       );
@@ -104,7 +105,7 @@ loop.shared.views.chat = (function(mozL10n) {
 
     propTypes: {
       dispatcher: React.PropTypes.instanceOf(loop.Dispatcher).isRequired,
-      messageList: React.PropTypes.array.isRequired,
+      messageList: React.PropTypes.arrayOf(React.PropTypes.object).isRequired,
       useDesktopPaths: React.PropTypes.bool.isRequired
     },
 
@@ -114,13 +115,21 @@ loop.shared.views.chat = (function(mozL10n) {
       };
     },
 
+    _hasChatMessages: function() {
+      return this.props.messageList.some(function(message) {
+        return message.contentType === CHAT_CONTENT_TYPES.TEXT;
+      });
+    },
+
     componentWillUpdate: function() {
       var node = this.getDOMNode();
       if (!node) {
         return;
       }
-      // Scroll only if we're right at the bottom of the display.
-      this.shouldScroll = node.scrollHeight === node.scrollTop + node.clientHeight;
+      // Scroll only if we're right at the bottom of the display, or if we've
+      // not had any chat messages so far.
+      this.shouldScroll = !this._hasChatMessages() ||
+        node.scrollHeight === node.scrollTop + node.clientHeight;
     },
 
     componentWillReceiveProps: function(nextProps) {
@@ -136,7 +145,9 @@ loop.shared.views.chat = (function(mozL10n) {
     },
 
     componentDidUpdate: function() {
-      if (this.shouldScroll) {
+      // Don't scroll if we haven't got any chat messages yet - e.g. for context
+      // display, we want to display starting at the top.
+      if (this.shouldScroll && this._hasChatMessages()) {
         // This ensures the paint is complete.
         window.requestAnimationFrame(function() {
           try {
@@ -153,12 +164,12 @@ loop.shared.views.chat = (function(mozL10n) {
       /* Keep track of the last printed timestamp. */
       var lastTimestamp = 0;
 
-      if (!this.props.messageList.length) {
-        return null;
-      }
+      var entriesClasses = React.addons.classSet({
+        "text-chat-entries": true
+      });
 
       return (
-        <div className="text-chat-entries">
+        <div className={entriesClasses}>
           <div className="text-chat-scroller">
             {
               this.props.messageList.map(function(entry, i) {
@@ -168,8 +179,7 @@ loop.shared.views.chat = (function(mozL10n) {
                       return (
                         <TextChatRoomName
                           key={i}
-                          message={entry.message}
-                          useDesktopPaths={this.props.useDesktopPaths} />
+                          message={entry.message} />
                       );
                     case CHAT_CONTENT_TYPES.CONTEXT:
                       return (
@@ -368,28 +378,30 @@ loop.shared.views.chat = (function(mozL10n) {
 
     render: function() {
       var messageList;
-      var hasNonSpecialMessages;
+      var showingRoomName = false;
 
       if (this.props.showRoomName) {
         messageList = this.state.messageList;
-        hasNonSpecialMessages = messageList.some(function(item) {
-          return item.type !== CHAT_MESSAGE_TYPES.SPECIAL;
+        showingRoomName = this.state.messageList.some(function(item) {
+          return item.contentType === CHAT_CONTENT_TYPES.ROOM_NAME;
         });
       } else {
         messageList = this.state.messageList.filter(function(item) {
           return item.type !== CHAT_MESSAGE_TYPES.SPECIAL ||
             item.contentType !== CHAT_CONTENT_TYPES.ROOM_NAME;
         });
-        hasNonSpecialMessages = !!messageList.length;
       }
 
-      if (!this.state.textChatEnabled && !messageList.length) {
-        return null;
-      }
+      // Only show the placeholder if we've sent messages.
+      var hasSentMessages = messageList.some(function(item) {
+        return item.type === CHAT_MESSAGE_TYPES.SENT;
+      });
 
       var textChatViewClasses = React.addons.classSet({
+        "showing-room-name": showingRoomName,
         "text-chat-view": true,
-        "text-chat-disabled": !this.state.textChatEnabled
+        "text-chat-disabled": !this.state.textChatEnabled,
+        "text-chat-entries-empty": !messageList.length
       });
 
       return (
@@ -400,7 +412,7 @@ loop.shared.views.chat = (function(mozL10n) {
             useDesktopPaths={this.props.useDesktopPaths} />
           <TextChatInputView
             dispatcher={this.props.dispatcher}
-            showPlaceholder={!hasNonSpecialMessages}
+            showPlaceholder={!hasSentMessages}
             textChatEnabled={this.state.textChatEnabled} />
         </div>
       );

@@ -26,7 +26,7 @@
 #undef CompareString
 
 #define TO_ICONTAINER(_node)                                                  \
-    static_cast<nsINavHistoryContainerResultNode*>(_node)                      
+    static_cast<nsINavHistoryContainerResultNode*>(_node)
 
 #define TO_CONTAINER(_node)                                                   \
     static_cast<nsNavHistoryContainerResultNode*>(_node)
@@ -1108,7 +1108,7 @@ int32_t nsNavHistoryContainerResultNode::SortComparison_AnnotationLess(
                                                  &b_hasAnno), 0);
   } else {
     NS_ENSURE_SUCCESS(annosvc->PageHasAnnotation(b_uri, annoName,
-                                                 &b_hasAnno), 0);    
+                                                 &b_hasAnno), 0);
   }
 
   int32_t value = 0;
@@ -1374,8 +1374,8 @@ nsNavHistoryContainerResultNode::InsertSortedChild(
     nsAutoCString sortingAnnotation;
     GetSortingAnnotation(sortingAnnotation);
     bool itemExists;
-    uint32_t position = FindInsertionPoint(aNode, comparator, 
-                                           sortingAnnotation.get(), 
+    uint32_t position = FindInsertionPoint(aNode, comparator,
+                                           sortingAnnotation.get(),
                                            &itemExists);
     if (aIgnoreDuplicates && itemExists)
       return NS_OK;
@@ -1705,7 +1705,7 @@ nsNavHistoryContainerResultNode::FindNodeByDetails(const nsACString& aURIString,
                                                      aItemId,
                                                      aRecursive,
                                                      _retval);
-                                                      
+
         if (NS_SUCCEEDED(rv) && _retval)
           break;
       }
@@ -2127,7 +2127,7 @@ nsNavHistoryQueryResultNode::FillChildren()
   }
   else if (mOptions->QueryType() != nsINavHistoryQueryOptions::QUERY_TYPE_HISTORY ||
            sortType != nsINavHistoryQueryOptions::SORT_BY_NONE) {
-    // The default SORT_BY_NONE sorts by the bookmark index (position), 
+    // The default SORT_BY_NONE sorts by the bookmark index (position),
     // which we do not have for history queries.
     // Once we've computed all tree stats, we can sort, because containers will
     // then have proper visit counts and dates.
@@ -2233,8 +2233,8 @@ nsNavHistoryQueryResultNode::Refresh()
     return NS_OK;
   }
 
-  // This is not a root node but it does not have a parent - this means that 
-  // the node has already been cleared and it is now called, because it was 
+  // This is not a root node but it does not have a parent - this means that
+  // the node has already been cleared and it is now called, because it was
   // left in a local copy of the observers array.
   if (mIndentLevel > -1 && !mParent)
     return NS_OK;
@@ -2856,7 +2856,8 @@ nsNavHistoryQueryResultNode::OnItemChanged(int64_t aItemId,
                                            uint16_t aItemType,
                                            int64_t aParentId,
                                            const nsACString& aGUID,
-                                           const nsACString& aParentGUID)
+                                           const nsACString& aParentGUID,
+                                           const nsACString& aOldValue)
 {
   // History observers should not get OnItemChanged
   // but should get the corresponding history notifications instead.
@@ -2902,7 +2903,7 @@ nsNavHistoryQueryResultNode::OnItemChanged(int64_t aItemId,
                                                aIsAnnotationProperty,
                                                aNewValue, aLastModified,
                                                aItemType, aParentId, aGUID,
-                                               aParentGUID);
+                                               aParentGUID, aOldValue);
 }
 
 NS_IMETHODIMP
@@ -3667,7 +3668,8 @@ nsNavHistoryResultNode::OnItemChanged(int64_t aItemId,
                                       uint16_t aItemType,
                                       int64_t aParentId,
                                       const nsACString& aGUID,
-                                      const nsACString& aParentGUID)
+                                      const nsACString& aParentGUID,
+                                      const nsACString& aOldValue)
 {
   if (aItemId != mItemId)
     return NS_OK;
@@ -3757,7 +3759,8 @@ nsNavHistoryFolderResultNode::OnItemChanged(int64_t aItemId,
                                             uint16_t aItemType,
                                             int64_t aParentId,
                                             const nsACString& aGUID,
-                                            const nsACString&aParentGUID)
+                                            const nsACString& aParentGUID,
+                                            const nsACString& aOldValue)
 {
   RESTART_AND_RETURN_IF_ASYNC_PENDING();
 
@@ -3765,7 +3768,7 @@ nsNavHistoryFolderResultNode::OnItemChanged(int64_t aItemId,
                                                aIsAnnotationProperty,
                                                aNewValue, aLastModified,
                                                aItemType, aParentId, aGUID,
-                                               aParentGUID);
+                                               aParentGUID, aOldValue);
 }
 
 /**
@@ -3976,21 +3979,9 @@ TraverseBookmarkFolderObservers(nsTrimInt64HashKey::KeyType aKey,
   return PL_DHASH_NEXT;
 }
 
-static void
-traverseResultObservers(nsMaybeWeakPtrArray<nsINavHistoryResultObserver>& aObservers,
-                        void *aClosure)
-{
-  nsCycleCollectionTraversalCallback* cb =
-    static_cast<nsCycleCollectionTraversalCallback*>(aClosure);
-  for (uint32_t i = 0; i < aObservers.Length(); ++i) {
-    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(*cb, "mResultObservers value[i]");
-    cb->NoteXPCOMChild(aObservers.ElementAt(i).GetRawValue());
-  }
-}
-
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(nsNavHistoryResult)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mRootNode)
-  traverseResultObservers(tmp->mObservers, &cb);
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mObservers)
   tmp->mBookmarkFolderObservers.Enumerate(&TraverseBookmarkFolderObservers, &cb);
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mAllBookmarksObservers)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mHistoryObservers)
@@ -4278,7 +4269,7 @@ nsNavHistoryResult::AddObserver(nsINavHistoryResultObserver* aObserver,
   NS_ENSURE_ARG(aObserver);
   nsresult rv = mObservers.AppendWeakElement(aObserver, aOwnsWeak);
   NS_ENSURE_SUCCESS(rv, rv);
-  
+
   rv = aObserver->SetResult(this);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -4474,11 +4465,13 @@ nsNavHistoryResult::OnItemChanged(int64_t aItemId,
                                   uint16_t aItemType,
                                   int64_t aParentId,
                                   const nsACString& aGUID,
-                                  const nsACString& aParentGUID)
+                                  const nsACString& aParentGUID,
+                                  const nsACString& aOldValue)
 {
   ENUMERATE_ALL_BOOKMARKS_OBSERVERS(
     OnItemChanged(aItemId, aProperty, aIsAnnotationProperty, aNewValue,
-                  aLastModified, aItemType, aParentId, aGUID, aParentGUID));
+                  aLastModified, aItemType, aParentId, aGUID, aParentGUID,
+                  aOldValue));
 
   // Note: folder-nodes set their own bookmark observer only once they're
   // opened, meaning we cannot optimize this code path for changes done to
@@ -4502,7 +4495,7 @@ nsNavHistoryResult::OnItemChanged(int64_t aItemId,
           folder->StartIncrementalUpdate()) {
         node->OnItemChanged(aItemId, aProperty, aIsAnnotationProperty,
                             aNewValue, aLastModified, aItemType, aParentId,
-                            aGUID, aParentGUID);
+                            aGUID, aParentGUID, aOldValue);
       }
     }
   }

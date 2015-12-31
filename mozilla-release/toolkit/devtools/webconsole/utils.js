@@ -7,18 +7,16 @@
 "use strict";
 
 const {Cc, Ci, Cu, components} = require("chrome");
+const {isWindowIncluded} = require("devtools/toolkit/layout/utils");
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 loader.lazyImporter(this, "Services", "resource://gre/modules/Services.jsm");
-loader.lazyImporter(this, "LayoutHelpers", "resource://gre/modules/devtools/LayoutHelpers.jsm");
 
-// TODO: Bug 842672 - toolkit/ imports modules from browser/.
+// TODO: Bug 842672 - browser/ imports modules from toolkit/.
 // Note that these are only used in WebConsoleCommands, see $0 and pprint().
-loader.lazyImporter(this, "gDevTools", "resource:///modules/devtools/gDevTools.jsm");
-loader.lazyImporter(this, "devtools", "resource://gre/modules/devtools/Loader.jsm");
 loader.lazyImporter(this, "VariablesView", "resource:///modules/devtools/VariablesView.jsm");
-loader.lazyImporter(this, "DevToolsUtils", "resource://gre/modules/devtools/DevToolsUtils.jsm");
+const DevToolsUtils = require("devtools/toolkit/DevToolsUtils");
 
 // Match the function name from the result of toString() or toSource().
 //
@@ -44,22 +42,7 @@ const CONSOLE_WORKER_IDS = exports.CONSOLE_WORKER_IDS = [ 'SharedWorker', 'Servi
 // Prevent iterating over too many properties during autocomplete suggestions.
 const MAX_AUTOCOMPLETIONS = exports.MAX_AUTOCOMPLETIONS = 1500;
 
-let WebConsoleUtils = {
-  /**
-   * Convenience function to unwrap a wrapped object.
-   *
-   * @param aObject the object to unwrap.
-   * @return aObject unwrapped.
-   */
-  unwrap: function WCU_unwrap(aObject)
-  {
-    try {
-      return XPCNativeWrapper.unwrap(aObject);
-    }
-    catch (ex) {
-      return aObject;
-    }
-  },
+var WebConsoleUtils = {
 
   /**
    * Wrap a string in an nsISupportsString object.
@@ -1125,7 +1108,7 @@ function getExactMatch_impl(aObj, aName, {chainIterator, getProperty})
 }
 
 
-let JSObjectSupport = {
+var JSObjectSupport = {
   chainIterator: function*(aObj)
   {
     while (aObj) {
@@ -1146,7 +1129,7 @@ let JSObjectSupport = {
   },
 };
 
-let DebuggerObjectSupport = {
+var DebuggerObjectSupport = {
   chainIterator: function*(aObj)
   {
     while (aObj) {
@@ -1167,7 +1150,7 @@ let DebuggerObjectSupport = {
   },
 };
 
-let DebuggerEnvironmentSupport = {
+var DebuggerEnvironmentSupport = {
   chainIterator: function*(aObj)
   {
     while (aObj) {
@@ -1218,9 +1201,6 @@ function ConsoleServiceListener(aWindow, aListener)
 {
   this.window = aWindow;
   this.listener = aListener;
-  if (this.window) {
-    this.layoutHelpers = new LayoutHelpers(this.window);
-  }
 }
 exports.ConsoleServiceListener = ConsoleServiceListener;
 
@@ -1269,8 +1249,8 @@ ConsoleServiceListener.prototype =
         return;
       }
 
-      let errorWindow = Services.wm.getOuterWindowWithId(aMessage.outerWindowID);
-      if (!errorWindow || !this.layoutHelpers.isIncludedInTopLevelWindow(errorWindow)) {
+      let errorWindow = Services.wm.getOuterWindowWithId(aMessage .outerWindowID);
+      if (!errorWindow || !isWindowIncluded(this.window, errorWindow)) {
         return;
       }
     }
@@ -1395,9 +1375,6 @@ function ConsoleAPIListener(aWindow, aOwner, aConsoleID)
   this.window = aWindow;
   this.owner = aOwner;
   this.consoleID = aConsoleID;
-  if (this.window) {
-    this.layoutHelpers = new LayoutHelpers(this.window);
-  }
 }
 exports.ConsoleAPIListener = ConsoleAPIListener;
 
@@ -1452,10 +1429,13 @@ ConsoleAPIListener.prototype =
       return;
     }
 
+    // Here, wrappedJSObject is not a security wrapper but a property defined
+    // by the XPCOM component which allows us to unwrap the XPCOM interface and
+    // access the underlying JSObject.
     let apiMessage = aMessage.wrappedJSObject;
     if (this.window && CONSOLE_WORKER_IDS.indexOf(apiMessage.innerID) == -1) {
       let msgWindow = Services.wm.getCurrentInnerWindowWithId(apiMessage.innerID);
-      if (!msgWindow || !this.layoutHelpers.isIncludedInTopLevelWindow(msgWindow)) {
+      if (!msgWindow || !isWindowIncluded(this.window, msgWindow)) {
         // Not the same window!
         return;
       }
@@ -1525,7 +1505,7 @@ ConsoleAPIListener.prototype =
  * the Web Console but not from the web page.
  *
  */
-let WebConsoleCommands = {
+var WebConsoleCommands = {
   _registeredCommands: new Map(),
   _originalCommands: new Map(),
 
@@ -1643,10 +1623,15 @@ WebConsoleCommands._registerOriginal("$", function JSTH_$(aOwner, aSelector)
  */
 WebConsoleCommands._registerOriginal("$$", function JSTH_$$(aOwner, aSelector)
 {
-  let results = aOwner.window.document.querySelectorAll(aSelector);
-  let nodes = aOwner.window.wrappedJSObject.Array.from(results);
+  let nodes = aOwner.window.document.querySelectorAll(aSelector);
 
-  return nodes;
+  // Calling aOwner.window.Array.from() doesn't work without accessing the
+  // wrappedJSObject, so just loop through the results instead.
+  let result = new aOwner.window.Array();
+  for (let i = 0; i < nodes.length; i++) {
+    result.push(nodes[i]);
+  }
+  return result;
 });
 
 /**
@@ -1673,8 +1658,11 @@ WebConsoleCommands._registerOriginal("$_", {
  */
 WebConsoleCommands._registerOriginal("$x", function JSTH_$x(aOwner, aXPath, aContext)
 {
-  let nodes = new aOwner.window.wrappedJSObject.Array();
-  let doc = aOwner.window.document;
+  let nodes = new aOwner.window.Array();
+
+  // Not waiving Xrays, since we want the original Document.evaluate function,
+  // instead of anything that's been redefined.
+  let doc =  aOwner.window.document;
   aContext = aContext || doc;
 
   let results = doc.evaluate(aXPath, aContext, null,
@@ -1728,7 +1716,8 @@ WebConsoleCommands._registerOriginal("clearHistory", function JSTH_clearHistory(
  */
 WebConsoleCommands._registerOriginal("keys", function JSTH_keys(aOwner, aObject)
 {
-  return aOwner.window.wrappedJSObject.Object.keys(WebConsoleUtils.unwrap(aObject));
+  // Need to waive Xrays so we can iterate functions and accessor properties
+  return Cu.cloneInto(Object.keys(Cu.waiveXrays(aObject)), aOwner.window);
 });
 
 /**
@@ -1740,14 +1729,16 @@ WebConsoleCommands._registerOriginal("keys", function JSTH_keys(aOwner, aObject)
  */
 WebConsoleCommands._registerOriginal("values", function JSTH_values(aOwner, aObject)
 {
-  let arrValues = new aOwner.window.wrappedJSObject.Array();
-  let obj = WebConsoleUtils.unwrap(aObject);
+  let values = [];
+  // Need to waive Xrays so we can iterate functions and accessor properties
+  let waived = Cu.waiveXrays(aObject);
+  let names = Object.getOwnPropertyNames(waived);
 
-  for (let prop in obj) {
-    arrValues.push(obj[prop]);
+  for (let name of names) {
+    values.push(waived[name]);
   }
 
-  return arrValues;
+  return Cu.cloneInto(values, aOwner.window);
 });
 
 /**
@@ -1835,7 +1826,7 @@ WebConsoleCommands._registerOriginal("pprint", function JSTH_pprint(aOwner, aObj
 
   let output = [];
 
-  let obj = WebConsoleUtils.unwrap(aObject);
+  let obj = aObject;
   for (let name in obj) {
     let desc = WebConsoleUtils.getPropertyDescriptor(obj, name) || {};
     if (desc.get || desc.set) {

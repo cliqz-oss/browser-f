@@ -118,10 +118,12 @@ ProbeManager::~ProbeManager()
 
 ProbeManager::ProbeManager(const nsCID& aApplicationUID,
                            const nsACString& aApplicationName)
-  : mApplicationUID(aApplicationUID)
+  : mIsActive(false)
+  , mApplicationUID(aApplicationUID)
   , mApplicationName(aApplicationName)
   , mSessionHandle(0)
   , mRegistrationHandle(0)
+  , mInitialized(false)
 {
 #if defined(MOZ_LOGGING)
   char cidStr[NSID_LENGTH];
@@ -244,5 +246,5 @@ ProbeManager::StopSession()
   return NS_OK;
 }
 
-}  // namespace probes
-}  // namespace mozilla
+} // namespace probes
+} // namespace mozilla

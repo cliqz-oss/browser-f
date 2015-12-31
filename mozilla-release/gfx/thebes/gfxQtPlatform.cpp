@@ -122,6 +122,7 @@ gfxQtPlatform::GetStandardFamilyName(const nsAString& aFontName, nsAString& aFam
 gfxFontGroup *
 gfxQtPlatform::CreateFontGroup(const FontFamilyList& aFontFamilyList,
                                const gfxFontStyle *aStyle,
+                               gfxTextPerfMetrics* aTextPerf,
                                gfxUserFontSet* aUserFontSet)
 {
     return new gfxPangoFontGroup(aFontFamilyList, aStyle, aUserFontSet);
@@ -200,7 +201,7 @@ gfxQtPlatform::GetScreenDepth() const
     return mScreenDepth;
 }
 
-TemporaryRef<ScaledFont>
+already_AddRefed<ScaledFont>
 gfxQtPlatform::GetScaledFontForFont(DrawTarget* aTarget, gfxFont* aFont)
 {
     return GetScaledFontForFontWithCairoSkia(aTarget, aFont);

@@ -172,6 +172,16 @@ function verifyBlobArray(blobs1, blobs2, expectedFileIds)
              expectedFileIds[verifiedCount], blobReadHandler);
 }
 
+function verifyMutableFile(mutableFile1, file2)
+{
+  ok(mutableFile1 instanceof IDBMutableFile, "Instance of IDBMutableFile");
+  is(mutableFile1.name, file2.name, "Correct name");
+  is(mutableFile1.type, file2.type, "Correct type");
+  executeSoon(function() {
+    testGenerator.next();
+  });
+}
+
 function grabFileUsageAndContinueHandler(usage, fileUsage)
 {
   testGenerator.send(fileUsage);
@@ -219,4 +229,9 @@ function getFileDBRefCount(name, id)
   let count = {};
   utils.getFileReferences(name, id, null, {}, count);
   return count.value;
+}
+
+function flushPendingFileDeletions()
+{
+  utils.flushPendingFileDeletions();
 }

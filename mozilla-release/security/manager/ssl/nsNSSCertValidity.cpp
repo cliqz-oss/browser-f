@@ -35,7 +35,6 @@ nsX509CertValidity::~nsX509CertValidity()
   /* destructor code */
 }
 
-/* readonly attribute PRTime notBefore; */
 NS_IMETHODIMP nsX509CertValidity::GetNotBefore(PRTime *aNotBefore)
 {
   NS_ENSURE_ARG(aNotBefore);
@@ -61,8 +60,8 @@ NS_IMETHODIMP nsX509CertValidity::GetNotBeforeLocalTime(nsAString &aNotBeforeLoc
   nsAutoString date;
   PRExplodedTime explodedTime;
   PR_ExplodeTime(mNotBefore, PR_LocalTimeParameters, &explodedTime);
-  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatShort, kTimeFormatSecondsForce24Hour,
-                                      &explodedTime, date);
+  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatLong,
+                                      kTimeFormatSeconds, &explodedTime, date);
   aNotBeforeLocalTime = date;
   return NS_OK;
 }
@@ -80,7 +79,7 @@ NS_IMETHODIMP nsX509CertValidity::GetNotBeforeLocalDay(nsAString &aNotBeforeLoca
   nsAutoString date;
   PRExplodedTime explodedTime;
   PR_ExplodeTime(mNotBefore, PR_LocalTimeParameters, &explodedTime);
-  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatShort, kTimeFormatNone,
+  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatLong, kTimeFormatNone,
                                       &explodedTime, date);
   aNotBeforeLocalDay = date;
   return NS_OK;
@@ -100,13 +99,12 @@ NS_IMETHODIMP nsX509CertValidity::GetNotBeforeGMT(nsAString &aNotBeforeGMT)
   nsAutoString date;
   PRExplodedTime explodedTime;
   PR_ExplodeTime(mNotBefore, PR_GMTParameters, &explodedTime);
-  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatShort, kTimeFormatSecondsForce24Hour,
-                                      &explodedTime, date);
+  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatLong,
+                                      kTimeFormatSeconds, &explodedTime, date);
   aNotBeforeGMT = date;
   return NS_OK;
 }
 
-/* readonly attribute PRTime notAfter; */
 NS_IMETHODIMP nsX509CertValidity::GetNotAfter(PRTime *aNotAfter)
 {
   NS_ENSURE_ARG(aNotAfter);
@@ -132,8 +130,8 @@ NS_IMETHODIMP nsX509CertValidity::GetNotAfterLocalTime(nsAString &aNotAfterLocal
   nsAutoString date;
   PRExplodedTime explodedTime;
   PR_ExplodeTime(mNotAfter, PR_LocalTimeParameters, &explodedTime);
-  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatShort, kTimeFormatSecondsForce24Hour,
-                                      &explodedTime, date);
+  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatLong,
+                                      kTimeFormatSeconds, &explodedTime, date);
   aNotAfterLocaltime = date;
   return NS_OK;
 }
@@ -151,7 +149,7 @@ NS_IMETHODIMP nsX509CertValidity::GetNotAfterLocalDay(nsAString &aNotAfterLocalD
   nsAutoString date;
   PRExplodedTime explodedTime;
   PR_ExplodeTime(mNotAfter, PR_LocalTimeParameters, &explodedTime);
-  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatShort, kTimeFormatNone,
+  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatLong, kTimeFormatNone,
                                       &explodedTime, date);
   aNotAfterLocalDay = date;
   return NS_OK;
@@ -170,8 +168,8 @@ NS_IMETHODIMP nsX509CertValidity::GetNotAfterGMT(nsAString &aNotAfterGMT)
   nsAutoString date;
   PRExplodedTime explodedTime;
   PR_ExplodeTime(mNotAfter, PR_GMTParameters, &explodedTime);
-  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatShort, kTimeFormatSecondsForce24Hour,
-                                      &explodedTime, date);
+  dateFormatter->FormatPRExplodedTime(nullptr, kDateFormatLong,
+                                      kTimeFormatSeconds, &explodedTime, date);
   aNotAfterGMT = date;
   return NS_OK;
 }

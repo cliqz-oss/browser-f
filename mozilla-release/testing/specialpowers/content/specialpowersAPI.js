@@ -967,7 +967,7 @@ SpecialPowersAPI.prototype = {
           for (var j = 0; j < undos.length; j++) {
             var undo = undos[j];
             if (undo.op == this._obsDataMap[aData] &&
-                undo.appId == permission.appId &&
+                undo.appId == permission.principal.appId &&
                 undo.type == permission.type) {
               // Remove this undo item if it has been done by others(not
               // specialpowers itself.)
@@ -1820,16 +1820,6 @@ SpecialPowersAPI.prototype = {
                                   .messageManager);
   },
 
-  setFullscreenAllowed: function(document) {
-    Services.perms.addFromPrincipal(document.nodePrincipal, "fullscreen",
-				     Ci.nsIPermissionManager.ALLOW_ACTION);
-    Services.obs.notifyObservers(document, "fullscreen-approved", null);
-  },
-
-  removeFullscreenAllowed: function(document) {
-    Services.perms.removeFromPrincipal(document.nodePrincipal, "fullscreen");
-  },
-
   _getInfoFromPermissionArg: function(arg) {
     let url = "";
     let appId = Ci.nsIScriptSecurityManager.NO_APP_ID;
@@ -2052,6 +2042,60 @@ SpecialPowersAPI.prototype = {
 
   removeServiceWorkerDataForExampleDomain: function() {
     this.notifyObserversInParentProcess(null, "browser:purge-domain-data", "example.com");
+  },
+
+  loadExtension: function(ext, handler) {
+    let uuidGenerator = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
+    let id = uuidGenerator.generateUUID().number;
+
+    let resolveStartup, resolveUnload, rejectStartup;
+    let startupPromise = new Promise((resolve, reject) => {
+      resolveStartup = resolve;
+      rejectStartup = reject;
+    });
+    let unloadPromise = new Promise(resolve => { resolveUnload = resolve; });
+
+    handler = Cu.waiveXrays(handler);
+    ext = Cu.waiveXrays(ext);
+
+    let sp = this;
+    let extension = {
+      startup() {
+        sp._sendAsyncMessage("SPStartupExtension", {id});
+        return startupPromise;
+      },
+
+      unload() {
+        sp._sendAsyncMessage("SPUnloadExtension", {id});
+        return unloadPromise;
+      },
+
+      sendMessage(...args) {
+        sp._sendAsyncMessage("SPExtensionMessage", {id, args});
+      },
+    };
+
+    this._sendAsyncMessage("SPLoadExtension", {ext, id});
+
+    let listener = (msg) => {
+      if (msg.data.id == id) {
+        if (msg.data.type == "extensionStarted") {
+          resolveStartup();
+        } else if (msg.data.type == "extensionFailed") {
+          rejectStartup("startup failed");
+        } else if (msg.data.type == "extensionUnloaded") {
+          this._removeMessageListener("SPExtensionMessage", listener);
+          resolveUnload();
+        } else if (msg.data.type in handler) {
+          handler[msg.data.type](...msg.data.args);
+        } else {
+          dump(`Unexpected: ${msg.data.type}\n`);
+        }
+      }
+    };
+
+    this._addMessageListener("SPExtensionMessage", listener);
+    return extension;
   },
 };
 

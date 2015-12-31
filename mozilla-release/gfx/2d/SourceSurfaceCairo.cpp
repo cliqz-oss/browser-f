@@ -58,7 +58,7 @@ SourceSurfaceCairo::GetFormat() const
   return mFormat;
 }
 
-TemporaryRef<DataSourceSurface>
+already_AddRefed<DataSourceSurface>
 SourceSurfaceCairo::GetDataSurface()
 {
   RefPtr<DataSourceSurface> dataSurf;
@@ -158,5 +158,5 @@ DataSourceSurfaceCairo::GetSurface() const
   return mImageSurface;
 }
 
-}
-}
+} // namespace gfx
+} // namespace mozilla

@@ -10,19 +10,19 @@
     factory.call(this, require, exports, module, { Cc, Ci, Cu }, ChromeWorker, dumpn);
   } else { // Cu.import
     const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
-    const { devtools } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
+    const { require } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
     this.isWorker = false;
     this.Promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
     this.console = Cu.import("resource://gre/modules/devtools/Console.jsm", {}).console;
     factory.call(
-      this, devtools.require, this, { exports: this },
+      this, require, this, { exports: this },
       { Cc, Ci, Cu }, ChromeWorker, null
     );
     this.EXPORTED_SYMBOLS = ["DevToolsWorker"];
   }
 }).call(this, function (require, exports, module, { Ci, Cc }, ChromeWorker, dumpn) {
 
-let MESSAGE_COUNTER = 0;
+var MESSAGE_COUNTER = 0;
 
 /**
  * Creates a wrapper around a ChromeWorker, providing easy
@@ -38,7 +38,7 @@ let MESSAGE_COUNTER = 0;
  *        - name: a name that will be printed with logs
  *        - verbose: log incoming and outgoing messages
  */
-function DevToolsWorker (url, opts) {
+function DevToolsWorker(url, opts) {
   opts = opts || {};
   this._worker = new ChromeWorker(url);
   this._verbose = opts.verbose;
@@ -67,7 +67,7 @@ DevToolsWorker.prototype.performTask = function (task, data) {
   let id = ++MESSAGE_COUNTER;
   let payload = { task, id, data };
 
-  if(this._verbose && dumpn) {
+  if (this._verbose && dumpn) {
     dumpn("Sending message to worker" +
           (this._name ? (" (" + this._name + ")") : "" ) +
           ": " +
@@ -77,7 +77,7 @@ DevToolsWorker.prototype.performTask = function (task, data) {
 
   return new Promise((resolve, reject) => {
     let listener = ({ data }) => {
-      if(this._verbose && dumpn) {
+      if (this._verbose && dumpn) {
         dumpn("Received message from worker" +
               (this._name ? (" (" + this._name + ")") : "" ) +
               ": " +
@@ -97,7 +97,7 @@ DevToolsWorker.prototype.performTask = function (task, data) {
 
     worker.addEventListener("message", listener);
   });
-}
+};
 
 /**
  * Terminates the underlying worker. Use when no longer needing the worker.
@@ -110,7 +110,7 @@ DevToolsWorker.prototype.destroy = function () {
 
 DevToolsWorker.prototype.onError = function({ message, filename, lineno }) {
   dump(new Error(message + " @ " + filename + ":" + lineno) + "\n");
-}
+};
 
 /**
  * Takes a function and returns a Worker-wrapped version of the same function.

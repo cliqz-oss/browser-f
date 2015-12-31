@@ -47,6 +47,7 @@
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
 #include "nsNativeCharsetUtils.h"
+#include "nscore.h" // for NS_FREE_PERMANENT_DATA
 
 using mozilla::MonitorAutoLock;
 using mozilla::ipc::GeckoChildProcessHost;
@@ -125,7 +126,8 @@ GeckoChildProcessHost::~GeckoChildProcessHost()
     SharedMemoryBasic::CleanupForPid(mChildProcessHandle);
 #endif
     ProcessWatcher::EnsureProcessTerminated(mChildProcessHandle
-#if defined(NS_BUILD_REFCNT_LOGGING)
+#ifdef NS_FREE_PERMANENT_DATA
+    // If we're doing leak logging, shutdown can be slow.
                                             , false // don't "force"
 #endif
     );
@@ -381,7 +383,7 @@ GeckoChildProcessHost::WaitUntilConnected(int32_t aTimeoutMs)
 {
   // NB: this uses a different mechanism than the chromium parent
   // class.
-  PRIntervalTime timeoutTicks = (aTimeoutMs > 0) ? 
+  PRIntervalTime timeoutTicks = (aTimeoutMs > 0) ?
     PR_MillisecondsToInterval(aTimeoutMs) : PR_INTERVAL_NO_TIMEOUT;
 
   MonitorAutoLock lock(mMonitor);
@@ -553,6 +555,51 @@ AddAppDirToCommandLine(std::vector<std::string>& aCmdLine)
   }
 }
 
+#if defined(XP_WIN) && defined(MOZ_SANDBOX)
+static void
+MaybeAddNsprLogFileAccess(std::vector<std::wstring>& aAllowedFilesReadWrite)
+{
+  const char* nsprLogFileEnv = PR_GetEnv("NSPR_LOG_FILE");
+  if (!nsprLogFileEnv) {
+    return;
+  }
+
+  nsDependentCString nsprLogFilePath(nsprLogFileEnv);
+  nsCOMPtr<nsIFile> nsprLogFile;
+  nsresult rv = NS_NewNativeLocalFile(nsprLogFilePath, true,
+                                      getter_AddRefs(nsprLogFile));
+  if (NS_FAILED(rv)) {
+    // Not an absolute path, try it as a relative one.
+    nsresult rv = NS_GetSpecialDirectory(NS_OS_CURRENT_WORKING_DIR,
+                                         getter_AddRefs(nsprLogFile));
+    if (NS_FAILED(rv) || !nsprLogFile) {
+      NS_WARNING("Failed to get current working directory");
+      return;
+    }
+
+    rv = nsprLogFile->AppendRelativeNativePath(nsprLogFilePath);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return;
+    }
+  }
+
+  nsAutoString resolvedFilePath;
+  rv = nsprLogFile->GetPath(resolvedFilePath);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+      return;
+  }
+
+  // Update the environment variable as well as adding the rule, because the
+  // Chromium sandbox can only allow access to fully qualified file paths. This
+  // only affects the environment for the child process we're about to create,
+  // because this will get reset to the original value in PerformAsyncLaunch.
+  aAllowedFilesReadWrite.push_back(std::wstring(resolvedFilePath.get()));
+  nsAutoCString resolvedEnvVar("NSPR_LOG_FILE=");
+  AppendUTF16toUTF8(resolvedFilePath, resolvedEnvVar);
+  PR_SetEnv(resolvedEnvVar.get());
+}
+#endif
+
 bool
 GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExtraOpts, base::ProcessArchitecture arch)
 {
@@ -600,32 +647,19 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
     path += "/lib";
 #  endif  // MOZ_WIDGET_ANDROID
     const char *ld_library_path = PR_GetEnv("LD_LIBRARY_PATH");
-    nsCString new_ld_lib_path;
-    if (ld_library_path && *ld_library_path) {
-      new_ld_lib_path.Assign(path.get());
-      new_ld_lib_path.Append(':');
-      new_ld_lib_path.Append(ld_library_path);
-      newEnvVars["LD_LIBRARY_PATH"] = new_ld_lib_path.get();
-    } else {
-      newEnvVars["LD_LIBRARY_PATH"] = path.get();
-    }
+    nsCString new_ld_lib_path(path.get());
 
 #  if (MOZ_WIDGET_GTK == 3)
     if (mProcessType == GeckoProcessType_Plugin) {
-      const char *ld_preload = PR_GetEnv("LD_PRELOAD");
-      nsCString new_ld_preload;
-
-      new_ld_preload.Assign(path.get());
-      new_ld_preload.AppendLiteral("/" DLL_PREFIX "mozgtk2" DLL_SUFFIX);
-
-      if (ld_preload && *ld_preload) {
-        new_ld_preload.AppendLiteral(":");
-        new_ld_preload.Append(ld_preload);
-      }
-      newEnvVars["LD_PRELOAD"] = new_ld_preload.get();
+      new_ld_lib_path.Append("/gtk2:");
+      new_ld_lib_path.Append(path.get());
     }
-#  endif // MOZ_WIDGET_GTK
-
+#endif
+    if (ld_library_path && *ld_library_path) {
+      new_ld_lib_path.Append(':');
+      new_ld_lib_path.Append(ld_library_path);
+    }
+    newEnvVars["LD_LIBRARY_PATH"] = new_ld_lib_path.get();
 
 # elif OS_MACOSX
     newEnvVars["DYLD_LIBRARY_PATH"] = path.get();
@@ -903,6 +937,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   };
 
   if (shouldSandboxCurrentProcess) {
+    MaybeAddNsprLogFileAccess(mAllowedFilesReadWrite);
     for (auto it = mAllowedFilesRead.begin();
          it != mAllowedFilesRead.end();
          ++it) {
@@ -913,6 +948,12 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
          it != mAllowedFilesReadWrite.end();
          ++it) {
       mSandboxBroker.AllowReadWriteFile(it->c_str());
+    }
+
+    for (auto it = mAllowedDirectories.begin();
+         it != mAllowedDirectories.end();
+         ++it) {
+      mSandboxBroker.AllowDirectory(it->c_str());
     }
   }
 #endif // XP_WIN && MOZ_SANDBOX
@@ -948,6 +989,16 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
 #endif
   {
     base::LaunchApp(cmdLine, false, false, &process);
+
+#ifdef MOZ_SANDBOX
+    // We need to be able to duplicate handles to non-sandboxed content
+    // processes, so add it as a target peer.
+    if (mProcessType == GeckoProcessType_Content) {
+      if (!mSandboxBroker.AddTargetPeer(process)) {
+        NS_WARNING("Failed to add content process as target peer.");
+      }
+    }
+#endif
   }
 
 #else

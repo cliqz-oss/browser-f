@@ -4,8 +4,12 @@
 
 from __future__ import absolute_import, print_function, unicode_literals
 
+import json
 import os
 import sys
+import tempfile
+import subprocess
+import shutil
 
 from mach.decorators import (
     CommandArgument,
@@ -14,6 +18,8 @@ from mach.decorators import (
 )
 
 from mozbuild.base import MachCommandBase
+from mozbuild.base import MachCommandConditions as conditions
+from argparse import ArgumentParser
 
 
 UNKNOWN_TEST = '''
@@ -80,9 +86,6 @@ TEST_SUITES = {
         'mach_command': 'mochitest',
         'kwargs': {'subsuite': 'devtools', 'test_paths': None},
     },
-    'mochitest-ipcplugins': {
-        'make_target': 'mochitest-ipcplugins',
-    },
     'mochitest-plain': {
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'plain', 'test_paths': None},
@@ -94,7 +97,7 @@ TEST_SUITES = {
     'reftest': {
         'aliases': ('RR', 'rr', 'Rr'),
         'mach_command': 'reftest',
-        'kwargs': {'test_file': None},
+        'kwargs': {'tests': None},
     },
     'reftest-ipc': {
         'aliases': ('Ripc',),
@@ -137,7 +140,10 @@ TEST_FLAVORS = {
         'mach_command': 'mochitest',
         'kwargs': {'flavor': 'mochitest', 'test_paths': []},
     },
-    'reftest': { },
+    'reftest': {
+        'mach_command': 'reftest',
+        'kwargs': {'tests': []}
+    },
     'steeplechase': { },
     'web-platform-tests': {
         'mach_command': 'web-platform-tests',
@@ -290,30 +296,77 @@ class MachCommands(MachCommandBase):
 
     def run_cppunit_test(self, **params):
         import mozinfo
-        from mozlog.structured import commandline
-        import runcppunittests as cppunittests
-
+        from mozlog import commandline
         log = commandline.setup_logging("cppunittest",
                                         {},
                                         {"tbpl": sys.stdout})
-
-        if len(params['test_files']) == 0:
-            testdir = os.path.join(self.distdir, 'cppunittests')
-            tests = cppunittests.extract_unittests_from_args([testdir], mozinfo.info)
-        else:
-            tests = cppunittests.extract_unittests_from_args(params['test_files'], mozinfo.info)
 
         # See if we have crash symbols
         symbols_path = os.path.join(self.distdir, 'crashreporter-symbols')
         if not os.path.isdir(symbols_path):
             symbols_path = None
 
-        tester = cppunittests.CPPUnitTests()
+        # If no tests specified, run all tests in main manifest
+        tests = params['test_files']
+        if len(tests) == 0:
+            tests = [os.path.join(self.distdir, 'cppunittests')]
+            manifest_path = os.path.join(self.topsrcdir, 'testing', 'cppunittest.ini')
+        else:
+            manifest_path = None
+
+        if conditions.is_android(self):
+            from mozrunner.devices.android_device import verify_android_device
+            verify_android_device(self, install=False)
+            return self.run_android_test(tests, symbols_path, manifest_path, log)
+
+        return self.run_desktop_test(tests, symbols_path, manifest_path, log)
+
+    def run_desktop_test(self, tests, symbols_path, manifest_path, log):
+        import runcppunittests as cppunittests
+        from mozlog import commandline
+
+        parser = cppunittests.CPPUnittestOptions()
+        commandline.add_logging_group(parser)
+        options, args = parser.parse_args()
+
+        options.symbols_path = symbols_path
+        options.manifest_path = manifest_path
+        options.xre_path = self.bindir
+
         try:
-            result = tester.run_tests(tests, self.bindir, symbols_path, interactive=True)
+            result = cppunittests.run_test_harness(options, tests)
         except Exception as e:
             log.error("Caught exception running cpp unit tests: %s" % str(e))
             result = False
+            raise
+
+        return 0 if result else 1
+
+    def run_android_test(self, tests, symbols_path, manifest_path, log):
+        import remotecppunittests as remotecppunittests
+        from mozlog import commandline
+
+        parser = remotecppunittests.RemoteCPPUnittestOptions()
+        commandline.add_logging_group(parser)
+        options, args = parser.parse_args()
+
+        options.symbols_path = symbols_path
+        options.manifest_path = manifest_path
+        options.xre_path = self.bindir
+        options.dm_trans = "adb"
+        options.local_lib = self.bindir.replace('bin', 'fennec')
+        for file in os.listdir(os.path.join(self.topobjdir, "dist")):
+            if file.endswith(".apk") and file.startswith("fennec"):
+                options.local_apk = os.path.join(self.topobjdir, "dist", file)
+                log.info("using APK: " + options.local_apk)
+                break
+
+        try:
+            result = remotecppunittests.run_test_harness(options, tests)
+        except Exception as e:
+            log.error("Caught exception running cpp unit tests: %s" % str(e))
+            result = False
+            raise
 
         return 0 if result else 1
 
@@ -352,7 +405,11 @@ class CheckSpiderMonkeyCommand(MachCommandBase):
         check_style_cmd = [sys.executable, os.path.join(self.topsrcdir, 'config', 'check_spidermonkey_style.py')]
         check_style_result = subprocess.call(check_style_cmd, cwd=os.path.join(self.topsrcdir, 'js', 'src'))
 
-        all_passed = jittest_result and jstest_result and jsapi_tests_result and check_style_result
+        print('running check-masm')
+        check_masm_cmd = [sys.executable, os.path.join(self.topsrcdir, 'config', 'check_macroassembler_style.py')]
+        check_masm_result = subprocess.call(check_masm_cmd, cwd=os.path.join(self.topsrcdir, 'js', 'src'))
+
+        all_passed = jittest_result and jstest_result and jsapi_tests_result and check_style_result and check_masm_result
 
         return all_passed
 
@@ -383,9 +440,9 @@ class JsapiTestsCommand(MachCommandBase):
 @CommandProvider
 class PushToTry(MachCommandBase):
 
-    def validate_args(self, paths, tests, builds, platforms):
-        if not len(paths) and not tests:
-            print("Paths or tests must be specified as an argument to autotry.")
+    def validate_args(self, paths, tests, tags, builds, platforms):
+        if not any([len(paths), tests, tags]):
+            print("Paths, tests, or tags must be specified.")
             sys.exit(1)
 
         if platforms is None:
@@ -427,7 +484,7 @@ class PushToTry(MachCommandBase):
                           'syntax and selection info).')
     def autotry(self, builds=None, platforms=None, paths=None, verbose=None,
                 extra_tests=None, push=None, tags=None, tests=None):
-        """Autotry is in beta, please file bugs blocking 1149670.
+        """mach try is under development, please file bugs blocking 1149670.
 
         Pushes the specified tests to try. The simplest way to specify tests is
         by using the -u argument, which will behave as usual for try syntax.
@@ -441,7 +498,9 @@ class PushToTry(MachCommandBase):
         is taken from the AUTOTRY_PLATFORM_HINT environment variable if set).
 
         Tests may be further filtered by passing one or more --tag to the
-        command.
+        command. If one or more --tag is specified with out paths or -u,
+        tests with the given tags will be run in a single chunk of
+        applicable suites.
 
         To run suites in addition to those determined from the tree, they
         can be passed to the --extra arguent.
@@ -458,7 +517,7 @@ class PushToTry(MachCommandBase):
 
         print("mach try is under development, please file bugs blocking 1149670.")
 
-        builds, platforms = self.validate_args(paths, tests, builds, platforms)
+        builds, platforms = self.validate_args(paths, tests, tags, builds, platforms)
         resolver = self._spawn(TestResolver)
 
         at = AutoTry(self.topsrcdir, resolver, self._mach_context)
@@ -466,10 +525,11 @@ class PushToTry(MachCommandBase):
             print('ERROR please commit changes before continuing')
             sys.exit(1)
 
-        driver = self._spawn(BuildDriver)
-        driver.install_tests(remove=False)
+        if paths or tags:
+            driver = self._spawn(BuildDriver)
+            driver.install_tests(remove=False)
 
-        manifests_by_flavor = at.manifests_by_flavor(paths)
+        manifests_by_flavor = at.resolve_manifests(paths=paths, tags=tags)
 
         if not manifests_by_flavor and not tests:
             print("No tests were found when attempting to resolve paths:\n\n\t%s" %
@@ -488,10 +548,153 @@ class PushToTry(MachCommandBase):
             print('Tests from the following manifests will be selected: ')
             pprint.pprint(manifests_by_flavor)
 
-        if verbose:
+        if verbose or not push:
             print('The following try syntax was calculated:\n\n\t%s\n' % msg)
 
         if push:
             at.push_to_try(msg, verbose)
 
         return
+
+
+def get_parser(argv=None):
+    parser = ArgumentParser()
+    parser.add_argument(dest="suite_name",
+                        nargs=1,
+                        choices=['mochitest'],
+                        type=str,
+                        help="The test for which chunk should be found. It corresponds "
+                             "to the mach test invoked (only 'mochitest' currently).")
+
+    parser.add_argument(dest="test_path",
+                        nargs=1,
+                        type=str,
+                        help="The test (any mochitest) for which chunk should be found.")
+
+    parser.add_argument('--total-chunks',
+                        type=int,
+                        dest='total_chunks',
+                        required=True,
+                        help='Total number of chunks to split tests into.',
+                        default=None)
+
+    parser.add_argument('--chunk-by-runtime',
+                        action='store_true',
+                        dest='chunk_by_runtime',
+                        help='Group tests such that each chunk has roughly the same runtime.',
+                        default=False)
+
+    parser.add_argument('--chunk-by-dir',
+                        type=int,
+                        dest='chunk_by_dir',
+                        help='Group tests together in the same chunk that are in the same top '
+                             'chunkByDir directories.',
+                        default=None)
+
+    parser.add_argument('--e10s',
+                        action='store_true',
+                        dest='e10s',
+                        help='Find test on chunk with electrolysis preferences enabled.',
+                        default=False)
+
+    parser.add_argument('-p', '--platform',
+                        choices=['linux', 'linux64', 'mac', 'macosx64', 'win32', 'win64'],
+                        dest='platform',
+                        help="Platform for the chunk to find the test.",
+                        default=None)
+
+    parser.add_argument('--debug',
+                        action='store_true',
+                        dest='debug',
+                        help="Find the test on chunk in a debug build.",
+                        default=False)
+
+    return parser
+
+
+def download_mozinfo(platform=None, debug_build=False):
+    temp_dir = tempfile.mkdtemp()
+    temp_path = os.path.join(temp_dir, "mozinfo.json")
+    args = [
+        'mozdownload',
+        '-t', 'tinderbox',
+        '--ext', 'mozinfo.json',
+        '-d', temp_path,
+    ]
+    if platform:
+        if platform == 'macosx64':
+            platform = 'mac64'
+        args.extend(['-p', platform])
+    if debug_build:
+        args.extend(['--debug-build'])
+
+    subprocess.call(args)
+    return temp_dir, temp_path
+
+@CommandProvider
+class ChunkFinder(MachCommandBase):
+    @Command('find-test-chunk', category='testing',
+             description='Find which chunk a test belongs to (works for mochitest).',
+             parser=get_parser)
+    def chunk_finder(self, **kwargs):
+        total_chunks = kwargs['total_chunks']
+        test_path = kwargs['test_path'][0]
+        suite_name = kwargs['suite_name'][0]
+        _, dump_tests = tempfile.mkstemp()
+
+        from mozbuild.testing import TestResolver
+        resolver = self._spawn(TestResolver)
+        relpath = self._wrap_path_argument(test_path).relpath()
+        tests = list(resolver.resolve_tests(paths=[relpath]))
+        if len(tests) != 1:
+            print('No test found for test_path: %s' % test_path)
+            sys.exit(1)
+
+        flavor = tests[0]['flavor']
+        subsuite = tests[0]['subsuite']
+        args = {
+            'totalChunks': total_chunks,
+            'dump_tests': dump_tests,
+            'chunkByDir': kwargs['chunk_by_dir'],
+            'chunkByRuntime': kwargs['chunk_by_runtime'],
+            'e10s': kwargs['e10s'],
+            'subsuite': subsuite,
+        }
+
+        temp_dir = None
+        if kwargs['platform'] or kwargs['debug']:
+            self._activate_virtualenv()
+            self.virtualenv_manager.install_pip_package('mozdownload==1.17')
+            temp_dir, temp_path = download_mozinfo(kwargs['platform'], kwargs['debug'])
+            args['extra_mozinfo_json'] = temp_path
+
+        found = False
+        for this_chunk in range(1, total_chunks+1):
+            args['thisChunk'] = this_chunk
+            try:
+                self._mach_context.commands.dispatch(suite_name, self._mach_context, flavor=flavor, resolve_tests=False, **args)
+            except SystemExit:
+                pass
+            except KeyboardInterrupt:
+                break
+
+            fp = open(os.path.expanduser(args['dump_tests']), 'r')
+            tests = json.loads(fp.read())['active_tests']
+            for test in tests:
+                if test_path == test['path']:
+                    if 'disabled' in test:
+                        print('The test %s for flavor %s is disabled on the given platform' % (test_path, flavor))
+                    else:
+                        print('The test %s for flavor %s is present in chunk number: %d' % (test_path, flavor, this_chunk))
+                    found = True
+                    break
+
+            if found:
+                break
+
+        if not found:
+            raise Exception("Test %s not found." % test_path)
+        # Clean up the file
+        os.remove(dump_tests)
+        if temp_dir:
+            shutil.rmtree(temp_dir)

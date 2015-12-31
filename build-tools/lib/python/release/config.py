@@ -6,7 +6,7 @@ from release.versions import getAppVersion
 
 
 def substituteReleaseConfig(config, product, version, **other):
-    from jinja2 import Environment, FunctionLoader, StrictUndefined
+    from jinja2 import Environment, StrictUndefined
 
     baseTag = getBaseTag(product, version)
     appVersion = getAppVersion(version)

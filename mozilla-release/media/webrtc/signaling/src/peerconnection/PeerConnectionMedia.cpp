@@ -26,6 +26,8 @@
 #if !defined(MOZILLA_XPCOMRT_API)
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
+#include "nsIURI.h"
+#include "nsIScriptSecurityManager.h"
 #include "nsICancelable.h"
 #include "nsIDocument.h"
 #include "nsILoadInfo.h"
@@ -203,9 +205,15 @@ PeerConnectionMedia::ProtocolProxyQueryHandler::SetProxyOnPcm(
 
   if (pcm_->mIceCtx.get()) {
     assert(httpsProxyPort >= 0 && httpsProxyPort < (1 << 16));
+    // Note that this could check if PrivacyRequested() is set on the PC and
+    // remove "webrtc" from the ALPN list.  But that would only work if the PC
+    // was constructed with a peerIdentity constraint, not when isolated
+    // streams are added.  If we ever need to signal to the proxy that the
+    // media is isolated, then we would need to restructure this code.
     pcm_->mProxyServer.reset(
       new NrIceProxyServer(httpsProxyHost.get(),
-                           static_cast<uint16_t>(httpsProxyPort)));
+                           static_cast<uint16_t>(httpsProxyPort),
+                           "webrtc,c-webrtc"));
   } else {
     CSFLogError(logTag, "%s: Failed to set proxy server (ICE ctx unavailable)",
         __FUNCTION__);
@@ -219,7 +227,6 @@ PeerConnectionMedia::PeerConnectionMedia(PeerConnectionImpl *parent)
     : mParent(parent),
       mParentHandle(parent->GetHandle()),
       mParentName(parent->GetName()),
-      mAllowIceLoopback(false),
       mIceCtx(nullptr),
       mDNSResolver(new NrIceResolver()),
       mUuidGen(MakeUnique<PCUuidGenerator>()),
@@ -229,7 +236,8 @@ PeerConnectionMedia::PeerConnectionMedia(PeerConnectionImpl *parent)
 }
 
 nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_servers,
-                                   const std::vector<NrIceTurnServer>& turn_servers)
+                                   const std::vector<NrIceTurnServer>& turn_servers,
+                                   NrIceCtx::Policy policy)
 {
   nsresult rv;
 #if defined(MOZILLA_XPCOMRT_API)
@@ -302,17 +310,27 @@ nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_serv
 
 #if !defined(MOZILLA_EXTERNAL_LINKAGE)
   bool ice_tcp = Preferences::GetBool("media.peerconnection.ice.tcp", false);
+  if (!XRE_IsParentProcess()) {
+    CSFLogError(logTag, "%s: ICE TCP not support on e10s", __FUNCTION__);
+    ice_tcp = false;
+  }
+  bool default_address_only = Preferences::GetBool(
+    "media.peerconnection.ice.default_address_only", false);
 #else
   bool ice_tcp = false;
+  bool default_address_only = false;
 #endif
+
 
   // TODO(ekr@rtfm.com): need some way to set not offerer later
   // Looks like a bug in the NrIceCtx API.
   mIceCtx = NrIceCtx::Create("PC:" + mParentName,
                              true, // Offerer
-                             true, // Explicitly set priorities
-                             mAllowIceLoopback,
-                             ice_tcp);
+                             mParent->GetAllowIceLoopback(),
+                             ice_tcp,
+                             mParent->GetAllowIceLinkLocal(),
+                             default_address_only,
+                             policy);
   if(!mIceCtx) {
     CSFLogError(logTag, "%s: Failed to create Ice Context", __FUNCTION__);
     return NS_ERROR_FAILURE;
@@ -1316,7 +1334,7 @@ RefPtr<MediaPipeline> SourceStreamInfo::GetPipelineByTrackId_m(
   return nullptr;
 }
 
-TemporaryRef<MediaPipeline>
+already_AddRefed<MediaPipeline>
 LocalSourceStreamInfo::ForgetPipelineByTrackId_m(const std::string& trackId)
 {
   ASSERT_ON_THREAD(mParent->GetMainThread());
@@ -1337,4 +1355,4 @@ LocalSourceStreamInfo::ForgetPipelineByTrackId_m(const std::string& trackId)
   return nullptr;
 }
 
-}  // namespace mozilla
+} // namespace mozilla

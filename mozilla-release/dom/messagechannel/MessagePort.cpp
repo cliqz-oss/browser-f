@@ -116,24 +116,16 @@ public:
 
     JSContext* cx = jsapi.cx();
 
-    nsTArray<nsRefPtr<MessagePort>> ports;
     nsCOMPtr<nsPIDOMWindow> window =
       do_QueryInterface(mPort->GetParentObject());
 
+    ErrorResult rv;
     JS::Rooted<JS::Value> value(cx);
-    if (!mData->mData.IsEmpty()) {
-      bool ok = ReadStructuredCloneWithTransfer(cx, mData->mData,
-                                                mData->mClosure,
-                                                &value, window, ports);
-      FreeStructuredClone(mData->mData, mData->mClosure);
 
-      if (!ok) {
-        return NS_ERROR_FAILURE;
-      }
+    mData->Read(window, cx, &value, rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      return rv.StealNSResult();
     }
-
-    // The data should be already be cleaned.
-    MOZ_ASSERT(!mData->mData.Length());
 
     // Create the event
     nsCOMPtr<mozilla::dom::EventTarget> eventTarget =
@@ -148,14 +140,11 @@ public:
     event->SetTrusted(true);
     event->SetSource(mPort);
 
-    nsTArray<nsRefPtr<MessagePortBase>> array;
-    array.SetCapacity(ports.Length());
-    for (uint32_t i = 0; i < ports.Length(); ++i) {
-      array.AppendElement(ports[i]);
-    }
+    nsTArray<nsRefPtr<MessagePort>> ports = mData->TakeTransferredPorts();
 
     nsRefPtr<MessagePortList> portList =
-      new MessagePortList(static_cast<dom::Event*>(event.get()), array);
+      new MessagePortList(static_cast<dom::Event*>(event.get()),
+                          ports);
     event->SetPorts(portList);
 
     bool dummy;
@@ -181,42 +170,10 @@ private:
 
 NS_IMPL_ISUPPORTS(PostMessageRunnable, nsICancelableRunnable, nsIRunnable)
 
-MessagePortBase::MessagePortBase(nsPIDOMWindow* aWindow)
-  : DOMEventTargetHelper(aWindow)
-{
-}
-
-MessagePortBase::MessagePortBase()
-{
-}
-
 NS_IMPL_CYCLE_COLLECTION_CLASS(MessagePort)
 
-NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_BEGIN(MessagePort)
-  bool isBlack = tmp->IsBlack();
-  if (isBlack || tmp->mIsKeptAlive) {
-    if (tmp->mListenerManager) {
-      tmp->mListenerManager->MarkForCC();
-    }
-    if (!isBlack && tmp->PreservingWrapper()) {
-      // This marks the wrapper black.
-      tmp->GetWrapper();
-    }
-    return true;
-  }
-NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_END
-
-NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_BEGIN(MessagePort)
-  return tmp->
-    IsBlackAndDoesNotNeedTracing(static_cast<DOMEventTargetHelper*>(tmp));
-NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_IN_CC_END
-
-NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_BEGIN(MessagePort)
-  return tmp->IsBlack();
-NS_IMPL_CYCLE_COLLECTION_CAN_SKIP_THIS_END
-
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(MessagePort,
-                                                MessagePortBase)
+                                                DOMEventTargetHelper)
   if (tmp->mDispatchRunnable) {
     NS_IMPL_CYCLE_COLLECTION_UNLINK(mDispatchRunnable->mPort);
   }
@@ -227,7 +184,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(MessagePort,
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(MessagePort,
-                                                  MessagePortBase)
+                                                  DOMEventTargetHelper)
   if (tmp->mDispatchRunnable) {
     NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDispatchRunnable->mPort);
   }
@@ -235,17 +192,13 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(MessagePort,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mUnshippedEntangledPort);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
-NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(MessagePort,
-                                               MessagePortBase)
-NS_IMPL_CYCLE_COLLECTION_TRACE_END
-
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MessagePort)
   NS_INTERFACE_MAP_ENTRY(nsIIPCBackgroundChildCreateCallback)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
-NS_INTERFACE_MAP_END_INHERITING(MessagePortBase)
+NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
-NS_IMPL_ADDREF_INHERITED(MessagePort, MessagePortBase)
-NS_IMPL_RELEASE_INHERITED(MessagePort, MessagePortBase)
+NS_IMPL_ADDREF_INHERITED(MessagePort, DOMEventTargetHelper)
+NS_IMPL_RELEASE_INHERITED(MessagePort, DOMEventTargetHelper)
 
 namespace {
 
@@ -321,10 +274,10 @@ private:
 
 NS_IMPL_ISUPPORTS(ForceCloseHelper, nsIIPCBackgroundChildCreateCallback)
 
-} // anonymous namespace
+} // namespace
 
 MessagePort::MessagePort(nsPIDOMWindow* aWindow)
-  : MessagePortBase(aWindow)
+  : DOMEventTargetHelper(aWindow)
   , mInnerID(0)
   , mMessageQueueEnabled(false)
   , mIsKeptAlive(false)
@@ -401,16 +354,7 @@ MessagePort::Initialize(const nsID& aUUID,
   // The port has to keep itself alive until it's entangled.
   UpdateMustKeepAlive();
 
-  if (NS_IsMainThread()) {
-    MOZ_ASSERT(GetOwner());
-    MOZ_ASSERT(GetOwner()->IsInnerWindow());
-    mInnerID = GetOwner()->WindowID();
-
-    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-    if (obs) {
-      obs->AddObserver(this, "inner-window-destroyed", false);
-    }
-  } else {
+  if (!NS_IsMainThread()) {
     WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
     MOZ_ASSERT(workerPrivate);
     MOZ_ASSERT(!mWorkerFeature);
@@ -423,6 +367,15 @@ MessagePort::Initialize(const nsID& aUUID,
     }
 
     mWorkerFeature = Move(feature);
+  } else if (GetOwner()) {
+    MOZ_ASSERT(NS_IsMainThread());
+    MOZ_ASSERT(GetOwner()->IsInnerWindow());
+    mInnerID = GetOwner()->WindowID();
+
+    nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
+    if (obs) {
+      obs->AddObserver(this, "inner-window-destroyed", false);
+    }
   }
 }
 
@@ -451,7 +404,7 @@ MessagePort::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
         continue;
       }
 
-      MessagePortBase* port = nullptr;
+      MessagePort* port = nullptr;
       nsresult rv = UNWRAP_OBJECT(MessagePort, &value.toObject(), port);
       if (NS_FAILED(rv)) {
         continue;
@@ -481,9 +434,8 @@ MessagePort::PostMessage(JSContext* aCx, JS::Handle<JS::Value> aMessage,
 
   nsRefPtr<SharedMessagePortMessage> data = new SharedMessagePortMessage();
 
-  if (!WriteStructuredCloneWithTransfer(aCx, aMessage, transferable,
-                                        data->mData, data->mClosure)) {
-    aRv.Throw(NS_ERROR_DOM_DATA_CLONE_ERR);
+  data->Write(aCx, aMessage, transferable, aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
     return;
   }
 
@@ -558,11 +510,6 @@ MessagePort::Dispatch()
 void
 MessagePort::Close()
 {
-  // Not entangled yet, but already closed.
-  if (mNextStep != eNextStepNone) {
-    return;
-  }
-
   if (mState == eStateUnshippedEntangled) {
     MOZ_ASSERT(mUnshippedEntangledPort);
 
@@ -578,7 +525,7 @@ MessagePort::Close()
   }
 
   // Not entangled yet, we have to wait.
-  if (mState < eStateEntangling) {
+  if (mState == eStateEntangling) {
     mNextStep = eNextStepClose;
     return;
   }
@@ -695,7 +642,7 @@ MessagePort::MessagesReceived(nsTArray<MessagePortMessage>& aMessages)
   RemoveDocFromBFCache();
 
   FallibleTArray<nsRefPtr<SharedMessagePortMessage>> data;
-  if (!NS_WARN_IF(SharedMessagePortMessage::FromMessagesToSharedChild(aMessages,
+  if (NS_WARN_IF(!SharedMessagePortMessage::FromMessagesToSharedChild(aMessages,
                                                                       data))) {
     // OOM, We cannot continue.
     return;
@@ -737,7 +684,7 @@ MessagePort::Disentangle()
   UpdateMustKeepAlive();
 }
 
-bool
+void
 MessagePort::CloneAndDisentangle(MessagePortIdentifier& aIdentifier)
 {
   MOZ_ASSERT(mIdentifier);
@@ -748,13 +695,13 @@ MessagePort::CloneAndDisentangle(MessagePortIdentifier& aIdentifier)
   aIdentifier.neutered() = true;
 
   if (mState > eStateEntangled) {
-    return true;
+    return;
   }
 
   // We already have a 'next step'. We have to consider this port as already
   // cloned/closed/disentangled.
   if (mNextStep != eNextStepNone) {
-    return true;
+    return;
   }
 
   aIdentifier.uuid() = mIdentifier->uuid();
@@ -777,24 +724,23 @@ MessagePort::CloneAndDisentangle(MessagePortIdentifier& aIdentifier)
 
       mState = eStateDisentangled;
       UpdateMustKeepAlive();
-      return true;
+      return;
     }
 
     // Register this component to PBackground.
     ConnectToPBackground();
 
     mNextStep = eNextStepDisentangle;
-    return true;
+    return;
   }
 
   // Not entangled yet, we have to wait.
   if (mState < eStateEntangled) {
     mNextStep = eNextStepDisentangle;
-    return true;
+    return;
   }
 
   StartDisentangling();
-  return true;
 }
 
 void

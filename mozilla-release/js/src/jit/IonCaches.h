@@ -9,11 +9,16 @@
 
 #if defined(JS_CODEGEN_ARM)
 # include "jit/arm/Assembler-arm.h"
-#elif defined(JS_CODEGEN_MIPS)
-# include "jit/mips/Assembler-mips.h"
+#elif defined(JS_CODEGEN_ARM64)
+# include "jit/arm64/Assembler-arm64.h"
+#elif defined(JS_CODEGEN_MIPS32)
+# include "jit/mips32/Assembler-mips32.h"
 #endif
+#include "jit/JitCompartment.h"
 #include "jit/Registers.h"
 #include "jit/shared/Assembler-shared.h"
+#include "js/TrackedOptimizationInfo.h"
+
 #include "vm/TypedArrayCommon.h"
 
 namespace js {
@@ -296,7 +301,8 @@ class IonCache
     // Combine both linkStub and attachStub into one function. In addition, it
     // produces a spew augmented with the attachKind string.
     bool linkAndAttachStub(JSContext* cx, MacroAssembler& masm, StubAttacher& attacher,
-                           IonScript* ion, const char* attachKind);
+                           IonScript* ion, const char* attachKind,
+                           JS::TrackedOutcome = JS::TrackedOutcome::ICOptStub_GenericSuccess);
 
 #ifdef DEBUG
     bool isAllocated() {
@@ -386,8 +392,8 @@ class GetPropertyIC : public IonCache
     bool monitoredResult_ : 1;
     bool hasTypedArrayLengthStub_ : 1;
     bool hasSharedTypedArrayLengthStub_ : 1;
-    bool hasStrictArgumentsLengthStub_ : 1;
-    bool hasNormalArgumentsLengthStub_ : 1;
+    bool hasMappedArgumentsLengthStub_ : 1;
+    bool hasUnmappedArgumentsLengthStub_ : 1;
     bool hasGenericProxyStub_ : 1;
 
   public:
@@ -404,8 +410,8 @@ class GetPropertyIC : public IonCache
         monitoredResult_(monitoredResult),
         hasTypedArrayLengthStub_(false),
         hasSharedTypedArrayLengthStub_(false),
-        hasStrictArgumentsLengthStub_(false),
-        hasNormalArgumentsLengthStub_(false),
+        hasMappedArgumentsLengthStub_(false),
+        hasUnmappedArgumentsLengthStub_(false),
         hasGenericProxyStub_(false)
     {
     }
@@ -429,8 +435,8 @@ class GetPropertyIC : public IonCache
     bool hasAnyTypedArrayLengthStub(HandleObject obj) const {
         return obj->is<TypedArrayObject>() ? hasTypedArrayLengthStub_ : hasSharedTypedArrayLengthStub_;
     }
-    bool hasArgumentsLengthStub(bool strict) const {
-        return strict ? hasStrictArgumentsLengthStub_ : hasNormalArgumentsLengthStub_;
+    bool hasArgumentsLengthStub(bool mapped) const {
+        return mapped ? hasMappedArgumentsLengthStub_ : hasUnmappedArgumentsLengthStub_;
     }
     bool hasGenericProxyStub() const {
         return hasGenericProxyStub_;
@@ -610,21 +616,21 @@ class GetElementIC : public IonCache
     LiveRegisterSet liveRegs_;
 
     Register object_;
-    ConstantOrRegister index_;
+    TypedOrValueRegister index_;
     TypedOrValueRegister output_;
 
     bool monitoredResult_ : 1;
     bool allowDoubleResult_ : 1;
     bool hasDenseStub_ : 1;
-    bool hasStrictArgumentsStub_ : 1;
-    bool hasNormalArgumentsStub_ : 1;
+    bool hasMappedArgumentsStub_ : 1;
+    bool hasUnmappedArgumentsStub_ : 1;
 
     size_t failedUpdates_;
 
     static const size_t MAX_FAILED_UPDATES;
 
   public:
-    GetElementIC(LiveRegisterSet liveRegs, Register object, ConstantOrRegister index,
+    GetElementIC(LiveRegisterSet liveRegs, Register object, TypedOrValueRegister index,
                  TypedOrValueRegister output, bool monitoredResult, bool allowDoubleResult)
       : liveRegs_(liveRegs),
         object_(object),
@@ -633,8 +639,8 @@ class GetElementIC : public IonCache
         monitoredResult_(monitoredResult),
         allowDoubleResult_(allowDoubleResult),
         hasDenseStub_(false),
-        hasStrictArgumentsStub_(false),
-        hasNormalArgumentsStub_(false),
+        hasMappedArgumentsStub_(false),
+        hasUnmappedArgumentsStub_(false),
         failedUpdates_(0)
     {
     }
@@ -646,7 +652,7 @@ class GetElementIC : public IonCache
     Register object() const {
         return object_;
     }
-    ConstantOrRegister index() const {
+    TypedOrValueRegister index() const {
         return index_;
     }
     TypedOrValueRegister output() const {
@@ -661,8 +667,8 @@ class GetElementIC : public IonCache
     bool hasDenseStub() const {
         return hasDenseStub_;
     }
-    bool hasArgumentsStub(bool strict) const {
-        return strict ? hasStrictArgumentsStub_ : hasNormalArgumentsStub_;
+    bool hasArgumentsStub(bool mapped) const {
+        return mapped ? hasMappedArgumentsStub_ : hasUnmappedArgumentsStub_;
     }
     void setHasDenseStub() {
         MOZ_ASSERT(!hasDenseStub());

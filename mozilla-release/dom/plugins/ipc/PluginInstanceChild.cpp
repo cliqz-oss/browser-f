@@ -104,18 +104,14 @@ struct RunnableMethodTraits<PluginInstanceChild>
 static RefPtr<DrawTarget>
 CreateDrawTargetForSurface(gfxASurface *aSurface)
 {
-  SurfaceFormat format;
-  if (aSurface->GetContentType() == gfxContentType::ALPHA) {
-    format = SurfaceFormat::A8;
-  } else if (aSurface->GetContentType() == gfxContentType::COLOR) {
-    format = SurfaceFormat::B8G8R8X8;
-  } else {
-    format = SurfaceFormat::B8G8R8A8;
-  }
+  SurfaceFormat format = aSurface->GetSurfaceFormat();
   RefPtr<DrawTarget> drawTarget =
     Factory::CreateDrawTargetForCairoSurface(aSurface->CairoSurface(),
                                              aSurface->GetSize(),
                                              &format);
+  if (!drawTarget) {
+    NS_RUNTIMEABORT("CreateDrawTargetForSurface failed in plugin");
+  }
   aSurface->SetData(&kDrawTarget, drawTarget, nullptr);
   return drawTarget;
 }
@@ -626,6 +622,14 @@ PluginInstanceChild::NPN_SetValue(NPPVariable aVar, void* aValue)
     }
 #endif
 
+    case NPPVpluginIsPlayingAudio: {
+        NPError rv = NPERR_GENERIC_ERROR;
+        if (!CallNPN_SetValue_NPPVpluginIsPlayingAudio((NPBool)(intptr_t)aValue, &rv)) {
+            return NPERR_GENERIC_ERROR;
+        }
+        return rv;
+    }
+
     default:
         MOZ_LOG(GetPluginLog(), LogLevel::Warning,
                ("In PluginInstanceChild::NPN_SetValue: Unhandled NPPVariable %i (%s)",
@@ -762,6 +766,20 @@ PluginInstanceChild::AnswerNPP_SetValue_NPNVprivateModeBool(const bool& value,
 
     NPBool v = value;
     *result = mPluginIface->setvalue(GetNPP(), NPNVprivateModeBool, &v);
+    return true;
+}
+
+bool
+PluginInstanceChild::AnswerNPP_SetValue_NPNVmuteAudioBool(const bool& value,
+                                                          NPError* result)
+{
+    if (!mPluginIface->setvalue) {
+        *result = NPERR_GENERIC_ERROR;
+        return true;
+    }
+
+    NPBool v = value;
+    *result = mPluginIface->setvalue(GetNPP(), NPNVmuteAudioBool, &v);
     return true;
 }
 
@@ -2862,8 +2880,7 @@ PluginInstanceChild::CreateOptSurface(void)
 #endif
 
 #ifdef XP_WIN
-    if (mSurfaceType == gfxSurfaceType::Win32 ||
-        mSurfaceType == gfxSurfaceType::D2D) {
+    if (mSurfaceType == gfxSurfaceType::Win32) {
         bool willHaveTransparentPixels = mIsTransparent && !mBackground;
 
         SharedDIBSurface* s = new SharedDIBSurface();
@@ -3236,11 +3253,28 @@ PluginInstanceChild::PaintRectToSurface(const nsIntRect& aRect,
     PaintRectToPlatformSurface(plPaintRect, renderSurface);
 
     if (renderSurface != aSurface) {
+      RefPtr<DrawTarget> dt;
+      if (aSurface == mCurrentSurface &&
+          aSurface->GetType() == gfxSurfaceType::Image &&
+          aSurface->GetSurfaceFormat() == SurfaceFormat::B8G8R8X8) {
+        gfxImageSurface* imageSurface = static_cast<gfxImageSurface*>(aSurface);
+        // Bug 1196927 - Reinterpret target surface as BGRA to fill alpha with opaque.
+        // Certain backends (i.e. Skia) may not truly support BGRX formats, so they must
+        // be emulated by filling the alpha channel opaque as if it was BGRA data. Cairo
+        // leaves the alpha zeroed out for BGRX, so we cause Cairo to fill it as opaque
+        // by handling the copy target as a BGRA surface.
+        dt = Factory::CreateDrawTargetForData(BackendType::CAIRO,
+                                              imageSurface->Data(),
+                                              imageSurface->GetSize(),
+                                              imageSurface->Stride(),
+                                              SurfaceFormat::B8G8R8A8);
+      } else {
         // Copy helper surface content to target
-        RefPtr<DrawTarget> dt = CreateDrawTargetForSurface(aSurface);
-        RefPtr<SourceSurface> surface =
-            gfxPlatform::GetSourceSurfaceForSurface(dt, renderSurface);
-        dt->CopySurface(surface, aRect, aRect.TopLeft());
+        dt = CreateDrawTargetForSurface(aSurface);
+      }
+      RefPtr<SourceSurface> surface =
+        gfxPlatform::GetSourceSurfaceForSurface(dt, renderSurface);
+      dt->CopySurface(surface, aRect, aRect.TopLeft());
     }
 }
 
@@ -3589,10 +3623,9 @@ PluginInstanceChild::ReadbackDifferenceRect(const nsIntRect& rect)
 #elif defined(XP_WIN)
     if (!SharedDIBSurface::IsSharedDIBSurface(mBackSurface))
         return false;
-#else
-    return false;
 #endif
 
+#if defined(MOZ_X11) || defined(XP_WIN)
     if (mCurrentSurface->GetContentType() != mBackSurface->GetContentType())
         return false;
 
@@ -3618,6 +3651,9 @@ PluginInstanceChild::ReadbackDifferenceRect(const nsIntRect& rect)
     }
 
     return true;
+#else
+    return false;
+#endif
 }
 
 void
@@ -3811,39 +3847,6 @@ PluginInstanceChild::PostChildAsyncCall(ChildAsyncCall* aTask)
     ProcessChild::message_loop()->PostTask(FROM_HERE, aTask);
 }
 
-static PLDHashOperator
-InvalidateObject(DeletingObjectEntry* e, void* userArg)
-{
-    NPObject* o = e->GetKey();
-    if (!e->mDeleted && o->_class && o->_class->invalidate)
-        o->_class->invalidate(o);
-
-    return PL_DHASH_NEXT;
-}
-
-static PLDHashOperator
-DeleteObject(DeletingObjectEntry* e, void* userArg)
-{
-    NPObject* o = e->GetKey();
-    if (!e->mDeleted) {
-        e->mDeleted = true;
-
-#ifdef NS_BUILD_REFCNT_LOGGING
-        {
-            int32_t refcnt = o->referenceCount;
-            while (refcnt) {
-                --refcnt;
-                NS_LOG_RELEASE(o, refcnt, "NPObject");
-            }
-        }
-#endif
-
-        PluginModuleChild::DeallocNPObject(o);
-    }
-
-    return PL_DHASH_NEXT;
-}
-
 void
 PluginInstanceChild::SwapSurfaces()
 {
@@ -3951,6 +3954,42 @@ PluginInstanceChild::ClearAllSurfaces()
 #endif
 }
 
+static void
+InvalidateObjects(nsTHashtable<DeletingObjectEntry>& aEntries)
+{
+    for (auto iter = aEntries.Iter(); !iter.Done(); iter.Next()) {
+        DeletingObjectEntry* e = iter.Get();
+        NPObject* o = e->GetKey();
+        if (!e->mDeleted && o->_class && o->_class->invalidate) {
+            o->_class->invalidate(o);
+        }
+    }
+}
+
+static void
+DeleteObjects(nsTHashtable<DeletingObjectEntry>& aEntries)
+{
+    for (auto iter = aEntries.Iter(); !iter.Done(); iter.Next()) {
+        DeletingObjectEntry* e = iter.Get();
+        NPObject* o = e->GetKey();
+        if (!e->mDeleted) {
+            e->mDeleted = true;
+
+#ifdef NS_BUILD_REFCNT_LOGGING
+            {
+                int32_t refcnt = o->referenceCount;
+                while (refcnt) {
+                    --refcnt;
+                    NS_LOG_RELEASE(o, refcnt, "NPObject");
+                }
+            }
+#endif
+
+            PluginModuleChild::DeallocNPObject(o);
+        }
+    }
+}
+
 void
 PluginInstanceChild::Destroy()
 {
@@ -4005,8 +4044,8 @@ PluginInstanceChild::Destroy()
     mDeletingHash = new nsTHashtable<DeletingObjectEntry>;
     PluginScriptableObjectChild::NotifyOfInstanceShutdown(this);
 
-    mDeletingHash->EnumerateEntries(InvalidateObject, nullptr);
-    mDeletingHash->EnumerateEntries(DeleteObject, nullptr);
+    InvalidateObjects(*mDeletingHash);
+    DeleteObjects(*mDeletingHash);
 
     // Null out our cached actors as they should have been killed in the
     // PluginInstanceDestroyed call above.

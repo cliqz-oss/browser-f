@@ -81,7 +81,7 @@ static bool TestClientPool(const char* what,
 }
 #endif
 
-TemporaryRef<TextureClient>
+already_AddRefed<TextureClient>
 TextureClientPool::GetTextureClient()
 {
   // Try to fetch a client from the pool
@@ -111,7 +111,7 @@ TextureClientPool::GetTextureClient()
       TextureFlags::IMMEDIATE_UPLOAD, ALLOC_DEFAULT);
   } else {
     textureClient = TextureClient::CreateForDrawing(mSurfaceAllocator,
-      mFormat, mSize, gfx::BackendType::NONE, TextureFlags::IMMEDIATE_UPLOAD);
+      mFormat, mSize, BackendSelector::Content, TextureFlags::IMMEDIATE_UPLOAD);
   }
 
   mOutstandingClients++;
@@ -267,5 +267,5 @@ TextureClientPool::Clear()
   }
 }
 
-}
-}
+} // namespace layers
+} // namespace mozilla

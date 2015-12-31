@@ -4,9 +4,9 @@
 
 /*globals PermissionsInstaller */
 
-let Cc = Components.classes;
-let Ci = Components.interfaces;
-let Cu = Components.utils;
+var Cc = Components.classes;
+var Ci = Components.interfaces;
+var Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
@@ -24,7 +24,7 @@ function pref(name, value) {
   }
 }
 
-let WebappRT = {
+var WebappRT = {
   prefs: [
     // Disable all add-on locations other than the profile (which can't be disabled this way)
     pref("extensions.enabledScopes", 1),
@@ -35,7 +35,7 @@ let WebappRT = {
     // Set a future policy version to avoid the telemetry prompt.
     pref("toolkit.telemetry.prompted", 999),
     pref("toolkit.telemetry.notifiedOptOut", 999),
-    pref("media.useAudioChannelService", true),
+    pref("media.useAudioChannelAPI", true),
     pref("dom.mozTCPSocket.enabled", true),
 
     // Enabled system messages for web activity support

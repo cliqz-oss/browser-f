@@ -11,6 +11,8 @@
 #include "nsIInputStream.h"
 #include "nsILineInputStream.h"
 #include "nsIObserverService.h"
+#include "nsIOutputStream.h"
+#include "nsISafeOutputStream.h"
 
 #include "MainThreadUtils.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -38,7 +40,7 @@ namespace {
 
 StaticRefPtr<ServiceWorkerRegistrar> gServiceWorkerRegistrar;
 
-} // anonymous namespace
+} // namespace
 
 NS_IMPL_ISUPPORTS(ServiceWorkerRegistrar,
                   nsIObserver)
@@ -48,7 +50,7 @@ ServiceWorkerRegistrar::Initialize()
 {
   MOZ_ASSERT(!gServiceWorkerRegistrar);
 
-  if (XRE_GetProcessType() != GeckoProcessType_Default) {
+  if (!XRE_IsParentProcess()) {
     return;
   }
 
@@ -70,7 +72,7 @@ ServiceWorkerRegistrar::Initialize()
 /* static */ already_AddRefed<ServiceWorkerRegistrar>
 ServiceWorkerRegistrar::Get()
 {
-  MOZ_ASSERT(XRE_GetProcessType() == GeckoProcessType_Default);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
   MOZ_ASSERT(gServiceWorkerRegistrar);
   nsRefPtr<ServiceWorkerRegistrar> service = gServiceWorkerRegistrar.get();
@@ -321,25 +323,17 @@ ServiceWorkerRegistrar::ReadData()
       return NS_ERROR_FAILURE;                        \
     }
 
-    GET_LINE(line);
+    nsAutoCString suffix;
+    GET_LINE(suffix);
 
-    uint32_t appId = line.ToInteger(&rv);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    OriginAttributes attrs;
+    if (!attrs.PopulateFromSuffix(suffix)) {
+      return NS_ERROR_INVALID_ARG;
     }
-
-    GET_LINE(line);
-
-    if (!line.EqualsLiteral(SERVICEWORKERREGISTRAR_TRUE) &&
-        !line.EqualsLiteral(SERVICEWORKERREGISTRAR_FALSE)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    bool isInBrowserElement = line.EqualsLiteral(SERVICEWORKERREGISTRAR_TRUE);
 
     GET_LINE(line);
     entry->principal() =
-      mozilla::ipc::ContentPrincipalInfo(appId, isInBrowserElement, line);
+      mozilla::ipc::ContentPrincipalInfo(attrs.mAppId, attrs.mInBrowser, line);
 
     GET_LINE(entry->scope());
     GET_LINE(entry->scriptSpec());
@@ -554,19 +548,15 @@ ServiceWorkerRegistrar::WriteData()
     const mozilla::ipc::ContentPrincipalInfo& cInfo =
       info.get_ContentPrincipalInfo();
 
+    OriginAttributes attrs(cInfo.appId(), cInfo.isInBrowserElement());
+    nsAutoCString suffix;
+    attrs.CreateSuffix(suffix);
+
     buffer.Truncate();
-    buffer.AppendInt(cInfo.appId());
+    buffer.Append(suffix.get());
     buffer.Append('\n');
 
-    if (cInfo.isInBrowserElement()) {
-      buffer.AppendLiteral(SERVICEWORKERREGISTRAR_TRUE);
-    } else {
-      buffer.AppendLiteral(SERVICEWORKERREGISTRAR_FALSE);
-    }
-
-    buffer.Append('\n');
     buffer.Append(cInfo.spec());
-
     buffer.Append('\n');
 
     buffer.Append(data[i].scope());
@@ -707,5 +697,5 @@ ServiceWorkerRegistrar::Observe(nsISupports* aSubject, const char* aTopic,
   return NS_ERROR_UNEXPECTED;
 }
 
-} // dom namespace
-} // mozilla namespace
+} // namespace dom
+} // namespace mozilla

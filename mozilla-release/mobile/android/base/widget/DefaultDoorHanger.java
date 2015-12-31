@@ -6,17 +6,13 @@
 package org.mozilla.gecko.widget;
 
 import android.text.Html;
-import android.text.SpannableString;
 import android.text.Spanned;
-import android.text.method.LinkMovementMethod;
-import android.text.style.ForegroundColorSpan;
-import android.text.style.URLSpan;
 import android.util.Log;
 import android.widget.Button;
 import android.widget.TextView;
 import org.mozilla.gecko.R;
-import org.mozilla.gecko.Tabs;
 import org.mozilla.gecko.prompts.PromptInput;
+import org.mozilla.gecko.util.ColorUtils;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -27,7 +23,6 @@ import android.text.TextUtils;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.CheckBox;
-import org.mozilla.gecko.toolbar.SiteIdentityPopup;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -47,8 +42,15 @@ public class DefaultDoorHanger extends DoorHanger {
         mMessage = (TextView) findViewById(R.id.doorhanger_message);
 
         if (sSpinnerTextColor == -1) {
-            sSpinnerTextColor = mResources.getColor(R.color.text_color_primary_disable_only);
+            sSpinnerTextColor = ColorUtils.getColor(context, R.color.text_color_primary_disable_only);
         }
+
+        switch (mType) {
+            case GEOLOCATION:
+                mIcon.setImageResource(R.drawable.location);
+                mIcon.setVisibility(VISIBLE);
+        }
+
         loadConfig(config);
     }
 
@@ -66,7 +68,7 @@ public class DefaultDoorHanger extends DoorHanger {
 
         final DoorhangerConfig.Link link = config.getLink();
         if (link != null) {
-            addLink(link.label, link.url, link.delimiter);
+            addLink(link.label, link.url);
         }
 
         addButtonsToLayout(config);
@@ -88,14 +90,6 @@ public class DefaultDoorHanger extends DoorHanger {
     @Override
     public void setOptions(final JSONObject options) {
         super.setOptions(options);
-        final JSONObject link = options.optJSONObject("link");
-        if (link != null) {
-            try {
-                final String linkLabel = link.getString("label");
-                final String linkUrl = link.getString("url");
-                addLink(linkLabel, linkUrl, " ");
-            } catch (JSONException e) { }
-        }
 
         final JSONArray inputs = options.optJSONArray("inputs");
         if (inputs != null) {
@@ -109,7 +103,7 @@ public class DefaultDoorHanger extends DoorHanger {
                     PromptInput input = PromptInput.getInput(inputs.getJSONObject(i));
                     mInputs.add(input);
 
-                    final int padding = mResources.getDimensionPixelSize(R.dimen.doorhanger_section_padding_small);
+                    final int padding = mResources.getDimensionPixelSize(R.dimen.doorhanger_section_padding_medium);
                     View v = input.getView(getContext());
                     styleInput(input, v);
                     v.setPadding(0, 0, 0, padding);
@@ -133,33 +127,21 @@ public class DefaultDoorHanger extends DoorHanger {
             public void onClick(View v) {
                 final JSONObject response = new JSONObject();
                 try {
-                    // TODO: Bug 1149359 - Split this into each Doorhanger Type class.
-                    switch (mType) {
-                        case MIXED_CONTENT:
-                            response.put("allowContent", (id == SiteIdentityPopup.ButtonType.DISABLE.ordinal()));
-                            response.put("contentType", ("mixed"));
-                            break;
-                        case TRACKING:
-                            response.put("allowContent", (id == SiteIdentityPopup.ButtonType.DISABLE.ordinal()));
-                            response.put("contentType", ("tracking"));
-                            break;
-                        default:
-                            response.put("callback", id);
+                    response.put("callback", id);
 
-                            CheckBox checkBox = getCheckBox();
-                            // If the checkbox is being used, pass its value
-                            if (checkBox != null) {
-                                response.put("checked", checkBox.isChecked());
-                            }
+                    CheckBox checkBox = getCheckBox();
+                    // If the checkbox is being used, pass its value
+                    if (checkBox != null) {
+                        response.put("checked", checkBox.isChecked());
+                    }
 
-                            List<PromptInput> doorHangerInputs = getInputs();
-                            if (doorHangerInputs != null) {
-                                JSONObject inputs = new JSONObject();
-                                for (PromptInput input : doorHangerInputs) {
-                                    inputs.put(input.getId(), input.getValue());
-                                }
-                                response.put("inputs", inputs);
-                            }
+                    List<PromptInput> doorHangerInputs = getInputs();
+                    if (doorHangerInputs != null) {
+                        JSONObject inputs = new JSONObject();
+                        for (PromptInput input : doorHangerInputs) {
+                            inputs.put(input.getId(), input.getValue());
+                        }
+                        response.put("inputs", inputs);
                     }
                 } catch (JSONException e) {
                     Log.e(LOGTAG, "Error creating onClick response", e);
@@ -173,25 +155,6 @@ public class DefaultDoorHanger extends DoorHanger {
     private void setMessage(String message) {
         Spanned markupMessage = Html.fromHtml(message);
         mMessage.setText(markupMessage);
-    }
-
-    private void addLink(String label, String url, String delimiter) {
-        String title = mMessage.getText().toString();
-        SpannableString titleWithLink = new SpannableString(title + delimiter + label);
-        URLSpan linkSpan = new URLSpan(url) {
-            @Override
-            public void onClick(View view) {
-                Tabs.getInstance().loadUrlInTab(getURL());
-            }
-        };
-
-        // Prevent text outside the link from flashing when clicked.
-        ForegroundColorSpan colorSpan = new ForegroundColorSpan(mMessage.getCurrentTextColor());
-        titleWithLink.setSpan(colorSpan, 0, title.length(), 0);
-
-        titleWithLink.setSpan(linkSpan, title.length() + 1, titleWithLink.length(), 0);
-        mMessage.setText(titleWithLink);
-        mMessage.setMovementMethod(LinkMovementMethod.getInstance());
     }
 
     private void styleInput(PromptInput input, View view) {

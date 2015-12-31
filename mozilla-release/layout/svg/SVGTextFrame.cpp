@@ -3467,7 +3467,8 @@ SVGTextFrame::MutationObserver::AttributeChanged(
                                                 mozilla::dom::Element* aElement,
                                                 int32_t aNameSpaceID,
                                                 nsIAtom* aAttribute,
-                                                int32_t aModType)
+                                                int32_t aModType,
+                                                const nsAttrValue* aOldValue)
 {
   if (!aElement->IsSVGElement()) {
     return;
@@ -4945,7 +4946,7 @@ SVGTextFrame::GetTextPathPathElement(nsIFrame* aTextPathFrame)
     static_cast<SVGPathElement*>(element) : nullptr;
 }
 
-TemporaryRef<Path>
+already_AddRefed<Path>
 SVGTextFrame::GetTextPath(nsIFrame* aTextPathFrame)
 {
   SVGPathElement* element = GetTextPathPathElement(aTextPathFrame);

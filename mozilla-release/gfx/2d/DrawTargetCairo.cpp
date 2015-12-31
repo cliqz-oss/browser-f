@@ -220,6 +220,7 @@ CopyToImageSurface(unsigned char *aData,
   // investigation hasn't been done to determine the underlying cause.  We
   // will just handle the failure to allocate the surface to avoid a crash.
   if (cairo_surface_status(surf)) {
+    gfxWarning() << "Invalid surface DTC " << cairo_surface_status(surf);
     return nullptr;
   }
 
@@ -597,8 +598,15 @@ DrawTargetCairo::~DrawTargetCairo()
   cairo_destroy(mContext);
   if (mSurface) {
     cairo_surface_destroy(mSurface);
+    mSurface = nullptr;
   }
   MOZ_ASSERT(!mLockedBits);
+}
+
+bool
+DrawTargetCairo::IsValid() const
+{
+  return mSurface && !cairo_surface_status(mSurface);
 }
 
 DrawTargetType
@@ -642,9 +650,6 @@ DrawTargetCairo::GetType() const
     case CAIRO_SURFACE_TYPE_RECORDING:
     case CAIRO_SURFACE_TYPE_DRM:
     case CAIRO_SURFACE_TYPE_SUBSURFACE:
-#ifdef CAIRO_HAS_D2D_SURFACE
-    case CAIRO_SURFACE_TYPE_D2D:
-#endif
     case CAIRO_SURFACE_TYPE_TEE: // included to silence warning about unhandled enum value
       return DrawTargetType::SOFTWARE_RASTER;
     default:
@@ -678,9 +683,13 @@ GfxFormatForCairoSurface(cairo_surface_t* surface)
   return CairoContentToGfxFormat(cairo_surface_get_content(surface));
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCairo::Snapshot()
 {
+  if (!IsValid()) {
+    gfxCriticalNote << "DrawTargetCairo::Snapshot with bad surface " << cairo_surface_status(mSurface);
+    return nullptr;
+  }
   if (mSnapshot) {
     RefPtr<SourceSurface> snapshot(mSnapshot);
     return snapshot.forget();
@@ -776,6 +785,11 @@ DrawTargetCairo::DrawSurface(SourceSurface *aSurface,
                              const DrawSurfaceOptions &aSurfOptions,
                              const DrawOptions &aOptions)
 {
+  if (!IsValid()) {
+    gfxCriticalNote << "DrawSurface with bad surface " << cairo_surface_status(mSurface);
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
   AutoClearDeviceOffset clear(aSurface);
 
@@ -1023,7 +1037,7 @@ DrawTargetCairo::CopySurfaceInternal(cairo_surface_t* aSurface,
                                      const IntPoint &aDest)
 {
   if (cairo_surface_status(aSurface)) {
-    gfxWarning() << "Invalid surface";
+    gfxWarning() << "Invalid surface" << cairo_surface_status(aSurface);
     return;
   }
 
@@ -1194,6 +1208,11 @@ DrawTargetCairo::FillGlyphs(ScaledFont *aFont,
                             const DrawOptions &aOptions,
                             const GlyphRenderingOptions*)
 {
+  if (!IsValid()) {
+    gfxDebug() << "FillGlyphs bad surface " << cairo_surface_status(mSurface);
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
   AutoClearDeviceOffset clear(aPattern);
 
@@ -1226,6 +1245,10 @@ DrawTargetCairo::FillGlyphs(ScaledFont *aFont,
   }
 
   cairo_show_glyphs(mContext, &glyphs[0], aBuffer.mNumGlyphs);
+
+  if (mSurface && cairo_surface_status(mSurface)) {
+    gfxDebug() << "Ending FillGlyphs with a bad surface " << cairo_surface_status(mSurface);
+  }
 }
 
 void
@@ -1369,7 +1392,7 @@ DrawTargetCairo::PopClip()
              "Transforms are out of sync");
 }
 
-TemporaryRef<PathBuilder>
+already_AddRefed<PathBuilder>
 DrawTargetCairo::CreatePathBuilder(FillRule aFillRule /* = FillRule::FILL_WINDING */) const
 {
   return MakeAndAddRef<PathBuilderCairo>(aFillRule);
@@ -1388,20 +1411,20 @@ DrawTargetCairo::ClearSurfaceForUnboundedSource(const CompositionOp &aOperator)
 }
 
 
-TemporaryRef<GradientStops>
+already_AddRefed<GradientStops>
 DrawTargetCairo::CreateGradientStops(GradientStop *aStops, uint32_t aNumStops,
                                      ExtendMode aExtendMode) const
 {
   return MakeAndAddRef<GradientStopsCairo>(aStops, aNumStops, aExtendMode);
 }
 
-TemporaryRef<FilterNode>
+already_AddRefed<FilterNode>
 DrawTargetCairo::CreateFilter(FilterType aType)
 {
   return FilterNodeSoftware::Create(aType);
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCairo::CreateSourceSurfaceFromData(unsigned char *aData,
                                              const IntSize &aSize,
                                              int32_t aStride,
@@ -1443,7 +1466,7 @@ DestroyPixmap(void *data)
 }
 #endif
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCairo::OptimizeSourceSurface(SourceSurface *aSurface) const
 {
   RefPtr<SourceSurface> surface(aSurface);
@@ -1532,7 +1555,7 @@ DrawTargetCairo::OptimizeSourceSurface(SourceSurface *aSurface) const
   return surface.forget();
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCairo::CreateSourceSurfaceFromNativeSurface(const NativeSurface &aSurface) const
 {
   if (aSurface.mType == NativeSurfaceType::CAIRO_SURFACE) {
@@ -1548,7 +1571,7 @@ DrawTargetCairo::CreateSourceSurfaceFromNativeSurface(const NativeSurface &aSurf
   return nullptr;
 }
 
-TemporaryRef<DrawTarget>
+already_AddRefed<DrawTarget>
 DrawTargetCairo::CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const
 {
   cairo_surface_t* similar = cairo_surface_create_similar(mSurface,
@@ -1562,7 +1585,7 @@ DrawTargetCairo::CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFo
     }
   }
 
-  gfxCriticalError(CriticalLog::DefaultOptions(Factory::ReasonableSurfaceSize(aSize))) << "Failed to create similar cairo surface! Size: " << aSize << " Status: " << cairo_surface_status(similar);
+  gfxCriticalError(CriticalLog::DefaultOptions(Factory::ReasonableSurfaceSize(aSize))) << "Failed to create similar cairo surface! Size: " << aSize << " Status: " << cairo_surface_status(similar) << " format " << (int)aFormat;
 
   return nullptr;
 }
@@ -1571,7 +1594,7 @@ bool
 DrawTargetCairo::InitAlreadyReferenced(cairo_surface_t* aSurface, const IntSize& aSize, SurfaceFormat* aFormat)
 {
   if (cairo_surface_status(aSurface)) {
-    gfxCriticalError(CriticalLog::DefaultOptions(Factory::ReasonableSurfaceSize(aSize)))
+    gfxCriticalNote
       << "Attempt to create DrawTarget for invalid surface. "
       << aSize << " Cairo Status: " << cairo_surface_status(aSurface);
     cairo_surface_destroy(aSurface);
@@ -1600,7 +1623,7 @@ DrawTargetCairo::InitAlreadyReferenced(cairo_surface_t* aSurface, const IntSize&
   return true;
 }
 
-TemporaryRef<DrawTarget>
+already_AddRefed<DrawTarget>
 DrawTargetCairo::CreateShadowDrawTarget(const IntSize &aSize, SurfaceFormat aFormat,
                                         float aSigma) const
 {
@@ -1810,5 +1833,5 @@ BorrowedXlibDrawable::Finish()
 }
 #endif
 
-}
-}
+} // namespace gfx
+} // namespace mozilla

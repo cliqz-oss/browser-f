@@ -73,7 +73,9 @@ MediaEncoder::NotifyEvent(MediaStreamGraph* aGraph,
 
 /* static */
 already_AddRefed<MediaEncoder>
-MediaEncoder::CreateEncoder(const nsAString& aMIMEType, uint8_t aTrackTypes)
+MediaEncoder::CreateEncoder(const nsAString& aMIMEType, uint32_t aAudioBitrate,
+                            uint32_t aVideoBitrate, uint32_t aBitrate,
+                            uint8_t aTrackTypes)
 {
   if (!gMediaEncoderLog) {
     gMediaEncoderLog = PR_NewLogModule("MediaEncoder");
@@ -144,8 +146,15 @@ MediaEncoder::CreateEncoder(const nsAString& aMIMEType, uint8_t aTrackTypes)
   LOG(LogLevel::Debug, ("Create encoder result:a[%d] v[%d] w[%d] mimeType = %s.",
                       audioEncoder != nullptr, videoEncoder != nullptr,
                       writer != nullptr, mimeType.get()));
+  if (videoEncoder && aVideoBitrate != 0) {
+    videoEncoder->SetBitrate(aVideoBitrate);
+  }
+  if (audioEncoder && aAudioBitrate != 0) {
+    audioEncoder->SetBitrate(aAudioBitrate);
+  }
   encoder = new MediaEncoder(writer.forget(), audioEncoder.forget(),
-                             videoEncoder.forget(), mimeType);
+                             videoEncoder.forget(), mimeType, aAudioBitrate,
+                             aVideoBitrate, aBitrate);
   return encoder.forget();
 }
 
@@ -202,7 +211,7 @@ MediaEncoder::GetEncodedData(nsTArray<nsTArray<uint8_t> >* aOutputBufs,
       rv = mWriter->GetContainerData(aOutputBufs,
                                      ContainerWriter::GET_HEADER);
       if (aOutputBufs != nullptr) {
-        mSizeOfBuffer = aOutputBufs->SizeOfExcludingThis(MallocSizeOf);
+        mSizeOfBuffer = aOutputBufs->ShallowSizeOfExcludingThis(MallocSizeOf);
       }
       if (NS_FAILED(rv)) {
        LOG(LogLevel::Error,("Error! writer fail to generate header!"));
@@ -237,7 +246,7 @@ MediaEncoder::GetEncodedData(nsTArray<nsTArray<uint8_t> >* aOutputBufs,
                                      isAudioCompleted && isVideoCompleted ?
                                      ContainerWriter::FLUSH_NEEDED : 0);
       if (aOutputBufs != nullptr) {
-        mSizeOfBuffer = aOutputBufs->SizeOfExcludingThis(MallocSizeOf);
+        mSizeOfBuffer = aOutputBufs->ShallowSizeOfExcludingThis(MallocSizeOf);
       }
       if (NS_SUCCEEDED(rv)) {
         // Successfully get the copy of final container data from writer.
@@ -352,4 +361,4 @@ MediaEncoder::SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   return amount;
 }
 
-}
+} // namespace mozilla

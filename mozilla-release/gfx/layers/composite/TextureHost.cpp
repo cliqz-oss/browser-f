@@ -17,7 +17,7 @@
 #include "mozilla/layers/TextureHostOGL.h"  // for TextureHostOGL
 #include "mozilla/layers/YCbCrImageDataSerializer.h"
 #include "nsAString.h"
-#include "nsRefPtr.h"                   // for nsRefPtr
+#include "mozilla/nsRefPtr.h"                   // for nsRefPtr
 #include "nsPrintfCString.h"            // for nsPrintfCString
 #include "mozilla/layers/PTextureParent.h"
 #include "mozilla/unused.h"
@@ -131,7 +131,10 @@ TextureHost::SendDeleteIPDLActor(PTextureParent* actor)
 TextureHost*
 TextureHost::AsTextureHost(PTextureParent* actor)
 {
-  return actor? static_cast<TextureParent*>(actor)->mTextureHost : nullptr;
+  if (!actor) {
+    return nullptr;
+  }
+  return static_cast<TextureParent*>(actor)->mTextureHost;
 }
 
 PTextureParent*
@@ -176,27 +179,27 @@ TextureHost::GetAndResetAcquireFenceHandle()
 }
 
 // implemented in TextureHostOGL.cpp
-TemporaryRef<TextureHost> CreateTextureHostOGL(const SurfaceDescriptor& aDesc,
+already_AddRefed<TextureHost> CreateTextureHostOGL(const SurfaceDescriptor& aDesc,
                                                ISurfaceAllocator* aDeallocator,
                                                TextureFlags aFlags);
 
 // implemented in TextureHostBasic.cpp
-TemporaryRef<TextureHost> CreateTextureHostBasic(const SurfaceDescriptor& aDesc,
+already_AddRefed<TextureHost> CreateTextureHostBasic(const SurfaceDescriptor& aDesc,
                                                  ISurfaceAllocator* aDeallocator,
                                                  TextureFlags aFlags);
 
 // implemented in TextureD3D11.cpp
-TemporaryRef<TextureHost> CreateTextureHostD3D11(const SurfaceDescriptor& aDesc,
+already_AddRefed<TextureHost> CreateTextureHostD3D11(const SurfaceDescriptor& aDesc,
                                                  ISurfaceAllocator* aDeallocator,
                                                  TextureFlags aFlags);
 
 // implemented in TextureD3D9.cpp
-TemporaryRef<TextureHost> CreateTextureHostD3D9(const SurfaceDescriptor& aDesc,
+already_AddRefed<TextureHost> CreateTextureHostD3D9(const SurfaceDescriptor& aDesc,
                                                 ISurfaceAllocator* aDeallocator,
                                                 TextureFlags aFlags);
 
 // static
-TemporaryRef<TextureHost>
+already_AddRefed<TextureHost>
 TextureHost::Create(const SurfaceDescriptor& aDesc,
                     ISurfaceAllocator* aDeallocator,
                     TextureFlags aFlags)
@@ -244,7 +247,7 @@ TextureHost::Create(const SurfaceDescriptor& aDesc,
   }
 }
 
-TemporaryRef<TextureHost>
+already_AddRefed<TextureHost>
 CreateBackendIndependentTextureHost(const SurfaceDescriptor& aDesc,
                                     ISurfaceAllocator* aDeallocator,
                                     TextureFlags aFlags)
@@ -296,10 +299,13 @@ TextureHost::TextureHost(TextureFlags aFlags)
     : mActor(nullptr)
     , mFlags(aFlags)
     , mCompositableCount(0)
-{}
+{
+  MOZ_COUNT_CTOR(TextureHost);
+}
 
 TextureHost::~TextureHost()
 {
+  MOZ_COUNT_DTOR(TextureHost);
 }
 
 void TextureHost::Finalize()
@@ -407,7 +413,7 @@ BufferTextureHost::UpdatedInternal(const nsIntRegion* aRegion)
   // If the last frame wasn't uploaded yet, and we -don't- have a partial update,
   // we still need to update the full surface.
   if (aRegion && !mNeedsFullUpdate) {
-    mMaybeUpdatedRegion = mMaybeUpdatedRegion.Or(mMaybeUpdatedRegion, *aRegion);
+    mMaybeUpdatedRegion.OrWith(*aRegion);
   } else {
     mNeedsFullUpdate = true;
   }
@@ -590,8 +596,13 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
     }
   } else {
     // non-YCbCr case
+    nsIntRegion* regionToUpdate = aRegion;
     if (!mFirstSource) {
       mFirstSource = mCompositor->CreateDataTextureSource();
+      if (mFlags & TextureFlags::COMPONENT_ALPHA) {
+        // Update the full region the first time for component alpha textures.
+        regionToUpdate = nullptr;
+      }
     }
     ImageDataDeserializer deserializer(GetBuffer(), GetBufferSize());
     if (!deserializer.IsValid()) {
@@ -604,7 +615,7 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
       return false;
     }
 
-    if (!mFirstSource->Update(surf.get(), aRegion)) {
+    if (!mFirstSource->Update(surf.get(), regionToUpdate)) {
       NS_WARNING("failed to update the DataTextureSource");
       return false;
     }
@@ -613,7 +624,7 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
   return true;
 }
 
-TemporaryRef<gfx::DataSourceSurface>
+already_AddRefed<gfx::DataSourceSurface>
 BufferTextureHost::GetAsSurface()
 {
   RefPtr<gfx::DataSourceSurface> result;
@@ -870,5 +881,5 @@ TextureParent::RecvRecycleTexture(const TextureFlags& aTextureFlags)
 
 ////////////////////////////////////////////////////////////////////////////////
 
-} // namespace
-} // namespace
+} // namespace layers
+} // namespace mozilla

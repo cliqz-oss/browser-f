@@ -214,7 +214,7 @@ class ObjectOpResult
     }
 };
 
-}
+} // namespace JS
 
 // JSClass operation signatures.
 
@@ -358,7 +358,7 @@ typedef bool
 typedef bool
 (* HasPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, bool* foundp);
 typedef bool
-(* GetPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleObject receiver, JS::HandleId id,
+(* GetPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleValue receiver, JS::HandleId id,
                   JS::MutableHandleValue vp);
 typedef bool
 (* SetPropertyOp)(JSContext* cx, JS::HandleObject obj, JS::HandleId id, JS::HandleValue v,
@@ -614,10 +614,12 @@ struct JSClass {
 };
 
 #define JSCLASS_HAS_PRIVATE             (1<<0)  // objects have private slot
+#define JSCLASS_DELAY_METADATA_CALLBACK (1<<1)  // class's initialization code
+                                                // will call
+                                                // SetNewObjectMetadata itself
 #define JSCLASS_PRIVATE_IS_NSISUPPORTS  (1<<3)  // private is (nsISupports*)
 #define JSCLASS_IS_DOMJSCLASS           (1<<4)  // objects are DOM
-#define JSCLASS_IMPLEMENTS_BARRIERS     (1<<5)  // Correctly implements GC read
-                                                // and write barriers
+// Bit 5 is unused.
 #define JSCLASS_EMULATES_UNDEFINED      (1<<6)  // objects of this class act
                                                 // like the value undefined,
                                                 // in some contexts
@@ -670,7 +672,7 @@ struct JSClass {
 // the beginning of every global object's slots for use by the
 // application.
 #define JSCLASS_GLOBAL_APPLICATION_SLOTS 5
-#define JSCLASS_GLOBAL_SLOT_COUNT      (JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 3 + 30)
+#define JSCLASS_GLOBAL_SLOT_COUNT      (JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 3 + 32)
 #define JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(n)                                    \
     (JSCLASS_IS_GLOBAL | JSCLASS_HAS_RESERVED_SLOTS(JSCLASS_GLOBAL_SLOT_COUNT + (n)))
 #define JSCLASS_GLOBAL_FLAGS                                                  \
@@ -737,6 +739,10 @@ struct Class
 
     bool isDOMClass() const {
         return flags & JSCLASS_IS_DOMJSCLASS;
+    }
+
+    bool shouldDelayMetadataCallback() const {
+        return flags & JSCLASS_DELAY_METADATA_CALLBACK;
     }
 
     static size_t offsetOfFlags() { return offsetof(Class, flags); }

@@ -265,6 +265,14 @@ public:
     return !(*this == other);
   }
 
+  /* Verifies that the matrix contains no Infs or NaNs. */
+  bool IsFinite() const
+  {
+    return mozilla::IsFinite(_11) && mozilla::IsFinite(_12) &&
+           mozilla::IsFinite(_21) && mozilla::IsFinite(_22) &&
+           mozilla::IsFinite(_31) && mozilla::IsFinite(_32);
+  }
+
   /* Returns true if the matrix is a rectilinear transformation (i.e.
    * grid-aligned rectangles are transformed to grid-aligned rectangles)
    */
@@ -371,10 +379,17 @@ public:
   /**
    * Returns true if the matrix has any transform other
    * than a translation or scale; this is, if there is
-   * no rotation.
+   * rotation.
    */
   bool HasNonAxisAlignedTransform() const {
       return !FuzzyEqual(_21, 0.0) || !FuzzyEqual(_12, 0.0);
+  }
+
+  /**
+   * Returns true if the matrix has negative scaling (i.e. flip).
+   */
+  bool HasNegativeScaling() const {
+      return (_11 < 0.0) || (_22 < 0.0);
   }
 };
 
@@ -501,6 +516,13 @@ public:
   Rect ProjectRectBounds(const Rect& aRect, const Rect &aClip) const;
 
   /**
+   * TransformAndClipBounds transforms aRect as a bounding box, while clipping
+   * the transformed bounds to the extents of aClip.
+   */
+  template<class F>
+  RectTyped<UnknownUnits, F> TransformAndClipBounds(const RectTyped<UnknownUnits, F>& aRect, const RectTyped<UnknownUnits, F>& aClip) const;
+
+  /**
    * TransformAndClipRect projects a rectangle and clips against view frustum
    * clipping planes in homogenous space so that its projected vertices are
    * constrained within the 2d rectangle passed in aClip.
@@ -510,7 +532,10 @@ public:
    * emit fewer that 3 vertices, indicating that aRect will not be visible
    * within aClip.
    */
-  size_t TransformAndClipRect(const Rect& aRect, const Rect& aClip, Point* aVerts) const;
+  template<class F>
+  size_t TransformAndClipRect(const RectTyped<UnknownUnits, F>& aRect,
+                              const RectTyped<UnknownUnits, F>& aClip,
+                              PointTyped<UnknownUnits, F>* aVerts) const;
   static const size_t kTransformAndClipRectMaxVerts = 32;
 
   static Matrix4x4 From2D(const Matrix &aMatrix) {
@@ -539,9 +564,10 @@ public:
       return Point4D(x, y, z, w);
   }
 
-  Point4D operator *(const Point4D& aPoint) const
+  template<class F>
+  Point4DTyped<UnknownUnits, F> operator *(const Point4DTyped<UnknownUnits, F>& aPoint) const
   {
-    Point4D retPoint;
+    Point4DTyped<UnknownUnits, F> retPoint;
 
     retPoint.x = aPoint.x * _11 + aPoint.y * _21 + aPoint.z * _31 + _41;
     retPoint.y = aPoint.x * _12 + aPoint.y * _22 + aPoint.z * _32 + _42;
@@ -551,28 +577,30 @@ public:
     return retPoint;
   }
 
-  Point3D operator *(const Point3D& aPoint) const
+  template<class F>
+  Point3DTyped<UnknownUnits, F> operator *(const Point3DTyped<UnknownUnits, F>& aPoint) const
   {
-    Point4D temp(aPoint.x, aPoint.y, aPoint.z, 1);
+    Point4DTyped<UnknownUnits, F> temp(aPoint.x, aPoint.y, aPoint.z, 1);
 
     temp = *this * temp;
     temp /= temp.w;
 
-    return Point3D(temp.x, temp.y, temp.z);
+    return Point3DTyped<UnknownUnits, F>(temp.x, temp.y, temp.z);
   }
 
-  Point operator *(const Point &aPoint) const
+  template<class F>
+  PointTyped<UnknownUnits, F> operator *(const PointTyped<UnknownUnits, F> &aPoint) const
   {
-    Point4D temp(aPoint.x, aPoint.y, 0, 1);
+    Point4DTyped<UnknownUnits, F> temp(aPoint.x, aPoint.y, 0, 1);
 
     temp = *this * temp;
     temp /= temp.w;
 
-    return Point(temp.x, temp.y);
+    return PointTyped<UnknownUnits, F>(temp.x, temp.y);
   }
 
-  GFX2D_API Rect TransformBounds(const Rect& rect) const;
-
+  template<class F>
+  GFX2D_API RectTyped<UnknownUnits, F> TransformBounds(const RectTyped<UnknownUnits, F>& aRect) const;
 
   static Matrix4x4 Translation(Float aX, Float aY, Float aZ)
   {
@@ -670,12 +698,15 @@ public:
     _11 *= aX;
     _12 *= aX;
     _13 *= aX;
+    _14 *= aX;
     _21 *= aY;
     _22 *= aY;
     _23 *= aY;
+    _24 *= aY;
     _31 *= aZ;
     _32 *= aZ;
     _33 *= aZ;
+    _34 *= aZ;
 
     return *this;
   }
@@ -714,6 +745,11 @@ public:
   void SkewYZ(Float aSkew)
   {
       (*this)[2] += (*this)[1] * aSkew;
+  }
+
+  Matrix4x4 &ChangeBasis(const Point3D& aOrigin)
+  {
+    return ChangeBasis(aOrigin.x, aOrigin.y, aOrigin.z);
   }
 
   Matrix4x4 &ChangeBasis(Float aX, Float aY, Float aZ)
@@ -950,6 +986,18 @@ public:
 
   // Set all the members of the matrix to NaN
   void SetNAN();
+
+  void SkewXY(double aXSkew, double aYSkew);
+
+  void RotateX(double aTheta);
+
+  void RotateY(double aTheta);
+
+  void RotateZ(double aTheta);
+
+  void Perspective(float aDepth);
+
+  Point3D GetNormalVector() const;
 };
 
 class Matrix5x4
@@ -1029,7 +1077,7 @@ public:
   Float _51, _52, _53, _54;
 };
 
-}
-}
+} // namespace gfx
+} // namespace mozilla
 
 #endif /* MOZILLA_GFX_MATRIX_H_ */

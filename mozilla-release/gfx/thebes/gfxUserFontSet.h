@@ -140,7 +140,9 @@ public:
         nsRefPtr<gfxFontEntry> fe = aFontEntry;
         // remove existing entry, if already present
         mAvailableFonts.RemoveElement(aFontEntry);
-        mAvailableFonts.AppendElement(aFontEntry);
+        // insert at the beginning so that the last-defined font is the first
+        // one in the fontlist used for matching, as per CSS Fonts spec
+        mAvailableFonts.InsertElementAt(0, aFontEntry);
 
         if (aFontEntry->mFamilyName.IsEmpty()) {
             aFontEntry->mFamilyName = Name();
@@ -424,17 +426,11 @@ public:
 
             gfxFontEntry* GetFontEntry() const { return mFontEntry; }
 
-            static PLDHashOperator
-            RemoveUnlessPersistent(Entry* aEntry, void* aUserData);
-            static PLDHashOperator
-            RemoveIfPrivate(Entry* aEntry, void* aUserData);
-            static PLDHashOperator
-            RemoveIfMatches(Entry* aEntry, void* aUserData);
-            static PLDHashOperator
-            DisconnectSVG(Entry* aEntry, void* aUserData);
+            bool IsPersistent() const { return mPersistence == kPersistent; }
+            bool IsPrivate() const { return mPrivate; }
 
 #ifdef DEBUG_USERFONT_CACHE
-            static PLDHashOperator DumpEntry(Entry* aEntry, void* aUserData);
+            void Dump();
 #endif
 
         private:

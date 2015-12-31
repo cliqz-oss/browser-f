@@ -26,7 +26,7 @@
 #include "gfxFont.h"
 #include "nsCSSPseudoElements.h"
 #include "nsThemeConstants.h"
-#include "pldhash.h"
+#include "PLDHashTable.h"
 #include "nsStyleContext.h"
 #include "nsStyleSet.h"
 #include "nsStyleStruct.h"
@@ -104,7 +104,7 @@ nsRuleNode::ChildrenHashHashKey(PLDHashTable *aTable, const void *aKey)
     static_cast<const nsRuleNode::Key*>(aKey);
   // Disagreement on importance and level for the same rule is extremely
   // rare, so hash just on the rule.
-  return PL_DHashVoidPtrKeyStub(aTable, key->mRule);
+  return PLDHashTable::HashVoidPtrKeyStub(aTable, key->mRule);
 }
 
 /* static */ bool
@@ -127,8 +127,8 @@ nsRuleNode::ChildrenHashOps = {
   // large size allocations.
   ChildrenHashHashKey,
   ChildrenHashMatchEntry,
-  PL_DHashMoveEntryStub,
-  PL_DHashClearEntryStub,
+  PLDHashTable::MoveEntryStub,
+  PLDHashTable::ClearEntryStub,
   nullptr
 };
 
@@ -1402,7 +1402,7 @@ void*
 nsRuleNode::operator new(size_t sz, nsPresContext* aPresContext) CPP_THROW_NEW
 {
   // Check the recycle list first.
-  return aPresContext->PresShell()->AllocateByObjectID(nsPresArena::nsRuleNode_id, sz);
+  return aPresContext->PresShell()->AllocateByObjectID(eArenaObjectID_nsRuleNode, sz);
 }
 
 // Overridden to prevent the global delete from being called, since the memory
@@ -1457,7 +1457,7 @@ nsRuleNode::DestroyInternal(nsRuleNode ***aDestroyQueueTail)
 
   // Don't let the memory be freed, since it will be recycled
   // instead. Don't call the global operator delete.
-  mPresContext->PresShell()->FreeByObjectID(nsPresArena::nsRuleNode_id, this);
+  mPresContext->PresShell()->FreeByObjectID(eArenaObjectID_nsRuleNode, this);
 }
 
 nsRuleNode* nsRuleNode::CreateRootNode(nsPresContext* aPresContext)
@@ -1539,8 +1539,8 @@ nsRuleNode::Transition(nsIStyleRule* aRule, uint8_t aLevel,
   }
 
   if (ChildrenAreHashed()) {
-    ChildrenHashEntry *entry = static_cast<ChildrenHashEntry*>
-      (PL_DHashTableAdd(ChildrenHash(), &key, fallible));
+    auto entry =
+      static_cast<ChildrenHashEntry*>(ChildrenHash()->Add(&key, fallible));
     if (!entry) {
       NS_WARNING("out of memory");
       return this;
@@ -1606,8 +1606,8 @@ nsRuleNode::ConvertChildrenToHash(int32_t aNumKids)
                                         aNumKids);
   for (nsRuleNode* curr = ChildrenList(); curr; curr = curr->mNextSibling) {
     // This will never fail because of the initial size we gave the table.
-    ChildrenHashEntry *entry = static_cast<ChildrenHashEntry*>(
-      PL_DHashTableAdd(hash, curr->mRule, fallible));
+    auto entry =
+      static_cast<ChildrenHashEntry*>(hash->Add(curr->mRule, fallible));
     NS_ASSERTION(!entry->mRuleNode, "duplicate entries in list");
     entry->mRuleNode = curr;
   }
@@ -2176,6 +2176,12 @@ nsRuleNode::ResolveVariableReferences(const nsStyleStructID aSID,
     const CSSVariableValues* variables =
       &aContext->StyleVariables()->mVariables;
     nsCSSValueTokenStream* tokenStream = value->GetTokenStreamValue();
+
+    MOZ_ASSERT(tokenStream->mLevel != nsStyleSet::eSheetTypeCount,
+               "Token stream should have a defined level");
+
+    AutoRestore<uint16_t> saveLevel(aRuleData->mLevel);
+    aRuleData->mLevel = tokenStream->mLevel;
 
     // Note that ParsePropertyWithVariableReferences relies on the fact
     // that the nsCSSValue in aRuleData for the property we are re-parsing
@@ -2754,6 +2760,14 @@ nsRuleNode::SetDefaultOnRoot(const nsStyleStructID aSID, nsStyleContext* aContex
     /* We can't be cached in the rule node.  We have to be put right */       \
     /* on the style context. */                                               \
     aContext->SetStyle(eStyleStruct_##type_, data_);                          \
+    if (aContext->GetParent()) {                                              \
+      /* This is pessimistic; we could be uncacheable because we had a */     \
+      /* relative font-weight, for example, which does not need to defeat */  \
+      /* the restyle optimizations in RestyleManager.cpp that look at */      \
+      /* NS_STYLE_HAS_CHILD_THAT_USES_RESET_STYLE. */                         \
+      aContext->GetParent()->                                                 \
+        AddStyleBit(NS_STYLE_HAS_CHILD_THAT_USES_RESET_STYLE);                \
+    }                                                                         \
   }                                                                           \
                                                                               \
   return data_;
@@ -4356,13 +4370,13 @@ nsRuleNode::ComputeTextData(void* aStartStruct,
               parentText->mTextCombineUpright,
               NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE, 0, 0, 0, 0);
 
-  // -moz-text-discard: enum, inherit, initial
+  // -moz-control-character-visibility: enum, inherit, initial
   SetDiscrete(*aRuleData->ValueForControlCharacterVisibility(),
               text->mControlCharacterVisibility,
               conditions,
               SETDSC_ENUMERATED | SETDSC_UNSET_INHERIT,
               parentText->mControlCharacterVisibility,
-              NS_STYLE_CONTROL_CHARACTER_VISIBILITY_HIDDEN, 0, 0, 0, 0);
+              nsCSSParser::ControlCharVisibilityDefault(), 0, 0, 0, 0);
 
   COMPUTE_END_INHERITED(Text, text)
 }
@@ -8900,7 +8914,7 @@ nsRuleNode::SetStyleClipPathToCSSValue(nsStyleClipPath* aStyleClipPath,
   const nsCSSValueList* cur = aValue->GetListValue();
 
   uint8_t sizingBox = NS_STYLE_CLIP_SHAPE_SIZING_NOBOX;
-  nsStyleBasicShape* basicShape = nullptr;
+  nsRefPtr<nsStyleBasicShape> basicShape;
   for (unsigned i = 0; i < 2; ++i) {
     if (!cur) {
       break;
@@ -9381,7 +9395,7 @@ nsRuleNode::SweepChildren(nsTArray<nsRuleNode*>& aSweepQueue)
   if (ChildrenAreHashed()) {
     PLDHashTable* children = ChildrenHash();
     uint32_t oldChildCount = children->EntryCount();
-    for (auto iter = children->RemovingIter(); !iter.Done(); iter.Next()) {
+    for (auto iter = children->Iter(); !iter.Done(); iter.Next()) {
       auto entry = static_cast<ChildrenHashEntry*>(iter.Get());
       nsRuleNode* node = entry->mRuleNode;
       if (node->DestroyIfNotMarked()) {

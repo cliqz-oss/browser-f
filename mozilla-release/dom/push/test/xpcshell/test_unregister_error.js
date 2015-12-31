@@ -21,10 +21,12 @@ add_task(function* test_unregister_error() {
     pushEndpoint: 'https://example.org/update/failure',
     scope: 'https://example.net/page/failure',
     originAttributes: '',
-    version: 1
+    version: 1,
+    quota: Infinity,
   });
 
-  let unregisterDefer = Promise.defer();
+  let unregisterDone;
+  let unregisterPromise = new Promise(resolve => unregisterDone = resolve);
   PushService.init({
     serverURI: "wss://push.example.org/",
     networkInfo: new MockDesktopNetworkInfo(),
@@ -48,7 +50,7 @@ add_task(function* test_unregister_error() {
             error: 'omg, everything is exploding',
             channelID
           }));
-          unregisterDefer.resolve();
+          unregisterDone();
         }
       });
     }
@@ -61,6 +63,6 @@ add_task(function* test_unregister_error() {
   ok(!result, 'Deleted push record exists');
 
   // Make sure we send a request to the server.
-  yield waitForPromise(unregisterDefer.promise, DEFAULT_TIMEOUT,
+  yield waitForPromise(unregisterPromise, DEFAULT_TIMEOUT,
     'Timed out waiting for unregister');
 });

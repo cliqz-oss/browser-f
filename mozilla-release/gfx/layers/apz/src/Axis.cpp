@@ -63,7 +63,7 @@ float Axis::ToLocalVelocity(float aVelocityInchesPerMs) const {
   return localVelocity.Length();
 }
 
-void Axis::UpdateWithTouchAtDevicePoint(ParentLayerCoord aPos, uint32_t aTimestampMs) {
+void Axis::UpdateWithTouchAtDevicePoint(ParentLayerCoord aPos, ParentLayerCoord aAdditionalDelta, uint32_t aTimestampMs) {
   // mVelocityQueue is controller-thread only
   APZThreadUtils::AssertOnControllerThread();
 
@@ -76,7 +76,7 @@ void Axis::UpdateWithTouchAtDevicePoint(ParentLayerCoord aPos, uint32_t aTimesta
     return;
   }
 
-  float newVelocity = mAxisLocked ? 0.0f : (float)(mPos - aPos) / (float)(aTimestampMs - mPosTimeMs);
+  float newVelocity = mAxisLocked ? 0.0f : (float)(mPos - aPos + aAdditionalDelta) / (float)(aTimestampMs - mPosTimeMs);
   if (gfxPrefs::APZMaxVelocity() > 0.0f) {
     bool velocityIsNegative = (newVelocity < 0);
     newVelocity = fabs(newVelocity);
@@ -139,7 +139,7 @@ bool Axis::AdjustDisplacement(ParentLayerCoord aDisplacement,
     return false;
   }
 
-  ClearOverscrollAnimationState();
+  EndOverscrollAnimation();
 
   ParentLayerCoord displacement = aDisplacement;
 
@@ -186,7 +186,7 @@ void Axis::OverscrollBy(ParentLayerCoord aOverscroll) {
   if (FuzzyEqualsAdditive(aOverscroll.value, 0.0f, COORDINATE_EPSILON)) {
     return;
   }
-  ClearOverscrollAnimationState();
+  EndOverscrollAnimation();
   aOverscroll = ApplyResistance(aOverscroll);
   if (aOverscroll > 0) {
 #ifdef DEBUG
@@ -238,13 +238,11 @@ void Axis::StartOverscrollAnimation(float aVelocity) {
 }
 
 void Axis::EndOverscrollAnimation() {
-  ClearOverscrollAnimationState();
-}
-
-void Axis::ClearOverscrollAnimationState() {
+  ParentLayerCoord overscroll = GetOverscroll();
   mFirstOverscrollAnimationSample = 0;
   mLastOverscrollPeak = 0;
   mOverscrollScale = 1.0f;
+  mOverscroll = overscroll;
 }
 
 void Axis::StepOverscrollAnimation(double aStepDurationMilliseconds) {
@@ -364,7 +362,7 @@ bool Axis::IsOverscrolled() const {
 }
 
 void Axis::ClearOverscroll() {
-  ClearOverscrollAnimationState();
+  EndOverscrollAnimation();
   mOverscroll = 0;
 }
 
@@ -401,7 +399,7 @@ void Axis::EndTouch(uint32_t aTimestampMs) {
     mAsyncPanZoomController, Name(), mVelocity);
 }
 
-void Axis::CancelTouch() {
+void Axis::CancelGesture() {
   // mVelocityQueue is controller-thread only
   APZThreadUtils::AssertOnControllerThread();
 
@@ -417,14 +415,13 @@ bool Axis::CanScroll() const {
   return GetPageLength() - GetCompositionLength() > COORDINATE_EPSILON;
 }
 
-bool Axis::CanScroll(double aDelta) const
+bool Axis::CanScroll(ParentLayerCoord aDelta) const
 {
   if (!CanScroll() || mAxisLocked) {
     return false;
   }
 
-  ParentLayerCoord delta = aDelta;
-  return DisplacementWillOverscrollAmount(delta) != delta;
+  return DisplacementWillOverscrollAmount(aDelta) != aDelta;
 }
 
 CSSCoord Axis::ClampOriginToScrollableRect(CSSCoord aOrigin) const
@@ -511,6 +508,10 @@ CSSCoord Axis::ScaleWillOverscrollAmount(float aScale, CSSCoord aFocus) const {
     return (originAfterScale + (GetCompositionLength() / aScale) - GetPageEnd()) / zoom;
   }
   return 0;
+}
+
+bool Axis::IsAxisLocked() const {
+  return mAxisLocked;
 }
 
 float Axis::GetVelocity() const {
@@ -634,5 +635,5 @@ const char* AxisY::Name() const
   return "Y";
 }
 
-}
-}
+} // namespace layers
+} // namespace mozilla

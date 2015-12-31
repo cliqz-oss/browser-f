@@ -5,17 +5,19 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsHostObjectProtocolHandler.h"
-#include "nsHostObjectURI.h"
-#include "nsError.h"
-#include "nsClassHashtable.h"
-#include "nsNetUtil.h"
-#include "nsIPrincipal.h"
+
 #include "DOMMediaStream.h"
-#include "mozilla/dom/MediaSource.h"
-#include "nsIMemoryReporter.h"
 #include "mozilla/dom/File.h"
-#include "mozilla/Preferences.h"
+#include "mozilla/dom/MediaSource.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/Preferences.h"
+#include "nsClassHashtable.h"
+#include "nsError.h"
+#include "nsHostObjectURI.h"
+#include "nsIMemoryReporter.h"
+#include "nsIPrincipal.h"
+#include "nsIUUIDGenerator.h"
+#include "nsNetUtil.h"
 
 using mozilla::dom::BlobImpl;
 using mozilla::ErrorResult;
@@ -206,7 +208,7 @@ class BlobURLsReporter final : public nsIMemoryReporter
   {
     EnumArg* envp = static_cast<EnumArg*>(aUserArg);
     nsCOMPtr<nsIDOMBlob> tmp = do_QueryInterface(aInfo->mObject);
-    nsRefPtr<Blob> blob = static_cast<Blob*>(tmp.get());
+    nsRefPtr<mozilla::dom::Blob> blob = static_cast<mozilla::dom::Blob*>(tmp.get());
 
     if (blob) {
       NS_NAMED_LITERAL_CSTRING
@@ -309,7 +311,7 @@ class BlobURLsReporter final : public nsIMemoryReporter
 
 NS_IMPL_ISUPPORTS(BlobURLsReporter, nsIMemoryReporter)
 
-}
+} // namespace mozilla
 
 void
 nsHostObjectProtocolHandler::Init(void)

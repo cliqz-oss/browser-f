@@ -5,10 +5,11 @@
 
 /* This content script contains code that requires a tab browser. */
 
-let {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+var {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/ExtensionContent.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "E10SUtils",
   "resource:///modules/E10SUtils.jsm");
@@ -30,7 +31,6 @@ XPCOMUtils.defineLazyGetter(this, "SimpleServiceDiscovery", function() {
       Cu.import("resource://gre/modules/RokuApp.jsm");
       return new RokuApp(aService);
     },
-    mirror: true,
     types: ["video/mp4"],
     extensions: ["mp4"]
   });
@@ -97,7 +97,7 @@ addMessageListener("SecondScreen:tab-mirror", function(message) {
   }
 });
 
-let AboutHomeListener = {
+var AboutHomeListener = {
   init: function(chromeGlobal) {
     chromeGlobal.addEventListener('AboutHomeLoad', this, false, true);
   },
@@ -113,12 +113,6 @@ let AboutHomeListener = {
     switch (aEvent.type) {
       case "AboutHomeLoad":
         this.onPageLoad();
-        break;
-      case "AboutHomeSearchEvent":
-        this.onSearch(aEvent);
-        break;
-      case "AboutHomeSearchPanel":
-        this.onOpenSearchPanel(aEvent);
         break;
       case "click":
         this.onClick(aEvent);
@@ -137,9 +131,6 @@ let AboutHomeListener = {
       case "AboutHome:Update":
         this.onUpdate(aMessage.data);
         break;
-      case "AboutHome:FocusInput":
-        this.onFocusInput();
-        break;
     }
   },
 
@@ -150,13 +141,11 @@ let AboutHomeListener = {
 
     // Inject search engine and snippets URL.
     let docElt = doc.documentElement;
-    // set the following attributes BEFORE searchEngineName, which triggers to
-    // show the snippets when it's set.
+    // Set snippetsVersion last, which triggers to show the snippets when it's set.
     docElt.setAttribute("snippetsURL", aData.snippetsURL);
     if (aData.showKnowYourRights)
       docElt.setAttribute("showKnowYourRights", "true");
     docElt.setAttribute("snippetsVersion", aData.snippetsVersion);
-    docElt.setAttribute("searchEngineName", aData.defaultEngineName);
   },
 
   onPageLoad: function() {
@@ -167,17 +156,10 @@ let AboutHomeListener = {
 
     doc.documentElement.setAttribute("hasBrowserHandlers", "true");
     addMessageListener("AboutHome:Update", this);
-    addMessageListener("AboutHome:FocusInput", this);
     addEventListener("click", this, true);
     addEventListener("pagehide", this, true);
 
-    if (!Services.prefs.getBoolPref("browser.search.showOneOffButtons")) {
-      doc.documentElement.setAttribute("searchUIConfiguration", "oldsearchui");
-    }
-
     sendAsyncMessage("AboutHome:RequestUpdate");
-    doc.addEventListener("AboutHomeSearchEvent", this, true, true);
-    doc.addEventListener("AboutHomeSearchPanel", this, true, true);
   },
 
   onClick: function(aEvent) {
@@ -228,10 +210,6 @@ let AboutHomeListener = {
       case "settings":
         sendAsyncMessage("AboutHome:Settings");
         break;
-
-      case "searchIcon":
-        sendAsyncMessage("AboutHome:OpenSearchPanel", null, { anchor: originalTarget });
-        break;
     }
   },
 
@@ -246,27 +224,14 @@ let AboutHomeListener = {
       aEvent.target.documentElement.removeAttribute("hasBrowserHandlers");
     }
   },
-
-  onSearch: function(aEvent) {
-    sendAsyncMessage("AboutHome:Search", { searchData: aEvent.detail });
-  },
-
-  onOpenSearchPanel: function(aEvent) {
-    sendAsyncMessage("AboutHome:OpenSearchPanel");
-  },
-
-  onFocusInput: function () {
-    let searchInput = content.document.getElementById("searchText");
-    if (searchInput) {
-      searchInput.focus();
-    }
-  },
 };
 AboutHomeListener.init(this);
 
-let AboutPrivateBrowsingListener = {
+var AboutPrivateBrowsingListener = {
   init(chromeGlobal) {
     chromeGlobal.addEventListener("AboutPrivateBrowsingOpenWindow", this,
+                                  false, true);
+    chromeGlobal.addEventListener("AboutPrivateBrowsingToggleTrackingProtection", this,
                                   false, true);
   },
 
@@ -282,12 +247,15 @@ let AboutPrivateBrowsingListener = {
       case "AboutPrivateBrowsingOpenWindow":
         sendAsyncMessage("AboutPrivateBrowsing:OpenPrivateWindow");
         break;
+      case "AboutPrivateBrowsingToggleTrackingProtection":
+        sendAsyncMessage("AboutPrivateBrowsing:ToggleTrackingProtection");
+        break;
     }
   },
 };
 AboutPrivateBrowsingListener.init(this);
 
-let AboutReaderListener = {
+var AboutReaderListener = {
 
   _articlePromise: null,
 
@@ -314,6 +282,9 @@ let AboutReaderListener = {
   },
 
   get isAboutReader() {
+    if (!content) {
+      return false;
+    }
     return content.document.documentURI.startsWith("about:reader");
   },
 
@@ -357,7 +328,7 @@ let AboutReaderListener = {
 
   /**
    * NB: this function will update the state of the reader button asynchronously
-   * after the next mozAfterPaint call (assuming reader mode is enabled and 
+   * after the next mozAfterPaint call (assuming reader mode is enabled and
    * this is a suitable document). Calling it on things which won't be
    * painted is not going to work.
    */
@@ -402,7 +373,7 @@ let AboutReaderListener = {
 AboutReaderListener.init();
 
 
-let ContentSearchMediator = {
+var ContentSearchMediator = {
 
   whitelist: new Set([
     "about:home",
@@ -457,7 +428,7 @@ let ContentSearchMediator = {
 };
 ContentSearchMediator.init(this);
 
-let PageStyleHandler = {
+var PageStyleHandler = {
   init: function() {
     addMessageListener("PageStyle:Switch", this);
     addMessageListener("PageStyle:Disable", this);
@@ -554,7 +525,7 @@ let PageStyleHandler = {
 PageStyleHandler.init();
 
 // Keep a reference to the translation content handler to avoid it it being GC'ed.
-let trHandler = null;
+var trHandler = null;
 if (Services.prefs.getBoolPref("browser.translation.detectLanguage")) {
   Cu.import("resource:///modules/translation/TranslationContentHandler.jsm");
   trHandler = new TranslationContentHandler(global, docShell);
@@ -593,7 +564,7 @@ addMessageListener("Browser:AppTab", function(message) {
   }
 });
 
-let WebBrowserChrome = {
+var WebBrowserChrome = {
   onBeforeLinkTraversal: function(originalTarget, linkURI, linkNode, isAppTab) {
     return BrowserUtils.onBeforeLinkTraversal(originalTarget, linkURI, linkNode, isAppTab);
   },
@@ -616,16 +587,17 @@ if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
 }
 
 
-let DOMFullscreenHandler = {
+var DOMFullscreenHandler = {
   _fullscreenDoc: null,
 
   init: function() {
     addMessageListener("DOMFullscreen:Entered", this);
-    addMessageListener("DOMFullscreen:Approved", this);
     addMessageListener("DOMFullscreen:CleanUp", this);
     addEventListener("MozDOMFullscreen:Request", this);
+    addEventListener("MozDOMFullscreen:Entered", this);
     addEventListener("MozDOMFullscreen:NewOrigin", this);
     addEventListener("MozDOMFullscreen:Exit", this);
+    addEventListener("MozDOMFullscreen:Exited", this);
   },
 
   get _windowUtils() {
@@ -642,14 +614,6 @@ let DOMFullscreenHandler = {
           // to handle, neither we have been in fullscreen, tell the
           // parent to just exit.
           sendAsyncMessage("DOMFullscreen:Exit");
-        }
-        break;
-      }
-      case "DOMFullscreen:Approved": {
-        if (this._fullscreenDoc) {
-          Services.obs.notifyObservers(this._fullscreenDoc,
-                                       "fullscreen-approved",
-                                       "");
         }
         break;
       }
@@ -678,7 +642,28 @@ let DOMFullscreenHandler = {
         sendAsyncMessage("DOMFullscreen:Exit");
         break;
       }
+      case "MozDOMFullscreen:Entered":
+      case "MozDOMFullscreen:Exited": {
+        addEventListener("MozAfterPaint", this);
+        if (!content || !content.document.mozFullScreen) {
+          // If we receive any fullscreen change event, and find we are
+          // actually not in fullscreen, also ask the parent to exit to
+          // ensure that the parent always exits fullscreen when we do.
+          sendAsyncMessage("DOMFullscreen:Exit");
+        }
+        break;
+      }
+      case "MozAfterPaint": {
+        removeEventListener("MozAfterPaint", this);
+        sendAsyncMessage("DOMFullscreen:Painted");
+        break;
+      }
     }
   }
 };
 DOMFullscreenHandler.init();
+
+ExtensionContent.init(this);
+addEventListener("unload", () => {
+  ExtensionContent.uninit(this);
+});

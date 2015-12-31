@@ -15,17 +15,17 @@
 
 namespace mozilla {
 
-class FlushableMediaTaskQueue;
+class FlushableTaskQueue;
 class MediaDataDecoderCallback;
 
 class AppleATDecoder : public MediaDataDecoder {
 public:
   AppleATDecoder(const AudioInfo& aConfig,
-                 FlushableMediaTaskQueue* aVideoTaskQueue,
+                 FlushableTaskQueue* aVideoTaskQueue,
                  MediaDataDecoderCallback* aCallback);
   virtual ~AppleATDecoder();
 
-  virtual nsresult Init() override;
+  virtual nsRefPtr<InitPromise> Init() override;
   virtual nsresult Input(MediaRawData* aSample) override;
   virtual nsresult Flush() override;
   virtual nsresult Drain() override;
@@ -41,7 +41,7 @@ public:
   bool mFileStreamError;
 
 private:
-  nsRefPtr<FlushableMediaTaskQueue> mTaskQueue;
+  nsRefPtr<FlushableTaskQueue> mTaskQueue;
   MediaDataDecoderCallback* mCallback;
   AudioConverterRef mConverter;
   AudioStreamBasicDescription mOutputFormat;

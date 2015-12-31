@@ -17,7 +17,7 @@
 #include "nsIInterfaceRequestor.h"
 #include "nsIObserver.h"
 #include "nsISpeculativeConnect.h"
-#include "nsRefPtr.h"
+#include "mozilla/nsRefPtr.h"
 #include "nsString.h"
 #include "nsTArray.h"
 
@@ -146,7 +146,7 @@ private:
 
     explicit SpaceCleaner(Predictor *predictor)
       :mLRUStamp(0)
-      ,mKeyToDelete(nullptr)
+      ,mLRUKeyToDelete(nullptr)
       ,mPredictor(predictor)
     { }
 
@@ -155,7 +155,8 @@ private:
   private:
     virtual ~SpaceCleaner() { }
     uint32_t mLRUStamp;
-    const char *mKeyToDelete;
+    const char *mLRUKeyToDelete;
+    nsTArray<nsCString> mLongKeysToDelete;
     nsRefPtr<Predictor> mPredictor;
   };
 
@@ -354,6 +355,8 @@ private:
   uint32_t mLastStartupTime;
   int32_t mStartupCount;
 
+  uint32_t mMaxURILength;
+
   nsCOMPtr<nsIDNSService> mDnsService;
 
   nsRefPtr<DNSListener> mDNSListener;
@@ -364,7 +367,7 @@ private:
   static Predictor *sSelf;
 };
 
-} // ::mozilla::net
-} // ::mozilla
+} // namespace net
+} // namespace mozilla
 
 #endif // mozilla_net_Predictor_h

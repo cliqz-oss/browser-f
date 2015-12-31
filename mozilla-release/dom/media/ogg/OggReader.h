@@ -18,6 +18,7 @@
 #include "OggCodecState.h"
 #include "VideoUtils.h"
 #include "mozilla/Monitor.h"
+#include "OggDecoder.h"
 
 namespace mozilla {
 
@@ -57,7 +58,7 @@ public:
   // until one with a granulepos has been captured, to ensure that all packets
   // read have valid time info.
   virtual bool DecodeVideoFrame(bool &aKeyframeSkip,
-                                  int64_t aTimeThreshold) override;
+                                int64_t aTimeThreshold) override;
 
   virtual bool HasAudio() override {
     return (mVorbisState != 0 && mVorbisState->mActive) ||
@@ -82,7 +83,8 @@ private:
   // we started playback at the current position. Returns the first video
   // frame, if we have video.
   VideoData* FindStartTime(int64_t& aOutStartTime);
-  AudioData* DecodeToFirstAudioData();
+  AudioData* SyncDecodeToFirstAudioData();
+  VideoData* SyncDecodeToFirstVideoData();
 
   // This monitor should be taken when reading or writing to mIsChained.
   ReentrantMonitor mMonitor;

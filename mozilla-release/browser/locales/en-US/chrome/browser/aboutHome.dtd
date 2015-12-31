@@ -9,8 +9,6 @@
 
 <!ENTITY abouthome.pageTitle "&brandFullName; Start Page">
 
-<!ENTITY abouthome.searchEngineButton.label "Search">
-
 <!-- LOCALIZATION NOTE (abouthome.defaultSnippet1.v1):
      text in <a/> will be linked to the CLIQZ features page on cliqz.com
 -->

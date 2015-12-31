@@ -6,16 +6,17 @@
 
 // Test that the computed values of a style (the shorthand expansion) are
 // properly updated after the style is changed.
-add_task(function*() {
-  let TEST_URI = [
-    '<style type="text/css">',
-    '  #testid {',
-    '    padding: 10px;',
-    '  }',
-    '</style>',
-    '<div id="testid">Styled Node</div>'
-  ].join('\n');
 
+const TEST_URI = `
+  <style type="text/css">
+    #testid {
+      padding: 10px;
+    }
+  </style>
+  <div id="testid">Styled Node</div>
+`;
+
+add_task(function*() {
   yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
   let {inspector, view} = yield openRuleView();
   yield selectNode("#testid", inspector);
@@ -29,15 +30,18 @@ function* editAndCheck(view) {
   let newPaddingValue = "20px";
 
   info("Focusing the inplace editor field");
-  let editor = yield focusEditableField(propEditor.valueSpan);
-  is(inplaceEditor(propEditor.valueSpan), editor, "Focused editor should be the value span.");
+  let editor = yield focusEditableField(view, propEditor.valueSpan);
+  is(inplaceEditor(propEditor.valueSpan), editor,
+    "Focused editor should be the value span.");
 
-  let onPropertyChange = waitForComputedStyleProperty("#testid", null, "padding-top", newPaddingValue);
+  let onPropertyChange = waitForComputedStyleProperty("#testid", null,
+    "padding-top", newPaddingValue);
 
   info("Entering a new value");
-  EventUtils.sendString(newPaddingValue, view.doc.defaultView);
+  EventUtils.sendString(newPaddingValue, view.styleWindow);
 
-  info("Waiting for the throttled previewValue to apply the changes to document");
+  info("Waiting for the throttled previewValue to apply the " +
+    "changes to document");
   yield onPropertyChange;
 
   let onBlur = once(editor.input, "blur");
@@ -61,7 +65,19 @@ function* editAndCheck(view) {
 
   is(computed.length, propNames.length, "There should be 4 computed values");
   propNames.forEach((propName, i) => {
-    is(computed[i].name, propName, "Computed property #" + i + " has name " + propName);
-    is(computed[i].value, newPaddingValue, "Computed value of " + propName + " is as expected");
+    is(computed[i].name, propName,
+      "Computed property #" + i + " has name " + propName);
+    is(computed[i].value, newPaddingValue,
+      "Computed value of " + propName + " is as expected");
+  });
+
+  propEditor.expander.click();
+  let computedDom = propEditor.computed;
+  is(computedDom.children.length, propNames.length,
+    "There should be 4 nodes in the DOM");
+  propNames.forEach((propName, i) => {
+    is(computedDom.getElementsByClassName("ruleview-propertyvalue")[i]
+      .textContent, newPaddingValue,
+      "Computed value of " + propName + " in DOM is as expected");
   });
 }

@@ -244,6 +244,8 @@ var Harness = {
     ok(!!this.installDisabledCallback, "Installation shouldn't have been disabled");
     if (this.installDisabledCallback)
       this.installDisabledCallback(installInfo);
+    this.expectingCancelled = true;
+    this.expectingCancelled = false;
     this.endTest();
   },
 

@@ -17,8 +17,8 @@
 namespace mozilla {
 namespace css {
 typedef mozilla::Side Side;
-}
-}
+} // namespace css
+} // namespace mozilla
 
 #define NS_FOR_CSS_SIDES(var_) for (mozilla::css::Side var_ = NS_SIDE_TOP; var_ <= NS_SIDE_LEFT; var_++)
 static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
@@ -105,6 +105,7 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_USER_SELECT_AUTO       7 // internal value - please use nsFrame::IsSelectable()
 #define NS_STYLE_USER_SELECT_MOZ_ALL    8 // force selection of all children, unless an ancestor has NONE set - bug 48096
 #define NS_STYLE_USER_SELECT_MOZ_NONE   9 // Like NONE, but doesn't change selection behavior for descendants whose user-select is not AUTO.
+#define NS_STYLE_USER_SELECT_MOZ_TEXT   10 // Like TEXT, except that it won't get overridden by ancestors having ALL.
 
 // user-input
 #define NS_STYLE_USER_INPUT_NONE      0
@@ -906,6 +907,10 @@ static inline mozilla::css::Side operator++(mozilla::css::Side& side, int) {
 #define NS_STYLE_TABLE_EMPTY_CELLS_HIDE            0
 #define NS_STYLE_TABLE_EMPTY_CELLS_SHOW            1
 
+// Constants for the caption-side property. Note that despite having "physical"
+// names, these are actually interpreted according to the table's writing-mode:
+// TOP and BOTTOM are treated as block-start and -end respectively, and LEFT
+// and RIGHT are treated as line-left and -right.
 #define NS_STYLE_CAPTION_SIDE_TOP               0
 #define NS_STYLE_CAPTION_SIDE_RIGHT             1
 #define NS_STYLE_CAPTION_SIDE_BOTTOM            2

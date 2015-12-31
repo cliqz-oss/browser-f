@@ -11,7 +11,12 @@ mkdir $dest
 cd $dest
 hg init
 
-echo "Hello world $RANDOM" > hello.txt
+content="Hello world"
+if [ ! -z "${extra}" ]; then
+  content="${content} ${extra}"
+fi
+
+echo "${content}" > hello.txt
 hg add hello.txt
 hg commit -m "Adding hello"
 hg tag TAG1

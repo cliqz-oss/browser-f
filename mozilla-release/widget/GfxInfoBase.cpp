@@ -33,6 +33,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/Logging.h"
 #include "gfxPrefs.h"
+#include "gfxPlatform.h"
 
 #if defined(MOZ_CRASHREPORTER)
 #include "nsExceptionHandler.h"
@@ -96,11 +97,7 @@ using namespace mozilla::widget;
 using namespace mozilla::gfx;
 using namespace mozilla;
 
-#ifdef XP_MACOSX
-NS_IMPL_ISUPPORTS(GfxInfoBase, nsIGfxInfo, nsIGfxInfo2, nsIObserver, nsISupportsWeakReference)
-#else
 NS_IMPL_ISUPPORTS(GfxInfoBase, nsIGfxInfo, nsIObserver, nsISupportsWeakReference)
-#endif
 
 #define BLACKLIST_PREF_BRANCH "gfx.blacklist."
 #define SUGGESTED_VERSION_PREF BLACKLIST_PREF_BRANCH "suggested-driver-version"
@@ -149,6 +146,12 @@ GetPrefNameForFeature(int32_t aFeature)
       break;
     case nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION:
       name = BLACKLIST_PREF_BRANCH "webrtc.hw.acceleration";
+      break;
+    case nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION_ENCODE:
+      name = BLACKLIST_PREF_BRANCH "webrtc.hw.acceleration.encode";
+      break;
+    case nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION_DECODE:
+      name = BLACKLIST_PREF_BRANCH "webrtc.hw.acceleration.decode";
       break;
     default:
       break;
@@ -339,6 +342,10 @@ BlacklistFeatureToGfxFeature(const nsAString& aFeature)
     return nsIGfxInfo::FEATURE_WEBGL_MSAA;
   else if (aFeature.EqualsLiteral("STAGEFRIGHT"))
     return nsIGfxInfo::FEATURE_STAGEFRIGHT;
+  else if (aFeature.EqualsLiteral("WEBRTC_HW_ACCELERATION_ENCODE"))
+    return nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION_ENCODE;
+  else if (aFeature.EqualsLiteral("WEBRTC_HW_ACCELERATION_DECODE"))
+    return nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION_DECODE;
   else if (aFeature.EqualsLiteral("WEBRTC_HW_ACCELERATION"))
     return nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION;
 
@@ -684,7 +691,7 @@ GfxInfoBase::GetFeatureStatus(int32_t aFeature, int32_t* aStatus)
   if (GetPrefValueForFeature(aFeature, *aStatus))
     return NS_OK;
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
       // Delegate to the parent process.
       mozilla::dom::ContentChild* cc = mozilla::dom::ContentChild::GetSingleton();
       bool success;
@@ -708,9 +715,10 @@ GfxInfoBase::FindBlocklistedDeviceInList(const nsTArray<GfxDriverInfo>& info,
   uint32_t i = 0;
   for (; i < info.Length(); i++) {
     // Do the operating system check first, no point in getting the driver
-    // info if we won't need to use it. Note we also catch and skips the
-    // application version mismatches that would leave operating system
-    // set to unknown.
+    // info if we won't need to use it.  If the OS of the system we are running
+    // on is unknown, we still let DRIVER_OS_ALL catch and disable it; 
+    // if the OS of the downloadable entry is unknown, we skip the entry
+    // as invalid.
     if (info[i].mOperatingSystem == DRIVER_OS_UNKNOWN ||
         (info[i].mOperatingSystem != DRIVER_OS_ALL &&
          info[i].mOperatingSystem != os))
@@ -971,6 +979,8 @@ GfxInfoBase::EvaluateDownloadedBlacklist(nsTArray<GfxDriverInfo>& aDriverInfo)
     nsIGfxInfo::FEATURE_OPENGL_LAYERS,
     nsIGfxInfo::FEATURE_WEBGL_OPENGL,
     nsIGfxInfo::FEATURE_WEBGL_ANGLE,
+    nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION_ENCODE,
+    nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION_DECODE,
     nsIGfxInfo::FEATURE_WEBGL_MSAA,
     nsIGfxInfo::FEATURE_STAGEFRIGHT,
     nsIGfxInfo::FEATURE_WEBRTC_HW_ACCELERATION,
@@ -1029,7 +1039,6 @@ GfxInfoBase::LogFailure(const nsACString &failure)
   gfxCriticalError(CriticalLog::DefaultOptions(false)) << "(LF) " << failure.BeginReading();
 }
 
-/* void getFailures (out unsigned long failureCount, [optional, array, size_is (failureCount)] out long indices, [array, size_is (failureCount), retval] out string failures); */
 /* XPConnect method of returning arrays is very ugly. Would not recommend. */
 NS_IMETHODIMP GfxInfoBase::GetFailures(uint32_t* failureCount,
                                        int32_t** indices,
@@ -1177,6 +1186,92 @@ GfxInfoBase::GetMonitors(JSContext* aCx, JS::MutableHandleValue aResult)
 
   aResult.setObject(*array);
   return NS_OK;
+}
+
+static const char*
+GetLayersBackendName(layers::LayersBackend aBackend)
+{
+  switch (aBackend) {
+    case layers::LayersBackend::LAYERS_NONE:
+      return "none";
+    case layers::LayersBackend::LAYERS_OPENGL:
+      return "opengl";
+    case layers::LayersBackend::LAYERS_D3D9:
+      return "d3d9";
+    case layers::LayersBackend::LAYERS_D3D11:
+      return "d3d11";
+    case layers::LayersBackend::LAYERS_CLIENT:
+      return "client";
+    case layers::LayersBackend::LAYERS_BASIC:
+      return "basic";
+    default:
+      MOZ_ASSERT_UNREACHABLE("unknown layers backend");
+      return "unknown";
+  }
+}
+
+nsresult
+GfxInfoBase::GetFeatures(JSContext* aCx, JS::MutableHandle<JS::Value> aOut)
+{
+  JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
+  if (!obj) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  aOut.setObject(*obj);
+
+  layers::LayersBackend backend = gfxPlatform::Initialized()
+                                  ? gfxPlatform::GetPlatform()->GetCompositorBackend()
+                                  : layers::LayersBackend::LAYERS_NONE;
+  const char* backendName = GetLayersBackendName(backend);
+  {
+    JS::Rooted<JSString*> str(aCx, JS_NewStringCopyZ(aCx, backendName));
+    JS::Rooted<JS::Value> val(aCx, StringValue(str));
+    JS_SetProperty(aCx, obj, "compositor", val);
+  }
+
+  // If graphics isn't initialized yet, just stop now.
+  if (!gfxPlatform::Initialized()) {
+    return NS_OK;
+  }
+
+  DescribeFeatures(aCx, obj);
+  return NS_OK;
+}
+
+void
+GfxInfoBase::DescribeFeatures(JSContext* cx, JS::Handle<JSObject*> aOut)
+{
+}
+
+bool
+GfxInfoBase::InitFeatureObject(JSContext* aCx,
+                               JS::Handle<JSObject*> aContainer,
+                               const char* aName,
+                               mozilla::gfx::FeatureStatus aFeatureStatus,
+                               JS::MutableHandle<JSObject*> aOutObj)
+{
+  JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
+  if (!obj) {
+    return false;
+  }
+
+  const char* status = FeatureStatusToString(aFeatureStatus);
+
+  // Set "status".
+  {
+    JS::Rooted<JSString*> str(aCx, JS_NewStringCopyZ(aCx, status));
+    JS::Rooted<JS::Value> val(aCx, JS::StringValue(str));
+    JS_SetProperty(aCx, obj, "status", val);
+  }
+
+  // Add the feature object to the container.
+  {
+    JS::Rooted<JS::Value> val(aCx, JS::ObjectValue(*obj));
+    JS_SetProperty(aCx, aContainer, aName, val);
+  }
+
+  aOutObj.set(obj);
+  return true;
 }
 
 GfxInfoCollectorBase::GfxInfoCollectorBase()

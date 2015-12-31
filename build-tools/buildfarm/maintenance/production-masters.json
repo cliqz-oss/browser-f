@@ -276,6 +276,98 @@
     "tools_dir": "/builds/buildbot/tests1-linux32/tools"
   },
   {
+    "basedir": "/builds/buildbot/tests1-linux32",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-linux32/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-linux32/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-linux32/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-linux32/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-linux32/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "aws-us-west-2",
+    "db_name": "buildbot-master07.bb.releng.usw2.mozilla.com:/builds/buildbot/tests1-linux32/master",
+    "enabled": true,
+    "environment": "production",
+    "hostname": "buildbot-master07.bb.releng.usw2.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "linux"
+    ],
+    "limit_fx_slave_platforms": {
+      "linux": [
+        "ubuntu32_vm"
+      ]
+    },
+    "limit_mobile_platforms": [
+      "android-x86",
+      "android-api-9",
+      "android-api-11",
+      "android"
+    ],
+    "limit_tb_platforms": [
+      "linux"
+    ],
+    "limit_b2g_platforms": [
+    ],
+    "limit_b2g_slave_platforms": {
+    },
+    "master_dir": "/builds/buildbot/tests1-linux32/master",
+    "name": "bm07-tests1-linux32",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-linux32/tools"
+  },
+  {
+    "basedir": "/builds/buildbot/tests1-linux32",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-linux32/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-linux32/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-linux32/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-linux32/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-linux32/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "aws-us-east-1",
+    "db_name": "buildbot-master08.bb.releng.use1.mozilla.com:/builds/buildbot/tests1-linux32/master",
+    "enabled": true,
+    "environment": "production",
+    "hostname": "buildbot-master08.bb.releng.use1.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "linux"
+    ],
+    "limit_fx_slave_platforms": {
+      "linux": [
+        "ubuntu32_vm"
+      ]
+    },
+    "limit_mobile_platforms": [
+      "android-x86",
+      "android-api-9",
+      "android-api-11",
+      "android"
+    ],
+    "limit_tb_platforms": [
+      "linux"
+    ],
+    "limit_b2g_platforms": [
+    ],
+    "limit_b2g_slave_platforms": {
+    },
+    "master_dir": "/builds/buildbot/tests1-linux32/master",
+    "name": "bm08-tests1-linux32",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-linux32/tools"
+  },
+  {
     "basedir": "/builds/buildbot/tests1-linux64",
     "bbconfigs_branch": "production",
     "bbconfigs_dir": "/builds/buildbot/tests1-linux64/buildbot-configs",
@@ -295,17 +387,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -364,17 +464,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -433,17 +541,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"        
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -502,17 +618,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -571,17 +695,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -640,17 +772,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -744,9 +884,9 @@
     "name": "bm70-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -772,9 +912,9 @@
     "name": "bm71-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -800,9 +940,9 @@
     "name": "bm72-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -828,9 +968,9 @@
     "name": "bm73-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -856,9 +996,9 @@
     "name": "bm74-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -934,9 +1074,9 @@
     "name": "bm77-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -953,7 +1093,7 @@
     "buildbot_setup": "/builds/buildbot/try1/buildbot/master/setup.py",
     "buildbot_version": "0.8.2",
     "datacentre": "aws-us-west-2",
-    "db_name": "buildbot-master78.b.releng.usw2.mozilla.com:/builds/buildbot/try1/master",
+    "db_name": "buildbot-master78.bb.releng.usw2.mozilla.com:/builds/buildbot/try1/master",
     "enabled": true,
     "environment": "production",
     "hostname": "buildbot-master78.bb.releng.usw2.mozilla.com",
@@ -1012,9 +1152,9 @@
     "pb_port": 9301,
     "role": "scheduler",
     "ssh_port": 7301,
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build_scheduler/tools"
   },
@@ -1063,9 +1203,9 @@
     "name": "bm82-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -1116,9 +1256,9 @@
     "name": "bm84-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -1144,9 +1284,9 @@
     "name": "bm85-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -1172,9 +1312,9 @@
     "name": "bm86-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -1257,9 +1397,9 @@
     "name": "bm91-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -1285,9 +1425,9 @@
     "name": "bm94-build1",
     "pb_port": 9001,
     "role": "build",
-    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr31", "mozilla-esr38"],
+    "release_branches": ["mozilla-release", "mozilla-beta", "mozilla-esr38"],
     "mobile_release_branches": ["mozilla-release", "mozilla-beta"],
-    "thunderbird_release_branches": ["comm-beta", "comm-esr31", "comm-esr38"],
+    "thunderbird_release_branches": ["comm-beta", "comm-esr38"],
     "ssh_port": 7001,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/build1/tools"
@@ -1410,9 +1550,6 @@
       "linux64"
     ],
     "limit_fx_slave_platforms": {
-      "linux": [
-        "ubuntu32_hw"
-      ],
       "linux64": [
         "ubuntu64_hw"
       ]
@@ -1464,9 +1601,6 @@
       "linux64"
     ],
     "limit_fx_slave_platforms": {
-      "linux": [
-        "ubuntu32_hw"
-      ],
       "linux64": [
         "ubuntu64_hw"
       ]
@@ -1518,9 +1652,6 @@
       "linux64"
     ],
     "limit_fx_slave_platforms": {
-      "linux": [
-        "ubuntu32_hw"
-      ],
       "linux64": [
         "ubuntu64_hw"
       ]
@@ -1811,17 +1942,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"        
       ]
     },
     "limit_mobile_platforms": [
@@ -1880,17 +2019,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -1949,17 +2096,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2018,17 +2173,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2087,17 +2250,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2156,17 +2327,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2259,17 +2438,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2328,17 +2515,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2397,17 +2592,25 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2466,17 +2669,102 @@
     "limit_fx_platforms": [
       "linux64",
       "linux64-asan",
+      "linux64-tsan",
       "linux64-cc"
     ],
     "limit_fx_slave_platforms": {
       "linux64": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-asan": [
-        "ubuntu64-asan_vm"
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ],
       "linux64-cc": [
-        "ubuntu64_vm"
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
+      ]
+    },
+    "limit_mobile_platforms": [
+      "android",
+      "android-api-9",
+      "android-api-11"
+    ],
+    "limit_tb_platforms": [
+      "linux64"
+    ],
+    "limit_b2g_platforms": [
+      "linux64_gecko",
+      "emulator-jb",
+      "emulator-kk",
+      "emulator"
+    ],
+    "limit_b2g_slave_platforms": {
+      "linux64_gecko": [
+        "ubuntu64_vm-b2gdt"
+      ],
+      "emulator-jb": [
+        "ubuntu64_vm-b2g-emulator-jb"
+      ],
+      "emulator-kk": [
+        "ubuntu64_vm-b2g-emulator-kk"
+      ],
+      "emulator": [
+        "ubuntu64_vm-b2g-emulator"
+      ]
+   },     
+     "master_dir": "/builds/buildbot/tests1-linux64/master",
+     "name": "bm123-tests1-linux64",
+     "pb_port": 9201,
+     "role": "tests",
+     "ssh_port": 7201,
+     "tools_branch": "default",
+     "tools_dir": "/builds/buildbot/tests1-linux64/tools"
+   },
+   {
+     "basedir": "/builds/buildbot/tests1-linux64",
+     "bbconfigs_branch": "production",
+     "bbconfigs_dir": "/builds/buildbot/tests1-linux64/buildbot-configs",
+     "bbcustom_branch": "production-0.8",
+     "bbcustom_dir": "/builds/buildbot/tests1-linux64/buildbotcustom",
+     "buildbot_bin": "/builds/buildbot/tests1-linux64/bin/buildbot",
+     "buildbot_branch": "production-0.8",
+     "buildbot_python": "/builds/buildbot/tests1-linux64/bin/python",
+     "buildbot_setup": "/builds/buildbot/tests1-linux64/buildbot/master/setup.py",
+     "buildbot_version": "0.8.2",
+     "datacentre": "aws-us-east-1",
+     "db_name": "buildbot-master124.bb.releng.use1.mozilla.com:/builds/buildbot/tests1-linux64/master",
+     "enabled": true,
+     "environment": "production",
+     "hostname": "buildbot-master124.bb.releng.use1.mozilla.com",
+     "http_port": 8201,
+     "limit_fx_platforms": [
+       "linux64",
+       "linux64-asan",
+       "linux64-tsan",
+       "linux64-cc"
+     ],
+     "limit_fx_slave_platforms": {
+        "linux64": [
+         "ubuntu64_vm",
+         "ubuntu64_vm_lnx_large"
+      ],
+      "linux64-asan": [
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
+      ],
+      "linux64-cc": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
       ]
     },
     "limit_mobile_platforms": [
@@ -2508,11 +2796,224 @@
       ]
     },
     "master_dir": "/builds/buildbot/tests1-linux64/master",
-    "name": "bm123-tests1-linux64",
+    "name": "bm124-tests1-linux64",
     "pb_port": 9201,
     "role": "tests",
     "ssh_port": 7201,
     "tools_branch": "default",
     "tools_dir": "/builds/buildbot/tests1-linux64/tools"
+  },
+  {
+    "basedir": "/builds/buildbot/tests1-linux64",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-linux64/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-linux64/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-linux64/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-linux64/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-linux64/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "aws-us-west-2",
+    "db_name": "buildbot-master125.bb.releng.usw2.mozilla.com:/builds/buildbot/tests1-linux64/master",
+    "enabled": true,
+    "environment": "production",
+    "hostname": "buildbot-master125.bb.releng.usw2.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "linux64",
+      "linux64-asan",
+      "linux64-tsan",
+      "linux64-cc"
+    ],
+    "limit_fx_slave_platforms": {
+      "linux64": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
+      ],
+      "linux64-asan": [
+        "ubuntu64-asan_vm",
+        "ubuntu64-asan_vm_lnx_large"
+      ],
+      "linux64-tsan": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
+      ],
+      "linux64-cc": [
+        "ubuntu64_vm",
+        "ubuntu64_vm_lnx_large"
+      ]
+    },
+    "limit_mobile_platforms": [
+      "android",
+      "android-api-9",
+      "android-api-11"
+    ],
+    "limit_tb_platforms": [
+      "linux64"
+    ],
+    "limit_b2g_platforms": [
+      "linux64_gecko",
+      "emulator-jb",
+      "emulator-kk",
+      "emulator"
+    ],
+    "limit_b2g_slave_platforms": {
+      "linux64_gecko": [
+        "ubuntu64_vm-b2gdt"
+      ],
+      "emulator-jb": [
+        "ubuntu64_vm-b2g-emulator-jb"
+      ],
+      "emulator-kk": [
+        "ubuntu64_vm-b2g-emulator-kk"
+      ],
+      "emulator": [
+        "ubuntu64_vm-b2g-emulator"
+      ]
+    },
+    "master_dir": "/builds/buildbot/tests1-linux64/master",
+    "name": "bm125-tests1-linux64",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-linux64/tools"
+  },
+  {
+    "basedir": "/builds/buildbot/tests1-windows",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-windows/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-windows/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-windows/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-windows/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-windows/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "scl3",
+    "db_name": "buildbot-master126.bb.releng.scl3.mozilla.com:/builds/buildbot/tests1-windows/master",
+    "enabled": true,
+    "environment": "production",
+    "hostname": "buildbot-master126.bb.releng.scl3.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "win32",
+      "win64"
+    ],
+    "limit_mobile_platforms": [],
+    "limit_tb_platforms": [
+      "win32"
+    ],
+    "limit_b2g_platforms": [],
+    "master_dir": "/builds/buildbot/tests1-windows/master",
+    "name": "bm126-tests1-windows",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-windows/tools"
+  },
+  {
+    "basedir": "/builds/buildbot/tests1-windows",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-windows/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-windows/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-windows/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-windows/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-windows/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "scl3",
+    "db_name": "buildbot-master127.bb.releng.scl3.mozilla.com:/builds/buildbot/tests1-windows/master",
+    "enabled": true,
+    "environment": "production",
+    "hostname": "buildbot-master127.bb.releng.scl3.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "win32",
+      "win64"
+    ],
+    "limit_mobile_platforms": [],
+    "limit_tb_platforms": [
+      "win32"
+    ],
+    "limit_b2g_platforms": [],
+    "master_dir": "/builds/buildbot/tests1-windows/master",
+    "name": "bm127-tests1-windows",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-windows/tools"
+  },
+  {
+    "basedir": "/builds/buildbot/tests1-windows",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-windows/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-windows/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-windows/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-windows/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-windows/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "aws-us-east-1",
+    "db_name": "buildbot-master128.bb.releng.use1.mozilla.com:/builds/buildbot/tests1-windows/master",
+    "enabled": false,
+    "environment": "production",
+    "hostname": "buildbot-master128.bb.releng.use1.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "win32",
+      "win64"
+    ],
+    "limit_mobile_platforms": [],
+    "limit_tb_platforms": [
+      "win32"
+    ],
+    "limit_b2g_platforms": [],
+    "master_dir": "/builds/buildbot/tests1-windows/master",
+    "name": "bm128-tests1-windows",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-windows/tools"
+  },
+  {
+    "basedir": "/builds/buildbot/tests1-windows",
+    "bbconfigs_branch": "production",
+    "bbconfigs_dir": "/builds/buildbot/tests1-windows/buildbot-configs",
+    "bbcustom_branch": "production-0.8",
+    "bbcustom_dir": "/builds/buildbot/tests1-windows/buildbotcustom",
+    "buildbot_bin": "/builds/buildbot/tests1-windows/bin/buildbot",
+    "buildbot_branch": "production-0.8",
+    "buildbot_python": "/builds/buildbot/tests1-windows/bin/python",
+    "buildbot_setup": "/builds/buildbot/tests1-windows/buildbot/master/setup.py",
+    "buildbot_version": "0.8.2",
+    "datacentre": "aws-us-west-2",
+    "db_name": "buildbot-master129.bb.releng.usw2.mozilla.com:/builds/buildbot/tests1-windows/master",
+    "enabled": false,
+    "environment": "production",
+    "hostname": "buildbot-master129.bb.releng.usw2.mozilla.com",
+    "http_port": 8201,
+    "limit_fx_platforms": [
+      "win32",
+      "win64"
+    ],
+    "limit_mobile_platforms": [],
+    "limit_tb_platforms": [
+      "win32"
+    ],
+    "limit_b2g_platforms": [],
+    "master_dir": "/builds/buildbot/tests1-windows/master",
+    "name": "bm129-tests1-windows",
+    "pb_port": 9201,
+    "role": "tests",
+    "ssh_port": 7201,
+    "tools_branch": "default",
+    "tools_dir": "/builds/buildbot/tests1-windows/tools"
   }
 ]

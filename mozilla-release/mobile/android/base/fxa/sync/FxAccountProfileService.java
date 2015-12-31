@@ -4,6 +4,7 @@
 
 package org.mozilla.gecko.fxa.sync;
 
+import android.accounts.AccountManager;
 import android.app.Activity;
 import android.app.IntentService;
 import android.content.Intent;
@@ -11,9 +12,11 @@ import android.os.Bundle;
 import android.os.ResultReceiver;
 
 import org.mozilla.gecko.background.common.log.Logger;
+import org.mozilla.gecko.background.fxa.FxAccountUtils;
 import org.mozilla.gecko.background.fxa.oauth.FxAccountAbstractClient;
 import org.mozilla.gecko.background.fxa.oauth.FxAccountAbstractClientException;
 import org.mozilla.gecko.background.fxa.profile.FxAccountProfileClient10;
+import org.mozilla.gecko.fxa.FxAccountConstants;
 import org.mozilla.gecko.sync.ExtendedJSONObject;
 
 import java.util.concurrent.Executor;
@@ -36,6 +39,11 @@ public class FxAccountProfileService extends IntentService {
     final String authToken = intent.getStringExtra(KEY_AUTH_TOKEN);
     final String profileServerURI = intent.getStringExtra(KEY_PROFILE_SERVER_URI);
     final ResultReceiver resultReceiver = intent.getParcelableExtra(KEY_RESULT_RECEIVER);
+
+    if (resultReceiver == null) {
+      Logger.warn(LOG_TAG, "Result receiver must not be null; ignoring intent.");
+      return;
+    }
 
     if (authToken == null || authToken.length() == 0) {
       Logger.warn(LOG_TAG, "Invalid Auth Token");
@@ -60,13 +68,21 @@ public class FxAccountProfileService extends IntentService {
       @Override
       public void handleFailure(FxAccountAbstractClientException.FxAccountAbstractClientRemoteException e) {
         Logger.warn(LOG_TAG, "Failed to fetch Account profile.", e);
+
+        if (e.isInvalidAuthentication()) {
+          // The profile server rejected the cached oauth token! Invalidate it.
+          // A new token will be generated upon next request.
+          Logger.info(LOG_TAG, "Invalidating oauth token after 401!");
+          AccountManager.get(FxAccountProfileService.this).invalidateAuthToken(FxAccountConstants.ACCOUNT_TYPE, authToken);
+        }
+
         sendResult("Failed to fetch Account profile.", resultReceiver, Activity.RESULT_CANCELED);
       }
 
       @Override
       public void handleSuccess(ExtendedJSONObject result) {
         if (result != null){
-          Logger.pii(LOG_TAG, "Profile Server response : " + result.toJSONString());
+          FxAccountUtils.pii(LOG_TAG, "Profile server return profile: " + result.toJSONString());
           sendResult(result.toJSONString(), resultReceiver, Activity.RESULT_OK);
         }
       }

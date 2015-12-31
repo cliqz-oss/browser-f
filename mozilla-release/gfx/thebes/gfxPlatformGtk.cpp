@@ -19,6 +19,7 @@
 #include "gfxUserFontSet.h"
 #include "gfxUtils.h"
 #include "gfxFT2FontBase.h"
+#include "gfxPrefs.h"
 
 #include "mozilla/gfx/2D.h"
 
@@ -64,6 +65,8 @@ bool gfxPlatformGtk::sUseFcFontList = false;
 
 gfxPlatformGtk::gfxPlatformGtk()
 {
+    gtk_init(nullptr, nullptr);
+
     sUseFcFontList = mozilla::Preferences::GetBool("gfx.font_rendering.fontconfig.fontlist.enabled");
     if (!sUseFcFontList && !sFontconfigUtils) {
         sFontconfigUtils = gfxFontconfigUtils::GetFontconfigUtils();
@@ -238,11 +241,12 @@ gfxPlatformGtk::GetStandardFamilyName(const nsAString& aFontName, nsAString& aFa
 
 gfxFontGroup *
 gfxPlatformGtk::CreateFontGroup(const FontFamilyList& aFontFamilyList,
-                                const gfxFontStyle *aStyle,
-                                gfxUserFontSet *aUserFontSet)
+                                const gfxFontStyle* aStyle,
+                                gfxTextPerfMetrics* aTextPerf,
+                                gfxUserFontSet* aUserFontSet)
 {
     if (sUseFcFontList) {
-        return new gfxFontGroup(aFontFamilyList, aStyle, aUserFontSet);
+        return new gfxFontGroup(aFontFamilyList, aStyle, aTextPerf, aUserFontSet);
     }
 
     return new gfxPangoFontGroup(aFontFamilyList, aStyle, aUserFontSet);
@@ -333,6 +337,18 @@ gfxPlatformGtk::GetDPIScale()
     // to CSS dpi (96)
     int32_t dpi = GetDPI();
     return (dpi > 96) ? round(dpi/96.0) : 1.0;
+}
+
+bool
+gfxPlatformGtk::UseImageOffscreenSurfaces()
+{
+    // We want to turn on image offscreen surfaces ONLY for GTK3 builds since
+    // GTK2 theme rendering still requires xlib surfaces.
+#if (MOZ_WIDGET_GTK == 3)
+    return gfxPrefs::UseImageOffscreenSurfaces();
+#else
+    return false;
+#endif
 }
 
 gfxImageFormat
@@ -540,7 +556,7 @@ gfxPlatformGtk::GetGdkDrawable(cairo_surface_t *target)
 }
 #endif
 
-TemporaryRef<ScaledFont>
+already_AddRefed<ScaledFont>
 gfxPlatformGtk::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
 {
     return GetScaledFontForFontWithCairoSkia(aTarget, aFont);

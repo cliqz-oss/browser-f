@@ -15,7 +15,7 @@
 #include "nsNullPrincipal.h"
 #include "nsNullPrincipalURI.h"
 #include "nsMemory.h"
-#include "nsNetUtil.h"
+#include "nsIURIWithPrincipal.h"
 #include "nsIClassInfoImpl.h"
 #include "nsNetCID.h"
 #include "nsError.h"
@@ -57,7 +57,6 @@ nsresult
 nsNullPrincipal::Init(const OriginAttributes& aOriginAttributes)
 {
   mOriginAttributes = aOriginAttributes;
-  MOZ_ASSERT(AppId() != nsIScriptSecurityManager::UNKNOWN_APP_ID);
 
   mURI = nsNullPrincipalURI::Create();
   NS_ENSURE_TRUE(mURI, NS_ERROR_NOT_AVAILABLE);

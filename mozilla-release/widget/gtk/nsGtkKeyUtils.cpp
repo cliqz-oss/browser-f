@@ -19,6 +19,7 @@
 #include <X11/XKBlib.h>
 #include "WidgetUtils.h"
 #include "keysym2ucs.h"
+#include "nsGtkUtils.h"
 #include "nsIBidiKeyboard.h"
 #include "nsServiceManagerUtils.h"
 
@@ -982,13 +983,12 @@ KeymapWrapper::InitKeyEvent(WidgetKeyboardEvent& aKeyEvent,
          aGdkKeyEvent->keyval, aGdkKeyEvent->state,
          aGdkKeyEvent->hardware_keycode,
          GetBoolName(aGdkKeyEvent->is_modifier),
-         ((aKeyEvent.message == NS_KEY_DOWN) ? "NS_KEY_DOWN" :
-               (aKeyEvent.message == NS_KEY_PRESS) ? "NS_KEY_PRESS" :
-                                                      "NS_KEY_UP"),
+         ((aKeyEvent.mMessage == eKeyDown) ? "eKeyDown" :
+              (aKeyEvent.mMessage == eKeyPress) ? "eKeyPress" : "eKeyUp"),
          GetBoolName(aKeyEvent.IsShift()), GetBoolName(aKeyEvent.IsControl()),
          GetBoolName(aKeyEvent.IsAlt()), GetBoolName(aKeyEvent.IsMeta())));
 
-    if (aKeyEvent.message == NS_KEY_PRESS) {
+    if (aKeyEvent.mMessage == eKeyPress) {
         keymapWrapper->InitKeypressEvent(aKeyEvent, aGdkKeyEvent);
     }
 
@@ -1322,7 +1322,7 @@ void
 KeymapWrapper::InitKeypressEvent(WidgetKeyboardEvent& aKeyEvent,
                                  GdkEventKey* aGdkKeyEvent)
 {
-    NS_ENSURE_TRUE_VOID(aKeyEvent.message == NS_KEY_PRESS);
+    NS_ENSURE_TRUE_VOID(aKeyEvent.mMessage == eKeyPress);
 
     aKeyEvent.charCode = GetCharCodeFor(aGdkKeyEvent);
     if (!aKeyEvent.charCode) {

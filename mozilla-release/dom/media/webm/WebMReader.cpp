@@ -12,7 +12,7 @@
 #include "gfx2DGlue.h"
 #include "Layers.h"
 #include "mozilla/Preferences.h"
-#include "SharedThreadPool.h"
+#include "mozilla/SharedThreadPool.h"
 
 #include <algorithm>
 
@@ -129,7 +129,7 @@ static void webm_log(nestegg * context,
 static bool sIsIntelDecoderEnabled = false;
 #endif
 
-WebMReader::WebMReader(AbstractMediaDecoder* aDecoder, MediaTaskQueue* aBorrowedTaskQueue)
+WebMReader::WebMReader(AbstractMediaDecoder* aDecoder, TaskQueue* aBorrowedTaskQueue)
   : MediaDecoderReader(aDecoder, aBorrowedTaskQueue)
   , mContext(nullptr)
   , mVideoTrack(0)
@@ -195,7 +195,7 @@ nsresult WebMReader::Init(MediaDecoderReader* aCloneDonor)
 
     InitLayersBackendType();
 
-    mVideoTaskQueue = new FlushableMediaTaskQueue(
+    mVideoTaskQueue = new FlushableTaskQueue(
       SharedThreadPool::Get(NS_LITERAL_CSTRING("IntelVP8 Video Decode")));
     NS_ENSURE_TRUE(mVideoTaskQueue, NS_ERROR_FAILURE);
   }
@@ -262,8 +262,22 @@ void WebMReader::Cleanup()
   }
 }
 
-nsresult WebMReader::ReadMetadata(MediaInfo* aInfo,
-                                  MetadataTags** aTags)
+nsRefPtr<MediaDecoderReader::MetadataPromise>
+WebMReader::AsyncReadMetadata()
+{
+  nsRefPtr<MetadataHolder> metadata = new MetadataHolder();
+
+  if (NS_FAILED(RetrieveWebMMetadata(&metadata->mInfo)) ||
+      !metadata->mInfo.HasValidMedia()) {
+    return MetadataPromise::CreateAndReject(ReadMetadataFailureReason::METADATA_ERROR,
+                                            __func__);
+  }
+
+  return MetadataPromise::CreateAndResolve(metadata, __func__);
+}
+
+nsresult
+WebMReader::RetrieveWebMMetadata(MediaInfo* aInfo)
 {
   // We can't use OnTaskQueue() here because of the wacky initialization task
   // queue that TrackBuffer uses. We should be able to fix this when we do
@@ -316,20 +330,17 @@ nsresult WebMReader::ReadMetadata(MediaInfo* aInfo,
 #if defined(MOZ_PDM_VPX)
       if (sIsIntelDecoderEnabled) {
         mVideoDecoder = IntelWebMVideoDecoder::Create(this);
-        if (mVideoDecoder &&
-            NS_FAILED(mVideoDecoder->Init(params.display_width, params.display_height))) {
-          mVideoDecoder = nullptr;
-        }
       }
 #endif
 
       // If there's no decoder yet (e.g. HW decoder not available), use the software decoder.
       if (!mVideoDecoder) {
         mVideoDecoder = SoftwareWebMVideoDecoder::Create(this);
-        if (mVideoDecoder &&
-            NS_FAILED(mVideoDecoder->Init(params.display_width, params.display_height))) {
-          mVideoDecoder = nullptr;
-        }
+      }
+
+      if (mVideoDecoder) {
+        mInitPromises.AppendElement(mVideoDecoder->Init(params.display_width,
+                                                        params.display_height));
       }
 
       if (!mVideoDecoder) {
@@ -412,7 +423,10 @@ nsresult WebMReader::ReadMetadata(MediaInfo* aInfo,
         Cleanup();
         return NS_ERROR_FAILURE;
       }
-      if (NS_FAILED(mAudioDecoder->Init())) {
+
+      if (mAudioDecoder) {
+        mInitPromises.AppendElement(mAudioDecoder->Init());
+      } else {
         Cleanup();
         return NS_ERROR_FAILURE;
       }
@@ -445,8 +459,6 @@ nsresult WebMReader::ReadMetadata(MediaInfo* aInfo,
   }
 
   *aInfo = mInfo;
-
-  *aTags = nullptr;
 
   return NS_OK;
 }
@@ -524,7 +536,7 @@ bool WebMReader::DecodeAudioPacket(NesteggPacketHolder* aHolder)
   return true;
 }
 
-already_AddRefed<NesteggPacketHolder> WebMReader::NextPacket(TrackType aTrackType)
+nsRefPtr<NesteggPacketHolder> WebMReader::NextPacket(TrackType aTrackType)
 {
   // The packet queue that packets will be pushed on if they
   // are not the type we are interested in.
@@ -561,18 +573,18 @@ already_AddRefed<NesteggPacketHolder> WebMReader::NextPacket(TrackType aTrackTyp
 
     if (hasOtherType && otherTrack == holder->Track()) {
       // Save the packet for when we want these packets
-      otherPackets.Push(holder.forget());
+      otherPackets.Push(holder);
       continue;
     }
 
     // The packet is for the track we want to play
     if (hasType && ourTrack == holder->Track()) {
-      return holder.forget();
+      return holder;
     }
   } while (true);
 }
 
-already_AddRefed<NesteggPacketHolder>
+nsRefPtr<NesteggPacketHolder>
 WebMReader::DemuxPacket()
 {
   nestegg_packet* packet;
@@ -615,7 +627,7 @@ WebMReader::DemuxPacket()
     return nullptr;
   }
 
-  return holder.forget();
+  return holder;
 }
 
 bool WebMReader::DecodeAudioData()
@@ -641,10 +653,10 @@ bool WebMReader::FilterPacketByTime(int64_t aEndTime, WebMPacketQueue& aOutput)
     }
     int64_t tstamp = holder->Timestamp();
     if (tstamp >= aEndTime) {
-      PushVideoPacket(holder.forget());
+      PushVideoPacket(holder);
       return true;
     } else {
-      aOutput.PushFront(holder.forget());
+      aOutput.PushFront(holder);
     }
   }
 
@@ -658,7 +670,8 @@ int64_t WebMReader::GetNextKeyframeTime(int64_t aTimeThreshold)
     // Restore the packets before we return -1.
     uint32_t size = skipPacketQueue.GetSize();
     for (uint32_t i = 0; i < size; ++i) {
-      PushVideoPacket(skipPacketQueue.PopFront());
+      nsRefPtr<NesteggPacketHolder> packetHolder = skipPacketQueue.PopFront();
+      PushVideoPacket(packetHolder);
     }
     return -1;
   }
@@ -677,12 +690,13 @@ int64_t WebMReader::GetNextKeyframeTime(int64_t aTimeThreshold)
       keyframeTime = holder->Timestamp();
     }
 
-    skipPacketQueue.PushFront(holder.forget());
+    skipPacketQueue.PushFront(holder);
   }
 
   uint32_t size = skipPacketQueue.GetSize();
   for (uint32_t i = 0; i < size; ++i) {
-    PushVideoPacket(skipPacketQueue.PopFront());
+    nsRefPtr<NesteggPacketHolder> packetHolder = skipPacketQueue.PopFront();
+    PushVideoPacket(packetHolder);
   }
 
   return keyframeTime;
@@ -702,9 +716,9 @@ bool WebMReader::DecodeVideoFrame(bool &aKeyframeSkip, int64_t aTimeThreshold)
   return mVideoDecoder->DecodeVideoFrame(aKeyframeSkip, aTimeThreshold);
 }
 
-void WebMReader::PushVideoPacket(already_AddRefed<NesteggPacketHolder> aItem)
+void WebMReader::PushVideoPacket(NesteggPacketHolder* aItem)
 {
-    mVideoPackets.PushFront(Move(aItem));
+    mVideoPackets.PushFront(aItem);
 }
 
 nsRefPtr<MediaDecoderReader::SeekPromise>
@@ -772,7 +786,9 @@ nsresult WebMReader::SeekInternal(int64_t aTarget)
 media::TimeIntervals WebMReader::GetBuffered()
 {
   MOZ_ASSERT(OnTaskQueue());
-  NS_ENSURE_TRUE(HaveStartTime(), media::TimeIntervals());
+  if (!HaveStartTime()) {
+    return media::TimeIntervals();
+  }
   AutoPinned<MediaResource> resource(mDecoder->GetResource());
 
   media::TimeIntervals buffered;
@@ -827,20 +843,20 @@ media::TimeIntervals WebMReader::GetBuffered()
 void WebMReader::NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset)
 {
   MOZ_ASSERT(OnTaskQueue());
-  nsRefPtr<MediaByteBuffer> bytes =
-    mDecoder->GetResource()->MediaReadAt(aOffset, aLength);
-  NS_ENSURE_TRUE_VOID(bytes);
-  mBufferedState->NotifyDataArrived(bytes->Elements(), aLength, aOffset);
-}
+  AutoPinned<MediaResource> resource(mResource.GetResource());
+  nsTArray<MediaByteRange> byteRanges;
+  nsresult rv = resource->GetCachedRanges(byteRanges);
 
-int64_t WebMReader::GetEvictionOffset(double aTime)
-{
-  int64_t offset;
-  if (!mBufferedState->GetOffsetForTime(aTime * NS_PER_S, &offset)) {
-    return -1;
+  if (NS_FAILED(rv)) {
+    return;
   }
 
-  return offset;
+  for (auto& range : byteRanges) {
+    nsRefPtr<MediaByteBuffer> bytes =
+      resource->MediaReadAt(range.mStart, range.Length());
+    NS_ENSURE_TRUE_VOID(bytes);
+    mBufferedState->NotifyDataArrived(bytes->Elements(), bytes->Length(), range.mStart);
+  }
 }
 
 int WebMReader::GetVideoCodec()

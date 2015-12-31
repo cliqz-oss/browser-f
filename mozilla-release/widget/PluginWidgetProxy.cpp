@@ -173,5 +173,5 @@ PluginWidgetProxy::SetFocus(bool aRaise)
   return NS_OK;
 }
 
-}  // namespace widget
-}  // namespace mozilla
+} // namespace widget
+} // namespace mozilla

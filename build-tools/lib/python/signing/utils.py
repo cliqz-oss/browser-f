@@ -444,7 +444,7 @@ def dmg_signpackage(pkgfile, dstfile, keychain, mac_id, subject_ou, fake=False, 
         tar_dir(dstfile, tmpdir)
     except:
         log.exception("Error signing %s", pkgfile)
-        return False
+        raise
     finally:
         # Clean up after ourselves, and output our logs
         shutil.rmtree(tmpdir)

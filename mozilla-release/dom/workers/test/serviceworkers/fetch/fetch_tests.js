@@ -1,4 +1,4 @@
-function fetchXHR(name, onload, onerror, headers) {
+function fetchXHRWithMethod(name, method, onload, onerror, headers) {
   expectAsyncResult();
 
   onload = onload || function() {
@@ -11,7 +11,7 @@ function fetchXHR(name, onload, onerror, headers) {
   };
 
   var x = new XMLHttpRequest();
-  x.open('GET', name, true);
+  x.open(method, name, true);
   x.onload = function() { onload(x) };
   x.onerror = function() { onerror(x) };
   headers = headers || [];
@@ -19,6 +19,10 @@ function fetchXHR(name, onload, onerror, headers) {
     x.setRequestHeader(header[0], header[1]);
   });
   x.send();
+}
+
+function fetchXHR(name, onload, onerror, headers) {
+  return fetchXHRWithMethod(name, 'GET', onload, onerror, headers);
 }
 
 fetchXHR('bare-synthesized.txt', function(xhr) {
@@ -71,7 +75,7 @@ fetchXHR('synthesized-redirect-twice-synthesized.txt', function(xhr) {
   finish();
 });
 
-fetchXHR('fetch/redirect.sjs', function(xhr) {
+fetchXHR('redirect.sjs', function(xhr) {
   my_ok(xhr.status == 404, "redirected load should be uninterrupted");
   finish();
 });
@@ -92,6 +96,11 @@ fetchXHR('nonresponse.txt', null, function(xhr) {
 });
 
 fetchXHR('nonresponse2.txt', null, function(xhr) {
+  my_ok(xhr.status == 0, "load should not complete");
+  finish();
+});
+
+fetchXHR('nonpromise.txt', null, function(xhr) {
   my_ok(xhr.status == 0, "load should not complete");
   finish();
 });
@@ -140,6 +149,23 @@ fetchXHR('http://example.com/tests/dom/security/test/cors/file_CrossSiteXHR_serv
   finish();
 });
 
+// Test that CORS preflight requests cannot be intercepted. Performs a
+// cross-origin XHR that the SW chooses not to intercept. This requires a
+// preflight request, which the SW must not be allowed to intercept.
+fetchXHR('http://example.com/tests/dom/security/test/cors/file_CrossSiteXHR_server.sjs?status=200&allowOrigin=*', null, function(xhr) {
+  my_ok(xhr.status == 0, "cross origin load with incorrect headers should be a failure");
+  finish();
+}, [["X-Unsafe", "unsafe"]]);
+
+// Test that CORS preflight requests cannot be intercepted. Performs a
+// cross-origin XHR that the SW chooses to intercept and respond with a
+// cross-origin fetch. This requires a preflight request, which the SW must not
+// be allowed to intercept.
+fetchXHR('http://example.org/tests/dom/security/test/cors/file_CrossSiteXHR_server.sjs?status=200&allowOrigin=*', null, function(xhr) {
+  my_ok(xhr.status == 0, "cross origin load with incorrect headers should be a failure");
+  finish();
+}, [["X-Unsafe", "unsafe"]]);
+
 // Test that when the page fetches a url the controlling SW forces a redirect to
 // another location. This other location fetch should also be intercepted by
 // the SW.
@@ -158,6 +184,12 @@ fetchXHR('redirect_serviceworker.sjs', function(xhr) {
   my_ok(xhr.responseText == "// empty worker, always succeed!\n", "load should have redirection content");
   finish();
 });
+
+fetchXHR('empty-header', function(xhr) {
+  my_ok(xhr.status == 200, "load should be successful");
+  my_ok(xhr.responseText == "emptyheader", "load should have the expected content");
+  finish();
+}, null, [["emptyheader", ""]]);
 
 expectAsyncResult();
 fetch('http://example.com/tests/dom/security/test/cors/file_CrossSiteXHR_server.sjs?status=200&allowOrigin=*')
@@ -284,5 +316,42 @@ fetch(new Request('body-blob', {method: 'POST', body: new Blob(new String('my bo
   return res.text();
 }).then(function(body) {
   my_ok(body == 'my bodymy body', "the Blob body of the intercepted fetch should be visible in the SW");
+  finish();
+});
+
+expectAsyncResult();
+fetch('interrupt.sjs')
+.then(function(res) {
+  my_ok(true, "interrupted fetch succeeded");
+  res.text().then(function(body) {
+    my_ok(false, "interrupted fetch shouldn't have complete body");
+    finish();
+  },
+  function() {
+    my_ok(true, "interrupted fetch shouldn't have complete body");
+    finish();
+  })
+}, function(e) {
+  my_ok(false, "interrupted fetch failed");
+  finish();
+});
+
+['DELETE', 'GET', 'HEAD', 'OPTIONS', 'POST', 'PUT'].forEach(function(method) {
+  fetchXHRWithMethod('xhr-method-test.txt', method, function(xhr) {
+    my_ok(xhr.status == 200, method + " load should be successful");
+    my_ok(xhr.responseText == ("intercepted " + method), method + " load should have synthesized response");
+    finish();
+  });
+});
+
+expectAsyncResult();
+fetch(new Request('empty-header', {headers:{"emptyheader":""}}))
+.then(function(res) {
+  return res.text();
+}).then(function(body) {
+  my_ok(body == "emptyheader", "The empty header was observed in the fetch event");
+  finish();
+}, function(err) {
+  my_ok(false, "A promise was rejected with " + err);
   finish();
 });

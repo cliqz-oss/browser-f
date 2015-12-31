@@ -6,17 +6,17 @@
 
 // Tests that adding a new property of an unmatched rule works properly.
 
-let TEST_URI = [
-  '<style type="text/css">',
-  '  #testid {',
-  '  }',
-  '  .testclass {',
-  '    background-color: white;',
-  '  }',
-  '</style>',
-  '<div id="testid">Styled Node</div>',
-  '<span class="testclass">This is a span</span>'
-].join("\n");
+const TEST_URI = `
+  <style type="text/css">
+    #testid {
+    }
+    .testclass {
+      background-color: white;
+    }
+  </style>
+  <div id="testid">Styled Node</div>
+  <span class="testclass">This is a span</span>
+`;
 
 add_task(function*() {
   yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
@@ -38,7 +38,7 @@ function* testEditSelector(view, name) {
   let ruleEditor = getRuleViewRuleEditor(view, 1);
 
   info("Focusing an existing selector name in the rule-view");
-  let editor = yield focusEditableField(ruleEditor.selectorText);
+  let editor = yield focusEditableField(view, ruleEditor.selectorText);
 
   is(inplaceEditor(ruleEditor.selectorText), editor,
     "The selector editor got focused");
@@ -70,7 +70,7 @@ function* testAddProperty(view) {
   let ruleEditor = getRuleViewRuleEditor(view, 1);
 
   info("Focusing a new property name in the rule-view");
-  let editor = yield focusEditableField(ruleEditor.closeBrace);
+  let editor = yield focusEditableField(view, ruleEditor.closeBrace);
 
   is(inplaceEditor(ruleEditor.newPropSpan), editor,
     "The new property editor got focused");
@@ -81,16 +81,16 @@ function* testAddProperty(view) {
 
   info("Pressing return to commit and focus the new value field");
   let onValueFocus = once(ruleEditor.element, "focus", true);
-  let onModifications = ruleEditor.rule._applyingModifications;
-  EventUtils.synthesizeKey("VK_RETURN", {}, view.doc.defaultView);
+  let onRuleViewChanged = view.once("ruleview-changed");
+  EventUtils.synthesizeKey("VK_RETURN", {}, view.styleWindow);
   yield onValueFocus;
-  yield onModifications;
+  yield onRuleViewChanged;
 
   // Getting the new value editor after focus
-  editor = inplaceEditor(view.doc.activeElement);
+  editor = inplaceEditor(view.styleDocument.activeElement);
   let textProp = ruleEditor.rule.textProps[0];
 
-  is(ruleEditor.rule.textProps.length,  1, "Created a new text property.");
+  is(ruleEditor.rule.textProps.length, 1, "Created a new text property.");
   is(ruleEditor.propertyList.children.length, 1, "Created a property editor.");
   is(editor, inplaceEditor(textProp.editor.valueSpan),
     "Editing the value span now.");
@@ -98,10 +98,10 @@ function* testAddProperty(view) {
   info("Entering a value and bluring the field to expect a rule change");
   editor.input.value = "center";
   let onBlur = once(editor.input, "blur");
-  onModifications = ruleEditor.rule._applyingModifications;
+  onRuleViewChanged = view.once("ruleview-changed");
   editor.input.blur();
   yield onBlur;
-  yield onModifications;
+  yield onRuleViewChanged;
 
   is(textProp.value, "center", "Text prop should have been changed.");
   is(textProp.overridden, false, "Property should not be overridden");

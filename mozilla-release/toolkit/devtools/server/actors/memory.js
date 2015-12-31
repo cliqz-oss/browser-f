@@ -4,6 +4,8 @@
 
 "use strict";
 
+const { Cc, Ci, Cu, components } = require("chrome");
+const { openFileStream } = require("devtools/toolkit/DevToolsUtils");
 const protocol = require("devtools/server/protocol");
 const { method, RetVal, Arg, types } = protocol;
 const { Memory } = require("devtools/toolkit/shared/memory");
@@ -11,6 +13,14 @@ const { actorBridge } = require("devtools/server/actors/common");
 loader.lazyRequireGetter(this, "events", "sdk/event/core");
 loader.lazyRequireGetter(this, "StackFrameCache",
                          "devtools/server/actors/utils/stack", true);
+loader.lazyRequireGetter(this, "FileUtils",
+                         "resource://gre/modules/FileUtils.jsm", true);
+loader.lazyRequireGetter(this, "NetUtil", "resource://gre/modules/NetUtil.jsm", true);
+loader.lazyRequireGetter(this, "Task", "resource://gre/modules/Task.jsm", true);
+loader.lazyRequireGetter(this, "OS", "resource://gre/modules/osfile.jsm", true);
+loader.lazyRequireGetter(this, "HeapSnapshotFileUtils",
+                         "devtools/toolkit/heapsnapshot/HeapSnapshotFileUtils");
+loader.lazyRequireGetter(this, "ThreadSafeChromeUtils");
 
 types.addDictType("AllocationsRecordingOptions", {
   // The probability we sample any given allocation when recording
@@ -29,13 +39,13 @@ types.addDictType("AllocationsRecordingOptions", {
  * A tab-scoped instance of this actor will measure the memory footprint of its
  * parent tab. A global-scoped instance however, will measure the memory
  * footprint of the chrome window referenced by the root actor.
- * 
+ *
  * This actor wraps the Memory module at toolkit/devtools/shared/memory.js
  * and provides RDP definitions.
  *
  * @see toolkit/devtools/shared/memory.js for documentation.
  */
-let MemoryActor = exports.MemoryActor = protocol.ActorClass({
+var MemoryActor = exports.MemoryActor = protocol.ActorClass({
   typeName: "memory",
 
   /**
@@ -51,18 +61,28 @@ let MemoryActor = exports.MemoryActor = protocol.ActorClass({
       type: "garbage-collection",
       data: Arg(0, "json"),
     },
+
+    // Same data as the data from `getAllocations` -- only fired if
+    // `autoDrain` set during `startRecordingAllocations`.
+    "allocations": {
+      type: "allocations",
+      data: Arg(0, "json"),
+    },
   },
 
   initialize: function(conn, parent, frameCache = new StackFrameCache()) {
     protocol.Actor.prototype.initialize.call(this, conn);
 
     this._onGarbageCollection = this._onGarbageCollection.bind(this);
+    this._onAllocations = this._onAllocations.bind(this);
     this.bridge = new Memory(parent, frameCache);
     this.bridge.on("garbage-collection", this._onGarbageCollection);
+    this.bridge.on("allocations", this._onAllocations);
   },
 
   destroy: function() {
     this.bridge.off("garbage-collection", this._onGarbageCollection);
+    this.bridge.off("allocations", this._onAllocations);
     this.bridge.destroy();
     protocol.Actor.prototype.destroy.call(this);
   },
@@ -84,6 +104,43 @@ let MemoryActor = exports.MemoryActor = protocol.ActorClass({
   getState: actorBridge("getState", {
     response: {
       state: RetVal(0, "string")
+    }
+  }),
+
+  saveHeapSnapshot: method(function () {
+    return this.bridge.saveHeapSnapshot();
+  }, {
+    response: {
+      snapshotId: RetVal("string")
+    }
+  }),
+
+  transferHeapSnapshot: method(Task.async(function* (snapshotId) {
+    const snapshotFilePath =
+      HeapSnapshotFileUtils.getHeapSnapshotTempFilePath(snapshotId);
+    if (!snapshotFilePath) {
+      throw new Error(`No heap snapshot with id: ${snapshotId}`);
+    }
+
+    const streamPromise = openFileStream(snapshotFilePath);
+
+    const { size } = yield OS.File.stat(snapshotFilePath);
+    const bulkPromise = this.conn.startBulkSend({
+      actor: this.actorID,
+      type: "heap-snapshot",
+      length: size
+    });
+
+    const [bulk, stream] = yield Promise.all([bulkPromise, streamPromise]);
+
+    try {
+      yield bulk.copyFrom(stream);
+    } finally {
+      stream.close();
+    }
+  }), {
+    request: {
+      snapshotId: Arg(0, "string")
     }
   }),
 
@@ -143,14 +200,81 @@ let MemoryActor = exports.MemoryActor = protocol.ActorClass({
   }),
 
   _onGarbageCollection: function (data) {
-    events.emit(this, "garbage-collection", data);
+    if (this.conn.transport) {
+      events.emit(this, "garbage-collection", data);
+    }
+  },
+
+  _onAllocations: function (data) {
+    if (this.conn.transport) {
+      events.emit(this, "allocations", data);
+    }
   },
 });
 
 exports.MemoryFront = protocol.FrontClass(MemoryActor, {
   initialize: function(client, form) {
     protocol.Front.prototype.initialize.call(this, client, form);
+    this._client = client;
     this.actorID = form.memoryActor;
     this.manage(this);
-  }
+  },
+
+  /**
+   * Save a heap snapshot, transfer it from the server to the client if the
+   * server and client do not share a file system, and return the local file
+   * path to the heap snapshot.
+   *
+   * NB: This will not work with sandboxed child processes, as they do not have
+   * access to the filesystem and the hep snapshot APIs do not support that use
+   * case yet.
+   *
+   * @params Boolean options.forceCopy
+   *         Always force a bulk data copy of the saved heap snapshot, even when
+   *         the server and client share a file system.
+   *
+   * @returns Promise<String>
+   */
+  saveHeapSnapshot: protocol.custom(Task.async(function* (options = {}) {
+    const snapshotId = yield this._saveHeapSnapshotImpl();
+
+    if (!options.forceCopy &&
+        (yield HeapSnapshotFileUtils.haveHeapSnapshotTempFile(snapshotId))) {
+      return HeapSnapshotFileUtils.getHeapSnapshotTempFilePath(snapshotId);
+    }
+
+    return yield this.transferHeapSnapshot(snapshotId);
+  }), {
+    impl: "_saveHeapSnapshotImpl"
+  }),
+
+  /**
+   * Given that we have taken a heap snapshot with the given id, transfer the
+   * heap snapshot file to the client. The path to the client's local file is
+   * returned.
+   *
+   * @param {String} snapshotId
+   *
+   * @returns Promise<String>
+   */
+  transferHeapSnapshot: protocol.custom(function (snapshotId) {
+    const request = this._client.request({
+      to: this.actorID,
+      type: "transferHeapSnapshot",
+      snapshotId
+    });
+
+    return new Promise((resolve, reject) => {
+      const outFilePath =
+        HeapSnapshotFileUtils.getNewUniqueHeapSnapshotTempFilePath();
+      const outFile = new FileUtils.File(outFilePath);
+
+      const outFileStream = FileUtils.openSafeFileOutputStream(outFile);
+      request.on("bulk-reply", Task.async(function* ({ copyTo }) {
+        yield copyTo(outFileStream);
+        FileUtils.closeSafeFileOutputStream(outFileStream);
+        resolve(outFilePath);
+      }));
+    });
+  })
 });

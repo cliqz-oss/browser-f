@@ -16,21 +16,21 @@ namespace mozilla {
 
 namespace devtools {
 class HeapSnapshot;
-}
+} // namespace devtools
 
 namespace dom {
 
 class ThreadSafeChromeUtils
 {
 public:
-  // Implemented in toolkit/devtools/server/HeapSnapshot.cpp
+  // Implemented in toolkit/devtools/heapsnapshot/HeapSnapshot.cpp
   static void SaveHeapSnapshot(GlobalObject& global,
                                JSContext* cx,
-                               const nsAString& filePath,
                                const HeapSnapshotBoundaries& boundaries,
+                               nsAString& filePath,
                                ErrorResult& rv);
 
-  // Implemented in toolkit/devtools/server/HeapSnapshot.cpp
+  // Implemented in toolkit/devtools/heapsnapshot/HeapSnapshot.cpp
   static already_AddRefed<devtools::HeapSnapshot> ReadHeapSnapshot(GlobalObject& global,
                                                                    JSContext* cx,
                                                                    const nsAString& filePath,
@@ -41,14 +41,14 @@ class ChromeUtils : public ThreadSafeChromeUtils
 {
 public:
   static void
-  OriginAttributesToCookieJar(dom::GlobalObject& aGlobal,
-                              const dom::OriginAttributesDictionary& aAttrs,
-                              nsCString& aCookieJar);
-
-  static void
   OriginAttributesToSuffix(dom::GlobalObject& aGlobal,
                            const dom::OriginAttributesDictionary& aAttrs,
                            nsCString& aSuffix);
+
+  static bool
+  OriginAttributesMatchPattern(dom::GlobalObject& aGlobal,
+                               const dom::OriginAttributesDictionary& aAttrs,
+                               const dom::OriginAttributesPatternDictionary& aPattern);
 };
 
 } // namespace dom

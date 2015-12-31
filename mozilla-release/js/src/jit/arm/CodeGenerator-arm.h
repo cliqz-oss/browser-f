@@ -23,8 +23,6 @@ class CodeGeneratorARM : public CodeGeneratorShared
     CodeGeneratorARM* thisFromCtor() {return this;}
 
   protected:
-    // Label for the common return path.
-    NonAssertingLabel returnLabel_;
     NonAssertingLabel deoptLabel_;
 
     MoveOperand toMoveOperand(LAllocation a) const;
@@ -62,8 +60,6 @@ class CodeGeneratorARM : public CodeGeneratorShared
                                   T* mir);
 
   protected:
-    bool generatePrologue();
-    bool generateEpilogue();
     bool generateOutOfLineCode();
 
     void emitRoundDouble(FloatRegister src, Register dest, Label* fail);
@@ -139,8 +135,8 @@ class CodeGeneratorARM : public CodeGeneratorShared
     virtual void visitCompareFAndBranch(LCompareFAndBranch* comp);
     virtual void visitCompareB(LCompareB* lir);
     virtual void visitCompareBAndBranch(LCompareBAndBranch* lir);
-    virtual void visitCompareV(LCompareV* lir);
-    virtual void visitCompareVAndBranch(LCompareVAndBranch* lir);
+    virtual void visitCompareBitwise(LCompareBitwise* lir);
+    virtual void visitCompareBitwiseAndBranch(LCompareBitwiseAndBranch* lir);
     virtual void visitBitAndAndBranch(LBitAndAndBranch* baab);
     virtual void visitAsmJSUInt32ToDouble(LAsmJSUInt32ToDouble* lir);
     virtual void visitAsmJSUInt32ToFloat32(LAsmJSUInt32ToFloat32* lir);
@@ -198,11 +194,15 @@ class CodeGeneratorARM : public CodeGeneratorShared
     void visitNegF(LNegF* lir);
     void visitLoadTypedArrayElementStatic(LLoadTypedArrayElementStatic* ins);
     void visitStoreTypedArrayElementStatic(LStoreTypedArrayElementStatic* ins);
+    void visitAtomicTypedArrayElementBinop(LAtomicTypedArrayElementBinop* lir);
+    void visitAtomicTypedArrayElementBinopForEffect(LAtomicTypedArrayElementBinopForEffect* lir);
     void visitAsmJSCall(LAsmJSCall* ins);
     void visitAsmJSLoadHeap(LAsmJSLoadHeap* ins);
     void visitAsmJSStoreHeap(LAsmJSStoreHeap* ins);
     void visitAsmJSCompareExchangeHeap(LAsmJSCompareExchangeHeap* ins);
     void visitAsmJSCompareExchangeCallout(LAsmJSCompareExchangeCallout* ins);
+    void visitAsmJSAtomicExchangeHeap(LAsmJSAtomicExchangeHeap* ins);
+    void visitAsmJSAtomicExchangeCallout(LAsmJSAtomicExchangeCallout* ins);
     void visitAsmJSAtomicBinopHeap(LAsmJSAtomicBinopHeap* ins);
     void visitAsmJSAtomicBinopHeapForEffect(LAsmJSAtomicBinopHeapForEffect* ins);
     void visitAsmJSAtomicBinopCallout(LAsmJSAtomicBinopCallout* ins);
@@ -216,7 +216,18 @@ class CodeGeneratorARM : public CodeGeneratorShared
 
     void generateInvalidateEpilogue();
 
-    void visitRandom(LRandom* ins);
+    void setReturnDoubleRegs(LiveRegisterSet* regs);
+
+    // Generating a result.
+    template<typename S, typename T>
+    void atomicBinopToTypedIntArray(AtomicOp op, Scalar::Type arrayType, const S& value,
+                                    const T& mem, Register flagTemp, Register outTemp,
+                                    AnyRegister output);
+
+    // Generating no result.
+    template<typename S, typename T>
+    void atomicBinopToTypedIntArray(AtomicOp op, Scalar::Type arrayType, const S& value,
+                                    const T& mem, Register flagTemp);
 
   protected:
     void visitEffectiveAddress(LEffectiveAddress* ins);

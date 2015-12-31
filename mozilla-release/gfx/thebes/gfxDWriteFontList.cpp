@@ -844,6 +844,12 @@ gfxDWriteFontList::MakePlatformFont(const nsAString& aFontName,
     return entry;
 }
 
+enum DWriteInitError {
+    errGDIInterop = 1,
+    errSystemFontCollection = 2,
+    errNoFonts = 3
+};
+
 nsresult
 gfxDWriteFontList::InitFontList()
 {
@@ -874,6 +880,8 @@ gfxDWriteFontList::InitFontList()
     hr = gfxWindowsPlatform::GetPlatform()->GetDWriteFactory()->
         GetGdiInterop(getter_AddRefs(mGDIInterop));
     if (FAILED(hr)) {
+        Telemetry::Accumulate(Telemetry::DWRITEFONT_INIT_PROBLEM,
+                              uint32_t(errGDIInterop));
         return NS_ERROR_FAILURE;
     }
 
@@ -886,6 +894,8 @@ gfxDWriteFontList::InitFontList()
     NS_ASSERTION(SUCCEEDED(hr), "GetSystemFontCollection failed!");
 
     if (FAILED(hr)) {
+        Telemetry::Accumulate(Telemetry::DWRITEFONT_INIT_PROBLEM,
+                              uint32_t(errSystemFontCollection));
         return NS_ERROR_FAILURE;
     }
 
@@ -897,6 +907,8 @@ gfxDWriteFontList::InitFontList()
     NS_ASSERTION(mFontFamilies.Count() != 0,
                  "no fonts found in the system fontlist -- holy crap batman!");
     if (mFontFamilies.Count() == 0) {
+        Telemetry::Accumulate(Telemetry::DWRITEFONT_INIT_PROBLEM,
+                              uint32_t(errNoFonts));
         return NS_ERROR_FAILURE;
     }
 
@@ -1269,11 +1281,10 @@ gfxDWriteFontList::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
     gfxPlatformFontList::AddSizeOfExcludingThis(aMallocSizeOf, aSizes);
 
     aSizes->mFontListSize +=
-        mFontSubstitutes.SizeOfExcludingThis(SizeOfFamilyNameEntryExcludingThis,
-                                             aMallocSizeOf);
+        SizeOfFontFamilyTableExcludingThis(mFontSubstitutes, aMallocSizeOf);
 
     aSizes->mFontListSize +=
-        mNonExistingFonts.SizeOfExcludingThis(aMallocSizeOf);
+        mNonExistingFonts.ShallowSizeOfExcludingThis(aMallocSizeOf);
     for (uint32_t i = 0; i < mNonExistingFonts.Length(); ++i) {
         aSizes->mFontListSize +=
             mNonExistingFonts[i].SizeOfExcludingThisIfUnshared(aMallocSizeOf);
@@ -1510,7 +1521,9 @@ DirectWriteFontInfo::LoadFontFamilyData(const nsAString& aFamilyName)
     nsAutoTArray<wchar_t, 32> famName;
 
     uint32_t len = aFamilyName.Length();
-    famName.SetLength(len + 1, fallible);
+    if(!famName.SetLength(len + 1, fallible)) {
+        return;
+    }
     memcpy(famName.Elements(), aFamilyName.BeginReading(), len * sizeof(char16_t));
     famName[len] = 0;
 
@@ -1725,6 +1738,7 @@ private:
     BundledFontFileEnumerator() = delete;
     BundledFontFileEnumerator(const BundledFontFileEnumerator&) = delete;
     BundledFontFileEnumerator& operator=(const BundledFontFileEnumerator&) = delete;
+    virtual ~BundledFontFileEnumerator() {}
 
     nsRefPtr<IDWriteFactory>      mFactory;
 
@@ -1792,6 +1806,7 @@ public:
 private:
     BundledFontLoader(const BundledFontLoader&) = delete;
     BundledFontLoader& operator=(const BundledFontLoader&) = delete;
+    virtual ~BundledFontLoader() { }
 };
 
 IFACEMETHODIMP

@@ -52,8 +52,6 @@ that require it.  -->
 <!ENTITY itemHistoryAndDownloads.accesskey "B">
 <!ENTITY itemFormSearchHistory.label       "Eingegebene Suchbegriffe &amp; Formulardaten">
 <!ENTITY itemFormSearchHistory.accesskey   "F">
-<!ENTITY itemPasswords.label               "Gespeicherte Passwörter">
-<!ENTITY itemPasswords.accesskey           "P">
 <!ENTITY itemCookies.label                 "Cookies">
 <!ENTITY itemCookies.accesskey             "C">
 <!ENTITY itemCache.label                   "Cache">

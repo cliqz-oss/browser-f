@@ -463,8 +463,9 @@ MobileMessageManager::GetMessages(const MobileMessageFilter& aFilter,
     read = aFilter.mRead.Value();
   }
 
+  bool hasThreadId = !aFilter.mThreadId.IsNull();
   uint64_t threadId = 0;
-  if (!aFilter.mThreadId.IsNull()) {
+  if (hasThreadId) {
     threadId = aFilter.mThreadId.Value();
   }
 
@@ -476,7 +477,7 @@ MobileMessageManager::GetMessages(const MobileMessageFilter& aFilter,
                                                ptrNumbers, numbersCount,
                                                delivery,
                                                hasRead, read,
-                                               threadId,
+                                               hasThreadId, threadId,
                                                aReverse, cursorCallback,
                                                getter_AddRefs(continueCallback));
   if (NS_FAILED(rv)) {
@@ -725,7 +726,7 @@ MobileMessageManager::Observe(nsISupports* aSubject, const char* aTopic,
   return NS_OK;
 }
 
-already_AddRefed<DOMRequest>
+already_AddRefed<Promise>
 MobileMessageManager::GetSmscAddress(const Optional<uint32_t>& aServiceId,
                                      ErrorResult& aRv)
 {
@@ -754,15 +755,27 @@ MobileMessageManager::GetSmscAddress(const Optional<uint32_t>& aServiceId,
     return nullptr;
   }
 
-  nsRefPtr<DOMRequest> request = new DOMRequest(window);
-  nsCOMPtr<nsIMobileMessageCallback> msgCallback = new MobileMessageCallback(request);
-  rv = smsService->GetSmscAddress(serviceId, msgCallback);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(window);
+  if (!global) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;
   }
 
-  return request.forget();
+  nsRefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIMobileMessageCallback> msgCallback =
+    new MobileMessageCallback(promise);
+
+  rv = smsService->GetSmscAddress(serviceId, msgCallback);
+  if (NS_FAILED(rv)) {
+    promise->MaybeReject(rv);
+    return promise.forget();
+  }
+
+  return promise.forget();
 }
 
 already_AddRefed<Promise>
@@ -845,7 +858,7 @@ NS_CreateSmsService()
 {
   nsCOMPtr<nsISmsService> smsService;
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
     smsService = SmsIPCService::GetSingleton();
   } else {
 #ifdef MOZ_WIDGET_ANDROID
@@ -862,7 +875,7 @@ already_AddRefed<nsIMobileMessageDatabaseService>
 NS_CreateMobileMessageDatabaseService()
 {
   nsCOMPtr<nsIMobileMessageDatabaseService> mobileMessageDBService;
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
     mobileMessageDBService = SmsIPCService::GetSingleton();
   } else {
 #ifdef MOZ_WIDGET_ANDROID
@@ -881,7 +894,7 @@ NS_CreateMmsService()
 {
   nsCOMPtr<nsIMmsService> mmsService;
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
     mmsService = SmsIPCService::GetSingleton();
   } else {
 #if defined(MOZ_WIDGET_GONK) && defined(MOZ_B2G_RIL)

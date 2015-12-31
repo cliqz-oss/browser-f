@@ -527,10 +527,10 @@ struct ParamTraits< mozilla::gfx::PointTyped<T> >
   }
 };
 
-template<class T>
-struct ParamTraits< mozilla::gfx::Point3DTyped<T> >
+template<class F, class T>
+struct ParamTraits< mozilla::gfx::Point3DTyped<F, T> >
 {
-  typedef mozilla::gfx::Point3DTyped<T> paramType;
+  typedef mozilla::gfx::Point3DTyped<F, T> paramType;
 
   static void Write(Message* msg, const paramType& param)
   {
@@ -733,6 +733,7 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
     WriteParam(aMsg, aParam.GetPageScrollAmount());
     WriteParam(aMsg, aParam.AllowVerticalScrollWithWheel());
     WriteParam(aMsg, aParam.mClipRect);
+    WriteParam(aMsg, aParam.mMaskLayerIndex);
     WriteParam(aMsg, aParam.mIsLayersIdRoot);
     WriteParam(aMsg, aParam.mUsesContainerScrolling);
     WriteParam(aMsg, aParam.GetContentDescription());
@@ -778,6 +779,7 @@ struct ParamTraits<mozilla::layers::FrameMetrics>
             ReadParam(aMsg, aIter, &aResult->mPageScrollAmount) &&
             ReadParam(aMsg, aIter, &aResult->mAllowVerticalScrollWithWheel) &&
             ReadParam(aMsg, aIter, &aResult->mClipRect) &&
+            ReadParam(aMsg, aIter, &aResult->mMaskLayerIndex) &&
             ReadParam(aMsg, aIter, &aResult->mIsLayersIdRoot) &&
             ReadParam(aMsg, aIter, &aResult->mUsesContainerScrolling) &&
             ReadContentDescription(aMsg, aIter, aResult));

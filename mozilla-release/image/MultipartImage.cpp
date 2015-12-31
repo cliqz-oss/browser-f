@@ -38,10 +38,16 @@ public:
   void BlockUntilDecodedAndFinishObserving()
   {
     // Use GetFrame() to block until our image finishes decoding.
-    mImage->GetFrame(imgIContainer::FRAME_CURRENT,
-                     imgIContainer::FLAG_SYNC_DECODE);
+    nsRefPtr<SourceSurface> surface =
+      mImage->GetFrame(imgIContainer::FRAME_CURRENT,
+                       imgIContainer::FLAG_SYNC_DECODE);
 
-    FinishObserving();
+    // GetFrame() should've sent synchronous notifications that would have
+    // caused us to call FinishObserving() (and null out mImage) already. If for
+    // some reason it didn't, we should do so here.
+    if (mImage) {
+      FinishObserving();
+    }
   }
 
   virtual void Notify(int32_t aType,
@@ -76,7 +82,6 @@ public:
   virtual void BlockOnload() override { }
   virtual void UnblockOnload() override { }
   virtual void SetHasImage() override { }
-  virtual void OnStartDecode() override { }
   virtual bool NotificationsDeferred() const override { return false; }
   virtual void SetNotificationsDeferred(bool) override { }
 
@@ -130,9 +135,7 @@ MultipartImage::~MultipartImage()
   mTracker->ResetImage();
 }
 
-NS_IMPL_QUERY_INTERFACE_INHERITED0(MultipartImage, ImageWrapper)
-NS_IMPL_ADDREF(MultipartImage)
-NS_IMPL_RELEASE(MultipartImage)
+NS_IMPL_ISUPPORTS_INHERITED0(MultipartImage, ImageWrapper)
 
 void
 MultipartImage::BeginTransitionToPart(Image* aNextPart)
@@ -313,12 +316,6 @@ void
 MultipartImage::SetHasImage()
 {
   mTracker->OnImageAvailable();
-}
-
-void
-MultipartImage::OnStartDecode()
-{
-  mTracker->SyncNotifyProgress(FLAG_DECODE_STARTED);
 }
 
 bool
