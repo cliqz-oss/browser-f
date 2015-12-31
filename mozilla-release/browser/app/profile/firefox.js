@@ -233,13 +233,18 @@ pref("browser.shell.mostRecentDateSetAsDefault", "");
 pref("browser.shell.skipDefaultBrowserCheck", true);
 pref("browser.shell.defaultBrowserCheckCount", 0);
 
-// Not used in Cliqz.
+// Not used in CLIQZ. Replaced by the two below.
 #if 0
 // 0 = blank, 1 = home (browser.startup.homepage), 2 = last visited page, 3 = resume previous browser session
 // The behavior of option 3 is detailed at: http://wiki.mozilla.org/Session_Restore
 pref("browser.startup.page",                1);
 #endif
+// If true, CLIQZ will restore tabs from previous session, same as
+// 'browser.startup.page' = 3 would do.
 pref("browser.startup.restoreTabs", false);
+// If true, CLIQZ will open additional tab with 'browser.startup.homepage' URL.
+// This is similar to 'browser.startup.page' = 1, but without excluding session
+// restore.
 pref("browser.startup.addFreshTab", true);
 pref("browser.startup.homepage",            "chrome://branding/locale/browserconfig.properties");
 
