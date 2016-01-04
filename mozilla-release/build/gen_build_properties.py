@@ -88,7 +88,7 @@ if __name__ == '__main__':
 
     prop = BuildProperties()
 
-    mach_props_file = script_directory + '/../' + obj_directory + '/mach_build_properties.json'
+    mach_props_file = script_directory + '/../' + obj_directory + '/dist/mach_build_properties.json'
     mach_props = prop.load_mach_build_props(mach_props_file)
 
     firefox_props = {}

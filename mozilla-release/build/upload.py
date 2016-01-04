@@ -40,6 +40,10 @@ import shutil
 from optparse import OptionParser
 from subprocess import check_call, check_output, STDOUT
 import redo
+import sys
+import boto
+import boto.s3
+import boto.s3.key
 
 def OptionalEnvironmentVariable(v):
     """Return the value of the environment variable named v, or None
@@ -123,6 +127,7 @@ def GetBaseRelativePath(path, local_file, base_path):
     dir = dir[len(base_path)+1:].replace('\\','/')
     return path + dir
 
+
 def GetFileHashAndSize(filename):
     sha512Hash = 'UNKNOWN'
     size = 'UNKNOWN'
@@ -185,6 +190,51 @@ def GetUrlProperties(output, package):
         if e.errno != errno.ENOENT:
             raise
         properties = {prop: 'UNKNOWN' for prop, condition in property_conditions}
+    return properties
+
+def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
+    """Upload only mar file(s) from the list to s3_bucket/s3_path/.
+    If verbose is True, print status updates while working."""
+
+    s3 = boto.connect_s3()
+    s3 = boto.s3.connection.S3Connection(calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
+    bucket = s3.get_bucket(s3_bucket)
+    properties = {}
+
+    property_conditions = [
+        ('completeMarUrl', lambda m: m.endswith('.complete.mar')),
+        ('partialMarUrl', lambda m: m.endswith('.mar') and '.partial.' in m),
+        ('packageUrl', lambda m: m.endswith(package)),
+    ]
+
+    for source_file in files:
+        source_file = os.path.abspath(source_file)
+        if not os.path.isfile(source_file):
+            raise IOError("File not found: %s" % source_file)
+        if not re.search('(\w+)\.(mar|dmg|exe|tar\.bz2)$', source_file):
+            continue
+
+        dest_file = os.path.basename(source_file)
+        full_key_name = '/'+s3_path+'/'+dest_file
+
+        bucket_key = boto.s3.key.Key(bucket)
+        bucket_key.key = full_key_name
+        if verbose:
+            print "Uploading " + source_file
+
+        bucket_key.set_contents_from_filename(source_file)
+
+        m = 'http://' + s3_bucket + full_key_name
+
+        for prop, condition in property_conditions:
+            if condition(m):
+                properties.update({prop: m})
+                break
+
+
+    if verbose:
+        print "Upload complete"
+
     return properties
 
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
@@ -271,8 +321,11 @@ def WriteProperties(files, properties_file, url_properties, package):
         json.dump(properties, outfile, indent=4)
 
 if __name__ == '__main__':
-    host = OptionalEnvironmentVariable('UPLOAD_HOST')
-    user = OptionalEnvironmentVariable('UPLOAD_USER')
+    s3_path = OptionalEnvironmentVariable('S3_UPLOAD_PATH')
+    s3_bucket = OptionalEnvironmentVariable('S3_BUCKET')
+    if not s3_bucket:
+        host = RequireEnvironmentVariable('UPLOAD_HOST')
+        user = RequireEnvironmentVariable('UPLOAD_USER')
     path = OptionalEnvironmentVariable('UPLOAD_PATH')
     upload_to_temp_dir = OptionalEnvironmentVariable('UPLOAD_TO_TEMP')
     port = OptionalEnvironmentVariable('UPLOAD_PORT')
@@ -281,11 +334,12 @@ if __name__ == '__main__':
     key = OptionalEnvironmentVariable('UPLOAD_SSH_KEY')
     post_upload_command = OptionalEnvironmentVariable('POST_UPLOAD_CMD')
 
-    if sys.platform == 'win32':
-        if path is not None:
-            path = FixupMsysPath(path)
-        if post_upload_command is not None:
-            post_upload_command = FixupMsysPath(post_upload_command)
+    if not s3_bucket:
+        if sys.platform == 'win32':
+            if path is not None:
+                path = FixupMsysPath(path)
+            if post_upload_command is not None:
+                post_upload_command = FixupMsysPath(post_upload_command)
 
     parser = OptionParser(usage="usage: %prog [options] <files>")
     parser.add_option("-b", "--base-path",
@@ -305,29 +359,34 @@ if __name__ == '__main__':
         print "You must specify a --properties-file"
         sys.exit(1)
 
-    if host == "localhost":
-        if upload_to_temp_dir:
-            print "Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost"
-            sys.exit(1)
-        if post_upload_command:
-            # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
-            # scripts, so just ignore it until it's no longer used anywhere
-            print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
+    if not s3_bucket:
+        if host == "localhost":
+            if upload_to_temp_dir:
+                print "Cannot use UPLOAD_TO_TEMP with UPLOAD_HOST=localhost"
+                sys.exit(1)
+            if post_upload_command:
+                # POST_UPLOAD_COMMAND is difficult to extract from the mozharness
+                # scripts, so just ignore it until it's no longer used anywhere
+                print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
 
     try:
-        if host == "localhost":
-            CopyFilesLocally(path, args, base_path=options.base_path,
-                             package=options.package,
-                             verbose=True)
+        if s3_bucket:
+            url_properties = UploadFilesToS3(s3_bucket, s3_path, args, package=options.package, verbose=True)
         else:
+            if host == "localhost":
+                CopyFilesLocally(path, args, base_path=options.base_path,
+                                 package=options.package,
+                                 verbose=True)
+            else:
+                url_properties = UploadFiles(user, host, path, args,
+                                             base_path=options.base_path, port=port, ssh_key=key,
+                                             upload_to_temp_dir=upload_to_temp_dir,
+                                             post_upload_command=post_upload_command,
+                                             package=options.package, verbose=True)
 
-            url_properties = UploadFiles(user, host, path, args,
-                                         base_path=options.base_path, port=port, ssh_key=key,
-                                         upload_to_temp_dir=upload_to_temp_dir,
-                                         post_upload_command=post_upload_command,
-                                         package=options.package, verbose=True)
-
+        if url_properties:
             WriteProperties(args, options.properties_file, url_properties, options.package)
+
     except IOError, (strerror):
         print strerror
         sys.exit(1)
