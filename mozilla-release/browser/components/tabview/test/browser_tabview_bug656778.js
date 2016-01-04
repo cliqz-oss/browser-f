@@ -5,6 +5,7 @@ function test() {
   waitForExplicitFinish();
 
   registerCleanupFunction(function () {
+    // TODO(maxim): Needs update after #82.
     Services.prefs.clearUserPref(TabView.PREF_FIRST_RUN);
     Services.prefs.clearUserPref(TabView.PREF_STARTUP_PAGE);
     Services.prefs.clearUserPref(TabView.PREF_RESTORE_ENABLED_ONCE);

@@ -26,7 +26,7 @@
  *
  * Always Resume
  * This service will always resume the session if the integer pref
- * browser.startup.page is set to 3.
+ * browser.startup.restoreTabs is set to true.
  */
 
 /* :::::::: Constants and Helpers ::::::::::::::: */
@@ -49,9 +49,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "CrashMonitor",
   "resource://gre/modules/CrashMonitor.jsm");
 
 const STATE_RUNNING_STR = "running";
-
-// 'browser.startup.page' preference value to resume the previous session.
-const BROWSER_STARTUP_RESUME_SESSION = 3;
 
 function debug(aMsg) {
   aMsg = ("SessionStartup: " + aMsg).replace(/\S{80}/g, "$&\n");
@@ -156,7 +153,7 @@ SessionStartup.prototype = {
 
     let shouldResumeSessionOnce = Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
     let shouldResumeSession = shouldResumeSessionOnce ||
-          Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
+          Services.prefs.getBoolPref("browser.startup.restoreTabs");
 
     // If this is a normal restore then throw away any previous session
     if (!shouldResumeSessionOnce && this._initialState) {
@@ -292,7 +289,7 @@ SessionStartup.prototype = {
    */
   isAutomaticRestoreEnabled: function () {
     return Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-           Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
+           Services.prefs.getBoolPref("browser.startup.restoreTabs");
   },
 
   /**
