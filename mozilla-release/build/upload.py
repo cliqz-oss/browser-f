@@ -192,36 +192,50 @@ def GetUrlProperties(output, package):
         properties = {prop: 'UNKNOWN' for prop, condition in property_conditions}
     return properties
 
-def UploadFilesToS3(s3_bucket, s3_path, files, verbose=False):
+def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
     """Upload only mar file(s) from the list to s3_bucket/s3_path/.
     If verbose is True, print status updates while working."""
 
     s3 = boto.connect_s3()
     s3 = boto.s3.connection.S3Connection(calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
     bucket = s3.get_bucket(s3_bucket)
+    properties = {}
 
-    try:
-        for source_file in files:
-            source_file = os.path.abspath(source_file)
-            if not os.path.isfile(source_file):
-                raise IOError("File not found: %s" % source_file)
-            if not re.search('(\w+)\.(mar|dmg|exe|tar\.bz2)$', source_file):
-                continue
+    property_conditions = [
+        ('completeMarUrl', lambda m: m.endswith('.complete.mar')),
+        ('partialMarUrl', lambda m: m.endswith('.mar') and '.partial.' in m),
+        ('packageUrl', lambda m: m.endswith(package)),
+    ]
 
-            dest_file = os.path.basename(source_file)
-            full_key_name = '/'+s3_path+'/'+dest_file
+    for source_file in files:
+        source_file = os.path.abspath(source_file)
+        if not os.path.isfile(source_file):
+            raise IOError("File not found: %s" % source_file)
+        if not re.search('(\w+)\.(mar|dmg|exe|tar\.bz2)$', source_file):
+            continue
 
-            bucket_key = boto.s3.key.Key(bucket)
-            bucket_key.key = full_key_name
-            if verbose:
-                print "Uploading " + source_file
-            bucket_key.set_contents_from_filename(source_file)
+        dest_file = os.path.basename(source_file)
+        full_key_name = '/'+s3_path+'/'+dest_file
 
-    finally:
-        pass
+        bucket_key = boto.s3.key.Key(bucket)
+        bucket_key.key = full_key_name
+        if verbose:
+            print "Uploading " + source_file
+
+        bucket_key.set_contents_from_filename(source_file)
+
+        m = 'http://' + s3_bucket + full_key_name
+
+        for prop, condition in property_conditions:
+            if condition(m):
+                properties.update({prop: m})
+                break
+
 
     if verbose:
         print "Upload complete"
+
+    return properties
 
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
     """Upload each file in the list files to user@host:path. Optionally pass
@@ -357,7 +371,7 @@ if __name__ == '__main__':
 
     try:
         if s3_bucket:
-            UploadFilesToS3(s3_bucket, s3_path, args, verbose=True)
+            url_properties = UploadFilesToS3(s3_bucket, s3_path, args, package=options.package, verbose=True)
         else:
             if host == "localhost":
                 CopyFilesLocally(path, args, base_path=options.base_path,
@@ -370,7 +384,9 @@ if __name__ == '__main__':
                                              post_upload_command=post_upload_command,
                                              package=options.package, verbose=True)
 
+        if url_properties:
             WriteProperties(args, options.properties_file, url_properties, options.package)
+
     except IOError, (strerror):
         print strerror
         sys.exit(1)
