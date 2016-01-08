@@ -958,7 +958,7 @@ nsWindowsShellService::SetDefaultBrowser(bool aClaimAllTypes, bool aForAllUsers)
       // Windows 10 blocks attempts to load the
       // HTTP Handler association dialog.
       if (IsWin10OrLater()) {
-        rv = LaunchModernSettingsDialogDefaultApps();
+        rv = InvokeHTTPOpenAsVerb();
       } else {
         rv = LaunchHTTPHandlerPane();
       }
@@ -966,7 +966,12 @@ nsWindowsShellService::SetDefaultBrowser(bool aClaimAllTypes, bool aForAllUsers)
       // The above call should never really fail, but just in case
       // fall back to showing control panel for all defaults
       if (NS_FAILED(rv)) {
-        rv = LaunchControlPanelDefaultsSelectionUI();
+        if (IsWin10OrLater()) {
+          rv = LaunchModernSettingsDialogDefaultApps();
+        }
+        else {
+          rv = LaunchControlPanelDefaultsSelectionUI();
+        }
       }
       bool isDefault;
       SaveWin8RegistryHashes(aClaimAllTypes, &isDefault);
