@@ -37,6 +37,7 @@ array_names = [
   'xpcshellRoot',
   'addonsPublicRoot',
   'addonsStageRoot',
+  'cliqzAddonsRoot',
 ]
 
 for n in array_names:
