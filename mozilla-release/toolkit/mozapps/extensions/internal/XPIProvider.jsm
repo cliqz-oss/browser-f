@@ -1567,7 +1567,17 @@ function verifyZipSignedState(aFile, aAddon) {
     certDB.openSignedAppFileAsync(root, aFile, (aRv, aZipReader, aCert) => {
       if (aZipReader)
         aZipReader.close();
-      resolve(getSignedStatus(aRv, aCert, aAddon.id));
+      let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
+      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING)
+        return resolve(signStatus);
+
+      // Try to check against Cliqz certificate.
+      certDB.openSignedAppFileAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aFile,
+                                    (aRv, aZipReader, aCert) => {
+        if (aZipReader)
+          aZipReader.close();
+        resolve(getSignedStatus(aRv, aCert, aAddon.id));
+      });
     });
   });
 }
@@ -1595,7 +1605,15 @@ function verifyDirSignedState(aDir, aAddon) {
 
   return new Promise(resolve => {
     certDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
-      resolve(getSignedStatus(aRv, aCert, aAddon.id));
+      let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
+      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING)
+        return resolve(signStatus);
+
+      // Try to check against Cliqz certificate.
+      certDB.verifySignedDirectoryAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aDir,
+                                    (aRv, aCert) => {
+        resolve(getSignedStatus(aRv, aCert, aAddon.id));
+      });
     });
   });
 }
