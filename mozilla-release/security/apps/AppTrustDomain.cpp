@@ -26,6 +26,7 @@
 // Add-on signing Certificates
 #include "addons-public.inc"
 #include "addons-stage.inc"
+#include "cliqz-addons-cert.inc"
 
 using namespace mozilla::pkix;
 
@@ -92,6 +93,11 @@ AppTrustDomain::SetTrustedRoot(AppTrustedRoot trustedRoot)
     case nsIX509CertDB::AddonsStageRoot:
       trustedDER.data = const_cast<uint8_t*>(addonsStageRoot);
       trustedDER.len = mozilla::ArrayLength(addonsStageRoot);
+      break;
+
+    case nsIX509CertDB::CliqzAddonsRoot:
+      trustedDER.data = const_cast<uint8_t*>(cliqzAddonsRoot);
+      trustedDER.len = mozilla::ArrayLength(cliqzAddonsRoot);
       break;
 
     default:
