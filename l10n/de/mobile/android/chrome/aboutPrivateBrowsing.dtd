@@ -17,7 +17,7 @@
 <!-- Localization note (privatebrowsingpage.description.normal2): "Private
      Browsing is capitalized in English to be consistent with our existing uses
      of the term. -->
-<!ENTITY privatebrowsingpage.description.normal2 "Im Privaten Modus bewahren wir keinen Browser-Chronik und keine Cookies auf. Angelegte Lesezeichen und heruntergeladene Dateien bleiben auf Ihrem Gerät gespeichert.">
+<!ENTITY privatebrowsingpage.description.normal2 "Im Privaten Modus bewahren wir keine Browser-Chronik und keine Cookies auf. Angelegte Lesezeichen und heruntergeladene Dateien bleiben auf Ihrem Gerät gespeichert.">
 
 <!ENTITY privatebrowsingpage.link.private "Weitere Informationen">
 <!ENTITY privatebrowsingpage.link.normal "In einem neuen Tab öffnen">
