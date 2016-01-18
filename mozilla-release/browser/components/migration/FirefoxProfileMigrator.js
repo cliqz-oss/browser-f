@@ -46,7 +46,7 @@ function getFFFolder() {
 #elifdef XP_MACOSX
     "ULibDir", ["Application Support", "Firefox"]
 #else
-    "Home", [".config", "mozilla", "firefox"]
+    "Home", [".mozilla", "firefox"]
 #endif
     , false);
   return ffFolder.exists() ? ffFolder : null;
@@ -86,7 +86,7 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function () {
   var iniParser = Cc["@mozilla.org/xpcom/ini-processor-factory;1"].
                     getService(Ci.nsIINIParserFactory).
                     createINIParser(profileRoot);
-  
+
   var sections = iniParser.getSections();
   while(sections.hasMore()) {
     try {
