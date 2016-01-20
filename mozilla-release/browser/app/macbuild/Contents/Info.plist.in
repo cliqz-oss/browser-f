@@ -143,7 +143,7 @@
 		</dict>
 	</array>
 	<key>CFBundleExecutable</key>
-	<string>CLIQZ</string>
+	<string>%MOZ_APP_NAME%</string>
 	<key>CFBundleGetInfoString</key>
         <string>%MAC_APP_NAME% %APP_VERSION_DISPLAY%</string>
 	<key>CFBundleIconFile</key>

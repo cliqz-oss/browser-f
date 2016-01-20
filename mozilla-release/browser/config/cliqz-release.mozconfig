@@ -1,0 +1,10 @@
+# Copyright Cliqz GmbH 2016.
+
+. $topsrcdir/browser/config/cliqz.mozconfig
+
+ac_add_options --disable-debug
+
+if echo $OSTYPE | grep -q "darwin"; then
+  # Enable universal MacOS executable build
+  . $topsrcdir/build/macosx/universal/mozconfig
+fi

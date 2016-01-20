@@ -1,7 +1,7 @@
 /*.app/***
 /*.dylib
 /certutil
-/CLIQZ-bin
+/*-bin
 /gtest/***
 /pk12util
 /ssltunnel
