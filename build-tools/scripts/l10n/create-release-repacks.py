@@ -22,6 +22,7 @@ from release.info import readReleaseConfig, readConfig, fileInfo
 from release.l10n import getReleaseLocalesForChunk
 from util.hg import mercurial, update, make_hg_url
 from util.retry import retry
+from util.commands import run_cmd
 from release.info import getBuildID
 
 logging.basicConfig(
@@ -111,6 +112,13 @@ def createRepacks(sourceRepo, revision, l10nRepoDir, l10nBaseRepo,
                       kwargs={'signed': signed,
                               'usePymake': usePymake})
     env.update(input_env)
+
+    if product == "thunderbird" and platform == "macosx64":
+        # TODO: FIXME: HACK: KILLME:
+        # Terrible, terrible, terrible hack to work around bug 1234935 and make
+        # the build system happier
+        absMozillaSrcDir = path.abspath(path.join(sourceRepoName, mozillaSrcDir))
+        run_cmd(['ln', '-sf', '../obj-l10n', absMozillaSrcDir])
 
     failed = []
     for l in locales:

@@ -34,20 +34,6 @@
     ],
     "repo_type": "hg"
   },
-  "mozilla-b2g37_v2_2": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-b2g37_v2_2",
-    "graph_branches": [
-      "Mozilla-B2g37-v2.2"
-    ],
-    "repo_type": "hg"
-  },
-  "mozilla-b2g37_v2_2r": {
-    "repo": "https://hg.mozilla.org/releases/mozilla-b2g37_v2_2r",
-    "graph_branches": [
-      "Mozilla-B2g37-v2.2r"
-    ],
-    "repo_type": "hg"
-  },
   "mozilla-b2g44_v2_5": {
     "repo": "https://hg.mozilla.org/releases/mozilla-b2g44_v2_5",
     "graph_branches": [
