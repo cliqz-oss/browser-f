@@ -1,3 +1,6 @@
+// Copyright (c) 2016 Cliqz GmbH. All rights reserved.
+// Author: Alexander Komarnitskiy <alexander@cliqz.com>
+
 // Tagged installer, Omaha style,
 // https://code.google.com/p/omaha/wiki/TaggedMetainstallers
 

@@ -1,3 +1,6 @@
+// Copyright (c) 2016 Cliqz GmbH. All rights reserved.
+// Author: Alexander Komarnitskiy <alexander@cliqz.com>
+
 #include "installer_tagdata.h"
 
 #include <functional>

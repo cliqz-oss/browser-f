@@ -1,0 +1,15 @@
+
+certificate_tag.go - script from Omaha project
+  (https://github.com/google/omaha/blob/master/common/certificate_tag/certificate_tag.go)
+  Used for prepare empty tagged area in binary file with digital signature. Later
+  this area can be filled with any usefull information (look at ApplyTag.exe)
+
+  Usage: go.exe run certificate_tag.go -set-superfluous-cert-tag=Gact2.0Omaha -padded-length=8206 -out out_name.exe input_file.exe
+
+
+ApplyTag.exe - this is part of Omaha project (https://github.com/google/omaha),
+  simple console application for injecting data into binary file, which must
+  be signed and must have special area for data injection. We are decide to use
+  data in inject area in next format: key1=value1&key2=value2&...
+
+  Usage: ApplyTag.exe binary_for_inject.exe result_binary.exe "inject=data"
