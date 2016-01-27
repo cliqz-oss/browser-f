@@ -12,7 +12,6 @@ set installer=dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 set tmp_installer=dist\install\sea\CLIQZ-%ff_exe%.win32.installer_tmp.exe
 
 rem Add tagged area to installer
-set GOROOT=c:\utils\omaha\go
 "%GOROOT%\bin\go.exe" run ..\..\cliqz-helpers\certificate_tag.go -set-superfluous-cert-tag=Gact2.0Omaha -padded-length=8206 -out %tmp_installer% %installer%
 del %installer%
 
