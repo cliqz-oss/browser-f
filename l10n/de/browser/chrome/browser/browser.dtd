@@ -189,7 +189,35 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY printButton.label            "Drucken">
 <!ENTITY printButton.tooltip          "Diese Seite drucken">
 
-<!ENTITY locationItem.title           "Adresse">
+<!ENTITY urlbar.viewSiteInfo.label                      "Seiteninformationen anzeigen">
+<!-- LOCALIZATION NOTE: all of the following urlbar NotificationAnchor.label strings are
+     used to provide accessible labels to users of assistive technology like screenreaders.
+     It is not possible to see them visually in the UI. -->
+<!ENTITY urlbar.defaultNotificationAnchor.label         "Eine Benachrichtigung anzeigen">
+<!ENTITY urlbar.geolocationNotificationAnchor.label     "Eine Standortanfrage anzeigen">
+<!ENTITY urlbar.addonsNotificationAnchor.label          "Anfrage zur Installation eines Add-ons anzeigen">
+<!ENTITY urlbar.indexedDBNotificationAnchor.label       "Nachricht über den Offline-Speicher der App anzeigen">
+<!ENTITY urlbar.loginFillNotificationAnchor.label       "Zugangsdaten verwalten">
+<!ENTITY urlbar.passwordNotificationAnchor.label        "Überprüfen, ob Ihr Passwort gespeichert werden soll">
+<!ENTITY urlbar.webappsNotificationAnchor.label         "Nachricht über die Installation einer App anzeigen">
+<!ENTITY urlbar.pluginsNotificationAnchor.label         "Plugin-Verwendung durch die Website festlegen">
+<!ENTITY urlbar.webNotsNotificationAnchor.label         "Festlegen, ob die Website Benachrichtigungen anzeigen darf">
+
+<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.label      "Zugriff auf Kamera und/oder Mikrofon durch die Website verwalten">
+<!ENTITY urlbar.webRTCSharingDevicesNotificationAnchor.label    "Sie erlauben der Website den Zugriff auf Kamera und/oder Mikrofon.">
+<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.label   "Zugriff auf Mikrofon durch die Website verwalten">
+<!ENTITY urlbar.webRTCSharingMicrophoneNotificationAnchor.label "Sie erlauben der Website den Zugriff auf Ihr Mikrofon.">
+<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.label       "Zugriff auf Fenster oder den Bildschirm durch die Website verwalten">
+<!ENTITY urlbar.webRTCSharingScreenNotificationAnchor.label     "Sie erlauben der Website den Zugriff auf ein Fenster oder Ihren Bildschirm.">
+
+<!ENTITY urlbar.pointerLockNotificationAnchor.label     "Festlegen, ob die Website den Mauszeiger ausblenden darf">
+<!ENTITY urlbar.servicesNotificationAnchor.label        "Nachricht zur Installation des Dienstes anzeigen">
+<!ENTITY urlbar.translateNotificationAnchor.label       "Seite übersetzen">
+<!ENTITY urlbar.translatedNotificationAnchor.label      "Übersetzung von Seiten verwalten">
+<!ENTITY urlbar.emeNotificationAnchor.label             "Verwendung von DRM-geschützter Software verwalten">
+
+<!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
+
 <!ENTITY searchItem.title             "Suchen">
 
 <!-- Toolbar items --> 
@@ -229,6 +257,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY addons.commandkey            "A">
 <!ENTITY webapps.label                "Apps">
 <!ENTITY webapps.accesskey            "p">
+<!ENTITY loopMenuItem.label           "Gespräch beginnen…">
+<!ENTITY loopMenuItem.accesskey       "G">
 
 <!ENTITY webDeveloperMenu.label       "Web-Entwickler">
 <!ENTITY webDeveloperMenu.accesskey   "W">
@@ -288,8 +318,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY devToolbarCloseButton.tooltiptext "Entwickler-Symbolleiste schließen">
 <!ENTITY devToolbarMenu.label              "Entwickler-Symbolleiste">
 <!ENTITY devToolbarMenu.accesskey          "E">
-<!ENTITY devAppMgrMenu.label               "App-Manager">
-<!ENTITY devAppMgrMenu.accesskey           "A">
 <!ENTITY webide.label                      "WebIDE">
 <!ENTITY webide.accesskey                  "I">
 <!ENTITY webide.keycode                    "VK_F8">
@@ -308,6 +336,16 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY fileMenu.label         "Datei"> 
 <!ENTITY fileMenu.accesskey       "D">
+<!ENTITY newUserContext.label             "Neuer Container-Tab">
+<!ENTITY newUserContext.accesskey         "C">
+<!ENTITY userContextPersonal.label        "Privat">
+<!ENTITY userContextPersonal.accesskey    "P">
+<!ENTITY userContextWork.label            "Arbeit">
+<!ENTITY userContextWork.accesskey        "A">
+<!ENTITY userContextBanking.label         "Banking">
+<!ENTITY userContextBanking.accesskey     "B">
+<!ENTITY userContextShopping.label        "Einkaufen">
+<!ENTITY userContextShopping.accesskey    "E">
 <!ENTITY newNavigatorCmd.label        "&#xad;Neues Fenster">
 <!ENTITY newNavigatorCmd.key        "N">
 <!ENTITY newNavigatorCmd.accesskey      "N">

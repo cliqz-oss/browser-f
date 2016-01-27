@@ -163,7 +163,7 @@ def get_en_US_config(release, branchConfig, branch, index):
             platform=platform,
         ))
         platforms[platform] = {
-            "task_id": task["taskId"]
+            "task_id": task["taskId"],
         }
 
     return {
@@ -220,6 +220,8 @@ def main(options):
     configs_workdir = 'buildbot-configs'
     balrog_username = get_config(config, "balrog", "username", None)
     balrog_password = get_config(config, "balrog", "password", None)
+    beetmover_aws_access_key_id = get_config(config, "beetmover", "aws_access_key_id", None)
+    beetmover_aws_secret_access_key = get_config(config, "beetmover", "aws_secret_access_key", None)
 
     # TODO: replace release sanity with direct checks of en-US and l10n revisions (and other things if needed)
 
@@ -285,11 +287,14 @@ def main(options):
                 "balrog_api_root": branchConfig["balrog_api_root"],
                 "balrog_username": balrog_username,
                 "balrog_password": balrog_password,
+                "beetmover_aws_access_key_id": beetmover_aws_access_key_id,
+                "beetmover_aws_secret_access_key": beetmover_aws_secret_access_key,
                 # TODO: stagin specific, make them configurable
                 "signing_class": "dep-signing",
                 "bouncer_enabled": branchConfig["bouncer_enabled"],
                 "release_channels": branchConfig["release_channels"],
                 "signing_pvt_key": signing_pvt_key,
+                "push_to_candidates_enabled": branchConfig['push_to_candidates_enabled']
             }
 
             validate_graph_kwargs(**kwargs)

@@ -14,7 +14,6 @@
 #include "nsComponentManagerUtils.h"
 #include "nsError.h"
 #include "Decoder.h"
-#include "nsAutoPtr.h"
 #include "prenv.h"
 #include "prsystem.h"
 #include "ImageContainer.h"
@@ -164,7 +163,6 @@ RasterImage::Init(const char* aMimeType,
 }
 
 //******************************************************************************
-// [notxpcom] void requestRefresh ([const] in TimeStamp aTime);
 NS_IMETHODIMP_(void)
 RasterImage::RequestRefresh(const TimeStamp& aTime)
 {
@@ -288,31 +286,22 @@ RasterImage::LookupFrameInternal(uint32_t aFrameNum,
     return mAnim->GetCompositedFrame(aFrameNum);
   }
 
-  Maybe<SurfaceFlags> alternateFlags;
-  if (IsOpaque()) {
-    // If we're opaque, we can always substitute a frame that was decoded with a
-    // different decode flag for premultiplied alpha, because that can only
-    // matter for frames with transparency.
-    alternateFlags.emplace(ToSurfaceFlags(aFlags) ^
-                             SurfaceFlags::NO_PREMULTIPLY_ALPHA);
-  }
+  SurfaceFlags surfaceFlags = ToSurfaceFlags(aFlags);
 
-  // We don't want any substitution for sync decodes (except the premultiplied
-  // alpha optimization above), so we use SurfaceCache::Lookup in this case.
+  // We don't want any substitution for sync decodes, so we use
+  // SurfaceCache::Lookup in this case.
   if (aFlags & FLAG_SYNC_DECODE) {
     return SurfaceCache::Lookup(ImageKey(this),
                                 RasterSurfaceKey(aSize,
-                                                 ToSurfaceFlags(aFlags),
-                                                 aFrameNum),
-                                alternateFlags);
+                                                 surfaceFlags,
+                                                 aFrameNum));
   }
 
   // We'll return the best match we can find to the requested frame.
   return SurfaceCache::LookupBestMatch(ImageKey(this),
                                        RasterSurfaceKey(aSize,
-                                                        ToSurfaceFlags(aFlags),
-                                                        aFrameNum),
-                                       alternateFlags);
+                                                        surfaceFlags,
+                                                        aFrameNum));
 }
 
 DrawableFrameRef
@@ -321,6 +310,12 @@ RasterImage::LookupFrame(uint32_t aFrameNum,
                          uint32_t aFlags)
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  // If we're opaque, we don't need to care about premultiplied alpha, because
+  // that can only matter for frames with transparency.
+  if (IsOpaque()) {
+    aFlags &= ~FLAG_DECODE_NO_PREMULTIPLY_ALPHA;
+  }
 
   IntSize requestedSize = CanDownscaleDuringDecode(aSize, aFlags)
                         ? aSize : mSize;
@@ -547,8 +542,6 @@ RasterImage::CopyFrame(uint32_t aWhichFrame, uint32_t aFlags)
 }
 
 //******************************************************************************
-/* [noscript] SourceSurface getFrame(in uint32_t aWhichFrame,
- *                                   in uint32_t aFlags); */
 NS_IMETHODIMP_(already_AddRefed<SourceSurface>)
 RasterImage::GetFrame(uint32_t aWhichFrame,
                       uint32_t aFlags)
@@ -616,7 +609,7 @@ RasterImage::GetFrameInternal(const IntSize& aSize,
   return MakePair(DrawResult::SUCCESS, Move(frameSurf));
 }
 
-Pair<DrawResult, nsRefPtr<layers::Image>>
+Pair<DrawResult, RefPtr<layers::Image>>
 RasterImage::GetCurrentImage(ImageContainer* aContainer, uint32_t aFlags)
 {
   MOZ_ASSERT(NS_IsMainThread());
@@ -629,7 +622,7 @@ RasterImage::GetCurrentImage(ImageContainer* aContainer, uint32_t aFlags)
   if (!surface) {
     // The OS threw out some or all of our buffer. We'll need to wait for the
     // redecode (which was automatically triggered by GetFrame) to complete.
-    return MakePair(drawResult, nsRefPtr<layers::Image>());
+    return MakePair(drawResult, RefPtr<layers::Image>());
   }
 
   CairoImage::Data cairoData;
@@ -637,7 +630,7 @@ RasterImage::GetCurrentImage(ImageContainer* aContainer, uint32_t aFlags)
   GetHeight(&cairoData.mSize.height);
   cairoData.mSourceSurface = surface;
 
-  nsRefPtr<layers::Image> image =
+  RefPtr<layers::Image> image =
     aContainer->CreateImage(ImageFormat::CAIRO_SURFACE);
   MOZ_ASSERT(image);
 
@@ -681,7 +674,7 @@ RasterImage::GetImageContainer(LayerManager* aManager, uint32_t aFlags)
     mProgressTracker->OnUnlockedDraw();
   }
 
-  nsRefPtr<layers::ImageContainer> container = mImageContainer.get();
+  RefPtr<layers::ImageContainer> container = mImageContainer.get();
 
   bool mustRedecode =
     (aFlags & (FLAG_SYNC_DECODE | FLAG_SYNC_DECODE_IF_FAST)) &&
@@ -696,7 +689,7 @@ RasterImage::GetImageContainer(LayerManager* aManager, uint32_t aFlags)
   container = LayerManager::CreateImageContainer();
 
   DrawResult drawResult;
-  nsRefPtr<layers::Image> image;
+  RefPtr<layers::Image> image;
   Tie(drawResult, image) = GetCurrentImage(container, aFlags);
   if (!image) {
     return nullptr;
@@ -718,13 +711,13 @@ RasterImage::UpdateImageContainer()
 {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsRefPtr<layers::ImageContainer> container = mImageContainer.get();
+  RefPtr<layers::ImageContainer> container = mImageContainer.get();
   if (!container) {
     return;
   }
 
   DrawResult drawResult;
-  nsRefPtr<layers::Image> image;
+  RefPtr<layers::Image> image;
   Tie(drawResult, image) = GetCurrentImage(container, FLAG_NONE);
   if (!image) {
     return;
@@ -772,7 +765,7 @@ public:
   }
 
 private:
-  nsRefPtr<RasterImage> mImage;
+  RefPtr<RasterImage> mImage;
   uint32_t mNewFrameCount;
   IntRect mNewRefreshArea;
 };
@@ -976,7 +969,6 @@ RasterImage::ResetAnimation()
 }
 
 //******************************************************************************
-// [notxpcom] void setAnimationStartTime ([const] in TimeStamp aTime);
 NS_IMETHODIMP_(void)
 RasterImage::SetAnimationStartTime(const TimeStamp& aTime)
 {
@@ -1285,19 +1277,24 @@ RasterImage::Decode(const IntSize& aSize, uint32_t aFlags)
     decoderFlags |= DecoderFlags::IS_REDECODE;
   }
 
+  SurfaceFlags surfaceFlags = ToSurfaceFlags(aFlags);
+  if (IsOpaque()) {
+    // If there's no transparency, it doesn't matter whether we premultiply
+    // alpha or not.
+    surfaceFlags &= ~SurfaceFlags::NO_PREMULTIPLY_ALPHA;
+  }
+
   // Create a decoder.
-  nsRefPtr<Decoder> decoder;
+  RefPtr<Decoder> decoder;
   if (mAnim) {
     decoder = DecoderFactory::CreateAnimationDecoder(mDecoderType, this,
                                                      mSourceBuffer, decoderFlags,
-                                                     ToSurfaceFlags(aFlags),
-                                                     mRequestedResolution);
+                                                     surfaceFlags);
   } else {
     decoder = DecoderFactory::CreateDecoder(mDecoderType, this, mSourceBuffer,
                                             targetSize, decoderFlags,
-                                            ToSurfaceFlags(aFlags),
-                                            mRequestedSampleSize,
-                                            mRequestedResolution);
+                                            surfaceFlags,
+                                            mRequestedSampleSize);
   }
 
   // Make sure DecoderFactory was able to create a decoder successfully.
@@ -1350,10 +1347,9 @@ RasterImage::DecodeMetadata(uint32_t aFlags)
   MOZ_ASSERT(!mHasSize, "Should not do unnecessary metadata decodes");
 
   // Create a decoder.
-  nsRefPtr<Decoder> decoder =
+  RefPtr<Decoder> decoder =
     DecoderFactory::CreateMetadataDecoder(mDecoderType, this, mSourceBuffer,
-                                          mRequestedSampleSize,
-                                          mRequestedResolution);
+                                          mRequestedSampleSize);
 
   // Make sure DecoderFactory was able to create a decoder successfully.
   if (!decoder) {
@@ -1444,7 +1440,7 @@ RasterImage::DrawInternal(DrawableFrameRef&& aFrameRef,
                           gfxContext* aContext,
                           const IntSize& aSize,
                           const ImageRegion& aRegion,
-                          GraphicsFilter aFilter,
+                          Filter aFilter,
                           uint32_t aFlags)
 {
   gfxContextMatrixAutoSaveRestore saveMatrix(aContext);
@@ -1478,21 +1474,12 @@ RasterImage::DrawInternal(DrawableFrameRef&& aFrameRef,
 }
 
 //******************************************************************************
-/* [noscript] void draw(in gfxContext aContext,
- *                      in gfxGraphicsFilter aFilter,
- *                      [const] in gfxMatrix aUserSpaceToImageSpace,
- *                      [const] in gfxRect aFill,
- *                      [const] in IntRect aSubimage,
- *                      [const] in IntSize aViewportSize,
- *                      [const] in SVGImageContext aSVGContext,
- *                      in uint32_t aWhichFrame,
- *                      in uint32_t aFlags); */
 NS_IMETHODIMP_(DrawResult)
 RasterImage::Draw(gfxContext* aContext,
                   const IntSize& aSize,
                   const ImageRegion& aRegion,
                   uint32_t aWhichFrame,
-                  GraphicsFilter aFilter,
+                  Filter aFilter,
                   const Maybe<SVGImageContext>& /*aSVGContext - ignored*/,
                   uint32_t aFlags)
 {
@@ -1519,9 +1506,9 @@ RasterImage::Draw(gfxContext* aContext,
     mProgressTracker->OnUnlockedDraw();
   }
 
-  // If we're not using GraphicsFilter::FILTER_GOOD, we shouldn't high-quality
-  // scale or downscale during decode.
-  uint32_t flags = aFilter == GraphicsFilter::FILTER_GOOD
+  // If we're not using Filter::GOOD, we shouldn't high-quality scale or
+  // downscale during decode.
+  uint32_t flags = aFilter == Filter::GOOD
                  ? aFlags
                  : aFlags & ~FLAG_HIGH_QUALITY_SCALING;
 
@@ -1658,7 +1645,7 @@ RasterImage::DoError()
 /* static */ void
 RasterImage::HandleErrorWorker::DispatchIfNeeded(RasterImage* aImage)
 {
-  nsRefPtr<HandleErrorWorker> worker = new HandleErrorWorker(aImage);
+  RefPtr<HandleErrorWorker> worker = new HandleErrorWorker(aImage);
   NS_DispatchToMainThread(worker);
 }
 
@@ -1704,7 +1691,7 @@ RasterImage::NotifyProgress(Progress aProgress,
   MOZ_ASSERT(NS_IsMainThread());
 
   // Ensure that we stay alive long enough to finish notifying.
-  nsRefPtr<RasterImage> image(this);
+  RefPtr<RasterImage> image(this);
 
   bool wasDefaultFlags = aSurfaceFlags == DefaultSurfaceFlags();
 
@@ -1849,7 +1836,7 @@ RasterImage::PropagateUseCounters(nsIDocument*)
 
 IntSize
 RasterImage::OptimalImageSizeForDest(const gfxSize& aDest, uint32_t aWhichFrame,
-                                     GraphicsFilter aFilter, uint32_t aFlags)
+                                     Filter aFilter, uint32_t aFlags)
 {
   MOZ_ASSERT(aDest.width >= 0 || ceil(aDest.width) <= INT32_MAX ||
              aDest.height >= 0 || ceil(aDest.height) <= INT32_MAX,
@@ -1861,8 +1848,7 @@ RasterImage::OptimalImageSizeForDest(const gfxSize& aDest, uint32_t aWhichFrame,
 
   IntSize destSize(ceil(aDest.width), ceil(aDest.height));
 
-  if (aFilter == GraphicsFilter::FILTER_GOOD &&
-      CanDownscaleDuringDecode(destSize, aFlags)) {
+  if (aFilter == Filter::GOOD && CanDownscaleDuringDecode(destSize, aFlags)) {
     return destSize;
   }
 

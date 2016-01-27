@@ -47,7 +47,6 @@
 
 <!ENTITY  expire.label                  "sie nicht mehr gültig sind">
 <!ENTITY  close.label                   "&brandShortName; geschlossen wird">
-<!ENTITY  askEachTime.label             "jedes Mal nachfragen">
 
 <!ENTITY  cookieExceptions.label        "Ausnahmen…">
 <!ENTITY  cookieExceptions.accesskey    "A">

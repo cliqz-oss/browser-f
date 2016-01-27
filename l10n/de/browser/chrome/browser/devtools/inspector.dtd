@@ -79,6 +79,32 @@
      current node -->
 <!ENTITY inspectorHTMLDelete.label          "Knoten löschen">
 <!ENTITY inspectorHTMLDelete.accesskey      "s">
+<!-- LOCALIZATION NOTE (inspectorAttributeSubmenu.label): This is the label
+     shown in the inspector contextual-menu for the sub-menu of the other
+     attribute items, which allow to:
+     - add new attribute
+     - edit attribute
+     - remove attribute -->
+<!ENTITY inspectorAttributeSubmenu.label      "Attribute">
+<!ENTITY inspectorAttributeSubmenu.accesskey  "A">
+
+<!-- LOCALIZATION NOTE (inspectorAddAttribute.label): This is the label shown in
+     the inspector contextual-menu for the item that lets users add attribute
+     to current node -->
+<!ENTITY inspectorAddAttribute.label        "Attribut hinzufügen">
+<!ENTITY inspectorAddAttribute.accesskey    "h">
+
+<!-- LOCALIZATION NOTE (inspectorEditAttribute.label): This is the label shown in
+     the inspector contextual-menu for the item that lets users edit attribute
+     for current node -->
+<!ENTITY inspectorEditAttribute.label        "Attribut bearbeiten">
+<!ENTITY inspectorEditAttribute.accesskey    "b">
+
+<!-- LOCALIZATION NOTE (inspectorRemoveAttribute.label): This is the label shown in
+     the inspector contextual-menu for the item that lets users delete attribute
+     from current node -->
+<!ENTITY inspectorRemoveAttribute.label        "Attribut entfernen">
+<!ENTITY inspectorRemoveAttribute.accesskey    "e">
 
 <!ENTITY inspector.selectButton.tooltip     "Element mit Maus auswählen">
 
@@ -125,3 +151,8 @@
      shown in the inspector contextual-menu for the item that lets users take
      a screenshot of the currently selected node. -->
 <!ENTITY inspectorScreenshotNode.label       "Bildschirmfoto von Knoten aufnehmen">
+
+<!-- LOCALIZATION NOTE (inspectorDuplicateNode.label): This is the label
+     shown in the inspector contextual-menu for the item that lets users
+     duplicate the currently selected node. -->
+<!ENTITY inspectorDuplicateNode.label       "Knoten klonen">
