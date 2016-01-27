@@ -1,6 +1,8 @@
-#include <windows.h>
+// Copyright (c) 2016 Cliqz GmbH. All rights reserved.
+// Author: Alexander Komarnitskiy <alexander@cliqz.com>
+
 #include <shlobj.h>
-#include <stdio.h>
+#include <windows.h>
 
 #include "installer_tagdata.h"
 #include "helper.h"
@@ -43,21 +45,26 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
   while (name.find('\"') != std::wstring::npos)
     name.erase(name.find('\"'), 1);
   if (InstallerTagData::Init(name)) {
-    TCHAR temp[8192]; // don't forget to change if change this size in createing tag area
+    // don't forget to change buffer size, if change in parameters with
+    // GO script (used when create a tag area in signed file)
+    TCHAR temp[8192];
     popstring(stacktop, temp, 8192);
     std::wstring wparam(temp);
     std::string param(wparam.begin(), wparam.end());
     std::string value = InstallerTagData::ForCurrentProcess()->GetParam(param);
     if (!value.empty()) {
       TCHAR szPath[MAX_PATH];
-      if (SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, NULL, 0, szPath))) {
+      if (SUCCEEDED(SHGetFolderPath(NULL, CSIDL_APPDATA | CSIDL_FLAG_CREATE, 
+                                    NULL, 0, szPath))) {
         wcscat_s(szPath, L"\\CLIQZ");
         SHCreateDirectory(0, szPath);
         wcscat_s(szPath, L"\\distribution");
         DWORD dwAttrib = GetFileAttributes(szPath);
-        BOOL file_exist = (dwAttrib != INVALID_FILE_ATTRIBUTES) && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY);
+        BOOL file_exist = (dwAttrib != INVALID_FILE_ATTRIBUTES) 
+            && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY);
         if (!file_exist) {
-          HANDLE hFile = CreateFile(szPath, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, NULL);
+          HANDLE hFile = CreateFile(szPath, GENERIC_WRITE, 0, NULL, CREATE_NEW,
+                                    FILE_ATTRIBUTE_NORMAL, NULL);
           if (hFile != INVALID_HANDLE_VALUE) {
             std::string data = "{\"ver\": 1, \"brand\": \"";
             data += value;
@@ -71,6 +78,8 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
   }
 }
 
-BOOL APIENTRY DllMain(HMODULE hModule, DWORD ul_reason_for_call, LPVOID lpReserved) {
+BOOL APIENTRY DllMain(HMODULE hModule, 
+                      DWORD ul_reason_for_call, 
+                      LPVOID lpReserved) {
   return TRUE;
 }
