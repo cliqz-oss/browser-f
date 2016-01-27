@@ -1,4 +1,8 @@
+// Copyright (c) 2016 Cliqz GmbH. All rights reserved.
+// Author: Alexander Komarnitskiy <alexander@cliqz.com>
+
 #include "helper.h"
+
 #include <windows.h>
 #include <tlhelp32.h>
 
@@ -11,13 +15,12 @@ typedef DWORD ProcessId;
 typedef HANDLE UserTokenHandle;
 
 struct ProcessEntry : public PROCESSENTRY32 {
-  ProcessId pid() const { return th32ProcessID; }
-  ProcessId parent_pid() const { return th32ParentProcessID; }
-  const wchar_t* exe_file() const { return szExeFile; }
+  ProcessId pid() const {return th32ProcessID;}
+  ProcessId parent_pid() const {return th32ParentProcessID;}
+  const wchar_t* exe_file() const {return szExeFile;}
 };
 
-ProcessId GetParentProcessId(ProcessId procid)
-{
+ProcessId GetParentProcessId(ProcessId procid) {
   ProcessId parent = 0;
   HANDLE hProcessSnap;
   PROCESSENTRY32 pe32;
@@ -52,17 +55,15 @@ typedef NTSTATUS(NTAPI *_NtQueryInformationProcess)(
   PVOID ProcessInformation,
   DWORD ProcessInformationLength,
   PDWORD ReturnLength
-  );
+);
 
-typedef struct _UNICODE_STRING
-{
+typedef struct _UNICODE_STRING {
   USHORT Length;
   USHORT MaximumLength;
   PWSTR Buffer;
 } UNICODE_STRING, *PUNICODE_STRING;
 
-typedef struct _PROCESS_BASIC_INFORMATION
-{
+typedef struct _PROCESS_BASIC_INFORMATION {
   LONG ExitStatus;
   PVOID PebBaseAddress;
   ULONG_PTR AffinityMask;
@@ -71,10 +72,15 @@ typedef struct _PROCESS_BASIC_INFORMATION
   ULONG_PTR ParentProcessId;
 } PROCESS_BASIC_INFORMATION, *PPROCESS_BASIC_INFORMATION;
 
-std::wstring GetParentCommandString()
-{
+std::wstring GetParentCommandString() {
   std::wstring cmd;
-  ProcessId parent_pid = GetParentProcessId(GetParentProcessId(::GetCurrentProcessId()));
+  // When installer works, the processes tree looks like:
+  // CLIQZ-43.0.4.en-US.win32.installer.exe
+  // \_setup.exe
+  //   \_setup.exe
+  // So we need to go two level upper to find original installer file
+  ProcessId parent_pid = GetParentProcessId(
+      GetParentProcessId(::GetCurrentProcessId()));
 
   if (parent_pid != 0) {
     HANDLE processHandle = 0;
@@ -82,24 +88,29 @@ std::wstring GetParentCommandString()
     UNICODE_STRING commandLine;
     wchar_t* commandLineContents = 0;
     if ((processHandle = OpenProcess(
-      PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-      FALSE,
-      parent_pid)) != 0) {
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+        FALSE,
+        parent_pid)) != 0) {
       _NtQueryInformationProcess NtQueryInformationProcess = 0;
       NtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(
-        GetModuleHandleA("ntdll.dll"),
-        "NtQueryInformationProcess"
-        );
+          GetModuleHandleA("ntdll.dll"),
+          "NtQueryInformationProcess");
       if (NtQueryInformationProcess) {
         PROCESS_BASIC_INFORMATION pbi;
         NtQueryInformationProcess(processHandle, 0, &pbi, sizeof(pbi), NULL);
         // get the address of ProcessParameters
         if (pbi.PebBaseAddress &&
-          ReadProcessMemory(processHandle, (PCHAR)pbi.PebBaseAddress + 0x10,
-          &rtlUserProcParamsAddress, sizeof(PVOID), NULL)) {
+            ReadProcessMemory(processHandle, 
+                (PCHAR)pbi.PebBaseAddress + 0x10,
+                &rtlUserProcParamsAddress, 
+                sizeof(PVOID), 
+                NULL)) {
           // read the CommandLine UNICODE_STRING structure
-          if (ReadProcessMemory(processHandle, (PCHAR)rtlUserProcParamsAddress + 0x40,
-            &commandLine, sizeof(commandLine), NULL)) {
+          if (ReadProcessMemory(processHandle, 
+              (PCHAR)rtlUserProcParamsAddress + 0x40,
+              &commandLine, 
+              sizeof(commandLine), 
+              NULL)) {
             // allocate memory to hold the command line
             commandLineContents = new wchar_t[commandLine.Length / 2 + 1];
             // read the command line
