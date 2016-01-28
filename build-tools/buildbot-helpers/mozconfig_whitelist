@@ -148,6 +148,10 @@ for branch in ('mozilla-release', 'comm-esr38'):
             'ac_add_options --enable-update-channel=release',
             'ac_add_options --enable-official-branding',
             'mk_add_options MOZ_MAKE_FLAGS="-j4"',
+            'if [ -n "$ENABLE_RELEASE_PROMOTION" ]; then',
+            'MOZ_AUTOMATION_UPLOAD_SYMBOLS=1',
+            'MOZ_AUTOMATION_UPDATE_PACKAGING=1',
+            'fi',
             'export BUILDING_RELEASE=1',
         ]
     for platform in all_desktop_platforms:

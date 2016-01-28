@@ -35,7 +35,12 @@
 <!ENTITY performanceUI.bufferStatusFull "Der Puffer ist voll. Alte Einträge werden nun überschrieben.">
 
 <!-- LOCALIZATION NOTE (performanceUI.loadingNotice): This is the label shown
-  -  in the call list view while loading a profile. -->
+  -  in the details view while the profiler is unavailable, for example, while
+  -  in Private Browsing mode. -->
+<!ENTITY performanceUI.unavailableNoticePB "Aufnahme eines Profils derzeit nicht möglich. Bitte schließen Sie alle privaten Fenster und versuchen Sie es erneut.">
+
+<!-- LOCALIZATION NOTE (performanceUI.loadingNotice): This is the label shown
+  -  in the details view while loading a profile. -->
 <!ENTITY performanceUI.loadingNotice "Wird geladen…">
 
 <!-- LOCALIZATION NOTE (performanceUI.recordButton): This string is displayed

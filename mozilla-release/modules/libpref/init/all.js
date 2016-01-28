@@ -146,16 +146,22 @@ pref("dom.workers.enabled", true);
 // The number of workers per domain allowed to run concurrently.
 pref("dom.workers.maxPerDomain", 20);
 
-// Whether or not Shared Web Workers are enabled.
-pref("dom.workers.sharedWorkers.enabled", true);
-
 pref("dom.serviceWorkers.enabled", false);
 
 // Allow service workers to intercept network requests using the fetch event
 pref("dom.serviceWorkers.interception.enabled", false);
 
 // Allow service workers to intercept opaque (cross origin) responses
-pref("dom.serviceWorkers.interception.opaque.enabled", false);
+pref("dom.serviceWorkers.interception.opaque.enabled", true);
+
+// The amount of time (milliseconds) service workers keep running after each event.
+pref("dom.serviceWorkers.idle_timeout", 30000);
+
+// The amount of time (milliseconds) service workers can be kept running using waitUntil promises.
+pref("dom.serviceWorkers.idle_extended_timeout", 300000);
+
+// Enable test for 24 hours update, service workers will always treat last update check time is over 24 hours
+pref("dom.serviceWorkers.testUpdateOverOneDay", false);
 
 // Whether nonzero values can be returned from performance.timing.*
 pref("dom.enable_performance", true);
@@ -307,22 +313,27 @@ pref("media.hardware-video-decoding.enabled", true);
 pref("media.decoder.heuristic.dormant.enabled", true);
 pref("media.decoder.heuristic.dormant.timeout", 60000);
 
-#ifdef MOZ_WMF
-pref("media.wmf.decoder.thread-count", -1);
-pref("media.wmf.low-latency.enabled", false);
-#endif
 #ifdef MOZ_DIRECTSHOW
 pref("media.directshow.enabled", true);
 #endif
 #ifdef MOZ_FMP4
-pref("media.fragmented-mp4.enabled", true);
-pref("media.fragmented-mp4.ffmpeg.enabled", true);
-pref("media.fragmented-mp4.gmp.enabled", false);
-// Specifies whether the fragmented MP4 parser uses a test decoder that
+pref("media.mp4.enabled", true);
+// Specifies whether the PDMFactory can create a test decoder that
+#endif
 // just outputs blank frames/audio instead of actually decoding. The blank
 // decoder works on all platforms.
-pref("media.fragmented-mp4.use-blank-decoder", false);
+pref("media.use-blank-decoder", false);
+#ifdef MOZ_WMF
+pref("media.wmf.enabled", true);
+pref("media.wmf.decoder.thread-count", -1);
+pref("media.wmf.low-latency.enabled", false);
 #endif
+#if defined(MOZ_FFMPEG)
+pref("media.ffmpeg.enabled", true);
+#endif
+pref("media.gmp.decoder.enabled", false);
+pref("media.gmp.decoder.aac", 0);
+pref("media.gmp.decoder.h264", 0);
 #ifdef MOZ_RAW
 pref("media.raw.enabled", true);
 #endif
@@ -342,6 +353,9 @@ pref("media.gstreamer.enabled", true);
 pref("media.gstreamer.enable-blacklist", true);
 #endif
 #ifdef MOZ_APPLEMEDIA
+#ifdef MOZ_WIDGET_UIKIT
+pref("media.mp3.enabled", true);
+#endif
 pref("media.apple.mp3.enabled", true);
 pref("media.apple.mp4.enabled", true);
 #endif
@@ -363,8 +377,8 @@ pref("media.webrtc.debug.log_file", "");
 pref("media.webrtc.debug.aec_dump_max_size", 4194304); // 4MB
 
 #ifdef MOZ_WIDGET_GONK
-pref("media.navigator.video.default_width",320);
-pref("media.navigator.video.default_height",240);
+pref("media.navigator.video.default_width", 320);
+pref("media.navigator.video.default_height", 240);
 pref("media.peerconnection.enabled", true);
 pref("media.peerconnection.video.enabled", true);
 pref("media.navigator.video.max_fs", 1200); // 640x480 == 1200mb
@@ -398,6 +412,7 @@ pref("media.peerconnection.video.min_bitrate", 200);
 pref("media.peerconnection.video.start_bitrate", 300);
 pref("media.peerconnection.video.max_bitrate", 2000);
 #endif
+pref("media.navigator.audio.fake_frequency", 1000);
 pref("media.navigator.permission.disabled", false);
 pref("media.peerconnection.default_iceservers", "[]");
 pref("media.peerconnection.ice.loopback", false); // Set only for testing in offline environments.
@@ -483,6 +498,7 @@ pref("media.mediasource.webm.enabled", false);
 #else
 pref("media.mediasource.webm.enabled", true);
 #endif
+pref("media.mediasource.webm.audio.enabled", true);
 
 // Enable new MediaFormatReader architecture for plain webm.
 pref("media.format-reader.webm", true);
@@ -512,6 +528,9 @@ pref("media.video-queue.send-to-compositor-size", 9999);
 // Whether to disable the video stats to prevent fingerprinting
 pref("media.video_stats.enabled", true);
 
+// Weather we allow AMD switchable graphics
+pref("layers.amd-switchable-gfx.enabled", true);
+
 // Whether to use async panning and zooming
 pref("layers.async-pan-zoom.enabled", false);
 
@@ -536,6 +555,7 @@ pref("apz.axis_lock.breakout_angle", "0.3926991");    // PI / 8 (22.5 degrees)
 pref("apz.axis_lock.direct_pan_angle", "1.047197");   // PI / 3 (60 degrees)
 pref("apz.content_response_timeout", 300);
 pref("apz.cross_slide.enabled", false);
+pref("apz.drag.enabled", false);
 pref("apz.danger_zone_x", 50);
 pref("apz.danger_zone_y", 100);
 pref("apz.enlarge_displayport_when_clipped", false);
@@ -548,6 +568,7 @@ pref("apz.fling_curve_function_x2", "1.0");
 pref("apz.fling_curve_function_y2", "1.0");
 pref("apz.fling_curve_threshold_inches_per_ms", "-1.0");
 pref("apz.fling_friction", "0.002");
+pref("apz.fling_snap_friction", "0.015");
 pref("apz.fling_stop_on_tap_threshold", "0.05");
 pref("apz.fling_stopped_threshold", "0.01");
 pref("apz.highlight_checkerboarded_areas", false);
@@ -665,6 +686,7 @@ pref("gfx.font_rendering.wordcache.maxentries", 10000);
 pref("gfx.font_rendering.graphite.enabled", true);
 
 #ifdef XP_WIN
+pref("gfx.font_rendering.directwrite.force-enabled", false);
 pref("gfx.font_rendering.directwrite.use_gdi_table_loading", true);
 #endif
 
@@ -680,7 +702,7 @@ pref("gfx.content.azure.backends", "direct2d1.1,direct2d,cairo");
 pref("gfx.content.azure.backends", "cg");
 pref("gfx.canvas.azure.backends", "skia");
 // Accelerated cg canvas where available (10.7+)
-pref("gfx.canvas.azure.accelerated", false);
+pref("gfx.canvas.azure.accelerated", true);
 #else
 pref("gfx.canvas.azure.backends", "cairo");
 pref("gfx.content.azure.backends", "cairo");
@@ -848,7 +870,7 @@ pref("devtools.debugger.forbid-certified-apps", true);
 pref("devtools.apps.forbidden-permissions", "embed-apps,engineering-mode,embed-widgets");
 
 // DevTools default color unit
-pref("devtools.defaultColorUnit", "hex");
+pref("devtools.defaultColorUnit", "authored");
 
 // Used for devtools debugging
 pref("devtools.dump.emit", false);
@@ -889,6 +911,10 @@ pref("devtools.commands.dir", "");
 // Allows setting the performance marks for which telemetry metrics will be recorded.
 pref("devtools.telemetry.supported_performance_marks", "contentInteractive,navigationInteractive,navigationLoaded,visuallyLoaded,fullyLoaded,mediaEnumerated,scanEnd");
 
+// Deprecation warnings after DevTools file migration.  Bug 1204127 tracks
+// enabling this.
+pref("devtools.migration.warnings", false);
+
 // view source
 pref("view_source.syntax_highlight", true);
 pref("view_source.wrap_long_lines", false);
@@ -919,10 +945,6 @@ pref("nglayout.debug.invalidation", false);
 // Whether image visibility is enabled globally (ie we will try to unlock images
 // that are not visible).
 pref("layout.imagevisibility.enabled", true);
-// Whether image visibility is enabled in documents that are within a browser
-// element as defined by nsDocShell::FrameType and GetInheritedFrameType. This
-// pref only has an effect if layout.imagevisibility.enabled is false.
-pref("layout.imagevisibility.enabled_for_browser_elements_only", false);
 pref("layout.imagevisibility.numscrollportwidths", 0);
 pref("layout.imagevisibility.numscrollportheights", 1);
 
@@ -1011,7 +1033,6 @@ pref("editor.positioning.offset",            0);
 
 // Scripts & Windows prefs
 pref("dom.disable_beforeunload",            false);
-pref("dom.disable_image_src_set",           false);
 pref("dom.disable_window_flip",             false);
 pref("dom.disable_window_move_resize",      false);
 pref("dom.disable_window_status_change",    false);
@@ -1028,6 +1049,8 @@ pref("dom.disable_window_open_feature.minimizable", false);
 pref("dom.disable_window_open_feature.status",      true);
 
 pref("dom.allow_scripts_to_close_windows",          false);
+
+pref("dom.require_user_interaction_for_beforeunload", true);
 
 pref("dom.disable_open_during_load",                false);
 pref("dom.popup_maximum",                           20);
@@ -1115,6 +1138,7 @@ pref("javascript.options.asyncstack",       true);
 #else
 pref("javascript.options.asyncstack",       false);
 #endif
+pref("javascript.options.throw_on_asmjs_validation_failure", false);
 pref("javascript.options.ion.offthread_compilation", true);
 // This preference instructs the JS engine to discard the
 // source of any privileged JS after compilation. This saves
@@ -1178,7 +1202,11 @@ pref("network.allow-experiments", true);
 
 // Allow the network changed event to get sent when a network topology or
 // setup change is noticed while running.
+#if defined(XP_UNIX)
+pref("network.notify.changed", false);
+#else
 pref("network.notify.changed", true);
+#endif
 
 // Transmit UDP busy-work to the LAN when anticipating low latency
 // network reads and on wifi to mitigate 802.11 Power Save Polling delays
@@ -1313,6 +1341,7 @@ pref("network.http.redirection-limit", 20);
 // NOTE: support for "compress" has been disabled per bug 196406.
 // NOTE: separate values with comma+space (", "): see bug 576033
 pref("network.http.accept-encoding", "gzip, deflate");
+pref("network.http.accept-encoding.secure", "gzip, deflate, br");
 
 pref("network.http.pipelining"      , false);
 pref("network.http.pipelining.ssl"  , false); // disable pipelining over SSL
@@ -1400,7 +1429,8 @@ pref("network.http.spdy.ping-threshold", 58);
 pref("network.http.spdy.ping-timeout", 8);
 pref("network.http.spdy.send-buffer-size", 131072);
 pref("network.http.spdy.allow-push", true);
-pref("network.http.spdy.push-allowance", 131072);
+pref("network.http.spdy.push-allowance", 131072);   // 128KB
+pref("network.http.spdy.pull-allowance", 12582912); // 12MB
 pref("network.http.spdy.default-concurrent", 100);
 
 // alt-svc allows separation of transport routing from
@@ -1412,8 +1442,8 @@ pref("network.http.diagnostics", false);
 
 pref("network.http.pacing.requests.enabled", true);
 pref("network.http.pacing.requests.min-parallelism", 6);
-pref("network.http.pacing.requests.hz", 100);
-pref("network.http.pacing.requests.burst", 32);
+pref("network.http.pacing.requests.hz", 80);
+pref("network.http.pacing.requests.burst", 10);
 
 // TCP Keepalive config for HTTP connections.
 pref("network.http.tcp_keepalive.short_lived_connections", true);
@@ -1434,10 +1464,9 @@ pref("network.http.enforce-framing.soft", true);
 // See http://www.w3.org/TR/web-packaging/#streamable-package-format
 pref("network.http.enable-packaged-apps", false);
 
-// Enable this pref to skip verification process. The packaged app
-// will be considered signed no matter the package has a valid/invalid
-// signature or no signature.
-pref("network.http.packaged-apps-developer-mode", false);
+// Enable this to bring in the signature verification if the signature exists.
+// Set to false if you don't need the signed packaged web app support (i.e. NSec).
+pref("network.http.signed-packages.enabled", false);
 
 // default values for FTP
 // in a DSCP environment this should be 40 (0x28, or AF11), per RFC-4594,
@@ -1805,7 +1834,7 @@ pref("network.cookie.cookieBehavior",       0); // 0-Accept, 1-dontAcceptForeign
 pref("network.cookie.cookieBehavior",       0); // Keep the old default of accepting all cookies
 #endif
 pref("network.cookie.thirdparty.sessionOnly", false);
-pref("network.cookie.lifetimePolicy",       0); // accept normally, 1-askBeforeAccepting, 2-acceptForSession,3-acceptForNDays
+pref("network.cookie.lifetimePolicy",       0); // 0-accept, 2-acceptForSession, 3-acceptForNDays
 pref("network.cookie.alwaysAcceptSessionCookies", false);
 pref("network.cookie.prefsMigrated",        false);
 pref("network.cookie.lifetime.days",        90);
@@ -1991,6 +2020,9 @@ pref("middlemouse.scrollbarPosition", false);
 
 // Clipboard behavior
 pref("clipboard.autocopy", false);
+
+// Clipboard only supports text/plain
+pref("clipboard.plainTextOnly", false);
 
 // mouse wheel scroll transaction period of time (in milliseconds)
 pref("mousewheel.transaction.timeout", 1500);
@@ -2251,18 +2283,11 @@ pref("layout.css.getBoxQuads.enabled", false);
 pref("layout.css.getBoxQuads.enabled", true);
 #endif
 
-// Is support for GeometryUtils.getBoxQuads enabled?
+// Is support for GeometryUtils.convert*FromNode enabled?
 #ifdef RELEASE_BUILD
 pref("layout.css.convertFromNode.enabled", false);
 #else
 pref("layout.css.convertFromNode.enabled", true);
-#endif
-
-// Is support for unicode-range enabled?
-#ifdef RELEASE_BUILD
-pref("layout.css.unicode-range.enabled", false);
-#else
-pref("layout.css.unicode-range.enabled", true);
 #endif
 
 // Is support for CSS "text-align: true X" enabled?
@@ -2279,6 +2304,9 @@ pref("layout.css.prefixes.animations", true);
 pref("layout.css.prefixes.box-sizing", true);
 pref("layout.css.prefixes.font-features", true);
 pref("layout.css.prefixes.gradients", true);
+
+// Are webkit-prefixed properties & property-values supported?
+pref("layout.css.prefixes.webkit", false);
 
 // Is the CSS Unprefixing Service enabled? (This service emulates support
 // for certain vendor-prefixed properties & values, for sites on a "fixlist".)
@@ -2375,9 +2403,6 @@ pref("layout.css.scroll-snap.enabled", true);
 
 // Is support for document.fonts enabled?
 pref("layout.css.font-loading-api.enabled", true);
-
-// Are the MouseEvent.offsetX/Y properties enabled?
-pref("dom.mouseEvent.offsetXY.enabled", true);
 
 // Should stray control characters be rendered visibly?
 #ifdef RELEASE_BUILD
@@ -3238,7 +3263,7 @@ pref("ui.osk.detect_physical_keyboard", true);
 pref("ui.osk.on_screen_keyboard_path", "");
 // Only try to show the on-screen keyboard on Windows 10 and later. Setting
 // this pref to false will allow the OSK to show on Windows 8 and 8.1.
-pref("ui.osk.require_win10", false);
+pref("ui.osk.require_win10", true);
 // This pref stores the "reason" that the on-screen keyboard was either
 // shown or not shown when focus is moved to an editable text field. It is
 // used to help debug why the keyboard is either not appearing when expected
@@ -3821,11 +3846,10 @@ pref("intl.ime.use_simple_context_on_password_field", false);
 # gfxPangoFontGroup/gfxFontconfigUtils code for handling system fonts
 
 #ifdef MOZ_WIDGET_GTK
-#ifdef RELEASE_BUILD
-pref("gfx.font_rendering.fontconfig.fontlist.enabled", false);
-#else
 pref("gfx.font_rendering.fontconfig.fontlist.enabled", true);
-#endif
+
+// maximum number of fonts to substitute for a generic
+pref("gfx.font_rendering.fontconfig.max_generic_substitutions", 3);
 #endif
 
 # XP_UNIX
@@ -4169,6 +4193,8 @@ pref("webgl.angle.force-d3d11", false);
 pref("webgl.angle.force-warp", false);
 #endif
 
+pref("gfx.offscreencanvas.enabled", false);
+
 #ifdef MOZ_WIDGET_GONK
 pref("gfx.gralloc.fence-with-readpixels", false);
 #endif
@@ -4276,6 +4302,11 @@ pref("layers.tiles.edge-padding", false);
 
 #ifdef MOZ_WIDGET_GONK
 pref("layers.tiled-drawtarget.enabled", true);
+#endif
+
+#ifdef MOZ_WIDGET_ANDROID
+pref("layers.tiled-drawtarget.enabled", true);
+pref("layers.tiles.edge-padding", true);
 #endif
 
 // same effect as layers.offmainthreadcomposition.enabled, but specifically for
@@ -4446,9 +4477,13 @@ pref("dom.push.debug", false);
 pref("dom.push.serverURL", "wss://push.services.mozilla.com/");
 pref("dom.push.userAgentID", "");
 
-// The maximum number of notifications that a service worker can receive
+// The maximum number of push messages that a service worker can receive
 // without user interaction.
 pref("dom.push.maxQuotaPerSubscription", 16);
+
+// The delay between receiving a push message and updating the quota for a
+// subscription.
+pref("dom.push.quotaUpdateDelay", 3000); // 3 seconds
 
 // Is the network connection allowed to be up?
 // This preference should be used in UX to enable/disable push.
@@ -4495,8 +4530,12 @@ pref("dom.mozSettings.enabled", false);
 pref("dom.mozPermissionSettings.enabled", false);
 
 // W3C touch events
-// 0 - disabled, 1 - enabled, 2 - autodetect (win)
+// 0 - disabled, 1 - enabled, 2 - autodetect (win/gtk3)
 #ifdef XP_WIN
+pref("dom.w3c_touch_events.enabled", 2);
+#endif
+
+#if MOZ_WIDGET_GTK == 3
 pref("dom.w3c_touch_events.enabled", 2);
 #endif
 
@@ -4773,6 +4812,8 @@ pref("urlclassifier.trackingWhitelistTable", "test-trackwhite-simple,mozstd-trac
 pref("browser.safebrowsing.provider.mozilla.lists", "mozstd-track-digest256,mozstd-trackwhite-digest256,mozfull-track-digest256");
 pref("browser.safebrowsing.provider.mozilla.updateURL", "https://shavar.services.mozilla.com/downloads?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
 pref("browser.safebrowsing.provider.mozilla.gethashURL", "https://shavar.services.mozilla.com/gethash?client=SAFEBROWSING_ID&appver=%VERSION%&pver=2.2");
+// Set to a date in the past to force immediate download in new profiles.
+pref("browser.safebrowsing.provider.mozilla.nextupdatetime", "1");
 // Block lists for tracking protection. The name values will be used as the keys
 // to lookup the localized name in preferences.properties.
 pref("browser.safebrowsing.provider.mozilla.lists.mozstd.name", "mozstdName");
@@ -4825,14 +4866,18 @@ pref("caret.manages-android-actionbar", false);
 pref("layout.accessiblecaret.enabled", false);
 
 // CSS attributes of the AccessibleCaret in CSS pixels.
-pref("layout.accessiblecaret.width", "44.0");
-pref("layout.accessiblecaret.height", "47.0");
-pref("layout.accessiblecaret.margin-left", "-23.5");
+pref("layout.accessiblecaret.width", "34.0");
+pref("layout.accessiblecaret.height", "36.0");
+pref("layout.accessiblecaret.margin-left", "-18.5");
 pref("layout.accessiblecaret.bar.width", "2.0");
 
 // Timeout in milliseconds to hide the accessiblecaret under cursor mode while
 // no one touches it. Set the value to 0 to disable this feature.
 pref("layout.accessiblecaret.timeout_ms", 3000);
+
+// Simulate long tap to select words on the platforms where APZ is not enabled
+// or long tap events does not fired by APZ.
+pref("layout.accessiblecaret.use_long_tap_injector", true);
 
 // Wakelock is disabled by default.
 pref("dom.wakelock.enabled", false);
@@ -4878,7 +4923,7 @@ pref("dom.beforeAfterKeyboardEvent.enabled", false);
 // Presentation API
 pref("dom.presentation.enabled", false);
 pref("dom.presentation.tcp_server.debug", false);
-pref("dom.presentation.discovery.enabled", true);
+pref("dom.presentation.discovery.enabled", false);
 pref("dom.presentation.discovery.timeout_ms", 10000);
 pref("dom.presentation.discoverable", false);
 
@@ -5064,3 +5109,7 @@ pref("dom.requestcache.enabled", false);
 pref("dom.requestcontext.enabled", false);
 
 pref("dom.mozKillSwitch.enabled", false);
+
+pref("toolkit.pageThumbs.screenSizeDivisor", 7);
+pref("toolkit.pageThumbs.minWidth", 0);
+pref("toolkit.pageThumbs.minHeight", 0);

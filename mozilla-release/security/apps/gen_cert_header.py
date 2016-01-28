@@ -37,6 +37,7 @@ array_names = [
   'xpcshellRoot',
   'addonsPublicRoot',
   'addonsStageRoot',
+  'privilegedPackageRoot',
   'cliqzAddonsRoot',
 ]
 

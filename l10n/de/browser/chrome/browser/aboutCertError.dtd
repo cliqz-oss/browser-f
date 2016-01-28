@@ -13,11 +13,24 @@ by NSS/PSM via netError.xhtml. -->
 <!ENTITY certerror.pagetitle  "Keine vertrauenswürdige Verbindung">
 <!ENTITY certerror.longpagetitle "Dieser Verbindung wird nicht vertraut">
 
+<!-- These are going to be used for the updated design in Bug 1207107 -->
+<!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
+<!ENTITY certerror.longpagetitle1 "Diese Verbindung ist nicht sicher">
+
 <!-- Localization note (certerror.introPara1) - The string "#1" will
 be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
 <!ENTITY certerror.introPara1 "Sie haben &brandShortName; angewiesen, eine gesicherte Verbindung zu <b>#1</b> aufzubauen, es kann aber nicht überprüft werden, ob die Verbindung sicher ist.">
 <!ENTITY certerror.introPara2 "Wenn Sie normalerweise eine gesicherte Verbindung aufbauen, weist sich die Website mit einer vertrauenswürdigen Identifikation aus, um zu garantieren, dass Sie die richtige Website besuchen. Die Identifikation dieser Website dagegen kann nicht bestätigt werden.">
+
+<!-- These are going to be used for the udpated design in Bug 1207107 -->
+<!-- Localization note (certerror.introPara) - The text content of the span tag
+will be replaced at runtime with the name of the server to which the user
+was trying to connect. -->
+<!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
+<!ENTITY certerror.returnToPreviousPage.label "Zurück">
+<!ENTITY certerror.learnMore "Weitere Informationen…">
+<!ENTITY certerror.advanced.label "Erweitert">
 
 <!ENTITY certerror.whatShouldIDo.heading "Was sollte ich tun?">
 <!ENTITY certerror.whatShouldIDo.content "Falls Sie für gewöhnlich keine Probleme mit dieser Website haben, könnte dieser Fehler bedeuten, dass jemand die Website fälscht. Sie sollten in dem Fall nicht fortfahren.">
@@ -28,6 +41,6 @@ was trying to connect. -->
 <!ENTITY certerror.expert.content "Wenn Sie wissen, warum dieses Problem auftritt, können Sie &brandShortName; anweisen, der Identifikation dieser Website zu vertrauen.
 <b>Selbst wenn Sie der Website vertrauen, kann dieser Fehler bedeuten, dass jemand Ihre Verbindung manipuliert.</b>">
 <!ENTITY certerror.expert.contentPara2 "Fügen Sie keine Ausnahme hinzu, außer Sie wissen, dass es einen guten Grund dafür gibt, warum diese Website keine vertrauenswürdige Identifikation verwendet.">
-<!ENTITY certerror.addException.label "Ausnahmen hinzufügen…">
+<!ENTITY certerror.addException.label "Ausnahme hinzufügen…">
 
 <!ENTITY certerror.technical.heading "Technische Details">
