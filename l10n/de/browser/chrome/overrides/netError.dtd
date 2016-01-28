@@ -215,3 +215,12 @@ functionality specific to firefox. -->
      "ssl_error_unsupported_version". -->
 <!ENTITY sslv3Used.longDesc "Weitere Informationen: ssl_error_unsupported_version">
 <!ENTITY sslv3Used.learnMore "Mehr erfahren…">
+
+<!ENTITY weakCryptoUsed.title "Ihre Verbindung ist nicht gesichert">
+<!-- LOCALIZATION NOTE (weakCryptoUsed.longDesc) - Do not translate
+     "ssl_error_no_cypher_overlap". -->
+<!ENTITY weakCryptoUsed.longDesc "Details: ssl_error_no_cypher_overlap">
+<!ENTITY weakCryptoUsed.learnMore "Weitere Informationen…">
+<!ENTITY weakCryptoAdvanced.title "Erweitert">
+<!ENTITY weakCryptoAdvanced.longDesc "<span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten.">
+<!ENTITY weakCryptoAdvanced.override "(Nicht sicher) <span class='hostname'></span> mit veralteter Sicherheitstechnologie laden">

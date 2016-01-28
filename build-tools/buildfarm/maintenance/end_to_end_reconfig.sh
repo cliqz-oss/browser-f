@@ -34,7 +34,7 @@ export PYTHONUNBUFFERED=1
 function usage {
     echo
     echo "This script can be used to reconfig interactively, or non-interactively. It will merge"
-    echo "buildbotcustom, buildbot-configs, mozharness from default to production(-0.8)."
+    echo "buildbotcustom, buildbot-configs from default to production(-0.8)."
     echo "It will then reconfig the buildbot masters, update the foopies with the latest tools"
     echo "changes, and afterwards if all was successful, it will also update the wiki page"
     echo "https://wiki.mozilla.org/ReleaseEngineering/Maintenance and additionally post comments"
@@ -366,7 +366,7 @@ if [ -f "${RECONFIG_DIR}/pending_changes" ]; then
             1) echo "  * Continuing with stalled reconfig..."
                ;;
             2) echo "  * Cleaning out previous reconfig from '${RECONFIG_DIR}'..."
-               rm -rf "${RECONFIG_DIR}"/{buildbot-configs,buildbotcustom,mozharness,pending_changes,${RECONFIG_UPDATE_FILE}}
+               rm -rf "${RECONFIG_DIR}"/{buildbot-configs,buildbotcustom,pending_changes,${RECONFIG_UPDATE_FILE}}
                ;;
             3) echo "  * Aborting reconfig..."
                exit 67
@@ -391,7 +391,7 @@ if [ "${PREPARE_ONLY}" == '0' ]; then
     ./update_irc.sh "${IRC_MSG}" || true
 fi
 
-# Merges mozharness, buildbot-configs from default -> production.
+# Merges buildbot-configs from default -> production.
 # Merges buildbostcustom from default -> production-0.8.
 # Returns 0 if something got merged, otherwise returns 1.
 function merge_to_production {
@@ -402,7 +402,7 @@ function merge_to_production {
         echo "Merging from default"
         echo
     } > "${RECONFIG_DIR}/empty_merge"
-    for repo in mozharness buildbot-configs buildbotcustom; do
+    for repo in buildbot-configs buildbotcustom; do
         if [ -d "${RECONFIG_DIR}/${repo}" ]; then
             echo "  * Existing hg clone of ${repo} found: '${RECONFIG_DIR}/${repo}' - pulling for updates..."
             hg_wrapper pull
@@ -482,6 +482,7 @@ if [ "${FORCE_RECONFIG}" == '1' ]; then
     production_masters_url='http://hg.mozilla.org/build/tools/raw-file/tip/buildfarm/maintenance/production-masters.json'
     if [ "${PREPARE_ONLY}" != '0' ]; then
         echo "  * Preparing reconfig only; not running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests show_revisions update"
+        echo "  * Preparing reconfig only; not running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests update_master_config"
         echo "  * Preparing reconfig only; not running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j32 -R scheduler -R build -R try -R tests checkconfig reconfig"
         echo "  * Preparing reconfig only; not running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests show_revisions"
     else
@@ -489,6 +490,8 @@ if [ "${FORCE_RECONFIG}" == '1' ]; then
         # Split into two steps so -j option can be varied between them
         echo "  * Running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests show_revisions update"
         ./manage_masters.py -f "${production_masters_url}" -j16 -R scheduler -R build -R try -R tests show_revisions update >>"${RECONFIG_DIR}/manage_masters-${START_TIME}.log" 2>&1
+        echo "  * Running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j16 -R scheduler -R build -R try -R tests update_master_config"
+        ./manage_masters.py -f "${production_masters_url}" -j16 -R scheduler -R build -R try -R tests update_master_config >>"${RECONFIG_DIR}/manage_masters-${START_TIME}.log" 2>&1
         echo "  * Running: '$(pwd)/manage_masters.py' -f '${production_masters_url}' -j32 -R scheduler -R build -R try -R tests checkconfig reconfig"
         ./manage_masters.py -f "${production_masters_url}" -j32 -R scheduler -R build -R try -R tests checkconfig reconfig >>"${RECONFIG_DIR}/manage_masters-${START_TIME}.log" 2>&1
         # delete this now, since changes have been deployed

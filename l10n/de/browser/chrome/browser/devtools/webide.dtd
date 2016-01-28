@@ -137,6 +137,8 @@
 <!ENTITY prefs_options_autoclosebrackets_tooltip "Automatisch schließende Klammern einfügen">
 <!ENTITY prefs_options_keybindings "Tastaturkürzel">
 <!ENTITY prefs_options_keybindings_default "Standard">
+<!ENTITY prefs_options_autosavefiles "Dateien automatisch speichern">
+<!ENTITY prefs_options_autosavefiles_tooltip "Veränderte Dateien vor dem Ausführen des Projekts automatisch speichern">
 
 <!-- Permissions Table -->
 <!ENTITY permissionstable_title "Berechtigungstabelle">

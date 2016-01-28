@@ -234,7 +234,7 @@ def repackLocale(locale, l10nRepoDir, l10nBaseRepo, revision, localeSrcDir,
         os.chdir(localeSrcDir)
         relative_checksums = get_output(make +
                                         ["--no-print-directory", "echo-variable-CHECKSUM_FILE", "AB_CD=%s" % locale],
-                                        env=env).strip("\"'\n")
+                                        env=env).strip("\"'\n\r")
         return path.normpath(path.join(localeSrcDir, relative_checksums))
     finally:
         os.chdir(curdir)

@@ -102,3 +102,5 @@
 <!ENTITY clearOutputCtrl.key  "L">
 <!ENTITY openInVarViewCmd.label "In Variablenansicht öffnen">
 <!ENTITY openInVarViewCmd.accesskey "V">
+<!ENTITY storeAsGlobalVar.label "Als globale Variable speichern">
+<!ENTITY storeAsGlobalVar.accesskey "g">

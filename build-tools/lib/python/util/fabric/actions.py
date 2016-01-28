@@ -16,6 +16,8 @@ FAIL = red('[FAIL]')
 
 RECONFIG_LOCKFILE = 'reconfig.lock'
 
+PRODUCTION_MASTERS_URL = 'tools/buildfarm/maintenance/production-masters.json'
+
 BUILDBOT_WRANGLER = os.path.normpath(os.path.join(
     os.path.dirname(__file__),
     "../../../../buildfarm/maintenance/buildbot-wrangler.py"))
@@ -112,6 +114,14 @@ def action_show_revisions(master):
 
         show_revisions_detail(master['name'], bbcustom_rev, bbconfigs_rev,
                               tools_rev, bb_rev)
+
+
+def action_update_master_config(master):
+    """Update buildbot master_conf.json"""
+    with show('running'):
+        run('python buildbot-configs/update-master-json.py %s master/master_config.json' % PRODUCTION_MASTERS_URL, workdir=master['basedir'])
+    print OK, \
+        "finished, the master_config.json file has been updated on %s" %  master['hostname']
 
 
 def show_revisions_detail(master, bbcustom_rev, bbconfigs_rev,
