@@ -296,7 +296,7 @@ Section "-Application" APP_IDX
   ; Read value from tagged installer and save it to registry?
   ; Parameter is name for key, from where take a value
   ; If value exist - it will do not overwrite it
-  CliqzHelper::setBrand "brand"
+  CliqzHelper::setBrand "$INSTDIR" "brand"
 
   ; Register DLLs
   ; XXXrstrong - AccessibleMarshal.dll can be used by multiple applications but
