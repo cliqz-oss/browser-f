@@ -114,14 +114,14 @@ fi
 rm cliqz@cliqz.com.xpi
 
 # for German builds
-if [ $IS_DE ]; then
-    echo '***** Copying dictionaries for German builds *****'
-    if [ $IS_MAC_OS ]; then
-        mkdir -p obj-firefox/dist/CLIQZ.app/Contents/Resources/dictionaries; cp extensions/spellcheck/locales/en-US/hunspell/en-US.* obj-firefox/dist/CLIQZ.app/Contents/Resources/dictionaries
-    else
-        mkdir -p obj-firefox/dist/bin/dictionaries; cp extensions/spellcheck/locales/en-US/hunspell/en-US.* obj-firefox/dist/bin/dictionaries
-    fi
-fi
+#if [ $IS_DE ]; then
+#    echo '***** Copying dictionaries for German builds *****'
+#    if [ $IS_MAC_OS ]; then
+#        mkdir -p obj-firefox/dist/CLIQZ.app/Contents/Resources/dictionaries; cp extensions/spellcheck/locales/en-US/hunspell/en-US.* obj-firefox/dist/CLIQZ.app/Contents/Resources/dictionaries
+#    else
+#        mkdir -p obj-firefox/dist/bin/dictionaries; cp extensions/spellcheck/locales/en-US/hunspell/en-US.* obj-firefox/dist/bin/dictionaries
+#    fi
+#fi
 
 #packaging
 echo '***** Packaging *****'
