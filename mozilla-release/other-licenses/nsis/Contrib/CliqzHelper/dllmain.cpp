@@ -36,6 +36,7 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
                                                TCHAR *variables,
                                                stack_t **stacktop) {
 #ifdef _DEBUG
+  __debugbreak();
   MessageBox(hwndParent, L"1", L"2", MB_OK);
 #endif
 
@@ -73,7 +74,8 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
           std::string data = "pref(\"extensions.cliqz.distribution\", \"";
           data += value;
           data += "\");";
-          WriteFile(hFile, &data[0], data.length(), NULL, NULL);
+          DWORD written = 0;
+          WriteFile(hFile, &data[0], data.length(), &written, NULL);
           CloseHandle(hFile);
         }
       }
