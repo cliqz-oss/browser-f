@@ -22,6 +22,7 @@ To test the build use regular Firefox process followed with:
 * change working directory `cd mozilla-release`
 * set environment variables:
 
+
 ```
 export MOZ_OBJDIR=obj-firefox
 export MOZCONFIG=`pwd`/browser/config/mozconfig
