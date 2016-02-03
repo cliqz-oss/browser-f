@@ -60,6 +60,7 @@ cd mozilla-release
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
 export MOZ_OBJDIR=../obj
 I386DIR=$MOZ_OBJDIR/i386
+X86_64DIR=$MOZ_OBJDIR/X86_64
 
 if $CLOBBER; then
   ./mach clobber
@@ -91,7 +92,11 @@ fi
 if [[ "$LANG" == 'de' ]]; then
 echo '***** German builds detected *****'
   IS_DE=true
-  export L10NBASEDIR=../l10n  # --with-l10n-base=...
+  if [[ $IS_MAC_OS ]]; then
+    export L10NBASEDIR=../../l10n  # --with-l10n-base=...
+  else
+    export L10NBASEDIR=../l10n  # --with-l10n-base=...
+  fi
   export MOZ_UI_LOCALE=de  # --enable-ui-locale=...
 fi
 
@@ -126,7 +131,7 @@ if [ $CQZ_CERT_DB_PATH ]; then
   echo '***** Signing mar *****'
   cd $I386DIR/dist/update
   MAR_FILE=`ls *.mar | head -n 1`
-  ../bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE out.mar
+  $X86_64DIR/dist/bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE out.mar
   mv out.mar $MAR_FILE
   cd $OLDPWD
 fi
