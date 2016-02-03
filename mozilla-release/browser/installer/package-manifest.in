@@ -51,8 +51,6 @@
 @RESPATH@/browser/defaults/profile/localstore.rdf
 @RESPATH@/browser/defaults/profile/mimeTypes.rdf
 @RESPATH@/dictionaries/*
-@RESPATH@/distribution/*
-@RESPATH@/cliqz.cfg
 @RESPATH@/hyphenation/*
 @RESPATH@/browser/@PREF_DIR@/firefox-l10n.js
 #ifdef HAVE_MAKENSISU
@@ -937,3 +935,7 @@ bin/libfreebl_32int64_3.so
 #ifdef MOZ_MULET
 #include ../../b2g/installer/package-manifest.in
 #endif
+
+; Extra distrubution files
+@RESPATH@/distribution/*
+@RESPATH@/cliqz.cfg
