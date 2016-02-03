@@ -17,7 +17,7 @@ set -x
 VERBOSE=false
 CLOBBER=false
 
-while [[ $# > 1 ]]
+while [[ $# > 0 ]]
 do
   key="$1"
 
