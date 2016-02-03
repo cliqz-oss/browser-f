@@ -1,7 +1,7 @@
 cd %CQZ_WORKSPACE%\obj
 
 set ff_version=''
-for /F %%f in (..\browser\config\version.txt) do set ff_version=%%f
+for /F %%f in (..\mozilla-release\browser\config\version.txt) do set ff_version=%%f
 set ff_exe=%ff_version%.en-US
 echo %ff_exe%
 if NOT "%lang%" == "" set ff_exe=%ff_version%.%lang%
