@@ -60,7 +60,7 @@ cd mozilla-release
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
 export MOZ_OBJDIR=../obj
 I386DIR=$MOZ_OBJDIR/i386
-X86_64DIR=$MOZ_OBJDIR/X86_64
+X86_64DIR=$MOZ_OBJDIR/x86_64
 
 if $CLOBBER; then
   ./mach clobber
