@@ -1,4 +1,4 @@
-cd %CQZ_WORKSPACE%\mozilla-release\obj-firefox
+cd %CQZ_WORKSPACE%\obj
 
 set ff_version=''
 set archivator_exe=c:\mozilla-build\7zip\7z.exe
