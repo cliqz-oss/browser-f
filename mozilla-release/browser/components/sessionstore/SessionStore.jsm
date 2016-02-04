@@ -976,7 +976,8 @@ var SessionStoreInternal = {
           // it happens before observers are notified
           this._globalState.setFromState(aInitialState);
 
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
+          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) &&
+            !this._prefBranch.getBoolPref("startup.addFreshTab");
           let options = {firstWindow: true, overwriteTabs: overwrite};
           this.restoreWindows(aWindow, aInitialState, options);
         }
@@ -2365,8 +2366,8 @@ var SessionStoreInternal = {
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
     let normalTabsLen = tabbrowser.tabs.length - tabbrowser._numPinnedTabs;
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
+    let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
+    if (addFreshTab)
       homePages = homePages.concat(aWindow.gHomeButton.getHomePage().split("|"));
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
@@ -2632,6 +2633,18 @@ var SessionStoreInternal = {
     else if (firstWindow && !overwriteTabs && winData.tabs.length == 1 &&
              (!winData.tabs[0].entries || winData.tabs[0].entries.length == 0)) {
       winData.tabs = [];
+    }
+
+    // Remove tab entries duplicating already open tabs.
+    // This is intended to work when both tab restore and fresh tab features
+    // are enabled.
+    if (!overwriteTabs) {
+      let homePages = aWindow.gHomeButton.getHomePage().split("|");
+      winData.tabs = winData.tabs.filter(function (tabData) {
+        if (!tabData.entries || !tabData.entries.length)
+          return true;
+        return homePages.indexOf(tabData.entries[0].url) == -1;
+      });
     }
 
     var tabbrowser = aWindow.gBrowser;
@@ -3338,7 +3351,7 @@ var SessionStoreInternal = {
    * @returns bool
    */
   _doResumeSession: function ssi_doResumeSession() {
-    return this._prefBranch.getIntPref("startup.page") == 3 ||
+    return this._prefBranch.getBoolPref("startup.restoreTabs") ||
            this._prefBranch.getBoolPref("sessionstore.resume_session_once");
   },
 

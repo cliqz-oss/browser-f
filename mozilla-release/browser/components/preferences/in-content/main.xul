@@ -163,13 +163,10 @@
         id="restoreSessionCheckbox"
         preference="browser.startup.restoreTabs"
         label="&startupLastSession.label;"/>
-# Hidden temporary.
-#if 0
     <checkbox
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
         label="&startupHomePage.label;"/>
-#endif
   </vbox>
   <html:table id="startupTable">
 # Replaced by two checkboxes above.
