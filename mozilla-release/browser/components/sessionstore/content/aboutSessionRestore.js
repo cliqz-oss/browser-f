@@ -172,9 +172,7 @@ function startNewSession() {
   var prefBranch =
       Cc["@mozilla.org/preferences-service;1"].getService(Ci.nsIPrefBranch);
   let addNTP = prefBranch.getBoolPref("browser.startup.addFreshTab");
-  if (!addNTP)
-    getBrowserWindow().gBrowser.loadURI("about:blank");
-  else
+  if (addNTP)
     getBrowserWindow().BrowserHome();
 }
 

@@ -314,12 +314,15 @@ SessionStartup.prototype = {
    * @returns bool
    */
   get willOverrideHomepage() {
+    // Cliqz allows both restoring previous session and opening a home page.
+/*  // TODO: Replace with #if 0
     if (this._initialState && this._willRestore()) {
       let windows = this._initialState.windows || null;
       // If there are valid windows with not only pinned tabs, signal that we
       // will override the default homepage by restoring a session.
       return windows && windows.some(w => w.tabs.some(t => !t.pinned));
     }
+*/
     return false;
   },
 
