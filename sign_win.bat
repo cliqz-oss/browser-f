@@ -9,7 +9,7 @@ if NOT "%lang%" == "" set ff_exe=%ff_version%.%lang%
 echo %ff_exe%
 echo %lang%
 
-set timestamp_server=http://timestamp.verisign.com/scripts/timstamp.dll
+set timestamp_server=http://timestamp.geotrust.com/tsa
 
 %archivator_exe% x -opkg -y dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 
@@ -47,7 +47,7 @@ for %%f in (
   pkg\core\softokn3.dll,
   pkg\core\xul.dll,
 ) do (
-  "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
+  "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
   "%CLZ_SIGNTOOL_PATH%" verify /pa %%f
   if NOT %ERRORLEVEL%==0 exit /b 1
 )
@@ -59,6 +59,6 @@ del installer.7z
 cd ..
 copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\instgen\app.tag + pkg\installer.7z dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 
-"%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
+"%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" verify /pa dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 exit /b %ERRORLEVEL%
