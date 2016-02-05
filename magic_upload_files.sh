@@ -51,11 +51,9 @@ fi
 
 echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
-cd mozilla-release
-
-export MOZ_OBJDIR=obj-firefox
-export MOZCONFIG=`pwd`/browser/config/mozconfig
-export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ../repack/distribution/distribution.ini | head -n1)
+export MOZ_OBJDIR=../obj
+export MOZCONFIG=browser/config/cliqz-release.mozconfig
+export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ./repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
@@ -67,7 +65,7 @@ else
   export S3_UPLOAD_PATH=`echo dist/release/$CQZ_VERSION/${LANG:0:2}`
 fi
 
-cd obj-firefox
+cd obj
 
 echo '***** Uploading MAR and package files *****'
 if [ $IS_WIN ]; then
@@ -77,8 +75,8 @@ else
 fi
 
 echo '***** Genereting build_properties.json *****'
-../build/gen_build_properties.py
+../mozilla-release/build/gen_build_properties.py
 
 
 echo '***** Submiting to Balrog *****'
-python ../../build-tools/scripts/updates/balrog-submitter.py --credentials-file ../build/creds.txt --username balrogadmin --api-root http://$CQZ_BALROG_DOMAIN/api --build-properties build_properties.json
+python ../build-tools/scripts/updates/balrog-submitter.py --credentials-file ../mozilla-release/build/creds.txt --username balrogadmin --api-root http://$CQZ_BALROG_DOMAIN/api --build-properties build_properties.json
