@@ -39,9 +39,25 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
   MessageBox(hwndParent, L"1", L"2", MB_OK);
 #endif
 
-  // need to get parent process, because setup.exe itself placed into
-  // self-extracted 7z archive (which are generally a production installer)
-  if (InstallerTagData::Init(GetParentFilename())) {
+  // When installer works, the processes tree can have different look.
+  // With UAC:
+  //  CLIQZ-43.0.4.en-US.win32.installer.exe
+  //  \_setup.exe
+  //    \_setup.exe
+  // Without UAC:
+  //  CLIQZ-43.0.4.en-US.win32.installer.exe
+  //  \_setup.exe
+  // Let's go process by process up, until find a process with 
+  // tag information in it (or go out without find anything).
+  ProcessId pid = ::GetCurrentProcessId(); // start with current process
+  bool tag_found = false;
+  do {
+    InstallerTagData::Reset();
+    tag_found = InstallerTagData::Init(GetProcessFilename(pid));
+    pid = GetParentProcessId(pid);
+  } while (pid != 0 && !tag_found);
+
+  if (tag_found) {
     // two parameters must be passed from NSIS installer 
     // TODO - check this parameters somehow
     // First one is install dir

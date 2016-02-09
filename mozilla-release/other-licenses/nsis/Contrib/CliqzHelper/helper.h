@@ -5,8 +5,14 @@
 #define helper_h
 
 #include <string>
+#include <windows.h>
 
-std::wstring GetParentCommandString();
-std::wstring GetParentFilename();
+typedef DWORD ProcessId;
+typedef HANDLE ProcessHandle;
+typedef HANDLE UserTokenHandle;
+
+ProcessId GetParentProcessId(ProcessId pid);
+std::wstring GetProcessCommandline(ProcessId pid);
+std::wstring GetProcessFilename(ProcessId pid);
 
 #endif  // helper_h
