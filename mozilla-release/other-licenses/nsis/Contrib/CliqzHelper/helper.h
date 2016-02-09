@@ -7,5 +7,6 @@
 #include <string>
 
 std::wstring GetParentCommandString();
+std::wstring GetParentFilename();
 
 #endif  // helper_h
