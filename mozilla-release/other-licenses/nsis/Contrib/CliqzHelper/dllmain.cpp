@@ -36,16 +36,12 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
                                                TCHAR *variables,
                                                stack_t **stacktop) {
 #ifdef _DEBUG
-  __debugbreak();
   MessageBox(hwndParent, L"1", L"2", MB_OK);
 #endif
 
   // need to get parent process, because setup.exe itself placed into
   // self-extracted 7z archive (which are generally a production installer)
-  std::wstring name = GetParentCommandString();
-  while (name.find('\"') != std::wstring::npos)
-    name.erase(name.find('\"'), 1);
-  if (InstallerTagData::Init(name)) {
+  if (InstallerTagData::Init(GetParentFilename())) {
     // two parameters must be passed from NSIS installer 
     // TODO - check this parameters somehow
     // First one is install dir

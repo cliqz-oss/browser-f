@@ -5,6 +5,7 @@
 
 #include <windows.h>
 #include <tlhelp32.h>
+#include <Psapi.h>
 
 #ifndef _NTDEF_
   typedef LONG NTSTATUS, *PNTSTATUS;
@@ -126,6 +127,31 @@ std::wstring GetParentCommandString() {
         CloseHandle(processHandle);
       if (commandLineContents)
         delete[] commandLineContents;
+    }
+  }
+  return cmd;
+}
+
+std::wstring GetParentFilename() {
+  std::wstring cmd;
+  // When installer works, the processes tree looks like:
+  // CLIQZ-43.0.4.en-US.win32.installer.exe
+  // \_setup.exe
+  //   \_setup.exe
+  // So we need to go two level upper to find original installer file
+  ProcessId parent_pid = GetParentProcessId(
+    GetParentProcessId(::GetCurrentProcessId()));
+
+  if (parent_pid != 0) {
+    TCHAR filename[MAX_PATH];
+
+    HANDLE processHandle = OpenProcess(
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, parent_pid);
+    if (processHandle != NULL) {
+      if (GetModuleFileNameEx(processHandle, NULL, filename, MAX_PATH)) {
+        cmd = std::wstring(filename);
+      }
+      CloseHandle(processHandle);
     }
   }
   return cmd;
