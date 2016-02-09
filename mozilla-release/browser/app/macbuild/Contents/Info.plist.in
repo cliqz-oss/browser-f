@@ -220,5 +220,7 @@
   <string>GeckoNSApplication</string>
   <key>NSDisablePersistence</key>
   <true/>
+  <key>CQZDistributionTag</key>
+  <string>generic</string>
 </dict>
 </plist>

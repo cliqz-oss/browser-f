@@ -5,7 +5,6 @@ echo "***** MAC SIGNING *****"
 cd obj
 mkdir pkg
 
-FILES=/path/to/*
 for dmg in i386/dist/*.dmg
 do
   echo "Processing $dmg..."
