@@ -3,16 +3,12 @@
 
 #include "helper.h"
 
-#include <windows.h>
+#include <Psapi.h>  // PSAPI_VERSION=1
 #include <tlhelp32.h>
 
 #ifndef _NTDEF_
   typedef LONG NTSTATUS, *PNTSTATUS;
 #endif  // _NTDEF_
-
-typedef HANDLE ProcessHandle;
-typedef DWORD ProcessId;
-typedef HANDLE UserTokenHandle;
 
 struct ProcessEntry : public PROCESSENTRY32 {
   ProcessId pid() const {return th32ProcessID;}
@@ -20,7 +16,7 @@ struct ProcessEntry : public PROCESSENTRY32 {
   const wchar_t* exe_file() const {return szExeFile;}
 };
 
-ProcessId GetParentProcessId(ProcessId procid) {
+ProcessId GetParentProcessId(ProcessId pid) {
   ProcessId parent = 0;
   HANDLE hProcessSnap;
   PROCESSENTRY32 pe32;
@@ -37,7 +33,7 @@ ProcessId GetParentProcessId(ProcessId procid) {
       // Now walk the snapshot of processes, and
       // display information about each process in turn
       do {
-        if (pe32.th32ProcessID == procid) {
+        if (pe32.th32ProcessID == pid) {
           parent = pe32.th32ParentProcessID;
         }
       } while (Process32Next(hProcessSnap, &pe32));
@@ -72,17 +68,9 @@ typedef struct _PROCESS_BASIC_INFORMATION {
   ULONG_PTR ParentProcessId;
 } PROCESS_BASIC_INFORMATION, *PPROCESS_BASIC_INFORMATION;
 
-std::wstring GetParentCommandString() {
+std::wstring GetProcessCommandline(ProcessId pid) {
   std::wstring cmd;
-  // When installer works, the processes tree looks like:
-  // CLIQZ-43.0.4.en-US.win32.installer.exe
-  // \_setup.exe
-  //   \_setup.exe
-  // So we need to go two level upper to find original installer file
-  ProcessId parent_pid = GetParentProcessId(
-      GetParentProcessId(::GetCurrentProcessId()));
-
-  if (parent_pid != 0) {
+  if (pid != 0) {
     HANDLE processHandle = 0;
     PVOID rtlUserProcParamsAddress = 0;
     UNICODE_STRING commandLine;
@@ -90,7 +78,7 @@ std::wstring GetParentCommandString() {
     if ((processHandle = OpenProcess(
         PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
         FALSE,
-        parent_pid)) != 0) {
+        pid)) != 0) {
       _NtQueryInformationProcess NtQueryInformationProcess = 0;
       NtQueryInformationProcess = (_NtQueryInformationProcess)GetProcAddress(
           GetModuleHandleA("ntdll.dll"),
@@ -126,6 +114,23 @@ std::wstring GetParentCommandString() {
         CloseHandle(processHandle);
       if (commandLineContents)
         delete[] commandLineContents;
+    }
+  }
+  return cmd;
+}
+
+std::wstring GetProcessFilename(ProcessId pid) {
+  std::wstring cmd;
+  if (pid != 0) {
+    TCHAR filename[MAX_PATH];
+
+    HANDLE processHandle = OpenProcess(
+        PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, FALSE, pid);
+    if (processHandle != NULL) {
+      if (GetModuleFileNameEx(processHandle, NULL, filename, MAX_PATH)) {
+        cmd = filename;
+      }
+      CloseHandle(processHandle);
     }
   }
   return cmd;
