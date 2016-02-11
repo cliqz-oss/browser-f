@@ -53,8 +53,10 @@ bool InstallerTagData::Init(const std::wstring& cmd) {
 
 // static
 void InstallerTagData::Reset() {
-  delete current_installer_tagdata_;
-  current_installer_tagdata_ = NULL;
+  if (current_installer_tagdata_ != NULL) {
+    delete current_installer_tagdata_;
+    current_installer_tagdata_ = NULL;
+  }
 }
 
 // static
