@@ -4,12 +4,12 @@ CLIQZ develops novel Internet browsers that incorporate search as primary featur
 
 ## Building
 
-First you should have environment prepared to build regular Firefox. To do that
+First you should have an environment prepared to build regular Firefox. To do that
 follow [Mozilla instructions](https://developer.mozilla.org/en-US/docs/Mozilla/Developer_guide/Build_Instructions).
 
-Next run building script: `./magic_build_and_package.sh`
+Next run a building script: `./magic_build_and_package.sh`
 
-Successful build should create packages for appropriate platform in:
+The successful build should create packages for the appropriate platform in:
 
 * windows installer: `./mozilla-release/obj-firefox/dist/installer/sea/`
 * mac dmg: `./mozilla-release/obj-firefox/dist/`
@@ -17,7 +17,7 @@ Successful build should create packages for appropriate platform in:
 
 ## Running
 
-To test the build use regular Firefox process followed with:
+To test the build use the regular Firefox process followed by:
 
 * change working directory `cd mozilla-release`
 * set environment variables:
@@ -31,26 +31,26 @@ Then run as regular Firefox build with `./mach run`.
 
 ## Developing
 
-There should be no differences in development from regular Mozilla process.
+There should be no differences in development from the regular Mozilla process.
 
 ## Feature requests and bug reports
 
-Please submit those in a form of a github issue.
+Please use github issues to submit bugs and requests.
 
-When submitting the bug report please include following information:
+When submitting the bug report please include the following information:
 
 * OS version, eg. Windox 8.1, Mac OS X 10.10.4
 * system architecture (32/64 bit)
 * browser version, eg. CLIQZ 0.8, based on Firefox 39
 
-## Repository Structure
+## Repository structure
 
-For automated build purposes we keep copies of original Mozilla project in our
-repository. Thus following folders, are achives of respective Mozilla
+For automated build purposes we keep copies of the original Mozilla project in our
+repository. Thus, the following folders are archives of respective Mozilla
 repositories:
 
 * `mozilla-release` - https://hg.mozilla.org/releases/mozilla-release
 * `l10n/de` - http://hg.mozilla.org/releases/l10n/mozilla-release/de/
 * `build-tools` - https://github.com/mozilla/build-tools
 
-CLIQZ changes gets applied unto original Mozilla code.
+CLIQZ changes are applied to original Mozilla code.
