@@ -32,13 +32,9 @@
 // Add-on signing Certificates
 #include "addons-public.inc"
 #include "addons-stage.inc"
-<<<<<<< HEAD
-#include "cliqz-addons-cert.inc"
-||||||| merged common ancestors
-=======
 // Privileged Package Certificates
 #include "privileged-package-root.inc"
->>>>>>> upstream-releases
+#include "cliqz-addons-cert.inc"
 
 using namespace mozilla::pkix;
 
@@ -113,14 +109,11 @@ AppTrustDomain::SetTrustedRoot(AppTrustedRoot trustedRoot)
       trustedDER.len = mozilla::ArrayLength(addonsStageRoot);
       break;
 
-<<<<<<< HEAD
     case nsIX509CertDB::CliqzAddonsRoot:
       trustedDER.data = const_cast<uint8_t*>(cliqzAddonsRoot);
       trustedDER.len = mozilla::ArrayLength(cliqzAddonsRoot);
       break;
 
-||||||| merged common ancestors
-=======
     case nsIX509CertDB::PrivilegedPackageRoot:
       trustedDER.data = const_cast<uint8_t*>(privilegedPackageRoot);
       trustedDER.len = mozilla::ArrayLength(privilegedPackageRoot);
@@ -173,7 +166,6 @@ AppTrustDomain::SetTrustedRoot(AppTrustedRoot trustedRoot)
       break;
     }
 
->>>>>>> upstream-releases
     default:
       PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
       return SECFailure;

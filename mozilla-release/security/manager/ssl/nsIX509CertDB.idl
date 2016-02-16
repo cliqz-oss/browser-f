@@ -318,10 +318,6 @@ interface nsIX509CertDB : nsISupports {
   const AppTrustedRoot AppXPCShellRoot = 6;
   const AppTrustedRoot AddonsPublicRoot = 7;
   const AppTrustedRoot AddonsStageRoot = 8;
-<<<<<<< HEAD
-  const AppTrustedRoot CliqzAddonsRoot = 1000;
-||||||| merged common ancestors
-=======
   const AppTrustedRoot PrivilegedPackageRoot = 9;
   /*
    * If DeveloperImportedRoot is set as trusted root, a CA from local file
@@ -331,7 +327,8 @@ interface nsIX509CertDB : nsISupports {
    * "network.http.packaged-apps-developer-trusted-root".
    */
   const AppTrustedRoot DeveloperImportedRoot = 10;
->>>>>>> upstream-releases
+  const AppTrustedRoot CliqzAddonsRoot = 1000;
+
   void openSignedAppFileAsync(in AppTrustedRoot trustedRoot,
                               in nsIFile aJarFile,
                               in nsIOpenSignedAppFileCallback callback);

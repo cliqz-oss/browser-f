@@ -37,12 +37,8 @@ array_names = [
   'xpcshellRoot',
   'addonsPublicRoot',
   'addonsStageRoot',
-<<<<<<< HEAD
-  'cliqzAddonsRoot',
-||||||| merged common ancestors
-=======
   'privilegedPackageRoot',
->>>>>>> upstream-releases
+  'cliqzAddonsRoot',
 ]
 
 for n in array_names:
