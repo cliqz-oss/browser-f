@@ -64,13 +64,51 @@ $(document).ready(function() {
         group.find('.all-selector').prop('checked', unchecked_defaults.length == 0);
     });
 
+    // Track the last change. If shift is pressed when clicking one item,
+    // also apply the target state to all items in between.
+    var last_changed;
+    var all_items = $(':checkbox:not(.group-selector):not(.subgroup-selector)');
+    $('label').filter(function(index, elem) {
+        var checkbox = $(elem).children(':checkbox');
+        return checkbox.not('.group-selector, .subgroup-selector').size() > 0;
+    }).mouseup(function(evt) {
+        if (evt.shiftKey && last_changed >= 0) {
+            var checkbox = $(this).children(':checkbox');
+            var checked = !checkbox.prop('checked');
+            var index = all_items.index(checkbox);
+            var items;
+            if (last_changed < index) {
+                items = all_items.slice(last_changed + 1, index + 1);
+            } else if (last_changed > index) {
+                items = all_items.slice(index, last_changed);
+            }
+            if (items) {
+                // Use setTimeout to override the state of checkboxes to
+                // work around difference of default behavior between
+                // different browsers.
+                // More specifically, on Firefox, any click on checkboxs
+                // flips the state, while click on labels takes effect
+                // only if no modifier key is pressed. While on Chrome,
+                // any click on both elements always takes effect.
+                setTimeout(() => {
+                    items.prop('checked', checked);
+                    setresult();
+                }, 0);
+            }
+        }
+    });
+
     // Force initial update
     $('.all-selector:checked').change();
     $('.none-selector:checked').change();
 
     // Selecting anything should update the try syntax
-    $(':checkbox').change(setresult);
+    $(':checkbox').change(function() {
+        last_changed = all_items.index(this);
+        setresult();
+    });
     $(':radio').change(setresult);
+    $(':text').change(setresult);
 
     // Initialize the try syntax
     setresult();
@@ -97,10 +135,7 @@ function resolveFilters(filters) {
 }
 
 function setresult() {
-    var value = 'try: ';
     var args = [];
-
-    args.push('try:');
 
     $('.option-radio[try-section]').each(function() {
         var arg = '-' + $(this).attr('try-section') + ' ';
@@ -145,7 +180,8 @@ function setresult() {
         });
 
         var filters = [];
-        $('[try-filter=' + tryopt + '] :checked').each(function () {
+        var filter_tryopt = tryopt == 't' ? 'u' : tryopt;
+        $('[try-filter=' + filter_tryopt + '] :checked').each(function () {
             filters.push.apply(filters, $(this).attr('value').split(','));
         });
         if (filters.length > 0) {
@@ -161,7 +197,25 @@ function setresult() {
         args.push('mozharness: --spsProfile');
     }
 
-    value = args.join(' ');
+    if ($('.no-retry').is(':checked')) {
+        args.push('--no-retry');
+    }
+
+    if ($('.rebuild-talos').is(':checked')) {
+        args.push('--rebuild-talos 5');
+    }
+
+    var tag = $('.tags').val();
+    if (tag) {
+        args.push('--tag ' + tag);
+    }
+
+    var rebuilds = parseInt($('.rebuilds').val(), 10);
+    if (rebuilds) {
+        args.push('--rebuild ' + rebuilds);
+    }
+
+    var value = args.join(' ');
     var incomplete = false;
 
     if (value.match(/-b none/)) {
@@ -180,7 +234,9 @@ function setresult() {
 
     if (incomplete) {
         value = "(NO JOBS CHOSEN)";
+        $('.result').val(value);
+    } else {
+        $('#result_try').val('try: ' + value);
+        $('#result_mach').val('mach try ' + value);
     }
-
-    $('.result_value').val(value);
 }

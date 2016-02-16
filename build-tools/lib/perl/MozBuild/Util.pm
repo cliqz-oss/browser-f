@@ -585,14 +585,14 @@ sub GetBuildIDFromFTP {
     if (! defined($releaseDir)) {
         die("ASSERT: MozBuild::GetBuildIDFromFTP(): releaseDir is required argument");
     }
-    my $stagingServer = $args{'stagingServer'};
-    if (! defined($stagingServer)) {
-        die("ASSERT: MozBuild::GetBuildIDFromFTP(): stagingServer is a required argument");
+    my $ftpServer = $args{'ftpServer'};
+    if (! defined($ftpServer)) {
+        die("ASSERT: MozBuild::GetBuildIDFromFTP(): ftpServer is a required argument");
     }
 
     my ($bh, $buildIDTempFile) = tempfile(UNLINK => 1);
     $bh->close();
-    my $info_url = 'http://' . $stagingServer . '/' . $releaseDir . '/' . $os . '_info.txt';
+    my $info_url = 'http://' . $ftpServer . $releaseDir . '/' . $os . '_info.txt';
     my $rv = RunShellCommand(
       command => 'wget',
       args => ['-O', $buildIDTempFile,

@@ -32,9 +32,17 @@ update_platform_map = {
                 # modify their builds in a way that has them report like these.
                 # See bug 1071576 for details.
                  'Darwin_x86-gcc3', 'Darwin_x86_64-gcc3'],
-    'win32': ['WINNT_x86-msvc'],
-    'win64': ['WINNT_x86_64-msvc'],
+    'win32': ['WINNT_x86-msvc', 'WINNT_x86-msvc-x86', 'WINNT_x86-msvc-x64'],
+    'win64': ['WINNT_x86_64-msvc', 'WINNT_x86_64-msvc-x64'],
+
+    # This is for v2.1 and v2.2 branches.
+    # Must be killed in the future.
     'flame-kk': ['flame-kk','flame'],
+
+    # BUILD_TARGET follows the pattern <platform>-<variant>-<sdk-version>
+    # We add the proper aliases for backward compatibility
+    'flame-user-kk': ['flame-user-kk', 'flame-kk', 'flame'],
+    'aries-user-kk': ['aries-user-kk', 'aries'],
 }
 
 # These FTP -> other mappings are provided so that things interpreting patcher

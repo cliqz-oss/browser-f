@@ -8,7 +8,6 @@ except ImportError:
 from build.l10n import getLocalesForChunk
 from release.platforms import buildbot2ftp, getPlatformLocales, \
     getPlatformLocalesFromJson
-from release.versions import getPrettyVersion
 
 import logging
 log = logging.getLogger(__name__)
@@ -30,10 +29,6 @@ def getShippedLocales(product, appName, version, buildNumber, sourceRepo,
         log.error("Failed to retrieve %s", url)
         raise
     return sl
-
-
-def getCommonLocales(a, b):
-    return [locale for locale in a if locale in b]
 
 
 def parsePlainL10nChangesets(changesets):
@@ -146,10 +141,4 @@ def getReleaseLocalesForChunk(productName, appName, version, buildNumber,
                           sourceRepo, hg),
         (platform,)
     )[platform]
-    return getLocalesForChunk(possibleLocales, chunks, thisChunk)
-
-
-def getReleaseLocalesFromJsonForChunk(stage_platform, chunks, thisChunk, jsonFile):
-    possibleLocales = getPlatformLocalesFromJson(
-        jsonFile, (stage_platform,))[stage_platform]
     return getLocalesForChunk(possibleLocales, chunks, thisChunk)

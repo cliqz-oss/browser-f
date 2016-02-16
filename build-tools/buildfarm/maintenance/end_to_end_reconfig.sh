@@ -384,7 +384,11 @@ echo "  * All preflight checks passed in '$(basename "${0}")'"
 
 if [ "${PREPARE_ONLY}" == '0' ]; then
     # Failing to update IRC is non-fatal.
-    ./update_irc.sh "Reconfig has started" || true
+    IRC_MSG="Merge to production has started for buildbot repos."
+    if [ "${FORCE_RECONFIG}" == '1' ]; then
+        IRC_MSG="Reconfig has started."
+    fi
+    ./update_irc.sh "${IRC_MSG}" || true
 fi
 
 # Merges mozharness, buildbot-configs from default -> production.
@@ -519,8 +523,12 @@ if [ -f "${RECONFIG_DIR}/${RECONFIG_UPDATE_FILE}" ]; then
             RECONFIG_STOP_TIME="$(date +%s)"
             RECONFIG_ELAPSED=$((RECONFIG_STOP_TIME - START_TIME))
             RECONFIG_ELAPSED_DISPLAY=`show_time ${RECONFIG_ELAPSED}`
-	    # Failing to update IRC is non-fatal.
-            ./update_irc.sh "Reconfig has finished in ${RECONFIG_ELAPSED_DISPLAY}. See http://bit.ly/reconfigs for details." || true
+            IRC_MSG="Merge has finished in ${RECONFIG_ELAPSED_DISPLAY}. See http://bit.ly/reconfigs for details. Masters will reconfig themselves automatically on the hour."
+            if [ "${FORCE_RECONFIG}" == '1' ]; then
+                IRC_MSG="Reconfig has finished in ${RECONFIG_ELAPSED_DISPLAY}. See http://bit.ly/reconfigs for details."
+            fi
+            # Failing to update IRC is non-fatal.
+            ./update_irc.sh "${IRC_MSG}" || true
         fi
     fi
 
@@ -545,7 +553,7 @@ else
     echo "  * Foopies updated"
 fi
 
-echo "  * Directory '${RECONFIG_DIR}' contains artefacts from reconfig process"
+echo "  * Directory '${RECONFIG_DIR}' contains artifacts from reconfig process"
 
 STOP_TIME="$(date +%s)"
 ELAPSED_TIME=$((STOP_TIME - START_TIME))

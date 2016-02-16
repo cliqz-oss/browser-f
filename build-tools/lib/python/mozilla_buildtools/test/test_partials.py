@@ -42,14 +42,14 @@ class TestPartial(unittest.TestCase):
                 buildNumber = 1
                 p = Partial(product, VERSION, buildNumber, PROTOCOL, SERVER)
                 complete_mar_name = p.complete_mar_name()
-                url = '%s://%s/pub/mozilla.org/%s/candidates/%s-candidates/build%s/update/%s/en-US/%s' % (
+                url = '%s://%s/pub/%s/candidates/%s-candidates/build%s/update/%s/en-US/%s' % (
                     PROTOCOL, SERVER, product, VERSION, buildNumber,
                     buildbot2ftp(platform), complete_mar_name)
 
                 self.assertEqual(p.complete_mar_url(platform), url)
                 buildNumber = None
                 p = Partial(product, VERSION, buildNumber, PROTOCOL, SERVER)
-                url = '%s://%s/pub/mozilla.org/%s/releases/%s/update/%s/en-US/%s' % (
+                url = '%s://%s/pub/%s/releases/%s/update/%s/en-US/%s' % (
                     PROTOCOL, SERVER, product, VERSION,
                     buildbot2ftp(platform), complete_mar_name)
                 self.assertEqual(p.complete_mar_url(platform), url)

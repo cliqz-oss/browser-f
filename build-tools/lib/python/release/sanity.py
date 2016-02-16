@@ -83,8 +83,6 @@ def verify_mozconfigs(branch, revision, hghost, product, mozconfigs,
         nightly_mozconfig = nightly_mozconfigs[platform]
         mozconfig_paths = [mozconfig, nightly_mozconfig]
         # Create links to the two mozconfigs.
-        releaseConfig = make_hg_url(hghost, branch, 'http', revision,
-                                    mozconfig)
         for c in mozconfig, nightly_mozconfig:
             urls.append(make_hg_url(hghost, branch, 'http', revision, c))
         for url in urls:
@@ -106,11 +104,16 @@ def verify_mozconfigs(branch, revision, hghost, product, mozconfigs,
                     # compare to whitelist
                     message = ""
                     if line[0] == '-':
+                        # handle lines that move around in diff
+                        if '+' + line[1:] in diffList:
+                            continue
                         if platform in mozconfigWhitelist.get(branch_name, {}):
                             if clean_line in \
                                     mozconfigWhitelist[branch_name][platform]:
                                 continue
                     elif line[0] == '+':
+                        if '-' + line[1:] in diffList:
+                            continue
                         if platform in mozconfigWhitelist.get('nightly', {}):
                             if clean_line in \
                                     mozconfigWhitelist['nightly'][platform]:

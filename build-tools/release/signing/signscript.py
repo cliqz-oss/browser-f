@@ -106,6 +106,19 @@ if __name__ == '__main__':
         else:
             parser.error("Invalid file for signing: %s" % filename)
             sys.exit(1)
+    elif format_ == "sha2signcode":
+        safe_unlink(tmpfile)
+        if not options.sha2signcode_keydir:
+            parser.error("sha2signcode_keydir required when format is sha2signcode")
+        if shouldSign(filename):
+            # osslsigncode_signfile is used here because "sha2 signing" isn't
+            # a different signing process, it's just signing using the same
+            # tools/process with a different cert.
+            osslsigncode_signfile(inputfile, tmpfile, options.sha2signcode_keydir, options.fake,
+                     passphrase, timestamp=options.signcode_timestamp)
+        else:
+            parser.error("Invalid file for signing: %s" % filename)
+            sys.exit(1)
     elif format_ == "gpg":
         if not options.gpg_homedir:
             parser.error("gpgdir required when format is gpg")
