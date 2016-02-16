@@ -41,7 +41,7 @@
 
 <!ENTITY popup.label                     "Pop-up-Fenster öffnen">
 
-<!ENTITY push.label                      "Externe Benachrichtigungen empfangen">
+<!ENTITY desktop-notification.label      "Externe Benachrichtigungen anzeigen">
 <!ENTITY camera.label                    "Kamera verwenden">
 <!ENTITY microphone.label                "Mikrofon verwenden">
 

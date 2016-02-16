@@ -52,8 +52,12 @@ _OPT\.OBJ/
 \.cproject$
 \.settings/
 
-# Ignore the directory that JetBrains IDEs create
+# Ignore the files and directory that JetBrains IDEs create.
 \.idea/
+\.iml$
+
+# Gradle cache.
+^.gradle/
 
 # Python stuff installed at build time.
 ^python/psutil/.*\.so
@@ -64,8 +68,8 @@ _OPT\.OBJ/
 .git/
 
 # Ignore chrome.manifest files from the devtools loader
-^browser/devtools/chrome.manifest$
-^toolkit/devtools/chrome.manifest$
+^devtools/client/chrome.manifest$
+^devtools/shared/chrome.manifest$
 
 # git checkout of libstagefright
 ^media/libstagefright/android$
@@ -93,3 +97,18 @@ GPATH
 # Ignore mozharness execution files
 ^testing/mozharness/logs/
 ^testing/mozharness/build/
+
+# Ignore node_modules from eslint-plugin-mozilla
+^testing/eslint-plugin-mozilla/node_modules/
+
+# Ignore talos virtualenv and tp5n files.
+# The tp5n set is supposed to be decompressed at
+# testing/talos/talos/page_load_test/tp5n in order to run tests like tps
+# locally. Similarly, running talos requires a Python package virtual
+# environment. Both the virtual environment and tp5n files end up littering
+# the status command, so we ignore them.
+^testing/talos/.Python
+^testing/talos/bin/
+^testing/talos/include/
+^testing/talos/lib/
+^testing/talos/talos/page_load_test/tp5n/
