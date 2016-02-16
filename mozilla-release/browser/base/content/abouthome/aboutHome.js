@@ -202,42 +202,6 @@ function setupSearch()
     searchText.removeEventListener("blur", searchText_onBlur);
     searchText.removeAttribute("autofocus");
   });
-<<<<<<< HEAD
-
-  let searchEngineName = document.documentElement.getAttribute("searchEngineName");
-  let searchEngineInfo = SEARCH_ENGINES[searchEngineName];
-  let logoElt = document.getElementById("searchEngineLogo");
-
-  // Add search engine logo.
-  if (searchEngineInfo && searchEngineInfo.image) {
-    logoElt.parentNode.hidden = false;
-    logoElt.src = searchEngineInfo.image;
-    logoElt.alt = searchEngineName;
-    searchText.placeholder = "";
-  }
-  else {
-    logoElt.parentNode.hidden = true;
-    searchText.placeholder = searchEngineName;
-  }
-||||||| merged common ancestors
- 
-  let searchEngineName = document.documentElement.getAttribute("searchEngineName");
-  let searchEngineInfo = SEARCH_ENGINES[searchEngineName];
-  let logoElt = document.getElementById("searchEngineLogo");
-
-  // Add search engine logo.
-  if (searchEngineInfo && searchEngineInfo.image) {
-    logoElt.parentNode.hidden = false;
-    logoElt.src = searchEngineInfo.image;
-    logoElt.alt = searchEngineName;
-    searchText.placeholder = "";
-  }
-  else {
-    logoElt.parentNode.hidden = true;
-    searchText.placeholder = searchEngineName;
-  }
-=======
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
 
   if (!gContentSearchController) {
     gContentSearchController =

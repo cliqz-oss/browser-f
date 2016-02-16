@@ -32,23 +32,14 @@
 # to the base path.
 
 import sys, os
-<<<<<<< HEAD
-import re
-||||||| merged common ancestors
-=======
 import re
 import json
 import errno
 import hashlib
 import shutil
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
 from optparse import OptionParser
 from subprocess import check_call, check_output, STDOUT
 import redo
-import sys
-import boto
-import boto.s3
-import boto.s3.key
 
 def OptionalEnvironmentVariable(v):
     """Return the value of the environment variable named v, or None
@@ -132,42 +123,6 @@ def GetBaseRelativePath(path, local_file, base_path):
     dir = dir[len(base_path)+1:].replace('\\','/')
     return path + dir
 
-<<<<<<< HEAD
-def UploadFilesToS3(s3_bucket, s3_path, files, verbose=False):
-    """Upload only mar file(s) from the list to s3_bucket/s3_path/.
-    If verbose is True, print status updates while working."""
-
-    s3 = boto.connect_s3()
-    s3 = boto.s3.connection.S3Connection(calling_format=boto.s3.connection.ProtocolIndependentOrdinaryCallingFormat())
-    bucket = s3.get_bucket(s3_bucket)
-
-    try:
-        for source_file in files:
-            source_file = os.path.abspath(source_file)
-            if not os.path.isfile(source_file):
-                raise IOError("File not found: %s" % source_file)
-            if not re.search('(\w+)\.(mar|dmg|exe|tar\.bz2)$', source_file):
-                continue
-
-            dest_file = os.path.basename(source_file)
-            full_key_name = '/'+s3_path+'/'+dest_file
-
-            bucket_key = boto.s3.key.Key(bucket)
-            bucket_key.key = full_key_name
-            if verbose:
-                print "Uploading " + source_file
-            bucket_key.set_contents_from_filename(source_file)
-
-    finally:
-        pass
-
-    if verbose:
-        print "Upload complete"
-
-def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None):
-||||||| merged common ancestors
-def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None):
-=======
 def GetFileHashAndSize(filename):
     sha512Hash = 'UNKNOWN'
     size = 'UNKNOWN'
@@ -233,7 +188,6 @@ def GetUrlProperties(output, package):
     return properties
 
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None, upload_to_temp_dir=False, post_upload_command=None, package=None):
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
     """Upload each file in the list files to user@host:path. Optionally pass
     port and ssh_key to the ssh commands. If base_path is not None, upload
     files including their path relative to base_path. If upload_to_temp_dir is
@@ -317,19 +271,8 @@ def WriteProperties(files, properties_file, url_properties, package):
         json.dump(properties, outfile, indent=4)
 
 if __name__ == '__main__':
-<<<<<<< HEAD
-    s3_path = OptionalEnvironmentVariable('S3_UPLOAD_PATH')
-    s3_bucket = OptionalEnvironmentVariable('S3_BUCKET')
-    if not s3_bucket:
-        host = RequireEnvironmentVariable('UPLOAD_HOST')
-        user = RequireEnvironmentVariable('UPLOAD_USER')
-||||||| merged common ancestors
-    host = RequireEnvironmentVariable('UPLOAD_HOST')
-    user = RequireEnvironmentVariable('UPLOAD_USER')
-=======
     host = OptionalEnvironmentVariable('UPLOAD_HOST')
     user = OptionalEnvironmentVariable('UPLOAD_USER')
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
     path = OptionalEnvironmentVariable('UPLOAD_PATH')
     upload_to_temp_dir = OptionalEnvironmentVariable('UPLOAD_TO_TEMP')
     port = OptionalEnvironmentVariable('UPLOAD_PORT')
@@ -337,46 +280,15 @@ if __name__ == '__main__':
         port = int(port)
     key = OptionalEnvironmentVariable('UPLOAD_SSH_KEY')
     post_upload_command = OptionalEnvironmentVariable('POST_UPLOAD_CMD')
-<<<<<<< HEAD
-    if not s3_bucket:
-        if (not path and not upload_to_temp_dir) or (path and upload_to_temp_dir):
-            print "One (and only one of UPLOAD_PATH or UPLOAD_TO_TEMP must be " + \
-                  "defined."
-            sys.exit(1)
-    if not s3_bucket:
-        if sys.platform == 'win32':
-            if path is not None:
-                path = FixupMsysPath(path)
-            if post_upload_command is not None:
-                post_upload_command = FixupMsysPath(post_upload_command)
-||||||| merged common ancestors
-    if (not path and not upload_to_temp_dir) or (path and upload_to_temp_dir):
-        print "One (and only one of UPLOAD_PATH or UPLOAD_TO_TEMP must be " + \
-              "defined."
-        sys.exit(1)
-    if sys.platform == 'win32':
-        if path is not None:
-            path = FixupMsysPath(path)
-        if post_upload_command is not None:
-            post_upload_command = FixupMsysPath(post_upload_command)
-=======
 
     if sys.platform == 'win32':
         if path is not None:
             path = FixupMsysPath(path)
         if post_upload_command is not None:
             post_upload_command = FixupMsysPath(post_upload_command)
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
 
     parser = OptionParser(usage="usage: %prog [options] <files>")
     parser.add_option("-b", "--base-path",
-<<<<<<< HEAD
-                      action="store", dest="base_path",
-                      help="Preserve file paths relative to this path when uploading. If unset, all files will be uploaded directly to UPLOAD_PATH/S3_UPLOAD_PATH.")
-||||||| merged common ancestors
-                      action="store", dest="base_path",
-                      help="Preserve file paths relative to this path when uploading. If unset, all files will be uploaded directly to UPLOAD_PATH.")
-=======
                       action="store",
                       help="Preserve file paths relative to this path when uploading. If unset, all files will be uploaded directly to UPLOAD_PATH.")
     parser.add_option("--properties-file",
@@ -385,7 +297,6 @@ if __name__ == '__main__':
     parser.add_option("--package",
                       action="store",
                       help="Name of the main package.")
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
     (options, args) = parser.parse_args()
     if len(args) < 1:
         print "You must specify at least one file to upload"
@@ -404,20 +315,6 @@ if __name__ == '__main__':
             print "Ignoring POST_UPLOAD_COMMAND with UPLOAD_HOST=localhost"
 
     try:
-<<<<<<< HEAD
-        if s3_bucket:
-            UploadFilesToS3(s3_bucket, s3_path, args, verbose=True)
-        else:
-            UploadFiles(user, host, path, args, base_path=options.base_path,
-                    port=port, ssh_key=key, upload_to_temp_dir=upload_to_temp_dir,
-                    post_upload_command=post_upload_command,
-                    verbose=True)
-||||||| merged common ancestors
-        UploadFiles(user, host, path, args, base_path=options.base_path,
-                    port=port, ssh_key=key, upload_to_temp_dir=upload_to_temp_dir,
-                    post_upload_command=post_upload_command,
-                    verbose=True)
-=======
         if host == "localhost":
             CopyFilesLocally(path, args, base_path=options.base_path,
                              package=options.package,
@@ -431,7 +328,6 @@ if __name__ == '__main__':
                                          package=options.package, verbose=True)
 
             WriteProperties(args, options.properties_file, url_properties, options.package)
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
     except IOError, (strerror):
         print strerror
         sys.exit(1)

@@ -112,32 +112,6 @@
   </vbox>
   <vbox id="trackingprotectionpbmbox">
     <hbox align="center">
-<<<<<<< HEAD
-      <checkbox id="privacyDoNotTrackCheckbox"
-                label="&dntTrackingNotOkay.label2;"
-                accesskey="&dntTrackingNotOkay.accesskey;"
-                preference="privacy.donottrackheader.enabled"/>
-    </hbox>
-    <hbox align="center"
-          class="indent"
-          flex="1">
-      <description id="doNotTrackInfo" flex="1">
-        &doNotTrackInfo.label2;
-      </description>
-||||||| merged common ancestors
-      <checkbox id="privacyDoNotTrackCheckbox"
-                label="&dntTrackingNotOkay.label2;"
-                accesskey="&dntTrackingNotOkay.accesskey;"
-                preference="privacy.donottrackheader.enabled"/>
-    </hbox>
-    <hbox align="center"
-          class="indent">
-      <label id="doNotTrackInfo"
-             class="text-link"
-             href="https://www.mozilla.org/dnt">
-        &doNotTrackInfo.label;
-      </label>
-=======
       <checkbox id="trackingProtectionPBM"
                 preference="privacy.trackingprotection.pbmode.enabled"
                 accesskey="&trackingProtectionPBM5.accesskey;"
@@ -149,7 +123,6 @@
       <button id="changeBlockList"
               label="&changeBlockList.label;" accesskey="&changeBlockList.accesskey;"
               preference="pref.privacy.disable_button.change_blocklist"/>
->>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
     </hbox>
   </vbox>
 </groupbox>
