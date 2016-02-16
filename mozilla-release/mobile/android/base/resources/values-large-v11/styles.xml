@@ -126,37 +126,6 @@
         <item name="android:paddingRight">32dp</item>
     </style>
 
-    <!-- Tabs panel -->
-    <style name="TabsPanelFrame.RemoteTabs" parent="TabsPanelFrameBase">
-        <item name="android:paddingLeft">112dp</item>
-        <item name="android:paddingRight">112dp</item>
-    </style>
-
-    <style name="TabsPanelFrame.PrivateTabs">
-        <item name="android:orientation">horizontal</item>
-        <item name="android:paddingTop">0dp</item>
-    </style>
-
-    <style name="TabsPanelSection.PrivateTabs">
-        <item name="android:layout_weight">1</item>
-        <item name="android:layout_marginLeft">20dp</item>
-        <item name="android:layout_marginRight">20dp</item>
-    </style>
-
-    <style name="TabsPanelSection.PrivateTabs.Header">
-        <item name="android:paddingTop">10dp</item>
-    </style>
-
-    <style name="TabsPanelItem.TextAppearance.Header.PrivateTabs">
-        <item name="android:visibility">gone</item>
-    </style>
-
-    <style name="TabsPanelItem.TextAppearance.Linkified.LearnMore">
-        <item name="android:layout_height">match_parent</item>
-        <item name="android:gravity">center</item>
-        <item name="android:layout_gravity">center</item>
-    </style>
-
     <style name="TextAppearance.UrlBar.Title" parent="TextAppearance.Medium">
         <item name="android:textSize">16sp</item>
     </style>

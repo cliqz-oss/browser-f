@@ -18,8 +18,7 @@
 #include "nsCRT.h"
 #include <math.h>
 #include "nsHashKeys.h"
-#include "nsStackWalkPrivate.h"
-#include "nsStackWalk.h"
+#include "mozilla/StackWalk.h"
 #include "nsString.h"
 #include "nsThreadUtils.h"
 #include "CodeAddressService.h"
@@ -116,6 +115,22 @@ struct nsTraceRefcntStats
 {
   uint64_t mCreates;
   uint64_t mDestroys;
+
+  bool HaveLeaks() const
+  {
+    return mCreates != mDestroys;
+  }
+
+  void Clear()
+  {
+    mCreates = 0;
+    mDestroys = 0;
+  }
+
+  int64_t NumLeaked() const
+  {
+    return (int64_t)(mCreates - mDestroys);
+  }
 };
 
 #ifdef DEBUG
@@ -222,7 +237,7 @@ struct CodeAddressServiceStringAlloc final
   static void free(char* aPtr) { ::free(aPtr); }
 };
 
-// WalkTheStack does not hold any locks needed by NS_DescribeCodeAddress, so
+// WalkTheStack does not hold any locks needed by MozDescribeCodeAddress, so
 // this class does not need to do anything.
 struct CodeAddressServiceLock final
 {
@@ -247,9 +262,10 @@ public:
   BloatEntry(const char* aClassName, uint32_t aClassSize)
     : mClassSize(aClassSize)
   {
+    MOZ_ASSERT(strlen(aClassName) > 0, "BloatEntry name must be non-empty");
     mClassName = PL_strdup(aClassName);
-    Clear(&mNewStats);
-    Clear(&mAllStats);
+    mNewStats.Clear();
+    mAllStats.Clear();
     mTotalLeaked = 0;
   }
 
@@ -267,17 +283,11 @@ public:
     return mClassName;
   }
 
-  static void Clear(nsTraceRefcntStats* aStats)
-  {
-    aStats->mCreates = 0;
-    aStats->mDestroys = 0;
-  }
-
   void Accumulate()
   {
     mAllStats.mCreates += mNewStats.mCreates;
     mAllStats.mDestroys += mNewStats.mDestroys;
-    Clear(&mNewStats);
+    mNewStats.Clear();
   }
 
   void Ctor()
@@ -315,20 +325,13 @@ public:
     aTotal->mAllStats.mDestroys += mNewStats.mDestroys + mAllStats.mDestroys;
     uint64_t count = (mNewStats.mCreates + mAllStats.mCreates);
     aTotal->mClassSize += mClassSize * count;    // adjust for average in DumpTotal
-    aTotal->mTotalLeaked += (uint64_t)(mClassSize *
-                                       ((mNewStats.mCreates + mAllStats.mCreates)
-                                        - (mNewStats.mDestroys + mAllStats.mDestroys)));
+    aTotal->mTotalLeaked += mClassSize * (mNewStats.NumLeaked() + mAllStats.NumLeaked());
   }
 
   void DumpTotal(FILE* aOut)
   {
     mClassSize /= mAllStats.mCreates;
     Dump(-1, aOut, nsTraceRefcnt::ALL_STATS);
-  }
-
-  static bool HaveLeaks(nsTraceRefcntStats* aStats)
-  {
-    return aStats->mCreates != aStats->mDestroys;
   }
 
   bool PrintDumpHeader(FILE* aOut, const char* aMsg,
@@ -338,14 +341,14 @@ public:
             XRE_ChildProcessTypeToString(XRE_GetProcessType()), getpid());
     nsTraceRefcntStats& stats =
       (aType == nsTraceRefcnt::NEW_STATS) ? mNewStats : mAllStats;
-    if (gLogLeaksOnly && !HaveLeaks(&stats)) {
+    if (gLogLeaksOnly && !stats.HaveLeaks()) {
       return false;
     }
 
     fprintf(aOut,
             "\n" \
             "     |<----------------Class--------------->|<-----Bytes------>|<----Objects---->|\n" \
-            "                                              Per-Inst   Leaked    Total      Rem\n");
+            "     |                                      | Per-Inst   Leaked|   Total      Rem|\n");
 
     this->DumpTotal(aOut);
 
@@ -356,27 +359,24 @@ public:
   {
     nsTraceRefcntStats* stats =
       (aType == nsTraceRefcnt::NEW_STATS) ? &mNewStats : &mAllStats;
-    if (gLogLeaksOnly && !HaveLeaks(stats)) {
+    if (gLogLeaksOnly && !stats->HaveLeaks()) {
       return;
     }
 
-    if ((stats->mCreates - stats->mDestroys) != 0 ||
-        stats->mCreates != 0) {
-      fprintf(aOut, "%4d %-40.40s %8d %8" PRIu64 " %8" PRIu64 " %8" PRIu64 "\n",
+    if (stats->HaveLeaks() || stats->mCreates != 0) {
+      fprintf(aOut, "%4d |%-38.38s| %8d %8" PRId64 "|%8" PRIu64 " %8" PRId64"|\n",
               aIndex + 1, mClassName,
-              (int32_t)mClassSize,
-              (nsCRT::strcmp(mClassName, "TOTAL"))
-                ? (uint64_t)((stats->mCreates - stats->mDestroys) * mClassSize)
-                : mTotalLeaked,
+              GetClassSize(),
+              nsCRT::strcmp(mClassName, "TOTAL") ? (stats->NumLeaked() * GetClassSize()) : mTotalLeaked,
               stats->mCreates,
-              (stats->mCreates - stats->mDestroys));
+              stats->NumLeaked());
     }
   }
 
 protected:
   char*         mClassName;
   double        mClassSize;     // this is stored as a double because of the way we compute the avg class size for total bloat
-  uint64_t      mTotalLeaked; // used only for TOTAL entry
+  int64_t       mTotalLeaked; // used only for TOTAL entry
   nsTraceRefcntStats mNewStats;
   nsTraceRefcntStats mAllStats;
 };
@@ -836,11 +836,11 @@ static void
 PrintStackFrame(uint32_t aFrameNumber, void* aPC, void* aSP, void* aClosure)
 {
   FILE* stream = (FILE*)aClosure;
-  nsCodeAddressDetails details;
+  MozCodeAddressDetails details;
   char buf[1024];
 
-  NS_DescribeCodeAddress(aPC, &details);
-  NS_FormatCodeAddressDetails(buf, sizeof(buf), aFrameNumber, aPC, &details);
+  MozDescribeCodeAddress(aPC, &details);
+  MozFormatCodeAddressDetails(buf, sizeof(buf), aFrameNumber, aPC, &details);
   fprintf(stream, "%s\n", buf);
   fflush(stream);
 }
@@ -864,7 +864,7 @@ void
 nsTraceRefcnt::WalkTheStack(FILE* aStream)
 {
 #ifdef MOZ_STACKWALKING
-  NS_StackWalk(PrintStackFrame, /* skipFrames */ 2, /* maxFrames */ 0, aStream,
+  MozStackWalk(PrintStackFrame, /* skipFrames */ 2, /* maxFrames */ 0, aStream,
                0, nullptr);
 #endif
 }
@@ -876,7 +876,7 @@ nsTraceRefcnt::WalkTheStackCached(FILE* aStream)
   if (!gCodeAddressService) {
     gCodeAddressService = new WalkTheStackCodeAddressService();
   }
-  NS_StackWalk(PrintStackFrameCached, /* skipFrames */ 2, /* maxFrames */ 0,
+  MozStackWalk(PrintStackFrameCached, /* skipFrames */ 2, /* maxFrames */ 0,
                aStream, 0, nullptr);
 #endif
 }
@@ -1021,7 +1021,7 @@ NS_LogAddRef(void* aPtr, nsrefcnt aRefcnt,
     }
 
     if (gRefcntsLog && loggingThisType && loggingThisObject) {
-      // Can't use PR_LOG(), b/c it truncates the line
+      // Can't use MOZ_LOG(), b/c it truncates the line
       fprintf(gRefcntsLog, "\n<%s> %p %" PRIuPTR " AddRef %" PRIuPTR "\n",
               aClass, aPtr, serialno, aRefcnt);
       nsTraceRefcnt::WalkTheStackCached(gRefcntsLog);
@@ -1068,7 +1068,7 @@ NS_LogRelease(void* aPtr, nsrefcnt aRefcnt, const char* aClass)
 
     bool loggingThisObject = (!gObjectsToLog || LogThisObj(serialno));
     if (gRefcntsLog && loggingThisType && loggingThisObject) {
-      // Can't use PR_LOG(), b/c it truncates the line
+      // Can't use MOZ_LOG(), b/c it truncates the line
       fprintf(gRefcntsLog,
               "\n<%s> %p %" PRIuPTR " Release %" PRIuPTR "\n",
               aClass, aPtr, serialno, aRefcnt);

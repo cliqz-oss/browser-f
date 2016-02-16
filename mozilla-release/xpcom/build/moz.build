@@ -32,7 +32,7 @@ if CONFIG['OS_ARCH'] == 'WINNT':
         'PoisonIOInterposerBase.cpp',
         'PoisonIOInterposerWin.cpp',
     ]
-elif CONFIG['OS_ARCH'] == 'Darwin':
+elif CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     UNIFIED_SOURCES += [
         'mach_override.c',
         'PoisonIOInterposerBase.cpp',
@@ -69,8 +69,6 @@ SOURCES += [
 ]
 
 FAIL_ON_WARNINGS = True
-
-MSVC_ENABLE_PGO = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

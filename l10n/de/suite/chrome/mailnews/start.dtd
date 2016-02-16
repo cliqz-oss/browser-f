@@ -26,4 +26,4 @@
 <!ENTITY info.title "Weitere Informationen">
 <!--# LOCALIZATION NOTE (info_bugs.label): the URL for <a id="releaseNotesURL"> is fetched from brand.properties -->
 <!ENTITY info_bugs.label
-'<a href="http://www.seamonkey.at/">Wir</a> nehmen Bug-Meldungen und Funktionswünsche gerne auf, aber zuvor lesen Sie bitte die <a id="releaseNotesURL" href="">Release Notes</a> und durchsuchen Sie <a href="http://bugzilla.mozilla.org/query.cgi">Bugzilla</a>.'>
+'<a href="https://developer.mozilla.org/docs/Mozilla/Projects/MailNews">Wir</a> nehmen Bug-Meldungen und Funktionswünsche gerne auf, aber zuvor lesen Sie bitte die <a id="releaseNotesURL" href="">Release Notes</a> und durchsuchen Sie <a href="http://bugzilla.mozilla.org/query.cgi">Bugzilla</a>.'>

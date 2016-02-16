@@ -22,7 +22,6 @@ namespace mozilla {
 namespace layers {
 
 class APZEventState;
-class CompositorParent;
 
 // A ChromeProcessController is attached to the root of a compositor's layer
 // tree.
@@ -50,20 +49,20 @@ public:
   virtual void HandleLongTap(const mozilla::CSSPoint& aPoint, Modifiers aModifiers,
                                const ScrollableLayerGuid& aGuid,
                                uint64_t aInputBlockId) override;
-  virtual void SendAsyncScrollDOMEvent(bool aIsRoot, const mozilla::CSSRect &aContentRect,
+  virtual void SendAsyncScrollDOMEvent(bool aIsRootContent, const mozilla::CSSRect &aContentRect,
                                        const mozilla::CSSSize &aScrollableSize) override {}
   virtual void NotifyAPZStateChange(const ScrollableLayerGuid& aGuid,
                                     APZStateChange aChange,
                                     int aArg) override;
   virtual void NotifyMozMouseScrollEvent(const FrameMetrics::ViewID& aScrollId,
                                          const nsString& aEvent) override;
+  virtual void NotifyFlushComplete() override;
 private:
   nsCOMPtr<nsIWidget> mWidget;
   nsRefPtr<APZEventState> mAPZEventState;
   MessageLoop* mUILoop;
 
   void InitializeRoot();
-  float GetPresShellResolution() const;
   nsIPresShell* GetPresShell() const;
   nsIDocument* GetDocument() const;
   already_AddRefed<nsIDOMWindowUtils> GetDOMWindowUtils() const;

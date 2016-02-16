@@ -31,7 +31,7 @@ with Files('jit/**'):
 for gcfile in ['jsgc*', 'devtools/rootAnalysis', 'devtools/gc-ubench', 'devtools/gctrace']:
     with Files(gcfile):
         BUG_COMPONENT = component_gc
-for header in ('GCAPI.h', 'HeapAPI.h', 'RootingAPI.h', 'SliceBudget.h', 'TracingAPI.h', 'WeakMapPtr.h'):
+for header in ('GCAPI.h', 'HeapAPI.h', 'RootingAPI.h', 'SliceBudget.h', 'TraceKind.h', 'TracingAPI.h', 'WeakMapPtr.h'):
     with Files('../public/' + header):
         BUG_COMPONENT = component_gc
 
@@ -122,6 +122,7 @@ EXPORTS.js += [
     '../public/RootingAPI.h',
     '../public/SliceBudget.h',
     '../public/StructuredClone.h',
+    '../public/TraceKind.h',
     '../public/TracingAPI.h',
     '../public/TrackedOptimizationInfo.h',
     '../public/TypeDecls.h',
@@ -212,9 +213,7 @@ UNIFIED_SOURCES += [
     'jit/JitSpewer.cpp',
     'jit/JSONSpewer.cpp',
     'jit/LICM.cpp',
-    'jit/LinearScan.cpp',
     'jit/LIR.cpp',
-    'jit/LiveRangeAllocator.cpp',
     'jit/LoopUnroller.cpp',
     'jit/Lowering.cpp',
     'jit/MacroAssembler.cpp',
@@ -233,6 +232,7 @@ UNIFIED_SOURCES += [
     'jit/shared/BaselineCompiler-shared.cpp',
     'jit/shared/CodeGenerator-shared.cpp',
     'jit/shared/Lowering-shared.cpp',
+    'jit/SharedIC.cpp',
     'jit/Sink.cpp',
     'jit/Snapshots.cpp',
     'jit/StupidAllocator.cpp',
@@ -270,6 +270,7 @@ UNIFIED_SOURCES += [
     'proxy/CrossCompartmentWrapper.cpp',
     'proxy/DeadObjectProxy.cpp',
     'proxy/DirectProxyHandler.cpp',
+    'proxy/OpaqueCrossCompartmentWrapper.cpp',
     'proxy/Proxy.cpp',
     'proxy/ScriptedDirectProxyHandler.cpp',
     'proxy/ScriptedIndirectProxyHandler.cpp',
@@ -296,8 +297,10 @@ UNIFIED_SOURCES += [
     'vm/NativeObject.cpp',
     'vm/ObjectGroup.cpp',
     'vm/PIC.cpp',
+    'vm/Printer.cpp',
     'vm/Probes.cpp',
     'vm/ProxyObject.cpp',
+    'vm/ReceiverGuard.cpp',
     'vm/RegExpObject.cpp',
     'vm/RegExpStatics.cpp',
     'vm/Runtime.cpp',
@@ -365,15 +368,16 @@ if not CONFIG['ENABLE_ION']:
     ]
 elif CONFIG['JS_CODEGEN_X86'] or CONFIG['JS_CODEGEN_X64']:
     UNIFIED_SOURCES += [
-        'jit/shared/Assembler-x86-shared.cpp',
-        'jit/shared/AssemblerBuffer-x86-shared.cpp',
-        'jit/shared/BaselineCompiler-x86-shared.cpp',
-        'jit/shared/BaselineIC-x86-shared.cpp',
-        'jit/shared/CodeGenerator-x86-shared.cpp',
-        'jit/shared/Disassembler-x86-shared.cpp',
-        'jit/shared/Lowering-x86-shared.cpp',
-        'jit/shared/MacroAssembler-x86-shared.cpp',
-        'jit/shared/MoveEmitter-x86-shared.cpp',
+        'jit/x86-shared/Architecture-x86-shared.cpp',
+        'jit/x86-shared/Assembler-x86-shared.cpp',
+        'jit/x86-shared/AssemblerBuffer-x86-shared.cpp',
+        'jit/x86-shared/BaselineCompiler-x86-shared.cpp',
+        'jit/x86-shared/BaselineIC-x86-shared.cpp',
+        'jit/x86-shared/CodeGenerator-x86-shared.cpp',
+        'jit/x86-shared/Disassembler-x86-shared.cpp',
+        'jit/x86-shared/Lowering-x86-shared.cpp',
+        'jit/x86-shared/MacroAssembler-x86-shared.cpp',
+        'jit/x86-shared/MoveEmitter-x86-shared.cpp',
     ]
     if CONFIG['JS_CODEGEN_X64']:
         UNIFIED_SOURCES += [
@@ -410,9 +414,37 @@ elif CONFIG['JS_CODEGEN_ARM']:
         'jit/arm/MoveEmitter-arm.cpp',
         'jit/arm/Trampoline-arm.cpp',
     ]
-    if CONFIG['JS_ARM_SIMULATOR']:
+    if CONFIG['JS_SIMULATOR_ARM']:
         UNIFIED_SOURCES += [
             'jit/arm/Simulator-arm.cpp'
+        ]
+elif CONFIG['JS_CODEGEN_ARM64']:
+    UNIFIED_SOURCES += [
+        'jit/arm64/Architecture-arm64.cpp',
+        'jit/arm64/Assembler-arm64.cpp',
+        'jit/arm64/Bailouts-arm64.cpp',
+        'jit/arm64/BaselineIC-arm64.cpp',
+        'jit/arm64/CodeGenerator-arm64.cpp',
+        'jit/arm64/Lowering-arm64.cpp',
+        'jit/arm64/MacroAssembler-arm64.cpp',
+        'jit/arm64/MoveEmitter-arm64.cpp',
+        'jit/arm64/Trampoline-arm64.cpp',
+        'jit/arm64/vixl/Assembler-vixl.cpp',
+        'jit/arm64/vixl/Cpu-vixl.cpp',
+        'jit/arm64/vixl/Decoder-vixl.cpp',
+        'jit/arm64/vixl/Disasm-vixl.cpp',
+        'jit/arm64/vixl/Instructions-vixl.cpp',
+        'jit/arm64/vixl/Instrument-vixl.cpp',
+        'jit/arm64/vixl/MacroAssembler-vixl.cpp',
+        'jit/arm64/vixl/MozAssembler-vixl.cpp',
+        'jit/arm64/vixl/MozInstructions-vixl.cpp',
+        'jit/arm64/vixl/Utils-vixl.cpp'
+    ]
+    if CONFIG['JS_SIMULATOR_ARM64']:
+        UNIFIED_SOURCES += [
+            'jit/arm64/vixl/Debugger-vixl.cpp',
+            'jit/arm64/vixl/MozSimulator-vixl.cpp',
+            'jit/arm64/vixl/Simulator-vixl.cpp'
         ]
 elif CONFIG['JS_CODEGEN_MIPS']:
     UNIFIED_SOURCES += [
@@ -427,7 +459,7 @@ elif CONFIG['JS_CODEGEN_MIPS']:
         'jit/mips/MoveEmitter-mips.cpp',
         'jit/mips/Trampoline-mips.cpp',
     ]
-    if CONFIG['JS_MIPS_SIMULATOR']:
+    if CONFIG['JS_SIMULATOR_MIPS']:
         UNIFIED_SOURCES += [
             'jit/mips/Simulator-mips.cpp'
         ]
@@ -467,8 +499,6 @@ else:
     SOURCES += [
         'perf/pm_stub.cpp'
     ]
-
-MSVC_ENABLE_PGO = True
 
 HostSimplePrograms([
     'host_jskwgen',
@@ -540,6 +570,11 @@ if CONFIG['_MSC_VER']:
     # But given the conversion from bool is specified, and this is a
     # pattern widely used in code in js/src, suppress this warning here.
     CXXFLAGS += ['-wd4805']
+    # C4661 ("no suitable definition provided for explicit template
+    # instantiation request") is emitted for all Parser methods that
+    # have a Parser<FullParseHandler> definition but no
+    # Parser<SyntaxParseHandler> definition, see bug 1167030.
+    CXXFLAGS += ['-wd4661']
     CXXFLAGS += ['-we4067', '-we4258', '-we4275']
 
 if CONFIG['OS_ARCH'] not in ('WINNT', 'HP-UX'):
@@ -567,3 +602,7 @@ if CONFIG['OS_ARCH'] == 'SunOS':
 
 if CONFIG['GNU_CXX']:
     FAIL_ON_WARNINGS = True
+
+NO_EXPAND_LIBS = True
+
+DIST_INSTALL = True

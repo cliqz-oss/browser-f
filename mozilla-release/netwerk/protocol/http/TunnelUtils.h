@@ -15,6 +15,7 @@
 #include "nsITimer.h"
 #include "NullHttpTransaction.h"
 #include "mozilla/TimeStamp.h"
+#include "prio.h"
 
 // a TLSFilterTransaction wraps another nsAHttpTransaction but
 // applies a encode/decode filter of TLS onto the ReadSegments
@@ -174,7 +175,6 @@ class SocketTransportShim;
 class InputStreamShim;
 class OutputStreamShim;
 class nsHttpConnection;
-class ASpdySession;
 
 class SpdyConnectTransaction final : public NullHttpTransaction
 {
@@ -210,7 +210,6 @@ private:
 
   nsCString             mConnectString;
   uint32_t              mConnectStringOffset;
-  nsHttpRequestHead     *mRequestHead;
 
   nsAHttpConnection    *mSession;
   nsAHttpSegmentReader *mSegmentReader;

@@ -10,11 +10,11 @@ let gAddon, gClient, gThreadClient, gDebugger, gSources;
 let PREFS = [
   "devtools.canvasdebugger.enabled",
   "devtools.shadereditor.enabled",
-  "devtools.profiler.enabled",
+  "devtools.performance.enabled",
   "devtools.netmonitor.enabled"
 ];
 function test() {
-  Task.spawn(function () {
+  Task.spawn(function*() {
     let addon = yield addAddon(ADDON_URL);
     let addonDebugger = yield initAddonDebugger(ADDON_URL);
 

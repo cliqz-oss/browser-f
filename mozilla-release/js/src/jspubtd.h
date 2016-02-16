@@ -20,13 +20,15 @@
 
 #include "js/TypeDecls.h"
 
-#if (defined(JS_GC_ZEAL)) || defined(DEBUG)
+#if defined(JS_GC_ZEAL) || defined(DEBUG)
 # define JSGC_HASH_TABLE_CHECKS
 #endif
 
 namespace JS {
 
-class AutoIdVector;
+template <typename T>
+class AutoVectorRooter;
+typedef AutoVectorRooter<jsid> AutoIdVector;
 class CallArgs;
 
 template <typename T>
@@ -37,12 +39,14 @@ class JS_FRIEND_API(ReadOnlyCompileOptions);
 class JS_FRIEND_API(OwningCompileOptions);
 class JS_PUBLIC_API(CompartmentOptions);
 
+class Value;
 struct Zone;
 
 } /* namespace JS */
 
 namespace js {
 struct ContextFriendFields;
+class Shape;
 } // namespace js
 
 /*
@@ -124,6 +128,7 @@ namespace js {
 void FinishGC(JSRuntime* rt);
 
 namespace gc {
+class AutoTraceSession;
 class StoreBuffer;
 void MarkPersistentRootedChains(JSTracer*);
 void FinishPersistentRootedChains(JSRuntime*);
@@ -134,25 +139,31 @@ namespace JS {
 
 typedef void (*OffThreadCompileCallback)(void* token, void* callbackData);
 
+enum class HeapState {
+    Idle,             // doing nothing with the GC heap
+    Tracing,          // tracing the GC heap without collecting, e.g. IterateCompartments()
+    MajorCollecting,  // doing a GC of the major heap
+    MinorCollecting   // doing a GC of the minor heap (nursery)
+};
+
 namespace shadow {
 
 struct Runtime
 {
-    /* Restrict zone access during Minor GC. */
-    bool needsIncrementalBarrier_;
+  protected:
+    // Allow inlining of heapState checks.
+    friend class js::gc::AutoTraceSession;
+    JS::HeapState heapState_;
 
-  private:
     js::gc::StoreBuffer* gcStoreBufferPtr_;
 
   public:
     Runtime()
-      : needsIncrementalBarrier_(false)
+      : heapState_(JS::HeapState::Idle)
       , gcStoreBufferPtr_(nullptr)
     {}
 
-    bool needsIncrementalBarrier() const {
-        return needsIncrementalBarrier_;
-    }
+    bool isHeapBusy() const { return heapState_ != JS::HeapState::Idle; }
 
     js::gc::StoreBuffer* gcStoreBufferPtr() { return gcStoreBufferPtr_; }
 
@@ -261,13 +272,18 @@ class JS_PUBLIC_API(AutoGCRooter)
         IONMASM =     -19, /* js::jit::MacroAssembler */
         WRAPVECTOR =  -20, /* js::AutoWrapperVector */
         WRAPPER =     -21, /* js::AutoWrapperRooter */
-        OBJOBJHASHMAP=-22, /* js::AutoObjectObjectHashMap */
         OBJU32HASHMAP=-23, /* js::AutoObjectUnsigned32HashMap */
-        OBJHASHSET =  -24, /* js::AutoObjectHashSet */
         JSONPARSER =  -25, /* js::JSONParser */
-        CUSTOM =      -26, /* js::CustomAutoRooter */
-        FUNVECTOR =   -27  /* js::AutoFunctionVector */
+        CUSTOM =      -26  /* js::CustomAutoRooter */
     };
+
+    static ptrdiff_t GetTag(const Value& value) { return VALVECTOR; }
+    static ptrdiff_t GetTag(const jsid& id) { return IDVECTOR; }
+    static ptrdiff_t GetTag(JSObject* obj) { return OBJVECTOR; }
+    static ptrdiff_t GetTag(JSScript* script) { return SCRIPTVECTOR; }
+    static ptrdiff_t GetTag(JSString* string) { return STRINGVECTOR; }
+    static ptrdiff_t GetTag(js::Shape* shape) { return SHAPEVECTOR; }
+    static ptrdiff_t GetTag(const JSPropertyDescriptor& pd) { return DESCVECTOR; }
 
   private:
     AutoGCRooter ** const stackTop;

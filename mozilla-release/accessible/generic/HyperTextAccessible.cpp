@@ -63,12 +63,11 @@ HyperTextAccessible::NativeRole()
   if (r != roles::NOTHING)
     return r;
 
-  // Treat block frames as paragraphs
-  nsIFrame *frame = GetFrame();
-  if (frame && frame->GetType() == nsGkAtoms::blockFrame)
-    return roles::PARAGRAPH;
+  nsIFrame* frame = GetFrame();
+  if (frame && frame->GetType() == nsGkAtoms::inlineFrame)
+    return roles::TEXT;
 
-  return roles::TEXT_CONTAINER; // In ATK this works
+  return roles::TEXT_CONTAINER;
 }
 
 uint64_t
@@ -986,6 +985,9 @@ HyperTextAccessible::NativeAttributes()
 nsIAtom*
 HyperTextAccessible::LandmarkRole() const
 {
+  if (!HasOwnContent())
+    return nullptr;
+
   // For the html landmark elements we expose them like we do ARIA landmarks to
   // make AT navigation schemes "just work".
   if (mContent->IsHTMLElement(nsGkAtoms::nav)) {
@@ -1040,7 +1042,7 @@ HyperTextAccessible::OffsetAtPoint(int32_t aX, int32_t aY, uint32_t aCoordType)
 
   nsPresContext* presContext = mDoc->PresContext();
   nsPoint coordsInAppUnits =
-    coords.ToAppUnits(presContext->AppUnitsPerDevPixel());
+    ToAppUnits(coords, presContext->AppUnitsPerDevPixel());
 
   nsRect frameScreenRect = hyperFrame->GetScreenRectInAppUnits();
   if (!frameScreenRect.Contains(coordsInAppUnits.x, coordsInAppUnits.y))
@@ -1568,7 +1570,7 @@ HyperTextAccessible::ScrollSubstringToPoint(int32_t aStartOffset,
 
   nsPresContext* presContext = frame->PresContext();
   nsPoint coordsInAppUnits =
-    coords.ToAppUnits(presContext->AppUnitsPerDevPixel());
+    ToAppUnits(coords, presContext->AppUnitsPerDevPixel());
 
   bool initialScrolled = false;
   nsIFrame *parentFrame = frame;
@@ -1751,6 +1753,43 @@ HyperTextAccessible::RemoveChild(Accessible* aAccessible)
     mOffsets.RemoveElementsAt(childIndex, count);
 
   return Accessible::RemoveChild(aAccessible);
+}
+
+Relation
+HyperTextAccessible::RelationByType(RelationType aType)
+{
+  Relation rel = Accessible::RelationByType(aType);
+
+  switch (aType) {
+    case RelationType::NODE_CHILD_OF:
+      if (HasOwnContent() && mContent->IsMathMLElement()) {
+        Accessible* parent = Parent();
+        if (parent) {
+          nsIContent* parentContent = parent->GetContent();
+          if (parentContent &&
+              parentContent->IsMathMLElement(nsGkAtoms::mroot_)) {
+            // Add a relation pointing to the parent <mroot>.
+            rel.AppendTarget(parent);
+          }
+        }
+      }
+      break;
+    case RelationType::NODE_PARENT_OF:
+      if (HasOwnContent() && mContent->IsMathMLElement(nsGkAtoms::mroot_)) {
+        Accessible* base = GetChildAt(0);
+        Accessible* index = GetChildAt(1);
+        if (base && index) {
+          // Append the <mroot> children in the order index, base.
+          rel.AppendTarget(index);
+          rel.AppendTarget(base);
+        }
+      }
+      break;
+    default:
+      break;
+  }
+
+  return rel;
 }
 
 void

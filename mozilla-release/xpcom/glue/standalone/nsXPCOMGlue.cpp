@@ -30,7 +30,7 @@ static bool do_preload = false;
 #endif
 
 #if defined(SUNOS4) || defined(NEXTSTEP) || \
-    defined(XP_DARWIN) || \
+    defined(XP_MACOSX) || \
     (defined(OPENBSD) || defined(NETBSD)) && !defined(__ELF__)
 #define LEADING_UNDERSCORE "_"
 #else
@@ -526,7 +526,7 @@ NS_NewNativeLocalFile(const nsACString& aPath, bool aFollowLinks,
 }
 
 XPCOM_API(nsresult)
-NS_GetDebug(nsIDebug** aResult)
+NS_GetDebug(nsIDebug2** aResult)
 {
   if (!xpcomFunctions.getDebug) {
     return NS_ERROR_NOT_INITIALIZED;

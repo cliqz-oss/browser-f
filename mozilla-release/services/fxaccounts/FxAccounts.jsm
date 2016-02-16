@@ -45,6 +45,7 @@ let publicProperties = [
   "now",
   "promiseAccountsForceSigninURI",
   "promiseAccountsChangeProfileURI",
+  "promiseAccountsManageURI",
   "removeCachedOAuthToken",
   "resendVerificationEmail",
   "setSignedInUser",
@@ -110,12 +111,6 @@ AccountState.prototype = {
     this.signedInUser = null;
     this.uid = null;
     this.fxaInternal = null;
-    this.initProfilePromise = null;
-
-    if (this.profile) {
-      this.profile.tearDown();
-      this.profile = null;
-    }
   },
 
   // Clobber all cached data and write that empty data to storage.
@@ -291,41 +286,6 @@ AccountState.prototype = {
       d.resolve(this.keyPair.keyPair);
     });
     return d.promise.then(result => this.resolve(result));
-  },
-
-  // Get the account's profile image URL from the profile server
-  getProfile: function () {
-    return this.initProfile()
-      .then(() => this.profile.getProfile());
-  },
-
-  // Instantiate a FxAccountsProfile with a fresh OAuth token if needed
-  initProfile: function () {
-
-    let profileServerUrl = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.profile.uri");
-
-    let oAuthOptions = {
-      scope: "profile"
-    };
-
-    if (this.initProfilePromise) {
-      return this.initProfilePromise;
-    }
-
-    this.initProfilePromise = this.fxaInternal.getOAuthToken(oAuthOptions)
-      .then(token => {
-        this.profile = new FxAccountsProfile(this, {
-          profileServerUrl: profileServerUrl,
-          token: token
-        });
-        this.initProfilePromise = null;
-      })
-      .then(null, err => {
-        this.initProfilePromise = null;
-        throw err;
-      });
-
-    return this.initProfilePromise;
   },
 
   resolve: function(result) {
@@ -593,6 +553,19 @@ FxAccountsInternal.prototype = {
     return this._fxAccountsClient;
   },
 
+  // The profile object used to fetch the actual user profile.
+  _profile: null,
+  get profile() {
+    if (!this._profile) {
+      let profileServerUrl = Services.urlFormatter.formatURLPref("identity.fxaccounts.remote.profile.uri");
+      this._profile = new FxAccountsProfile({
+        fxa: this,
+        profileServerUrl: profileServerUrl,
+      });
+    }
+    return this._profile;
+  },
+
   /**
    * Return the current time in milliseconds as an integer.  Allows tests to
    * manipulate the date to simulate certificate expiration.
@@ -848,6 +821,10 @@ FxAccountsInternal.prototype = {
    */
   _signOutLocal: function signOutLocal() {
     let currentAccountState = this.currentAccountState;
+    if (this._profile) {
+      this._profile.tearDown();
+      this._profile = null;
+    }
     return currentAccountState.signOut().then(() => {
       this.abortExistingFlow(); // this resets this.currentAccountState.
     });
@@ -1067,6 +1044,12 @@ FxAccountsInternal.prototype = {
   pollEmailStatus: function pollEmailStatus(currentState, sessionToken, why) {
     log.debug("entering pollEmailStatus: " + why);
     if (why == "start") {
+      if (this.currentTimer) {
+        log.debug("pollEmailStatus starting while existing timer is running");
+        clearTimeout(this.currentTimer);
+        this.currentTimer = null;
+      }
+
       // If we were already polling, stop and start again.  This could happen
       // if the user requested the verification email to be resent while we
       // were already polling for receipt of an earlier email.
@@ -1193,7 +1176,7 @@ FxAccountsInternal.prototype = {
   // the current account's profile image.
   // if settingToEdit is set, the profile page should hightlight that setting
   // for the user to edit.
-  promiseAccountsChangeProfileURI: function(settingToEdit = null) {
+  promiseAccountsChangeProfileURI: function(entrypoint, settingToEdit = null) {
     let url = Services.urlFormatter.formatURLPref("identity.fxaccounts.settings.uri");
 
     if (settingToEdit) {
@@ -1213,6 +1196,34 @@ FxAccountsInternal.prototype = {
       let newQueryPortion = url.indexOf("?") == -1 ? "?" : "&";
       newQueryPortion += "email=" + encodeURIComponent(accountData.email);
       newQueryPortion += "&uid=" + encodeURIComponent(accountData.uid);
+      if (entrypoint) {
+        newQueryPortion += "&entrypoint=" + encodeURIComponent(entrypoint);
+      }
+      return url + newQueryPortion;
+    }).then(result => currentState.resolve(result));
+  },
+
+  // Returns a promise that resolves with the URL to use to manage the current
+  // user's FxA acct.
+  promiseAccountsManageURI: function(entrypoint) {
+    let url = Services.urlFormatter.formatURLPref("identity.fxaccounts.settings.uri");
+    if (this._requireHttps() && !/^https:/.test(url)) { // Comment to un-break emacs js-mode highlighting
+      throw new Error("Firefox Accounts server must use HTTPS");
+    }
+    let currentState = this.currentAccountState;
+    // but we need to append the uid and email address onto a query string
+    // (if the server has no matching uid it will offer to sign in with the
+    // email address)
+    return this.getSignedInUser().then(accountData => {
+      if (!accountData) {
+        return null;
+      }
+      let newQueryPortion = url.indexOf("?") == -1 ? "?" : "&";
+      newQueryPortion += "uid=" + encodeURIComponent(accountData.uid) +
+                         "&email=" + encodeURIComponent(accountData.email);
+      if (entrypoint) {
+        newQueryPortion += "&entrypoint=" + encodeURIComponent(entrypoint);
+      }
       return url + newQueryPortion;
     }).then(result => currentState.resolve(result));
   },
@@ -1377,9 +1388,9 @@ FxAccountsInternal.prototype = {
    *
    * @param options
    *        {
-   *          contentUrl: (string) Used by the FxAccountsProfileChannel.
+   *          contentUrl: (string) Used by the FxAccountsWebChannel.
    *            Defaults to pref identity.fxaccounts.settings.uri
-   *          profileServerUrl: (string) Used by the FxAccountsProfileChannel.
+   *          profileServerUrl: (string) Used by the FxAccountsWebChannel.
    *            Defaults to pref identity.fxaccounts.remote.profile.uri
    *        }
    *
@@ -1395,17 +1406,17 @@ FxAccountsInternal.prototype = {
    *          UNKNOWN_ERROR
    */
   getSignedInUserProfile: function () {
-    let accountState = this.currentAccountState;
-    return accountState.getProfile()
-      .then((profileData) => {
+    let currentState = this.currentAccountState;
+    return this.profile.getProfile().then(
+      profileData => {
         let profile = JSON.parse(JSON.stringify(profileData));
-        return accountState.resolve(profile);
+        return currentState.resolve(profile);
       },
-      (error) => {
+      error => {
         log.error("Could not retrieve profile data", error);
-        return accountState.reject(error);
-      })
-      .then(null, err => Promise.reject(this._errorToErrorClass(err)));
+        return currentState.reject(error);
+      }
+    ).catch(err => Promise.reject(this._errorToErrorClass(err)));
   },
 };
 

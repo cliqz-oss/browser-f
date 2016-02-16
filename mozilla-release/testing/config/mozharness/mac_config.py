@@ -10,7 +10,7 @@ config = {
                 "--xre-path=%(abs_app_dir)s"
             ],
             "run_filename": "runcppunittests.py",
-            "testsdir": "cppunittests"
+            "testsdir": "cppunittest"
         },
         "jittest": {
             "options": [
@@ -30,9 +30,6 @@ config = {
                 "--extra-profile-file=tests/bin/plugins",
                 "--symbols-path=%(symbols_path)s",
                 "--certificate-path=tests/certs",
-                "--autorun",
-                "--close-when-done",
-                "--console-level=INFO",
                 "--quiet",
                 "--log-raw=%(raw_log_file)s"
             ],
@@ -85,7 +82,8 @@ config = {
             "options": [
                 "--symbols-path=%(symbols_path)s",
                 "--test-plugin-path=%(test_plugin_path)s",
-                "--log-raw=%(raw_log_file)s"
+                "--log-raw=%(raw_log_file)s",
+                "--utility-path=tests/bin",
             ],
             "run_filename": "runxpcshelltests.py",
             "testsdir": "xpcshell"

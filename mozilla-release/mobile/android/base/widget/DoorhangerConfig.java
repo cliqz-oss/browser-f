@@ -5,7 +5,6 @@
 
 package org.mozilla.gecko.widget;
 
-import org.json.JSONArray;
 import org.json.JSONObject;
 
 import org.mozilla.gecko.widget.DoorHanger.Type;
@@ -24,23 +23,39 @@ public class DoorhangerConfig {
         }
     }
 
+    public static class ButtonConfig {
+        public final String label;
+        public final int callback;
+
+        public ButtonConfig(String label, int callback) {
+            this.label = label;
+            this.callback = callback;
+        }
+    }
+    private static final String LOGTAG = "DoorhangerConfig";
+
     private final int tabId;
     private final String id;
-    private DoorHanger.Type type;
+    private final DoorHanger.OnButtonClickListener buttonClickListener;
+    private final DoorHanger.Type type;
     private String message;
     private JSONObject options;
     private Link link;
-    private JSONArray buttons;
+    private ButtonConfig positiveButtonConfig;
+    private ButtonConfig negativeButtonConfig;
 
-    public DoorhangerConfig() {
+    public DoorhangerConfig(Type type, DoorHanger.OnButtonClickListener listener) {
         // XXX: This should only be used by SiteIdentityPopup doorhangers which
         // don't need tab or id references, until bug 1141904 unifies doorhangers.
-        this(-1, null);
+
+        this(-1, null, type, listener);
     }
 
-    public DoorhangerConfig(int tabId, String id) {
+    public DoorhangerConfig(int tabId, String id, DoorHanger.Type type, DoorHanger.OnButtonClickListener buttonClickListener) {
         this.tabId = tabId;
         this.id = id;
+        this.type = type;
+        this.buttonClickListener = buttonClickListener;
     }
 
     public int getTabId() {
@@ -49,10 +64,6 @@ public class DoorhangerConfig {
 
     public String getId() {
         return id;
-    }
-
-    public void setType(Type type) {
-        this.type = type;
     }
 
     public Type getType() {
@@ -75,12 +86,25 @@ public class DoorhangerConfig {
         return options;
     }
 
-    public void setButtons(JSONArray buttons) {
-        this.buttons = buttons;
+    public void setButton(String label, int callbackId, boolean isPositive) {
+        final ButtonConfig buttonConfig = new ButtonConfig(label, callbackId);
+        if (isPositive) {
+            positiveButtonConfig = buttonConfig;
+        } else {
+            negativeButtonConfig = buttonConfig;
+        }
     }
 
-    public JSONArray getButtons() {
-        return buttons;
+    public ButtonConfig getPositiveButtonConfig() {
+        return positiveButtonConfig;
+    }
+
+    public  ButtonConfig getNegativeButtonConfig() {
+        return negativeButtonConfig;
+    }
+
+    public DoorHanger.OnButtonClickListener getButtonClickListener() {
+        return this.buttonClickListener;
     }
 
     public void setLink(String label, String url, String delimiter) {

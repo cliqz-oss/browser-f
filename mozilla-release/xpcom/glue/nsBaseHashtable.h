@@ -128,8 +128,8 @@ public:
     }
   }
 
-  NS_WARN_UNUSED_RESULT bool Put(KeyType aKey, const UserDataType& aData,
-                                 const fallible_t&)
+  MOZ_WARN_UNUSED_RESULT bool Put(KeyType aKey, const UserDataType& aData,
+                                  const fallible_t&)
   {
     EntryType* ent = this->PutEntry(aKey);
     if (!ent) {
@@ -167,9 +167,6 @@ public:
    */
   uint32_t EnumerateRead(EnumReadFunction aEnumFunc, void* aUserArg) const
   {
-    NS_ASSERTION(this->mTable.IsInitialized(),
-                 "nsBaseHashtable was not initialized properly.");
-
     s_EnumReadArgs enumData = { aEnumFunc, aUserArg };
     return PL_DHashTableEnumerate(const_cast<PLDHashTable*>(&this->mTable),
                                   s_EnumReadStub,
@@ -199,9 +196,6 @@ public:
    */
   uint32_t Enumerate(EnumFunction aEnumFunc, void* aUserArg)
   {
-    NS_ASSERTION(this->mTable.IsInitialized(),
-                 "nsBaseHashtable was not initialized properly.");
-
     s_EnumArgs enumData = { aEnumFunc, aUserArg };
     return PL_DHashTableEnumerate(&this->mTable,
                                   s_EnumStub,
@@ -359,6 +353,7 @@ ImplCycleCollectionTraverse_EnumFunc(K aKey,
 template<class KeyClass, class DataType>
 nsBaseHashtableET<KeyClass, DataType>::nsBaseHashtableET(KeyTypePointer aKey)
   : KeyClass(aKey)
+  , mData()
 {
 }
 

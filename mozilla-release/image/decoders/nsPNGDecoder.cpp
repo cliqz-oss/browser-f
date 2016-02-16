@@ -22,7 +22,6 @@
 namespace mozilla {
 namespace image {
 
-#ifdef PR_LOGGING
 static PRLogModuleInfo*
 GetPNGLog()
 {
@@ -42,7 +41,6 @@ GetPNGDecoderAccountingLog()
   }
   return sPNGDecoderAccountingLog;
 }
-#endif
 
 // Limit image dimensions (bug #251381, #591822, and #967656)
 #ifndef MOZ_PNG_MAX_DIMENSION
@@ -113,6 +111,7 @@ nsPNGDecoder::nsPNGDecoder(RasterImage* aImage)
    mPNG(nullptr), mInfo(nullptr),
    mCMSLine(nullptr), interlacebuf(nullptr),
    mInProfile(nullptr), mTransform(nullptr),
+   format(gfx::SurfaceFormat::UNKNOWN),
    mHeaderBytesRead(0), mCMSMode(0),
    mChannels(0), mFrameIsHidden(false),
    mDisablePremultipliedAlpha(false),
@@ -126,10 +125,10 @@ nsPNGDecoder::~nsPNGDecoder()
     png_destroy_read_struct(&mPNG, mInfo ? &mInfo : nullptr, nullptr);
   }
   if (mCMSLine) {
-    nsMemory::Free(mCMSLine);
+    free(mCMSLine);
   }
   if (interlacebuf) {
-    nsMemory::Free(interlacebuf);
+    free(interlacebuf);
   }
   if (mInProfile) {
     qcms_profile_release(mInProfile);
@@ -170,7 +169,7 @@ void nsPNGDecoder::CreateFrame(png_uint_32 x_offset, png_uint_32 y_offset,
 
   mFrameRect = neededRect;
 
-  PR_LOG(GetPNGDecoderAccountingLog(), PR_LOG_DEBUG,
+  MOZ_LOG(GetPNGDecoderAccountingLog(), LogLevel::Debug,
          ("PNGDecoderAccounting: nsPNGDecoder::CreateFrame -- created "
           "image frame with %dx%d pixels in container %p",
           width, height,
@@ -281,21 +280,19 @@ nsPNGDecoder::InitInternal()
                               (int)sizeof(unused_chunks)/5);
 #endif
 
-#ifdef PNG_SET_CHUNK_MALLOC_LIMIT_SUPPORTED
+#ifdef PNG_SET_USER_LIMITS_SUPPORTED
   if (mCMSMode != eCMSMode_Off) {
     png_set_chunk_malloc_max(mPNG, 4000000L);
   }
 #endif
 
 #ifdef PNG_READ_CHECK_FOR_INVALID_INDEX_SUPPORTED
-#ifndef PR_LOGGING
   // Disallow palette-index checking, for speed; we would ignore the warning
-  // anyhow unless we have defined PR_LOGGING.  This feature was added at
-  // libpng version 1.5.10 and is disabled in the embedded libpng but enabled
-  // by default in the system libpng.  This call also disables it in the
-  // system libpng, for decoding speed.  Bug #745202.
+  // anyhow.  This feature was added at libpng version 1.5.10 and is disabled
+  // in the embedded libpng but enabled by default in the system libpng.  This
+  // call also disables it in the system libpng, for decoding speed.
+  // Bug #745202.
   png_set_check_for_invalid_index(mPNG, 0);
-#endif
 #endif
 
 #if defined(PNG_SET_OPTION_SUPPORTED) && defined(PNG_sRGB_PROFILE_CHECKS) && \
@@ -640,6 +637,8 @@ nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr)
     decoder->format = gfx::SurfaceFormat::B8G8R8X8;
   } else if (channels == 2 || channels == 4) {
     decoder->format = gfx::SurfaceFormat::B8G8R8A8;
+  } else {
+    png_longjmp(decoder->mPNG, 1); // invalid number of channels
   }
 
 #ifdef PNG_APNG_SUPPORTED
@@ -661,7 +660,7 @@ nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr)
       (channels <= 2 || interlace_type == PNG_INTERLACE_ADAM7)) {
     uint32_t bpp[] = { 0, 3, 4, 3, 4 };
     decoder->mCMSLine =
-      (uint8_t*)moz_malloc(bpp[channels] * width);
+      (uint8_t*)malloc(bpp[channels] * width);
     if (!decoder->mCMSLine) {
       png_longjmp(decoder->mPNG, 5); // NS_ERROR_OUT_OF_MEMORY
     }
@@ -669,7 +668,7 @@ nsPNGDecoder::info_callback(png_structp png_ptr, png_infop info_ptr)
 
   if (interlace_type == PNG_INTERLACE_ADAM7) {
     if (height < INT32_MAX / (width * channels)) {
-      decoder->interlacebuf = (uint8_t*)moz_malloc(channels * width * height);
+      decoder->interlacebuf = (uint8_t*)malloc(channels * width * height);
     }
     if (!decoder->interlacebuf) {
       png_longjmp(decoder->mPNG, 5); // NS_ERROR_OUT_OF_MEMORY
@@ -880,7 +879,7 @@ nsPNGDecoder::end_callback(png_structp png_ptr, png_infop info_ptr)
 void
 nsPNGDecoder::error_callback(png_structp png_ptr, png_const_charp error_msg)
 {
-  PR_LOG(GetPNGLog(), PR_LOG_ERROR, ("libpng error: %s\n", error_msg));
+  MOZ_LOG(GetPNGLog(), LogLevel::Error, ("libpng error: %s\n", error_msg));
   png_longjmp(png_ptr, 1);
 }
 
@@ -888,7 +887,7 @@ nsPNGDecoder::error_callback(png_structp png_ptr, png_const_charp error_msg)
 void
 nsPNGDecoder::warning_callback(png_structp png_ptr, png_const_charp warning_msg)
 {
-  PR_LOG(GetPNGLog(), PR_LOG_WARNING, ("libpng warning: %s\n", warning_msg));
+  MOZ_LOG(GetPNGLog(), LogLevel::Warning, ("libpng warning: %s\n", warning_msg));
 }
 
 Telemetry::ID

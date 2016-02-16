@@ -1,11 +1,11 @@
-/* global chai, loop */
-
-var expect = chai.expect;
-var sharedActions = loop.shared.actions;
+/* Any copyright is dedicated to the Public Domain.
+ * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 describe("loop.store.FeedbackStore", function () {
   "use strict";
 
+  var expect = chai.expect;
+  var sharedActions = loop.shared.actions;
   var FEEDBACK_STATES = loop.store.FEEDBACK_STATES;
   var sandbox, dispatcher, store, feedbackClient;
 
@@ -35,11 +35,12 @@ describe("loop.store.FeedbackStore", function () {
     });
 
     it("should set the store to the INIT feedback state", function() {
-      var store = new loop.store.FeedbackStore(dispatcher, {
+      var fakeStore = new loop.store.FeedbackStore(dispatcher, {
         feedbackClient: feedbackClient
       });
 
-      expect(store.getStoreState("feedbackState")).eql(FEEDBACK_STATES.INIT);
+      expect(fakeStore.getStoreState("feedbackState"))
+          .eql(FEEDBACK_STATES.INIT);
     });
   });
 

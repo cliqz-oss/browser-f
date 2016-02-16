@@ -433,7 +433,7 @@ const PanelUI = {
       if (!label) {
         continue;
       }
-      if (label.contains("\u00ad")) {
+      if (label.includes("\u00ad")) {
         node.setAttribute("auto-hyphens", "off");
       } else {
         node.removeAttribute("auto-hyphens");
@@ -513,19 +513,11 @@ const PanelUI = {
  * @return  the selected locale or "en-US" if none is selected
  */
 function getLocale() {
-  const PREF_SELECTED_LOCALE = "general.useragent.locale";
   try {
-    let locale = Services.prefs.getComplexValue(PREF_SELECTED_LOCALE,
-                                                Ci.nsIPrefLocalizedString);
-    if (locale)
-      return locale;
+    let chromeRegistry = Cc["@mozilla.org/chrome/chrome-registry;1"]
+                           .getService(Ci.nsIXULChromeRegistry);
+    return chromeRegistry.getSelectedLocale("browser");
+  } catch (ex) {
+    return "en-US";
   }
-  catch (e) { }
-
-  try {
-    return Services.prefs.getCharPref(PREF_SELECTED_LOCALE);
-  }
-  catch (e) { }
-
-  return "en-US";
 }

@@ -27,7 +27,6 @@ class BufferTextureClient;
 class ImageBridgeChild;
 class CompositableForwarder;
 class CompositableChild;
-class SurfaceDescriptor;
 class PCompositableChild;
 
 /**
@@ -150,6 +149,8 @@ public:
 
   void Destroy();
 
+  bool IsDestroyed() { return mDestroyed; }
+
   PCompositableChild* GetIPDLActor() const;
 
   // should only be called by a CompositableForwarder
@@ -233,6 +234,7 @@ protected:
   // Some layers may want to enforce some flags to all their textures
   // (like disallowing tiling)
   TextureFlags mTextureFlags;
+  bool mDestroyed;
   RefPtr<TextureClientRecycleAllocator> mTextureClientRecycler;
 
   friend class CompositableChild;

@@ -149,7 +149,7 @@ const CPOWProxyHandler CPOWProxyHandler::singleton;
         return false;                                                   \
     }                                                                   \
     {                                                                   \
-        CPOWTimer timer;                                                \
+        CPOWTimer timer(cx);                                            \
         return owner->call args;                                        \
     }
 
@@ -1000,7 +1000,7 @@ WrapperOwner::ActorDestroy(ActorDestroyReason why)
 bool
 WrapperOwner::ipcfail(JSContext* cx)
 {
-    JS_ReportError(cx, "child process crashed or timedout");
+    JS_ReportError(cx, "cross-process JS call failed");
     return false;
 }
 

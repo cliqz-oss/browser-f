@@ -41,7 +41,6 @@ enum AllowedTouchBehavior {
 class Layer;
 class AsyncPanZoomController;
 class CompositorParent;
-class APZPaintLogHelper;
 class OverscrollHandoffChain;
 struct OverscrollHandoffState;
 class LayerMetricsWrapper;
@@ -130,6 +129,13 @@ public:
                             bool aIsFirstPaint,
                             uint64_t aOriginatingLayersId,
                             uint32_t aPaintSequenceNumber);
+
+  /**
+   * Walk the tree of APZCs and flushes the repaint requests for all the APZCS
+   * corresponding to the given layers id. Finally, sends a flush complete
+   * notification to the GeckoContentController for the layers id.
+   */
+  void FlushApzRepaints(uint64_t aLayersId);
 
   /**
    * General handler for incoming input events. Manipulates the frame metrics
@@ -237,9 +243,11 @@ public:
 
   /**
    * Updates any zoom constraints contained in the <meta name="viewport"> tag.
+   * If the |aConstraints| is Nothing() then previously-provided constraints for
+   * the given |aGuid| are cleared.
    */
   void UpdateZoomConstraints(const ScrollableLayerGuid& aGuid,
-                             const ZoomConstraints& aConstraints);
+                             const Maybe<ZoomConstraints>& aConstraints);
 
   /**
    * Cancels any currently running animation. Note that all this does is set the
@@ -377,15 +385,6 @@ public:
    */
   nsRefPtr<const OverscrollHandoffChain> BuildOverscrollHandoffChain(const nsRefPtr<AsyncPanZoomController>& aInitialTarget);
 
-public:
-  // Returns whether or not a wheel event action will be (or was) performed by
-  // APZ. If this returns true, the event must not perform a synchronous
-  // scroll.
-  //
-  // Even if this returns false, all wheel events in APZ-aware widgets must
-  // be sent through APZ so they are transformed correctly for TabParent.
-  static bool WillHandleWheelEvent(WidgetWheelEvent* aEvent);
-
 protected:
   // Protected destructor, to discourage deletion outside of Release():
   virtual ~APZCTreeManager();
@@ -422,9 +421,10 @@ private:
   AsyncPanZoomController* GetAPZCAtPoint(HitTestingTreeNode* aNode,
                                          const ParentLayerPoint& aHitTestPoint,
                                          HitTestResult* aOutHitResult);
+  AsyncPanZoomController* FindRootApzcForLayersId(uint64_t aLayersId) const;
+  AsyncPanZoomController* FindRootContentApzcForLayersId(uint64_t aLayersId) const;
   already_AddRefed<AsyncPanZoomController> GetMultitouchTarget(AsyncPanZoomController* aApzc1, AsyncPanZoomController* aApzc2) const;
   already_AddRefed<AsyncPanZoomController> CommonAncestor(AsyncPanZoomController* aApzc1, AsyncPanZoomController* aApzc2) const;
-  already_AddRefed<AsyncPanZoomController> RootAPZCForLayersId(AsyncPanZoomController* aApzc) const;
   already_AddRefed<AsyncPanZoomController> GetTouchInputBlockAPZC(const MultiTouchInput& aEvent,
                                                                   HitTestResult* aOutHitResult);
   nsEventStatus ProcessTouchInput(MultiTouchInput& aInput,
@@ -439,10 +439,13 @@ private:
   void UpdateWheelTransaction(WidgetInputEvent& aEvent);
   void UpdateZoomConstraintsRecursively(HitTestingTreeNode* aNode,
                                         const ZoomConstraints& aConstraints);
+  void FlushRepaintsToClearScreenToGeckoTransform();
   void FlushRepaintsRecursively(HitTestingTreeNode* aNode);
+  void FlushPendingRepaintRecursively(HitTestingTreeNode* aNode, uint64_t aLayersId);
 
   already_AddRefed<HitTestingTreeNode> RecycleOrCreateNode(TreeBuildingState& aState,
-                                                           AsyncPanZoomController* aApzc);
+                                                           AsyncPanZoomController* aApzc,
+                                                           uint64_t aLayersId);
   HitTestingTreeNode* PrepareNodeForLayer(const LayerMetricsWrapper& aLayer,
                                           const FrameMetrics& aMetrics,
                                           uint64_t aLayersId,
@@ -494,10 +497,14 @@ private:
    * isolation (that is, if its tree pointers are not being accessed or mutated). The
    * lock also needs to be held when accessing the mRootNode instance variable, as that
    * is considered part of the APZC tree management state.
-   * Finally, the lock needs to be held when accessing mOverscrollHandoffChain.
+   * Finally, the lock needs to be held when accessing mZoomConstraints.
    * IMPORTANT: See the note about lock ordering at the top of this file. */
   mutable mozilla::Monitor mTreeLock;
   nsRefPtr<HitTestingTreeNode> mRootNode;
+  /* Holds the zoom constraints for scrollable layers, as determined by the
+   * the main-thread gecko code. */
+  std::map<ScrollableLayerGuid, ZoomConstraints> mZoomConstraints;
+
   /* This tracks the APZC that should receive all inputs for the current input event block.
    * This allows touch points to move outside the thing they started on, but still have the
    * touch events delivered to the same initial APZC. This will only ever be touched on the

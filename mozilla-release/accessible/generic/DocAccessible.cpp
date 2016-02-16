@@ -455,8 +455,9 @@ DocAccessible::Shutdown()
   mChildDocuments.Clear();
 
   // XXX thinking about ordering?
-  if (IPCAccessibilityActive()) {
-    DocAccessibleChild::Send__delete__(mIPCDoc);
+  if (mIPCDoc) {
+    MOZ_ASSERT(IPCAccessibilityActive());
+    mIPCDoc->Shutdown();
     MOZ_ASSERT(!mIPCDoc);
   }
 

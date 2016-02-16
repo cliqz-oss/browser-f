@@ -205,21 +205,6 @@ var commandsGetUserMedia = [
   },
 ];
 
-var commandsBeforeRenegotiation = [
-  function PC_LOCAL_SETUP_NEGOTIATION_CALLBACK(test) {
-    test.pcLocal.onnegotiationneeded = event => {
-      test.pcLocal.negotiationNeededFired = true;
-    };
-  },
-];
-
-var commandsAfterRenegotiation = [
-  function PC_LOCAL_CHECK_NEGOTIATION_CALLBACK(test) {
-    ok(test.pcLocal.negotiationNeededFired, "Expected negotiationneeded event");
-    test.pcLocal.negotiationNeededFired = false;
-  },
-];
-
 var commandsPeerConnectionOfferAnswer = [
   function PC_LOCAL_SETUP_ICE_HANDLER(test) {
     test.pcLocal.setupIceCandidateHandler(test);
@@ -420,7 +405,7 @@ var commandsPeerConnectionOfferAnswer = [
   },
 
   function PC_LOCAL_SET_REMOTE_DESCRIPTION(test) {
-    test.setRemoteDescription(test.pcLocal, test._remote_answer, STABLE)
+    return test.setRemoteDescription(test.pcLocal, test._remote_answer, STABLE)
       .then(() => {
         is(test.pcLocal.signalingState, STABLE,
            "signalingState after local setRemoteDescription is 'stable'");
@@ -461,13 +446,14 @@ var commandsPeerConnectionOfferAnswer = [
     return test.pcRemote.checkMediaTracks();
   },
 
-  function PC_LOCAL_CHECK_MEDIA_FLOW_PRESENT(test) {
-    return test.pcLocal.checkMediaFlowPresent();
+  function PC_LOCAL_WAIT_FOR_MEDIA_FLOW(test) {
+    return test.pcLocal.waitForMediaFlow();
   },
 
-  function PC_REMOTE_CHECK_MEDIA_FLOW_PRESENT(test) {
-    return test.pcRemote.checkMediaFlowPresent();
+  function PC_REMOTE_WAIT_FOR_MEDIA_FLOW(test) {
+    return test.pcRemote.waitForMediaFlow();
   },
+
   function PC_LOCAL_CHECK_STATS(test) {
     return test.pcLocal.getStats(null).then(stats => {
       test.pcLocal.checkStats(stats, test.steeplechase);
@@ -540,9 +526,7 @@ function PC_LOCAL_REMOVE_BUNDLE_FROM_OFFER(test) {
 };
 
 var addRenegotiation = (chain, commands, checks) => {
-  chain.append(commandsBeforeRenegotiation);
   chain.append(commands);
-  chain.append(commandsAfterRenegotiation);
   chain.append(commandsPeerConnectionOfferAnswer);
   if (checks) {
     chain.append(checks);
@@ -557,5 +541,3 @@ var addRenegotiationAnswerer = (chain, commands, checks) => {
   });
   addRenegotiation(chain, commands, checks);
 };
-
-

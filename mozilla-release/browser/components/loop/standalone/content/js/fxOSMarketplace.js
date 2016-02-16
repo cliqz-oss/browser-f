@@ -1,4 +1,6 @@
-/** @jsx React.DOM */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this file,
+ * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 var loop = loop || {};
 loop.fxOSMarketplaceViews = (function() {
@@ -13,8 +15,13 @@ loop.fxOSMarketplaceViews = (function() {
    * client.
    */
   var FxOSHiddenMarketplaceView = React.createClass({displayName: "FxOSHiddenMarketplaceView",
+    propTypes: {
+      marketplaceSrc: React.PropTypes.string,
+      onMarketplaceMessage: React.PropTypes.func
+    },
+
     render: function() {
-      return React.createElement("iframe", {id: "marketplace", src: this.props.marketplaceSrc, hidden: true});
+      return React.createElement("iframe", {hidden: true, id: "marketplace", src: this.props.marketplaceSrc});
     },
 
     componentDidUpdate: function() {

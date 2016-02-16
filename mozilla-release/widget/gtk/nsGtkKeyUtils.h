@@ -129,6 +129,11 @@ public:
      */
     static bool IsKeyPressEventNecessary(GdkEventKey* aGdkKeyEvent);
 
+    /**
+     * Destroys the singleton KeymapWrapper instance, if it exists.
+     */
+    static void Shutdown();
+
 protected:
 
     /**
@@ -198,9 +203,7 @@ protected:
      */
     static Modifier GetModifierForGDKKeyval(guint aGdkKeyval);
 
-#ifdef PR_LOGGING
     static const char* GetModifierName(Modifier aModifier);
-#endif // PR_LOGGING
 
     /**
      * mGdkKeymap is a wrapped instance by this class.
@@ -247,8 +250,6 @@ protected:
      * Signal handlers.
      */
     static void OnKeysChanged(GdkKeymap* aKeymap, KeymapWrapper* aKeymapWrapper);
-    static void OnDestroyKeymap(KeymapWrapper* aKeymapWrapper,
-                                GdkKeymap *aGdkKeymap);
 
     /**
      * GetCharCodeFor() Computes what character is inputted by the key event

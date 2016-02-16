@@ -51,7 +51,8 @@ protected:
                                const uint16_t& aBacklog,
                                const nsString& aBinaryType) override;
   virtual bool DeallocPTCPServerSocketChild(PTCPServerSocketChild*) override;
-  virtual PUDPSocketChild* AllocPUDPSocketChild(const nsCString& aFilter) override;
+  virtual PUDPSocketChild* AllocPUDPSocketChild(const Principal& aPrincipal,
+                                                const nsCString& aFilter) override;
   virtual bool DeallocPUDPSocketChild(PUDPSocketChild*) override;
   virtual PDNSRequestChild* AllocPDNSRequestChild(const nsCString& aHost,
                                                   const uint32_t& aFlags,
@@ -79,6 +80,10 @@ protected:
                                                  const nsString& aRealm,
                                                  const uint64_t& aCallbackId) override;
   virtual bool RecvAppOfflineStatus(const uint32_t& aId, const bool& aOffline) override;
+
+  /* Predictor Messsages */
+  virtual bool RecvPredOnPredictPreconnect(const URIParams& aURI) override;
+  virtual bool RecvPredOnPredictDNS(const URIParams& aURI) override;
 };
 
 /**

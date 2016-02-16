@@ -4,17 +4,20 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsSocketTransportService2.h"
+#if !defined(MOZILLA_XPCOMRT_API)
 #include "nsSocketTransport2.h"
+#include "NetworkActivityMonitor.h"
+#include "mozilla/Preferences.h"
+#endif // !defined(MOZILLA_XPCOMRT_API)
+#include "nsASocketHandler.h"
 #include "nsError.h"
 #include "prnetdb.h"
 #include "prerror.h"
 #include "nsIPrefService.h"
 #include "nsIPrefBranch.h"
 #include "nsServiceManagerUtils.h"
-#include "NetworkActivityMonitor.h"
 #include "nsIObserverService.h"
 #include "mozilla/Services.h"
-#include "mozilla/Preferences.h"
 #include "mozilla/Likely.h"
 #include "mozilla/PublicSSL.h"
 #include "mozilla/ChaosMode.h"
@@ -26,9 +29,8 @@
 using namespace mozilla;
 using namespace mozilla::net;
 
-#if defined(PR_LOGGING)
 PRLogModuleInfo *gSocketTransportLog = nullptr;
-#endif
+PRLogModuleInfo *gUDPSocketLog = nullptr;
 
 nsSocketTransportService *gSocketTransportService = nullptr;
 PRThread                 *gSocketThread           = nullptr;
@@ -47,6 +49,38 @@ PRThread                 *gSocketThread           = nullptr;
 
 uint32_t nsSocketTransportService::gMaxCount;
 PRCallOnceType nsSocketTransportService::gMaxCountInitOnce;
+
+class DebugMutexAutoLock
+{
+public:
+    explicit DebugMutexAutoLock(Mutex& mutex);
+    ~DebugMutexAutoLock();
+
+private:
+    Mutex *mLock;
+    static PRThread *sDebugOwningThread;
+};
+
+PRThread *DebugMutexAutoLock::sDebugOwningThread = nullptr;
+
+DebugMutexAutoLock::DebugMutexAutoLock(Mutex& mutex)
+    :mLock(&mutex)
+{
+  PRThread *currentThread = PR_GetCurrentThread();
+  MOZ_DIAGNOSTIC_ASSERT(sDebugOwningThread != currentThread);
+  SOCKET_LOG(("Acquiring lock on thread %p", currentThread));
+  mLock->Lock();
+  sDebugOwningThread = currentThread;
+  SOCKET_LOG(("Acquired lock on thread %p", currentThread));
+}
+
+DebugMutexAutoLock::~DebugMutexAutoLock()
+{
+  sDebugOwningThread = nullptr;
+  mLock->Unlock();
+  mLock = nullptr;
+  SOCKET_LOG(("Released lock on thread %p", PR_GetCurrentThread()));
+}
 
 //-----------------------------------------------------------------------------
 // ctor/dtor (called on the main/UI thread by the service manager)
@@ -77,9 +111,8 @@ nsSocketTransportService::nsSocketTransportService()
     , mTelemetryEnabledPref(false)
     , mProbedMaxCount(false)
 {
-#if defined(PR_LOGGING)
     gSocketTransportLog = PR_NewLogModule("nsSocketTransport");
-#endif
+    gUDPSocketLog = PR_NewLogModule("UDPSocket");
 
     NS_ASSERTION(NS_IsMainThread(), "wrong thread");
 
@@ -103,9 +136,9 @@ nsSocketTransportService::~nsSocketTransportService()
     if (mThreadEvent)
         PR_DestroyPollableEvent(mThreadEvent);
 
-    moz_free(mActiveList);
-    moz_free(mIdleList);
-    moz_free(mPollList);
+    free(mActiveList);
+    free(mIdleList);
+    free(mPollList);
     gSocketTransportService = nullptr;
 }
 
@@ -115,7 +148,7 @@ nsSocketTransportService::~nsSocketTransportService()
 already_AddRefed<nsIThread>
 nsSocketTransportService::GetThreadSafely()
 {
-    MutexAutoLock lock(mLock);
+    DebugMutexAutoLock lock(mLock);
     nsCOMPtr<nsIThread> result = mThread;
     return result.forget();
 }
@@ -444,6 +477,7 @@ nsSocketTransportService::Poll(bool wait, uint32_t *interval,
 
 NS_IMPL_ISUPPORTS(nsSocketTransportService,
                   nsISocketTransportService,
+                  nsIRoutedSocketTransportService,
                   nsIEventTarget,
                   nsIThreadObserver,
                   nsIRunnable,
@@ -488,7 +522,7 @@ nsSocketTransportService::Init()
     if (NS_FAILED(rv)) return rv;
     
     {
-        MutexAutoLock lock(mLock);
+        DebugMutexAutoLock lock(mLock);
         // Install our mThread, protecting against concurrent readers
         thread.swap(mThread);
     }
@@ -531,7 +565,7 @@ nsSocketTransportService::Shutdown()
         return NS_ERROR_UNEXPECTED;
 
     {
-        MutexAutoLock lock(mLock);
+        DebugMutexAutoLock lock(mLock);
 
         // signal the socket thread to shutdown
         mShuttingDown = true;
@@ -544,7 +578,7 @@ nsSocketTransportService::Shutdown()
     // join with thread
     mThread->Shutdown();
     {
-        MutexAutoLock lock(mLock);
+        DebugMutexAutoLock lock(mLock);
         // Drop our reference to mThread and make sure that any concurrent
         // readers are excluded
         mThread = nullptr;
@@ -560,7 +594,9 @@ nsSocketTransportService::Shutdown()
         obsSvc->RemoveObserver(this, "last-pb-context-exited");
     }
 
+#if !defined(MOZILLA_XPCOMRT_API)
     mozilla::net::NetworkActivityMonitor::Shutdown();
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     mInitialized = false;
     mShuttingDown = false;
@@ -578,7 +614,7 @@ nsSocketTransportService::GetOffline(bool *offline)
 NS_IMETHODIMP
 nsSocketTransportService::SetOffline(bool offline)
 {
-    MutexAutoLock lock(mLock);
+    DebugMutexAutoLock lock(mLock);
     if (!mOffline && offline) {
         // signal the socket thread to go offline, so it will detach sockets
         mGoingOffline = true;
@@ -634,23 +670,46 @@ nsSocketTransportService::CreateTransport(const char **types,
                                           nsIProxyInfo *proxyInfo,
                                           nsISocketTransport **result)
 {
+    return CreateRoutedTransport(types, typeCount, host, port, NS_LITERAL_CSTRING(""), 0,
+                                 proxyInfo, result);
+}
+
+NS_IMETHODIMP
+nsSocketTransportService::CreateRoutedTransport(const char **types,
+                                                uint32_t typeCount,
+                                                const nsACString &host,
+                                                int32_t port,
+                                                const nsACString &hostRoute,
+                                                int32_t portRoute,
+                                                nsIProxyInfo *proxyInfo,
+                                                nsISocketTransport **result)
+{
+#if defined(MOZILLA_XPCOMRT_API)
+    NS_WARNING("nsSocketTransportService::CreateTransport not implemented");
+    return NS_ERROR_NOT_IMPLEMENTED;
+#else
     NS_ENSURE_TRUE(mInitialized, NS_ERROR_NOT_INITIALIZED);
     NS_ENSURE_TRUE(port >= 0 && port <= 0xFFFF, NS_ERROR_ILLEGAL_VALUE);
 
     nsRefPtr<nsSocketTransport> trans = new nsSocketTransport();
-    nsresult rv = trans->Init(types, typeCount, host, port, proxyInfo);
+    nsresult rv = trans->Init(types, typeCount, host, port, hostRoute, portRoute, proxyInfo);
     if (NS_FAILED(rv)) {
         return rv;
     }
 
     trans.forget(result);
     return NS_OK;
+#endif // defined(MOZILLA_XPCOMRT_API)
 }
 
 NS_IMETHODIMP
 nsSocketTransportService::CreateUnixDomainTransport(nsIFile *aPath,
                                                     nsISocketTransport **result)
 {
+#if defined(MOZILLA_XPCOMRT_API)
+    NS_WARNING("nsSocketTransportService::CreateUnixDomainTransport not implemented");
+    return NS_ERROR_NOT_IMPLEMENTED;
+#else
     nsresult rv;
 
     NS_ENSURE_TRUE(mInitialized, NS_ERROR_NOT_INITIALIZED);
@@ -668,6 +727,7 @@ nsSocketTransportService::CreateUnixDomainTransport(nsIFile *aPath,
 
     trans.forget(result);
     return NS_OK;
+#endif // defined(MOZILLA_XPCOMRT_API)
 }
 
 NS_IMETHODIMP
@@ -687,7 +747,7 @@ nsSocketTransportService::SetAutodialEnabled(bool value)
 NS_IMETHODIMP
 nsSocketTransportService::OnDispatchedEvent(nsIThreadInternal *thread)
 {
-    MutexAutoLock lock(mLock);
+    DebugMutexAutoLock lock(mLock);
     if (mThreadEvent)
         PR_SetPollableEvent(mThreadEvent);
     return NS_OK;
@@ -727,12 +787,13 @@ nsSocketTransportService::Run()
     if (IsNuwaProcess()) {
         NuwaMarkCurrentThread(nullptr, nullptr);
     }
-    NS_SetIgnoreStatusOfCurrentThread();
 #endif
 
     SOCKET_LOG(("STS thread init\n"));
 
+#if !defined(MOZILLA_XPCOMRT_API)
     psm::InitializeSSLServerCertVerificationThreads();
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     gSocketThread = PR_GetCurrentThread();
 
@@ -866,7 +927,7 @@ nsSocketTransportService::Run()
         bool goingOffline = false;
         // now that our event queue is empty, check to see if we should exit
         {
-            MutexAutoLock lock(mLock);
+            DebugMutexAutoLock lock(mLock);
             if (mShuttingDown) {
                 if (mTelemetryEnabledPref &&
                     !startOfCycleForLastCycleCalc.IsNull()) {
@@ -901,7 +962,9 @@ nsSocketTransportService::Run()
 
     gSocketThread = nullptr;
 
+#if !defined(MOZILLA_XPCOMRT_API)
     psm::StopSSLServerCertVerificationThreads();
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     SOCKET_LOG(("STS thread exit\n"));
     return NS_OK;
@@ -1061,7 +1124,7 @@ nsSocketTransportService::DoPollIteration(bool wait, TimeDuration *pollDuration)
                 // new pollable event.  If that fails, we fall back
                 // on "busy wait".
                 {
-                    MutexAutoLock lock(mLock);
+                    DebugMutexAutoLock lock(mLock);
                     PR_DestroyPollableEvent(mThreadEvent);
                     mThreadEvent = PR_NewPollableEvent();
                 }
@@ -1085,6 +1148,10 @@ nsSocketTransportService::DoPollIteration(bool wait, TimeDuration *pollDuration)
 nsresult
 nsSocketTransportService::UpdatePrefs()
 {
+#if defined(MOZILLA_XPCOMRT_API)
+    NS_WARNING("nsSocketTransportService::UpdatePrefs not implemented");
+    return NS_ERROR_NOT_IMPLEMENTED;
+#else
     mSendBufferSize = 0;
     
     nsCOMPtr<nsIPrefBranch> tmpPrefService = do_GetService(NS_PREFSERVICE_CONTRACTID);
@@ -1146,6 +1213,7 @@ nsSocketTransportService::UpdatePrefs()
     }
     
     return NS_OK;
+#endif // defined(MOZILLA_XPCOMRT_API)
 }
 
 void
@@ -1190,6 +1258,7 @@ nsSocketTransportService::Observe(nsISupports *subject,
                                   const char *topic,
                                   const char16_t *data)
 {
+#if !defined(MOZILLA_XPCOMRT_API)
     if (!strcmp(topic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID)) {
         UpdatePrefs();
         return NS_OK;
@@ -1203,6 +1272,7 @@ nsSocketTransportService::Observe(nsISupports *subject,
 
         return net::NetworkActivityMonitor::Init(blipInterval);
     }
+#endif // !defined(MOZILLA_XPCOMRT_API)
 
     if (!strcmp(topic, "last-pb-context-exited")) {
         nsCOMPtr<nsIRunnable> ev =
@@ -1236,7 +1306,9 @@ nsSocketTransportService::ClosePrivateConnections()
         }
     }
 
+#if !defined(MOZILLA_XPCOMRT_API)
     mozilla::ClearPrivateSSLState();
+#endif // !defined(MOZILLA_XPCOMRT_API)
 }
 
 NS_IMETHODIMP

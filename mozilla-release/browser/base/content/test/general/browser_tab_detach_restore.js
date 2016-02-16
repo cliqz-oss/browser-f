@@ -1,5 +1,7 @@
 "use strict";
 
+const {TabStateFlusher} = Cu.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+
 add_task(function*() {
   let uri = "http://example.com/browser/browser/base/content/test/general/dummy_page.html";
 
@@ -10,6 +12,7 @@ add_task(function*() {
   let tab = gBrowser.addTab();
   tab.linkedBrowser.loadURI(uri);
   yield BrowserTestUtils.browserLoaded(tab.linkedBrowser);
+  yield TabStateFlusher.flush(tab.linkedBrowser);
 
   let key = tab.linkedBrowser.permanentKey;
   let win = gBrowser.replaceTabWithWindow(tab);

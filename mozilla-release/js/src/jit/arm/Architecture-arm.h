@@ -74,7 +74,7 @@ class Registers
         pc = r15,
         invalid_reg
     };
-    typedef RegisterID Code;
+    typedef uint8_t Code;
     typedef RegisterID Encoding;
 
     // Content spilled during bailouts.
@@ -83,19 +83,19 @@ class Registers
     };
 
     static const char* GetName(Code code) {
+        MOZ_ASSERT(code < Total);
         static const char * const Names[] = { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7",
                                               "r8", "r9", "r10", "r11", "r12", "sp", "r14", "pc"};
         return Names[code];
     }
-    static const char* GetName(uint32_t i) {
-        MOZ_ASSERT(i < Total);
+    static const char* GetName(Encoding i) {
         return GetName(Code(i));
     }
 
     static Code FromName(const char* name);
 
-    static const Code StackPointer = sp;
-    static const Code Invalid = invalid_reg;
+    static const Encoding StackPointer = sp;
+    static const Encoding Invalid = invalid_reg;
 
     static const uint32_t Total = 16;
     static const uint32_t Allocatable = 13;
@@ -626,7 +626,7 @@ uint32_t GetARMFlags();
 // If the simulator is used then the ABI choice is dynamic. Otherwise the ABI is
 // static and useHardFpABI is inlined so that unused branches can be optimized
 // away.
-#if defined(JS_ARM_SIMULATOR)
+#ifdef JS_SIMULATOR_ARM
 bool UseHardFpABI();
 #else
 static inline bool UseHardFpABI()

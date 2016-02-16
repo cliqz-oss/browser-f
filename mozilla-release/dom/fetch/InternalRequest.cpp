@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -95,6 +96,97 @@ InternalRequest::InternalRequest(const InternalRequest& aOther)
 
 InternalRequest::~InternalRequest()
 {
+}
+
+void
+InternalRequest::SetContentPolicyType(nsContentPolicyType aContentPolicyType)
+{
+  mContentPolicyType = aContentPolicyType;
+}
+
+/* static */
+RequestContext
+InternalRequest::MapContentPolicyTypeToRequestContext(nsContentPolicyType aContentPolicyType)
+{
+  RequestContext context = RequestContext::Internal;
+  switch (aContentPolicyType) {
+  case nsIContentPolicy::TYPE_OTHER:
+    context = RequestContext::Internal;
+    break;
+  case nsIContentPolicy::TYPE_SCRIPT:
+    context = RequestContext::Script;
+    break;
+  case nsIContentPolicy::TYPE_IMAGE:
+    context = RequestContext::Image;
+    break;
+  case nsIContentPolicy::TYPE_STYLESHEET:
+    context = RequestContext::Style;
+    break;
+  case nsIContentPolicy::TYPE_OBJECT:
+    context = RequestContext::Object;
+    break;
+  case nsIContentPolicy::TYPE_DOCUMENT:
+    context = RequestContext::Internal;
+    break;
+  case nsIContentPolicy::TYPE_SUBDOCUMENT:
+    context = RequestContext::Iframe;
+    break;
+  case nsIContentPolicy::TYPE_REFRESH:
+    context = RequestContext::Internal;
+    break;
+  case nsIContentPolicy::TYPE_XBL:
+    context = RequestContext::Internal;
+    break;
+  case nsIContentPolicy::TYPE_PING:
+    context = RequestContext::Ping;
+    break;
+  case nsIContentPolicy::TYPE_XMLHTTPREQUEST:
+    context = RequestContext::Xmlhttprequest;
+    break;
+  case nsIContentPolicy::TYPE_OBJECT_SUBREQUEST:
+    context = RequestContext::Plugin;
+    break;
+  case nsIContentPolicy::TYPE_DTD:
+    context = RequestContext::Internal;
+    break;
+  case nsIContentPolicy::TYPE_FONT:
+    context = RequestContext::Font;
+    break;
+  case nsIContentPolicy::TYPE_INTERNAL_AUDIO:
+    context = RequestContext::Audio;
+    break;
+  case nsIContentPolicy::TYPE_INTERNAL_VIDEO:
+    context = RequestContext::Video;
+    break;
+  case nsIContentPolicy::TYPE_INTERNAL_TRACK:
+    context = RequestContext::Track;
+    break;
+  case nsIContentPolicy::TYPE_WEBSOCKET:
+    context = RequestContext::Internal;
+    break;
+  case nsIContentPolicy::TYPE_CSP_REPORT:
+    context = RequestContext::Cspreport;
+    break;
+  case nsIContentPolicy::TYPE_XSLT:
+    context = RequestContext::Xslt;
+    break;
+  case nsIContentPolicy::TYPE_BEACON:
+    context = RequestContext::Beacon;
+    break;
+  case nsIContentPolicy::TYPE_FETCH:
+    context = RequestContext::Fetch;
+    break;
+  case nsIContentPolicy::TYPE_IMAGESET:
+    context = RequestContext::Imageset;
+    break;
+  case nsIContentPolicy::TYPE_WEB_MANIFEST:
+    context = RequestContext::Manifest;
+    break;
+  default:
+    MOZ_ASSERT(false, "Unhandled nsContentPolicyType value");
+    break;
+  }
+  return context;
 }
 
 } // namespace dom

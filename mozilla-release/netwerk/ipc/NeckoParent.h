@@ -8,6 +8,7 @@
 #include "mozilla/net/PNeckoParent.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "mozilla/net/OfflineObserver.h"
+#include "nsINetworkPredictor.h"
 
 #ifndef mozilla_net_NeckoParent_h
 #define mozilla_net_NeckoParent_h
@@ -149,8 +150,11 @@ protected:
                                                const uint16_t& aBacklog,
                                                const nsString& aBinaryType) override;
   virtual bool DeallocPTCPServerSocketParent(PTCPServerSocketParent*) override;
-  virtual PUDPSocketParent* AllocPUDPSocketParent(const nsCString& aFilter) override;
-  virtual bool RecvPUDPSocketConstructor(PUDPSocketParent*, const nsCString& aFilter) override;
+  virtual PUDPSocketParent* AllocPUDPSocketParent(const Principal& aPrincipal,
+                                                  const nsCString& aFilter) override;
+  virtual bool RecvPUDPSocketConstructor(PUDPSocketParent*,
+                                         const Principal& aPrincipal,
+                                         const nsCString& aFilter) override;
   virtual bool DeallocPUDPSocketParent(PUDPSocketParent*) override;
   virtual PDNSRequestParent* AllocPDNSRequestParent(const nsCString& aHost,
                                                     const uint32_t& aFlags,
@@ -160,7 +164,7 @@ protected:
                                           const uint32_t& flags,
                                           const nsCString& aNetworkInterface) override;
   virtual bool DeallocPDNSRequestParent(PDNSRequestParent*) override;
-  virtual bool RecvSpeculativeConnect(const URIParams& aURI) override;
+  virtual bool RecvSpeculativeConnect(const URIParams& aURI, const bool& aAnonymous) override;
   virtual bool RecvHTMLDNSPrefetch(const nsString& hostname,
                                    const uint16_t& flags) override;
   virtual bool RecvCancelHTMLDNSPrefetch(const nsString& hostname,
@@ -205,11 +209,29 @@ protected:
   virtual bool RecvOnAuthCancelled(const uint64_t& aCallbackId,
                                    const bool& aUserCancel) override;
 
+  /* Predictor Messages */
+  virtual bool RecvPredPredict(const ipc::OptionalURIParams& aTargetURI,
+                               const ipc::OptionalURIParams& aSourceURI,
+                               const PredictorPredictReason& aReason,
+                               const IPC::SerializedLoadContext& aLoadContext,
+                               const bool& hasVerifier) override;
+
+  virtual bool RecvPredLearn(const ipc::URIParams& aTargetURI,
+                             const ipc::OptionalURIParams& aSourceURI,
+                             const PredictorPredictReason& aReason,
+                             const IPC::SerializedLoadContext& aLoadContext) override;
+  virtual bool RecvPredReset() override;
+
 private:
   nsCString mCoreAppsBasePath;
   nsCString mWebAppsBasePath;
   nsRefPtr<OfflineObserver> mObserver;
 };
+
+/**
+ * Reference to the PNecko Parent protocol.
+ */
+extern PNeckoParent *gNeckoParent;
 
 } // namespace net
 } // namespace mozilla

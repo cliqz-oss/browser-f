@@ -22,18 +22,18 @@ static const uint32_t MAX_MAIN_THREAD_LOCALS_AND_ARGS = 256;
 
 // Possible register allocators which may be used.
 enum IonRegisterAllocator {
-    RegisterAllocator_LSRA,
     RegisterAllocator_Backtracking,
+    RegisterAllocator_Testbed,
     RegisterAllocator_Stupid
 };
 
 static inline mozilla::Maybe<IonRegisterAllocator>
 LookupRegisterAllocator(const char* name)
 {
-    if (!strcmp(name, "lsra"))
-        return mozilla::Some(RegisterAllocator_LSRA);
     if (!strcmp(name, "backtracking"))
         return mozilla::Some(RegisterAllocator_Backtracking);
+    if (!strcmp(name, "testbed"))
+        return mozilla::Some(RegisterAllocator_Testbed);
     if (!strcmp(name, "stupid"))
         return mozilla::Some(RegisterAllocator_Stupid);
     return mozilla::Nothing();
@@ -59,6 +59,7 @@ struct JitOptions
     bool disableEaa;
     bool disableAma;
     bool eagerCompilation;
+    bool forceInlineCaches;
     mozilla::Maybe<uint32_t> forcedDefaultIonWarmUpThreshold;
     mozilla::Maybe<IonRegisterAllocator> forcedRegisterAllocator;
     bool limitScriptSize;
@@ -69,6 +70,9 @@ struct JitOptions
     uint32_t maxStackArgs;
     uint32_t osrPcMismatchesBeforeRecompile;
     uint32_t smallFunctionMaxBytecodeLength_;
+
+    // The options below affect the rest of the VM, and not just the JIT.
+    bool disableUnboxedObjects;
 
     JitOptions();
     bool isSmallFunction(JSScript* script) const;

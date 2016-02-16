@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +18,7 @@
 #include "nsPIDOMWindow.h"
 
 class nsIConsoleAPIStorage;
+class nsIProfiler;
 class nsIXPConnectJSObjectHolder;
 
 namespace mozilla {
@@ -74,6 +76,9 @@ public:
   Dir(JSContext* aCx, const Sequence<JS::Value>& aData);
 
   void
+  Dirxml(JSContext* aCx, const Sequence<JS::Value>& aData);
+
+  void
   Group(JSContext* aCx, const Sequence<JS::Value>& aData);
 
   void
@@ -87,6 +92,9 @@ public:
 
   void
   TimeEnd(JSContext* aCx, const JS::Handle<JS::Value> aTime);
+
+  void
+  TimeStamp(JSContext* aCx, const JS::Handle<JS::Value> aData);
 
   void
   Profile(JSContext* aCx, const Sequence<JS::Value>& aData);
@@ -115,11 +123,13 @@ private:
     MethodTable,
     MethodTrace,
     MethodDir,
+    MethodDirxml,
     MethodGroup,
     MethodGroupCollapsed,
     MethodGroupEnd,
     MethodTime,
     MethodTimeEnd,
+    MethodTimeStamp,
     MethodAssert,
     MethodCount
   };
@@ -149,7 +159,7 @@ private:
   // finds based the format string. The index of the styles matches the indexes
   // of elements that need the custom styling from aSequence. For elements with
   // no custom styling the array is padded with null elements.
-  void
+  bool
   ProcessArguments(JSContext* aCx, const nsTArray<JS::Heap<JS::Value>>& aData,
                    Sequence<JS::Value>& aSequence,
                    Sequence<JS::Value>& aStyles);
@@ -173,7 +183,7 @@ private:
             DOMHighResTimeStamp aTimestamp);
 
   // The method populates a Sequence from an array of JS::Value.
-  void
+  bool
   ArgumentsToValueList(const nsTArray<JS::Heap<JS::Value>>& aData,
                        Sequence<JS::Value>& aSequence);
 
@@ -194,6 +204,9 @@ private:
   nsCOMPtr<nsPIDOMWindow> mWindow;
   nsCOMPtr<nsIConsoleAPIStorage> mStorage;
   nsCOMPtr<nsIXPConnectJSObjectHolder> mSandbox;
+#ifdef MOZ_ENABLE_PROFILER_SPS
+  nsCOMPtr<nsIProfiler> mProfiler;
+#endif
 
   nsDataHashtable<nsStringHashKey, DOMHighResTimeStamp> mTimerRegistry;
   nsDataHashtable<nsStringHashKey, uint32_t> mCounterRegistry;

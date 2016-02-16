@@ -21,12 +21,6 @@ namespace mozilla {
 class MediaResource;
 class MediaDecoderReader;
 
-namespace dom {
-
-class TimeRanges;
-
-} // namespace dom
-
 class SourceBufferDecoder final : public AbstractMediaDecoder
 {
 public:
@@ -42,7 +36,6 @@ public:
   virtual bool IsTransportSeekable() final override;
   virtual bool OnDecodeTaskQueue() const final override;
   virtual bool OnStateMachineTaskQueue() const final override;
-  virtual int64_t GetMediaDuration() final override;
   virtual layers::ImageContainer* GetImageContainer() final override;
   virtual MediaDecoderOwner* GetOwner() final override;
   virtual SourceBufferResource* GetResource() const final override;
@@ -54,16 +47,13 @@ public:
   virtual void FirstFrameLoaded(nsAutoPtr<MediaInfo> aInfo,
                                 MediaDecoderEventVisibility aEventVisibility) final override;
   virtual void NotifyBytesConsumed(int64_t aBytes, int64_t aOffset) final override;
-  virtual void NotifyDataArrived(const char* aBuffer, uint32_t aLength, int64_t aOffset) final override;
+  virtual void NotifyDataArrived(uint32_t aLength, int64_t aOffset, bool aThrottleUpdates) final override;
   virtual void NotifyDecodedFrames(uint32_t aParsed, uint32_t aDecoded, uint32_t aDropped) final override;
   virtual void NotifyWaitingForResourcesStatusChanged() final override;
   virtual void OnReadMetadataCompleted() final override;
   virtual void QueueMetadata(int64_t aTime, nsAutoPtr<MediaInfo> aInfo, nsAutoPtr<MetadataTags> aTags) final override;
   virtual void RemoveMediaTracks() final override;
-  virtual void SetMediaDuration(int64_t aDuration) final override;
-  virtual void SetMediaEndTime(int64_t aTime) final override;
   virtual void SetMediaSeekable(bool aMediaSeekable) final override;
-  virtual void UpdateEstimatedMediaDuration(int64_t aDuration) final override;
   virtual bool HasInitializationData() final override;
 
   // SourceBufferResource specific interface below.
@@ -72,7 +62,7 @@ public:
 
   // Warning: this mirrors GetBuffered in MediaDecoder, but this class's base is
   // AbstractMediaDecoder, which does not supply this interface.
-  nsresult GetBuffered(dom::TimeRanges* aBuffered);
+  media::TimeIntervals GetBuffered();
 
   void SetReader(MediaDecoderReader* aReader)
   {
@@ -156,8 +146,6 @@ private:
   nsRefPtr<MediaDecoderReader> mReader;
   // in microseconds
   int64_t mTimestampOffset;
-  // mMediaDuration contains the apparent buffer duration, excluding trimmed data.
-  int64_t mMediaDuration;
   // mRealMediaDuration contains the real buffer duration, including trimmed data.
   int64_t mRealMediaDuration;
   // in seconds

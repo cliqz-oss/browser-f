@@ -112,16 +112,18 @@ DeserializeInputStream(const InputStreamParams& aParams,
 
       const nsID& id = aParams.get_RemoteInputStreamParams().id();
 
-      nsRefPtr<FileImpl> blobImpl = BlobParent::GetBlobImplForID(id);
+      nsRefPtr<BlobImpl> blobImpl = BlobParent::GetBlobImplForID(id);
 
       MOZ_ASSERT(blobImpl, "Invalid blob contents");
 
       // If fetching the internal stream fails, we ignore it and return a
       // null stream.
+      ErrorResult rv;
       nsCOMPtr<nsIInputStream> stream;
-      nsresult rv = blobImpl->GetInternalStream(getter_AddRefs(stream));
-      if (NS_FAILED(rv) || !stream) {
+      blobImpl->GetInternalStream(getter_AddRefs(stream), rv);
+      if (NS_WARN_IF(rv.Failed()) || !stream) {
         NS_WARNING("Couldn't obtain a valid stream from the blob");
+        rv.SuppressException();
       }
       return stream.forget();
     }

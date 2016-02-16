@@ -116,7 +116,6 @@ public:
   nsresult GetJSContext(JSContext* *outContext);
   nsPluginInstanceOwner* GetOwner();
   void SetOwner(nsPluginInstanceOwner *aOwner);
-  nsresult ShowStatus(const char* message);
 
   nsNPAPIPlugin* GetPlugin();
 
@@ -285,6 +284,8 @@ public:
 
   // Returns the contents scale factor of the screen the plugin is drawn on.
   double GetContentsScaleFactor();
+
+  nsresult GetRunID(uint32_t *aRunID);
 
   static bool InPluginCallUnsafeForReentry() { return gInUnsafePluginCalls > 0; }
   static void BeginPluginCall(NSPluginCallReentry aReentryState)

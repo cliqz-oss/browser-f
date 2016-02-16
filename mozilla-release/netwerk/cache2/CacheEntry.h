@@ -33,7 +33,6 @@ PRTimeToSeconds(PRTime t_usec)
 
 #define NowInSeconds() PRTimeToSeconds(PR_Now())
 
-class nsIStorageStream;
 class nsIOutputStream;
 class nsIURI;
 class nsIThread;
@@ -43,7 +42,6 @@ namespace net {
 
 class CacheStorageService;
 class CacheStorage;
-class CacheFileOutputStream;
 class CacheOutputCloseListener;
 class CacheEntryHandle;
 
@@ -296,9 +294,7 @@ private:
   //        fails to open an output stream.
   bool mHasData : 1;
 
-#ifdef PR_LOG
   static char const * StateString(uint32_t aState);
-#endif
 
   enum EState {      // transiting to:
     NOTLOADED = 0,   // -> LOADING | EMPTY

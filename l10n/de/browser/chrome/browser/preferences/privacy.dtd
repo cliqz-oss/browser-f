@@ -23,6 +23,8 @@
 <!ENTITY  locbar.bookmarks.accesskey    "L">
 <!ENTITY  locbar.openpage.label         "Offene Tabs">
 <!ENTITY  locbar.openpage.accesskey     "O">
+<!ENTITY  locbar.searches.label         "Verwandte Suchanfragen mit der Standardsuchmaschine">
+<!ENTITY  locbar.searches.accesskey     "S">
 
 <!ENTITY  acceptCookies.label           "Cookies akzeptieren">
 <!ENTITY  acceptCookies.accesskey       "C">

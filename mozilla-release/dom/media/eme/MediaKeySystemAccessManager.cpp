@@ -10,6 +10,9 @@
 #include "nsIObserverService.h"
 #include "mozilla/Services.h"
 #include "mozilla/DetailedPromise.h"
+#ifdef XP_WIN
+#include "mozilla/WindowsVersion.h"
+#endif
 
 namespace mozilla {
 namespace dom {
@@ -44,6 +47,9 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 MediaKeySystemAccessManager::MediaKeySystemAccessManager(nsPIDOMWindow* aWindow)
   : mWindow(aWindow)
   , mAddedObservers(false)
+#ifdef XP_WIN
+  , mTrialCreator(new GMPVideoDecoderTrialCreator())
+#endif
 {
 }
 
@@ -99,7 +105,9 @@ MediaKeySystemAccessManager::Request(DetailedPromise* aPromise,
     return;
   }
 
-  MediaKeySystemStatus status = MediaKeySystemAccess::GetKeySystemStatus(keySystem, minCdmVersion);
+  nsAutoCString message;
+  nsAutoCString cdmVersion;
+  MediaKeySystemStatus status = MediaKeySystemAccess::GetKeySystemStatus(keySystem, minCdmVersion, message, cdmVersion);
   if ((status == MediaKeySystemStatus::Cdm_not_installed ||
        status == MediaKeySystemStatus::Cdm_insufficient_version) &&
       keySystem.EqualsLiteral("com.adobe.primetime")) {
@@ -143,7 +151,18 @@ MediaKeySystemAccessManager::Request(DetailedPromise* aPromise,
 
   if (aOptions.IsEmpty() ||
       MediaKeySystemAccess::IsSupported(keySystem, aOptions)) {
-    nsRefPtr<MediaKeySystemAccess> access(new MediaKeySystemAccess(mWindow, keySystem));
+    nsRefPtr<MediaKeySystemAccess> access(
+      new MediaKeySystemAccess(mWindow, keySystem, NS_ConvertUTF8toUTF16(cdmVersion)));
+#ifdef XP_WIN
+    if (IsVistaOrLater()) {
+      // On Windows, ensure we have tried creating a GMPVideoDecoder for this
+      // keySystem, and that we can use it to decode. This ensures that we only
+      // report that we support this keySystem when the CDM us usable (i.e.
+      // all system libraries required are installed).
+      mTrialCreator->MaybeAwaitTrialCreate(keySystem, access, aPromise, mWindow);
+      return;
+    }
+#endif
     aPromise->MaybeResolve(access);
     return;
   }

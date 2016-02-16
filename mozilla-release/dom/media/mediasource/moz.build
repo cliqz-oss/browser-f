@@ -8,7 +8,9 @@ MOCHITEST_MANIFESTS += ['test/mochitest.ini']
 EXPORTS += [
     'AsyncEventRunner.h',
     'MediaSourceDecoder.h',
+    'MediaSourceDemuxer.h',
     'MediaSourceReader.h',
+    'SourceBufferContentManager.h',
 ]
 
 EXPORTS.mozilla.dom += [
@@ -21,13 +23,17 @@ UNIFIED_SOURCES += [
     'ContainerParser.cpp',
     'MediaSource.cpp',
     'MediaSourceDecoder.cpp',
+    'MediaSourceDemuxer.cpp',
     'MediaSourceReader.cpp',
     'MediaSourceUtils.cpp',
+    'ResourceQueue.cpp',
     'SourceBuffer.cpp',
+    'SourceBufferContentManager.cpp',
     'SourceBufferDecoder.cpp',
     'SourceBufferList.cpp',
     'SourceBufferResource.cpp',
     'TrackBuffer.cpp',
+    'TrackBuffersManager.cpp',
 ]
 
 FAIL_ON_WARNINGS = True

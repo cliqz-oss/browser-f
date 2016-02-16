@@ -158,6 +158,8 @@
 <!ENTITY bothFormatCmd.accesskey "u">
 <!ENTITY priorityMenu.label "Priorität">
 <!ENTITY priorityMenu.accesskey "p">
+<!ENTITY priorityButton.title "Priorität">
+<!ENTITY priorityButton.tooltiptext "Nachrichtenpriorität ändern">
 <!ENTITY priorityButton.label "Priorität:">
 <!ENTITY lowestPriorityCmd.label "Sehr niedrig">
 <!ENTITY lowestPriorityCmd.accesskey "i">

@@ -34,6 +34,7 @@
 
 <!ENTITY showUnifinderCmd.label                 "Termine suchen">
 <!ENTITY showUnifinderCmd.accesskey             "s">
+<!ENTITY showUnifinderCmd.tooltip               "Terminsuche anzeigen/ausblenden">
 
 <!ENTITY calendar.displaytodos.checkbox.label       "Aufgaben im Kalender anzeigen">
 <!ENTITY calendar.displaytodos.checkbox.accesskey   "A">

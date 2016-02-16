@@ -18,10 +18,6 @@ XPCOMUtils.defineLazyServiceGetter(Services, "fm",
                                    "@mozilla.org/focus-manager;1",
                                    "nsIFocusManager");
 
-XPCOMUtils.defineLazyServiceGetter(Services, "threadManager",
-                                   "@mozilla.org/thread-manager;1",
-                                   "nsIThreadManager");
-
 XPCOMUtils.defineLazyGetter(this, "domWindowUtils", function () {
   return content.QueryInterface(Ci.nsIInterfaceRequestor)
                 .getInterface(Ci.nsIDOMWindowUtils);
@@ -193,7 +189,9 @@ let FormAssistant = {
     addEventListener("focus", this, true, false);
     addEventListener("blur", this, true, false);
     addEventListener("resize", this, true, false);
-    addEventListener("submit", this, true, false);
+    // We should not blur the fucus if the submit event is cancelled,
+    // therefore we are binding our event listener in the bubbling phase here.
+    addEventListener("submit", this, false, false);
     addEventListener("pagehide", this, true, false);
     addEventListener("beforeunload", this, true, false);
     addEventListener("input", this, true, false);
@@ -399,7 +397,7 @@ let FormAssistant = {
         }
         // fall through
       case "submit":
-        if (this.focusedElement) {
+        if (this.focusedElement && !evt.defaultPrevented) {
           this.focusedElement.blur();
         }
         break;
@@ -457,13 +455,6 @@ let FormAssistant = {
         CompositionManager.onCompositionEnd();
         break;
     }
-  },
-
-  waitForNextTick: function(callback) {
-    var tm = Services.threadManager;
-    tm.mainThread.dispatch({
-      run: callback,
-    }, Components.interfaces.nsIThread.DISPATCH_NORMAL);
   },
 
   receiveMessage: function fa_receiveMessage(msg) {
@@ -680,35 +671,13 @@ let FormAssistant = {
       target = target.parentNode;
 
     this.setFocusedElement(target);
-
-    let count = this._focusCounter;
-    this.waitForNextTick(function fa_handleFocusSync() {
-      if (count !== this._focusCounter) {
-        return;
-      }
-
-      let isHandlingFocus = this.sendInputState(target);
-      this.isHandlingFocus = isHandlingFocus;
-    }.bind(this));
+    this.isHandlingFocus = this.sendInputState(target);
   },
 
   unhandleFocus: function fa_unhandleFocus() {
     this.setFocusedElement(null);
-
-    let count = this._focusCounter;
-
-    // Wait for the next tick before unset the focused element and etc.
-    // If the user move from one input from another,
-    // the remote process should get one Forms:Input message instead of two.
-    this.waitForNextTick(function fa_unhandleFocusSync() {
-      if (count !== this._focusCounter ||
-          !this.isHandlingFocus) {
-        return;
-      }
-
-      this.isHandlingFocus = false;
-      sendAsyncMessage("Forms:Input", { "type": "blur" });
-    }.bind(this));
+    this.isHandlingFocus = false;
+    sendAsyncMessage("Forms:Input", { "type": "blur" });
   },
 
   isFocusableElement: function fa_isFocusableElement(element) {

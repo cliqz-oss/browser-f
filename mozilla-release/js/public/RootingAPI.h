@@ -76,7 +76,7 @@
  * - MutableHandle<T> is a non-const reference to Rooted<T>. It is used in the
  *   same way as Handle<T> and includes a |set(const T& v)| method to allow
  *   updating the value of the referenced Rooted<T>. A MutableHandle<T> can be
- *   created from a Rooted<T> by using |Rooted<T>::operator&()|.
+ *   created with an implicit cast from a Rooted<T>*.
  *
  * In some cases the small performance overhead of exact rooting (measured to
  * be a few nanoseconds on desktop) is too much. In these cases, try the
@@ -121,23 +121,7 @@ class HeapBase {};
 template <typename T>
 class PersistentRootedBase {};
 
-/*
- * js::NullPtr acts like a nullptr pointer in contexts that require a Handle.
- *
- * Handle provides an implicit constructor for js::NullPtr so that, given:
- *   foo(Handle<JSObject*> h);
- * callers can simply write:
- *   foo(js::NullPtr());
- * which avoids creating a Rooted<JSObject*> just to pass nullptr.
- *
- * This is the SpiderMonkey internal variant. js::NullPtr should be used in
- * preference to JS::NullPtr to avoid the GOT access required for JS_PUBLIC_API
- * symbols.
- */
-struct NullPtr
-{
-    static void * const constNullValue;
-};
+static void* const ConstNullValue = nullptr;
 
 namespace gc {
 struct Cell;
@@ -190,22 +174,8 @@ template <typename T> class PersistentRooted;
 /* This is exposing internal state of the GC for inlining purposes. */
 JS_FRIEND_API(bool) isGCEnabled();
 
-/*
- * JS::NullPtr acts like a nullptr pointer in contexts that require a Handle.
- *
- * Handle provides an implicit constructor for JS::NullPtr so that, given:
- *   foo(Handle<JSObject*> h);
- * callers can simply write:
- *   foo(JS::NullPtr());
- * which avoids creating a Rooted<JSObject*> just to pass nullptr.
- */
-struct JS_PUBLIC_API(NullPtr)
-{
-    static void * const constNullValue;
-};
-
-JS_FRIEND_API(void) HeapCellPostBarrier(js::gc::Cell** cellp);
-JS_FRIEND_API(void) HeapCellRelocate(js::gc::Cell** cellp);
+JS_FRIEND_API(void) HeapObjectPostBarrier(JSObject** objp);
+JS_FRIEND_API(void) HeapObjectRelocate(JSObject** objp);
 
 #ifdef JS_DEBUG
 /*
@@ -214,9 +184,13 @@ JS_FRIEND_API(void) HeapCellRelocate(js::gc::Cell** cellp);
  */
 extern JS_FRIEND_API(void)
 AssertGCThingMustBeTenured(JSObject* obj);
+extern JS_FRIEND_API(void)
+AssertGCThingIsNotAnObjectSubclass(js::gc::Cell* cell);
 #else
 inline void
 AssertGCThingMustBeTenured(JSObject* obj) {}
+inline void
+AssertGCThingIsNotAnObjectSubclass(js::gc::Cell* cell) {}
 #endif
 
 /*
@@ -429,18 +403,10 @@ class MOZ_NONHEAP_CLASS Handle : public js::HandleBase<T>
         ptr = reinterpret_cast<const T*>(handle.address());
     }
 
-    /* Create a handle for a nullptr pointer. */
-    MOZ_IMPLICIT Handle(js::NullPtr) {
+    MOZ_IMPLICIT Handle(decltype(nullptr)) {
         static_assert(mozilla::IsPointer<T>::value,
-                      "js::NullPtr overload not valid for non-pointer types");
-        ptr = reinterpret_cast<const T*>(&js::NullPtr::constNullValue);
-    }
-
-    /* Create a handle for a nullptr pointer. */
-    MOZ_IMPLICIT Handle(JS::NullPtr) {
-        static_assert(mozilla::IsPointer<T>::value,
-                      "JS::NullPtr overload not valid for non-pointer types");
-        ptr = reinterpret_cast<const T*>(&JS::NullPtr::constNullValue);
+                      "nullptr_t overload not valid for non-pointer types");
+        ptr = reinterpret_cast<const T*>(&js::ConstNullValue);
     }
 
     MOZ_IMPLICIT Handle(MutableHandle<T> handle) {
@@ -610,7 +576,7 @@ class InternalHandle<T*>
      * fromMarkedLocation().
      */
     explicit InternalHandle(T* field)
-      : holder(reinterpret_cast<void * const*>(&js::NullPtr::constNullValue)),
+      : holder(&js::ConstNullValue),
         offset(uintptr_t(field))
     {}
 
@@ -639,7 +605,10 @@ struct GCMethods<T*>
 {
     static T* initial() { return nullptr; }
     static bool needsPostBarrier(T* v) { return false; }
-    static void postBarrier(T** vp) {}
+    static void postBarrier(T** vp) {
+        if (vp)
+            JS::AssertGCThingIsNotAnObjectSubclass(reinterpret_cast<js::gc::Cell*>(vp));
+    }
     static void relocate(T** vp) {}
 };
 
@@ -657,10 +626,10 @@ struct GCMethods<JSObject*>
         return v != nullptr && gc::IsInsideNursery(reinterpret_cast<gc::Cell*>(v));
     }
     static void postBarrier(JSObject** vp) {
-        JS::HeapCellPostBarrier(reinterpret_cast<js::gc::Cell**>(vp));
+        JS::HeapObjectPostBarrier(vp);
     }
     static void relocate(JSObject** vp) {
-        JS::HeapCellRelocate(reinterpret_cast<js::gc::Cell**>(vp));
+        JS::HeapObjectRelocate(vp);
     }
 };
 
@@ -672,10 +641,10 @@ struct GCMethods<JSFunction*>
         return v != nullptr && gc::IsInsideNursery(reinterpret_cast<gc::Cell*>(v));
     }
     static void postBarrier(JSFunction** vp) {
-        JS::HeapCellPostBarrier(reinterpret_cast<js::gc::Cell**>(vp));
+        JS::HeapObjectPostBarrier(reinterpret_cast<JSObject**>(vp));
     }
     static void relocate(JSFunction** vp) {
-        JS::HeapCellRelocate(reinterpret_cast<js::gc::Cell**>(vp));
+        JS::HeapObjectRelocate(reinterpret_cast<JSObject**>(vp));
     }
 };
 
@@ -795,7 +764,8 @@ class MOZ_STACK_CLASS Rooted : public js::RootedBase<T>
      * example, Rooted<JSObject> and Rooted<JSFunction>, which use the same
      * stack head pointer for different classes.
      */
-    Rooted<void*>** stack, *prev;
+    Rooted<void*>** stack;
+    Rooted<void*>* prev;
 
     /*
      * |ptr| must be the last field in Rooted because the analysis treats all
@@ -1141,7 +1111,18 @@ class PersistentRooted : public js::PersistentRootedBase<T>,
     DECLARE_POINTER_CONSTREF_OPS(T);
     DECLARE_POINTER_ASSIGN_OPS(PersistentRooted, T);
     DECLARE_NONPOINTER_ACCESSOR_METHODS(ptr);
-    DECLARE_NONPOINTER_MUTABLE_ACCESSOR_METHODS(ptr);
+
+    // These are the same as DECLARE_NONPOINTER_MUTABLE_ACCESSOR_METHODS, except
+    // they check that |this| is initialized in case the caller later stores
+    // something in |ptr|.
+    T* address() {
+        MOZ_ASSERT(initialized());
+        return &ptr;
+    }
+    T& get() {
+        MOZ_ASSERT(initialized());
+        return ptr;
+    }
 
   private:
     void set(T value) {
@@ -1215,7 +1196,5 @@ CallTraceCallbackOnNonHeap(T* v, const TraceCallbacks& aCallbacks, const char* a
 } /* namespace js */
 
 #undef DELETE_ASSIGNMENT_OPS
-#undef DECLARE_NONPOINTER_MUTABLE_ACCESSOR_METHODS
-#undef DECLARE_NONPOINTER_ACCESSOR_METHODS
 
 #endif  /* js_RootingAPI_h */

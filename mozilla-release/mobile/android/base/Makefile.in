@@ -2,33 +2,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-DIST_FILES := \
-  package-name.txt.in \
-  $(NULL)
-
-ifneq (,$(findstring -march=armv7,$(OS_CFLAGS)))
-MIN_CPU_VERSION=7
-else
-MIN_CPU_VERSION=5
-endif
-
 MOZ_APP_BUILDID=$(shell cat $(DEPTH)/config/buildid)
 
-# See Bug 1137586 for more details on version code computation.
-ifeq (,$(ANDROID_VERSION_CODE))
-ifeq ($(CPU_ARCH),arm)
-# Increment by MIN_SDK_VERSION -- this adds 9 to every build ID as a minimum.
-# Our split APK starts at 11.
-ANDROID_VERSION_CODE=$(shell echo $$((`cat $(DEPTH)/config/buildid | cut -c1-10` + $(MOZ_ANDROID_MIN_SDK_VERSION) + 0)))
-else # not ARM, so x86.
-# Increment the version code by 3 for x86 builds so they are offered to x86 phones that have ARM emulators,
-# beating the 2-point advantage that the v11+ ARMv7 APK has.
-# If we change our splits in the future, we'll need to do this further still.
-ANDROID_VERSION_CODE=$(shell echo $$((`cat $(DEPTH)/config/buildid | cut -c1-10` + $(MOZ_ANDROID_MIN_SDK_VERSION) + 3)))
-endif
-endif
-
-UA_BUILDID=$(shell echo $(ANDROID_VERSION_CODE) | cut -c1-8)
+ANDROID_VERSION_CODE:=$(shell $(PYTHON) \
+  $(topsrcdir)/python/mozbuild/mozbuild/android_version_code.py \
+    --verbose \
+    --with-android-cpu-arch=$(ANDROID_CPU_ARCH) \
+    $(if $(MOZ_ANDROID_MIN_SDK_VERSION),--with-android-min-sdk=$(MOZ_ANDROID_MIN_SDK_VERSION)) \
+    $(if $(MOZ_ANDROID_MAX_SDK_VERSION),--with-android-max-sdk=$(MOZ_ANDROID_MAX_SDK_VERSION)) \
+    $(MOZ_APP_BUILDID))
 
 DEFINES += \
   -DANDROID_VERSION_CODE=$(ANDROID_VERSION_CODE) \
@@ -36,7 +18,6 @@ DEFINES += \
   -DMOZ_ANDROID_SHARED_ACCOUNT_TYPE="$(MOZ_ANDROID_SHARED_ACCOUNT_TYPE)" \
   -DMOZ_ANDROID_SHARED_FXACCOUNT_TYPE="$(MOZ_ANDROID_SHARED_FXACCOUNT_TYPE)" \
   -DMOZ_APP_BUILDID=$(MOZ_APP_BUILDID) \
-  -DUA_BUILDID=$(UA_BUILDID) \
   $(NULL)
 
 GARBAGE += \
@@ -48,7 +29,6 @@ GARBAGE += \
   res/raw/browsersearch.json \
   res/raw/suggestedsites.json \
   .aapt.deps \
-  fennec_ids.txt \
   javah.out \
   jni-stubs.inc \
   GeneratedJNIWrappers.cpp \
@@ -69,6 +49,8 @@ JAVA_BOOTCLASSPATH := \
 
 JAVA_BOOTCLASSPATH := $(subst $(NULL) ,:,$(strip $(JAVA_BOOTCLASSPATH)))
 
+JAVA_CLASSPATH += $(ANDROID_RECYCLERVIEW_LIB)
+
 # If native devices are enabled, add Google Play Services and some of the v7
 # compat libraries.
 ifdef MOZ_NATIVE_DEVICES
@@ -85,6 +67,7 @@ JAVA_CLASSPATH := $(subst $(NULL) ,:,$(strip $(JAVA_CLASSPATH)))
 # into classes.dex.
 java_bundled_libs := \
     $(ANDROID_COMPAT_LIB) \
+    $(ANDROID_RECYCLERVIEW_LIB) \
     $(NULL)
 
 ifdef MOZ_NATIVE_DEVICES
@@ -107,6 +90,7 @@ ALL_JARS = \
   gecko-thirdparty.jar \
   gecko-util.jar \
   sync-thirdparty.jar \
+  ../javaaddons/javaaddons-1.0.jar \
   $(NULL)
 
 ifdef MOZ_WEBRTC
@@ -240,6 +224,7 @@ GeneratedJNIWrappers.cpp: $(ALL_JARS)
 manifest := \
   AndroidManifest.xml.in \
   WebappManifestFragment.xml.frag.in \
+  fennec_ids.txt.in \
   $(NULL)
 
 PP_TARGETS += manifest
@@ -373,6 +358,7 @@ generated/org/mozilla/gecko/R.java: .aapt.deps ;
 # If native devices are enabled, add Google Play Services, build their resources
 generated/android/support/v7/appcompat/R.java: .aapt.deps ;
 generated/android/support/v7/mediarouter/R.java: .aapt.deps ;
+generated/android/support/v7/recyclerview/R.java: .aapt.deps ;
 generated/com/google/android/gms/R.java: .aapt.deps ;
 
 ifdef MOZ_NATIVE_DEVICES
@@ -385,6 +371,9 @@ ifdef MOZ_NATIVE_DEVICES
     extra_packages += com.google.android.gms
     extra_res_dirs += $(GOOGLE_PLAY_SERVICES_RES)
 endif
+
+extra_packages += android.support.v7.recyclerview
+extra_res_dirs += $(ANDROID_RECYCLERVIEW_RES)
 
 gecko.ap_: .aapt.deps ;
 R.txt: .aapt.deps ;
@@ -453,9 +442,6 @@ $(eval $(call aapt_command,.aapt.deps,$(all_resources),gecko.ap_,generated/,./))
 # .aapt.nodeps: $(CURDIR)/AndroidManifest.xml FORCE
 $(eval $(call aapt_command,.aapt.nodeps,$(CURDIR)/AndroidManifest.xml FORCE,gecko-nodeps.ap_,gecko-nodeps/,gecko-nodeps/))
 
-fennec_ids.txt: generated/org/mozilla/gecko/R.java fennec-ids-generator.py
-	$(PYTHON) $(topsrcdir)/mobile/android/base/fennec-ids-generator.py -i $< -o $@
-
 # Override the Java settings with some specific android settings
 include $(topsrcdir)/config/android-common.mk
 
@@ -492,7 +478,7 @@ gradle-omnijar: $(abspath $(DIST)/fennec/$(OMNIJAR_NAME))
 
 .PHONY: gradle-targets gradle-omnijar
 
-libs:: geckoview_resources.zip classes.dex jni-stubs.inc GeneratedJNIWrappers.cpp fennec_ids.txt
+libs:: geckoview_resources.zip classes.dex jni-stubs.inc GeneratedJNIWrappers.cpp $(CURDIR)/fennec_ids.txt
 	$(INSTALL) geckoview_resources.zip $(FINAL_TARGET)
 	$(INSTALL) classes.dex $(FINAL_TARGET)
 	@(diff jni-stubs.inc $(topsrcdir)/mozglue/android/jni-stubs.inc >/dev/null && diff GeneratedJNIWrappers.cpp $(topsrcdir)/widget/android/GeneratedJNIWrappers.cpp >/dev/null) || \

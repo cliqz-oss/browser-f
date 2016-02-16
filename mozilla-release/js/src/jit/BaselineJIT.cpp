@@ -115,7 +115,7 @@ EnterBaseline(JSContext* cx, EnterJitData& data)
     data.result.setInt32(data.numActualArgs);
     {
         AssertCompartmentUnchanged pcc(cx);
-        JitActivation activation(cx);
+        JitActivation activation(cx, data.calleeToken);
 
         if (data.osrFrame)
             data.osrFrame->setRunningInJit();
@@ -181,6 +181,7 @@ jit::EnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, jsbytecode* pc)
     data.osrFrame = fp;
     data.osrNumStackValues = fp->script()->nfixed() + cx->interpreterRegs().stackDepth();
 
+    AutoValueVector vals(cx);
     RootedValue thisv(cx);
 
     if (fp->isNonEvalFunctionFrame()) {
@@ -203,6 +204,21 @@ jit::EnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp, jsbytecode* pc)
             data.calleeToken = CalleeToToken(&fp->callee(), /* constructing = */ false);
         else
             data.calleeToken = CalleeToToken(fp->script());
+
+        if (fp->isEvalFrame()) {
+            if (!vals.reserve(2))
+                return JitExec_Aborted;
+
+            vals.infallibleAppend(thisv);
+            
+            if (fp->isFunctionFrame())
+                vals.infallibleAppend(fp->newTarget());
+            else
+                vals.infallibleAppend(NullValue());
+
+            data.maxArgc = 2;
+            data.maxArgv = vals.begin();
+        }
     }
 
     TraceLoggerThread* logger = TraceLoggerForMainThread(cx->runtime());
@@ -228,14 +244,19 @@ jit::BaselineCompile(JSContext* cx, JSScript* script, bool forceDebugInstrumenta
 
     LifoAlloc alloc(TempAllocator::PreferredLifoChunkSize);
     TempAllocator* temp = alloc.new_<TempAllocator>(&alloc);
-    if (!temp)
+    if (!temp) {
+        ReportOutOfMemory(cx);
         return Method_Error;
+    }
 
     JitContext jctx(cx, temp);
 
     BaselineCompiler compiler(cx, *temp, script);
-    if (!compiler.init())
+    if (!compiler.init()) {
+        ReportOutOfMemory(cx);
         return Method_Error;
+    }
+
     if (forceDebugInstrumentation)
         compiler.setCompileDebugInstrumentation();
 
@@ -412,9 +433,9 @@ BaselineScript::New(JSScript* jsscript, uint32_t prologueOffset, uint32_t epilog
 void
 BaselineScript::trace(JSTracer* trc)
 {
-    MarkJitCode(trc, &method_, "baseline-method");
+    TraceEdge(trc, &method_, "baseline-method");
     if (templateScope_)
-        MarkObject(trc, &templateScope_, "baseline-template-scope");
+        TraceEdge(trc, &templateScope_, "baseline-template-scope");
 
     // Mark all IC stub codes hanging off the IC stub entries.
     for (size_t i = 0; i < numICEntries(); i++) {
@@ -843,6 +864,8 @@ BaselineScript::toggleDebugTraps(JSScript* script, jsbytecode* pc)
 
     SrcNoteLineScanner scanner(script->notes(), script->lineno());
 
+    AutoWritableJitCode awjc(method());
+
     for (uint32_t i = 0; i < numPCMappingIndexEntries(); i++) {
         PCMappingIndexEntry& entry = pcMappingIndexEntry(i);
 
@@ -912,6 +935,8 @@ BaselineScript::toggleTraceLoggerScripts(JSRuntime* runtime, JSScript* script, b
     else
         traceLoggerScriptEvent_ = TraceLoggerEvent(logger, TraceLogger_Scripts);
 
+    AutoWritableJitCode awjc(method());
+
     // Enable/Disable the traceLogger prologue and epilogue.
     CodeLocationLabel enter(method_, CodeOffsetLabel(traceLoggerEnterToggleOffset_));
     CodeLocationLabel exit(method_, CodeOffsetLabel(traceLoggerExitToggleOffset_));
@@ -937,6 +962,8 @@ BaselineScript::toggleTraceLoggerEngine(bool enable)
 
     MOZ_ASSERT(enable == !traceLoggerEngineEnabled_);
     MOZ_ASSERT(scriptsEnabled == traceLoggerScriptsEnabled_);
+
+    AutoWritableJitCode awjc(method());
 
     // Enable/Disable the traceLogger prologue and epilogue.
     CodeLocationLabel enter(method_, CodeOffsetLabel(traceLoggerEnterToggleOffset_));
@@ -965,6 +992,8 @@ BaselineScript::toggleProfilerInstrumentation(bool enable)
 
     JitSpew(JitSpew_BaselineIC, "  toggling profiling %s for BaselineScript %p",
             enable ? "on" : "off", this);
+
+    AutoWritableJitCode awjc(method());
 
     // Toggle the jump
     CodeLocationLabel enterToggleLocation(method_, CodeOffsetLabel(profilerEnterToggleOffset_));

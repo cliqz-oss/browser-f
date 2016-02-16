@@ -4,7 +4,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-TEST_DIRS += ['tests/mochitest']
+MOCHITEST_MANIFESTS += ['tests/mochitest/mochitest.ini']
+MOCHITEST_CHROME_MANIFESTS += ['tests/mochitest/chrome.ini']
+XPCSHELL_TESTS_MANIFESTS += ['tests/unit/xpcshell.ini']
+
+# Hack to make this file available as a resource:// URI.
+TESTING_JS_MODULES += [
+    'tests/mochitest/resource_test_file.html',
+]
 
 XPIDL_SOURCES += [
     'nsIDomainPolicy.idl',
@@ -20,7 +27,12 @@ EXPORTS += [
     'nsNullPrincipalURI.h',
 ]
 
+EXPORTS.mozilla = [
+    'BasePrincipal.h'
+]
+
 UNIFIED_SOURCES += [
+    'BasePrincipal.cpp',
     'DomainPolicy.cpp',
     'nsJSPrincipals.cpp',
     'nsNullPrincipal.cpp',
@@ -29,8 +41,6 @@ UNIFIED_SOURCES += [
     'nsScriptSecurityManager.cpp',
     'nsSystemPrincipal.cpp',
 ]
-
-MSVC_ENABLE_PGO = True
 
 LOCAL_INCLUDES += [
     '/dom/base',

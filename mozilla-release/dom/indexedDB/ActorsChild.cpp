@@ -1,3 +1,5 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -609,10 +611,10 @@ ConvertActorsToBlobs(IDBDatabase* aDatabase,
     for (uint32_t index = 0; index < count; index++) {
       BlobChild* actor = static_cast<BlobChild*>(blobs[index]);
 
-      nsRefPtr<FileImpl> blobImpl = actor->GetBlobImpl();
+      nsRefPtr<BlobImpl> blobImpl = actor->GetBlobImpl();
       MOZ_ASSERT(blobImpl);
 
-      nsRefPtr<File> blob = new File(aDatabase->GetOwner(), blobImpl);
+      nsRefPtr<Blob> blob = Blob::Create(aDatabase->GetOwner(), blobImpl);
 
       nsRefPtr<FileInfo> fileInfo;
       if (!fileInfos.IsEmpty()) {
@@ -629,7 +631,7 @@ ConvertActorsToBlobs(IDBDatabase* aDatabase,
       StructuredCloneFile* file = aFiles.AppendElement();
       MOZ_ASSERT(file);
 
-      file->mFile.swap(blob);
+      file->mBlob.swap(blob);
       file->mFileInfo.swap(fileInfo);
     }
   }
@@ -787,14 +789,14 @@ class WorkerPermissionChallenge;
 
 // This class calles WorkerPermissionChallenge::OperationCompleted() in the
 // worker thread.
-class WorkerPermissionOperationCompleted final : public WorkerRunnable
+class WorkerPermissionOperationCompleted final : public WorkerControlRunnable
 {
   nsRefPtr<WorkerPermissionChallenge> mChallenge;
 
 public:
   WorkerPermissionOperationCompleted(WorkerPrivate* aWorkerPrivate,
                                      WorkerPermissionChallenge* aChallenge)
-    : WorkerRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount)
+    : WorkerControlRunnable(aWorkerPrivate, WorkerThreadUnchangedBusyCount)
     , mChallenge(aChallenge)
   {
     MOZ_ASSERT(NS_IsMainThread());
@@ -900,11 +902,7 @@ public:
       nsRefPtr<WorkerPermissionOperationCompleted> runnable =
         new WorkerPermissionOperationCompleted(mWorkerPrivate, this);
 
-      if (!runnable->Dispatch(nullptr)) {
-        NS_WARNING("Failed to dispatch a runnable to the worker thread.");
-        return;
-      }
-
+      MOZ_ALWAYS_TRUE(runnable->Dispatch(nullptr));
       return;
     }
 
@@ -1260,14 +1258,26 @@ BackgroundFactoryRequestChild::HandleResponse(
     static_cast<BackgroundDatabaseChild*>(aResponse.databaseChild());
   MOZ_ASSERT(databaseActor);
 
-  databaseActor->EnsureDOMObject();
-
   IDBDatabase* database = databaseActor->GetDOMObject();
-  MOZ_ASSERT(database);
+  if (!database) {
+    databaseActor->EnsureDOMObject();
 
-  ResultHelper helper(mRequest, nullptr, database);
+    database = databaseActor->GetDOMObject();
+    MOZ_ASSERT(database);
 
-  DispatchSuccessEvent(&helper);
+    MOZ_ASSERT(!database->IsClosed());
+  }
+
+  if (database->IsClosed()) {
+    // If the database was closed already, which is only possible if we fired an
+    // "upgradeneeded" event, then we shouldn't fire a "success" event here.
+    // Instead we fire an error event with AbortErr.
+    DispatchErrorEvent(mRequest, NS_ERROR_DOM_INDEXEDDB_ABORT_ERR);
+  } else {
+    ResultHelper helper(mRequest, nullptr, database);
+
+    DispatchSuccessEvent(&helper);
+  }
 
   databaseActor->ReleaseDOMObject();
 
@@ -1370,7 +1380,7 @@ BackgroundFactoryRequestChild::RecvPermissionChallenge(
     JSContext* cx = workerPrivate->GetJSContext();
     MOZ_ASSERT(cx);
 
-    if (!workerPrivate->AddFeature(cx, challenge)) {
+    if (NS_WARN_IF(!workerPrivate->AddFeature(cx, challenge))) {
       return false;
     }
 
@@ -1392,7 +1402,9 @@ BackgroundFactoryRequestChild::RecvPermissionChallenge(
     nsCOMPtr<Element> ownerElement =
       do_QueryInterface(window->GetChromeEventHandler());
     if (NS_WARN_IF(!ownerElement)) {
-      return false;
+      // If this fails, the page was navigated. Fail the permission check by
+      // forcing an immediate retry.
+      return SendPermissionRetry();
     }
 
     nsRefPtr<PermissionRequestMainProcessHelper> helper =
@@ -2516,6 +2528,7 @@ BackgroundCursorChild::HandleResponse(
   auto& response = const_cast<ObjectStoreCursorResponse&>(aResponse);
 
   StructuredCloneReadInfo cloneReadInfo(Move(response.cloneInfo()));
+  cloneReadInfo.mDatabase = mTransaction->Database();
 
   ConvertActorsToBlobs(mTransaction->Database(),
                        response.cloneInfo(),
@@ -2577,6 +2590,7 @@ BackgroundCursorChild::HandleResponse(const IndexCursorResponse& aResponse)
   auto& response = const_cast<IndexCursorResponse&>(aResponse);
 
   StructuredCloneReadInfo cloneReadInfo(Move(response.cloneInfo()));
+  cloneReadInfo.mDatabase = mTransaction->Database();
 
   ConvertActorsToBlobs(mTransaction->Database(),
                        aResponse.cloneInfo(),

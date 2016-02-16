@@ -4,21 +4,20 @@
 /**
  * Tests that the memory call tree view renders the correct columns.
  */
-function spawnTest () {
+function* spawnTest() {
   let { panel } = yield initPerformance(SIMPLE_URL);
   let { EVENTS, $, $$, DetailsView, MemoryCallTreeView } = panel.panelWin;
 
   // Enable memory to test.
   Services.prefs.setBoolPref(MEMORY_PREF, true);
 
-  yield DetailsView.selectView("memory-calltree");
-  ok(DetailsView.isViewSelected(MemoryCallTreeView), "The call tree is now selected.");
-
   yield startRecording(panel);
   yield busyWait(1000);
 
   let rendered = once(MemoryCallTreeView, EVENTS.MEMORY_CALL_TREE_RENDERED);
   yield stopRecording(panel);
+  yield DetailsView.selectView("memory-calltree");
+  ok(DetailsView.isViewSelected(MemoryCallTreeView), "The call tree is now selected.");
   yield rendered;
 
   testCells($, $$, {

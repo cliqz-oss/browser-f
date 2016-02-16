@@ -5,10 +5,9 @@
 # This file contains miscellaneous utility functions that don't belong anywhere
 # in particular.
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import collections
-import copy
 import difflib
 import errno
 import functools
@@ -119,11 +118,12 @@ class FileAvoidWrite(StringIO):
     enabled by default because it a) doesn't make sense for binary files b)
     could add unwanted overhead to calls.
     """
-    def __init__(self, filename, capture_diff=False):
+    def __init__(self, filename, capture_diff=False, mode='rU'):
         StringIO.__init__(self)
         self.name = filename
         self._capture_diff = capture_diff
         self.diff = None
+        self.mode = mode
 
     def close(self):
         """Stop accepting writes, compare file contents, and rewrite if needed.
@@ -142,7 +142,7 @@ class FileAvoidWrite(StringIO):
         old_content = None
 
         try:
-            existing = open(self.name, 'rU')
+            existing = open(self.name, self.mode)
             existed = True
         except IOError:
             pass
@@ -886,12 +886,7 @@ class TypedListMixin(object):
         if isinstance(l, self.__class__):
             return l
 
-        def normalize(e):
-            if not isinstance(e, self.TYPE):
-                e = self.TYPE(e)
-            return e
-
-        return [normalize(e) for e in l]
+        return [self.normalize(e) for e in l]
 
     def __init__(self, iterable=[]):
         iterable = self._ensure_type(iterable)
@@ -936,7 +931,12 @@ def TypedList(type, base_class=List):
        TypedList(unicode, StrictOrderingOnAppendList)
     '''
     class _TypedList(TypedListMixin, base_class):
-        TYPE = type
+        @staticmethod
+        def normalize(e):
+            if not isinstance(e, type):
+                e = type(e)
+            return e
+
     return _TypedList
 
 def group_unified_files(files, unified_prefix, unified_suffix,

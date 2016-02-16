@@ -301,7 +301,8 @@ let HomePanels = (function () {
   // Valid item types for a panel view.
   let Item = Object.freeze({
     ARTICLE: "article",
-    IMAGE: "image"
+    IMAGE: "image",
+    ICON: "icon"
   });
 
   // Valid item handlers for a panel view.
@@ -315,6 +316,7 @@ let HomePanels = (function () {
     this.title = options.title;
     this.layout = options.layout;
     this.views = options.views;
+    this.default = !!options.default;
 
     if (!this.id || !this.title) {
       throw "Home.panels: Can't create a home panel without an id and title!";
@@ -377,6 +379,10 @@ let HomePanels = (function () {
       if (options.auth.imageUrl) {
         this.authConfig.imageUrl = options.auth.imageUrl;
       }
+    }
+
+    if (options.position && typeof options.position === "number") {
+      this.position = options.position;
     }
   }
 

@@ -56,6 +56,7 @@ enum OperatingSystem {
   DRIVER_OS_OS_X_10_9,
   DRIVER_OS_OS_X_10_10,
   DRIVER_OS_ANDROID,
+  DRIVER_OS_IOS,
   DRIVER_OS_ALL
 };
 
@@ -79,6 +80,7 @@ enum DeviceFamily {
   IntelGMA3150,
   IntelGMAX3000,
   IntelGMAX4500HD,
+  IntelHDGraphicsToIvyBridge,
   IntelHD3000,
   IntelMobileHDGraphics,
   NvidiaBlockD3D9Layers,

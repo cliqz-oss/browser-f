@@ -14,6 +14,7 @@
 #include "chrome/common/mach_ipc_mac.h"
 #include "base/rand_util.h"
 #include "nsILocalFileMac.h"
+#include "SharedMemoryBasic.h"
 #endif
 
 #include "MainThreadUtils.h"
@@ -29,6 +30,7 @@
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "mozilla/Omnijar.h"
+#include "ProtocolUtils.h"
 #include <sys/stat.h>
 
 #ifdef XP_WIN
@@ -54,6 +56,10 @@ using mozilla::ipc::GeckoChildProcessHost;
 // the magic number of a file descriptor remapping we must
 // preserve for the child process.
 static const int kMagicAndroidSystemPropFd = 5;
+#endif
+
+#ifdef MOZ_WIDGET_ANDROID
+#include "AndroidBridge.h"
 #endif
 
 static const bool kLowRightsSubprocesses =
@@ -114,12 +120,16 @@ GeckoChildProcessHost::~GeckoChildProcessHost()
 
   MOZ_COUNT_DTOR(GeckoChildProcessHost);
 
-  if (mChildProcessHandle > 0)
+  if (mChildProcessHandle > 0) {
+#if defined(MOZ_WIDGET_COCOA)
+    SharedMemoryBasic::CleanupForPid(mChildProcessHandle);
+#endif
     ProcessWatcher::EnsureProcessTerminated(mChildProcessHandle
 #if defined(NS_BUILD_REFCNT_LOGGING)
                                             , false // don't "force"
 #endif
     );
+  }
 
 #if defined(MOZ_WIDGET_COCOA)
   if (mChildTask != MACH_PORT_NULL)
@@ -163,7 +173,17 @@ GeckoChildProcessHost::GetPathToBinary(FilePath& exePath)
     exePath = exePath.DirName();
   }
 
+#ifdef MOZ_WIDGET_ANDROID
+  exePath = exePath.AppendASCII("lib");
+
+  // We must use the PIE binary on 5.0 and higher
+  const char* processName = mozilla::AndroidBridge::Bridge()->GetAPIVersion() >= 21 ?
+    MOZ_CHILD_PROCESS_NAME_PIE : MOZ_CHILD_PROCESS_NAME;
+
+  exePath = exePath.AppendASCII(processName);
+#else
   exePath = exePath.AppendASCII(MOZ_CHILD_PROCESS_NAME);
+#endif
 }
 
 #ifdef MOZ_WIDGET_COCOA
@@ -251,6 +271,17 @@ uint32_t GeckoChildProcessHost::GetSupportedArchitecturesForProcessType(GeckoPro
 #endif
 
   return base::GetCurrentProcessArchitecture();
+}
+
+// We start the unique IDs at 1 so that 0 can be used to mean that
+// a component has no unique ID assigned to it.
+uint32_t GeckoChildProcessHost::sNextUniqueID = 1;
+
+/* static */
+uint32_t
+GeckoChildProcessHost::GetUniqueID()
+{
+  return sNextUniqueID++;
 }
 
 void
@@ -428,6 +459,11 @@ GeckoChildProcessHost::Join()
 void
 GeckoChildProcessHost::SetAlreadyDead()
 {
+  if (mChildProcessHandle &&
+      mChildProcessHandle != kInvalidProcessHandle) {
+    base::CloseProcessHandle(mChildProcessHandle);
+  }
+
   mChildProcessHandle = 0;
 }
 
@@ -605,7 +641,7 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
     // been set up by whatever may have launched the browser.
     const char* prevInterpose = PR_GetEnv("DYLD_INSERT_LIBRARIES");
     nsCString interpose;
-    if (prevInterpose) {
+    if (prevInterpose && strlen(prevInterpose) > 0) {
       interpose.Assign(prevInterpose);
       interpose.Append(':');
     }
@@ -752,9 +788,31 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
   }
   MachPortSender parent_sender(child_message.GetTranslatedPort(1));
 
+  if (child_message.GetTranslatedPort(2) == MACH_PORT_NULL) {
+    CHROMIUM_LOG(ERROR) << "parent GetTranslatedPort(2) failed.";
+  }
+  MachPortSender* parent_recv_port_memory_ack = new MachPortSender(child_message.GetTranslatedPort(2));
+
+  if (child_message.GetTranslatedPort(3) == MACH_PORT_NULL) {
+    CHROMIUM_LOG(ERROR) << "parent GetTranslatedPort(3) failed.";
+  }
+  MachPortSender* parent_send_port_memory = new MachPortSender(child_message.GetTranslatedPort(3));
+
   MachSendMessage parent_message(/* id= */0);
   if (!parent_message.AddDescriptor(MachMsgPortDescriptor(bootstrap_port))) {
     CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << bootstrap_port << ") failed.";
+    return false;
+  }
+
+  ReceivePort* parent_recv_port_memory = new ReceivePort();
+  if (!parent_message.AddDescriptor(MachMsgPortDescriptor(parent_recv_port_memory->GetPort()))) {
+    CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << parent_recv_port_memory->GetPort() << ") failed.";
+    return false;
+  }
+
+  ReceivePort* parent_send_port_memory_ack = new ReceivePort();
+  if (!parent_message.AddDescriptor(MachMsgPortDescriptor(parent_send_port_memory_ack->GetPort()))) {
+    CHROMIUM_LOG(ERROR) << "parent AddDescriptor(" << parent_send_port_memory_ack->GetPort() << ") failed.";
     return false;
   }
 
@@ -764,6 +822,10 @@ GeckoChildProcessHost::PerformAsyncLaunchInternal(std::vector<std::string>& aExt
     CHROMIUM_LOG(ERROR) << "parent SendMessage() failed: " << errString;
     return false;
   }
+
+  SharedMemoryBasic::SetupMachMemory(process, parent_recv_port_memory, parent_recv_port_memory_ack,
+                                     parent_send_port_memory, parent_send_port_memory_ack, false);
+
 #endif
 
 //--------------------------------------------------

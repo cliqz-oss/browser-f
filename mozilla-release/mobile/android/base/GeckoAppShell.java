@@ -15,6 +15,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.Proxy;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.nio.ByteBuffer;
@@ -24,11 +26,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
-import java.util.Queue;
 import java.util.StringTokenizer;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 
 import org.mozilla.gecko.AppConstants.Versions;
 import org.mozilla.gecko.db.BrowserDB;
@@ -54,6 +54,7 @@ import org.mozilla.gecko.util.NativeJSObject;
 import org.mozilla.gecko.util.ProxySelector;
 import org.mozilla.gecko.util.ThreadUtils;
 
+import android.annotation.TargetApi;
 import android.app.Activity;
 import android.app.ActivityManager;
 import android.app.PendingIntent;
@@ -99,6 +100,7 @@ import android.os.Message;
 import android.os.MessageQueue;
 import android.os.SystemClock;
 import android.os.Vibrator;
+import android.provider.Browser;
 import android.provider.Settings;
 import android.telephony.TelephonyManager;
 import android.text.TextUtils;
@@ -125,7 +127,6 @@ public class GeckoAppShell
     // We have static members only.
     private GeckoAppShell() { }
 
-    private static boolean restartScheduled;
     private static GeckoEditableListener editableListener;
 
     private static final CrashHandler CRASH_HANDLER = new CrashHandler() {
@@ -196,7 +197,6 @@ public class GeckoAppShell
         return CRASH_HANDLER;
     }
 
-    private static final Queue<GeckoEvent> PENDING_EVENTS = new ConcurrentLinkedQueue<GeckoEvent>();
     private static final Map<String, String> ALERT_COOKIES = new ConcurrentHashMap<String, String>();
 
     private static volatile boolean locationHighAccuracyEnabled;
@@ -227,6 +227,8 @@ public class GeckoAppShell
     private static Sensor gOrientationSensor;
     private static Sensor gProximitySensor;
     private static Sensor gLightSensor;
+    private static Sensor gRotationVectorSensor;
+    private static Sensor gGameRotationVectorSensor;
 
     private static final String GECKOREQUEST_RESPONSE_KEY = "response";
     private static final String GECKOREQUEST_ERROR_KEY = "error";
@@ -256,7 +258,7 @@ public class GeckoAppShell
 
     // Initialization methods
     public static native void registerJavaUiThread();
-    public static native void nativeInit(ClassLoader clsLoader);
+    public static native void nativeInit(ClassLoader clsLoader, MessageQueue msgQueue);
 
     // helper methods
     public static native void onResume();
@@ -266,7 +268,6 @@ public class GeckoAppShell
     public static void removeObserver(String observerKey) {
         sendEventToGecko(GeckoEvent.createRemoveObserverEvent(observerKey));
     }
-    public static native Message getNextMessageFromQueue(MessageQueue queue);
     public static native void onSurfaceTextureFrameAvailable(Object surfaceTexture, int id);
     public static native void dispatchMemoryPressure();
 
@@ -291,6 +292,9 @@ public class GeckoAppShell
     public static native float computeRenderIntegrity();
 
     public static native SurfaceBits getSurfaceBits(Surface surface);
+
+    public static native void addPresentationSurface(Surface surface);
+    public static native void removePresentationSurface(Surface surface);
 
     public static native void onFullScreenPluginHidden(View view);
 
@@ -350,7 +354,7 @@ public class GeckoAppShell
         Looper.myQueue().addIdleHandler(idleHandler);
 
         // Initialize AndroidBridge.
-        nativeInit(GeckoAppShell.class.getClassLoader());
+        nativeInit(GeckoAppShell.class.getClassLoader(), Looper.myQueue());
 
         // First argument is the .apk path
         String combinedArgs = apkPath + " -greomni " + apkPath;
@@ -384,15 +388,6 @@ public class GeckoAppShell
         Looper.myQueue().removeIdleHandler(idleHandler);
     }
 
-    static void sendPendingEventsToGecko() {
-        try {
-            while (!PENDING_EVENTS.isEmpty()) {
-                final GeckoEvent e = PENDING_EVENTS.poll();
-                notifyGeckoOfEvent(e);
-            }
-        } catch (NoSuchElementException e) {}
-    }
-
     /**
      * If the Gecko thread is running, immediately dispatches the event to
      * Gecko.
@@ -416,13 +411,13 @@ public class GeckoAppShell
 
         if (GeckoThread.checkLaunchState(GeckoThread.LaunchState.GeckoRunning)) {
             notifyGeckoOfEvent(e);
-            // Gecko will copy the event data into a normal C++ object. We can recycle the event now.
+            // Gecko will copy the event data into a normal C++ object.
+            // We can recycle the event now.
             e.recycle();
             return;
         }
 
-        // Throws if unable to add the event due to capacity restrictions.
-        PENDING_EVENTS.add(e);
+        GeckoThread.addPendingEvent(e);
     }
 
     /**
@@ -515,6 +510,14 @@ public class GeckoAppShell
             sendEventToGecko(e);
             sWaitingForEventAck = true;
             while (true) {
+                if (GeckoThread.checkLaunchState(GeckoThread.LaunchState.GeckoExiting) ||
+                        GeckoThread.checkLaunchState(GeckoThread.LaunchState.GeckoExited)) {
+                    // Gecko is quitting; don't do anything.
+                    Log.d(LOGTAG, "Skipping Gecko event sync during exit");
+                    sWaitingForEventAck = false;
+                    return;
+                }
+
                 try {
                     sEventAckLock.wait(1000);
                 } catch (InterruptedException ie) {
@@ -658,46 +661,61 @@ public class GeckoAppShell
 
         switch(aSensortype) {
         case GeckoHalDefines.SENSOR_ORIENTATION:
-            if(gOrientationSensor == null)
+            if (gOrientationSensor == null)
                 gOrientationSensor = sm.getDefaultSensor(Sensor.TYPE_ORIENTATION);
-            if (gOrientationSensor != null) 
+            if (gOrientationSensor != null)
                 sm.registerListener(gi.getSensorEventListener(), gOrientationSensor, SensorManager.SENSOR_DELAY_GAME);
             break;
 
         case GeckoHalDefines.SENSOR_ACCELERATION:
-            if(gAccelerometerSensor == null)
+            if (gAccelerometerSensor == null)
                 gAccelerometerSensor = sm.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
             if (gAccelerometerSensor != null)
                 sm.registerListener(gi.getSensorEventListener(), gAccelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
             break;
 
         case GeckoHalDefines.SENSOR_PROXIMITY:
-            if(gProximitySensor == null  )
+            if (gProximitySensor == null)
                 gProximitySensor = sm.getDefaultSensor(Sensor.TYPE_PROXIMITY);
             if (gProximitySensor != null)
                 sm.registerListener(gi.getSensorEventListener(), gProximitySensor, SensorManager.SENSOR_DELAY_NORMAL);
             break;
 
         case GeckoHalDefines.SENSOR_LIGHT:
-            if(gLightSensor == null)
+            if (gLightSensor == null)
                 gLightSensor = sm.getDefaultSensor(Sensor.TYPE_LIGHT);
             if (gLightSensor != null)
                 sm.registerListener(gi.getSensorEventListener(), gLightSensor, SensorManager.SENSOR_DELAY_NORMAL);
             break;
 
         case GeckoHalDefines.SENSOR_LINEAR_ACCELERATION:
-            if(gLinearAccelerometerSensor == null)
-                gLinearAccelerometerSensor = sm.getDefaultSensor(10 /* API Level 9 - TYPE_LINEAR_ACCELERATION */);
+            if (gLinearAccelerometerSensor == null)
+                gLinearAccelerometerSensor = sm.getDefaultSensor(Sensor.TYPE_LINEAR_ACCELERATION);
             if (gLinearAccelerometerSensor != null)
                 sm.registerListener(gi.getSensorEventListener(), gLinearAccelerometerSensor, SensorManager.SENSOR_DELAY_GAME);
             break;
 
         case GeckoHalDefines.SENSOR_GYROSCOPE:
-            if(gGyroscopeSensor == null)
+            if (gGyroscopeSensor == null)
                 gGyroscopeSensor = sm.getDefaultSensor(Sensor.TYPE_GYROSCOPE);
             if (gGyroscopeSensor != null)
                 sm.registerListener(gi.getSensorEventListener(), gGyroscopeSensor, SensorManager.SENSOR_DELAY_GAME);
             break;
+
+        case GeckoHalDefines.SENSOR_ROTATION_VECTOR:
+            if (gRotationVectorSensor == null)
+                gRotationVectorSensor = sm.getDefaultSensor(Sensor.TYPE_ROTATION_VECTOR);
+            if (gRotationVectorSensor != null)
+                sm.registerListener(gi.getSensorEventListener(), gRotationVectorSensor, SensorManager.SENSOR_DELAY_GAME);
+            break;
+
+        case GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR:
+            if (gGameRotationVectorSensor == null)
+                gGameRotationVectorSensor = sm.getDefaultSensor(15 /* Sensor.TYPE_GAME_ROTATION_VECTOR */); // API >= 18
+            if (gGameRotationVectorSensor != null)
+                sm.registerListener(gi.getSensorEventListener(), gGameRotationVectorSensor, SensorManager.SENSOR_DELAY_GAME);
+            break;
+
         default:
             Log.w(LOGTAG, "Error! Can't enable unknown SENSOR type " + aSensortype);
         }
@@ -736,6 +754,16 @@ public class GeckoAppShell
         case GeckoHalDefines.SENSOR_LINEAR_ACCELERATION:
             if (gLinearAccelerometerSensor != null)
                 sm.unregisterListener(gi.getSensorEventListener(), gLinearAccelerometerSensor);
+            break;
+
+        case GeckoHalDefines.SENSOR_ROTATION_VECTOR:
+            if (gRotationVectorSensor != null)
+                sm.unregisterListener(gi.getSensorEventListener(), gRotationVectorSensor);
+            break;
+
+        case GeckoHalDefines.SENSOR_GAME_ROTATION_VECTOR:
+            if (gGameRotationVectorSensor != null)
+                sm.unregisterListener(gi.getSensorEventListener(), gGameRotationVectorSensor);
             break;
 
         case GeckoHalDefines.SENSOR_GYROSCOPE:
@@ -783,42 +811,9 @@ public class GeckoAppShell
             getGeckoInterface().getActivity().moveTaskToBack(true);
     }
 
-    public static void returnIMEQueryResult(String result, int selectionStart, int selectionLength) {
-        // This method may be called from JNI to report Gecko's current selection indexes, but
-        // Native Fennec doesn't care because the Java code already knows the selection indexes.
-    }
-
-    @WrapElementForJNI(stubName = "NotifyXreExit")
-    static void onXreExit() {
-        // The launch state can only be Launched or GeckoRunning at this point
-        GeckoThread.setLaunchState(GeckoThread.LaunchState.GeckoExiting);
-        if (getGeckoInterface() != null) {
-            if (restartScheduled) {
-                getGeckoInterface().doRestart();
-            } else {
-                getGeckoInterface().getActivity().finish();
-            }
-        }
-
-        systemExit();
-    }
-
-    static void gracefulExit() {
-        Log.d(LOGTAG, "Initiating graceful exit...");
-        sendEventToGeckoSync(GeckoEvent.createBroadcastEvent("Browser:Quit", ""));
-        GeckoThread.setLaunchState(GeckoThread.LaunchState.GeckoExited);
-        System.exit(0);
-    }
-
-    static void systemExit() {
-        Log.d(LOGTAG, "Killing via System.exit()");
-        GeckoThread.setLaunchState(GeckoThread.LaunchState.GeckoExited);
-        System.exit(0);
-    }
-
     @WrapElementForJNI
     static void scheduleRestart() {
-        restartScheduled = true;
+        getGeckoInterface().doRestart();
     }
 
     // Creates a homescreen shortcut for a web page.
@@ -856,7 +851,7 @@ public class GeckoAppShell
         shortcutIntent.setAction(GeckoApp.ACTION_HOMESCREEN_SHORTCUT);
         shortcutIntent.setData(Uri.parse(aURI));
         shortcutIntent.setClassName(AppConstants.ANDROID_PACKAGE_NAME,
-                                    AppConstants.BROWSER_INTENT_CLASS_NAME);
+                                    AppConstants.MOZ_ANDROID_BROWSER_INTENT_CLASS);
 
         Intent intent = new Intent();
         intent.putExtra(Intent.EXTRA_SHORTCUT_INTENT, shortcutIntent);
@@ -966,11 +961,24 @@ public class GeckoAppShell
         return getHandlersForIntent(intent);
     }
 
+    static List<ResolveInfo> queryIntentActivities(Intent intent) {
+        final PackageManager pm = getContext().getPackageManager();
+
+        // Exclude any non-exported activities: we can't open them even if we want to!
+        // Bug 1031569 has some details.
+        final ArrayList<ResolveInfo> list = new ArrayList<>();
+        for (ResolveInfo ri: pm.queryIntentActivities(intent, 0)) {
+            if (ri.activityInfo.exported) {
+                list.add(ri);
+            }
+        }
+
+        return list;
+    }
+
     static boolean hasHandlersForIntent(Intent intent) {
         try {
-            PackageManager pm = getContext().getPackageManager();
-            List<ResolveInfo> list = pm.queryIntentActivities(intent, 0);
-            return !list.isEmpty();
+            return !queryIntentActivities(intent).isEmpty();
         } catch (Exception ex) {
             Log.e(LOGTAG, "Exception in GeckoAppShell.hasHandlersForIntent");
             return false;
@@ -978,11 +986,12 @@ public class GeckoAppShell
     }
 
     static String[] getHandlersForIntent(Intent intent) {
+        final PackageManager pm = getContext().getPackageManager();
         try {
-            PackageManager pm = getContext().getPackageManager();
-            List<ResolveInfo> list = pm.queryIntentActivities(intent, 0);
+            final List<ResolveInfo> list = queryIntentActivities(intent);
+
             int numAttr = 4;
-            String[] ret = new String[list.size() * numAttr];
+            final String[] ret = new String[list.size() * numAttr];
             for (int i = 0; i < list.size(); i++) {
                 ResolveInfo resolveInfo = list.get(i);
                 ret[i * numAttr] = resolveInfo.loadLabel(pm).toString();
@@ -1103,6 +1112,10 @@ public class GeckoAppShell
             context.startActivity(intent);
             return true;
         } catch (ActivityNotFoundException e) {
+            Log.w(LOGTAG, "Activity not found.", e);
+            return false;
+        } catch (SecurityException e) {
+            Log.w(LOGTAG, "Forbidden to launch activity.", e);
             return false;
         }
     }
@@ -1179,6 +1192,23 @@ public class GeckoAppShell
                                    final String action,
                                    final String title) {
 
+        // The resultant chooser can return non-exported activities in 4.1 and earlier.
+        // https://code.google.com/p/android/issues/detail?id=29535
+        final Intent intent = getOpenURIIntentInner(context, targetURI, mimeType, action, title);
+
+        if (intent != null) {
+            // Some applications use this field to return to the same browser after processing the
+            // Intent. While there is some danger (e.g. denial of service), other major browsers already
+            // use it and so it's the norm.
+            intent.putExtra(Browser.EXTRA_APPLICATION_ID, GeckoApp.class.getPackage().getName());
+        }
+
+        return intent;
+    }
+
+    private static Intent getOpenURIIntentInner(final Context context,  final String targetURI,
+            final String mimeType, final String action, final String title) {
+
         if (action.equalsIgnoreCase(Intent.ACTION_SEND)) {
             Intent shareIntent = getShareIntent(context, targetURI, mimeType, title);
             return Intent.createChooser(shareIntent,
@@ -1197,6 +1227,24 @@ public class GeckoAppShell
         }
 
         final String scheme = uri.getScheme();
+        if ("intent".equals(scheme) || "android-app".equals(scheme)) {
+            final Intent intent;
+            try {
+                intent = Intent.parseUri(targetURI, 0);
+            } catch (final URISyntaxException e) {
+                Log.e(LOGTAG, "Unable to parse URI - " + e);
+                return null;
+            }
+
+            // Only open applications which can accept arbitrary data from a browser.
+            intent.addCategory(Intent.CATEGORY_BROWSABLE);
+
+            // Prevent site from explicitly opening our internal activities, which can leak data.
+            intent.setComponent(null);
+            nullIntentSelector(intent);
+
+            return intent;
+        }
 
         // Compute our most likely intent, then check to see if there are any
         // custom handlers that would apply.
@@ -1214,7 +1262,7 @@ public class GeckoAppShell
             // Return an intent with a URI that will open the YouTube page in the
             // current Fennec instance.
             final Class<?> c;
-            final String browserClassName = AppConstants.BROWSER_INTENT_CLASS_NAME;
+            final String browserClassName = AppConstants.MOZ_ANDROID_BROWSER_INTENT_CLASS;
             try {
                 c = Class.forName(browserClassName);
             } catch (ClassNotFoundException e) {
@@ -1270,6 +1318,16 @@ public class GeckoAppShell
         intent.setData(pruned);
 
         return intent;
+    }
+
+    // We create a separate method to better encapsulate the @TargetApi use.
+    @TargetApi(15)
+    private static void nullIntentSelector(final Intent intent) {
+        if (!Versions.feature15Plus) {
+            return;
+        }
+
+        intent.setSelector(null);
     }
 
     /**
@@ -1649,24 +1707,6 @@ public class GeckoAppShell
         EnumerateGeckoProcesses(visitor);
     }
 
-    public static boolean checkForGeckoProcs() {
-
-        class GeckoPidCallback implements GeckoProcessesVisitor {
-            public boolean otherPidExist;
-            @Override
-            public boolean callback(int pid) {
-                if (pid != android.os.Process.myPid()) {
-                    otherPidExist = true;
-                    return false;
-                }
-                return true;
-            }            
-        }
-        GeckoPidCallback visitor = new GeckoPidCallback();            
-        EnumerateGeckoProcesses(visitor);
-        return visitor.otherPidExist;
-    }
-
     interface GeckoProcessesVisitor{
         boolean callback(int pid);
     }
@@ -1718,14 +1758,6 @@ public class GeckoAppShell
         }
     }
 
-    public static void waitForAnotherGeckoProc(){
-        int countdown = 40;
-        while (!checkForGeckoProcs() &&  --countdown > 0) {
-            try {
-                Thread.sleep(100);
-            } catch (InterruptedException ie) {}
-        }
-    }
     public static String getAppNameByPID(int pid) {
         BufferedReader cmdlineReader = null;
         String path = "/proc/" + pid + "/cmdline";
@@ -1777,7 +1809,7 @@ public class GeckoAppShell
                 String[] split = output.split("\\s+");
                 if (split.length <= pidColumn || split.length <= nameColumn)
                     continue;
-                Integer pid = new Integer(split[pidColumn]);
+                final Integer pid = Integer.valueOf(split[pidColumn]);
                 String name = pidNameMap.get(pid);
                 if (name == null) {
                     name = getAppNameByPID(pid.intValue());
@@ -2140,7 +2172,6 @@ public class GeckoAppShell
         public boolean areTabsShown();
         public AbsoluteLayout getPluginContainer();
         public void notifyCheckUpdateResult(String result);
-        public boolean hasTabsSideBar();
         public void invalidateOptionsMenu();
     };
 
@@ -2430,17 +2461,6 @@ public class GeckoAppShell
         });
     }
 
-    /**
-     * Decodes a byte array from Base64 format.
-     * No blanks or line breaks are allowed within the Base64 encoded input data.
-     * @param s     A string containing the Base64 encoded data.
-     * @return      An array containing the decoded data bytes.
-     * @throws      IllegalArgumentException If the input is not valid Base64 encoded data.
-     */
-    public static byte[] decodeBase64(String s, int flags) {
-        return Base64.decode(s.getBytes(), flags);
-    }
-
     @WrapElementForJNI(stubName = "GetScreenOrientationWrapper")
     public static short getScreenOrientation() {
         return GeckoScreenOrientation.getInstance().getScreenOrientation().value;
@@ -2467,13 +2487,8 @@ public class GeckoAppShell
     }
 
     @WrapElementForJNI
-    public static boolean pumpMessageLoop() {
-        Handler geckoHandler = ThreadUtils.sGeckoHandler;
-        Message msg = getNextMessageFromQueue(ThreadUtils.sGeckoQueue);
-
-        if (msg == null) {
-            return false;
-        }
+    public static boolean pumpMessageLoop(final Message msg) {
+        final Handler geckoHandler = ThreadUtils.sGeckoHandler;
 
         if (msg.obj == geckoHandler && msg.getTarget() == geckoHandler) {
             // Our "queue is empty" message; see runGecko()
@@ -2685,5 +2700,24 @@ public class GeckoAppShell
             return null;
         }
         return Environment.getExternalStoragePublicDirectory(systemType).getAbsolutePath();
+    }
+
+    @WrapElementForJNI
+    static int getMaxTouchPoints() {
+        PackageManager pm = getContext().getPackageManager();
+        if (pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN_MULTITOUCH_JAZZHAND)) {
+            // at least, 5+ fingers.
+            return 5;
+        } else if (pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN_MULTITOUCH_DISTINCT)) {
+            // at least, 2+ fingers.
+            return 2;
+        } else if (pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN_MULTITOUCH)) {
+            // 2 fingers
+            return 2;
+        } else if (pm.hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN)) {
+            // 1 finger
+            return 1;
+        }
+        return 0;
     }
 }

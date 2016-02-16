@@ -1,25 +1,28 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "InternalResponse.h"
 
-#include "nsIDOMFile.h"
-
 #include "mozilla/dom/InternalHeaders.h"
+#include "mozilla/dom/cache/CacheTypes.h"
+#include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "nsStreamUtils.h"
-#include "nsSerializationHelper.h"
 
 namespace mozilla {
 namespace dom {
 
 InternalResponse::InternalResponse(uint16_t aStatus, const nsACString& aStatusText)
   : mType(ResponseType::Default)
-  , mFinalURL(false)
   , mStatus(aStatus)
   , mStatusText(aStatusText)
   , mHeaders(new InternalHeaders(HeadersGuardEnum::Response))
+{
+}
+
+InternalResponse::~InternalResponse()
 {
 }
 
@@ -77,22 +80,39 @@ InternalResponse::CORSResponse()
 }
 
 void
-InternalResponse::SetSecurityInfo(nsISupports* aSecurityInfo)
+InternalResponse::SetPrincipalInfo(UniquePtr<mozilla::ipc::PrincipalInfo> aPrincipalInfo)
 {
-  MOZ_ASSERT(mSecurityInfo.IsEmpty(), "security info should only be set once");
-  nsCOMPtr<nsISerializable> serializable = do_QueryInterface(aSecurityInfo);
-  if (!serializable) {
-    NS_WARNING("A non-serializable object was passed to InternalResponse::SetSecurityInfo");
-    return;
-  }
-  NS_SerializeToString(serializable, mSecurityInfo);
+  mPrincipalInfo = Move(aPrincipalInfo);
 }
 
-void
-InternalResponse::SetSecurityInfo(const nsCString& aSecurityInfo)
+already_AddRefed<InternalResponse>
+InternalResponse::OpaqueResponse()
 {
-  MOZ_ASSERT(mSecurityInfo.IsEmpty(), "security info should only be set once");
-  mSecurityInfo = aSecurityInfo;
+  MOZ_ASSERT(!mWrappedResponse, "Can't OpaqueResponse a already wrapped response");
+  nsRefPtr<InternalResponse> response = new InternalResponse(0, EmptyCString());
+  response->mType = ResponseType::Opaque;
+  response->mTerminationReason = mTerminationReason;
+  response->mURL = mURL;
+  response->mChannelInfo = mChannelInfo;
+  if (mPrincipalInfo) {
+    response->mPrincipalInfo = MakeUnique<mozilla::ipc::PrincipalInfo>(*mPrincipalInfo);
+  }
+  response->mWrappedResponse = this;
+  return response.forget();
+}
+
+already_AddRefed<InternalResponse>
+InternalResponse::CreateIncompleteCopy()
+{
+  nsRefPtr<InternalResponse> copy = new InternalResponse(mStatus, mStatusText);
+  copy->mType = mType;
+  copy->mTerminationReason = mTerminationReason;
+  copy->mURL = mURL;
+  copy->mChannelInfo = mChannelInfo;
+  if (mPrincipalInfo) {
+    copy->mPrincipalInfo = MakeUnique<mozilla::ipc::PrincipalInfo>(*mPrincipalInfo);
+  }
+  return copy.forget();
 }
 
 } // namespace dom

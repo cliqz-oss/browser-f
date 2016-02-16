@@ -47,12 +47,12 @@ JSONParserBase::trace(JSTracer* trc)
         if (stack[i].state == FinishArrayElement) {
             ElementVector& elements = stack[i].elements();
             for (size_t j = 0; j < elements.length(); j++)
-                gc::MarkValueRoot(trc, &elements[j], "JSONParser element");
+                TraceRoot(trc, &elements[j], "JSONParser element");
         } else {
             PropertyVector& properties = stack[i].properties();
             for (size_t j = 0; j < properties.length(); j++) {
-                gc::MarkValueRoot(trc, &properties[j].value, "JSONParser property value");
-                gc::MarkIdRoot(trc, &properties[j].id, "JSONParser property id");
+                TraceRoot(trc, &properties[j].value, "JSONParser property value");
+                TraceRoot(trc, &properties[j].id, "JSONParser property id");
             }
         }
     }
@@ -598,12 +598,10 @@ JSONParserBase::finishArray(MutableHandleValue vp, ElementVector& elements)
 {
     MOZ_ASSERT(&elements == &stack.back().elements());
 
-    ArrayObject* obj = NewDenseCopiedArray(cx, elements.length(), elements.begin());
+    JSObject* obj = ObjectGroup::newArrayObject(cx, elements.begin(), elements.length(),
+                                                GenericObject);
     if (!obj)
         return false;
-
-    /* Try to assign a new group to the array according to its elements. */
-    ObjectGroup::fixArrayGroup(cx, obj);
 
     vp.setObject(*obj);
     if (!freeElements.append(&elements))

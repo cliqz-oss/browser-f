@@ -9,6 +9,7 @@
 #include "chrome/common/child_process_info.h"
 
 #include "mozilla/ipc/Transport.h"
+#include "mozilla/ipc/ProtocolUtils.h"
 
 using namespace std;
 
@@ -17,16 +18,17 @@ using base::ProcessHandle;
 namespace mozilla {
 namespace ipc {
 
-bool
-CreateTransport(ProcessHandle aProcOne, ProcessHandle /*unused*/,
-                TransportDescriptor* aOne, TransportDescriptor* aTwo)
+nsresult
+CreateTransport(base::ProcessId aProcIdOne,
+                TransportDescriptor* aOne,
+                TransportDescriptor* aTwo)
 {
   wstring id = IPC::Channel::GenerateVerifiedChannelID(std::wstring());
   // Use MODE_SERVER to force creation of the pipe
   Transport t(id, Transport::MODE_SERVER, nullptr);
   HANDLE serverPipe = t.GetServerPipeHandle();
   if (!serverPipe) {
-    return false;
+    return NS_ERROR_TRANSPORT_INIT;
   }
 
   // NB: we create the server pipe immediately, instead of just
@@ -37,18 +39,14 @@ CreateTransport(ProcessHandle aProcOne, ProcessHandle /*unused*/,
   HANDLE serverDup;
   DWORD access = 0;
   DWORD options = DUPLICATE_SAME_ACCESS;
-  if (!DuplicateHandle(GetCurrentProcess(), serverPipe, aProcOne,
-                       &serverDup,
-                       access,
-                       FALSE/*not inheritable*/,
-                       options)) {
-    return false;
+  if (!DuplicateHandle(serverPipe, aProcIdOne, &serverDup, access, options)) {
+    return NS_ERROR_DUPLICATE_HANDLE;
   }
 
   aOne->mPipeName = aTwo->mPipeName = id;
   aOne->mServerPipe = serverDup;
   aTwo->mServerPipe = INVALID_HANDLE_VALUE;
-  return true;
+  return NS_OK;
 }
 
 Transport*

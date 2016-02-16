@@ -267,8 +267,9 @@ public:
             rv = ws->mReconnectDelayTimer->InitWithCallback(
                           ws, remainingDelay, nsITimer::TYPE_ONE_SHOT);
             if (NS_SUCCEEDED(rv)) {
-              LOG(("WebSocket: delaying websocket [this=%p] by %lu ms",
-                   ws, (unsigned long)remainingDelay));
+              LOG(("WebSocket: delaying websocket [this=%p] by %lu ms, changing"
+                   " state to CONNECTING_DELAYED", ws,
+                   (unsigned long)remainingDelay));
               ws->mConnecting = CONNECTING_DELAYED;
               return;
             }
@@ -283,7 +284,7 @@ public:
 
     // Delays disabled, or no previous failure, or we're reconnecting after scheduled
     // delay interval has passed: connect.
-    ws->BeginOpen();
+    ws->BeginOpen(true);
   }
 
   // Remove() also deletes all expired entries as it iterates: better for
@@ -338,6 +339,8 @@ public:
   // delay/queue the connection (returns false)
   static void ConditionallyConnect(WebSocketChannel *ws)
   {
+    LOG(("Websocket: ConditionallyConnect: [this=%p]", ws));
+    MOZ_ASSERT(NS_IsMainThread(), "not main thread");
     MOZ_ASSERT(ws->mConnecting == NOT_CONNECTING, "opening state");
 
     StaticMutexAutoLock lock(sLock);
@@ -351,9 +354,12 @@ public:
 
     // Always add ourselves to queue, even if we'll connect immediately
     nsOpenConn *newdata = new nsOpenConn(ws->mAddress, ws);
+    LOG(("Websocket: adding conn %p to the queue", newdata));
     sManager->mQueue.AppendElement(newdata);
 
     if (found) {
+      LOG(("Websocket: some other channel is connecting, changing state to "
+           "CONNECTING_QUEUED"));
       ws->mConnecting = CONNECTING_QUEUED;
     } else {
       sManager->mFailures.DelayOrBegin(ws);
@@ -362,6 +368,9 @@ public:
 
   static void OnConnected(WebSocketChannel *aChannel)
   {
+    LOG(("Websocket: OnConnected: [this=%p]", aChannel));
+
+    MOZ_ASSERT(NS_IsMainThread(), "not main thread");
     MOZ_ASSERT(aChannel->mConnecting == CONNECTING_IN_PROGRESS,
                "Channel completed connect, but not connecting?");
 
@@ -370,6 +379,7 @@ public:
       return;
     }
 
+    LOG(("Websocket: changing state to NOT_CONNECTING"));
     aChannel->mConnecting = NOT_CONNECTING;
 
     // Remove from queue
@@ -388,6 +398,9 @@ public:
   // w/o ever successfully creating a connection)
   static void OnStopSession(WebSocketChannel *aChannel, nsresult aReason)
   {
+    LOG(("Websocket: OnStopSession: [this=%p, reason=0x%08x]", aChannel,
+         aReason));
+
     StaticMutexAutoLock lock(sLock);
     if (!sManager) {
       return;
@@ -416,6 +429,8 @@ public:
     }
 
     if (aChannel->mConnecting) {
+      MOZ_ASSERT(NS_IsMainThread(), "not main thread");
+
       // Only way a connecting channel may get here w/o failing is if it was
       // closed with GOING_AWAY (1001) because of navigation, tab close, etc.
       MOZ_ASSERT(NS_FAILED(aReason) ||
@@ -425,6 +440,7 @@ public:
       sManager->RemoveFromQueue(aChannel);
 
       bool wasNotQueued = (aChannel->mConnecting != CONNECTING_QUEUED);
+      LOG(("Websocket: changing state to NOT_CONNECTING"));
       aChannel->mConnecting = NOT_CONNECTING;
       if (wasNotQueued) {
         sManager->ConnectNext(aChannel->mAddress);
@@ -485,6 +501,8 @@ private:
 
   void ConnectNext(nsCString &hostName)
   {
+    MOZ_ASSERT(NS_IsMainThread(), "not main thread");
+
     int32_t index = IndexOf(hostName);
     if (index >= 0) {
       WebSocketChannel *chan = mQueue[index]->mChannel;
@@ -499,11 +517,13 @@ private:
 
   void RemoveFromQueue(WebSocketChannel *aChannel)
   {
+    LOG(("Websocket: RemoveFromQueue: [this=%p]", aChannel));
     int32_t index = IndexOf(aChannel);
     MOZ_ASSERT(index >= 0, "connection to remove not in queue");
     if (index >= 0) {
       nsOpenConn *olddata = mQueue[index];
       mQueue.RemoveElementAt(index);
+      LOG(("Websocket: removing conn %p from the queue", olddata));
       delete olddata;
     }
   }
@@ -609,8 +629,6 @@ public:
   NS_IMETHOD Run() override
   {
     MOZ_ASSERT(mChannel->IsOnTargetThread());
-
-    nsWSAdmissionManager::OnStopSession(mChannel, mReason);
 
     if (mListenerMT) {
       mListenerMT->mListener->OnStop(mListenerMT->mContext, mReason);
@@ -1110,20 +1128,20 @@ WebSocketChannel::WebSocketChannel() :
   mMaxConcurrentConnections(200),
   mGotUpgradeOK(0),
   mRecvdHttpUpgradeTransport(0),
+  mAutoFollowRedirects(0),
+  mAllowPMCE(1),
+  mPingOutstanding(0),
+  mReleaseOnTransmit(0),
+  mDataStarted(0),
   mRequestedClose(0),
   mClientClosed(0),
   mServerClosed(0),
   mStopped(0),
   mCalledOnStop(0),
-  mPingOutstanding(0),
-  mAutoFollowRedirects(0),
-  mReleaseOnTransmit(0),
   mTCPClosed(0),
   mOpenedHttpChannel(0),
-  mDataStarted(0),
   mIncrementedSessionCount(0),
   mDecrementedSessionCount(0),
-  mAllowPMCE(1),
   mMaxMessageSize(INT32_MAX),
   mStopOnClose(NS_OK),
   mServerCloseCode(CLOSE_ABNORMAL),
@@ -1170,8 +1188,8 @@ WebSocketChannel::~WebSocketChannel()
   MOZ_ASSERT(!mCancelable, "DNS/Proxy Request still alive at destruction");
   MOZ_ASSERT(!mConnecting, "Should not be connecting in destructor");
 
-  moz_free(mBuffer);
-  moz_free(mDynamicOutput);
+  free(mBuffer);
+  free(mDynamicOutput);
   delete mCurrentOut;
 
   while ((mCurrentOut = (OutboundMessage *) mOutgoingPingMessages.PopFront()))
@@ -1181,33 +1199,13 @@ WebSocketChannel::~WebSocketChannel()
   while ((mCurrentOut = (OutboundMessage *) mOutgoingMessages.PopFront()))
     delete mCurrentOut;
 
-  nsCOMPtr<nsIThread> mainThread;
-  nsIURI *forgettable;
-  NS_GetMainThread(getter_AddRefs(mainThread));
-
-  if (mURI) {
-    mURI.forget(&forgettable);
-    NS_ProxyRelease(mainThread, forgettable, false);
-  }
-
-  if (mOriginalURI) {
-    mOriginalURI.forget(&forgettable);
-    NS_ProxyRelease(mainThread, forgettable, false);
-  }
+  NS_ReleaseOnMainThread(mURI);
+  NS_ReleaseOnMainThread(mOriginalURI);
 
   mListenerMT = nullptr;
 
-  if (mLoadGroup) {
-    nsILoadGroup *forgettableGroup;
-    mLoadGroup.forget(&forgettableGroup);
-    NS_ProxyRelease(mainThread, forgettableGroup, false);
-  }
-
-  if (mLoadInfo) {
-    nsILoadInfo *forgetableLoadInfo;
-    mLoadInfo.forget(&forgetableLoadInfo);
-    NS_ProxyRelease(mainThread, forgetableLoadInfo, false);
-  }
+  NS_ReleaseOnMainThread(mLoadGroup);
+  NS_ReleaseOnMainThread(mLoadInfo);
 }
 
 NS_IMETHODIMP
@@ -1223,39 +1221,78 @@ WebSocketChannel::Observe(nsISupports *subject,
 
     if (strcmp(state, NS_NETWORK_LINK_DATA_CHANGED) == 0) {
       LOG(("WebSocket: received network CHANGED event"));
-      if (mPingOutstanding) {
-        // If there's an outstanding ping that's expected to get a pong back
-        // we let that do its thing.
-        LOG(("WebSocket: pong already pending"));
-      } else if (!mSocketThread) {
+
+      if (!mSocketThread) {
         // there has not been an asyncopen yet on the object and then we need
         // no ping.
         LOG(("WebSocket: early object, no ping needed"));
       } else {
-        LOG(("nsWebSocketChannel:: Generating Ping as network changed\n"));
-
-        if (mPingForced) {
-          // avoid more than one
-          return NS_OK;
+        // Next we check mDataStarted, which we need to do on mTargetThread.
+        if (!IsOnTargetThread()) {
+          mTargetThread->Dispatch(
+            NS_NewRunnableMethod(this, &WebSocketChannel::OnNetworkChanged),
+            NS_DISPATCH_NORMAL);
+        } else {
+          OnNetworkChanged();
         }
-        if (!mPingTimer) {
-          // The ping timer is only conditionally running already. If it
-          // wasn't already created do it here.
-          nsresult rv;
-          mPingTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
-          if (NS_FAILED(rv)) {
-            NS_WARNING("unable to create ping timer. Carrying on.");
-          } else {
-            mPingTimer->SetTarget(mSocketThread);
-          }
-        }
-        // Trigger the ping timeout asap to fire off a new ping. Wait just
-        // a little bit to better avoid multi-triggers.
-        mPingForced = 1;
-        mPingTimer->InitWithCallback(this, 200, nsITimer::TYPE_ONE_SHOT);
       }
     }
   }
+
+  return NS_OK;
+}
+
+nsresult
+WebSocketChannel::OnNetworkChanged()
+{
+  if (IsOnTargetThread()) {
+    LOG(("WebSocketChannel::OnNetworkChanged() - on target thread %p", this));
+
+    if (!mDataStarted) {
+      LOG(("WebSocket: data not started yet, no ping needed"));
+      return NS_OK;
+    }
+
+    return mSocketThread->Dispatch(
+      NS_NewRunnableMethod(this, &WebSocketChannel::OnNetworkChanged),
+      NS_DISPATCH_NORMAL);
+  }
+
+  MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread, "not socket thread");
+
+  LOG(("WebSocketChannel::OnNetworkChanged() - on socket thread %p", this));
+
+  if (mPingOutstanding) {
+    // If there's an outstanding ping that's expected to get a pong back
+    // we let that do its thing.
+    LOG(("WebSocket: pong already pending"));
+    return NS_OK;
+  }
+
+  if (mPingForced) {
+    // avoid more than one
+    LOG(("WebSocket: forced ping timer already fired"));
+    return NS_OK;
+  }
+
+  LOG(("nsWebSocketChannel:: Generating Ping as network changed\n"));
+
+  if (!mPingTimer) {
+    // The ping timer is only conditionally running already. If it wasn't
+    // already created do it here.
+    nsresult rv;
+    mPingTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
+    if (NS_FAILED(rv)) {
+      LOG(("WebSocket: unable to create ping timer!"));
+      NS_WARNING("unable to create ping timer!");
+      return rv;
+    }
+  }
+  // Trigger the ping timeout asap to fire off a new ping. Wait just
+  // a little bit to better avoid multi-triggers.
+  mPingForced = 1;
+  mPingTimer->InitWithCallback(this, 200, nsITimer::TYPE_ONE_SHOT);
+
   return NS_OK;
 }
 
@@ -1288,26 +1325,38 @@ WebSocketChannel::IsEncrypted() const
 }
 
 void
-WebSocketChannel::BeginOpen()
+WebSocketChannel::BeginOpen(bool aCalledFromAdmissionManager)
 {
-  if (!NS_IsMainThread()) {
-    NS_DispatchToMainThread(
-      NS_NewRunnableMethod(this, &WebSocketChannel::BeginOpen),
-                           NS_DISPATCH_NORMAL);
-    return;
-  }
+  MOZ_ASSERT(NS_IsMainThread(), "not main thread");
 
   LOG(("WebSocketChannel::BeginOpen() %p\n", this));
-
-  nsresult rv;
 
   // Important that we set CONNECTING_IN_PROGRESS before any call to
   // AbortSession here: ensures that any remaining queued connection(s) are
   // scheduled in OnStopSession
+  LOG(("Websocket: changing state to CONNECTING_IN_PROGRESS"));
   mConnecting = CONNECTING_IN_PROGRESS;
 
+  if (aCalledFromAdmissionManager) {
+    // When called from nsWSAdmissionManager post an event to avoid potential
+    // re-entering of nsWSAdmissionManager and its lock.
+    NS_DispatchToMainThread(
+      NS_NewRunnableMethod(this, &WebSocketChannel::BeginOpenInternal),
+                           NS_DISPATCH_NORMAL);
+  } else {
+    BeginOpenInternal();
+  }
+}
+
+void
+WebSocketChannel::BeginOpenInternal()
+{
+  LOG(("WebSocketChannel::BeginOpenInternal() %p\n", this));
+
+  nsresult rv;
+
   if (mRedirectCallback) {
-    LOG(("WebSocketChannel::BeginOpen: Resuming Redirect\n"));
+    LOG(("WebSocketChannel::BeginOpenInternal: Resuming Redirect\n"));
     rv = mRedirectCallback->OnRedirectVerifyCallback(NS_OK);
     mRedirectCallback = nullptr;
     return;
@@ -1315,7 +1364,7 @@ WebSocketChannel::BeginOpen()
 
   nsCOMPtr<nsIChannel> localChannel = do_QueryInterface(mChannel, &rv);
   if (NS_FAILED(rv)) {
-    LOG(("WebSocketChannel::BeginOpen: cannot async open\n"));
+    LOG(("WebSocketChannel::BeginOpenInternal: cannot async open\n"));
     AbortSession(NS_ERROR_UNEXPECTED);
     return;
   }
@@ -1335,7 +1384,7 @@ WebSocketChannel::BeginOpen()
 
   rv = localChannel->AsyncOpen(this, mHttpChannel);
   if (NS_FAILED(rv)) {
-    LOG(("WebSocketChannel::BeginOpen: cannot async open\n"));
+    LOG(("WebSocketChannel::BeginOpenInternal: cannot async open\n"));
     AbortSession(NS_ERROR_CONNECTION_REFUSED);
     return;
   }
@@ -1343,7 +1392,7 @@ WebSocketChannel::BeginOpen()
 
   mOpenTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
   if (NS_FAILED(rv)) {
-    LOG(("WebSocketChannel::BeginOpen: cannot create open timer\n"));
+    LOG(("WebSocketChannel::BeginOpenInternal: cannot create open timer\n"));
     AbortSession(NS_ERROR_UNEXPECTED);
     return;
   }
@@ -1351,7 +1400,8 @@ WebSocketChannel::BeginOpen()
   rv = mOpenTimer->InitWithCallback(this, mOpenTimeout,
                                     nsITimer::TYPE_ONE_SHOT);
   if (NS_FAILED(rv)) {
-    LOG(("WebSocketChannel::BeginOpen: cannot initialize open timer\n"));
+    LOG(("WebSocketChannel::BeginOpenInternal: cannot initialize open "
+         "timer\n"));
     AbortSession(NS_ERROR_UNEXPECTED);
     return;
   }
@@ -1400,7 +1450,7 @@ WebSocketChannel::UpdateReadBuffer(uint8_t *buffer, uint32_t count,
     mBufferSize += count + 8192 + mBufferSize/3;
     LOG(("WebSocketChannel: update read buffer extended to %u\n", mBufferSize));
     uint8_t *old = mBuffer;
-    mBuffer = (uint8_t *)moz_realloc(mBuffer, mBufferSize);
+    mBuffer = (uint8_t *)realloc(mBuffer, mBufferSize);
     if (!mBuffer) {
       mBuffer = old;
       return false;
@@ -1777,7 +1827,7 @@ WebSocketChannel::ProcessInput(uint8_t *buffer, uint32_t count)
     // release memory if we've been processing a large message
     if (mBufferSize > kIncomingBufferStableSize) {
       mBufferSize = kIncomingBufferStableSize;
-      moz_free(mBuffer);
+      free(mBuffer);
       mBuffer = (uint8_t *)moz_xmalloc(mBufferSize);
     }
   }
@@ -2054,7 +2104,7 @@ WebSocketChannel::PrimeNewOutgoingMessage()
       return;
     }
     mask = * reinterpret_cast<uint32_t *>(buffer);
-    NS_Free(buffer);
+    free(buffer);
   } while (!mask);
   NetworkEndian::writeUint32(payload - sizeof(uint32_t), mask);
 
@@ -2287,7 +2337,7 @@ void
 WebSocketChannel::AbortSession(nsresult reason)
 {
   LOG(("WebSocketChannel::AbortSession() %p [reason %x] stopped = %d\n",
-       this, reason, mStopped));
+       this, reason, !!mStopped));
 
   // normally this should be called on socket thread, but it is ok to call it
   // from the main thread before StartWebsocketData() has completed
@@ -2324,7 +2374,7 @@ void
 WebSocketChannel::ReleaseSession()
 {
   LOG(("WebSocketChannel::ReleaseSession() %p stopped = %d\n",
-       this, mStopped));
+       this, !!mStopped));
   MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread, "not socket thread");
 
   if (mStopped)
@@ -2492,7 +2542,7 @@ WebSocketChannel::SetupRequest()
   rv = mRandomGenerator->GenerateRandomBytes(16, &secKey);
   NS_ENSURE_SUCCESS(rv, rv);
   char* b64 = PL_Base64Encode((const char *)secKey, 16, nullptr);
-  NS_Free(secKey);
+  free(secKey);
   if (!b64)
     return NS_ERROR_OUT_OF_MEMORY;
   secKeyString.Assign(b64);
@@ -2574,6 +2624,8 @@ WebSocketChannel::ApplyForAdmission()
 nsresult
 WebSocketChannel::StartWebsocketData()
 {
+  nsresult rv;
+
   if (!IsOnTargetThread()) {
     return mTargetThread->Dispatch(
       NS_NewRunnableMethod(this, &WebSocketChannel::StartWebsocketData),
@@ -2584,11 +2636,6 @@ WebSocketChannel::StartWebsocketData()
   MOZ_ASSERT(!mDataStarted, "StartWebsocketData twice");
   mDataStarted = 1;
 
-  // We're now done CONNECTING, which means we can now open another,
-  // perhaps parallel, connection to the same host if one
-  // is pending
-  nsWSAdmissionManager::OnConnected(this);
-
   LOG(("WebSocketChannel::StartWebsocketData Notifying Listener %p\n",
        mListenerMT ? mListenerMT->mListener.get() : nullptr));
 
@@ -2596,22 +2643,46 @@ WebSocketChannel::StartWebsocketData()
     mListenerMT->mListener->OnStart(mListenerMT->mContext);
   }
 
-  // Start keepalive ping timer, if we're using keepalive.
+  rv = mSocketIn->AsyncWait(this, 0, 0, mSocketThread);
+  if (NS_FAILED(rv)) {
+    LOG(("WebSocketChannel::StartWebsocketData mSocketIn->AsyncWait() failed "
+         "with error %0x%08x\n", rv));
+    return rv;
+  }
+
   if (mPingInterval) {
-    nsresult rv;
-    mPingTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
+    rv = mSocketThread->Dispatch(
+      NS_NewRunnableMethod(this, &WebSocketChannel::StartPinging),
+      NS_DISPATCH_NORMAL);
     if (NS_FAILED(rv)) {
-      NS_WARNING("unable to create ping timer. Carrying on.");
-    } else {
-      LOG(("WebSocketChannel will generate ping after %d ms of receive silence\n",
-           mPingInterval));
-      mPingTimer->SetTarget(mSocketThread);
-      mPingTimer->InitWithCallback(this, mPingInterval, nsITimer::TYPE_ONE_SHOT);
+      return rv;
     }
   }
 
-  return mSocketIn->AsyncWait(this, 0, 0, mSocketThread);
+  return NS_OK;
 }
+
+nsresult
+WebSocketChannel::StartPinging()
+{
+  LOG(("WebSocketChannel::StartPinging() %p", this));
+  MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread, "not socket thread");
+  MOZ_ASSERT(mPingInterval);
+  MOZ_ASSERT(!mPingTimer);
+
+  nsresult rv;
+  mPingTimer = do_CreateInstance("@mozilla.org/timer;1", &rv);
+  if (NS_FAILED(rv)) {
+    NS_WARNING("unable to create ping timer. Carrying on.");
+  } else {
+    LOG(("WebSocketChannel will generate ping after %d ms of receive silence\n",
+         mPingInterval));
+    mPingTimer->InitWithCallback(this, mPingInterval, nsITimer::TYPE_ONE_SHOT);
+  }
+
+  return NS_OK;
+}
+
 
 void
 WebSocketChannel::ReportConnectionTelemetry()
@@ -2703,7 +2774,7 @@ WebSocketChannel::OnProxyAvailable(nsICancelable *aRequest, nsIChannel *aChannel
     // call DNS callback directly without DNS resolver
     OnLookupComplete(nullptr, nullptr, NS_ERROR_FAILURE);
   } else {
-    LOG(("WebSocketChannel::OnProxyAvailable[%] checking DNS resolution\n", this));
+    LOG(("WebSocketChannel::OnProxyAvailable[%p] checking DNS resolution\n", this));
     nsresult rv = DoAdmissionDNS();
     if (NS_FAILED(rv)) {
       LOG(("WebSocket OnProxyAvailable [%p] DNS lookup failed\n", this));
@@ -2741,6 +2812,9 @@ WebSocketChannel::AsyncOnChannelRedirect(
                     nsIAsyncVerifyRedirectCallback *callback)
 {
   LOG(("WebSocketChannel::AsyncOnChannelRedirect() %p\n", this));
+
+  MOZ_ASSERT(NS_IsMainThread(), "not main thread");
+
   nsresult rv;
 
   nsCOMPtr<nsIURI> newuri;
@@ -2885,10 +2959,11 @@ WebSocketChannel::Notify(nsITimer *timer)
   } else if (timer == mReconnectDelayTimer) {
     MOZ_ASSERT(mConnecting == CONNECTING_DELAYED,
                "woke up from delay w/o being delayed?");
+    MOZ_ASSERT(NS_IsMainThread(), "not main thread");
 
     mReconnectDelayTimer = nullptr;
     LOG(("WebSocketChannel: connecting [this=%p] after reconnect delay", this));
-    BeginOpen();
+    BeginOpen(false);
   } else if (timer == mPingTimer) {
     MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread,
                "not socket thread");
@@ -3093,6 +3168,26 @@ WebSocketChannel::AsyncOpen(nsIURI *aURI,
   // nsIChannelEventSink in this object in order to deal with redirects
   localChannel->SetNotificationCallbacks(this);
 
+  class MOZ_STACK_CLASS CleanUpOnFailure
+  {
+  public:
+    explicit CleanUpOnFailure(WebSocketChannel* aWebSocketChannel)
+      : mWebSocketChannel(aWebSocketChannel)
+    {}
+
+    ~CleanUpOnFailure()
+    {
+      if (!mWebSocketChannel->mWasOpened) {
+        mWebSocketChannel->mChannel = nullptr;
+        mWebSocketChannel->mHttpChannel = nullptr;
+      }
+    }
+
+    WebSocketChannel *mWebSocketChannel;
+  };
+
+  CleanUpOnFailure cuof(this);
+
   mChannel = do_QueryInterface(localChannel, &rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -3272,8 +3367,15 @@ WebSocketChannel::OnTransportAvailable(nsISocketTransport *aTransport,
   if (NS_FAILED(rv)) return rv;
 
   mRecvdHttpUpgradeTransport = 1;
-  if (mGotUpgradeOK)
+  if (mGotUpgradeOK) {
+    // We're now done CONNECTING, which means we can now open another,
+    // perhaps parallel, connection to the same host if one
+    // is pending
+    nsWSAdmissionManager::OnConnected(this);
+
     return StartWebsocketData();
+  }
+
   return NS_OK;
 }
 
@@ -3427,8 +3529,14 @@ WebSocketChannel::OnStartRequest(nsIRequest *aRequest,
   CopyUTF8toUTF16(spec, mEffectiveURL);
 
   mGotUpgradeOK = 1;
-  if (mRecvdHttpUpgradeTransport)
+  if (mRecvdHttpUpgradeTransport) {
+    // We're now done CONNECTING, which means we can now open another,
+    // perhaps parallel, connection to the same host if one
+    // is pending
+    nsWSAdmissionManager::OnConnected(this);
+
     return StartWebsocketData();
+  }
 
   return NS_OK;
 }
@@ -3624,7 +3732,13 @@ WebSocketChannel::SaveNetworkStats(bool enforce)
     return NS_OK;
   }
 
-  if (mCountRecv <= 0 && mCountSent <= 0) {
+  uint64_t countRecv = 0;
+  uint64_t countSent = 0;
+
+  mCountRecv.exchange(countRecv);
+  mCountSent.exchange(countSent);
+
+  if (countRecv == 0 && countSent == 0) {
     // There is no traffic, no need to save.
     return NS_OK;
   }
@@ -3632,7 +3746,7 @@ WebSocketChannel::SaveNetworkStats(bool enforce)
   // If |enforce| is false, the traffic amount is saved
   // only when the total amount exceeds the predefined
   // threshold.
-  uint64_t totalBytes = mCountRecv + mCountSent;
+  uint64_t totalBytes = countRecv + countSent;
   if (!enforce && totalBytes < NETWORK_STATS_THRESHOLD) {
     return NS_OK;
   }
@@ -3641,12 +3755,8 @@ WebSocketChannel::SaveNetworkStats(bool enforce)
   // the event is then dispathed to the main thread.
   nsRefPtr<nsRunnable> event =
     new SaveNetworkStatsEvent(mAppId, mIsInBrowser, mActiveNetwork,
-                              mCountRecv, mCountSent, false);
+                              countRecv, countSent, false);
   NS_DispatchToMainThread(event);
-
-  // Reset the counters after saving.
-  mCountSent = 0;
-  mCountRecv = 0;
 
   return NS_OK;
 #else

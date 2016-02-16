@@ -41,10 +41,4 @@
 # not the place to put this url!
 #define cliqz_triqz_url https://cliqz.com/en/home/cliqz-triqz
 
-
-# LOCALIZATION NOTE (firefox_feedback):
-# link title for browser feedback page
-# currently used by Metro only: https://input.mozilla.org/feedback/metrofirefox
-#define firefox_feedback Give Feedback
-
 #unfilter emptyLines

@@ -1,20 +1,20 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-var expect = chai.expect;
-
 describe("loop.store.ConversationStore", function () {
   "use strict";
 
+  var expect = chai.expect;
   var CALL_STATES = loop.store.CALL_STATES;
   var WS_STATES = loop.store.WS_STATES;
   var CALL_TYPES = loop.shared.utils.CALL_TYPES;
   var WEBSOCKET_REASONS = loop.shared.utils.WEBSOCKET_REASONS;
+  var REST_ERRNOS = loop.shared.utils.REST_ERRNOS;
   var FAILURE_DETAILS = loop.shared.utils.FAILURE_DETAILS;
   var sharedActions = loop.shared.actions;
   var sharedUtils = loop.shared.utils;
   var sandbox, dispatcher, client, store, fakeSessionData, sdkDriver;
-  var contact, fakeMozLoop;
+  var contact, fakeMozLoop, fakeVideoElement;
   var connectPromise, resolveConnectPromise, rejectConnectPromise;
   var wsCancelSpy, wsCloseSpy, wsDeclineSpy, wsMediaUpSpy, fakeWebsocket;
 
@@ -40,6 +40,10 @@ describe("loop.store.ConversationStore", function () {
     };
 
     fakeMozLoop = {
+      ROOM_CREATE: {
+        CREATE_SUCCESS: 0,
+        CREATE_FAIL: 1
+      },
       getLoopPref: sandbox.stub(),
       addConversationContext: sandbox.stub(),
       calls: {
@@ -49,7 +53,8 @@ describe("loop.store.ConversationStore", function () {
       },
       rooms: {
         create: sandbox.stub()
-      }
+      },
+      telemetryAddValue: sandbox.stub()
     };
 
     dispatcher = new loop.Dispatcher();
@@ -89,6 +94,8 @@ describe("loop.store.ConversationStore", function () {
       windowId: "28",
       progressURL: "fakeURL"
     };
+
+    fakeVideoElement = { id: "fakeVideoElement" };
 
     var dummySocket = {
       close: sinon.spy(),
@@ -546,7 +553,23 @@ describe("loop.store.ConversationStore", function () {
           sinon.assert.calledWithMatch(dispatcher.dispatch,
             sinon.match.hasOwn("name", "connectionFailure"));
           sinon.assert.calledWithMatch(dispatcher.dispatch,
-            sinon.match.hasOwn("reason", "setup"));
+            sinon.match.hasOwn("reason", FAILURE_DETAILS.UNKNOWN));
+        });
+
+        it("should dispatch a connection failure action on failure with user unavailable", function() {
+          client.setupOutgoingCall.callsArgWith(2, {
+            errno: REST_ERRNOS.USER_UNAVAILABLE
+          });
+
+          store.setupWindowData(
+            new sharedActions.SetupWindowData(fakeSetupWindowData));
+
+          sinon.assert.calledOnce(dispatcher.dispatch);
+          // Can't use instanceof here, as that matches any action
+          sinon.assert.calledWithMatch(dispatcher.dispatch,
+            sinon.match.hasOwn("name", "connectionFailure"));
+          sinon.assert.calledWithMatch(dispatcher.dispatch,
+            sinon.match.hasOwn("reason", FAILURE_DETAILS.USER_UNAVAILABLE));
         });
       });
     });
@@ -729,14 +752,14 @@ describe("loop.store.ConversationStore", function () {
   });
 
   describe("#hangupCall", function() {
-    var wsMediaFailSpy, wsCloseSpy;
+    var wsMediaFailSpy, wsHangupSpy;
     beforeEach(function() {
       wsMediaFailSpy = sinon.spy();
-      wsCloseSpy = sinon.spy();
+      wsHangupSpy = sinon.spy();
 
       store._websocket = {
         mediaFail: wsMediaFailSpy,
-        close: wsCloseSpy
+        close: wsHangupSpy
       };
       store.setStoreState({callState: CALL_STATES.ONGOING});
       store.setStoreState({windowId: "42"});
@@ -757,7 +780,7 @@ describe("loop.store.ConversationStore", function () {
     it("should ensure the websocket is closed", function() {
       store.hangupCall(new sharedActions.HangupCall());
 
-      sinon.assert.calledOnce(wsCloseSpy);
+      sinon.assert.calledOnce(wsHangupSpy);
     });
 
     it("should set the callState to finished", function() {
@@ -776,14 +799,14 @@ describe("loop.store.ConversationStore", function () {
   });
 
   describe("#remotePeerDisconnected", function() {
-    var wsMediaFailSpy, wsCloseSpy;
+    var wsMediaFailSpy, wsDisconnectSpy;
     beforeEach(function() {
       wsMediaFailSpy = sinon.spy();
-      wsCloseSpy = sinon.spy();
+      wsDisconnectSpy = sinon.spy();
 
       store._websocket = {
         mediaFail: wsMediaFailSpy,
-        close: wsCloseSpy
+        close: wsDisconnectSpy
       };
       store.setStoreState({callState: CALL_STATES.ONGOING});
       store.setStoreState({windowId: "42"});
@@ -802,7 +825,7 @@ describe("loop.store.ConversationStore", function () {
         peerHungup: true
       }));
 
-      sinon.assert.calledOnce(wsCloseSpy);
+      sinon.assert.calledOnce(wsDisconnectSpy);
     });
 
     it("should release mozLoop callsData", function() {
@@ -928,6 +951,62 @@ describe("loop.store.ConversationStore", function () {
 
       sinon.assert.calledOnce(wsMediaUpSpy);
     });
+
+    it("should set store.mediaConnected to true", function () {
+      store._websocket = fakeWebsocket;
+
+      store.mediaConnected(new sharedActions.MediaConnected());
+
+      expect(store.getStoreState("mediaConnected")).eql(true);
+    });
+  });
+
+  describe("#localVideoEnabled", function() {
+    it("should set store.localSrcVideoObject from the action data", function () {
+      store.localVideoEnabled(
+        new sharedActions.LocalVideoEnabled({srcVideoObject: fakeVideoElement}));
+
+      expect(store.getStoreState("localSrcVideoObject")).eql(fakeVideoElement);
+    });
+  });
+
+  describe("#remoteVideoEnabled", function() {
+    it("should set store.remoteSrcVideoObject from the actionData", function () {
+      store.setStoreState({remoteSrcVideoObject: undefined});
+
+      store.remoteVideoEnabled(
+        new sharedActions.RemoteVideoEnabled({srcVideoObject: fakeVideoElement}));
+
+      expect(store.getStoreState("remoteSrcVideoObject")).eql(fakeVideoElement);
+    });
+
+    it("should set store.remoteVideoEnabled to true", function () {
+      store.setStoreState({remoteVideoEnabled: false});
+
+      store.remoteVideoEnabled(
+        new sharedActions.RemoteVideoEnabled({srcVideoObject: fakeVideoElement}));
+
+      expect(store.getStoreState("remoteVideoEnabled")).to.be.true;
+    });
+  });
+
+  describe("#remoteVideoDisabled", function() {
+    it("should set store.remoteVideoEnabled to false", function () {
+      store.setStoreState({remoteVideoEnabled: true});
+
+      store.remoteVideoDisabled(new sharedActions.RemoteVideoDisabled({}));
+
+      expect(store.getStoreState("remoteVideoEnabled")).to.be.false;
+    });
+
+    it("should set store.remoteSrcVideoObject to undefined", function () {
+      store.setStoreState({remoteSrcVideoObject: fakeVideoElement});
+
+      store.remoteVideoDisabled(new sharedActions.RemoteVideoDisabled({}));
+
+      expect(store.getStoreState("remoteSrcVideoObject")).to.be.undefined;
+    });
+
   });
 
   describe("#setMute", function() {
@@ -963,8 +1042,9 @@ describe("loop.store.ConversationStore", function () {
 
       sinon.assert.calledOnce(fakeMozLoop.rooms.create);
       sinon.assert.calledWithMatch(fakeMozLoop.rooms.create, {
-        roomOwner: "bob@invalid.tld",
-        roomName: "FakeRoomName"
+        decryptedContext: {
+          roomName: "FakeRoomName"
+        }
       });
     });
 
@@ -979,6 +1059,8 @@ describe("loop.store.ConversationStore", function () {
         }));
 
         expect(store.getStoreState("emailLink")).eql("http://fake.invalid/");
+        sinon.assert.calledOnce(fakeMozLoop.telemetryAddValue);
+        sinon.assert.calledWithExactly(fakeMozLoop.telemetryAddValue, "LOOP_ROOM_CREATE", 0);
       });
 
     it("should trigger an error:emailLink event in case of failure",
@@ -994,14 +1076,16 @@ describe("loop.store.ConversationStore", function () {
 
         sinon.assert.calledOnce(trigger);
         sinon.assert.calledWithExactly(trigger, "error:emailLink");
+        sinon.assert.calledOnce(fakeMozLoop.telemetryAddValue);
+        sinon.assert.calledWithExactly(fakeMozLoop.telemetryAddValue, "LOOP_ROOM_CREATE", 1);
       });
   });
 
   describe("#windowUnload", function() {
-    var fakeWebsocket;
+    var fakeWs;
 
     beforeEach(function() {
-      fakeWebsocket = store._websocket = {
+      fakeWs = store._websocket = {
         close: sinon.stub(),
         decline: sinon.stub()
       };
@@ -1017,7 +1101,7 @@ describe("loop.store.ConversationStore", function () {
 
       store.windowUnload();
 
-      sinon.assert.calledOnce(fakeWebsocket.decline);
+      sinon.assert.calledOnce(fakeWs.decline);
     });
 
     it("should disconnect the sdk session", function() {
@@ -1029,7 +1113,7 @@ describe("loop.store.ConversationStore", function () {
     it("should close the websocket", function() {
       store.windowUnload();
 
-      sinon.assert.calledOnce(fakeWebsocket.close);
+      sinon.assert.calledOnce(fakeWs.close);
     });
 
     it("should clear the call in progress for the backend", function() {
@@ -1056,7 +1140,7 @@ describe("loop.store.ConversationStore", function () {
 
         store._websocket.trigger("progress", {
           state: WS_STATES.TERMINATED,
-          reason: WEBSOCKET_REASONS.REJECT,
+          reason: WEBSOCKET_REASONS.REJECT
         });
 
         sinon.assert.calledOnce(dispatcher.dispatch);

@@ -11,7 +11,7 @@
 
 #include "jit/JitFrames.h"
 #include "jit/MoveResolver.h"
-#include "jit/shared/MacroAssembler-x86-shared.h"
+#include "jit/x86-shared/MacroAssembler-x86-shared.h"
 
 namespace js {
 namespace jit {
@@ -67,6 +67,14 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     MoveResolver moveResolver_;
 
   private:
+    Operand payloadOfAfterStackPush(const Address& address) {
+        // If we are basing off %esp, the address will be invalid after the
+        // first push.
+        if (address.base == StackPointer)
+            return Operand(address.base, address.offset + 4);
+        else 
+            return payloadOf(address);
+    }
     Operand payloadOf(const Address& address) {
         return Operand(address.base, address.offset);
     }
@@ -230,7 +238,7 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
         jsval_layout jv = JSVAL_TO_IMPL(val);
         push(Imm32(jv.s.tag));
         if (val.isMarkable())
-            push(ImmMaybeNurseryPtr(reinterpret_cast<gc::Cell*>(val.toGCThing())));
+            push(ImmGCPtr(reinterpret_cast<gc::Cell*>(val.toGCThing())));
         else
             push(Imm32(jv.s.payload.i32));
     }
@@ -240,7 +248,7 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     }
     void pushValue(const Address& addr) {
         push(tagOf(addr));
-        push(payloadOf(addr));
+        push(payloadOfAfterStackPush(addr));
     }
     void storePayload(const Value& val, Operand dest) {
         jsval_layout jv = JSVAL_TO_IMPL(val);
@@ -561,9 +569,6 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     void cmpPtr(Register lhs, Register rhs) {
         cmp32(lhs, rhs);
     }
-    void cmpPtr(const Operand& lhs, ImmMaybeNurseryPtr rhs) {
-        cmpl(rhs, lhs);
-    }
     void testPtr(Register lhs, Register rhs) {
         test32(lhs, rhs);
     }
@@ -590,32 +595,6 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     /////////////////////////////////////////////////////////////////
     // Common interface.
     /////////////////////////////////////////////////////////////////
-    void reserveStack(uint32_t amount) {
-        if (amount) {
-            // On windows, we cannot skip very far down the stack without touching the
-            // memory pages in-between.  This is a corner-case code for situations where the
-            // Ion frame data for a piece of code is very large.  To handle this special case,
-            // for frames over 1k in size we allocate memory on the stack incrementally, touching
-            // it as we go.
-            uint32_t amountLeft = amount;
-            while (amountLeft > 4096) {
-                subl(Imm32(4096), StackPointer);
-                store32(Imm32(0), Address(StackPointer, 0));
-                amountLeft -= 4096;
-            }
-            subl(Imm32(amountLeft), StackPointer);
-        }
-        framePushed_ += amount;
-    }
-    void freeStack(uint32_t amount) {
-        MOZ_ASSERT(amount <= framePushed_);
-        if (amount)
-            addl(Imm32(amount), StackPointer);
-        framePushed_ -= amount;
-    }
-    void freeStack(Register amount) {
-        addl(amount, StackPointer);
-    }
 
     void addPtr(Register src, Register dest) {
         add32(src, dest);
@@ -752,9 +731,6 @@ class MacroAssemblerX86 : public MacroAssemblerX86Shared
     }
     void movePtr(ImmGCPtr imm, Register dest) {
         movl(imm, dest);
-    }
-    void movePtr(ImmMaybeNurseryPtr imm, Register dest) {
-        movePtr(noteMaybeNurseryPtr(imm), dest);
     }
     void loadPtr(const Address& address, Register dest) {
         movl(Operand(address), dest);

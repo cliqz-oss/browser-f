@@ -24,11 +24,14 @@ EXPORTS.mozilla.gfx += [
     'DrawTargetTiled.h',
     'Filters.h',
     'Helpers.h',
+    'HelpersCairo.h',
     'Logging.h',
     'Matrix.h',
+    'NumericTools.h',
     'PathHelpers.h',
     'PatternHelpers.h',
     'Point.h',
+    'Quaternion.h',
     'Rect.h',
     'Scale.h',
     'ScaleFactor.h',
@@ -99,6 +102,14 @@ if CONFIG['INTEL_ARCHITECTURE']:
     SOURCES['ImageScalingSSE2.cpp'].flags += CONFIG['SSE2_FLAGS']
     if CONFIG['MOZ_ENABLE_SKIA']:
         SOURCES['convolverSSE2.cpp'].flags += CONFIG['SSE2_FLAGS']
+elif CONFIG['CPU_ARCH'].startswith('mips'):
+    SOURCES += [
+        'BlurLS3.cpp',
+    ]
+    if CONFIG['MOZ_ENABLE_SKIA']:
+        SOURCES += [
+            'convolverLS3.cpp',
+        ]
 
 UNIFIED_SOURCES += [
     'Blur.cpp',
@@ -120,6 +131,7 @@ UNIFIED_SOURCES += [
     'Path.cpp',
     'PathCairo.cpp',
     'PathRecording.cpp',
+    'Quaternion.cpp',
     'RecordedEvent.cpp',
     'Scale.cpp',
     'ScaledFontBase.cpp',
@@ -143,8 +155,6 @@ if CONFIG['CPU_ARCH'] == 'arm' and CONFIG['BUILD_ARM_NEON']:
     SOURCES['BlurNEON.cpp'].flags += ['-mfpu=neon']
 
 FAIL_ON_WARNINGS = True
-
-MSVC_ENABLE_PGO = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

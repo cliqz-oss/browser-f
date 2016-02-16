@@ -6,22 +6,34 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "jsfriendapi.h"
-#include "xpcprivate.h"
+#include "nsContentUtils.h"
 #include "CPOWTimer.h"
 
+CPOWTimer::CPOWTimer(JSContext* cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
+    : cx_(nullptr)
+    , startInterval_(0)
+{
+    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+    JSRuntime* runtime = JS_GetRuntime(cx);
+    if (!js::GetStopwatchIsMonitoringCPOW(runtime))
+        return;
+    cx_ = cx;
+    startInterval_ = PR_IntervalNow();
+}
 CPOWTimer::~CPOWTimer()
 {
-    /* This is a best effort to find the compartment responsible for this CPOW call */
-    nsIGlobalObject* global = mozilla::dom::GetIncumbentGlobal();
-    if (!global)
+    if (!cx_) {
+        // Monitoring was off when we started the timer.
         return;
-    JSObject* obj = global->GetGlobalJSObject();
-    if (!obj)
+    }
+
+    JSRuntime* runtime = JS_GetRuntime(cx_);
+    if (!js::GetStopwatchIsMonitoringCPOW(runtime)) {
+        // Monitoring has been deactivated while we were in the timer.
         return;
-    JSCompartment* compartment = js::GetObjectCompartment(obj);
-    xpc::CompartmentPrivate* compartmentPrivate = xpc::CompartmentPrivate::Get(compartment);
-    if (!compartmentPrivate)
-        return;
-    PRIntervalTime time = PR_IntervalNow() - startInterval;
-    compartmentPrivate->CPOWTime += time;
+    }
+
+    js::PerformanceData* performance = js::GetPerformanceData(runtime);
+    uint64_t duration = PR_IntervalToMicroseconds(PR_IntervalNow() - startInterval_);
+    performance->totalCPOWTime += duration;
 }

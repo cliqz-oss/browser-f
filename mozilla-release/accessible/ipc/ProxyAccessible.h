@@ -18,6 +18,7 @@
 namespace mozilla {
 namespace a11y {
 
+class Accessible;
 class Attribute;
 class DocAccessibleParent;
 enum class RelationType;
@@ -46,7 +47,9 @@ public:
   ProxyAccessible* ChildAt(uint32_t aIdx) const { return mChildren[aIdx]; }
 
   // XXX evaluate if this is fast enough.
-  size_t IndexInParent() const { return mParent->mChildren.IndexOf(this); }
+  size_t IndexInParent() const { return Parent()->mChildren.IndexOf(this); }
+  int32_t IndexOfEmbeddedChild(const ProxyAccessible*);
+  ProxyAccessible* EmbeddedChildAt(size_t aChildIdx);
   bool MustPruneChildren() const;
 
   void Shutdown();
@@ -63,6 +66,8 @@ public:
    * Return the proxy for the parent of the wrapped accessible.
    */
   ProxyAccessible* Parent() const { return mParent; }
+
+  Accessible* OuterDocOfRemoteBrowser() const;
 
   /**
    * Get the role of the accessible we're proxying.
@@ -114,7 +119,7 @@ public:
   /**
    * Get the text between the given offsets.
    */
-  void TextSubstring(int32_t aStartOffset, int32_t aEndOfset,
+  bool TextSubstring(int32_t aStartOffset, int32_t aEndOfset,
                      nsString& aText) const;
 
   void GetTextAfterOffset(int32_t aOffset, AccessibleTextBoundary aBoundaryType,
@@ -169,15 +174,15 @@ public:
 
   void ReplaceText(const nsString& aText);
 
-  void InsertText(const nsString& aText, int32_t aPosition);
+  bool InsertText(const nsString& aText, int32_t aPosition);
 
-  void CopyText(int32_t aStartPos, int32_t aEndPos);
+  bool CopyText(int32_t aStartPos, int32_t aEndPos);
 
-  void CutText(int32_t aStartPos, int32_t aEndPos);
+  bool CutText(int32_t aStartPos, int32_t aEndPos);
 
-  void DeleteText(int32_t aStartPos, int32_t aEndPos);
+  bool DeleteText(int32_t aStartPos, int32_t aEndPos);
 
-  void PasteText(int32_t aPosition);
+  bool PasteText(int32_t aPosition);
 
   nsIntPoint ImagePosition(uint32_t aCoordType);
 
@@ -314,7 +319,13 @@ private:
 
 enum Interfaces
 {
-  HYPERTEXT = 1
+  HYPERTEXT = 1,
+  HYPERLINK = 2,
+  IMAGE = 4,
+  VALUE = 8,
+  TABLE = 16,
+  TABLECELL = 32,
+  DOCUMENT = 64,
 };
 
 }

@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 sw=2 et tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -7,7 +7,6 @@
 #ifndef DeviceStorage_h
 #define DeviceStorage_h
 
-#include "nsIDOMDeviceStorage.h"
 #include "nsIFile.h"
 #include "nsIPrincipal.h"
 #include "nsIObserver.h"
@@ -25,10 +24,12 @@
 
 class nsIInputStream;
 class nsIOutputStream;
+struct DeviceStorageFileDescriptor;
 
 namespace mozilla {
 class EventListenerManager;
 namespace dom {
+class Blob;
 struct DeviceStorageEnumerationParameters;
 class DOMCursor;
 class DOMRequest;
@@ -103,7 +104,7 @@ public:
   void AccumDiskUsage(uint64_t* aPicturesSoFar, uint64_t* aVideosSoFar,
                       uint64_t* aMusicSoFar, uint64_t* aTotalSoFar);
 
-  void GetDiskFreeSpace(int64_t* aSoFar);
+  void GetStorageFreeSpace(int64_t* aSoFar);
   void GetStatus(nsAString& aStatus);
   void GetStorageStatus(nsAString& aStatus);
   void DoFormat(nsAString& aStatus);
@@ -158,7 +159,6 @@ class FileUpdateDispatcher final
 
 class nsDOMDeviceStorage final
   : public mozilla::DOMEventTargetHelper
-  , public nsIDOMDeviceStorage
   , public nsIObserver
 {
   typedef mozilla::ErrorResult ErrorResult;
@@ -172,29 +172,18 @@ public:
   typedef nsTArray<nsString> VolumeNameArray;
 
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_NSIDOMDEVICESTORAGE
-
   NS_DECL_NSIOBSERVER
-  NS_DECL_NSIDOMEVENTTARGET
+  NS_REALLY_FORWARD_NSIDOMEVENTTARGET(DOMEventTargetHelper)
 
-  virtual mozilla::EventListenerManager*
-    GetExistingListenerManager() const override;
-  virtual mozilla::EventListenerManager*
-    GetOrCreateListenerManager() override;
-
-  virtual void
-  AddEventListener(const nsAString& aType,
-                   mozilla::dom::EventListener* aListener,
-                   bool aUseCapture,
-                   const mozilla::dom::Nullable<bool>& aWantsUntrusted,
-                   ErrorResult& aRv) override;
-
-  virtual void RemoveEventListener(const nsAString& aType,
-                                   mozilla::dom::EventListener* aListener,
-                                   bool aUseCapture,
-                                   ErrorResult& aRv) override;
+  void EventListenerWasAdded(const nsAString& aType,
+                             ErrorResult& aRv,
+                             JSCompartment* aCompartment) override;
 
   explicit nsDOMDeviceStorage(nsPIDOMWindow* aWindow);
+
+  static int InstanceCount() { return sInstanceCount; }
+
+  static void InvalidateVolumeCaches();
 
   nsresult Init(nsPIDOMWindow* aWindow, const nsAString& aType,
                 const nsAString& aVolName);
@@ -220,15 +209,16 @@ public:
   IMPL_EVENT_HANDLER(change)
 
   already_AddRefed<DOMRequest>
-  Add(nsIDOMBlob* aBlob, ErrorResult& aRv);
+  Add(mozilla::dom::Blob* aBlob, ErrorResult& aRv);
   already_AddRefed<DOMRequest>
-  AddNamed(nsIDOMBlob* aBlob, const nsAString& aPath, ErrorResult& aRv);
+  AddNamed(mozilla::dom::Blob* aBlob, const nsAString& aPath, ErrorResult& aRv);
 
   already_AddRefed<DOMRequest>
-  AppendNamed(nsIDOMBlob* aBlob, const nsAString& aPath, ErrorResult& aRv);
+  AppendNamed(mozilla::dom::Blob* aBlob, const nsAString& aPath,
+              ErrorResult& aRv);
 
   already_AddRefed<DOMRequest>
-  AddOrAppendNamed(nsIDOMBlob* aBlob, const nsAString& aPath,
+  AddOrAppendNamed(mozilla::dom::Blob* aBlob, const nsAString& aPath,
                    const int32_t aRequestType, ErrorResult& aRv);
 
   already_AddRefed<DOMRequest>
@@ -269,13 +259,16 @@ public:
   already_AddRefed<DOMRequest> Mount(ErrorResult& aRv);
   already_AddRefed<DOMRequest> Unmount(ErrorResult& aRv);
 
+  already_AddRefed<DOMRequest> CreateFileDescriptor(const nsAString& aPath,
+                                                    DeviceStorageFileDescriptor* aDSFD,
+                                                    ErrorResult& aRv);
+
   bool CanBeMounted();
   bool CanBeFormatted();
   bool CanBeShared();
   bool IsRemovable();
   bool Default();
-
-  // Uses XPCOM GetStorageName
+  void GetStorageName(nsAString& aStorageName);
 
   already_AddRefed<Promise>
   GetRoot(ErrorResult& aRv);
@@ -289,6 +282,12 @@ public:
   CreateDeviceStoragesFor(nsPIDOMWindow* aWin,
                           const nsAString& aType,
                           nsTArray<nsRefPtr<nsDOMDeviceStorage> >& aStores);
+
+  static void
+  CreateDeviceStorageByNameAndType(nsPIDOMWindow* aWin,
+                                   const nsAString& aName,
+                                   const nsAString& aType,
+                                   nsDOMDeviceStorage** aStore);
 
   void Shutdown();
 
@@ -319,6 +318,8 @@ private:
                     const EnumerationParameters& aOptions, bool aEditable,
                     ErrorResult& aRv);
 
+  static int sInstanceCount;
+
   nsString mStorageType;
   nsCOMPtr<nsIFile> mRootDirectory;
   nsString mStorageName;
@@ -330,10 +331,17 @@ private:
   already_AddRefed<nsDOMDeviceStorage>
     GetStorageByName(const nsAString &aStorageName);
 
+  static already_AddRefed<nsDOMDeviceStorage>
+    GetStorageByNameAndType(nsPIDOMWindow* aWin,
+                            const nsAString& aStorageName,
+                            const nsAString& aType);
+
   nsCOMPtr<nsIPrincipal> mPrincipal;
 
   bool mIsWatchingFile;
   bool mAllowedToWatchFile;
+  bool mIsDefaultLocation;
+  void DispatchDefaultChangeEvent();
 
   nsresult Notify(const char* aReason, class DeviceStorageFile* aFile);
 
@@ -348,13 +356,6 @@ private:
   void DispatchStatusChangeEvent(nsAString& aStatus);
   void DispatchStorageStatusChangeEvent(nsAString& aStorageStatus);
 #endif
-
-  // nsIDOMDeviceStorage.type
-  enum {
-      DEVICE_STORAGE_TYPE_DEFAULT = 0,
-      DEVICE_STORAGE_TYPE_SHARED,
-      DEVICE_STORAGE_TYPE_EXTERNAL
-  };
 
   nsRefPtr<DeviceStorageFileSystem> mFileSystem;
 };

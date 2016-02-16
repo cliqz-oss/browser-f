@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -52,7 +53,7 @@ MmsAttachmentDataToJSObject(JSContext* aContext,
     return nullptr;
   }
 
-  nsRefPtr<FileImpl> blobImpl = static_cast<BlobParent*>(aAttachment.contentParent())->GetBlobImpl();
+  nsRefPtr<BlobImpl> blobImpl = static_cast<BlobParent*>(aAttachment.contentParent())->GetBlobImpl();
 
   // nsRefPtr<File> needs to go out of scope before toObjectOrNull() is
   // called because the static analysis thinks dereferencing XPCOM objects
@@ -64,8 +65,8 @@ MmsAttachmentDataToJSObject(JSContext* aContext,
     nsIGlobalObject *global = xpc::NativeGlobal(JS::CurrentGlobalOrNull(aContext));
     MOZ_ASSERT(global);
 
-    nsRefPtr<File> blob = new File(global, blobImpl);
-    if (!GetOrCreateDOMReflector(aContext, blob, &content)) {
+    nsRefPtr<Blob> blob = Blob::Create(global, blobImpl);
+    if (!ToJSValue(aContext, blob, &content)) {
       return nullptr;
     }
   }
@@ -406,6 +407,8 @@ SmsParent::RecvPSmsRequestConstructor(PSmsRequestParent* aActor,
       return actor->DoRequest(aRequest.get_GetSegmentInfoForTextRequest());
     case IPCSmsRequest::TGetSmscAddressRequest:
       return actor->DoRequest(aRequest.get_GetSmscAddressRequest());
+    case IPCSmsRequest::TSetSmscAddressRequest:
+      return actor->DoRequest(aRequest.get_SetSmscAddressRequest());
     default:
       MOZ_CRASH("Unknown type!");
   }
@@ -569,6 +572,29 @@ SmsRequestParent::DoRequest(const GetSmscAddressRequest& aRequest)
 
   if (NS_FAILED(rv)) {
     return NS_SUCCEEDED(NotifyGetSmscAddressFailed(nsIMobileMessageCallback::INTERNAL_ERROR));
+  }
+
+  return true;
+}
+
+bool
+SmsRequestParent::DoRequest(const SetSmscAddressRequest& aRequest)
+{
+  nsresult rv = NS_ERROR_FAILURE;
+
+  nsCOMPtr<nsISmsService> smsService = do_GetService(SMS_SERVICE_CONTRACTID);
+  if (smsService) {
+    rv = smsService->SetSmscAddress(aRequest.serviceId(),
+                                    aRequest.number(),
+                                    aRequest.typeOfNumber(),
+                                    aRequest.numberPlanIdentification(),
+                                    this);
+  } else {
+    return NS_SUCCEEDED(NotifySetSmscAddressFailed(nsIMobileMessageCallback::INTERNAL_ERROR));
+  }
+
+  if (NS_FAILED(rv)) {
+    return NS_SUCCEEDED(NotifySetSmscAddressFailed(nsIMobileMessageCallback::INTERNAL_ERROR));
   }
 
   return true;
@@ -744,6 +770,18 @@ NS_IMETHODIMP
 SmsRequestParent::NotifyGetSmscAddressFailed(int32_t aError)
 {
   return SendReply(ReplyGetSmscAddressFail(aError));
+}
+
+NS_IMETHODIMP
+SmsRequestParent::NotifySetSmscAddress()
+{
+  return SendReply(ReplySetSmscAddress());
+}
+
+NS_IMETHODIMP
+SmsRequestParent::NotifySetSmscAddressFailed(int32_t aError)
+{
+  return SendReply(ReplySetSmscAddressFail(aError));
 }
 
 /*******************************************************************************

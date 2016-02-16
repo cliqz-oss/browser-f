@@ -6,28 +6,28 @@
 
 // Test several types of rule-view property edition
 
-add_task(function*() {
-  yield addTab("data:text/html;charset=utf-8,browser_ruleview_ui.js");
-  let {toolbox, inspector, view} = yield openRuleView();
+let TEST_URI = [
+  '<style type="text/css">',
+  '#testid {',
+  '  background-color: blue;',
+  '}',
+  '.testclass, .unmatched {',
+  '  background-color: green;',
+  '}',
+  '</style>',
+  '<div id="testid" class="testclass">Styled Node</div>',
+  '<div id="testid2">Styled Node</div>'
+].join("\n");
 
-  info("Creating the test document");
-  let style = "" +
-    "#testid {" +
-    "  background-color: blue;" +
-    "}" +
-    ".testclass, .unmatched {" +
-    "  background-color: green;" +
-    "}";
-  let styleNode = addStyle(content.document, style);
-  content.document.body.innerHTML = "<div id='testid' class='testclass'>Styled Node</div>" +
-                                    "<div id='testid2'>Styled Node</div>";
+add_task(function*() {
+  let tab = yield addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
+
+  let {toolbox, inspector, view} = yield openRuleView();
 
   yield selectNode("#testid", inspector);
   yield testEditProperty(inspector, view);
   yield testDisableProperty(inspector, view);
   yield testPropertyStillMarkedDirty(inspector, view);
-
-  gBrowser.removeCurrentTab();
 });
 
 function* testEditProperty(inspector, ruleView) {
@@ -46,9 +46,7 @@ function* testEditProperty(inspector, ruleView) {
 
   info("Entering property name \"border-color\" followed by a colon to focus the value");
   let onFocus = once(idRuleEditor.element, "focus", true);
-  for (let ch of "border-color:") {
-    EventUtils.sendChar(ch, ruleView.doc.defaultView);
-  }
+  EventUtils.sendString("border-color:", ruleView.doc.defaultView);
   yield onFocus;
   yield idRuleEditor.rule._applyingModifications;
 
@@ -60,6 +58,7 @@ function* testEditProperty(inspector, ruleView) {
 
   info("Entering a value following by a semi-colon to commit it");
   let onBlur = once(editor.input, "blur");
+  // Use sendChar() to pass each character as a string so that we can test propEditor.warning.hidden after each character.
   for (let ch of "red;") {
     EventUtils.sendChar(ch, ruleView.doc.defaultView);
     is(propEditor.warning.hidden, true,
@@ -77,9 +76,7 @@ function* testEditProperty(inspector, ruleView) {
 
   info("Entering property name \"color\" followed by a colon to focus the value");
   onFocus = once(idRuleEditor.element, "focus", true);
-  for (let ch of "color:") {
-    EventUtils.sendChar(ch, ruleView.doc.defaultView);
-  }
+  EventUtils.sendString("color:", ruleView.doc.defaultView);
   yield onFocus;
 
   info("Verifying that the focused field is the valueSpan");
@@ -87,9 +84,7 @@ function* testEditProperty(inspector, ruleView) {
 
   info("Entering a value following by a semi-colon to commit it");
   onBlur = once(editor.input, "blur");
-  for (let ch of "red;") {
-    EventUtils.sendChar(ch, ruleView.doc.defaultView);
-  }
+  EventUtils.sendString("red;", ruleView.doc.defaultView);
   yield onBlur;
   yield idRuleEditor.rule._applyingModifications;
 

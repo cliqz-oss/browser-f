@@ -1,4 +1,3 @@
-/* vim: set ts=2 sts=2 sw=2 et tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -16,10 +15,19 @@ XPCOMUtils.defineLazyModuleGetter(this, "UserAutoCompleteResult",
                                   "resource://gre/modules/LoginManagerContent.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "AutoCompleteE10S",
                                   "resource://gre/modules/AutoCompleteE10S.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "DeferredTask",
+                                  "resource://gre/modules/DeferredTask.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "LoginDoorhangers",
+                                  "resource://gre/modules/LoginDoorhangers.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "LoginHelper",
+                                  "resource://gre/modules/LoginHelper.jsm");
+
+XPCOMUtils.defineLazyGetter(this, "log", () => {
+  let logger = LoginHelper.createLogger("LoginManagerParent");
+  return logger.log.bind(logger);
+});
 
 this.EXPORTED_SYMBOLS = [ "LoginManagerParent", "PasswordsMetricsProvider" ];
-
-var gDebug;
 
 #ifndef ANDROID
 #ifdef MOZ_SERVICES_HEALTHREPORT
@@ -42,45 +50,9 @@ function recordFHRDailyCounter(aField) {
         .recordDailyCounter(aField));
   }
 
-#endif
-#endif
-
-function log(...pieces) {
-  function generateLogMessage(args) {
-    let strings = ['Login Manager (parent):'];
-
-    args.forEach(function(arg) {
-      if (typeof arg === 'string') {
-        strings.push(arg);
-      } else if (typeof arg === 'undefined') {
-        strings.push('undefined');
-      } else if (arg === null) {
-        strings.push('null');
-      } else {
-        try {
-          strings.push(JSON.stringify(arg, null, 2));
-        } catch(err) {
-          strings.push("<<something>>");
-        }
-      }
-    });
-    return strings.join(' ');
-  }
-
-  if (!gDebug)
-    return;
-
-  let message = generateLogMessage(pieces);
-  dump(message + "\n");
-  Services.console.logStringMessage(message);
-}
-
-#ifndef ANDROID
-#ifdef MOZ_SERVICES_HEALTHREPORT
-
 this.PasswordsMetricsProvider = function() {
   Metrics.Provider.call(this);
-}
+};
 
 PasswordsMetricsProvider.prototype = Object.freeze({
   __proto__: Metrics.Provider.prototype,
@@ -155,13 +127,6 @@ PasswordsMeasurement2.prototype = Object.freeze({
 #endif
 #endif
 
-function prefChanged() {
-  gDebug = Services.prefs.getBoolPref("signon.debug");
-}
-
-Services.prefs.addObserver("signon.debug", prefChanged, false);
-prefChanged();
-
 var LoginManagerParent = {
   /**
    * Reference to the default LoginRecipesParent (instead of the initialization promise) for
@@ -171,7 +136,7 @@ var LoginManagerParent = {
    * @type LoginRecipesParent
    * @deprecated
    */
-   _recipeManager: null,
+  _recipeManager: null,
 
   init: function() {
     let mm = Cc["@mozilla.org/globalmessagemanager;1"]
@@ -180,6 +145,7 @@ var LoginManagerParent = {
     mm.addMessageListener("RemoteLogins:findRecipes", this);
     mm.addMessageListener("RemoteLogins:onFormSubmit", this);
     mm.addMessageListener("RemoteLogins:autoCompleteLogins", this);
+    mm.addMessageListener("RemoteLogins:updateLoginFormPresence", this);
     mm.addMessageListener("LoginStats:LoginEncountered", this);
     mm.addMessageListener("LoginStats:LoginFillSuccessful", this);
     Services.obs.addObserver(this, "LoginStats:NewSavedPassword", false);
@@ -188,7 +154,6 @@ var LoginManagerParent = {
       const { LoginRecipesParent } = Cu.import("resource://gre/modules/LoginRecipes.jsm", {});
       this._recipeManager = new LoginRecipesParent();
       return this._recipeManager.initializationPromise;
-
     });
 
   },
@@ -219,7 +184,7 @@ var LoginManagerParent = {
 
       case "RemoteLogins:findRecipes": {
         let formHost = (new URL(data.formOrigin)).host;
-        return [...this._recipeManager.getRecipesForHost(formHost)];
+        return this._recipeManager.getRecipesForHost(formHost);
       }
 
       case "RemoteLogins:onFormSubmit": {
@@ -231,6 +196,11 @@ var LoginManagerParent = {
                           data.oldPasswordField,
                           msg.objects.openerWin,
                           msg.target);
+        break;
+      }
+
+      case "RemoteLogins:updateLoginFormPresence": {
+        this.updateLoginFormPresence(msg.target, data);
         break;
       }
 
@@ -258,6 +228,33 @@ var LoginManagerParent = {
       }
     }
   },
+
+  /**
+   * Trigger a login form fill and send relevant data (e.g. logins and recipes)
+   * to the child process (LoginManagerContent).
+   */
+  fillForm: Task.async(function* ({ browser, loginFormOrigin, login }) {
+    let recipes = [];
+    if (loginFormOrigin) {
+      let formHost;
+      try {
+        formHost = (new URL(loginFormOrigin)).host;
+        let recipeManager = yield this.recipeParentPromise;
+        recipes = recipeManager.getRecipesForHost(formHost);
+      } catch (ex) {
+        // Some schemes e.g. chrome aren't supported by URL
+      }
+    }
+
+    // Convert the array of nsILoginInfo to vanilla JS objects since nsILoginInfo
+    // doesn't support structured cloning.
+    let jsLogins = JSON.parse(JSON.stringify([login]));
+    browser.messageManager.sendAsyncMessage("RemoteLogins:fillForm", {
+      loginFormOrigin,
+      logins: jsLogins,
+      recipes,
+    });
+  }),
 
   /**
    * Send relevant data (e.g. logins and recipes) to the child process (LoginManagerContent).
@@ -299,14 +296,14 @@ var LoginManagerParent = {
     // If we're currently displaying a master password prompt, defer
     // processing this form until the user handles the prompt.
     if (Services.logins.uiBusy) {
-      log("deferring onFormPassword for", formOrigin);
+      log("deferring sendLoginDataToChild for", formOrigin);
       let self = this;
       let observer = {
         QueryInterface: XPCOMUtils.generateQI([Ci.nsIObserver,
                                                Ci.nsISupportsWeakReference]),
 
         observe: function (subject, topic, data) {
-          log("Got deferred onFormPassword notification:", topic);
+          log("Got deferred sendLoginDataToChild notification:", topic);
           // Only run observer once.
           Services.obs.removeObserver(this, "passwordmgr-crypto-login");
           Services.obs.removeObserver(this, "passwordmgr-crypto-loginCanceled");
@@ -425,6 +422,15 @@ var LoginManagerParent = {
       return prompterSvc;
     }
 
+    function recordLoginUse(login) {
+      // Update the lastUsed timestamp and increment the use count.
+      let propBag = Cc["@mozilla.org/hash-property-bag;1"].
+                    createInstance(Ci.nsIWritablePropertyBag);
+      propBag.setProperty("timeLastUsed", Date.now());
+      propBag.setProperty("timesUsedIncrement", 1);
+      Services.logins.modifyLogin(login, propBag);
+    }
+
     if (!Services.logins.getLoginSavingEnabled(hostname)) {
       log("(form submission ignored -- saving is disabled for:", hostname, ")");
       return;
@@ -448,6 +454,14 @@ var LoginManagerParent = {
 
       if (logins.length == 1) {
         var oldLogin = logins[0];
+
+        if (oldLogin.password == formLogin.password) {
+          recordLoginUse(oldLogin);
+          log("(Not prompting to save/change since we have no username and the " +
+              "only saved password matches the new password)");
+          return;
+        }
+
         formLogin.username      = oldLogin.username;
         formLogin.usernameField = oldLogin.usernameField;
 
@@ -498,12 +512,7 @@ var LoginManagerParent = {
         prompter = getPrompter();
         prompter.promptToChangePassword(existingLogin, formLogin);
       } else {
-        // Update the lastUsed timestamp.
-        var propBag = Cc["@mozilla.org/hash-property-bag;1"].
-                      createInstance(Ci.nsIWritablePropertyBag);
-        propBag.setProperty("timeLastUsed", Date.now());
-        propBag.setProperty("timesUsedIncrement", 1);
-        Services.logins.modifyLogin(existingLogin, propBag);
+        recordLoginUse(existingLogin);
       }
 
       return;
@@ -513,5 +522,104 @@ var LoginManagerParent = {
     // Prompt user to save login (via dialog or notification bar)
     prompter = getPrompter();
     prompter.promptToSavePassword(formLogin);
-  }
+  },
+
+  /**
+   * Maps all the <browser> elements for tabs in the parent process to the
+   * current state used to display tab-specific UI.
+   *
+   * This mapping is not updated in case a web page is moved to a different
+   * chrome window by the swapDocShells method. In this case, it is possible
+   * that a UI update just requested for the login fill doorhanger and then
+   * delayed by a few hundred milliseconds will be lost. Later requests would
+   * use the new browser reference instead.
+   *
+   * Given that the case above is rare, and it would not cause any origin
+   * mismatch at the time of filling because the origin is checked later in the
+   * content process, this case is left unhandled.
+   */
+  loginFormStateByBrowser: new WeakMap(),
+
+  /**
+   * Retrieves a reference to the state object associated with the given
+   * browser. This is initialized to an empty object.
+   */
+  stateForBrowser(browser) {
+    let loginFormState = this.loginFormStateByBrowser.get(browser);
+    if (!loginFormState) {
+      loginFormState = {};
+      this.loginFormStateByBrowser.set(browser, loginFormState);
+    }
+    return loginFormState;
+  },
+
+  /**
+   * Called to indicate whether a login form on the currently loaded page is
+   * present or not. This is one of the factors used to control the visibility
+   * of the password fill doorhanger.
+   */
+  updateLoginFormPresence(browser, { loginFormOrigin, loginFormPresent }) {
+    const ANCHOR_DELAY_MS = 200;
+
+    let state = this.stateForBrowser(browser);
+
+    // Update the data to use to the latest known values. Since messages are
+    // processed in order, this will always be the latest version to use.
+    state.loginFormOrigin = loginFormOrigin;
+    state.loginFormPresent = loginFormPresent;
+
+    // Apply the data to the currently displayed icon later.
+    if (!state.anchorDeferredTask) {
+      state.anchorDeferredTask = new DeferredTask(
+        () => this.updateLoginAnchor(browser),
+        ANCHOR_DELAY_MS
+      );
+    }
+    state.anchorDeferredTask.arm();
+  },
+  updateLoginAnchor: Task.async(function* (browser) {
+    // Copy the state to use for this execution of the task. These will not
+    // change during this execution of the asynchronous function, but in case a
+    // change happens in the state, the function will be retriggered.
+    let { loginFormOrigin, loginFormPresent } = this.stateForBrowser(browser);
+
+    yield Services.logins.initializationPromise;
+
+    // Check if there are form logins for the site, ignoring formSubmitURL.
+    let hasLogins = loginFormOrigin &&
+                    Services.logins.countLogins(loginFormOrigin, "", null) > 0;
+
+    // Once this preference is removed, this version of the fill doorhanger
+    // should be enabled for Desktop only, and not for Android or B2G.
+    if (!Services.prefs.getBoolPref("signon.ui.experimental")) {
+      return;
+    }
+
+    let showLoginAnchor = loginFormPresent || hasLogins;
+
+    let fillDoorhanger = LoginDoorhangers.FillDoorhanger.find({ browser });
+    if (fillDoorhanger) {
+      if (!showLoginAnchor) {
+        fillDoorhanger.remove();
+        return;
+      }
+      // We should only update the state of the doorhanger while it is hidden.
+      yield fillDoorhanger.promiseHidden;
+      fillDoorhanger.loginFormPresent = loginFormPresent;
+      fillDoorhanger.loginFormOrigin = loginFormOrigin;
+      fillDoorhanger.filterString = hasLogins ? loginFormOrigin : "";
+      fillDoorhanger.detailLogin = null;
+      fillDoorhanger.autoDetailLogin = true;
+      return;
+    }
+    if (showLoginAnchor) {
+      fillDoorhanger = new LoginDoorhangers.FillDoorhanger({
+        browser,
+        loginFormPresent,
+        loginFormOrigin,
+        filterString: hasLogins ? loginFormOrigin : "",
+        autoDetailLogin: true,
+      });
+    }
+  }),
 };

@@ -7,10 +7,12 @@
 #ifndef jit_x64_CodeGenerator_x64_h
 #define jit_x64_CodeGenerator_x64_h
 
-#include "jit/shared/CodeGenerator-x86-shared.h"
+#include "jit/x86-shared/CodeGenerator-x86-shared.h"
 
 namespace js {
 namespace jit {
+
+class OutOfLineRandom;
 
 class CodeGeneratorX64 : public CodeGeneratorX86Shared
 {
@@ -58,6 +60,8 @@ class CodeGeneratorX64 : public CodeGeneratorX86Shared
     void visitAsmJSLoadFFIFunc(LAsmJSLoadFFIFunc* ins);
     void visitAsmJSUInt32ToDouble(LAsmJSUInt32ToDouble* lir);
     void visitAsmJSUInt32ToFloat32(LAsmJSUInt32ToFloat32* lir);
+    void visitRandom(LRandom* ins);
+    void visitOutOfLineRandom(OutOfLineRandom* ool);
 };
 
 typedef CodeGeneratorX64 CodeGeneratorSpecific;

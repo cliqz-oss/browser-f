@@ -132,8 +132,7 @@ this.ReaderMode = {
     // We pass in a helper function to determine if a node is visible, because
     // it uses gecko APIs that the engine-agnostic readability code can't rely
     // upon.
-    // NOTE: This is currently disabled, see bug 1158228.
-    return new Readability(uri, doc).isProbablyReaderable(/*this.isNodeVisible.bind(this, utils)*/);
+    return new Readability(uri, doc).isProbablyReaderable(this.isNodeVisible.bind(this, utils));
   },
 
   isNodeVisible: function(utils, node) {
@@ -215,6 +214,12 @@ this.ReaderMode = {
             }
           }
         }
+        if (xhr.responseURL != url) {
+          // We were redirected without a meta refresh tag.
+          // Force redirect to the correct place:
+          reject({newURL: xhr.responseURL});
+          return;
+        }
         resolve(doc);
         histogram.add(DOWNLOAD_SUCCESS);
       }
@@ -282,7 +287,7 @@ this.ReaderMode = {
   ],
 
   _shouldCheckUri: function (uri) {
-    if (!(uri.schemeIs("http") || uri.schemeIs("https") || uri.schemeIs("file"))) {
+    if (!(uri.schemeIs("http") || uri.schemeIs("https"))) {
       this.log("Not parsing URI scheme: " + uri.scheme);
       return false;
     }

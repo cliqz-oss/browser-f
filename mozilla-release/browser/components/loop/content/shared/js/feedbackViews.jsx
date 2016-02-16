@@ -1,11 +1,7 @@
-/** @jsx React.DOM */
-
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* jshint newcap:false */
-/* global loop:true, React */
 var loop = loop || {};
 loop.shared = loop.shared || {};
 loop.shared.views = loop.shared.views || {};
@@ -27,17 +23,18 @@ loop.shared.views.FeedbackView = (function(l10n) {
    */
   var FeedbackLayout = React.createClass({
     propTypes: {
-      children: React.PropTypes.component.isRequired,
-      title: React.PropTypes.string.isRequired,
-      reset: React.PropTypes.func // if not specified, no Back btn is shown
+      children: React.PropTypes.element,
+      reset: React.PropTypes.func, // if not specified, no Back btn is shown
+      title: React.PropTypes.string.isRequired
     },
 
     render: function() {
       var backButton = <div />;
       if (this.props.reset) {
         backButton = (
-          <button className="fx-embedded-btn-back" type="button"
-                  onClick={this.props.reset}>
+          <button className="fx-embedded-btn-back"
+            onClick={this.props.reset}
+            type="button" >
             &laquo;&nbsp;{l10n.get("feedback_back_button")}
           </button>
         );
@@ -58,8 +55,8 @@ loop.shared.views.FeedbackView = (function(l10n) {
   var FeedbackForm = React.createClass({
     propTypes: {
       feedbackStore: React.PropTypes.instanceOf(loop.store.FeedbackStore),
-      pending:       React.PropTypes.bool,
-      reset:         React.PropTypes.func
+      pending: React.PropTypes.bool,
+      reset: React.PropTypes.func
     },
 
     getInitialState: function() {
@@ -74,9 +71,9 @@ loop.shared.views.FeedbackView = (function(l10n) {
       return {
         audio_quality: l10n.get("feedback_category_audio_quality"),
         video_quality: l10n.get("feedback_category_video_quality"),
-        disconnected : l10n.get("feedback_category_was_disconnected"),
-        confusing:     l10n.get("feedback_category_confusing2"),
-        other:         l10n.get("feedback_category_other2")
+        disconnected: l10n.get("feedback_category_was_disconnected"),
+        confusing: l10n.get("feedback_category_confusing2"),
+        other: l10n.get("feedback_category_other2")
       };
     },
 
@@ -84,12 +81,15 @@ loop.shared.views.FeedbackView = (function(l10n) {
       var categories = this._getCategories();
       return Object.keys(categories).map(function(category, key) {
         return (
-          <label key={key} className="feedback-category-label">
-            <input type="radio" ref="category" name="category"
-                   className="feedback-category-radio"
-                   value={category}
-                   onChange={this.handleCategoryChange}
-                   checked={this.state.category === category} />
+          <label className="feedback-category-label" key={key}>
+            <input
+              checked={this.state.category === category}
+              className="feedback-category-radio"
+              name="category"
+              onChange={this.handleCategoryChange}
+              ref="category"
+              type="radio"
+              value={category} />
             {categories[category]}
           </label>
         );
@@ -142,20 +142,24 @@ loop.shared.views.FeedbackView = (function(l10n) {
 
     render: function() {
       return (
-        <FeedbackLayout title={l10n.get("feedback_category_list_heading")}
-                        reset={this.props.reset}>
+        <FeedbackLayout
+          reset={this.props.reset}
+          title={l10n.get("feedback_category_list_heading")}>
           <form onSubmit={this.handleFormSubmit}>
             {this._getCategoryFields()}
             <p>
-              <input type="text" ref="description" name="description"
-                className="feedback-description"
+              <input className="feedback-description"
+                name="description"
                 onChange={this.handleDescriptionFieldChange}
-                value={this.state.description}
                 placeholder={
-                  l10n.get("feedback_custom_category_text_placeholder")} />
+                  l10n.get("feedback_custom_category_text_placeholder")}
+                ref="description"
+                type="text"
+                value={this.state.description} />
             </p>
-            <button type="submit" className="btn btn-success"
-                    disabled={!this._isFormReady()}>
+            <button className="btn btn-success"
+              disabled={!this._isFormReady()}
+              type="submit">
               {l10n.get("feedback_submit_button")}
             </button>
           </form>
@@ -173,6 +177,7 @@ loop.shared.views.FeedbackView = (function(l10n) {
    */
   var FeedbackReceived = React.createClass({
     propTypes: {
+      noCloseText: React.PropTypes.bool,
       onAfterFeedbackReceived: React.PropTypes.func
     },
 
@@ -199,14 +204,24 @@ loop.shared.views.FeedbackView = (function(l10n) {
       }
     },
 
+    _renderCloseText: function() {
+      if (this.props.noCloseText) {
+        return null;
+      }
+
+      return (
+        <p className="info thank-you">{
+          l10n.get("feedback_window_will_close_in2", {
+            countdown: this.state.countdown,
+            num: this.state.countdown
+          })}</p>
+      );
+    },
+
     render: function() {
       return (
         <FeedbackLayout title={l10n.get("feedback_thank_you_heading")}>
-          <p className="info thank-you">{
-            l10n.get("feedback_window_will_close_in2", {
-              countdown: this.state.countdown,
-              num: this.state.countdown
-            })}</p>
+          {this._renderCloseText()}
         </FeedbackLayout>
       );
     }
@@ -222,9 +237,10 @@ loop.shared.views.FeedbackView = (function(l10n) {
     ],
 
     propTypes: {
-      onAfterFeedbackReceived: React.PropTypes.func,
       // Used by the UI showcase.
-      feedbackState: React.PropTypes.string
+      feedbackState: React.PropTypes.string,
+      noCloseText: React.PropTypes.bool,
+      onAfterFeedbackReceived: React.PropTypes.func
     },
 
     getInitialState: function() {
@@ -281,8 +297,8 @@ loop.shared.views.FeedbackView = (function(l10n) {
           return (
             <FeedbackForm
               feedbackStore={this.getStore()}
-              reset={this.reset}
-              pending={this.state.feedbackState === FEEDBACK_STATES.PENDING} />
+              pending={this.state.feedbackState === FEEDBACK_STATES.PENDING}
+              reset={this.reset} />
             );
         }
         case FEEDBACK_STATES.PENDING:
@@ -295,6 +311,7 @@ loop.shared.views.FeedbackView = (function(l10n) {
           }
           return (
             <FeedbackReceived
+              noCloseText={this.props.noCloseText}
               onAfterFeedbackReceived={this.props.onAfterFeedbackReceived} />
           );
         }

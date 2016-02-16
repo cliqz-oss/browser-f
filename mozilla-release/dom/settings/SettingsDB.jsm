@@ -8,7 +8,7 @@ let Cc = Components.classes;
 let Ci = Components.interfaces;
 let Cu = Components.utils;
 
-Cu.importGlobalProperties(['Blob']);
+Cu.importGlobalProperties(['Blob', 'File']);
 Cu.import("resource://gre/modules/Services.jsm");
 
 this.EXPORTED_SYMBOLS = ["SettingsDB", "SETTINGSDB_NAME", "SETTINGSSTORE_NAME"];
@@ -80,14 +80,9 @@ SettingsDB.prototype = {
       }
     }
 
-    let chan = NetUtil.newChannel2(settingsFile,
-                                   null,
-                                   null,
-                                   null,      // aLoadingNode
-                                   Services.scriptSecurityManager.getSystemPrincipal(),
-                                   null,      // aTriggeringPrincipal
-                                   Ci.nsILoadInfo.SEC_NORMAL,
-                                   Ci.nsIContentPolicy.TYPE_OTHER);
+    let chan = NetUtil.newChannel({
+      uri: NetUtil.newURI(settingsFile),
+      loadUsingSystemPrincipal: true});
     let stream = chan.open();
     // Obtain a converter to read from a UTF-8 encoded input stream.
     let converter = Cc["@mozilla.org/intl/scriptableunicodeconverter"]
@@ -209,7 +204,7 @@ SettingsDB.prototype = {
       return "primitive";
     } else if (Array.isArray(aObject)) {
       return "array";
-    } else if (aObject instanceof Ci.nsIDOMFile) {
+    } else if (aObject instanceof File) {
       return "file";
     } else if (aObject instanceof Ci.nsIDOMBlob) {
       return "blob";

@@ -28,13 +28,9 @@
 #include "mozilla/layers/TextureClient.h"  // for TextureClient
 #include "mozilla/mozalloc.h"           // for operator new, etc
 #include "nsAutoPtr.h"                  // for nsRefPtr, getter_AddRefs, etc
-#include "nsRect.h"                     // for nsIntRect
-#include "nsSize.h"                     // for nsIntSize
 #include "nsTArray.h"                   // for nsAutoTArray, nsTArray, etc
 #include "nsXULAppAPI.h"                // for XRE_GetProcessType, etc
 #include "mozilla/ReentrantMonitor.h"
-
-struct nsIntPoint;
 
 namespace mozilla {
 namespace ipc {
@@ -62,7 +58,7 @@ public:
     , mRotationChanged(false)
   {}
 
-  void Begin(const nsIntRect& aTargetBounds, ScreenRotation aRotation,
+  void Begin(const gfx::IntRect& aTargetBounds, ScreenRotation aRotation,
              dom::ScreenOrientation aOrientation)
   {
     mOpen = true;
@@ -139,7 +135,7 @@ public:
   EditVector mCset;
   EditVector mPaints;
   ShadowableLayerSet mMutants;
-  nsIntRect mTargetBounds;
+  gfx::IntRect mTargetBounds;
   ScreenRotation mTargetRotation;
   dom::ScreenOrientation mTargetOrientation;
   bool mSwapRequired;
@@ -185,7 +181,7 @@ ShadowLayerForwarder::~ShadowLayerForwarder()
 }
 
 void
-ShadowLayerForwarder::BeginTransaction(const nsIntRect& aTargetBounds,
+ShadowLayerForwarder::BeginTransaction(const gfx::IntRect& aTargetBounds,
                                        ScreenRotation aRotation,
                                        dom::ScreenOrientation aOrientation)
 {
@@ -354,7 +350,7 @@ ShadowLayerForwarder::UpdateTextureRegion(CompositableClient* aCompositable,
 
 void
 ShadowLayerForwarder::UpdatePictureRect(CompositableClient* aCompositable,
-                                        const nsIntRect& aRect)
+                                        const gfx::IntRect& aRect)
 {
   MOZ_ASSERT(aCompositable);
   MOZ_ASSERT(aCompositable->GetIPDLActor());
@@ -369,15 +365,11 @@ ShadowLayerForwarder::UseTexture(CompositableClient* aCompositable,
   MOZ_ASSERT(aTexture);
   MOZ_ASSERT(aCompositable->GetIPDLActor());
   MOZ_ASSERT(aTexture->GetIPDLActor());
-#if defined(MOZ_WIDGET_GONK) && ANDROID_VERSION >= 17
-  FenceHandle handle = aTexture->GetAcquireFenceHandle();
-  if (handle.IsValid()) {
-    RefPtr<FenceDeliveryTracker> tracker = new FenceDeliveryTracker(handle);
-    SendFenceHandle(tracker, aTexture->GetIPDLActor(), handle);
-  }
-#endif
+
+  FenceHandle fence = aTexture->GetAcquireFenceHandle();
   mTxn->AddEdit(OpUseTexture(nullptr, aCompositable->GetIPDLActor(),
-                             nullptr, aTexture->GetIPDLActor()));
+                             nullptr, aTexture->GetIPDLActor(),
+                             fence.IsValid() ? MaybeFence(fence) : MaybeFence(null_t())));
   if (aTexture->GetFlags() & TextureFlags::IMMEDIATE_UPLOAD
       && aTexture->HasInternalBuffer()) {
     // We use IMMEDIATE_UPLOAD when we want to be sure that the upload cannot
@@ -415,17 +407,6 @@ ShadowLayerForwarder::UseOverlaySource(CompositableClient* aCompositable,
 #endif
 
 void
-ShadowLayerForwarder::SendFenceHandle(AsyncTransactionTracker* aTracker,
-                                        PTextureChild* aTexture,
-                                        const FenceHandle& aFence)
-{
-  if (!HasShadowManager() || !mShadowManager->IPCOpen()) {
-    return;
-  }
-  mShadowManager->SendFenceHandle(aTracker, aTexture, aFence);
-}
-
-void
 ShadowLayerForwarder::RemoveTextureFromCompositable(CompositableClient* aCompositable,
                                                     TextureClient* aTexture)
 {
@@ -447,7 +428,7 @@ ShadowLayerForwarder::RemoveTextureFromCompositableAsync(AsyncTransactionTracker
                                                      CompositableClient* aCompositable,
                                                      TextureClient* aTexture)
 {
-  if (mTxn->Opened()) {
+  if (mTxn->Opened() && !aCompositable->IsDestroyed()) {
     mTxn->AddEdit(OpRemoveTextureAsync(CompositableClient::GetTrackersHolderId(aCompositable->GetIPDLActor()),
                                        aAsyncTransactionTracker->GetId(),
                                        nullptr, aCompositable->GetIPDLActor(),
@@ -556,6 +537,13 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
     return true;
   }
 
+  if (!mTxn->mPaints.empty()) {
+    // With some platforms, telling the drawing backend that there will be no more
+    // drawing for this frame helps with preventing command queues from spanning
+    // across multiple frames.
+    gfxPlatform::GetPlatform()->FlushContentDrawing();
+  }
+
   MOZ_LAYERS_LOG(("[LayersForwarder] destroying buffers..."));
 
   MOZ_LAYERS_LOG(("[LayersForwarder] building transaction..."));
@@ -587,7 +575,7 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
     common.opacity() = mutant->GetOpacity();
     common.useClipRect() = !!mutant->GetClipRect();
     common.clipRect() = (common.useClipRect() ?
-                         *mutant->GetClipRect() : nsIntRect());
+                         *mutant->GetClipRect() : ParentLayerIntRect());
     common.isFixedPosition() = mutant->GetIsFixedPosition();
     common.fixedPositionAnchor() = mutant->GetFixedPositionAnchor();
     common.fixedPositionMargin() = mutant->GetFixedPositionMargins();
@@ -607,6 +595,7 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
     }
     common.scrollbarTargetContainerId() = mutant->GetScrollbarTargetContainerId();
     common.scrollbarDirection() = mutant->GetScrollbarDirection();
+    common.scrollbarThumbRatio() = mutant->GetScrollbarThumbRatio();
     common.mixBlendMode() = (int8_t)mutant->GetMixBlendMode();
     common.forceIsolatedGroup() = mutant->GetForceIsolatedGroup();
     if (Layer* maskLayer = mutant->GetMaskLayer()) {
@@ -681,10 +670,6 @@ ShadowLayerForwarder::EndTransaction(InfallibleTArray<EditReply>* aReplies,
     }
   }
 
-  // Clear any cached plugin data we might have, now that the
-  // transaction is complete.
-  mPluginWindowData.Clear();
-
   *aSent = true;
   mIsFirstPaint = false;
   MOZ_LAYERS_LOG(("[LayersForwarder] ... done"));
@@ -738,7 +723,17 @@ ShadowLayerForwarder::IsSameProcess() const
   if (!HasShadowManager() || !mShadowManager->IPCOpen()) {
     return false;
   }
-  return mShadowManager->OtherProcess() == kInvalidProcessHandle;
+  return mShadowManager->OtherPid() == base::GetCurrentProcId();
+}
+
+base::ProcessId
+ShadowLayerForwarder::ParentPid() const
+{
+  if (!HasShadowManager() || !mShadowManager->IPCOpen()) {
+    return base::ProcessId();
+  }
+
+  return mShadowManager->OtherPid();
 }
 
 /**
@@ -854,22 +849,15 @@ void ShadowLayerForwarder::SendPendingAsyncMessges()
 {
   if (!HasShadowManager() ||
       !mShadowManager->IPCOpen()) {
-    mTransactionsToRespond.clear();
     mPendingAsyncMessages.clear();
     return;
   }
 
-  if (mTransactionsToRespond.empty() && mPendingAsyncMessages.empty()) {
+  if (mPendingAsyncMessages.empty()) {
     return;
   }
 
   InfallibleTArray<AsyncChildMessageData> replies;
-  replies.SetCapacity(mTransactionsToRespond.size());
-  // Prepare OpReplyDeliverFence messages.
-  for (size_t i = 0; i < mTransactionsToRespond.size(); i++) {
-    replies.AppendElement(OpReplyDeliverFence(mTransactionsToRespond[i]));
-  }
-  mTransactionsToRespond.clear();
   // Prepare pending messages.
   for (size_t i = 0; i < mPendingAsyncMessages.size(); i++) {
     replies.AppendElement(mPendingAsyncMessages[i]);
