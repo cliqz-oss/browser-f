@@ -129,11 +129,9 @@ fi
 
 if [ $CQZ_CERT_DB_PATH ]; then
   echo '***** Signing mar *****'
-  cd $I386DIR/dist/update
-  MAR_FILE=`ls *.mar | head -n 1`
-  $X86_64DIR/dist/bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE out.mar
-  mv out.mar $MAR_FILE
-  cd $OLDPWD
+  MAR_FILE=`ls $I386DIR/dist/update/*.mar | head -n 1`
+  $X86_64DIR/dist/bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE $MAR_FILE.signed
+  mv $MAR_FILE.signed $MAR_FILE
 fi
 
 echo '***** Build & package finished successfully. *****'
