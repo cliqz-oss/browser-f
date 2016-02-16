@@ -1230,9 +1230,9 @@ endif # SDK_BINARY
 
 # Cliqz additional distribution files
 # TODO: Move to external file.
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/beta/Cliqz.1.2.5.1b0.xpi"
+CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/beta/Cliqz.1.2.5.1b1.xpi"
 ifeq (release, $(CQZ_RELEASE_CHANNE))
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.2.5.xpi"
+CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.2.6.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNE))
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/distribution/extensions
