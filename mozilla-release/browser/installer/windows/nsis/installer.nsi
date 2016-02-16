@@ -793,49 +793,7 @@ Function LaunchApp
   ${GetParameters} $0
   ${GetOptions} "$0" "/UAC:" $1
   ${If} ${Errors}
-<<<<<<< HEAD
-    StrCpy $1 "0"
-    StrCpy $2 "0"
-!ifdef MOZ_METRO
-    ; Check to see if this install location is currently set as the
-    ; default browser.
-    AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-    Pop $1
-    ; Check for a last run type to see if metro was the last browser
-    ; front end in use.
-    ReadRegDWORD $2 HKCU "Software\CLIQZ\Firefox" "MetroLastAHE"
-!endif
-    ${If} $1 == "1"
-    ${AndIf} $2 == "1" ; 1 equals AHE_IMMERSIVE
-      ; Launch into metro
-      Exec "$\"$INSTDIR\CommandExecuteHandler.exe$\" --launchmetro"
-    ${Else}
-      ; Launch into desktop
-      Exec "$\"$INSTDIR\${FileMainEXE}$\""
-    ${EndIf}
-||||||| merged common ancestors
-    StrCpy $1 "0"
-    StrCpy $2 "0"
-!ifdef MOZ_METRO
-    ; Check to see if this install location is currently set as the
-    ; default browser.
-    AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-    Pop $1
-    ; Check for a last run type to see if metro was the last browser
-    ; front end in use.
-    ReadRegDWORD $2 HKCU "Software\Mozilla\Firefox" "MetroLastAHE"
-!endif
-    ${If} $1 == "1"
-    ${AndIf} $2 == "1" ; 1 equals AHE_IMMERSIVE
-      ; Launch into metro
-      Exec "$\"$INSTDIR\CommandExecuteHandler.exe$\" --launchmetro"
-    ${Else}
-      ; Launch into desktop
-      Exec "$\"$INSTDIR\${FileMainEXE}$\""
-    ${EndIf}
-=======
     Exec "$\"$INSTDIR\${FileMainEXE}$\""
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
   ${Else}
     GetFunctionAddress $0 LaunchAppFromElevatedProcess
     UAC::ExecCodeSegment $0
@@ -852,49 +810,7 @@ Function LaunchAppFromElevatedProcess
   ; Set our current working directory to the application's install directory
   ; otherwise the 7-Zip temp directory will be in use and won't be deleted.
   SetOutPath "$1"
-<<<<<<< HEAD
-  StrCpy $2 "0"
-  StrCpy $3 "0"
-!ifdef MOZ_METRO
-  ; Check to see if this install location is currently set as the
-  ; default browser.
-  AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-  Pop $2
-  ; Check for a last run type to see if metro was the last browser
-  ; front end in use.
-  ReadRegDWORD $3 HKCU "Software\CLIQZ\Firefox" "MetroLastAHE"
-!endif
-  ${If} $2 == "1"
-  ${AndIf} $3 == "1" ; 1 equals AHE_IMMERSIVE
-    ; Launch into metro
-    Exec "$\"$1\CommandExecuteHandler.exe$\" --launchmetro"
-  ${Else}
-    ; Launch into desktop
-    Exec "$\"$0$\""
-  ${EndIf}
-||||||| merged common ancestors
-  StrCpy $2 "0"
-  StrCpy $3 "0"
-!ifdef MOZ_METRO
-  ; Check to see if this install location is currently set as the
-  ; default browser.
-  AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-  Pop $2
-  ; Check for a last run type to see if metro was the last browser
-  ; front end in use.
-  ReadRegDWORD $3 HKCU "Software\Mozilla\Firefox" "MetroLastAHE"
-!endif
-  ${If} $2 == "1"
-  ${AndIf} $3 == "1" ; 1 equals AHE_IMMERSIVE
-    ; Launch into metro
-    Exec "$\"$1\CommandExecuteHandler.exe$\" --launchmetro"
-  ${Else}
-    ; Launch into desktop
-    Exec "$\"$0$\""
-  ${EndIf}
-=======
   Exec "$\"$0$\""
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
 FunctionEnd
 
 ################################################################################

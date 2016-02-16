@@ -235,11 +235,8 @@
 <!ENTITY experiment.info.changetelemetry.accesskey "T">
 
 <!ENTITY setting.learnmore "Learn More…">
-<<<<<<< HEAD
 
 <!ENTITY cliqz.firefoxAddons "CLIQZ uses add-ons of the official Mozilla Firefox repository">
-||||||| merged common ancestors
-=======
 
 <!ENTITY disabledUnsigned.heading "Some add-ons have been disabled">
 <!-- LOCALIZATION NOTE (disabledUnsigned.description.start, disabledUnsigned.description.findAddonsLink, disabledUnsigned.description.end):
@@ -255,4 +252,3 @@
 <!ENTITY disabledUnsigned.devInfo.start "Developers interested in getting their add-ons verified can continue by reading our ">
 <!ENTITY disabledUnsigned.devInfo.linkToManual "manual">
 <!ENTITY disabledUnsigned.devInfo.end ".">
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8

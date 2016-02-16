@@ -55,22 +55,12 @@ let gIntro = {
     });
   },
 
-<<<<<<< HEAD
-    this._nodes.panel.addEventListener("popupshowing", e => this._setUpPanel());
-    this._nodes.panel.addEventListener("popuphidden", e => this._hidePanel());
-    //this._nodes.what.addEventListener("click", e => this.showPanel());
-||||||| merged common ancestors
-    this._nodes.panel.addEventListener("popupshowing", e => this._setUpPanel());
-    this._nodes.panel.addEventListener("popuphidden", e => this._hidePanel());
-    this._nodes.what.addEventListener("click", e => this.showPanel());
-=======
   _generateParagraphs: function() {
     let customizeIcon = '<input type="button" class="newtab-control newtab-customize"/>';
     this._paragraphs.push(`${newTabString("intro.paragraph9")} ${newTabString("intro.paragraph7")}`);
     this._paragraphs.push(
         `${newTabString("intro.paragraph2", [this._link(TILES_PRIVACY_LINK, newTabString("privacy.link"))])}
          ${newTabString("intro.paragraph4.2", [customizeIcon, this._bold(newTabString("intro.controls"))])}`);
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
   },
 
   showIfNecessary: function() {

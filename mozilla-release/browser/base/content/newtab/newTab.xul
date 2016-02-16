@@ -121,14 +121,6 @@
       <div id="newtab-margin-bottom"/>
 
     </div>
-<<<<<<< HEAD
-
-||||||| merged common ancestors
-
-    <div id="newtab-intro-what">&newtab.customize.what;</div>
-
-=======
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
     <input id="newtab-customize-button" type="button" title="&newtab.customize.title;"/>
   </div>
 

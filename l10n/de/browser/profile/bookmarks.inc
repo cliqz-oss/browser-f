@@ -37,22 +37,8 @@
 # link title for https://www.mozilla.org/en-US/about/
 #define firefox_about Über uns
 
-<<<<<<< HEAD
 #define cliqz_triqz CLIQZ Triqz
 # not the place to put this url!
 #define cliqz_triqz_url https://cliqz.com/home/cliqz-triqz
 
-# LOCALIZATION NOTE (firefox_feedback):
-# link title for browser feedback page
-# currently used by Metro only: https://input.mozilla.org/feedback/metrofirefox
-#define firefox_feedback Feedback senden
-
-||||||| merged common ancestors
-# LOCALIZATION NOTE (firefox_feedback):
-# link title for browser feedback page
-# currently used by Metro only: https://input.mozilla.org/feedback/metrofirefox
-#define firefox_feedback Feedback senden
-
-=======
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
 #unfilter emptyLines

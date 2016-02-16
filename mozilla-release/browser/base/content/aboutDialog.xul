@@ -42,12 +42,6 @@
     <hbox id="clientBox">
       <vbox id="leftBox" flex="1"/>
       <vbox id="rightBox" flex="1">
-<<<<<<< HEAD
-||||||| merged common ancestors
-#expand <label id="version">__MOZ_APP_VERSION__</label>
-=======
-#expand <label id="version">__MOZ_APP_VERSION_DISPLAY__</label>
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
         <label id="distribution" class="text-blurb"/>
         <label id="distributionId" class="text-blurb"/>
 #expand <label id="version">&version.basedon;__MOZ_APP_VERSION__</label>

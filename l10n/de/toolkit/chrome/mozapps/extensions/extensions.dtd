@@ -235,11 +235,8 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY experiment.info.changetelemetry.accesskey "T">
 
 <!ENTITY setting.learnmore "Weitere Informationen…">
-<<<<<<< HEAD
 
 <!ENTITY cliqz.firefoxAddons "CLIQZ nutzt Add-ons aus dem offiziellen Mozilla Firefox Verzeichnis">
-||||||| merged common ancestors
-=======
 
 <!ENTITY disabledUnsigned.heading "Einige Add-ons wurden deaktiviert">
 <!-- LOCALIZATION NOTE (disabledUnsigned.description.start, disabledUnsigned.description.findAddonsLink, disabledUnsigned.description.end):
@@ -255,4 +252,3 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY disabledUnsigned.devInfo.start "An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer ">
 <!ENTITY disabledUnsigned.devInfo.linkToManual "Anleitung">
 <!ENTITY disabledUnsigned.devInfo.end " erfahren.">
->>>>>>> af3d56ea5e4e598d647510626ee42600c774cbd8
