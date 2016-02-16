@@ -4,6 +4,7 @@ import os
 import time
 import platform
 import logging
+import tempfile
 log = logging.getLogger(__name__)
 
 try:
@@ -144,7 +145,6 @@ def run_cmd_periodic_poll(cmd, warning_interval=300, poll_interval=0.25,
         # sleep for a while...
         time.sleep(poll_interval)
 
-
 def get_output(cmd, include_stderr=False, dont_log=False, timeout=86400,
                poll_interval=0.25, **kwargs):
     """Run cmd (a list of arguments) in a subprocess and check its completion
@@ -173,54 +173,52 @@ def get_output(cmd, include_stderr=False, dont_log=False, timeout=86400,
       40960000  |  2.7
      409600000  | 27.5
     """
-    if include_stderr:
-        stderr = subprocess.STDOUT
-    else:
-        stderr = None
 
     log_cmd(cmd, **kwargs)
     if 'env' in kwargs:
         kwargs['env'] = merge_env(kwargs['env'])
 
-    output = []
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=stderr, **kwargs)
-    start_time = time.time()
+    outfile = tempfile.TemporaryFile()
+    errfile = None
+    if include_stderr:
+        errfile = outfile
 
-    while True:
-        rc = proc.poll()
-        now = time.time()
-        elapsed = now - start_time
-        if rc is not None:
-            # proc.stdout.read() is a blocking operation but if we are here,
-            # proc has already finished.
-            output = proc.stdout.read()
-            log.debug("Process returned %s", rc)
-            if rc == 0:
-                log.info("command: END (%.2fs elapsed)\n", elapsed)
-                if not dont_log:
-                    log.info("command: output:")
-                    log.info(output)
-                return output
-            else:
+    try:
+        proc = subprocess.Popen(cmd, stdout=outfile, stderr=errfile, **kwargs)
+        start_time = time.time()
+
+        while True:
+            rc = proc.poll()
+            now = time.time()
+            elapsed = now - start_time
+            if rc is not None:
+                outfile.seek(0)
+                output = outfile.read()
+                log.debug("Process returned %s", rc)
+                if rc == 0:
+                    log.info("command: END (%.2fs elapsed)\n", elapsed)
+                    if not dont_log:
+                        log.info("command: output:")
+                        log.info(output)
+                    return output
+                else:
+                    error = subprocess.CalledProcessError(proc.returncode, cmd)
+                    error.output = output
+                    raise error
+
+            if elapsed > timeout:
+                log.info("process, is taking too long: %ss (timeout %ss).Terminating" %
+                         (elapsed, timeout))
+                proc.terminate()
+                outfile.seek(0)
+                output = outfile.read()
                 error = subprocess.CalledProcessError(proc.returncode, cmd)
-                error.output = output
+                error.output = "%s, output: %s" % (TERMINATED_PROCESS_MSG, output)
                 raise error
-
-        if elapsed > timeout:
-            log.info("process, is taking too long: %ss (timeout %ss).Terminating" %
-                     (elapsed, timeout))
-            proc.terminate()
-            (stdoutdata, stderrdata) = proc.communicate()
-            # the process is terminated but .communicate can take few seconds to
-            # complete
-            msg = "%s, stdout: %s" % (TERMINATED_PROCESS_MSG, stdoutdata)
-            if include_stderr:
-                msg = "%s, stderr: %s" % (msg, stderrdata)
-            error = subprocess.CalledProcessError(proc.returncode, cmd)
-            error.output = msg
-            raise error
-        # sleep for a while
-        time.sleep(poll_interval)
+            # sleep for a while
+            time.sleep(poll_interval)
+    finally:
+        outfile.close()
 
 
 def remove_path(path):

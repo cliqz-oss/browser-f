@@ -25,7 +25,7 @@
 #include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 #include "nsAString.h"
-#include "mozilla/nsRefPtr.h"                   // for nsRefPtr
+#include "mozilla/RefPtr.h"                   // for nsRefPtr
 #include "nsCOMPtr.h"                   // for already_AddRefed
 #include "nsDebug.h"                    // for NS_ASSERTION
 #include "nsISupportsImpl.h"            // for Layer::AddRef, etc
@@ -298,12 +298,22 @@ private:
                                              const gfx::Matrix4x4& aTransform);
 
   /**
+   * Update the invalid region and render it.
+   */
+  void UpdateAndRender();
+
+  /**
    * Render the current layer tree to the active target.
    */
-  void Render();
+  void Render(const nsIntRegion& aInvalidRegion);
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_GONK)
   void RenderToPresentationSurface();
 #endif
+
+  /**
+   * We need to know our invalid region before we're ready to render.
+   */
+  void InvalidateDebugOverlay(const gfx::IntRect& aBounds);
 
   /**
    * Render debug overlays such as the FPS/FrameCounter above the frame.
