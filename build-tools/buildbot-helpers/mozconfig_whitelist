@@ -2,16 +2,16 @@
 # Other keys in whitelist contain things are in that branches mozconfigs and allowed to be missing from nightly builds.
 whitelist = {
     'mozilla-release': {},
-    'mozilla-esr31': {},
     'mozilla-esr38': {},
     'mozilla-beta': {},
     'comm-beta': {},
-    'comm-esr31': {},
     'comm-esr38': {},
     'nightly': {},
     }
 
-all_platforms = ['win32', 'linux', 'linux64', 'macosx64', 'android', 'android-api-9', 'android-api-11', 'android-x86', 'win64']
+all_desktop_platforms = ['win32', 'linux', 'linux64', 'macosx64', 'win64']
+all_mobile_platforms = ['android', 'android-api-9', 'android-api-11', 'android-x86']
+all_platforms = all_desktop_platforms + all_mobile_platforms
 
 for platform in all_platforms:
     whitelist['nightly'][platform] = [
@@ -34,6 +34,7 @@ for platform in ['linux', 'linux64', 'macosx64']:
 for platform in ['linux', 'linux64', 'macosx64', 'win32', 'win64']:
     whitelist['nightly'][platform] += ['ac_add_options --enable-signmar']
     whitelist['nightly'][platform] += ['ac_add_options --enable-js-diagnostics']
+    whitelist['nightly'][platform] += ['ac_add_options --with-branding=browser/branding/nightly']
 
 whitelist['nightly']['linux'] += [
     'CXX=$REAL_CXX',
@@ -112,7 +113,13 @@ for branch in ('mozilla-beta', 'comm-beta'):
             'ac_add_options --enable-update-channel=beta',
             'ac_add_options --enable-official-branding',
             'mk_add_options MOZ_MAKE_FLAGS="-j4"',
+            'if [ -n "$ENABLE_RELEASE_PROMOTION" ]; then',
+            'MOZ_AUTOMATION_UPLOAD_SYMBOLS=1',
+            'MOZ_AUTOMATION_UPDATE_PACKAGING=1',
+            'fi',
         ]
+    for platform in all_desktop_platforms:
+        whitelist[branch][platform] += ['MOZ_AUTOMATION_SDK=${MOZ_AUTOMATION_SDK-1}']
     whitelist[branch]['linux'] += [
         'export MOZILLA_OFFICIAL=1',
         'export MOZ_TELEMETRY_REPORTING=1',
@@ -135,7 +142,7 @@ for branch in ('mozilla-beta', 'comm-beta'):
     whitelist[branch]['android-api-11'] += ['ac_add_options --with-branding=mobile/android/branding/beta']
 
 
-for branch in ('mozilla-release', 'comm-esr31', 'comm-esr38'):
+for branch in ('mozilla-release', 'comm-esr38'):
     for platform in all_platforms:
         whitelist[branch][platform] = [
             'ac_add_options --enable-update-channel=release',
@@ -143,6 +150,8 @@ for branch in ('mozilla-release', 'comm-esr31', 'comm-esr38'):
             'mk_add_options MOZ_MAKE_FLAGS="-j4"',
             'export BUILDING_RELEASE=1',
         ]
+    for platform in all_desktop_platforms:
+        whitelist[branch][platform] += ['MOZ_AUTOMATION_SDK=${MOZ_AUTOMATION_SDK-1}']
     whitelist[branch]['win32'] += ['mk_add_options MOZ_PGO=1',]
     whitelist[branch]['win64'] += ['mk_add_options MOZ_PGO=1',]
     whitelist[branch]['linux'] += [
@@ -163,7 +172,7 @@ for branch in ('mozilla-release', 'comm-esr31', 'comm-esr38'):
     whitelist[branch]['android-x86'] += ['ac_add_options --enable-updater']
 
 
-for branch in ('mozilla-esr31', 'mozilla-esr38'):
+for branch in ('mozilla-esr38', ):
     for platform in all_platforms:
         whitelist[branch][platform] = [
             'ac_add_options --enable-official-branding',

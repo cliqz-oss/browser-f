@@ -12,7 +12,7 @@ import sys
 
 # Use explicit version of python-requests
 sys.path.insert(0, path.join(path.dirname(__file__),
-                             "../../lib/python/vendor/requests-0.10.8"))
+                             "../../lib/python/vendor/requests-2.7.0"))
 sys.path.insert(0, path.join(path.dirname(__file__), "../../lib/python"))
 
 from balrog.submitter.cli import ReleaseCreatorV3, ReleaseCreatorV4, \
@@ -25,7 +25,7 @@ HG = "hg.mozilla.org"
 DEFAULT_BUILDBOT_CONFIGS_REPO = make_hg_url(HG, 'build/buildbot-configs')
 REQUIRED_CONFIG = ('appVersion', 'productName', 'version', 'enUSPlatforms',
     'baseTag', 'updateChannels', 'buildNumber', 'partialUpdates',
-    'stagingServer', 'bouncerServer')
+    'ftpServer', 'bouncerServer')
 
 def validate(options):
     err = False
@@ -107,7 +107,7 @@ if __name__ == '__main__':
 
     creator.run(release_config['appVersion'], release_config['productName'].capitalize(),
                 release_config['version'], release_config['buildNumber'],
-                updateChannels, release_config['stagingServer'],
+                updateChannels, release_config['ftpServer'],
                 release_config['bouncerServer'], release_config['enUSPlatforms'],
                 hashType, openURL=release_config.get('openURL'),
                 partialUpdates=partials,

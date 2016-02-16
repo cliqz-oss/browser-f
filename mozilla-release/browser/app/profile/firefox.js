@@ -1746,8 +1746,8 @@ pref("security.mixed_content.block_active_content", true);
 // 1 = allow MITM for certificate pinning checks.
 pref("security.cert_pinning.enforcement_level", 1);
 
-// 2 = allow SHA-1 only before 2016-01-01
-pref("security.pki.sha1_enforcement_level", 2);
+// 0 = allow SHA-1
+pref("security.pki.sha1_enforcement_level", 0);
 
 // Required blocklist freshness for OneCRL OCSP bypass
 // (default is 1.25x extensions.blocklist.interval, or 30 hours)
@@ -1844,6 +1844,11 @@ pref("media.gmp.trial-create.enabled", true);
 pref("browser.eme.ui.enabled", true);
 pref("media.gmp-eme-adobe.enabled", true);
 #endif
+
+pref("media.youtube-ua.override", true);
+pref("media.youtube-ua.override.from", "43");
+pref("media.youtube-ua.override.to", "42");
+
 
 // Play with different values of the decay time and get telemetry,
 // 0 means to randomize (and persist) the experiment value in users' profiles,

@@ -9,7 +9,9 @@ from release.platforms import buildbot2updatePlatforms, buildbot2bouncer, \
   buildbot2ftp
 from release.versions import getPrettyVersion
 from balrog.submitter.api import Release, SingleLocale, Rule
+from balrog.submitter.updates import merge_partial_updates
 from util.algorithms import recursive_update
+from util.retry import retry
 import logging
 
 log = logging.getLogger(__name__)
@@ -35,20 +37,18 @@ class ReleaseCreatorBase(object):
         self.dummy = dummy
 
     def generate_data(self, appVersion, productName, version, buildNumber,
-                      updateChannels, stagingServer, bouncerServer,
+                      updateChannels, ftpServer, bouncerServer,
                       enUSPlatforms, schemaVersion, openURL=None,
                       **updateKwargs):
         assert schemaVersion in (3, 4), 'Unhandled schema version %s' % schemaVersion
-        self.name = get_release_blob_name(productName, version, buildNumber)
         data = {
-            'name': self.name,
             'detailsUrl': getProductDetails(productName.lower(), appVersion),
             'platforms': {},
             'fileUrls': {},
+            'appVersion': appVersion,
+            'platformVersion': appVersion,
+            'displayVersion': getPrettyVersion(version)
         }
-        data['appVersion'] = appVersion
-        data['platformVersion'] = appVersion
-        data['displayVersion'] = getPrettyVersion(version)
 
         actions = []
         if openURL:
@@ -59,7 +59,7 @@ class ReleaseCreatorBase(object):
             data["actions"] = " ".join(actions)
 
         fileUrls = self._getFileUrls(productName, version, buildNumber,
-                                     updateChannels, stagingServer,
+                                     updateChannels, ftpServer,
                                      bouncerServer, **updateKwargs)
         if fileUrls:
             data.update(fileUrls)
@@ -84,19 +84,19 @@ class ReleaseCreatorBase(object):
         return data
 
     def run(self, appVersion, productName, version, buildNumber,
-            updateChannels, stagingServer, bouncerServer,
+            updateChannels, ftpServer, bouncerServer,
             enUSPlatforms, hashFunction, schemaVersion, openURL=None,
             **updateKwargs):
-        api = Release(auth=self.auth, api_root=self.api_root)
         data = self.generate_data(appVersion, productName, version,
                                   buildNumber, updateChannels,
-                                  stagingServer, bouncerServer, enUSPlatforms,
+                                  ftpServer, bouncerServer, enUSPlatforms,
                                   schemaVersion, openURL, **updateKwargs)
-        current_data, data_version = api.get_data(self.name)
+        name = get_release_blob_name(productName, version, buildNumber,
+                                     self.dummy)
+        api = Release(name=name, auth=self.auth, api_root=self.api_root)
+        current_data, data_version = api.get_data()
         data = recursive_update(current_data, data)
-        api = Release(auth=self.auth, api_root=self.api_root)
-        api.update_release(name=self.name,
-                           version=appVersion,
+        api.update_release(version=appVersion,
                            product=productName,
                            hashFunction=hashFunction,
                            releaseData=json.dumps(data),
@@ -108,20 +108,13 @@ class ReleaseCreatorV3(ReleaseCreatorBase):
         return ReleaseCreatorBase.run(self, *args, schemaVersion=3, **kwargs)
 
     def _getFileUrls(self, productName, version, buildNumber, updateChannels,
-                     stagingServer, bouncerServer, partialUpdates):
+                     ftpServer, bouncerServer, partialUpdates):
         data = {}
-        # XXX: This is a hack for bug 1045583. We should remove it, and always
-        # use "candidates" for nightlyDir after the switch to Balrog is complete.
-        if productName.lower() == "mobile":
-            nightlyDir = "candidates"
-        else:
-            nightlyDir = "nightly"
 
         for channel in updateChannels:
             if channel in ('betatest', 'esrtest') or "localtest" in channel:
                 dir_ = makeCandidatesDir(productName.lower(), version,
-                                         buildNumber, server=stagingServer, protocol='http',
-                                         nightlyDir=nightlyDir)
+                                         buildNumber, server=ftpServer, protocol='http')
                 data["fileUrls"][channel] = '%supdate/%%OS_FTP%%/%%LOCALE%%/%%FILENAME%%' % dir_
             else:
                 url = 'http://%s/?product=%%PRODUCT%%&os=%%OS_BOUNCER%%&lang=%%LOCALE%%' % bouncerServer
@@ -167,7 +160,7 @@ class ReleaseCreatorV4(ReleaseCreatorBase):
         return None
 
     def _getFileUrls(self, productName, version, buildNumber, updateChannels,
-                     stagingServer, bouncerServer, partialUpdates,
+                     ftpServer, bouncerServer, partialUpdates,
                      requiresMirrors=True):
         data = {"fileUrls": {}}
 
@@ -194,7 +187,7 @@ class ReleaseCreatorV4(ReleaseCreatorBase):
             }
             if "localtest" in channel:
                 dir_ = makeCandidatesDir(productName.lower(), version,
-                                         buildNumber, server=stagingServer,
+                                         buildNumber, server=ftpServer,
                                          protocol='http')
                 filename = "%s-%s.complete.mar" % (productName.lower(), version)
                 data["fileUrls"][channel]["completes"]["*"] = "%supdate/%%OS_FTP%%/%%LOCALE%%/%s" % (dir_, filename)
@@ -221,7 +214,7 @@ class ReleaseCreatorV4(ReleaseCreatorBase):
                                                 self.dummy)
                 if "localtest" in channel:
                     dir_ = makeCandidatesDir(productName.lower(), version,
-                                            buildNumber, server=stagingServer,
+                                            buildNumber, server=ftpServer,
                                             protocol='http')
                     filename = "%s-%s-%s.partial.mar" % (productName.lower(), previousVersion, version)
                     data["fileUrls"][channel]["partials"][from_] = "%supdate/%%OS_FTP%%/%%LOCALE%%/%s" % (dir_, filename)
@@ -264,13 +257,12 @@ class NightlySubmitterBase(object):
         alias = None
         if len(targets) > 1:
             alias = targets[1:]
-
         data = {
             'buildID': buildID,
+            'appVersion': appVersion,
+            'platformVersion': extVersion,
+            'displayVersion': appVersion,
         }
-        data['appVersion'] = appVersion
-        data['platformVersion'] = extVersion
-        data['displayVersion'] = appVersion
         if isOSUpdate:
             data['isOSUpdate'] = isOSUpdate
 
@@ -284,19 +276,55 @@ class NightlySubmitterBase(object):
         else:
             build_type = self.build_type
 
-        name = get_nightly_blob_name(productName, branch, build_type, buildID, self.dummy)
-        data = json.dumps(data)
-        api = SingleLocale(auth=self.auth, api_root=self.api_root)
-        copyTo = [get_nightly_blob_name(
-            productName, branch, build_type, 'latest', self.dummy)]
-        copyTo = json.dumps(copyTo)
-        alias = json.dumps(alias)
-        api.update_build(name=name, product=productName,
-                         build_target=build_target,
-                         version=appVersion, locale=locale,
-                         hashFunction=hashFunction,
-                         buildData=data, copyTo=copyTo, alias=alias,
-                         schemaVersion=schemaVersion)
+        name = get_nightly_blob_name(productName, branch, build_type, buildID,
+                                     self.dummy)
+        api = SingleLocale(name=name, build_target=build_target, locale=locale,
+                           auth=self.auth, api_root=self.api_root)
+
+        # wrap operations into "atomic" functions that can be retried
+        def update_dated():
+            current_data, data_version = api.get_data()
+            # If the  partials are already a subset of the blob and the
+            # complete MAR is the same, skip the submission
+            skip_submission = bool(
+                current_data and
+                current_data.get("completes") == data.get("completes") and
+                all(p in current_data.get("partials", [])
+                    for p in data.get("partials", [])))
+            if skip_submission:
+                log.warn("Dated data didn't change, skipping update")
+                return
+            # explicitly pass data version
+            api.update_build(
+                product=productName, version=appVersion,
+                hashFunction=hashFunction,
+                buildData=json.dumps(merge_partial_updates(current_data,
+                                                           data)),
+                alias=json.dumps(alias),
+                schemaVersion=schemaVersion, data_version=data_version)
+
+        retry(update_dated, sleeptime=10)
+
+        latest = SingleLocale(
+            api_root=self.api_root, auth=self.auth,
+            name=get_nightly_blob_name(productName, branch, build_type,
+                                       'latest', self.dummy),
+            build_target=build_target, locale=locale)
+
+        def update_latest():
+            # copy everything over using target release's data version
+            latest_data, latest_data_version = latest.get_data()
+            source_data, _ = api.get_data()
+            if source_data == latest_data:
+                log.warn("Latest data didn't change, skipping update")
+                return
+            latest.update_build(
+                product=productName, version=appVersion,
+                hashFunction=hashFunction, buildData=json.dumps(source_data),
+                alias=json.dumps(alias), schemaVersion=schemaVersion,
+                data_version=latest_data_version)
+
+        retry(update_latest, sleeptime=10)
 
 
 class MultipleUpdatesNightlyMixin(object):
@@ -363,23 +391,23 @@ class ReleaseSubmitterBase(object):
 
         name = get_release_blob_name(productName, version, build_number,
                                      self.dummy)
-
         data = {
             'buildID': buildID,
+            'appVersion': appVersion,
+            'platformVersion': extVersion,
+            'displayVersion': getPrettyVersion(version)
         }
-        data['appVersion'] = appVersion
-        data['platformVersion'] = extVersion
-        data['displayVersion'] = getPrettyVersion(version)
 
-        data.update(self._get_update_data(productName, version, build_number, **updateKwargs))
+        data.update(self._get_update_data(productName, version, build_number,
+                                          **updateKwargs))
 
         data = json.dumps(data)
-        api = SingleLocale(auth=self.auth, api_root=self.api_root)
+        api = SingleLocale(name=name, build_target=build_target, locale=locale,
+                           auth=self.auth, api_root=self.api_root)
         schemaVersion = json.dumps(schemaVersion)
-        api.update_build(name=name, product=productName,
-                         build_target=build_target, version=appVersion,
-                         locale=locale, hashFunction=hashFunction,
-                         buildData=data, schemaVersion=schemaVersion)
+        api.update_build(
+            product=productName, version=appVersion, hashFunction=hashFunction,
+            buildData=data, schemaVersion=schemaVersion)
 
 
 class MultipleUpdatesReleaseMixin(object):
@@ -392,7 +420,7 @@ class MultipleUpdatesReleaseMixin(object):
             for info in completeInfo:
                 if "previousVersion" in info:
                     from_ = get_release_blob_name(productName, version,
-                                                build_number, self.dummy)
+                                                  build_number, self.dummy)
                 else:
                     from_ = "*"
                 data["completes"].append({
@@ -434,9 +462,9 @@ class ReleasePusher(object):
     def run(self, productName, version, build_number, rule_ids):
         name = get_release_blob_name(productName, version, build_number,
                                      self.dummy)
-        api = Rule(auth=self.auth, api_root=self.api_root)
-        for id_ in rule_ids:
-            api.update_rule(id_, mapping=name)
+        for rule_id in rule_ids:
+            Rule(api_root=self.api_root, auth=self.auth, rule_id=rule_id
+                 ).update_rule(mapping=name)
 
 
 class BlobTweaker(object):
@@ -445,10 +473,12 @@ class BlobTweaker(object):
         self.auth = auth
 
     def run(self, name, data):
-        api = Release(auth=self.auth, api_root=self.api_root)
-        current_data, data_version = api.get_data(name)
+        api = Release(name=name, auth=self.auth, api_root=self.api_root)
+        current_data, data_version = api.get_data()
         data = recursive_update(current_data, data)
-        api.update_release(name, data['appVersion'], name.split('-')[0],
-                           data['hashFunction'], json.dumps(data), data_version,
-                           schemaVersion=current_data['schema_version'])
+        api.update_release(
+            version=data['appVersion'], product=name.split('-')[0],
+            hashFunction=data['hashFunction'], releaseData=json.dumps(data),
+            data_version=data_version,
+            schemaVersion=current_data['schema_version'])
 

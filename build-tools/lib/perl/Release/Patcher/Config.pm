@@ -43,7 +43,7 @@ sub GetReleaseBlock {
     my $prettyVersion = $args{'prettyVersion'};
     my $product = $args{'product'};
     my $buildStr = $args{'buildstr'};
-    my $stagingServer = $args{'stagingServer'};
+    my $ftpServer = $args{'ftpServer'};
     my $localeInfo = $args{'localeInfo'};
     my $platforms = $args{'platforms'};
     my $schema = $args{'schema'};
@@ -55,7 +55,7 @@ sub GetReleaseBlock {
     $releaseBlock->{'extension-version'} = $appVersion;
     $releaseBlock->{'prettyVersion'} = $prettyVersion;
 
-    my $candidateDir = '/pub/mozilla.org/' . $product . '/nightly/' .
+    my $candidateDir = '/pub/mozilla.org/' . $product . '/candidates/' .
       $version . '-candidates/' . $buildStr;
 
     $releaseBlock->{'platforms'} = {};
@@ -63,7 +63,7 @@ sub GetReleaseBlock {
     foreach my $os (@$platforms){
         my $buildID = GetBuildIDFromFTP(os => $os,
                                         releaseDir => $candidateDir,
-                                        stagingServer => $stagingServer);
+                                        ftpServer => $ftpServer);
         if (exists($platformFTPMap{$os})){
             my $ftp_platform = $platformFTPMap{$os};
             $releaseBlock->{'platforms'}->{$ftp_platform} = $buildID;
@@ -74,14 +74,10 @@ sub GetReleaseBlock {
     
     $releaseBlock->{'locales'} = join(' ', sort (keys(%{$localeInfo})));
     
-    $releaseBlock->{'completemarurl'} = 'http://' . $stagingServer .
-      '/pub/mozilla.org/' . $product . '/nightly/' . $version . '-candidates/' .
-      $buildStr . '/update/%platform%/%locale%/' . $product . '-' . $version .
-      '.complete.mar';
-    $releaseBlock->{'checksumsurl'} = 'http://' . $stagingServer .
-      '/pub/mozilla.org/' . $product . '/nightly/' . $version . '-candidates/' .
-      $buildStr . '/%platform%/%locale%/' . $product . '-' . $version .
-      '.checksums';
+    $releaseBlock->{'completemarurl'} = 'http://' . $ftpServer . $candidateDir .
+      '/update/%platform%/%locale%/' . $product . '-' . $version . '.complete.mar';
+    $releaseBlock->{'checksumsurl'} = 'http://' . $ftpServer . $candidateDir .
+      '/%platform%/%locale%/' . $product . '-' . $version . '.checksums';
     if (@marChannelIds) {
         $releaseBlock->{"mar-channel-ids"} = join(",", @marChannelIds);
     }
