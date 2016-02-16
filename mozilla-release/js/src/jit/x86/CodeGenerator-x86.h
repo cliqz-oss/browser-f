@@ -7,7 +7,7 @@
 #ifndef jit_x86_CodeGenerator_x86_h
 #define jit_x86_CodeGenerator_x86_h
 
-#include "jit/shared/CodeGenerator-x86-shared.h"
+#include "jit/x86-shared/CodeGenerator-x86-shared.h"
 #include "jit/x86/Assembler-x86.h"
 
 namespace js {
@@ -70,6 +70,8 @@ class CodeGeneratorX86 : public CodeGeneratorX86Shared
 
     void visitOutOfLineTruncate(OutOfLineTruncate* ool);
     void visitOutOfLineTruncateFloat32(OutOfLineTruncateFloat32* ool);
+
+    void visitRandom(LRandom* ins);
 
   private:
     void asmJSAtomicComputeAddress(Register addrTemp, Register ptrReg, bool boundsCheck,

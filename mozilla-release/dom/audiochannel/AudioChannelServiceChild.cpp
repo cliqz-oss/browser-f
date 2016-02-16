@@ -1,5 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -93,6 +93,22 @@ AudioChannelServiceChild::GetState(AudioChannelAgent* aAgent, bool aElementHidde
                                &state);
   data->mState = state;
   cc->SendAudioChannelChangedNotification();
+
+  #ifdef MOZ_WIDGET_GONK
+  /** Only modify the speaker status when
+   *  (1) apps in the foreground.
+   *  (2) apps in the backgrund and inactive.
+   *  Notice : modify only when the visible status is stable, because there
+   *  has lantency in passing the visibility events.
+   **/
+  bool active = AnyAudioChannelIsActive();
+  if (aElementHidden == oldElementHidden &&
+      (!aElementHidden || (aElementHidden && !active))) {
+    for (uint32_t i = 0; i < mSpeakerManager.Length(); i++) {
+      mSpeakerManager[i]->SetAudioChannelActive(active);
+    }
+  }
+  #endif
 
   return state;
 }

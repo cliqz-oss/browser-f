@@ -35,9 +35,6 @@
                       data-pref="devtools.theme"
                       orient="horizontal">
           </radiogroup>
-          <checkbox id="devtools-browser-theme"
-                    label="&options.usedeveditiontheme.label;"
-                    tooltiptext="&options.usedeveditiontheme.tooltip;"/>
         </vbox>
         <label>&options.commonPrefs.label;</label>
         <vbox id="commonprefs-options" class="options-groupbox">
@@ -87,7 +84,7 @@
         <vbox id="profiler-options" class="options-groupbox">
           <checkbox label="&options.showPlatformData.label;"
                     tooltiptext="&options.showPlatformData.tooltip;"
-                    data-pref="devtools.profiler.ui.show-platform-data"/>
+                    data-pref="devtools.performance.ui.show-platform-data"/>
         </vbox>
       </vbox>
 
@@ -149,8 +146,8 @@
                     label="&options.disableJavaScript.label;"
                     tooltiptext="&options.disableJavaScript.tooltip;"/>
           <checkbox id="devtools-enable-serviceWorkersTesting"
-                    label="&options.enableServiceWorkersTesting.label;"
-                    tooltiptext="&options.enableServiceWorkersTesting.tooltip;"
+                    label="&options.enableServiceWorkersHTTP.label;"
+                    tooltiptext="&options.enableServiceWorkersHTTP.tooltip;"
                     data-pref="devtools.serviceWorkers.testing.enabled"/>
           <hbox class="hidden-labels-box">
             <checkbox label="&options.enableChrome.label5;"
@@ -161,6 +158,11 @@
             <checkbox label="&options.enableRemote.label3;"
                       tooltiptext="&options.enableRemote.tooltip;"
                       data-pref="devtools.debugger.remote-enabled"/>
+          </hbox>
+          <hbox class="hidden-labels-box">
+            <checkbox label="&options.enableWorkers.label;"
+                      tooltiptext="&options.enableWorkers.tooltip;"
+                      data-pref="devtools.debugger.workers"/>
           </hbox>
           <label class="options-citation-label theme-comment"
           >&options.context.triggersPageRefresh;</label>

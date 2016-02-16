@@ -256,7 +256,6 @@ xmp, pre, plaintext {
 /* tables */
 
 table {
-  writing-mode: horizontal-tb !important; /* XXX remove when bug 1077521 is fixed */
   display: table;
   border-spacing: 2px;
   border-collapse: separate;
@@ -560,7 +559,7 @@ mark {
 
 /* titles */
 abbr[title], acronym[title] {
-  border-block-end: dotted 1px;
+  text-decoration: dotted underline;
 }
 
 /* lists */
@@ -587,6 +586,7 @@ ol {
 
 li {
   display: list-item;
+  text-align: match-parent;
 }
 
 /* nested lists have no top/bottom margins */
@@ -724,7 +724,8 @@ area {
 
 iframe:-moz-full-screen {
   /* iframes in full-screen mode don't show a border. */
-  border: none;
+  border: none !important;
+  padding: 0 !important;
 }
 
 /* media elements */

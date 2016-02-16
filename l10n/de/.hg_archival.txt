@@ -1,11 +1,8 @@
 repo: 40b02799e949620145bc865c8a36da2d6a0bb424
-node: 9b3ad21f6f2eea018e67d2fe0b325d62a1d2118c
+node: 5c262ab802b66764afd7e0649175a44648381008
 branch: default
-latesttag: FIREFOX_39_0_BUILD3
-latesttag: FIREFOX_39_0_BUILD4
-latesttag: FIREFOX_39_0_BUILD5
-latesttag: FIREFOX_39_0_BUILD6
-latesttag: FIREFOX_39_0_RELEASE
-latesttag: FIREFOX_39_0b7_BUILD1
-latesttag: FIREFOX_39_0b7_RELEASE
-latesttagdistance: 1
+latesttag: FENNEC_4_0b5_BUILD1
+latesttag: FENNEC_4_0b5_BUILD2
+latesttag: FENNEC_4_0b5_BUILD3
+latesttag: FENNEC_4_0b5_RELEASE
+latesttagdistance: 880

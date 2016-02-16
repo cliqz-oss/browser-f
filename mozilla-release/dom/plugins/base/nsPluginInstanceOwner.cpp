@@ -547,43 +547,6 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetURL(const char *aURL,
   return rv;
 }
 
-NS_IMETHODIMP nsPluginInstanceOwner::ShowStatus(const char *aStatusMsg)
-{
-  nsresult  rv = NS_ERROR_FAILURE;
-
-  rv = this->ShowStatus(NS_ConvertUTF8toUTF16(aStatusMsg).get());
-
-  return rv;
-}
-
-NS_IMETHODIMP nsPluginInstanceOwner::ShowStatus(const char16_t *aStatusMsg)
-{
-  nsresult  rv = NS_ERROR_FAILURE;
-
-  if (!mPluginFrame) {
-    return rv;
-  }
-  nsCOMPtr<nsIDocShellTreeItem> docShellItem = mPluginFrame->PresContext()->GetDocShell();
-  if (NS_FAILED(rv) || !docShellItem) {
-    return rv;
-  }
-
-  nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
-  rv = docShellItem->GetTreeOwner(getter_AddRefs(treeOwner));
-  if (NS_FAILED(rv) || !treeOwner) {
-    return rv;
-  }
-
-  nsCOMPtr<nsIWebBrowserChrome> browserChrome(do_GetInterface(treeOwner, &rv));
-  if (NS_FAILED(rv) || !browserChrome) {
-    return rv;
-  }
-  rv = browserChrome->SetStatus(nsIWebBrowserChrome::STATUS_SCRIPT,
-                                aStatusMsg);
-
-  return rv;
-}
-
 NS_IMETHODIMP nsPluginInstanceOwner::GetDocument(nsIDocument* *aDocument)
 {
   nsCOMPtr<nsIContent> content = do_QueryReferent(mContent);
@@ -659,23 +622,17 @@ nsPluginInstanceOwner::RedrawPlugin()
   return NS_OK;
 }
 
-NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
-{
-  if (!mPluginFrame) {
-    NS_WARNING("plugin owner has no owner in getting doc's window handle");
-    return NS_ERROR_FAILURE;
-  }
-
 #if defined(XP_WIN)
-  void** pvalue = (void**)value;
-  nsViewManager* vm = mPluginFrame->PresContext()->GetPresShell()->GetViewManager();
-  if (!vm)
-    return NS_ERROR_FAILURE;
+nsIWidget*
+nsPluginInstanceOwner::GetContainingWidgetIfOffset()
+{
+  MOZ_ASSERT(mPluginFrame, "Caller should have checked for null mPluginFrame.");
+
   // This property is provided to allow a "windowless" plugin to determine the window it is drawing
   // in, so it can translate mouse coordinates it receives directly from the operating system
   // to coordinates relative to itself.
 
-  // The original code (outside this #if) returns the document's window, which is OK if the window the "windowless" plugin
+  // The original code returns the document's window, which is OK if the window the "windowless" plugin
   // is drawing into has the same origin as the document's window, but this is not the case for "windowless" plugins inside of scrolling DIVs etc
 
   // To make sure "windowless" plugins always get the right origin for translating mouse coordinates, this code
@@ -709,17 +666,53 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
       if (offset.x || offset.y) {
         // in the case the two windows are offset from eachother, we do go ahead and return the correct enclosing window
         // so that mouse co-ordinates are not messed up.
-        *pvalue = (void*)win->GetNativeData(NS_NATIVE_WINDOW);
-        if (*pvalue)
-          return NS_OK;
+        return win;
       }
     }
   }
+
+  return nullptr;
+}
+
+static already_AddRefed<nsIWidget>
+GetRootWidgetForPluginFrame(const nsPluginFrame* aPluginFrame)
+{
+  MOZ_ASSERT(aPluginFrame);
+
+  nsViewManager* vm =
+    aPluginFrame->PresContext()->GetPresShell()->GetViewManager();
+  if (!vm) {
+    NS_WARNING("Could not find view manager for plugin frame.");
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIWidget> rootWidget;
+  vm->GetRootWidget(getter_AddRefs(rootWidget));
+  return rootWidget.forget();
+}
+#endif
+
+NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
+{
+  if (!mPluginFrame) {
+    NS_WARNING("plugin owner has no owner in getting doc's window handle");
+    return NS_ERROR_FAILURE;
+  }
+
+#if defined(XP_WIN)
+  void** pvalue = (void**)value;
+  nsIWidget* offsetContainingWidget = GetContainingWidgetIfOffset();
+  if (offsetContainingWidget) {
+    *pvalue = (void*)offsetContainingWidget->GetNativeData(NS_NATIVE_WINDOW);
+    if (*pvalue) {
+      return NS_OK;
+    }
+  }
+
   // simply return the topmost document window
-  nsCOMPtr<nsIWidget> widget;
-  vm->GetRootWidget(getter_AddRefs(widget));
+  nsCOMPtr<nsIWidget> widget = GetRootWidgetForPluginFrame(mPluginFrame);
   if (widget) {
-    *pvalue = (void*)widget->GetNativeData(NS_NATIVE_SHAREABLE_WINDOW);
+    *pvalue = widget->GetNativeData(NS_NATIVE_SHAREABLE_WINDOW);
   } else {
     NS_ASSERTION(widget, "couldn't get doc's widget in getting doc's window handle");
   }
@@ -737,6 +730,48 @@ NS_IMETHODIMP nsPluginInstanceOwner::GetNetscapeWindow(void *value)
 #endif
 }
 
+#if defined(XP_WIN)
+void
+nsPluginInstanceOwner::SetWidgetWindowAsParent(HWND aWindowToAdopt)
+{
+  if (!mWidget) {
+    NS_ERROR("mWidget should exist before this gets called.");
+    return;
+  }
+
+  mWidget->SetNativeData(NS_NATIVE_CHILD_WINDOW,
+                         reinterpret_cast<uintptr_t>(aWindowToAdopt));
+}
+
+nsresult
+nsPluginInstanceOwner::SetNetscapeWindowAsParent(HWND aWindowToAdopt)
+{
+  if (!mPluginFrame) {
+    NS_WARNING("Plugin owner has no plugin frame.");
+    return NS_ERROR_FAILURE;
+  }
+
+  // If there is a containing window that is offset then ask that to adopt.
+  nsIWidget* offsetWidget = GetContainingWidgetIfOffset();
+  if (offsetWidget) {
+    offsetWidget->SetNativeData(NS_NATIVE_CHILD_WINDOW,
+                                reinterpret_cast<uintptr_t>(aWindowToAdopt));
+    return NS_OK;
+  }
+
+  // Otherwise ask the topmost document window to adopt.
+  nsCOMPtr<nsIWidget> rootWidget = GetRootWidgetForPluginFrame(mPluginFrame);
+  if (!rootWidget) {
+    NS_ASSERTION(rootWidget, "Couldn't get topmost document's widget.");
+    return NS_ERROR_FAILURE;
+  }
+
+  rootWidget->SetNativeData(NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW,
+                            reinterpret_cast<uintptr_t>(aWindowToAdopt));
+  return NS_OK;
+}
+#endif
+
 NS_IMETHODIMP nsPluginInstanceOwner::SetEventModel(int32_t eventModel)
 {
 #ifdef XP_MACOSX
@@ -745,13 +780,6 @@ NS_IMETHODIMP nsPluginInstanceOwner::SetEventModel(int32_t eventModel)
 #else
   return NS_ERROR_NOT_IMPLEMENTED;
 #endif
-}
-
-// This is no longer used, just leaving it here so we don't have to change
-// the nsIPluginInstanceOwner interface.
-NPError nsPluginInstanceOwner::ShowNativeContextMenu(NPMenu* menu, void* event)
-{
-  return NPERR_GENERIC_ERROR;
 }
 
 #ifdef XP_MACOSX
@@ -1759,9 +1787,9 @@ CocoaEventTypeForEvent(const WidgetGUIEvent& anEvent, nsIFrame* aObjectFrame)
   }
 
   switch (anEvent.message) {
-    case NS_MOUSE_ENTER_SYNTH:
+    case NS_MOUSE_OVER:
       return NPCocoaEventMouseEntered;
-    case NS_MOUSE_EXIT_SYNTH:
+    case NS_MOUSE_OUT:
       return NPCocoaEventMouseExited;
     case NS_MOUSE_MOVE:
     {
@@ -1803,8 +1831,8 @@ TranslateToNPCocoaEvent(WidgetGUIEvent* anEvent, nsIFrame* aObjectFrame)
       anEvent->message == NS_MOUSE_BUTTON_DOWN ||
       anEvent->message == NS_MOUSE_BUTTON_UP ||
       anEvent->message == NS_MOUSE_SCROLL ||
-      anEvent->message == NS_MOUSE_ENTER_SYNTH ||
-      anEvent->message == NS_MOUSE_EXIT_SYNTH)
+      anEvent->message == NS_MOUSE_OVER ||
+      anEvent->message == NS_MOUSE_OUT)
   {
     nsPoint pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(anEvent, aObjectFrame) -
                  aObjectFrame->GetContentRectRelativeToSelf().TopLeft();
@@ -2059,8 +2087,8 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
       NS_ASSERTION(anEvent.message == NS_MOUSE_BUTTON_DOWN ||
                    anEvent.message == NS_MOUSE_BUTTON_UP ||
                    anEvent.message == NS_MOUSE_DOUBLECLICK ||
-                   anEvent.message == NS_MOUSE_ENTER_SYNTH ||
-                   anEvent.message == NS_MOUSE_EXIT_SYNTH ||
+                   anEvent.message == NS_MOUSE_OVER ||
+                   anEvent.message == NS_MOUSE_OUT ||
                    anEvent.message == NS_MOUSE_MOVE,
                    "Incorrect event type for coordinate translation");
       nsPoint pt =
@@ -2145,11 +2173,11 @@ nsEventStatus nsPluginInstanceOwner::ProcessEvent(const WidgetGUIEvent& anEvent)
 
         switch (anEvent.message)
           {
-          case NS_MOUSE_ENTER_SYNTH:
-          case NS_MOUSE_EXIT_SYNTH:
+          case NS_MOUSE_OVER:
+          case NS_MOUSE_OUT:
             {
               XCrossingEvent& event = pluginEvent.xcrossing;
-              event.type = anEvent.message == NS_MOUSE_ENTER_SYNTH ?
+              event.type = anEvent.message == NS_MOUSE_OVER ?
                 EnterNotify : LeaveNotify;
               event.root = root;
               event.time = anEvent.time;
@@ -2903,6 +2931,15 @@ NS_IMETHODIMP nsPluginInstanceOwner::CreateWidget(void)
       }
 #endif // XP_MACOSX
     }
+
+#ifndef XP_MACOSX
+    // A failure here is terminal since we can't fall back on the non-e10s code
+    // path below.
+    if (!mWidget && XRE_GetProcessType() == GeckoProcessType_Content) {
+      return NS_ERROR_UNEXPECTED;
+    }
+#endif // XP_MACOSX
+
     if (!mWidget) {
       // native (single process)
       mWidget = do_CreateInstance(kWidgetCID, &rv);

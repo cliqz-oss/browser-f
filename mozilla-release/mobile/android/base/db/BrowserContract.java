@@ -299,6 +299,7 @@ public class BrowserContract {
 
     public static final class Clients {
         private Clients() {}
+        public static final Uri CONTENT_RECENCY_URI = Uri.withAppendedPath(TABS_AUTHORITY_URI, "clients_recency");
         public static final Uri CONTENT_URI = Uri.withAppendedPath(TABS_AUTHORITY_URI, "clients");
         public static final String CONTENT_TYPE = "vnd.android.cursor.dir/client";
         public static final String CONTENT_ITEM_TYPE = "vnd.android.cursor.item/client";
@@ -334,11 +335,13 @@ public class BrowserContract {
         public static final String TITLE = "title";
         public static final String DESCRIPTION = "description";
         public static final String IMAGE_URL = "image_url";
+        public static final String BACKGROUND_COLOR = "background_color";
+        public static final String BACKGROUND_URL = "background_url";
         public static final String CREATED = "created";
         public static final String FILTER = "filter";
 
         public static final String[] DEFAULT_PROJECTION =
-            new String[] { _ID, DATASET_ID, URL, TITLE, DESCRIPTION, IMAGE_URL, FILTER };
+            new String[] { _ID, DATASET_ID, URL, TITLE, DESCRIPTION, IMAGE_URL, BACKGROUND_COLOR, BACKGROUND_URL, FILTER };
     }
 
     @RobocopTarget

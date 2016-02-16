@@ -37,10 +37,20 @@ def buffer_handler_wrapper(handler, buffer_limit):
         buffer_limit = int(buffer_limit)
     return handlers.BufferingLogFilter(handler, buffer_limit)
 
-formatter_option_defaults = {
-    'verbose': False,
-    'level': 'info',
-}
+def default_formatter_options(log_type, overrides):
+    formatter_option_defaults = {
+        "raw": {
+            "level": "debug"
+        }
+    }
+    rv = {"verbose": False,
+          "level": "info"}
+    rv.update(formatter_option_defaults.get(log_type, {}))
+
+    if overrides is not None:
+        rv.update(overrides)
+
+    return rv
 
 fmt_options = {
     # <option name>: (<wrapper function>, description, <applicable formatters>, action)
@@ -50,7 +60,7 @@ fmt_options = {
                 ["mach"], "store_true"),
     'level': (level_filter_wrapper,
               "A least log level to subscribe to for the given formatter (debug, info, error, etc.)",
-              ["mach", "tbpl"], "store"),
+              ["mach", "raw", "tbpl"], "store"),
     'buffer': (buffer_handler_wrapper,
                "If specified, enables message buffering at the given buffer size limit.",
                ["mach", "tbpl"], "store"),
@@ -153,7 +163,7 @@ def setup_handlers(logger, formatters, formatter_options):
             logger.add_handler(handler)
 
 
-def setup_logging(suite, args, defaults=None):
+def setup_logging(suite, args, defaults=None, formatter_defaults=None):
     """
     Configure a structuredlogger based on command line arguments.
 
@@ -168,17 +178,20 @@ def setup_logging(suite, args, defaults=None):
                      this isn't supplied, reasonable defaults are chosen
                      (coloured mach formatting if stdout is a terminal, or raw
                      logs otherwise).
-
+    :param formatter_defaults: A dictionary of {option_name: default_value} to provide
+                               to the formatters in the absence of command line overrides.
     :rtype: StructuredLogger
     """
 
     logger = StructuredLogger(suite)
     # Keep track of any options passed for formatters.
-    formatter_options = defaultdict(lambda: formatter_option_defaults.copy())
+    formatter_options = {}
     # Keep track of formatters and list of streams specified.
     formatters = defaultdict(list)
     found = False
     found_stdout_logger = False
+    if args is None:
+        args = {}
     if not hasattr(args, 'iteritems'):
         args = vars(args)
 
@@ -207,6 +220,9 @@ def setup_logging(suite, args, defaults=None):
                     formatters[formatter].append(value)
             if len(parts) == 3:
                 _, formatter, opt = parts
+                if formatter not in formatter_options:
+                    formatter_options[formatter] = default_formatter_options(formatter,
+                                                                             formatter_defaults)
                 formatter_options[formatter][opt] = values
 
     #If there is no user-specified logging, go with the default options
@@ -218,6 +234,10 @@ def setup_logging(suite, args, defaults=None):
         for name, value in defaults.iteritems():
             if value == sys.stdout:
                 formatters[name].append(value)
+
+    for name in formatters:
+        if name not in formatter_options:
+            formatter_options[name] = default_formatter_options(name, formatter_defaults)
 
     setup_handlers(logger, formatters, formatter_options)
     set_default_logger(logger)

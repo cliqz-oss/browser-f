@@ -684,8 +684,8 @@ CSS_PROP_LOGICAL(
         CSS_PROPERTY_LOGICAL_AXIS |
         CSS_PROPERTY_LOGICAL_BLOCK_AXIS,
     "layout.css.vertical-text.enabled",
-    VARIANT_AHKLP | VARIANT_CALC,
-    kWidthKTable,
+    VARIANT_AHLP | VARIANT_CALC,
+    nullptr,
     Size,
     Position,
     CSS_PROP_NO_OFFSET,
@@ -1487,6 +1487,18 @@ CSS_PROP_COLUMN(
     kBorderWidthKTable,
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_Custom)
+CSS_PROP_DISPLAY(
+    contain,
+    contain,
+    Contain,
+    CSS_PROPERTY_PARSE_VALUE |
+        CSS_PROPERTY_VALUE_PARSER_FUNCTION,
+    "layout.css.contain.enabled",
+    // Does not affect parsing, but is needed for tab completion in devtools:
+    VARIANT_HK | VARIANT_NONE,
+    kContainKTable,
+    CSS_PROP_NO_OFFSET,
+    eStyleAnimType_None)
 CSS_PROP_CONTENT(
     content,
     content,
@@ -2112,8 +2124,8 @@ CSS_PROP_POSITION(
         CSS_PROPERTY_UNITLESS_LENGTH_QUIRK |
         CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH,
     "",
-    VARIANT_AHLP | VARIANT_CALC,
-    nullptr,
+    VARIANT_AHKLP | VARIANT_CALC,
+    kWidthKTable,
     offsetof(nsStylePosition, mHeight),
     eStyleAnimType_Coord)
 CSS_PROP_VISIBILITY(
@@ -2415,8 +2427,8 @@ CSS_PROP_LOGICAL(
         CSS_PROPERTY_LOGICAL_AXIS |
         CSS_PROPERTY_LOGICAL_BLOCK_AXIS,
     "layout.css.vertical-text.enabled",
-    VARIANT_HKLPO | VARIANT_CALC,
-    kWidthKTable,
+    VARIANT_HLPO | VARIANT_CALC,
+    nullptr,
     MaxSize,
     Position,
     CSS_PROP_NO_OFFSET,
@@ -2431,8 +2443,8 @@ CSS_PROP_POSITION(
         CSS_PROPERTY_UNITLESS_LENGTH_QUIRK |
         CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH,
     "",
-    VARIANT_HLPO | VARIANT_CALC,
-    nullptr,
+    VARIANT_HKLPO | VARIANT_CALC,
+    kWidthKTable,
     offsetof(nsStylePosition, mMaxHeight),
     eStyleAnimType_Coord)
 CSS_PROP_LOGICAL(
@@ -2477,8 +2489,8 @@ CSS_PROP_POSITION(
         CSS_PROPERTY_UNITLESS_LENGTH_QUIRK |
         CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH,
     "",
-    VARIANT_AHLP | VARIANT_CALC,
-    nullptr,
+    VARIANT_AHKLP | VARIANT_CALC,
+    kWidthKTable,
     offsetof(nsStylePosition, mMinHeight),
     eStyleAnimType_Coord)
 CSS_PROP_LOGICAL(
@@ -2494,8 +2506,8 @@ CSS_PROP_LOGICAL(
         CSS_PROPERTY_LOGICAL_AXIS |
         CSS_PROPERTY_LOGICAL_BLOCK_AXIS,
     "layout.css.vertical-text.enabled",
-    VARIANT_AHKLP | VARIANT_CALC,
-    kWidthKTable,
+    VARIANT_AHLP | VARIANT_CALC,
+    nullptr,
     MinSize,
     Position,
     CSS_PROP_NO_OFFSET,
@@ -2650,7 +2662,8 @@ CSS_PROP_DISPLAY(
     opacity,
     Opacity,
     CSS_PROPERTY_PARSE_VALUE |
-        CSS_PROPERTY_APPLIES_TO_PLACEHOLDER,
+        CSS_PROPERTY_APPLIES_TO_PLACEHOLDER |
+        CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR,
     "",
     VARIANT_HN,
     nullptr,
@@ -3187,9 +3200,8 @@ CSS_PROP_TEXT(
     text_combine_upright,
     TextCombineUpright,
     CSS_PROPERTY_PARSE_VALUE |
-        CSS_PROPERTY_VALUE_PARSER_FUNCTION |
-        CSS_PROPERTY_ALWAYS_ENABLED_IN_UA_SHEETS,
-    "layout.css.vertical-text.enabled",
+        CSS_PROPERTY_VALUE_PARSER_FUNCTION,
+    "layout.css.text-combine-upright.enabled",
     0,
     kTextCombineUprightKTable,
     offsetof(nsStyleText, mTextCombineUpright),
@@ -3311,12 +3323,23 @@ CSS_PROP_DISPLAY(
     Transform,
     CSS_PROPERTY_PARSE_FUNCTION |
         CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH |
-        CSS_PROPERTY_CREATES_STACKING_CONTEXT,
+        CSS_PROPERTY_CREATES_STACKING_CONTEXT |
+        CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR,
     "",
     0,
     nullptr,
     offsetof(nsStyleDisplay, mSpecifiedTransform),
     eStyleAnimType_Custom)
+CSS_PROP_DISPLAY(
+    transform-box,
+    transform_box,
+    TransformBox,
+    CSS_PROPERTY_PARSE_VALUE,
+    "svg.transform-origin.enabled",
+    VARIANT_HK,
+    kTransformBoxKTable,
+    CSS_PROP_NO_OFFSET,
+    eStyleAnimType_None)
 CSS_PROP_DISPLAY(
     transform-origin,
     transform_origin,

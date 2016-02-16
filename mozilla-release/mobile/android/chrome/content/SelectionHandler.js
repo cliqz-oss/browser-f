@@ -8,6 +8,10 @@
 const PHONE_NUMBER_CONTAINERS = "td,div";
 const DEFER_CLOSE_TRIGGER_MS = 125; // Grace period delay before deferred _closeSelection()
 
+// Gecko TouchCaret/SelectionCaret pref names.
+const PREF_GECKO_TOUCHCARET_ENABLED = "touchcaret.enabled";
+const PREF_GECKO_SELECTIONCARETS_ENABLED = "selectioncaret.enabled";
+
 var SelectionHandler = {
 
   // Successful startSelection() or attachCaret().
@@ -21,9 +25,11 @@ var SelectionHandler = {
   START_ERROR_SELECT_ALL_PARAGRAPH_FAILED: "Select-All Paragraph failed.",
   START_ERROR_NO_SELECTION: "Selection performed, but nothing resulted.",
   START_ERROR_PROXIMITY: "Selection target and result seem unrelated.",
+  START_ERROR_SELECTIONCARETS_ENABLED: "Native selectionCarets requested while Gecko enabled.",
 
   // Error codes returned during attachCaret().
   ATTACH_ERROR_INCOMPATIBLE: "Element disabled, handled natively, or not editable.",
+  ATTACH_ERROR_TOUCHCARET_ENABLED: "Native touchCaret requested while Gecko enabled.",
 
   HANDLE_TYPE_ANCHOR: "ANCHOR",
   HANDLE_TYPE_CARET: "CARET",
@@ -35,6 +41,10 @@ var SelectionHandler = {
 
   SELECT_ALL: 0,
   SELECT_AT_POINT: 1,
+
+  // Gecko TouchCaret/SelectionCaret pref values.
+  _touchCaretEnabledValue: null,
+  _selectionCaretEnabledValue: null,
 
   // Keeps track of data about the dimensions of the selection. Coordinates
   // stored here are relative to the _contentWindow window.
@@ -89,6 +99,30 @@ var SelectionHandler = {
     delete this._idService;
     return this._idService = Cc["@mozilla.org/uuid-generator;1"].
       getService(Ci.nsIUUIDGenerator);
+  },
+
+  // Are we supporting Gecko or Native touchCarets?
+  get _touchCaretEnabled() {
+    if (this._touchCaretEnabledValue == null) {
+      this._touchCaretEnabledValue = Services.prefs.getBoolPref(PREF_GECKO_TOUCHCARET_ENABLED);
+      Services.prefs.addObserver(PREF_GECKO_TOUCHCARET_ENABLED, function() {
+        SelectionHandler._touchCaretEnabledValue =
+          Services.prefs.getBoolPref(PREF_GECKO_TOUCHCARET_ENABLED);
+      }, false);
+    }
+    return this._touchCaretEnabledValue;
+  },
+
+  // Are we supporting Gecko or Native selectionCarets?
+  get _selectionCaretEnabled() {
+    if (this._selectionCaretEnabledValue == null) {
+      this._selectionCaretEnabledValue = Services.prefs.getBoolPref(PREF_GECKO_SELECTIONCARETS_ENABLED);
+      Services.prefs.addObserver(PREF_GECKO_SELECTIONCARETS_ENABLED, function() {
+        SelectionHandler._selectionCaretEnabledValue =
+          Services.prefs.getBoolPref(PREF_GECKO_SELECTIONCARETS_ENABLED);
+      }, false);
+    }
+    return this._selectionCaretEnabledValue;
   },
 
   _addObservers: function sh_addObservers() {
@@ -378,6 +412,11 @@ var SelectionHandler = {
    *                   y    - The y-coordinate for SELECT_AT_POINT.
    */
   startSelection: function sh_startSelection(aElement, aOptions = { mode: SelectionHandler.SELECT_ALL }) {
+    // Disable Native touchCarets if Gecko enabled.
+    if (this._selectionCaretEnabled) {
+      return this.START_ERROR_SELECTIONCARETS_ENABLED;
+    }
+
     // Clear out any existing active selection
     this._closeSelection();
 
@@ -757,6 +796,43 @@ var SelectionHandler = {
       }
     },
 
+    SEARCH_ADD: {
+      id: "search_add_action",
+      label: Strings.browser.GetStringFromName("contextmenu.addSearchEngine2"),
+      icon: "drawable://ab_add_search_engine",
+
+      selector: {
+        matches: function(element) {
+          if(!(element instanceof HTMLInputElement)) {
+            return false;
+          }
+          let form = element.form;
+          if (!form || element.type == "password") {
+            return false;
+          }
+
+          // These are the following types of forms we can create keywords for:
+          //
+          // method    encoding type        can create keyword
+          // GET       *                                   YES
+          //           *                                   YES
+          // POST      *                                   YES
+          // POST      application/x-www-form-urlencoded   YES
+          // POST      text/plain                          NO ( a little tricky to do)
+          // POST      multipart/form-data                 NO
+          // POST      everything else                     YES
+          let method = form.method.toUpperCase();
+          return (method == "GET" || method == "") ||
+                 (form.enctype != "text/plain") && (form.enctype != "multipart/form-data");
+        },
+      },
+
+      action: function(element) {
+        UITelemetry.addEvent("action.1", "actionbar", null, "add_search_engine");
+        SearchEngines.addEngine(element);
+      },
+    },
+
     SEARCH: {
       label: function() {
         return Strings.browser.formatStringFromName("contextmenu.search", [Services.search.defaultEngine.name], 1);
@@ -800,6 +876,11 @@ var SelectionHandler = {
    * @param aX, aY tap location in client coordinates.
    */
   attachCaret: function sh_attachCaret(aElement) {
+    // Disable Native attachCaret() if Gecko touchCarets are enabled.
+    if (this._touchCaretEnabled) {
+      return this.ATTACH_ERROR_TOUCHCARET_ENABLED;
+    }
+
     // Clear out any existing active selection
     this._closeSelection();
 
@@ -1017,7 +1098,7 @@ var SelectionHandler = {
     let selectedText = this._getSelectedText();
     if (selectedText.length) {
       let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].getService(Ci.nsIClipboardHelper);
-      clipboard.copyString(selectedText, this._contentWindow.document);
+      clipboard.copyString(selectedText);
       NativeWindow.toast.show(Strings.browser.GetStringFromName("selectionHelper.textCopied"), "short");
     }
     this._closeSelection();

@@ -7,7 +7,7 @@
 #ifndef jit_x86_Lowering_x86_h
 #define jit_x86_Lowering_x86_h
 
-#include "jit/shared/Lowering-x86-shared.h"
+#include "jit/x86-shared/Lowering-x86-shared.h"
 
 namespace js {
 namespace jit {
@@ -57,6 +57,7 @@ class LIRGeneratorX86 : public LIRGeneratorX86Shared
     void visitAsmJSAtomicBinopHeap(MAsmJSAtomicBinopHeap* ins);
     void visitStoreTypedArrayElementStatic(MStoreTypedArrayElementStatic* ins);
     void visitSubstr(MSubstr* ins);
+    void visitRandom(MRandom* ins);
     void lowerPhi(MPhi* phi);
 
     static bool allowTypedElementHoleCheck() {

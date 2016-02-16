@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import unicode_literals
+from __future__ import absolute_import, unicode_literals
 
 import json
 import os
@@ -80,8 +80,9 @@ class TestMetadata(object):
         ``paths`` can be an iterable of values to use to identify tests to run.
         If an entry is a known test file, tests associated with that file are
         returned (there may be multiple configurations for a single file). If
-        an entry is a directory, all tests in that directory are returned. If
-        the string appears in a known test file, that test file is considered.
+        an entry is a directory, or a prefix of a directory containing tests,
+        all tests in that directory are returned. If the string appears in a
+        known test file, that test file is considered.
 
         If ``under_path`` is a string, it will be used to filter out tests that
         aren't in the specified path prefix relative to topsrcdir or the
@@ -123,8 +124,10 @@ class TestMetadata(object):
                 candidate_paths |= set(self._tests_by_path.keys())
                 continue
 
-            # If the path is a directory, pull in all tests in that directory.
-            if path in self._test_dirs:
+            # If the path is a directory, or the path is a prefix of a directory
+            # containing tests, pull in all tests in that directory.
+            if (path in self._test_dirs or
+                any(p.startswith(path) for p in self._tests_by_path)):
                 candidate_paths |= {p for p in self._tests_by_path
                                     if p.startswith(path)}
                 continue
@@ -160,6 +163,12 @@ class TestResolver(MozbuildObject):
                 'mochitest', 'chrome'),
             'mochitest': os.path.join(self.topobjdir, '_tests', 'testing',
                 'mochitest', 'tests'),
+            'webapprt-chrome': os.path.join(self.topobjdir, '_tests', 'testing',
+                'mochitest', 'webapprtChrome'),
+            'webapprt-content': os.path.join(self.topobjdir, '_tests', 'testing',
+                'mochitest', 'webapprtContent'),
+            'web-platform-tests': os.path.join(self.topobjdir, '_tests', 'testing',
+                                               'web-platform'),
             'xpcshell': os.path.join(self.topobjdir, '_tests', 'xpcshell'),
         }
 

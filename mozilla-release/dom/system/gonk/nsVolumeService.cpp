@@ -124,6 +124,31 @@ nsVolumeService::Callback(const nsAString& aTopic, const nsAString& aState)
   return NS_OK;
 }
 
+void nsVolumeService::DumpNoLock(const char* aLabel)
+{
+  mArrayMonitor.AssertCurrentThreadOwns();
+
+  nsVolume::Array::size_type numVolumes = mVolumeArray.Length();
+
+  if (numVolumes == 0) {
+    LOG("%s: No Volumes!", aLabel);
+    return;
+  }
+  nsVolume::Array::index_type volIndex;
+  for (volIndex = 0; volIndex < numVolumes; volIndex++) {
+    nsRefPtr<nsVolume> vol = mVolumeArray[volIndex];
+    vol->Dump(aLabel);
+  }
+}
+
+NS_IMETHODIMP
+nsVolumeService::Dump(const nsAString& aLabel)
+{
+  MonitorAutoLock autoLock(mArrayMonitor);
+  DumpNoLock(NS_LossyConvertUTF16toASCII(aLabel).get());
+  return NS_OK;
+}
+
 NS_IMETHODIMP nsVolumeService::GetVolumeByName(const nsAString& aVolName, nsIVolume **aResult)
 {
   MonitorAutoLock autoLock(mArrayMonitor);
@@ -239,7 +264,7 @@ nsVolumeService::GetVolumeNames(nsIArray** aVolNames)
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
-  NS_ADDREF(*aVolNames = volNames);
+  volNames.forget(aVolNames);
   return NS_OK;
 }
 
@@ -282,6 +307,7 @@ nsVolumeService::RecvVolumesFromParent(const nsTArray<VolumeInfo>& aVolumes)
     // We've already done this, no need to do it again.
     return;
   }
+
   for (uint32_t i = 0; i < aVolumes.Length(); i++) {
     const VolumeInfo& volInfo(aVolumes[i]);
     nsRefPtr<nsVolume> vol = new nsVolume(volInfo.name(),
@@ -422,6 +448,7 @@ nsVolumeService::CreateFakeVolume(const nsAString& name, const nsAString& path)
                                           false /* isUnmounting */,
                                           false /* isRemovable */,
                                           false /* isHotSwappable */);
+    vol->SetState(nsIVolume::STATE_MOUNTED);
     vol->LogState();
     UpdateVolume(vol.get());
     return NS_OK;
@@ -443,14 +470,55 @@ nsVolumeService::SetFakeVolumeState(const nsAString& name, int32_t state)
     if (!vol || !vol->IsFake()) {
       return NS_ERROR_NOT_AVAILABLE;
     }
-    vol->SetState(state);
-    vol->LogState();
-    UpdateVolume(vol.get());
+
+    // UpdateVolume expects the volume passed in to NOT be the
+    // same pointer as what CreateOrFindVolumeByName would return,
+    // which is why we allocate a temporary volume here.
+    nsRefPtr<nsVolume> volume = new nsVolume(name);
+    volume->Set(vol);
+    volume->SetState(state);
+    volume->LogState();
+    UpdateVolume(volume.get());
     return NS_OK;
   }
 
   ContentChild::GetSingleton()->SendSetFakeVolumeState(nsString(name), state);
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsVolumeService::RemoveFakeVolume(const nsAString& name)
+{
+  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+    SetFakeVolumeState(name, nsIVolume::STATE_NOMEDIA);
+    RemoveVolumeByName(name);
+    return NS_OK;
+  }
+
+  ContentChild::GetSingleton()->SendRemoveFakeVolume(nsString(name));
+  return NS_OK;
+}
+
+void
+nsVolumeService::RemoveVolumeByName(const nsAString& aName)
+{
+  nsRefPtr<nsVolume> vol;
+  {
+    MonitorAutoLock autoLock(mArrayMonitor);
+    vol = FindVolumeByName(aName);
+  }
+  if (!vol) {
+    return;
+  }
+  mVolumeArray.RemoveElement(vol);
+
+  if (XRE_GetProcessType() == GeckoProcessType_Default) {
+    nsCOMPtr<nsIObserverService> obs = GetObserverService();
+    if (!obs) {
+      return;
+    }
+    obs->NotifyObservers(nullptr, NS_VOLUME_REMOVED, nsString(aName).get());
+  }
 }
 
 /***************************************************************************

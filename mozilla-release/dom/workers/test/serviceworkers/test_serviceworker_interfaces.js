@@ -10,8 +10,12 @@
 //
 // [
 //   "AGlobalInterface",
-//   {name: "ExperimentalThing", release: false},
-//   {name: "OptionalThing", pref: "some.thing.enabled"},
+//   { name: "ExperimentalThing", release: false },
+//   { name: "ReallyExperimentalThing", nightly: true },
+//   { name: "DesktopOnlyThing", desktop: true },
+//   { name: "NonB2gOnlyThing", b2g: false },
+//   { name: "FancyControl", xbl: true },
+//   { name: "DisabledEverywhere", disabled: true },
 // ];
 //
 // See createInterfaceMap() below for a complete list of properties.
@@ -35,7 +39,7 @@ var ecmaGlobals =
     "Int32Array",
     "Int8Array",
     "InternalError",
-    {name: "Intl", b2g: false, android: false},
+    {name: "Intl", android: false},
     "Iterator",
     "JSON",
     "Map",
@@ -44,6 +48,8 @@ var ecmaGlobals =
     "Number",
     "Object",
     "Proxy",
+    "PushEvent",
+    "PushMessageData",
     "RangeError",
     "ReferenceError",
     "RegExp",
@@ -83,11 +89,11 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Blob",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    { name: "BroadcastChannel", pref: "dom.broadcastChannel.enabled" },
+    "BroadcastChannel",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    { name: "Cache", pref: "dom.caches.enabled" },
+    "Cache",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    { name: "CacheStorage", pref: "dom.caches.enabled" },
+    "CacheStorage",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Client",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -97,9 +103,13 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     { name: "DataStoreCursor", b2g: true },
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    "DOMCursor",
+// IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMError",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMException",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "DOMRequest",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "DOMStringList",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -141,13 +151,21 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "ImageData",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    "InstallEvent",
+    "MessageChannel",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MessageEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "MessagePort",
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    "Notification",
+// IMPORTANT: Do not change this list without review from a DOM peer!
     "Performance",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "PerformanceEntry",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "PerformanceMark",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "PerformanceMeasure",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "Promise",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -158,6 +176,8 @@ var interfaceNamesInGlobalScope =
     "ServiceWorker",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "ServiceWorkerGlobalScope",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    "ServiceWorkerRegistration",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "TextDecoder",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -173,7 +193,7 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "URLSearchParams",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-   { name: "WebSocket", pref: "dom.workers.websocket.enabled" },
+    "WebSocket",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "WindowClient",
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -186,11 +206,11 @@ var interfaceNamesInGlobalScope =
   ];
 // IMPORTANT: Do not change the list above without review from a DOM peer!
 
-function createInterfaceMap(prefMap, permissionMap, version, userAgent, isB2G) {
+function createInterfaceMap(permissionMap, version, userAgent, isB2G) {
   var isNightly = version.endsWith("a1");
-  var isRelease = !version.contains("a");
+  var isRelease = !version.includes("a");
   var isDesktop = !/Mobile|Tablet/.test(userAgent);
-  var isAndroid = !!navigator.userAgent.contains("Android");
+  var isAndroid = !!navigator.userAgent.includes("Android");
 
   var interfaceMap = {};
 
@@ -199,16 +219,18 @@ function createInterfaceMap(prefMap, permissionMap, version, userAgent, isB2G) {
     for (var entry of interfaces) {
       if (typeof(entry) === "string") {
         interfaceMap[entry] = true;
-      } else if ((entry.nightly === !isNightly) ||
-                 (entry.desktop === !isDesktop) ||
-                 (entry.android === !isAndroid) ||
-                 (entry.b2g === !isB2G) ||
-                 (entry.release === !isRelease) ||
-                 (entry.pref && !prefMap[entry.pref])  ||
-                 (entry.permission && !permissionMap[entry.permission])) {
-        interfaceMap[entry.name] = false;
       } else {
-        interfaceMap[entry.name] = true;
+        ok(!("pref" in entry), "Bogus pref annotation for " + entry.name);
+        if ((entry.nightly === !isNightly) ||
+            (entry.desktop === !isDesktop) ||
+            (entry.android === !isAndroid) ||
+            (entry.b2g === !isB2G) ||
+            (entry.release === !isRelease) ||
+            (entry.permission && !permissionMap[entry.permission])) {
+          interfaceMap[entry.name] = false;
+        } else {
+          interfaceMap[entry.name] = true;
+        }
       }
     }
   }
@@ -219,8 +241,8 @@ function createInterfaceMap(prefMap, permissionMap, version, userAgent, isB2G) {
   return interfaceMap;
 }
 
-function runTest(prefMap, permissionMap, version, userAgent, isB2G) {
-  var interfaceMap = createInterfaceMap(prefMap, permissionMap, version, userAgent, isB2G);
+function runTest(permissionMap, version, userAgent, isB2G) {
+  var interfaceMap = createInterfaceMap(permissionMap, version, userAgent, isB2G);
   for (var name of Object.getOwnPropertyNames(self)) {
     // An interface name should start with an upper case character.
     if (!/^[A-Z]/.test(name)) {
@@ -243,18 +265,6 @@ function runTest(prefMap, permissionMap, version, userAgent, isB2G) {
      "The following interface(s) are not enumerated: " + Object.keys(interfaceMap).join(", "));
 }
 
-function appendPrefs(prefs, interfaces) {
-  for (var entry of interfaces) {
-    if (entry.pref !== undefined && prefs.indexOf(entry.pref) === -1) {
-      prefs.push(entry.pref);
-    }
-  }
-}
-
-var prefs = [];
-appendPrefs(prefs, ecmaGlobals);
-appendPrefs(prefs, interfaceNamesInGlobalScope);
-
 function appendPermissions(permissions, interfaces) {
   for (var entry of interfaces) {
     if (entry.permission !== undefined &&
@@ -268,14 +278,12 @@ var permissions = [];
 appendPermissions(permissions, ecmaGlobals);
 appendPermissions(permissions, interfaceNamesInGlobalScope);
 
-workerTestGetPrefs(prefs, function(prefMap) {
-  workerTestGetPermissions(permissions, function(permissionMap) {
-    workerTestGetVersion(function(version) {
-      workerTestGetUserAgent(function(userAgent) {
-        workerTestGetIsB2G(function(isB2G) {
-          runTest(prefMap, permissionMap, version, userAgent, isB2G);
-          workerTestDone();
-	});
+workerTestGetPermissions(permissions, function(permissionMap) {
+  workerTestGetVersion(function(version) {
+    workerTestGetUserAgent(function(userAgent) {
+      workerTestGetIsB2G(function(isB2G) {
+        runTest(permissionMap, version, userAgent, isB2G);
+        workerTestDone();
       });
     });
   });

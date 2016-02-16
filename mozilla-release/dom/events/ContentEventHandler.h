@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -123,11 +124,13 @@ protected:
                                       LineBreakType aLineBreakType,
                                       bool aExpandToClusterBoundaries,
                                       uint32_t* aNewOffset = nullptr);
-  // Find the first textframe for the range, and get the start offset in
-  // the frame.
-  nsresult GetStartFrameAndOffset(nsRange* aRange,
-                                  nsIFrame** aFrame,
-                                  int32_t* aOffsetInFrame);
+  // If the aRange isn't in text node but next to a text node, this method
+  // modifies it in the text node.  Otherwise, not modified.
+  nsresult AdjustCollapsedRangeMaybeIntoTextNode(nsRange* aCollapsedRange);
+  // Find the first frame for the range and get the start offset in it.
+  nsresult GetStartFrameAndOffset(const nsRange* aRange,
+                                  nsIFrame*& aFrame,
+                                  int32_t& aOffsetInFrame);
   // Convert the frame relative offset to the root view relative offset.
   nsresult ConvertToRootViewRelativeOffset(nsIFrame* aFrame,
                                            nsRect& aRect);

@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +18,7 @@
 #include "nsNetCID.h"
 #include "nsNetUtil.h"
 #include "nsIURL.h"
+#include "nsContentUtils.h"
 
 namespace mozilla {
 namespace dom {
@@ -25,7 +27,6 @@ NS_IMPL_CYCLE_COLLECTION_CLASS(URL)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(URL)
   if (tmp->mSearchParams) {
-    tmp->mSearchParams->RemoveObserver(tmp);
     NS_IMPL_CYCLE_COLLECTION_UNLINK(mSearchParams)
   }
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -41,7 +42,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(URL)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-URL::URL(nsIURI* aURI)
+URL::URL(already_AddRefed<nsIURI> aURI)
   : mURI(aURI)
 {
 }
@@ -56,62 +57,61 @@ URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHa
 URL::Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
                  URL& aBase, ErrorResult& aRv)
 {
-  nsresult rv;
-  nsCOMPtr<nsIIOService> ioService(do_GetService(NS_IOSERVICE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return nullptr;
-  }
-
-  nsCOMPtr<nsIURI> uri;
-  rv = ioService->NewURI(NS_ConvertUTF16toUTF8(aUrl), nullptr, aBase.GetURI(),
-                         getter_AddRefs(uri));
-  if (NS_FAILED(rv)) {
-    nsAutoString label(aUrl);
-    aRv.ThrowTypeError(MSG_INVALID_URL, &label);
-    return nullptr;
-  }
-
-  nsRefPtr<URL> url = new URL(uri);
-  return url.forget();
+  return Constructor(aUrl, aBase.GetURI(), aRv);
 }
 
 /* static */ already_AddRefed<URL>
 URL::Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
-                  const nsAString& aBase, ErrorResult& aRv)
+                 const Optional<nsAString>& aBase, ErrorResult& aRv)
 {
-  nsresult rv;
-  nsCOMPtr<nsIIOService> ioService(do_GetService(NS_IOSERVICE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-    return nullptr;
+  if (aBase.WasPassed()) {
+    return Constructor(aUrl, aBase.Value(), aRv);
   }
 
+  return Constructor(aUrl, nullptr, aRv);
+}
+
+/* static */ already_AddRefed<URL>
+URL::Constructor(const GlobalObject& aGlobal, const nsAString& aUrl,
+                 const nsAString& aBase, ErrorResult& aRv)
+{
+  return Constructor(aUrl, aBase, aRv);
+}
+
+/* static */ already_AddRefed<URL>
+URL::Constructor(const nsAString& aUrl, const nsAString& aBase,
+                 ErrorResult& aRv)
+{
   nsCOMPtr<nsIURI> baseUri;
-  rv = ioService->NewURI(NS_ConvertUTF16toUTF8(aBase), nullptr, nullptr,
-                         getter_AddRefs(baseUri));
-  if (NS_FAILED(rv)) {
-    nsAutoString label(aBase);
-    aRv.ThrowTypeError(MSG_INVALID_URL, &label);
+  nsresult rv = NS_NewURI(getter_AddRefs(baseUri), aBase, nullptr, nullptr,
+                          nsContentUtils::GetIOService());
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    aRv.ThrowTypeError(MSG_INVALID_URL, &aBase);
     return nullptr;
   }
 
+  return Constructor(aUrl, baseUri, aRv);
+}
+
+/* static */
+already_AddRefed<URL>
+URL::Constructor(const nsAString& aUrl, nsIURI* aBase, ErrorResult& aRv)
+{
   nsCOMPtr<nsIURI> uri;
-  rv = ioService->NewURI(NS_ConvertUTF16toUTF8(aUrl), nullptr, baseUri,
-                         getter_AddRefs(uri));
-  if (NS_FAILED(rv)) {
-    nsAutoString label(aUrl);
-    aRv.ThrowTypeError(MSG_INVALID_URL, &label);
+  nsresult rv = NS_NewURI(getter_AddRefs(uri), aUrl, nullptr, aBase,
+                          nsContentUtils::GetIOService());
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    aRv.ThrowTypeError(MSG_INVALID_URL, &aUrl);
     return nullptr;
   }
 
-  nsRefPtr<URL> url = new URL(uri);
+  nsRefPtr<URL> url = new URL(uri.forget());
   return url.forget();
 }
 
 void
 URL::CreateObjectURL(const GlobalObject& aGlobal,
-                     File& aBlob,
+                     Blob& aBlob,
                      const objectURLOptions& aOptions,
                      nsAString& aResult,
                      ErrorResult& aError)
@@ -138,50 +138,63 @@ URL::CreateObjectURL(const GlobalObject& aGlobal, MediaSource& aSource,
                      nsAString& aResult,
                      ErrorResult& aError)
 {
-  CreateObjectURLInternal(aGlobal, &aSource,
-                          NS_LITERAL_CSTRING(MEDIASOURCEURI_SCHEME), aOptions,
-                          aResult, aError);
+  nsCOMPtr<nsIPrincipal> principal = nsContentUtils::ObjectPrincipal(aGlobal.Get());
+
+  nsCString url;
+  nsresult rv = nsHostObjectProtocolHandler::
+    AddDataEntry(NS_LITERAL_CSTRING(MEDIASOURCEURI_SCHEME),
+                 &aSource, principal, url);
+  if (NS_FAILED(rv)) {
+    aError.Throw(rv);
+    return;
+  }
+
+  nsCOMPtr<nsIRunnable> revocation = NS_NewRunnableFunction(
+    [url] {
+      nsHostObjectProtocolHandler::RemoveDataEntry(url);
+    });
+
+  nsContentUtils::RunInStableState(revocation.forget());
+
+  CopyASCIItoUTF16(url, aResult);
 }
 
 void
 URL::CreateObjectURLInternal(const GlobalObject& aGlobal, nsISupports* aObject,
                              const nsACString& aScheme,
                              const objectURLOptions& aOptions,
-                             nsAString& aResult, ErrorResult& aError)
+                             nsAString& aResult, ErrorResult& aRv)
 {
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (!global) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return;
+  }
+
   nsCOMPtr<nsIPrincipal> principal = nsContentUtils::ObjectPrincipal(aGlobal.Get());
 
   nsAutoCString url;
   nsresult rv = nsHostObjectProtocolHandler::AddDataEntry(aScheme, aObject,
                                                           principal, url);
   if (NS_FAILED(rv)) {
-    aError.Throw(rv);
+    aRv.Throw(rv);
     return;
   }
 
-  nsCOMPtr<nsPIDOMWindow> w = do_QueryInterface(aGlobal.GetAsSupports());
-  nsGlobalWindow* window = static_cast<nsGlobalWindow*>(w.get());
-
-  if (window) {
-    NS_PRECONDITION(window->IsInnerWindow(), "Should be inner window");
-
-    if (!window->GetExtantDoc()) {
-      aError.Throw(NS_ERROR_INVALID_POINTER);
-      return;
-    }
-
-    nsIDocument* doc = window->GetExtantDoc();
-    if (doc) {
-      doc->RegisterHostObjectUri(url);
-    }
-  }
-
+  global->RegisterHostObjectURI(url);
   CopyASCIItoUTF16(url, aResult);
 }
 
 void
-URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aURL)
+URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aURL,
+                     ErrorResult& aRv)
 {
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (!global) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return;
+  }
+
   nsIPrincipal* principal = nsContentUtils::ObjectPrincipal(aGlobal.Get());
 
   NS_LossyConvertUTF16toASCII asciiurl(aURL);
@@ -190,12 +203,8 @@ URL::RevokeObjectURL(const GlobalObject& aGlobal, const nsAString& aURL)
     nsHostObjectProtocolHandler::GetDataEntryPrincipal(asciiurl);
 
   if (urlPrincipal && principal->Subsumes(urlPrincipal)) {
-    nsCOMPtr<nsPIDOMWindow> w = do_QueryInterface(aGlobal.GetAsSupports());
-    nsGlobalWindow* window = static_cast<nsGlobalWindow*>(w.get());
-
-    if (window && window->GetExtantDoc()) {
-      window->GetExtantDoc()->UnregisterHostObjectUri(asciiurl);
-    }
+    nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+    global->UnregisterHostObjectURI(asciiurl);
     nsHostObjectProtocolHandler::RemoveDataEntry(asciiurl);
   }
 }
@@ -364,7 +373,7 @@ URL::UpdateURLSearchParams()
     }
   }
 
-  mSearchParams->ParseInput(search, this);
+  mSearchParams->ParseInput(search);
 }
 
 void
@@ -491,22 +500,6 @@ URL::SearchParams()
 }
 
 void
-URL::SetSearchParams(URLSearchParams& aSearchParams)
-{
-  if (mSearchParams) {
-    mSearchParams->RemoveObserver(this);
-  }
-
-  // the observer will be cleared using the cycle collector.
-  mSearchParams = &aSearchParams;
-  mSearchParams->AddObserver(this);
-
-  nsAutoString search;
-  mSearchParams->Serialize(search);
-  SetSearchInternal(search);
-}
-
-void
 URL::GetHash(nsAString& aHash, ErrorResult& aRv) const
 {
   aHash.Truncate();
@@ -515,7 +508,7 @@ URL::GetHash(nsAString& aHash, ErrorResult& aRv) const
   nsresult rv = mURI->GetRef(ref);
   if (NS_SUCCEEDED(rv) && !ref.IsEmpty()) {
     aHash.Assign(char16_t('#'));
-    if (nsContentUtils::EncodeDecodeURLHash()) {
+    if (nsContentUtils::GettersDecodeURLHash()) {
       NS_UnescapeURL(ref); // XXX may result in random non-ASCII bytes!
     }
     AppendUTF8toUTF16(ref, aHash);
@@ -540,8 +533,7 @@ void
 URL::CreateSearchParamsIfNeeded()
 {
   if (!mSearchParams) {
-    mSearchParams = new URLSearchParams();
-    mSearchParams->AddObserver(this);
+    mSearchParams = new URLSearchParams(this);
     UpdateURLSearchParams();
   }
 }

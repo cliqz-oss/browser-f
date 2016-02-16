@@ -1,4 +1,5 @@
-/* -*- Mode: c++; c-basic-offset: 2; indent-tabs-mode: nil; tab-width: 40 -*- */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -19,6 +20,7 @@ class Console;
 class Function;
 class Promise;
 class RequestOrUSVString;
+class ServiceWorkerRegistrationWorkerThread;
 
 namespace cache {
 
@@ -79,10 +81,10 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(WorkerGlobalScope,
                                                          DOMEventTargetHelper)
 
-  already_AddRefed<WorkerGlobalScope>
+  WorkerGlobalScope*
   Self()
   {
-    return nsRefPtr<WorkerGlobalScope>(this).forget();
+    return this;
   }
 
   Console*
@@ -198,6 +200,7 @@ class ServiceWorkerGlobalScope final : public WorkerGlobalScope
 {
   const nsString mScope;
   nsRefPtr<ServiceWorkerClients> mClients;
+  nsRefPtr<ServiceWorkerRegistrationWorkerThread> mRegistration;
 
   ~ServiceWorkerGlobalScope();
 
@@ -212,20 +215,23 @@ public:
   WrapGlobalObject(JSContext* aCx,
                    JS::MutableHandle<JSObject*> aReflector) override;
 
+  static bool
+  InterceptionEnabled(JSContext* aCx, JSObject* aObj);
+
   void
   GetScope(nsString& aScope) const
   {
     aScope = mScope;
   }
 
-  void
-  Update();
-
-  already_AddRefed<Promise>
-  Unregister(ErrorResult& aRv);
-
   ServiceWorkerClients*
   Clients();
+
+  ServiceWorkerRegistrationWorkerThread*
+  Registration();
+
+  already_AddRefed<Promise>
+  SkipWaiting(ErrorResult& aRv);
 
   IMPL_EVENT_HANDLER(activate)
   IMPL_EVENT_HANDLER(beforeevicted)
@@ -233,6 +239,10 @@ public:
   IMPL_EVENT_HANDLER(fetch)
   IMPL_EVENT_HANDLER(install)
   IMPL_EVENT_HANDLER(message)
+
+  IMPL_EVENT_HANDLER(push)
+  IMPL_EVENT_HANDLER(pushsubscriptionchange)
+
 };
 
 class WorkerDebuggerGlobalScope final : public DOMEventTargetHelper,
@@ -265,6 +275,16 @@ public:
   GetGlobal(JSContext* aCx, JS::MutableHandle<JSObject*> aGlobal);
 
   void
+  CreateSandbox(JSContext* aCx, const nsAString& aName,
+                JS::Handle<JSObject*> aPrototype,
+                JS::MutableHandle<JSObject*> aResult);
+
+  void
+  LoadSubScript(JSContext* aCx, const nsAString& aURL,
+                const Optional<JS::Handle<JSObject*>>& aSandbox,
+                ErrorResult& aRv);
+
+  void
   EnterEventLoop();
 
   void
@@ -274,6 +294,9 @@ public:
   PostMessage(const nsAString& aMessage);
 
   IMPL_EVENT_HANDLER(message)
+
+  void
+  SetImmediate(JSContext* aCx, Function& aHandler, ErrorResult& aRv);
 
   void
   ReportError(JSContext* aCx, const nsAString& aMessage);

@@ -405,7 +405,7 @@ GetNewPluginLibrary(nsPluginTag *aPluginTag)
   }
 
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
-    return PluginModuleContentParent::LoadModule(aPluginTag->mId);
+    return PluginModuleContentParent::LoadModule(aPluginTag->mId, aPluginTag);
   }
 
   if (nsNPAPIPlugin::RunPluginOOP(aPluginTag)) {
@@ -1066,7 +1066,7 @@ _destroystream(NPP npp, NPStream *pstream, NPError reason)
     // the reference until it is to be deleted here. Deleting the wrapper will
     // release the wrapped nsIOutputStream.
     //
-    // The NPStream the plugin references should always be a sub-object of it's own
+    // The NPStream the plugin references should always be a sub-object of its own
     // 'ndata', which is our nsNPAPIStramWrapper. See bug 548441.
     NS_ASSERTION((char*)streamWrapper <= (char*)pstream &&
                  ((char*)pstream) + sizeof(*pstream)
@@ -1084,23 +1084,7 @@ _destroystream(NPP npp, NPStream *pstream, NPError reason)
 void
 _status(NPP npp, const char *message)
 {
-  if (!NS_IsMainThread()) {
-    NPN_PLUGIN_LOG(PLUGIN_LOG_ALWAYS,("NPN_status called from the wrong thread\n"));
-    return;
-  }
-  NPN_PLUGIN_LOG(PLUGIN_LOG_NORMAL, ("NPN_Status: npp=%p, message=%s\n",
-                                     (void*)npp, message));
-
-  if (!npp || !npp->ndata) {
-    NS_WARNING("_status: npp or npp->ndata == 0");
-    return;
-  }
-
-  nsNPAPIPluginInstance *inst = (nsNPAPIPluginInstance*)npp->ndata;
-
-  PluginDestructionGuard guard(inst);
-
-  inst->ShowStatus(message);
+  // NPN_Status is no longer supported.
 }
 
 void
@@ -1112,7 +1096,7 @@ _memfree (void *ptr)
   NPN_PLUGIN_LOG(PLUGIN_LOG_NOISY, ("NPN_MemFree: ptr=%p\n", ptr));
 
   if (ptr)
-    nsMemory::Free(ptr);
+    free(ptr);
 }
 
 uint32_t
@@ -1498,7 +1482,9 @@ _evaluate(NPP npp, NPObject* npobj, NPString *script, NPVariant *result)
     return false;
   }
 
-  dom::AutoEntryScript aes(win);
+  nsAutoMicroTask mt;
+  dom::AutoEntryScript aes(win, "NPAPI NPN_evaluate");
+  aes.TakeOwnershipOfErrorReporting();
   JSContext* cx = aes.cx();
 
   JS::Rooted<JSObject*> obj(cx, nsNPObjWrapper::GetNewOrUsed(npp, cx, npobj));
@@ -1848,7 +1834,7 @@ _releasevariantvalue(NPVariant* variant)
           }
         }
 #else
-        NS_Free((void *)s->UTF8Characters);
+        free((void *)s->UTF8Characters);
 #endif
       }
       break;
@@ -1954,7 +1940,7 @@ _getvalue(NPP npp, NPNVariable variable, void *result)
     return NPERR_GENERIC_ERROR;
 #endif
 
-#if defined(XP_WIN) || (MOZ_WIDGET_GTK == 2) || defined(MOZ_WIDGET_QT)
+#if defined(XP_WIN) || defined(MOZ_WIDGET_GTK) || defined(MOZ_WIDGET_QT)
   case NPNVnetscapeWindow: {
     if (!npp || !npp->ndata)
       return NPERR_INVALID_INSTANCE_ERROR;
@@ -2468,10 +2454,10 @@ _requestread(NPStream *pstream, NPByteRange *rangeList)
 
 #ifdef PLUGIN_LOGGING
   for(NPByteRange * range = rangeList; range != nullptr; range = range->next)
-    PR_LOG(nsPluginLogging::gNPNLog,PLUGIN_LOG_NOISY,
+    MOZ_LOG(nsPluginLogging::gNPNLog,PLUGIN_LOG_NOISY,
     ("%i-%i", range->offset, range->offset + range->length - 1));
 
-  PR_LOG(nsPluginLogging::gNPNLog,PLUGIN_LOG_NOISY, ("\n\n"));
+  MOZ_LOG(nsPluginLogging::gNPNLog,PLUGIN_LOG_NOISY, ("\n\n"));
   PR_LogFlush();
 #endif
 
@@ -2539,7 +2525,7 @@ _memalloc (uint32_t size)
     NPN_PLUGIN_LOG(PLUGIN_LOG_NORMAL,("NPN_memalloc called from the wrong thread\n"));
   }
   NPN_PLUGIN_LOG(PLUGIN_LOG_NOISY, ("NPN_MemAlloc: size=%d\n", size));
-  return nsMemory::Alloc(size);
+  return moz_xmalloc(size);
 }
 
 // Deprecated, only stubbed out

@@ -8,6 +8,7 @@
 #if defined(HAVE_CONFIG_H)
 #include "config.h"
 #endif
+#include <algorithm>
 #include <windows.h>
 #include <mmdeviceapi.h>
 #include <windef.h>
@@ -219,6 +220,17 @@ struct cubeb_stream
   IAudioRenderClient * render_client;
   /* Interface pointer to use the volume facilities. */
   IAudioStreamVolume * audio_stream_volume;
+  /* Interface pointer to use the stream audio clock. */
+  IAudioClock * audio_clock;
+  /* Frames written to the stream since it was opened. Reset on device
+   * change. Uses mix_params.rate. */
+  UINT64 frames_written;
+  /* Frames written to the (logical) stream since it was first
+   * created. Updated on device change. Uses stream_params.rate. */
+  UINT64 total_frames_written;
+  /* Last valid reported stream position.  Used to ensure the position
+   * reported by stream_get_position increases monotonically. */
+  UINT64 prev_position;
   /* Device enumerator to be able to be notified when the default
    * device change. */
   IMMDeviceEnumerator * device_enumerator;
@@ -236,8 +248,9 @@ struct cubeb_stream
   HANDLE refill_event;
   /* Each cubeb_stream has its own thread. */
   HANDLE thread;
-  /* We synthesize our clock from the callbacks. */
-  LONG64 clock;
+  /* The lock protects all members that are touched by the render thread or
+     change during a device reset, including: audio_clock, audio_stream_volume,
+     client, frames_written, mix_params, total_frames_written, prev_position. */
   owned_critical_section * stream_reset_lock;
   /* Maximum number of frames we can be requested in a callback. */
   uint32_t buffer_frame_count;
@@ -342,16 +355,6 @@ private:
 };
 
 namespace {
-void clock_add(cubeb_stream * stm, LONG64 value)
-{
-  InterlockedExchangeAdd64(&stm->clock, value);
-}
-
-LONG64 clock_get(cubeb_stream * stm)
-{
-  return InterlockedExchangeAdd64(&stm->clock, 0);
-}
-
 bool should_upmix(cubeb_stream * stream)
 {
   return stream->mix_params.channels > stream->stream_params.channels;
@@ -362,20 +365,18 @@ bool should_downmix(cubeb_stream * stream)
   return stream->mix_params.channels < stream->stream_params.channels;
 }
 
-float stream_to_mix_samplerate_ratio(cubeb_stream * stream)
+double stream_to_mix_samplerate_ratio(cubeb_stream * stream)
 {
-  auto_lock lock(stream->stream_reset_lock);
-  return float(stream->stream_params.rate) / stream->mix_params.rate;
+  stream->stream_reset_lock->assert_current_thread_owns();
+  return double(stream->stream_params.rate) / stream->mix_params.rate;
 }
 
-/* Upmix function, copies a mono channel in two interleaved
- * stereo channel. |out| has to be twice as long as |in| */
+/* Upmix function, copies a mono channel into L and R */
 template<typename T>
 void
-mono_to_stereo(T * in, long insamples, T * out)
+mono_to_stereo(T * in, long insamples, T * out, int32_t out_channels)
 {
-  int j = 0;
-  for (int i = 0; i < insamples; ++i, j += 2) {
+  for (int i = 0, j = 0; i < insamples; ++i, j += out_channels) {
     out[j] = out[j + 1] = in[i];
   }
 }
@@ -384,22 +385,32 @@ template<typename T>
 void
 upmix(T * in, long inframes, T * out, int32_t in_channels, int32_t out_channels)
 {
-  XASSERT(out_channels >= in_channels);
+  XASSERT(out_channels >= in_channels && in_channels > 0);
+
+  /* Either way, if we have 2 or more channels, the first two are L and R. */
   /* If we are playing a mono stream over stereo speakers, copy the data over. */
-  if (in_channels == 1 && out_channels == 2) {
-    mono_to_stereo(in, inframes, out);
+  if (in_channels == 1 && out_channels >= 2) {
+    mono_to_stereo(in, inframes, out, out_channels);
+  } else {
+    /* Copy through. */
+    for (int i = 0, o = 0; i < inframes * in_channels;
+        i += in_channels, o += out_channels) {
+      for (int j = 0; j < in_channels; ++j) {
+        out[o + j] = in[i + j];
+      }
+    }
+  }
+
+  /* Check if more channels. */
+  if (out_channels <= 2) {
     return;
   }
-  /* Otherwise, put silence in other channels. */
-  long out_index = 0;
-  for (long i = 0; i < inframes * in_channels; i += in_channels) {
-    for (int j = 0; j < in_channels; ++j) {
-      out[out_index + j] = in[i + j];
+
+  /* Put silence in remaining channels. */
+  for (long i = 0, o = 0; i < inframes; ++i, o += out_channels) {
+    for (int j = 2; j < out_channels; ++j) {
+      out[o + j] = 0.0;
     }
-    for (int j = in_channels; j < out_channels; ++j) {
-      out[out_index + j] = 0.0;
-    }
-    out_index += out_channels;
   }
 }
 
@@ -429,7 +440,7 @@ frames_to_bytes_before_mix(cubeb_stream * stm, size_t frames)
   return stream_frame_size * frames;
 }
 
-void
+long
 refill(cubeb_stream * stm, float * data, long frames_needed)
 {
   /* If we need to upmix after resampling, resample into the mix buffer to
@@ -442,12 +453,12 @@ refill(cubeb_stream * stm, float * data, long frames_needed)
   }
 
   long out_frames = cubeb_resampler_fill(stm->resampler, dest, frames_needed);
+  /* TODO: Report out_frames < 0 as an error via the API. */
+  XASSERT(out_frames >= 0);
 
-  clock_add(stm, roundf(frames_needed * stream_to_mix_samplerate_ratio(stm)));
-
-  /* XXX: Handle this error. */
-  if (out_frames < 0) {
-    XASSERT(false);
+  {
+    auto_lock lock(stm->stream_reset_lock);
+    stm->frames_written += out_frames;
   }
 
   /* Go in draining mode if we got fewer frames than requested. */
@@ -467,6 +478,8 @@ refill(cubeb_stream * stm, float * data, long frames_needed)
     downmix(dest, out_frames, data,
             stm->stream_params.channels, stm->mix_params.channels);
   }
+
+  return out_frames;
 }
 
 static unsigned int __stdcall
@@ -568,9 +581,10 @@ wasapi_stream_render_loop(LPVOID stream)
       BYTE * data;
       hr = stm->render_client->GetBuffer(available, &data);
       if (SUCCEEDED(hr)) {
-        refill(stm, reinterpret_cast<float *>(data), available);
+        long wrote = refill(stm, reinterpret_cast<float *>(data), available);
+        XASSERT(wrote == available || stm->draining);
 
-        hr = stm->render_client->ReleaseBuffer(available, 0);
+        hr = stm->render_client->ReleaseBuffer(wrote, 0);
         if (FAILED(hr)) {
           LOG("failed to release buffer.\n");
           is_playing = false;
@@ -678,6 +692,40 @@ HRESULT get_default_endpoint(IMMDevice ** device)
   SafeRelease(enumerator);
 
   return ERROR_SUCCESS;
+}
+
+double
+current_stream_delay(cubeb_stream * stm)
+{
+  stm->stream_reset_lock->assert_current_thread_owns();
+
+  /* If the default audio endpoint went away during playback and we weren't
+     able to configure a new one, it's possible the caller may call this
+     before the error callback has propogated back. */
+  if (!stm->audio_clock) {
+    return 0;
+  }
+
+  UINT64 freq;
+  HRESULT hr = stm->audio_clock->GetFrequency(&freq);
+  if (FAILED(hr)) {
+    LOG("GetFrequency failed: %x\n", hr);
+    return 0;
+  }
+
+  UINT64 pos;
+  hr = stm->audio_clock->GetPosition(&pos, NULL);
+  if (FAILED(hr)) {
+    LOG("GetPosition failed: %x\n", hr);
+    return 0;
+  }
+
+  double cur_pos = static_cast<double>(pos) / freq;
+  double max_pos = static_cast<double>(stm->frames_written)  / stm->mix_params.rate;
+  double delay = max_pos - cur_pos;
+  XASSERT(delay >= 0);
+
+  return delay;
 }
 } // namespace anonymous
 
@@ -909,9 +957,6 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
     return;
   }
 
-  /* Otherwise, the hardware supports more than two channels. */
-  WAVEFORMATEX hw_mixformat = **mix_format;
-
   /* The docs say that GetMixFormat is always of type WAVEFORMATEXTENSIBLE [1],
    * so the reinterpret_cast below should be safe. In practice, this is not
    * true, and we just want to bail out and let the rest of the code find a good
@@ -921,9 +966,13 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
     return;
   }
 
+  WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>(*mix_format);
+
+  /* Stash a copy of the original mix format in case we need to restore it later. */
+  WAVEFORMATEXTENSIBLE hw_mix_format = *format_pcm;
+
   /* The hardware is in surround mode, we want to only use front left and front
    * right. Try that, and check if it works. */
-  WAVEFORMATEXTENSIBLE * format_pcm = reinterpret_cast<WAVEFORMATEXTENSIBLE *>((*mix_format));
   switch (stream_params->channels) {
     case 1: /* Mono */
       format_pcm->dwChannelMask = KSAUDIO_SPEAKER_MONO;
@@ -960,7 +1009,7 @@ handle_channel_layout(cubeb_stream * stm,  WAVEFORMATEX ** mix_format, const cub
     /* Not supported, no suggestion. This should not happen, but it does in the
      * field with some sound cards. We restore the mix format, and let the rest
      * of the code figure out the right conversion path. */
-    **mix_format = hw_mixformat;
+    *reinterpret_cast<WAVEFORMATEXTENSIBLE *>(*mix_format) = hw_mix_format;
   } else if (hr == S_OK) {
     LOG("Requested format accepted by WASAPI.\n");
   }
@@ -1059,6 +1108,14 @@ int setup_wasapi_stream(cubeb_stream * stm)
     return CUBEB_ERROR;
   }
 
+  XASSERT(stm->frames_written == 0);
+  hr = stm->client->GetService(__uuidof(IAudioClock),
+                               (void **)&stm->audio_clock);
+  if (FAILED(hr)) {
+    LOG("Could not get the IAudioClock %x.\n", hr);
+    return CUBEB_ERROR;
+  }
+
   /* If we are playing a mono stream, we only resample one channel,
    * and copy it over, so we are always resampling the number
    * of channels of the stream, not the number of channels
@@ -1103,15 +1160,6 @@ wasapi_stream_init(cubeb * context, cubeb_stream ** stream,
   stm->stream_params = stream_params;
   stm->draining = false;
   stm->latency = latency;
-  stm->clock = 0;
-
-  /* Null out WASAPI-specific state */
-  stm->resampler = NULL;
-  stm->client = NULL;
-  stm->render_client = NULL;
-  stm->audio_stream_volume = NULL;
-  stm->device_enumerator = NULL;
-  stm->notification_client = NULL;
 
   stm->stream_reset_lock = new owned_critical_section();
 
@@ -1168,6 +1216,11 @@ void close_wasapi_stream(cubeb_stream * stm)
   SafeRelease(stm->audio_stream_volume);
   stm->audio_stream_volume = NULL;
 
+  SafeRelease(stm->audio_clock);
+  stm->audio_clock = NULL;
+  stm->total_frames_written += round(stm->frames_written * stream_to_mix_samplerate_ratio(stm));
+  stm->frames_written = 0;
+
   if (stm->resampler) {
     cubeb_resampler_destroy(stm->resampler);
     stm->resampler = NULL;
@@ -1203,6 +1256,10 @@ int wasapi_stream_start(cubeb_stream * stm)
   auto_lock lock(stm->stream_reset_lock);
 
   XASSERT(stm && !stm->thread && !stm->shutdown_event);
+
+  if (!stm->client) {
+    return CUBEB_ERROR;
+  }
 
   HRESULT hr = stm->client->Start();
   if (hr == AUDCLNT_E_DEVICE_INVALIDATED) {
@@ -1273,8 +1330,24 @@ int wasapi_stream_stop(cubeb_stream * stm)
 int wasapi_stream_get_position(cubeb_stream * stm, uint64_t * position)
 {
   XASSERT(stm && position);
+  auto_lock lock(stm->stream_reset_lock);
 
-  *position = clock_get(stm);
+  /* Calculate how far behind the current stream head the playback cursor is. */
+  uint64_t stream_delay = current_stream_delay(stm) * stm->stream_params.rate;
+
+  /* Calculate the logical stream head in frames at the stream sample rate. */
+  uint64_t max_pos = stm->total_frames_written +
+                     round(stm->frames_written * stream_to_mix_samplerate_ratio(stm));
+
+  *position = max_pos;
+  if (stream_delay <= *position) {
+    *position -= stream_delay;
+  }
+
+  if (*position < stm->prev_position) {
+    *position = stm->prev_position;
+  }
+  stm->prev_position = *position;
 
   return CUBEB_OK;
 }
@@ -1307,6 +1380,10 @@ int wasapi_stream_set_volume(cubeb_stream * stm, float volume)
   float volumes[10];
 
   auto_lock lock(stm->stream_reset_lock);
+
+  if (!stm->audio_stream_volume) {
+    return CUBEB_ERROR;
+  }
 
   hr = stm->audio_stream_volume->GetChannelCount(&channels);
   if (hr != S_OK) {

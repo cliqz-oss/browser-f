@@ -10,3 +10,6 @@
 <!ENTITY addonAction.disable                    "Deaktivieren">
 <!ENTITY addonAction.uninstall                  "Deinstallieren">
 <!ENTITY addonAction.undo                       "Rückgängig">
+
+<!ENTITY addonUnsigned.message                  "Dieses Add-on konnte von &brandShortName; nicht verifiziert werden.">
+<!ENTITY addonUnsigned.learnMore                "Weitere Informationen">

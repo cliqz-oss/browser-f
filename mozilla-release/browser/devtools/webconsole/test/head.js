@@ -15,7 +15,6 @@ let {Utils: WebConsoleUtils} = require("devtools/toolkit/webconsole/utils");
 let {Messages} = require("devtools/webconsole/console-output");
 const asyncStorage = require("devtools/toolkit/shared/async-storage");
 
-// promise._reportErrors = true; // please never leave me.
 //Services.prefs.setBoolPref("devtools.debugger.log", true);
 
 let gPendingOutputTest = 0;
@@ -227,6 +226,8 @@ let closeConsole = Task.async(function* (aTab) {
  */
 function waitForContextMenu(aPopup, aButton, aOnShown, aOnHidden)
 {
+  let deferred = promise.defer();
+
   function onPopupShown() {
     info("onPopupShown");
     aPopup.removeEventListener("popupshown", onPopupShown);
@@ -246,15 +247,29 @@ function waitForContextMenu(aPopup, aButton, aOnShown, aOnHidden)
     deferred.resolve(aPopup);
   }
 
-  let deferred = promise.defer();
   aPopup.addEventListener("popupshown", onPopupShown);
 
   info("wait for the context menu to open");
-  let eventDetails = { type: "contextmenu", button: 2};
+  let eventDetails = {type: "contextmenu", button: 2};
   EventUtils.synthesizeMouse(aButton, 2, 2, eventDetails,
                              aButton.ownerDocument.defaultView);
   return deferred.promise;
 }
+
+/**
+ * Listen for a new tab to open and return a promise that resolves when one
+ * does and completes the load event.
+ * @return a promise that resolves to the tab object
+ */
+let waitForTab = Task.async(function*() {
+  info("Waiting for a tab to open");
+  yield once(gBrowser.tabContainer, "TabOpen");
+  let tab = gBrowser.selectedTab;
+  let browser = tab.linkedBrowser;
+  yield once(browser, "load", true);
+  info("The tab load completed");
+  return tab;
+});
 
 /**
  * Dump the output of all open Web Consoles - used only for debugging purposes.
@@ -811,7 +826,7 @@ function openDebugger(aOptions = {})
 
   let target = TargetFactory.forTab(aOptions.tab);
   let toolbox = gDevTools.getToolbox(target);
-  let dbgPanelAlreadyOpen = toolbox.getPanel("jsdebugger");
+  let dbgPanelAlreadyOpen = toolbox && toolbox.getPanel("jsdebugger");
 
   gDevTools.showToolbox(target, "jsdebugger").then(function onSuccess(aToolbox) {
     let panel = aToolbox.getCurrentPanel();
@@ -840,6 +855,24 @@ function openDebugger(aOptions = {})
   });
 
   return deferred.promise;
+}
+
+/**
+ * Returns true if the caret in the debugger editor is placed at the specified
+ * position.
+ * @param  aPanel The debugger panel.
+ * @param {number} aLine The line number.
+ * @param {number} [aCol] The column number.
+ * @returns {boolean}
+ */
+function isDebuggerCaretPos(aPanel, aLine, aCol = 1) {
+  let editor = aPanel.panelWin.DebuggerView.editor;
+  let cursor = editor.getCursor();
+
+  // Source editor starts counting line and column numbers from 0.
+  info("Current editor caret position: " + (cursor.line + 1) + ", " +
+    (cursor.ch + 1));
+  return cursor.line == (aLine - 1) && cursor.ch == (aCol - 1);
 }
 
 /**
@@ -893,6 +926,7 @@ function openDebugger(aOptions = {})
  *            - source: object of the shape { url, line }. This is used to
  *            match the source URL and line number of the error message or
  *            console API call.
+ *            - prefix: prefix text to check for in the prefix element.
  *            - stacktrace: array of objects of the form { file, fn, line } that
  *            can match frames in the stacktrace associated with the message.
  *            - groupDepth: number used to check the depth of the message in
@@ -1278,6 +1312,11 @@ function waitForMessages(aOptions)
       aRule.clickableElements = clickables;
     }
 
+    if ("prefix" in aRule) {
+      let prefixNode = aElement.querySelector(".prefix");
+      is(prefixNode && prefixNode.textContent, aRule.prefix, "Check prefix");
+    }
+
     let count = aRule.count || 1;
     if (!aRule.matched) {
       aRule.matched = new Set();
@@ -1421,6 +1460,9 @@ function whenDelayedStartupFinished(aWindow, aCallback)
  *        opening vview for them is very slow (they can cause timeouts in debug
  *        builds).
  *
+ *        - consoleOutput: string|RegExp, optional, expected consoleOutput
+ *        If not provided consoleOuput = output;
+ *
  *        - printOutput: string|RegExp, optional, expected output for
  *        |print(input)|. If this is not provided, printOutput = output.
  *
@@ -1462,11 +1504,14 @@ function checkOutputForInputs(hud, inputTests)
     hud.jsterm.clearOutput();
     hud.jsterm.execute("console.log(" + entry.input + ")");
 
+    let consoleOutput = "consoleOutput" in entry ?
+                        entry.consoleOutput : entry.output;
+
     let [result] = yield waitForMessages({
       webconsole: hud,
       messages: [{
-        name: "console.log() output: " + entry.output,
-        text: entry.output,
+        name: "console.log() output: " + consoleOutput,
+        text: consoleOutput,
         category: CATEGORY_WEBDEV,
         severity: SEVERITY_LOG,
       }],
@@ -1474,7 +1519,8 @@ function checkOutputForInputs(hud, inputTests)
 
     if (typeof entry.inspectorIcon == "boolean") {
       let msg = [...result.matched][0];
-      yield checkLinkToInspector(entry, msg);
+      info("Checking Inspector Link: " + entry.input);
+      yield checkLinkToInspector(entry.inspectorIcon, msg);
     }
   }
 
@@ -1516,7 +1562,8 @@ function checkOutputForInputs(hud, inputTests)
       yield checkObjectClick(entry, msg);
     }
     if (typeof entry.inspectorIcon == "boolean") {
-      yield checkLinkToInspector(entry, msg);
+      info("Checking Inspector Link: " + entry.input);
+      yield checkLinkToInspector(entry.inspectorIcon, msg);
     }
   }
 
@@ -1554,30 +1601,6 @@ function checkOutputForInputs(hud, inputTests)
     }
 
     yield promise.resolve(null);
-  }
-
-  function checkLinkToInspector(entry, msg)
-  {
-    info("Checking Inspector Link: " + entry.input);
-    let elementNodeWidget = [...msg._messageObject.widgets][0];
-    if (!elementNodeWidget) {
-      ok(!entry.inspectorIcon, "The message has no ElementNode widget");
-      return;
-    }
-
-    return elementNodeWidget.linkToInspector().then(() => {
-      // linkToInspector resolved, check for the .open-inspector element
-      if (entry.inspectorIcon) {
-        ok(msg.querySelectorAll(".open-inspector").length,
-          "The ElementNode widget is linked to the inspector");
-      } else {
-        ok(!msg.querySelectorAll(".open-inspector").length,
-          "The ElementNode widget isn't linked to the inspector");
-      }
-    }, () => {
-      // linkToInspector promise rejected, node not linked to inspector
-      ok(!entry.inspectorIcon, "The ElementNode widget isn't linked to the inspector");
-    });
   }
 
   function onVariablesViewOpen(entry, {resolve, reject}, event, view, options)
@@ -1644,6 +1667,36 @@ function once(target, eventName, useCapture=false) {
   }
 
   return deferred.promise;
+}
+
+/**
+ * Checks a link to the inspector
+ *
+ * @param {boolean} hasLinkToInspector Set to true if the message should
+ *  link to the inspector panel.
+ * @param {element} msg The message to test.
+ */
+function checkLinkToInspector(hasLinkToInspector, msg)
+{
+  let elementNodeWidget = [...msg._messageObject.widgets][0];
+  if (!elementNodeWidget) {
+    ok(!hasLinkToInspector, "The message has no ElementNode widget");
+    return;
+  }
+
+  return elementNodeWidget.linkToInspector().then(() => {
+    // linkToInspector resolved, check for the .open-inspector element
+    if (hasLinkToInspector) {
+      ok(msg.querySelectorAll(".open-inspector").length,
+        "The ElementNode widget is linked to the inspector");
+    } else {
+      ok(!msg.querySelectorAll(".open-inspector").length,
+        "The ElementNode widget isn't linked to the inspector");
+    }
+  }, () => {
+    // linkToInspector promise rejected, node not linked to inspector
+    ok(!hasLinkToInspector, "The ElementNode widget isn't linked to the inspector");
+  });
 }
 
 function getSourceActor(aSources, aURL) {

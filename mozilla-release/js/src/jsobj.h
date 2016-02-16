@@ -33,12 +33,9 @@ struct ClassInfo;
 
 namespace js {
 
-class AutoPropertyDescriptorVector;
+typedef AutoVectorRooter<PropertyDescriptor> AutoPropertyDescriptorVector;
 class GCMarker;
-struct NativeIterator;
 class Nursery;
-class ObjectElements;
-struct StackShape;
 
 namespace gc {
 class RelocationOverlay;
@@ -75,11 +72,7 @@ extern const Class JSONClass;
 extern const Class MathClass;
 
 class GlobalObject;
-class MapObject;
 class NewObjectCache;
-class NormalArgumentsObject;
-class SetObject;
-class StrictArgumentsObject;
 
 // Forward declarations, required for later friend declarations.
 bool PreventExtensions(JSContext* cx, JS::HandleObject obj, JS::ObjectOpResult& result);
@@ -162,9 +155,8 @@ class JSObject : public js::gc::Cell
         return group_->lazy();
     }
 
-    JSCompartment* compartment() const {
-        return group_->compartment();
-    }
+    JSCompartment* compartment() const { return group_->compartment(); }
+    JSCompartment* maybeCompartment() const { return compartment(); }
 
     inline js::Shape* maybeShape() const;
     inline js::Shape* ensureShape(js::ExclusiveContext* cx);
@@ -224,16 +216,35 @@ class JSObject : public js::gc::Cell
         return setFlags(cx, js::BaseShape::WATCHED, GENERATE_SHAPE);
     }
 
-    /* See InterpreterFrame::varObj. */
-    inline bool isQualifiedVarObj();
+    // A "qualified" varobj is the object on which "qualified" variable
+    // declarations (i.e., those defined with "var") are kept.
+    //
+    // Conceptually, when a var binding is defined, it is defined on the
+    // innermost qualified varobj on the scope chain.
+    //
+    // Function scopes (CallObjects) are qualified varobjs, and there can be
+    // no other qualified varobj that is more inner for var bindings in that
+    // function. As such, all references to local var bindings in a function
+    // may be statically bound to the function scope. This is subject to
+    // further optimization. Unaliased bindings inside functions reside
+    // entirely on the frame, not in CallObjects.
+    //
+    // Global scopes are also qualified varobjs. It is possible to statically
+    // know, for a given script, that are no more inner qualified varobjs, so
+    // free variable references can be statically bound to the global.
+    //
+    // Finally, there are non-syntactic qualified varobjs used by embedders
+    // (e.g., Gecko and XPConnect), as they often wish to run scripts under a
+    // scope that captures var bindings.
+    inline bool isQualifiedVarObj() const;
     bool setQualifiedVarObj(js::ExclusiveContext* cx) {
         return setFlags(cx, js::BaseShape::QUALIFIED_VAROBJ);
     }
 
-    inline bool isUnqualifiedVarObj();
-    bool setUnqualifiedVarObj(js::ExclusiveContext* cx) {
-        return setFlags(cx, js::BaseShape::UNQUALIFIED_VAROBJ);
-    }
+    // An "unqualified" varobj is the object on which "unqualified"
+    // assignments (i.e., bareword assignments for which the LHS does not
+    // exist on the scope chain) are kept.
+    inline bool isUnqualifiedVarObj() const;
 
     /*
      * Objects with an uncacheable proto can have their prototype mutated
@@ -261,9 +272,23 @@ class JSObject : public js::gc::Cell
      */
     inline bool isIndexed() const;
 
+    /*
+     * If this object was instantiated with `new Ctor`, return the constructor's
+     * display atom. Otherwise, return nullptr.
+     */
+    bool constructorDisplayAtom(JSContext* cx, js::MutableHandleAtom name);
+
+    /*
+     * The same as constructorDisplayAtom above, however if this object has a
+     * lazy group, nullptr is returned. This allows for use in situations that
+     * cannot GC and where having some information, even if it is inconsistently
+     * available, is better than no information.
+     */
+    JSAtom* maybeConstructorDisplayAtom() const;
+
     /* GC support. */
 
-    void markChildren(JSTracer* trc);
+    void traceChildren(JSTracer* trc);
 
     void fixupAfterMovingGC();
 
@@ -289,6 +314,9 @@ class JSObject : public js::gc::Cell
     static MOZ_ALWAYS_INLINE void writeBarrierPostRelocate(JSObject* obj, void* cellp);
     static MOZ_ALWAYS_INLINE void writeBarrierPostRemove(JSObject* obj, void* cellp);
 
+    /* Return the allocKind we would use if we were to tenure this object. */
+    js::gc::AllocKind allocKindForTenure(const js::Nursery& nursery) const;
+
     size_t tenuredSizeOfThis() const {
         MOZ_ASSERT(isTenured());
         return js::gc::Arena::thingSize(asTenured().getAllocKind());
@@ -296,11 +324,19 @@ class JSObject : public js::gc::Cell
 
     void addSizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf, JS::ClassInfo* info);
 
-    /*
-     * Marks this object as having a singleton type, and leave the group lazy.
-     * Constructs a new, unique shape for the object.
-     */
+    // We can only use addSizeOfExcludingThis on tenured objects: it assumes it
+    // can apply mallocSizeOf to bits and pieces of the object, whereas objects
+    // in the nursery may have those bits and pieces allocated in the nursery
+    // along with them, and are not each their own malloc blocks.
+    size_t sizeOfIncludingThisInNursery() const;
+
+    // Marks this object as having a singleton group, and leave the group lazy.
+    // Constructs a new, unique shape for the object. This should only be
+    // called for an object that was just created.
     static inline bool setSingleton(js::ExclusiveContext* cx, js::HandleObject obj);
+
+    // Change an existing object to have a singleton group.
+    static bool changeToSingleton(JSContext* cx, js::HandleObject obj);
 
     inline js::ObjectGroup* getGroup(JSContext* cx);
 
@@ -397,29 +433,20 @@ class JSObject : public js::gc::Cell
     bool shouldSplicePrototype(JSContext* cx);
 
     /*
-     * Parents and scope chains.
+     * Scope chains.
      *
-     * All script-accessible objects with a nullptr parent are global objects,
-     * and all global objects have a nullptr parent. Some builtin objects
-     * which are not script-accessible also have a nullptr parent, such as
-     * parser created functions for non-compileAndGo scripts.
+     * The scope chain of an object is the link in the search path when a script
+     * does a name lookup on a scope object. For JS internal scope objects ---
+     * Call, DeclEnv, Block, and With --- the chain is stored in the first fixed
+     * slot of the object.  For other scope objects, the chain goes directly to
+     * the global.
      *
-     * Except for the non-script-accessible builtins, the global with which an
-     * object is associated can be reached by following parent links to that
-     * global (see global()).
-     *
-     * The scope chain of an object is the link in the search path when a
-     * script does a name lookup on a scope object. For JS internal scope
-     * objects --- Call, DeclEnv and Block --- the chain is stored in
-     * the first fixed slot of the object, and the object's parent is the
-     * associated global. For other scope objects, the chain is stored in the
-     * object's parent.
-     *
-     * In compileAndGo code, scope chains can contain only internal scope
-     * objects with a global object at the root as the scope of the outermost
-     * non-function script. In non-compileAndGo code, the scope of the
-     * outermost non-function script might not be a global object, and can have
-     * a mix of other objects above it before the global object is reached.
+     * In code which is not marked hasNonSyntacticScope, scope chains can
+     * contain only syntactic scope objects (see IsSyntacticScope) with a global
+     * object at the root as the scope of the outermost non-function script. In
+     * hasNonSyntacticScope code, the scope of the outermost non-function
+     * script might not be a global object, and can have a mix of other objects
+     * above it before the global object is reached.
      */
 
     /*
@@ -741,29 +768,7 @@ extern bool
 GetOwnPropertyDescriptor(JSContext* cx, HandleObject obj, HandleId id,
                          MutableHandle<PropertyDescriptor> desc);
 
-/*
- * ES6 [[DefineOwnProperty]]. Define a property on obj.
- *
- * If obj is an array, this follows ES5 15.4.5.1.
- * If obj is any other native object, this follows ES5 8.12.9.
- * If obj is a proxy, this calls the proxy handler's defineProperty method.
- * Otherwise, this reports an error and returns false.
- *
- * Both StandardDefineProperty functions hew close to the ES5 spec. Note that
- * the DefineProperty functions do not enforce some invariants mandated by ES6.
- */
-extern bool
-StandardDefineProperty(JSContext* cx, HandleObject obj, HandleId id,
-                       Handle<PropertyDescriptor> descriptor, ObjectOpResult& result);
-
-/*
- * Same as above except without the ObjectOpResult out-parameter. Throws a
- * TypeError on failure.
- */
-extern bool
-StandardDefineProperty(JSContext* cx, HandleObject obj, HandleId id,
-                       Handle<PropertyDescriptor> desc);
-
+/* ES6 [[DefineOwnProperty]]. Define a property on obj. */
 extern bool
 DefineProperty(JSContext* cx, HandleObject obj, HandleId id,
                Handle<PropertyDescriptor> desc, ObjectOpResult& result);
@@ -784,6 +789,9 @@ DefineElement(ExclusiveContext* cx, HandleObject obj, uint32_t index, HandleValu
  * When the 'result' out-param is omitted, the behavior is the same as above, except
  * that any failure results in a TypeError.
  */
+extern bool
+DefineProperty(JSContext* cx, HandleObject obj, HandleId id, Handle<PropertyDescriptor> desc);
+
 extern bool
 DefineProperty(ExclusiveContext* cx, HandleObject obj, HandleId id, HandleValue value,
                JSGetterOp getter = nullptr,
@@ -1080,6 +1088,9 @@ extern bool
 SetClassAndProto(JSContext* cx, HandleObject obj,
                  const Class* clasp, Handle<TaggedProto> proto);
 
+extern bool
+IsStandardPrototype(JSObject* obj, JSProtoKey key);
+
 } /* namespace js */
 
 /*
@@ -1105,7 +1116,7 @@ GetInitialHeap(NewObjectKind newKind, const Class* clasp)
 {
     if (newKind != GenericObject)
         return gc::TenuredHeap;
-    if (clasp->finalize && !(clasp->flags & JSCLASS_FINALIZE_FROM_NURSERY))
+    if (clasp->finalize && !(clasp->flags & JSCLASS_SKIP_NURSERY_FINALIZE))
         return gc::TenuredHeap;
     return gc::DefaultHeap;
 }
@@ -1222,9 +1233,25 @@ GetOwnPropertyDescriptor(JSContext* cx, HandleObject obj, HandleId id,
 bool
 GetOwnPropertyDescriptor(JSContext* cx, HandleObject obj, HandleId id, MutableHandleValue vp);
 
-/* ES6 draft rev 32 (2015 Feb 2) 6.2.4.4 FromPropertyDescriptor(Desc) */
-bool
+/*
+ * ES6 draft rev 32 (2015 Feb 2) 6.2.4.4 FromPropertyDescriptor(Desc).
+ *
+ * If desc.object() is null, then vp is set to undefined.
+ */
+extern bool
 FromPropertyDescriptor(JSContext* cx, Handle<PropertyDescriptor> desc, MutableHandleValue vp);
+
+/*
+ * Like FromPropertyDescriptor, but ignore desc.object() and always set vp
+ * to an object on success.
+ *
+ * Use FromPropertyDescriptor for getOwnPropertyDescriptor, since desc.object()
+ * is used to indicate whether a result was found or not.  Use this instead for
+ * defineProperty: it would be senseless to define a "missing" property.
+ */
+extern bool
+FromPropertyDescriptorToObject(JSContext* cx, Handle<PropertyDescriptor> desc,
+                               MutableHandleValue vp);
 
 extern bool
 IsDelegate(JSContext* cx, HandleObject obj, const Value& v, bool* result);
@@ -1254,12 +1281,6 @@ ToObjectFromStack(JSContext* cx, HandleValue vp)
 template<XDRMode mode>
 bool
 XDRObjectLiteral(XDRState<mode>* xdr, MutableHandleObject obj);
-
-extern JSObject*
-CloneObjectLiteral(JSContext* cx, HandleObject srcObj);
-
-extern void
-GetObjectSlotName(JSTracer* trc, char* buf, size_t bufsize);
 
 extern bool
 ReportGetterOnlyAssignment(JSContext* cx, bool strict);

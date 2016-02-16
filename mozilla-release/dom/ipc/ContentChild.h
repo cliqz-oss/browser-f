@@ -20,7 +20,6 @@
 
 
 struct ChromePackage;
-class nsIDOMBlob;
 class nsIObserver;
 struct ResourceMapping;
 struct OverrideMapping;
@@ -35,10 +34,6 @@ class PFileDescriptorSetChild;
 class URIParams;
 }// namespace ipc
 
-namespace jsipc {
-class JavaScriptShared;
-}
-
 namespace layers {
 class PCompositorChild;
 } // namespace layers
@@ -46,7 +41,6 @@ class PCompositorChild;
 namespace dom {
 
 class AlertObserver;
-class PrefObserver;
 class ConsoleListener;
 class PStorageChild;
 class ClonedMessageData;
@@ -78,7 +72,7 @@ public:
     };
 
     bool Init(MessageLoop* aIOLoop,
-              base::ProcessHandle aParentHandle,
+              base::ProcessId aParentPid,
               IPC::Channel* aChannel);
     void InitProcessAttributes();
     void InitXPCOM();
@@ -115,6 +109,10 @@ public:
     AllocPContentBridgeChild(mozilla::ipc::Transport* transport,
                              base::ProcessId otherProcess) override;
 
+    PGMPServiceChild*
+    AllocPGMPServiceChild(mozilla::ipc::Transport* transport,
+                          base::ProcessId otherProcess) override;
+
     PCompositorChild*
     AllocPCompositorChild(mozilla::ipc::Transport* aTransport,
                           base::ProcessId aOtherProcess) override;
@@ -130,11 +128,6 @@ public:
     PProcessHangMonitorChild*
     AllocPProcessHangMonitorChild(Transport* aTransport,
                                   ProcessId aOtherProcess) override;
-
-#if defined(XP_WIN) && defined(MOZ_CONTENT_SANDBOX)
-    // Cleans up any resources used by the process when sandboxed.
-    void CleanUpSandboxEnvironment();
-#endif
 
     virtual bool RecvSetProcessSandbox() override;
 
@@ -239,6 +232,10 @@ public:
                              bool* aSuccess) override;
     virtual bool DeallocPScreenManagerChild(PScreenManagerChild*) override;
 
+    virtual PPSMContentDownloaderChild* AllocPPSMContentDownloaderChild(
+            const uint32_t& aCertType) override;
+    virtual bool DeallocPPSMContentDownloaderChild(PPSMContentDownloaderChild* aDownloader) override;
+
     virtual PExternalHelperAppChild *AllocPExternalHelperAppChild(
             const OptionalURIParams& uri,
             const nsCString& aMimeContentType,
@@ -264,6 +261,9 @@ public:
     virtual PVoicemailChild* AllocPVoicemailChild() override;
     PVoicemailChild* SendPVoicemailConstructor(PVoicemailChild* aActor);
     virtual bool DeallocPVoicemailChild(PVoicemailChild*) override;
+
+    virtual PMediaChild* AllocPMediaChild() override;
+    virtual bool DeallocPMediaChild(PMediaChild* aActor) override;
 
     virtual PStorageChild* AllocPStorageChild() override;
     virtual bool DeallocPStorageChild(PStorageChild* aActor) override;
@@ -297,8 +297,13 @@ public:
     virtual bool DeallocPRemoteSpellcheckEngineChild(PRemoteSpellcheckEngineChild*) override;
 
     virtual bool RecvSetOffline(const bool& offline) override;
+    virtual bool RecvSetConnectivity(const bool& connectivity) override;
 
     virtual bool RecvSpeakerManagerNotify() override;
+
+    virtual bool RecvBidiKeyboardNotify(const bool& isLangRTL) override;
+
+    virtual bool RecvUpdateServiceWorkerRegistrations() override;
 
     virtual bool RecvNotifyVisited(const URIParams& aURI) override;
     // auto remove when alertfinished is received.
@@ -339,6 +344,7 @@ public:
     virtual bool RecvAppInfo(const nsCString& version, const nsCString& buildID,
                              const nsCString& name, const nsCString& UAName,
                              const nsCString& ID, const nsCString& vendor) override;
+    virtual bool RecvAppInit() override;
 
     virtual bool RecvLastPrivateDocShellDestroyed() override;
 
@@ -358,6 +364,7 @@ public:
                                       const bool& aIsUnmounting,
                                       const bool& aIsRemovable,
                                       const bool& aIsHotSwappable) override;
+    virtual bool RecvVolumeRemoved(const nsString& aFsName) override;
 
     virtual bool RecvNuwaFork() override;
 
@@ -371,8 +378,6 @@ public:
 
     virtual bool RecvNotifyPhoneStateChange(const nsString& state) override;
 
-    virtual bool RecvNuwaFreeze() override;
-
     void AddIdleObserver(nsIObserver* aObserver, uint32_t aIdleTimeInS);
     void RemoveIdleObserver(nsIObserver* aObserver, uint32_t aIdleTimeInS);
     virtual bool RecvNotifyIdleObserver(const uint64_t& aObserver,
@@ -385,17 +390,23 @@ public:
                                        const base::ProcessId& aProcessId) override;
     virtual bool RecvLoadPluginResult(const uint32_t& aPluginId,
                                       const bool& aResult) override;
+    virtual bool RecvUpdateWindow(const uintptr_t& aChildId) override;
 
     virtual bool RecvStartProfiler(const uint32_t& aEntries,
                                    const double& aInterval,
                                    nsTArray<nsCString>&& aFeatures,
                                    nsTArray<nsCString>&& aThreadNameFilters) override;
     virtual bool RecvStopProfiler() override;
-    virtual bool RecvGetProfile(nsCString* aProfile) override;
+    virtual bool RecvGatherProfile() override;
     virtual bool RecvDomainSetChanged(const uint32_t& aSetType, const uint32_t& aChangeType,
                                       const OptionalURIParams& aDomain) override;
     virtual bool RecvShutdown() override;
 
+    virtual bool
+    RecvInvokeDragSession(nsTArray<IPCDataTransfer>&& aTransfers,
+                          const uint32_t& aAction) override;
+    virtual bool RecvEndDragSession(const bool& aDoneDrag,
+                                    const bool& aUserCancelled) override;
 #ifdef ANDROID
     gfxIntSize GetScreenSize() { return mScreenSize; }
 #endif
@@ -434,8 +445,6 @@ public:
                                          const ContentParentId& aCpID,
                                          const bool& aIsForApp,
                                          const bool& aIsForBrowser) override;
-    virtual PDocAccessibleChild* AllocPDocAccessibleChild(PDocAccessibleChild*, const uint64_t&) override;
-    virtual bool DeallocPDocAccessibleChild(PDocAccessibleChild*) override;
 
     void GetAvailableDictionaries(InfallibleTArray<nsString>& aDictionaries);
 
@@ -449,6 +458,18 @@ public:
             const TabId& aTabId) override;
     virtual bool
     DeallocPOfflineCacheUpdateChild(POfflineCacheUpdateChild* offlineCacheUpdate) override;
+
+    virtual PWebrtcGlobalChild* AllocPWebrtcGlobalChild() override;
+    virtual bool DeallocPWebrtcGlobalChild(PWebrtcGlobalChild *aActor) override;
+
+    virtual PContentPermissionRequestChild*
+    AllocPContentPermissionRequestChild(const InfallibleTArray<PermissionRequest>& aRequests,
+                                        const IPC::Principal& aPrincipal,
+                                        const TabId& aTabId) override;
+    virtual bool
+    DeallocPContentPermissionRequestChild(PContentPermissionRequestChild* actor) override;
+
+    virtual bool RecvGamepadUpdate(const GamepadChangeEvent& aGamepadEvent) override;
 
 private:
     virtual void ActorDestroy(ActorDestroyReason why) override;

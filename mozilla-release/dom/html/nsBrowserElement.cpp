@@ -1,5 +1,5 @@
 /* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim: set ts=2 et sw=2 tw=80: */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -374,6 +374,62 @@ nsBrowserElement::GetContentDimensions(ErrorResult& aRv)
   }
 
   return req.forget().downcast<DOMRequest>();
+}
+
+void
+nsBrowserElement::FindAll(const nsAString& aSearchString,
+                          BrowserFindCaseSensitivity aCaseSensitivity,
+                          ErrorResult& aRv)
+{
+  NS_ENSURE_TRUE_VOID(IsBrowserElementOrThrow(aRv));
+  NS_ENSURE_TRUE_VOID(IsNotWidgetOrThrow(aRv));
+
+  uint32_t caseSensitivity;
+  if (aCaseSensitivity == BrowserFindCaseSensitivity::Case_insensitive) {
+    caseSensitivity = nsIBrowserElementAPI::FIND_CASE_INSENSITIVE;
+  } else {
+    caseSensitivity = nsIBrowserElementAPI::FIND_CASE_SENSITIVE;
+  }
+
+  nsresult rv = mBrowserElementAPI->FindAll(aSearchString, caseSensitivity);
+
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
+  }
+}
+
+void
+nsBrowserElement::FindNext(BrowserFindDirection aDirection,
+                          ErrorResult& aRv)
+{
+  NS_ENSURE_TRUE_VOID(IsBrowserElementOrThrow(aRv));
+  NS_ENSURE_TRUE_VOID(IsNotWidgetOrThrow(aRv));
+
+  uint32_t direction;
+  if (aDirection == BrowserFindDirection::Backward) {
+    direction = nsIBrowserElementAPI::FIND_BACKWARD;
+  } else {
+    direction = nsIBrowserElementAPI::FIND_FORWARD;
+  }
+
+  nsresult rv = mBrowserElementAPI->FindNext(direction);
+
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
+  }
+}
+
+void
+nsBrowserElement::ClearMatch(ErrorResult& aRv)
+{
+  NS_ENSURE_TRUE_VOID(IsBrowserElementOrThrow(aRv));
+  NS_ENSURE_TRUE_VOID(IsNotWidgetOrThrow(aRv));
+
+  nsresult rv = mBrowserElementAPI->ClearMatch();
+
+  if (NS_FAILED(rv)) {
+    aRv.Throw(rv);
+  }
 }
 
 void

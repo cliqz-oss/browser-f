@@ -37,8 +37,10 @@
         <!-- Default style for the TopSitesGridItemView -->
         <attr name="topSitesGridItemViewStyle" format="reference" />
 
-        <!-- Style for the PanelGridView -->
+        <!-- Styles for dynamic panel grid views -->
         <attr name="panelGridViewStyle" format="reference" />
+        <attr name="panelIconGridViewStyle" format="reference" />
+        <attr name="panelIconViewStyle" format="reference" />
 
         <!-- Style for the TabsGridLayout -->
         <attr name="tabGridLayoutViewStyle" format="reference" />
@@ -187,6 +189,12 @@
     <declare-styleable name="FaviconView">
         <attr name="dominantBorderEnabled" format="boolean" />
         <attr name="overrideScaleType" format="boolean" />
+    </declare-styleable>
+
+    <declare-styleable name="OverlayDialogButton">
+        <attr name="drawable" format="reference" />
+        <attr name="enabledText" format="string" />
+        <attr name="disabledText" format="string" />
     </declare-styleable>
 
 </resources>

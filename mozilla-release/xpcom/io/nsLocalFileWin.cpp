@@ -212,9 +212,6 @@ private:
     SHELLEXECUTEINFOW seinfo;
     memset(&seinfo, 0, sizeof(seinfo));
     seinfo.cbSize = sizeof(SHELLEXECUTEINFOW);
-    if (XRE_GetWindowsEnvironment() == WindowsEnvironmentType_Metro) {
-      seinfo.fMask  = SEE_MASK_FLAG_LOG_USAGE;
-    }
     seinfo.hwnd   = nullptr;
     seinfo.lpVerb = nullptr;
     seinfo.lpFile = mResolvedPath.get();
@@ -1745,7 +1742,7 @@ nsLocalFile::GetVersionInfoField(const char* aField, nsAString& aResult)
       }
     }
   }
-  moz_free(ver);
+  free(ver);
 
   return rv;
 }
@@ -2269,6 +2266,18 @@ nsLocalFile::RenameTo(nsIFile* aNewParentDir, const nsAString& aNewName)
   }
   // Move single file, or move a directory
   return CopySingleFile(this, targetParentDir, aNewName, options);
+}
+
+NS_IMETHODIMP
+nsLocalFile::RenameToNative(nsIFile* aNewParentDir, const nsACString& aNewName)
+{
+  nsAutoString tmp;
+  nsresult rv = NS_CopyNativeToUnicode(aNewName, tmp);
+  if (NS_SUCCEEDED(rv)) {
+    return RenameTo(aNewParentDir, tmp);
+  }
+
+  return rv;
 }
 
 NS_IMETHODIMP

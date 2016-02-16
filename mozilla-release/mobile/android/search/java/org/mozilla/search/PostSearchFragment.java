@@ -14,6 +14,7 @@ import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.search.providers.SearchEngine;
 
+import android.annotation.SuppressLint;
 import android.content.Intent;
 import android.graphics.Bitmap;
 import android.os.Bundle;
@@ -44,6 +45,7 @@ public class PostSearchFragment extends Fragment {
 
     private String resultsPageHost;
 
+    @SuppressLint("SetJavaScriptEnabled")
     @Override
     public View onCreateView(LayoutInflater inflater, ViewGroup container,
                              Bundle savedInstanceState) {
@@ -130,7 +132,7 @@ public class PostSearchFragment extends Fragment {
 
                 // If the intent URI didn't specify a package, open this in Fennec.
                 if (i.getPackage() == null) {
-                    i.setClassName(AppConstants.ANDROID_PACKAGE_NAME, AppConstants.BROWSER_INTENT_CLASS_NAME);
+                    i.setClassName(AppConstants.ANDROID_PACKAGE_NAME, AppConstants.MOZ_ANDROID_BROWSER_INTENT_CLASS);
                     Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL,
                             TelemetryContract.Method.CONTENT, "search-result");
                 } else {

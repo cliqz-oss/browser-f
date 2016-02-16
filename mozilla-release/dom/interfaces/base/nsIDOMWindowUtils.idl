@@ -39,8 +39,6 @@ interface nsIDOMStyleSheet;
 interface nsITransferable;
 interface nsIQueryContentEventResult;
 interface nsIDOMWindow;
-interface nsIDOMBlob;
-interface nsIDOMFile;
 interface nsIFile;
 interface nsIDOMClientRect;
 interface nsIURI;
@@ -49,8 +47,9 @@ interface nsIRunnable;
 interface nsITranslationNodeList;
 interface nsIJSRAIIHelper;
 interface nsIContentPermissionRequest;
+interface nsIObserver;
 
-[scriptable, uuid(7f2f44ab-2857-4cc2-8c9d-3d9816f5a4d6)]
+[scriptable, uuid(42c529d8-54cf-4158-8b09-13ca89d7a88c)]
 interface nsIDOMWindowUtils : nsISupports {
 
   /**
@@ -571,12 +570,17 @@ interface nsIDOMWindowUtils : nsISupports {
    * Will throw a DOM security error if called without chrome privileges.
    *
    * When you use this for tests, use the constants defined in NativeKeyCodes.js
+   *
+   * NOTE: The synthesized native event will be fired asynchronously, and upon
+   * completion the observer, if provided, will be notified with a "keyevent"
+   * topic.
    */
   void sendNativeKeyEvent(in long aNativeKeyboardLayout,
                           in long aNativeKeyCode,
                           in long aModifierFlags,
                           in AString aCharacters,
-                          in AString aUnmodifiedCharacters);
+                          in AString aUnmodifiedCharacters,
+                          [optional] in nsIObserver aObserver);
 
   /**
    * See nsIWidget::SynthesizeNativeMouseEvent
@@ -584,12 +588,17 @@ interface nsIDOMWindowUtils : nsISupports {
    * Will be called on the widget that contains aElement.
    * Cannot be accessed from unprivileged context (not content-accessible)
    * Will throw a DOM security error if called without chrome privileges.
+   *
+   * NOTE: The synthesized native event will be fired asynchronously, and upon
+   * completion the observer, if provided, will be notified with a "mouseevent"
+   * topic.
    */
   void sendNativeMouseEvent(in long aScreenX,
                             in long aScreenY,
                             in long aNativeMessage,
                             in long aModifierFlags,
-                            in nsIDOMElement aElement);
+                            in nsIDOMElement aElement,
+                            [optional] in nsIObserver aObserver);
 
   /**
    * The values for sendNativeMouseScrollEvent's aAdditionalFlags.
@@ -601,6 +610,11 @@ interface nsIDOMWindowUtils : nsISupports {
    * a default target on the platform.  E.g., on Windows, it's focused window.
    */
   const unsigned long MOUSESCROLL_PREFER_WIDGET_AT_POINT = 0x00000001;
+
+  /**
+   * Interpret the scroll delta values as lines rather than pixels.
+   */
+  const unsigned long MOUSESCROLL_SCROLL_LINES = 0x00000002;
 
   /**
    * The platform specific values of aAdditionalFlags.  Must be over 0x00010000.
@@ -620,7 +634,9 @@ interface nsIDOMWindowUtils : nsISupports {
    * Cannot be accessed from unprivileged context (not content-accessible)
    * Will throw a DOM security error if called without chrome privileges.
    *
-   * NOTE: The synthesized native event may be fired asynchronously.
+   * NOTE: The synthesized native event will be fired asynchronously, and upon
+   * completion the observer, if provided, will be notified with a
+   * "mousescrollevent" topic.
    *
    * @param aNativeMessage
    *   On Windows:  WM_MOUSEWHEEL (0x020A), WM_MOUSEHWHEEL(0x020E),
@@ -634,7 +650,8 @@ interface nsIDOMWindowUtils : nsISupports {
                                   in double aDeltaZ,
                                   in unsigned long aModifierFlags,
                                   in unsigned long aAdditionalFlags,
-                                  in nsIDOMElement aElement);
+                                  in nsIDOMElement aElement,
+                                  [optional] in nsIObserver aObserver);
 
   /**
    * Touch states for sendNativeTouchPoint. These values match
@@ -665,6 +682,10 @@ interface nsIDOMWindowUtils : nsISupports {
    * Widget support: Windows 8.0+, Winrt/Win32. Gonk supports CONTACT, REMOVE,
    * and CANCEL but no HOVER. Other widgets will throw.
    *
+   * NOTE: The synthesized native event will be fired asynchronously, and upon
+   * completion the observer, if provided, will be notified with a "touchpoint"
+   * topic.
+   *
    * @param aPointerId The touch point id to create or update.
    * @param aTouchState one or more of the touch states listed above
    * @param aScreenX, aScreenY screen coords of this event
@@ -677,7 +698,8 @@ interface nsIDOMWindowUtils : nsISupports {
                             in long aScreenX,
                             in long aScreenY,
                             in double aPressure,
-                            in unsigned long aOrientation);
+                            in unsigned long aOrientation,
+                            [optional] in nsIObserver aObserver);
 
   /**
    * Simulates native touch based taps on the input digitizer. Events
@@ -694,13 +716,18 @@ interface nsIDOMWindowUtils : nsISupports {
    * Widget support: Windows 8.0+, Winrt/Win32. Other widgets will
    * throw.
    *
+   * NOTE: The synthesized native event will be fired asynchronously, and upon
+   * completion the observer, if provided, will be notified, with a "touchtap"
+   * topic.
+   *
    * @param aScreenX, aScreenY screen coords of this event
    * @param aLongTap true if the tap should be long, false for a short
    * tap.
    */
   void sendNativeTouchTap(in long aScreenX,
                           in long aScreenY,
-                          in boolean aLongTap);
+                          in boolean aLongTap,
+                          [optional] in nsIObserver aObserver);
 
   /**
    * Cancel any existing touch points or long tap delays. Calling this is safe
@@ -708,8 +735,12 @@ interface nsIDOMWindowUtils : nsISupports {
    * this when tests shut down to reset the digitizer driver. Not doing so can
    * leave the digitizer in an undetermined state which can screw up subsequent
    * tests and native input.
+   *
+   * NOTE: The synthesized native event will be fired asynchronously, and upon
+   * completion the observer, if provided, will be notified with a "cleartouch"
+   * topic.
    */
-  void clearNativeTouchSequence();
+  void clearNativeTouchSequence([optional] in nsIObserver aObserver);
 
   /**
    * See nsIWidget::ActivateNativeMenuItemAt
@@ -1152,17 +1183,24 @@ interface nsIDOMWindowUtils : nsISupports {
    * Called when the remote child frame has changed its fullscreen state,
    * when entering fullscreen, and when the origin which is fullscreen changes.
    * aFrameElement is the iframe element which contains the child-process
-   * fullscreen document, and aNewOrigin is the origin of the new fullscreen
-   * document.
+   * fullscreen document.
    */
-  void remoteFrameFullscreenChanged(in nsIDOMElement aFrameElement,
-                                    in AString aNewOrigin);
+  void remoteFrameFullscreenChanged(in nsIDOMElement aFrameElement);
 
   /**
    * Called when the remote frame has popped all fullscreen elements off its
    * stack, so that the operation can complete on the parent side.
    */
   void remoteFrameFullscreenReverted();
+
+  /**
+   * Calls the document to handle any pending fullscreen requests.
+   * It is called when the parent document has entered fullscreen, and
+   * we want to put the current document into fullscreen as well.
+   * The return value indicates whether there is any fullscreen request
+   * handled by this call.
+   */
+  boolean handleFullscreenRequests();
 
   /**
    * Called when the child frame has fully exit fullscreen, so that the parent
@@ -1300,6 +1338,13 @@ interface nsIDOMWindowUtils : nsISupports {
   readonly attribute boolean layerManagerRemote;
 
   /**
+   * True if we can initialize a hardware-backed h264 decoder for a simple
+   * test video, does not mean that all h264 video decoding will be done
+   * in hardware.
+   */
+  readonly attribute boolean supportsHardwareH264Decoding;
+
+  /**
    * Record (and return) frame-intervals for frames which were presented
    *   between calling StartFrameTimeRecording and StopFrameTimeRecording.
    *
@@ -1393,6 +1438,24 @@ interface nsIDOMWindowUtils : nsISupports {
   void setAsyncScrollOffset(in nsIDOMNode aNode, in int32_t aX, in int32_t aY);
 
   /**
+   * Set async zoom value. aRootElement should be the document element of our
+   * document. The next composite will render with that zoom added to any
+   * existing zoom if async scrolling is enabled, and then the zoom will be
+   * removed. Only call this while test-controlled refreshes is enabled.
+   */
+  void setAsyncZoom(in nsIDOMNode aRootElement, in float aValue);
+
+  /**
+   * Do a round-trip to the compositor to ensure any pending APZ repaint requests
+   * get flushed to the main thread. If the function returns true, the flush was
+   * triggered and an "apz-repaints-flushed" notification will be dispatched via
+   * the observer service once the flush is complete. If the function returns
+   * false, an error occurred or a flush is not needed, and the notification
+   * will not fire. This is intended to be used by test code only!
+   */
+  bool flushApzRepaints();
+
+  /**
    * Method for testing StyleAnimationValue::ComputeDistance.
    *
    * Returns the distance between the two values as reported by
@@ -1405,9 +1468,10 @@ interface nsIDOMWindowUtils : nsISupports {
                                   in AString value2);
 
   /**
-   * Wrap an nsIFile in an nsIDOMFile
+   * Wrap an nsIFile in an DOM File
+   * Returns a File object.
    */
-  nsIDOMFile wrapDOMFile(in nsIFile aFile);
+  nsISupports wrapDOMFile(in nsIFile aFile);
 
   /**
    * Get the type of the currently focused html input, if any.
@@ -1650,9 +1714,11 @@ interface nsIDOMWindowUtils : nsISupports {
    attribute boolean paintFlashing;
 
    /**
-    * Allows running of a "synchronous section", in the form of an nsIRunnable
-    * once the event loop has reached a "stable state". We've reached a stable
-    * state when the currently executing task/event has finished, see:
+    * Add a "synchronous section", in the form of an nsIRunnable run once the
+    * event loop has reached a "stable state". |runnable| must not cause any
+    * queued events to be processed (i.e. must not spin the event loop).
+    * We've reached a stable state when the currently executing task/event has
+    * finished, see:
     * http://www.whatwg.org/specs/web-apps/current-work/multipage/webappapis.html#synchronous-section
     * In practice this runs aRunnable once the currently executing event
     * finishes. If called multiple times per task/event, all the runnables will
@@ -1709,6 +1775,11 @@ interface nsIDOMWindowUtils : nsISupports {
    [implicit_jscontext] jsval getCompositorAPZTestData();
 
    /**
+    * Posts an eRestyle_Self restyle event for the given element.
+    */
+   void postRestyleSelfEvent(in nsIDOMElement aElement);
+
+   /**
     * With this it's possible to mute all the MediaElements in this window.
     * We have audioMuted and audioVolume to preserve the volume across
     * mute/umute.
@@ -1762,6 +1833,27 @@ interface nsIDOMWindowUtils : nsISupports {
    * Enable some service workers testing features.
    */
   attribute boolean serviceWorkersTestingEnabled;
+
+  /**
+   * Returns a JSObject which contains a list of frame uniformities
+   * when the pref gfx.vsync.collect-scroll-data is enabled.
+   * Every result contains a layer address and a frame uniformity for that layer.
+   * A negative frame uniformity value indicates an invalid frame uniformity and an error has occured.
+   */
+  [implicit_jscontext] jsval getFrameUniformityTestData();
+
+  /*
+   * Increase the chaos mode activation level. An equivalent number of
+   * calls to leaveChaosMode must be made in order to restore the original
+   * chaos mode state. If the activation level is nonzero all chaos mode
+   * features are activated.
+   */
+  void enterChaosMode();
+
+  /**
+   * Decrease the chaos mode activation level. See enterChaosMode().
+   */
+  void leaveChaosMode();
 };
 
 [scriptable, uuid(c694e359-7227-4392-a138-33c0cc1f15a6)]

@@ -3,8 +3,9 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY aboutAccounts.welcome "Willkommen bei &syncBrand.shortName.label;">
+<!ENTITY aboutAccounts.connected "Konto verbunden">
 
 <!ENTITY aboutAccountsConfig.description "Melden Sie sich an, um Ihre Tabs, Lesezeichen, Passwörter und mehr zu synchronisieren.">
 <!ENTITY aboutAccountsConfig.startButton.label "Anmelden">
 <!ENTITY aboutAccountsConfig.useOldSync.label "Verwenden Sie eine ältere Version von Sync?">
-<!ENTITY aboutAccountsConfig.manage.label "Verwalten">
+<!ENTITY aboutAccountsConfig.syncPreferences.label "Sync-Einstellungen">

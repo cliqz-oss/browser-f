@@ -31,9 +31,10 @@ add_task(function* test_corrupt_database() {
   let corruptBookmark = yield PlacesUtils.bookmarks.insert({ parentGuid: PlacesUtils.bookmarks.toolbarGuid,
                                                              url: "http://test.mozilla.org",
                                                              title: "We love belugas" });
-  let db = yield PlacesUtils.promiseWrappedConnection();
-  yield db.execute("UPDATE moz_bookmarks SET fk = NULL WHERE guid = :guid",
-                   { guid: corruptBookmark.guid });
+  let db = yield PlacesUtils.withConnectionWrapper("test", Task.async(function*(db) {
+    yield db.execute("UPDATE moz_bookmarks SET fk = NULL WHERE guid = :guid",
+                     { guid: corruptBookmark.guid });
+  }));
 
   let bookmarksFile = OS.Path.join(OS.Constants.Path.profileDir, "bookmarks.exported.html");
   if ((yield OS.File.exists(bookmarksFile)))
@@ -41,7 +42,7 @@ add_task(function* test_corrupt_database() {
   yield BookmarkHTMLUtils.exportToFile(bookmarksFile);
 
   // Import again and check for correctness.
-  remove_all_bookmarks();
+  yield PlacesUtils.bookmarks.eraseEverything();
   yield BookmarkHTMLUtils.importFromFile(bookmarksFile, true);
   yield PlacesTestUtils.promiseAsyncUpdates();
   yield database_check();
@@ -101,14 +102,22 @@ let database_check = Task.async(function* () {
   root = PlacesUtils.getFolderContents(PlacesUtils.toolbarFolderId).root;
   Assert.equal(root.childCount, 3);
 
-  let livemarkNode = root.getChild(1);
-  Assert.equal("Latest Headlines", livemarkNode.title);
+  // For now some promises are resolved later, so we can't guarantee an order.
+  let foundLivemark = false;
+  for (let i = 0; i < root.childCount; ++i) {
+    let node = root.getChild(i);
+    if (node.title == "Latest Headlines") {
+      foundLivemark = true;
+      Assert.equal("Latest Headlines", node.title);
 
-  let livemark = yield PlacesUtils.livemarks.getLivemark({ id: livemarkNode.itemId });
-  Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/livebookmarks/",
-               livemark.siteURI.spec);
-  Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/headlines.xml",
-               livemark.feedURI.spec);
+      let livemark = yield PlacesUtils.livemarks.getLivemark({ guid: node.bookmarkGuid });
+      Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/livebookmarks/",
+                   livemark.siteURI.spec);
+      Assert.equal("http://en-us.fxfeeds.mozilla.com/en-US/firefox/headlines.xml",
+                   livemark.feedURI.spec);
+    }
+  }
+  Assert.ok(foundLivemark);
 
   // cleanup
   root.containerOpen = false;

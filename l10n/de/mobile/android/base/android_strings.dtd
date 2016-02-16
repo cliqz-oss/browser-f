@@ -6,8 +6,8 @@
 <!ENTITY  no_space_to_start_error "Es ist nicht genügend Platz verfügbar, um &brandShortName; zu starten.">
 <!ENTITY  error_loading_file "Beim Versuch, Dateien zu laden, die &brandShortName; benötigt, ist ein Fehler aufgetreten">
 
-<!ENTITY  onboard_start_message2 "Willkommen bei &brandShortName;">
-<!ENTITY  onboard_start_subtext2 "Mehr Datenschutzfunktionen und Möglichkeiten zur Anpassung als je zuvor!">
+<!ENTITY  onboard_start_message3 "Surfen Sie mit &brandShortName;">
+<!ENTITY  onboard_start_subtext3 "Passen Sie Ihr mobiles Surf-Erlebnis Ihren Wünschen an.">
 <!ENTITY  onboard_start_button_account "Bei &brandShortName; anmelden">
 <!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
 
@@ -44,6 +44,10 @@
 <!ENTITY bookmark "Lesezeichen">
 <!ENTITY bookmark_remove "Lesezeichen entfernen">
 <!ENTITY bookmark_added "Lesezeichen hinzugefügt">
+<!-- Localization note (bookmark_already_added) : This string is
+     used as a label in a toast. It is the verb "to bookmark", not
+     the noun "a bookmark". -->
+<!ENTITY bookmark_already_added "Bereits als Lesezeichen hinzugefügt">
 <!ENTITY bookmark_removed "Lesezeichen gelöscht">
 <!ENTITY bookmark_updated "Lesezeichen aktualisiert">
 <!ENTITY bookmark_options "Einstellungen">
@@ -77,6 +81,7 @@
 
 <!ENTITY settings "Einstellungen">
 <!ENTITY settings_title "Einstellungen">
+<!ENTITY pref_category_input_options "Eingabe">
 <!ENTITY pref_category_advanced "Erweitert">
 <!ENTITY pref_category_customize "Anpassung">
 <!ENTITY pref_category_customize_summary "Startseite, Suche, Tabs, Import">
@@ -114,7 +119,6 @@
      to. -->
 <!ENTITY overlay_share_send_tab_btn_label "An anderes Gerät senden">
 <!ENTITY overlay_share_no_url "Kein Link in Weitergabe gefunden">
-<!ENTITY overlay_share_retry "Erneut versuchen">
 <!ENTITY overlay_share_select_device "Gerät auswählen">
 <!-- Localization note (overlay_no_synced_devices) : Used when the menu option
      to send a tab to a synced device is pressed and no other synced devices
@@ -133,7 +137,7 @@
 <!ENTITY pref_category_display "Ansicht">
 <!ENTITY pref_category_display_summary "Text, Titelleiste, Vollbildmodus">
 <!ENTITY pref_category_privacy_short "Privatsphäre">
-<!ENTITY pref_category_privacy_summary "Passwörter, Cookies, Verfolgung und Daten kontrollieren">
+<!ENTITY pref_category_privacy_summary2 "Zugangsdaten, Cookies, Verfolgung und Daten kontrollieren">
 <!ENTITY pref_category_vendor "&vendorShortName;">
 <!ENTITY pref_category_vendor_summary "Über &brandShortName;, häufig gestellte Fragen, Datenübermittlung">
 <!ENTITY pref_category_datareporting "Datenübermittlung">
@@ -150,11 +154,11 @@
      it is applicable. -->
 <!ENTITY pref_search_hint "TIPP: Sie können die Suche jeder beliebigen Seite zu Ihren Suchmaschinen hinzufügen, indem Sie lang auf das Suchfeld drücken und anschließend das &formatI;-Symbol antippen.">
 <!ENTITY pref_category_devtools "Entwicklerwerkzeuge">
-<!ENTITY pref_category_devtools_summary "Externes Debugging, Hervorhebung neu gezeichneter Flächen">
-<!ENTITY pref_developer_paint_flashing "Hervorhebung neu gezeichneter Flächen">
 <!ENTITY pref_developer_remotedebugging "Externes Debugging">
 <!ENTITY pref_category_logins "Zugangsdaten">
-<!ENTITY pref_remember_signons "Passwörter speichern">
+<!ENTITY pref_remember_signons2 "Zugangsdaten speichern">
+<!ENTITY pref_open_external_urls_privately_title "Links im Privaten Modus öffnen">
+<!ENTITY pref_open_external_urls_privately_summary "Auf alle von extern in &brandShortName; geöffneten Links anwenden">
 <!ENTITY pref_manage_logins "Zugangsdaten verwalten">
 
 <!ENTITY pref_category_home "Startbildschirm">
@@ -192,22 +196,22 @@
 <!ENTITY pref_donottrack_title "Aktivitäten nicht verfolgen">
 <!ENTITY pref_donottrack_summary "&brandShortName; wird Websites mitteilen, dass Ihre Aktivitäten nicht verfolgt werden sollen.">
 
-<!ENTITY tab_queue_toast_message "Später öffnen">
+<!ENTITY tab_queue_toast_message3 "Tab in &brandShortName; gespeichert">
 <!ENTITY tab_queue_toast_action "Jetzt öffnen">
-<!-- Localization note (tab_queue_notification_text_plural) : The
+<!ENTITY tab_queue_prompt_title "Mehrere Links öffnen?">
+<!ENTITY tab_queue_prompt_text3 "Speichern Sie diese, bis Sie &brandShortName; das nächste Mal öffnen.">
+<!ENTITY tab_queue_prompt_tip_text "Sie können dies später in den Einstellungen ändern.">
+<!ENTITY tab_queue_prompt_positive_action_button "Aktivieren">
+<!ENTITY tab_queue_prompt_negative_action_button "Nicht jetzt">
+<!ENTITY tab_queue_notification_title "&brandShortName;">
+<!-- Localization note (tab_queue_notification_text_plural2) : The
      formatD is replaced with the number of tabs queued.  The
      number of tabs queued is always more than one.  We can't use
      Android plural forms, sadly. See Bug #753859. -->
-<!ENTITY tab_queue_notification_text_plural "&formatD; Tabs abgelegt">
-<!-- Localization note (tab_queue_notification_title_plural) : This is the
-     title of a notification; we expect more than one tab queued. -->
-<!ENTITY tab_queue_notification_title_plural "Tabs abgelegt">
-<!-- Localization note (tab_queue_notification_title_singular) : This is the
-     title of a notification; we expect only one tab queued. -->
-<!ENTITY tab_queue_notification_title_singular "Tab abgelegt">
-<!-- Localization note (tab_queue_notification_text_singular) : This is the
+<!ENTITY tab_queue_notification_text_plural2 "&formatD; Tabs abgelegt">
+<!-- Localization note (tab_queue_notification_text_singular2) : This is the
      text of a notification; we expect only one tab queued. -->
-<!ENTITY tab_queue_notification_text_singular "1 Tab abgelegt">
+<!ENTITY tab_queue_notification_text_singular2 "1 Tab abgelegt">
 
 <!ENTITY pref_char_encoding "Zeichenkodierung">
 <!ENTITY pref_char_encoding_on "Im Menü anzeigen">
@@ -247,21 +251,27 @@ size. -->
 <!ENTITY pref_media_autoplay_enabled_summary "Webseiten die automatische Wiedergabe von Videos und anderen Medieninhalten erlauben">
 <!ENTITY pref_zoom_force_enabled "Zoom immer aktivieren">
 <!ENTITY pref_zoom_force_enabled_summary "Vorgabe der Seite überschreiben, sodass die Zoomfunktion immer verwendet werden kann">
+<!ENTITY pref_voice_input "Spracheingabe">
+<!ENTITY pref_voice_input_summary "Eingabe in die Adressleiste per Sprachansage erlauben">
+<!ENTITY pref_qrcode_enabled "QR-Code-Leser">
+<!ENTITY pref_qrcode_enabled_summary "QR-Code-Leser in Adressleiste anzeigen">
 
 <!ENTITY pref_use_master_password "Master-Passwort benutzen">
 <!ENTITY pref_sync "Sync">
-<!ENTITY pref_sync_summary "Synchronisation von Tabs, Lesezeichen, Passwörtern und Chronik">
+<!ENTITY pref_sync_summary2 "Synchronisation von Tabs, Lesezeichen, Zugangsdaten und Chronik">
 <!ENTITY pref_search_suggestions "Suchvorschläge anzeigen">
 <!ENTITY pref_import_android "Import aus Android">
 <!ENTITY pref_import_android_summary "Lesezeichen und Chronik aus dem Standardbrowser importieren">
 <!ENTITY pref_private_data_history2 "Chronik">
-<!ENTITY pref_private_data_formdata "Eingegebene Suchbegriffe &amp; Formulardaten">
+<!ENTITY pref_private_data_searchHistory "Eingegebene Suchbegriffe">
+<!ENTITY pref_private_data_formdata2 "Gespeicherte Formulardaten">
 <!ENTITY pref_private_data_cookies2 "Cookies &amp; Aktive Logins">
-<!ENTITY pref_private_data_passwords "Gespeicherte Passwörter">
+<!ENTITY pref_private_data_passwords2 "Gespeicherte Zugangsdaten">
 <!ENTITY pref_private_data_cache "Cache">
 <!ENTITY pref_private_data_offlineApps "Offline-Website-Daten">
 <!ENTITY pref_private_data_siteSettings2 "Website-Einstellungen">
 <!ENTITY pref_private_data_downloadFiles2 "Downloads">
+<!ENTITY pref_private_data_syncedTabs "Synchronisierte Tabs">
 
 
 <!ENTITY pref_about_firefox "Über &brandShortName;">
@@ -380,6 +390,12 @@ size. -->
 <!ENTITY doorhanger_login_edit_username_hint "Benutzername">
 <!ENTITY doorhanger_login_edit_password_hint "Passwort">
 <!ENTITY doorhanger_login_edit_toggle "Passwort anzeigen">
+<!ENTITY doorhanger_login_edit_toast_error "Zugangsdaten konnten nicht gespeichert werden">
+<!ENTITY doorhanger_login_select_message "Passwort von &formatS; kopieren?">
+<!ENTITY doorhanger_login_select_toast_copy "Passwort in Zwischenablage kopiert">
+<!ENTITY doorhanger_login_select_toast_copy_error "Passwort konnte nicht kopiert werden">
+<!ENTITY doorhanger_login_select_action_text "Andere Zugangsdaten auswählen">
+<!ENTITY doorhanger_login_select_title "Passwort kopieren von">
 
 <!ENTITY pref_titlebar_mode "Titelleiste">
 <!ENTITY pref_titlebar_mode_title "Seitentitel anzeigen">
@@ -390,8 +406,8 @@ size. -->
 <!ENTITY pref_scroll_title_bar2 "Vollbildmodus">
 <!ENTITY pref_scroll_title_bar_summary "Titelleiste von &brandShortName; beim Bildlauf der Seite ausblenden">
 
-<!ENTITY pref_tab_queue_title "Später öffnen">
-<!ENTITY pref_tab_queue_summary "Tabs am sofortigen Öffnen hindern. Alle abgelegten Tabs werden beim nächsten Öffnen von &brandShortName; geladen.">
+<!ENTITY pref_tab_queue_title2 "Mehrere Links öffnen">
+<!ENTITY pref_tab_queue_summary3 "Bis zum nächsten Öffnen von &brandShortName; speichern">
 
 <!-- Localization note (page_removed): This string appears in a toast message when
      any page is removed frome about:home. This includes pages that are in history,
@@ -410,7 +426,9 @@ size. -->
 <!ENTITY site_settings_clear        "Löschen">
 <!ENTITY site_settings_no_settings  "Keine Einstellungen zum Löschen verfügbar">
 
-<!ENTITY reading_list_added "Seite zu Leseliste hinzugefügt">
+<!-- Localization note (reading_list_added2) : Used in a toast, please keep as short
+     as possible. -->
+<!ENTITY reading_list_added2 "Zu Liste hinzugefügt">
 <!ENTITY reading_list_removed "Seite aus Leseliste entfernt">
 <!-- Localization note (reading_list_remove) : Used to remove the currently open page from
      the user's reading list. The opposite of overlay_share_reading_list_btn_label. -->
@@ -439,7 +457,9 @@ size. -->
 <!ENTITY button_clear_data "Daten löschen">
 <!ENTITY button_set "Übernehmen">
 <!ENTITY button_clear "Leeren">
-<!ENTITY button_remember "Speichern">
+<!ENTITY button_copy "Kopieren">
+
+<!ENTITY firstrun_panel_title_welcome "Willkommen">
 
 <!ENTITY home_top_sites_title "Meistbesuchte Seiten">
 <!-- Localization note (home_top_sites_add): This string is used as placeholder
@@ -501,10 +521,6 @@ size. -->
      the text of a button; we expect more than one device. -->
 <!ENTITY home_remote_tabs_unhide_selected_devices "Ausgewählte Geräte nicht mehr ausblenden">
 
-<!ENTITY private_browsing_title "Privater Modus">
-<!ENTITY private_tabs_panel_empty_desc "Die privaten Tabs werden hier angezeigt. Während die Browser-Chronik und Cookies nicht gespeichert werden, bleiben Lesezeichen und heruntergeladene Dateien auf dem Gerät erhalten.">
-<!ENTITY private_tabs_panel_learn_more "Weitere Informationen">
-
 <!ENTITY remote_tabs_panel_moved_title "Wo sind meine Tabs jetzt?">
 <!ENTITY remote_tabs_panel_moved_desc "Ihre Tabs von anderen Geräten werden jetzt in einer Ansicht auf der Startseite angezeigt. Dadurch können Sie auf diese in jedem neuen Tab schnell zugreifen.">
 <!ENTITY remote_tabs_panel_moved_link "Die neue Ansicht öffnen">
@@ -532,6 +548,7 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY identity_run_by "Diese Seite wird betrieben von">
 <!ENTITY identity_no_info "Diese Website stellt keine Identitätsdaten zur Verfügung.">
 <!ENTITY identity_not_encrypted "Ihre Verbindung zu dieser Website ist nicht verschlüsselt.">
+<!ENTITY identity_encrypted "Verschlüsselt">
 
 <!-- Mixed content notifications in site identity popup -->
 <!ENTITY loaded_mixed_content_message "Diese Seite enthält Inhalt, der nicht sicher ist.">
@@ -595,7 +612,7 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY guest_session_dialog_continue "Weiter">
 <!ENTITY guest_session_dialog_cancel "Abbrechen">
 <!ENTITY new_guest_session_title "&brandShortName; startet jetzt neu">
-<!ENTITY new_guest_session_text "Die Person wird keine persönlichen Browser-Daten (wie gespeicherte Passwörter, Chronik oder Lesezeichen) sehen.\n\nNachdem der Gast mit dem Surfen fertig ist, werden seine Browser-Daten gelöscht und Ihre Sitzung wiederhergestellt.">
+<!ENTITY new_guest_session_text2 "Die Person wird keine persönlichen Browser-Daten (wie gespeicherte Zugangsdaten, Chronik oder Lesezeichen) sehen.\n\nNachdem der Gast mit dem Surfen fertig ist, werden seine Browser-Daten gelöscht und Ihre Sitzung wiederhergestellt.">
 <!ENTITY guest_browsing_notification_title "Gastmodus ist aktiv">
 <!ENTITY guest_browsing_notification_text "Zum Beenden antippen">
 
@@ -610,7 +627,15 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 
 <!ENTITY colon ":">
 
-<!-- These are only used for accessiblity for the done and overflow-menu buttons in the actionbar.
+<!-- LOCALIZATION NOTE (percent): The percent sign is appended after a number to
+     display a percentage value. formatS is the number, #37 is the code to display a percent sign.
+     This format string is typically used by getString method, in such method the percent sign
+     is a reserved caracter. In order to display one percent sign in the result of getString,
+     double percent signs must be inserted in the format string.
+     This entity is used in the zoomed view to display the zoom factor-->
+<!ENTITY percent "&formatS;&#37;&#37;">
+
+<!-- These are only used for accessibility for the done and overflow-menu buttons in the actionbar.
      They are never shown to users -->
 <!ENTITY actionbar_menu "Menü">
 <!ENTITY actionbar_done "Fertig">
@@ -636,3 +661,5 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- LOCALIZATION NOTE (find_matchcase): This is meant to appear as an icon that changes color
      if match-case is activated. i.e. No more than two letters, one uppercase, one lowercase. -->
 <!ENTITY find_matchcase "Aa">
+
+<!ENTITY intent_uri_cannot_open "Link kann nicht geöffnet werden">

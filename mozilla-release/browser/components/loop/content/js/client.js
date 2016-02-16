@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* jshint esnext:true */
-/* global loop:true, hawk, deriveHawkCredentials */
-
 var loop = loop || {};
 loop.Client = (function($) {
   "use strict";
@@ -109,13 +106,13 @@ loop.Client = (function($) {
               expectedPostCallProperties);
 
             cb(null, outgoingCallData);
-          } catch (err) {
-            console.log("Error requesting call info", err);
-            cb(err);
+          } catch (ex) {
+            console.log("Error requesting call info", ex);
+            cb(ex);
           }
         }.bind(this)
       );
-    },
+    }
   };
 
   return Client;

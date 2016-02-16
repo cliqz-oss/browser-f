@@ -134,22 +134,15 @@ static nsCSSProperty gAliases[eCSSAliasCount != 0 ? eCSSAliasCount : 1] = {
 nsStaticCaseInsensitiveNameTable*
 CreateStaticTable(const char* const aRawTable[], int32_t aLength)
 {
-  auto table = new nsStaticCaseInsensitiveNameTable();
-  if (table) {
+  auto table = new nsStaticCaseInsensitiveNameTable(aRawTable, aLength);
 #ifdef DEBUG
-    // let's verify the table...
-    for (int32_t index = 0; index < aLength; ++index) {
-      nsAutoCString temp1(aRawTable[index]);
-      nsAutoCString temp2(aRawTable[index]);
-      ToLowerCase(temp1);
-      MOZ_ASSERT(temp1.Equals(temp2),
-                 "upper case char in case insensitive name table");
-      MOZ_ASSERT(-1 == temp1.FindChar('_'),
-                 "underscore char in case insensitive name table");
-    }
-#endif
-    table->Init(aRawTable, aLength);
+  // Partially verify the entries.
+  for (int32_t index = 0; index < aLength; ++index) {
+    nsAutoCString temp(aRawTable[index]);
+    MOZ_ASSERT(-1 == temp.FindChar('_'),
+               "underscore char in case insensitive name table");
   }
+#endif
   return table;
 }
 
@@ -1476,6 +1469,15 @@ const KTableValue nsCSSProps::kMathDisplayKTable[] = {
   eCSSKeyword_UNKNOWN,-1
 };
 
+const KTableValue nsCSSProps::kContainKTable[] = {
+  eCSSKeyword_none,    NS_STYLE_CONTAIN_NONE,
+  eCSSKeyword_strict,  NS_STYLE_CONTAIN_STRICT,
+  eCSSKeyword_layout,  NS_STYLE_CONTAIN_LAYOUT,
+  eCSSKeyword_style,   NS_STYLE_CONTAIN_STYLE,
+  eCSSKeyword_paint,   NS_STYLE_CONTAIN_PAINT,
+  eCSSKeyword_UNKNOWN,-1
+};
+
 const KTableValue nsCSSProps::kContextOpacityKTable[] = {
   eCSSKeyword_context_fill_opacity, NS_STYLE_CONTEXT_FILL_OPACITY,
   eCSSKeyword_context_stroke_opacity, NS_STYLE_CONTEXT_STROKE_OPACITY,
@@ -1498,9 +1500,10 @@ const KTableValue nsCSSProps::kObjectFitKTable[] = {
 };
 
 const KTableValue nsCSSProps::kOrientKTable[] = {
+  eCSSKeyword_inline,     NS_STYLE_ORIENT_INLINE,
+  eCSSKeyword_block,      NS_STYLE_ORIENT_BLOCK,
   eCSSKeyword_horizontal, NS_STYLE_ORIENT_HORIZONTAL,
   eCSSKeyword_vertical,   NS_STYLE_ORIENT_VERTICAL,
-  eCSSKeyword_auto,       NS_STYLE_ORIENT_AUTO,
   eCSSKeyword_UNKNOWN,    -1
 };
 
@@ -1690,6 +1693,7 @@ KTableValue nsCSSProps::kTextAlignKTable[] = {
   eCSSKeyword_start, NS_STYLE_TEXT_ALIGN_DEFAULT,
   eCSSKeyword_end, NS_STYLE_TEXT_ALIGN_END,
   eCSSKeyword_true, NS_STYLE_TEXT_ALIGN_TRUE,
+  eCSSKeyword_match_parent, NS_STYLE_TEXT_ALIGN_MATCH_PARENT,
   eCSSKeyword_UNKNOWN,-1
 };
 
@@ -1763,6 +1767,13 @@ const KTableValue nsCSSProps::kTouchActionKTable[] = {
   eCSSKeyword_pan_y,        NS_STYLE_TOUCH_ACTION_PAN_Y,
   eCSSKeyword_manipulation, NS_STYLE_TOUCH_ACTION_MANIPULATION,
   eCSSKeyword_UNKNOWN,      -1
+};
+
+const KTableValue nsCSSProps::kTransformBoxKTable[] = {
+  eCSSKeyword_border_box, NS_STYLE_TRANSFORM_BOX_BORDER_BOX,
+  eCSSKeyword_fill_box, NS_STYLE_TRANSFORM_BOX_FILL_BOX,
+  eCSSKeyword_view_box, NS_STYLE_TRANSFORM_BOX_VIEW_BOX,
+  eCSSKeyword_UNKNOWN,-1
 };
 
 const KTableValue nsCSSProps::kTransitionTimingFunctionKTable[] = {

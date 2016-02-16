@@ -145,6 +145,12 @@ struct GLContextSymbols
     PFNGLGETQUERYOBJECTIVPROC fGetQueryObjectiv;
     typedef void (GLAPIENTRY * PFNGLGETQUERYOBJECTUIVPROC) (GLuint id, GLenum pname, GLuint* params);
     PFNGLGETQUERYOBJECTUIVPROC fGetQueryObjectuiv;
+    typedef void (GLAPIENTRY * PFNGLGETQUERYOBJECTI64VPROC) (GLuint id, GLenum pname, GLint64* params);
+    PFNGLGETQUERYOBJECTI64VPROC fGetQueryObjecti64v;
+    typedef void (GLAPIENTRY * PFNGLGETQUERYOBJECTUI64VPROC) (GLuint id, GLenum pname, GLuint64* params);
+    PFNGLGETQUERYOBJECTUI64VPROC fGetQueryObjectui64v;
+    typedef void (GLAPIENTRY * PFNGLQUERYCOUNTERPROC) (GLuint id, GLenum target);
+    PFNGLQUERYCOUNTERPROC fQueryCounter;
     typedef void (GLAPIENTRY * PFNGLTEXPARAMETERIPROC) (GLenum target, GLenum pname, GLint param);
     PFNGLTEXPARAMETERIPROC fTexParameteri;
     typedef void (GLAPIENTRY * PFNGLTEXPARAMETERIVPROC) (GLenum target, GLenum pname, const GLint* param);
@@ -165,6 +171,8 @@ struct GLContextSymbols
     PFNGLGETUNIFORMFVPROC fGetUniformfv;
     typedef void (GLAPIENTRY * PFNGLGETUNIFORMIVPROC) (GLuint program, GLint location, GLint* params);
     PFNGLGETUNIFORMIVPROC fGetUniformiv;
+    typedef void (GLAPIENTRY * PFNGLGETUNIFORMUIVPROC) (GLuint program, GLint location, GLuint* params);
+    PFNGLGETUNIFORMUIVPROC fGetUniformuiv;
     typedef GLint (GLAPIENTRY * PFNGLGETUNIFORMLOCATIONPROC) (GLint programObj, const GLchar* name);
     PFNGLGETUNIFORMLOCATIONPROC fGetUniformLocation;
     typedef void (GLAPIENTRY * PFNGLGETVERTEXATTRIBFVPROC) (GLuint, GLenum, GLfloat*);
@@ -657,19 +665,19 @@ struct GLContextSymbols
                                                             GLint yoffset, GLint zoffset, GLint x,
                                                             GLint y, GLsizei width, GLsizei height);
     PFNGLCOPYTEXSUBIMAGE3DPROC fCopyTexSubImage3D;
-    typedef void (GLAPIENTRY * PFNGLCOMPRESSEDTEXIMAGE3D) (GLenum target, GLint level, GLenum internalformat,
-                                                           GLsizei width, GLsizei height, GLsizei depth,
-                                                           GLint border, GLsizei imageSize, const GLvoid* data);
-    PFNGLCOMPRESSEDTEXIMAGE3D fCompressedTexImage3D;
-    typedef void (GLAPIENTRY * PFNGLCOMPRESSEDTEXSUBIMAGE3D) (GLenum target, GLint level,
-                                                              GLint xoffset, GLint yoffset, GLint zoffset,
-                                                              GLsizei width, GLsizei height, GLsizei depth,
-                                                              GLenum format, GLsizei imageSize, const GLvoid* data);
-    PFNGLCOMPRESSEDTEXSUBIMAGE3D fCompressedTexSubImage3D;
+    typedef void (GLAPIENTRY * PFNGLCOMPRESSEDTEXIMAGE3DPROC) (GLenum target, GLint level, GLenum internalformat,
+                                                               GLsizei width, GLsizei height, GLsizei depth,
+                                                               GLint border, GLsizei imageSize, const GLvoid* data);
+    PFNGLCOMPRESSEDTEXIMAGE3DPROC fCompressedTexImage3D;
+    typedef void (GLAPIENTRY * PFNGLCOMPRESSEDTEXSUBIMAGE3DPROC) (GLenum target, GLint level,
+                                                                  GLint xoffset, GLint yoffset, GLint zoffset,
+                                                                  GLsizei width, GLsizei height, GLsizei depth,
+                                                                  GLenum format, GLsizei imageSize, const GLvoid* data);
+    PFNGLCOMPRESSEDTEXSUBIMAGE3DPROC fCompressedTexSubImage3D;
 
     // get_string_indexed
-    typedef const GLubyte* (GLAPIENTRY * pfnGLGetStringiT)(GLenum name, GLuint index);
-    pfnGLGetStringiT fGetStringi;
+    typedef const GLubyte* (GLAPIENTRY * PFNGLGETSTRINGIPROC)(GLenum name, GLuint index);
+    PFNGLGETSTRINGIPROC fGetStringi;
 };
 
 }

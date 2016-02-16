@@ -21,9 +21,8 @@
 #include "ClearKeyDecryptionManager.h"
 #include "ClearKeyUtils.h"
 #include "gmp-task-utils.h"
-#include "mozilla/Endian.h"
+#include "Endian.h"
 #include "VideoDecoder.h"
-#include "mozilla/Move.h"
 
 using namespace wmf;
 
@@ -34,8 +33,11 @@ VideoDecoder::VideoDecoder(GMPVideoHost *aHostAPI)
   , mMutex(nullptr)
   , mNumInputTasks(0)
   , mSentExtraData(false)
+  , mIsFlushing(false)
   , mHasShutdown(false)
 {
+  // We drop the ref in DecodingComplete().
+  AddRef();
 }
 
 VideoDecoder::~VideoDecoder()
@@ -113,9 +115,9 @@ VideoDecoder::Decode(GMPVideoEncodedFrame* aInputFrame,
   // Note: we don't need the codec specific info on a per-frame basis.
   // It's mostly useful for WebRTC use cases.
 
-  mWorkerThread->Post(WrapTask(this,
-                               &VideoDecoder::DecodeTask,
-                               aInputFrame));
+  mWorkerThread->Post(WrapTaskRefCounted(this,
+                                         &VideoDecoder::DecodeTask,
+                                         aInputFrame));
 }
 
 class AutoReleaseVideoFrame {
@@ -138,6 +140,11 @@ VideoDecoder::DecodeTask(GMPVideoEncodedFrame* aInput)
   CK_LOGD("VideoDecoder::DecodeTask");
   AutoReleaseVideoFrame ensureFrameReleased(aInput);
   HRESULT hr;
+
+  if (mIsFlushing) {
+    CK_LOGD("VideoDecoder::DecodeTask rejecting frame: flushing.");
+    return;
+  }
 
   {
     AutoLock lock(mMutex);
@@ -198,13 +205,12 @@ VideoDecoder::DecodeTask(GMPVideoEncodedFrame* aInput)
     CK_LOGD("VideoDecoder::DecodeTask() output ret=0x%x\n", hr);
     if (hr == S_OK) {
       MaybeRunOnMainThread(
-        WrapTask(this,
-                 &VideoDecoder::ReturnOutput,
-                 CComPtr<IMFSample>(mozilla::Move(output)),
-                 mDecoder->GetFrameWidth(),
-                 mDecoder->GetFrameHeight(),
-                 mDecoder->GetStride()));
-      assert(!output.Get());
+        WrapTaskRefCounted(this,
+                           &VideoDecoder::ReturnOutput,
+                           CComPtr<IMFSample>(output),
+                           mDecoder->GetFrameWidth(),
+                           mDecoder->GetFrameHeight(),
+                           mDecoder->GetStride()));
     }
     if (hr == MF_E_TRANSFORM_NEED_MORE_INPUT) {
       AutoLock lock(mMutex);
@@ -234,11 +240,20 @@ VideoDecoder::ReturnOutput(IMFSample* aSample,
   HRESULT hr;
 
   GMPVideoFrame* f = nullptr;
-  mHostAPI->CreateFrame(kGMPI420VideoFrame, &f);
-  if (!f) {
+  auto err = mHostAPI->CreateFrame(kGMPI420VideoFrame, &f);
+  if (GMP_FAILED(err) || !f) {
     CK_LOGE("Failed to create i420 frame!\n");
     return;
   }
+  if (HasShutdown()) {
+    // Note: GMPVideoHost::CreateFrame() can process messages before returning,
+    // including a message that calls VideoDecoder::DecodingComplete(), i.e.
+    // we can shutdown during the call!
+    CK_LOGD("Shutdown while waiting on GMPVideoHost::CreateFrame()!\n");
+    f->Destroy();
+    return;
+  }
+
   auto vf = static_cast<GMPVideoi420Frame*>(f);
 
   hr = SampleToVideoFrame(aSample, aWidth, aHeight, aStride, vf);
@@ -293,9 +308,10 @@ VideoDecoder::SampleToVideoFrame(IMFSample* aSample,
   int32_t halfStride = (stride + 1) / 2;
   int32_t halfHeight = (aHeight + 1) / 2;
 
-  aVideoFrame->CreateEmptyFrame(stride, aHeight, stride, halfStride, halfStride);
+  auto err = aVideoFrame->CreateEmptyFrame(stride, aHeight, stride, halfStride, halfStride);
+  ENSURE(GMP_SUCCEEDED(err), E_FAIL);
 
-  auto err = aVideoFrame->SetWidth(aWidth);
+  err = aVideoFrame->SetWidth(aWidth);
   ENSURE(GMP_SUCCEEDED(err), E_FAIL);
   err = aVideoFrame->SetHeight(aHeight);
   ENSURE(GMP_SUCCEEDED(err), E_FAIL);
@@ -334,14 +350,28 @@ VideoDecoder::SampleToVideoFrame(IMFSample* aSample,
 }
 
 void
+VideoDecoder::ResetCompleteTask()
+{
+  mIsFlushing = false;
+  if (mCallback) {
+    MaybeRunOnMainThread(WrapTask(mCallback,
+                                  &GMPVideoDecoderCallback::ResetComplete));
+  }
+}
+
+void
 VideoDecoder::Reset()
 {
+  mIsFlushing = true;
   if (mDecoder) {
     mDecoder->Reset();
   }
-  if (mCallback) {
-    mCallback->ResetComplete();
-  }
+
+  // Schedule ResetComplete callback to run after existing frames have been
+  // flushed out of the task queue.
+  EnsureWorker();
+  mWorkerThread->Post(WrapTaskRefCounted(this,
+                                         &VideoDecoder::ResetCompleteTask));
 }
 
 void
@@ -357,13 +387,12 @@ VideoDecoder::DrainTask()
     CK_LOGD("VideoDecoder::DrainTask() output ret=0x%x\n", hr);
     if (hr == S_OK) {
       MaybeRunOnMainThread(
-        WrapTask(this,
-                 &VideoDecoder::ReturnOutput,
-                 CComPtr<IMFSample>(mozilla::Move(output)),
-                 mDecoder->GetFrameWidth(),
-                 mDecoder->GetFrameHeight(),
-                 mDecoder->GetStride()));
-      assert(!output.Get());
+        WrapTaskRefCounted(this,
+                           &VideoDecoder::ReturnOutput,
+                           CComPtr<IMFSample>(output),
+                           mDecoder->GetFrameWidth(),
+                           mDecoder->GetFrameHeight(),
+                           mDecoder->GetStride()));
     }
   }
   MaybeRunOnMainThread(WrapTask(mCallback, &GMPVideoDecoderCallback::DrainComplete));
@@ -379,8 +408,8 @@ VideoDecoder::Drain()
     return;
   }
   EnsureWorker();
-  mWorkerThread->Post(WrapTask(this,
-                               &VideoDecoder::DrainTask));
+  mWorkerThread->Post(WrapTaskRefCounted(this,
+                                         &VideoDecoder::DrainTask));
 }
 
 void
@@ -391,24 +420,19 @@ VideoDecoder::DecodingComplete()
   }
   mHasShutdown = true;
 
-  // Worker thread might have dispatched more tasks to the main thread that need this object.
-  // Append another task to delete |this|.
-  GetPlatform()->runonmainthread(WrapTask(this, &VideoDecoder::Destroy));
+  // Release the reference we added in the constructor. There may be
+  // WrapRefCounted tasks that also hold references to us, and keep
+  // us alive a little longer.
+  Release();
 }
 
 void
-VideoDecoder::Destroy()
-{
-  delete this;
-}
-
-void
-VideoDecoder::MaybeRunOnMainThread(gmp_task_args_base* aTask)
+VideoDecoder::MaybeRunOnMainThread(GMPTask* aTask)
 {
   class MaybeRunTask : public GMPTask
   {
   public:
-    MaybeRunTask(VideoDecoder* aDecoder, gmp_task_args_base* aTask)
+    MaybeRunTask(VideoDecoder* aDecoder, GMPTask* aTask)
       : mDecoder(aDecoder), mTask(aTask)
     { }
 
@@ -428,8 +452,8 @@ VideoDecoder::MaybeRunOnMainThread(gmp_task_args_base* aTask)
     }
 
   private:
-    VideoDecoder* mDecoder;
-    gmp_task_args_base* mTask;
+    RefPtr<VideoDecoder> mDecoder;
+    GMPTask* mTask;
   };
 
   GetPlatform()->runonmainthread(new MaybeRunTask(this, aTask));

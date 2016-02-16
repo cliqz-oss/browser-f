@@ -4,7 +4,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "mozilla/Preferences.h"
-#include "mozilla/dom/TimeRanges.h"
 #include "MediaResource.h"
 #include "mozilla/dom/HTMLMediaElement.h"
 #include "AndroidMediaPluginHost.h"
@@ -211,6 +210,7 @@ static const char* GetOmxLibraryName()
 
 AndroidMediaPluginHost::AndroidMediaPluginHost() {
   MOZ_COUNT_CTOR(AndroidMediaPluginHost);
+  MOZ_ASSERT(NS_IsMainThread());
 
   mResourceServer = AndroidMediaResourceServer::Start();
 
@@ -309,11 +309,18 @@ void AndroidMediaPluginHost::DestroyDecoder(Decoder *aDecoder)
 }
 
 AndroidMediaPluginHost *sAndroidMediaPluginHost = nullptr;
-AndroidMediaPluginHost *GetAndroidMediaPluginHost()
+AndroidMediaPluginHost *EnsureAndroidMediaPluginHost()
 {
+  MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread());
   if (!sAndroidMediaPluginHost) {
     sAndroidMediaPluginHost = new AndroidMediaPluginHost();
   }
+  return sAndroidMediaPluginHost;
+}
+
+AndroidMediaPluginHost *GetAndroidMediaPluginHost()
+{
+  MOZ_ASSERT(sAndroidMediaPluginHost);
   return sAndroidMediaPluginHost;
 }
 

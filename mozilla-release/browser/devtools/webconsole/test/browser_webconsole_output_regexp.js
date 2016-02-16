@@ -14,7 +14,7 @@ let inputTests = [
   {
     input: "/foo/igym",
     output: "/foo/gimy",
-    printOutput: "Error: flags called",
+    printOutput: "Error: source called",
     inspectable: true,
   },
 ];

@@ -17,6 +17,7 @@
 package org.mozilla.gecko.toolbar;
 
 import org.mozilla.gecko.AppConstants.Versions;
+import org.mozilla.gecko.util.WeakReferenceHandler;
 
 import android.content.Context;
 import android.graphics.Canvas;
@@ -68,30 +69,7 @@ public class ToolbarProgressView extends ImageView {
         mBounds = new Rect(0,0,0,0);
         mTargetProgress = 0;
 
-        mHandler = new Handler() {
-            @Override
-            public void handleMessage(Message msg) {
-                switch (msg.what) {
-                    case MSG_UPDATE:
-                        mCurrentProgress = Math.min(mTargetProgress, mCurrentProgress + mIncrement);
-
-                        updateBounds();
-
-                        if (mCurrentProgress < mTargetProgress) {
-                            final int delay = (mTargetProgress < MAX_PROGRESS) ? DELAY : DELAY / 4;
-                            sendMessageDelayed(mHandler.obtainMessage(msg.what), delay);
-                        } else if (mCurrentProgress == MAX_PROGRESS) {
-                            sendMessageDelayed(mHandler.obtainMessage(MSG_HIDE), DELAY);
-                        }
-                        break;
-
-                    case MSG_HIDE:
-                        setVisibility(View.GONE);
-                        break;
-                }
-            }
-
-        };
+        mHandler = new ToolbarProgressHandler(this);
     }
 
     @Override
@@ -185,5 +163,38 @@ public class ToolbarProgressView extends ImageView {
     private void updateBounds() {
         mBounds.right = getWidth() * mCurrentProgress / MAX_PROGRESS;
         invalidate();
+    }
+
+    private static class ToolbarProgressHandler extends WeakReferenceHandler<ToolbarProgressView> {
+        public ToolbarProgressHandler(final ToolbarProgressView that) {
+            super(that);
+        }
+
+        @Override
+        public void handleMessage(Message msg) {
+            final ToolbarProgressView that = mTarget.get();
+            if (that == null) {
+                return;
+            }
+
+            switch (msg.what) {
+                case MSG_UPDATE:
+                    that.mCurrentProgress = Math.min(that.mTargetProgress, that.mCurrentProgress + that.mIncrement);
+
+                    that.updateBounds();
+
+                    if (that.mCurrentProgress < that.mTargetProgress) {
+                        final int delay = (that.mTargetProgress < MAX_PROGRESS) ? DELAY : DELAY / 4;
+                        sendMessageDelayed(that.mHandler.obtainMessage(msg.what), delay);
+                    } else if (that.mCurrentProgress == MAX_PROGRESS) {
+                        sendMessageDelayed(that.mHandler.obtainMessage(MSG_HIDE), DELAY);
+                    }
+                    break;
+
+                case MSG_HIDE:
+                    that.setVisibility(View.GONE);
+                    break;
+            }
+        }
     }
 }

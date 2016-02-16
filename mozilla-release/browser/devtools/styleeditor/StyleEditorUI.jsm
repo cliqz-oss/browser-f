@@ -75,6 +75,8 @@ function StyleEditorUI(debuggee, target, panelDoc) {
   this._updateMediaList = this._updateMediaList.bind(this);
   this._clear = this._clear.bind(this);
   this._onError = this._onError.bind(this);
+  this._updateOpenLinkItem = this._updateOpenLinkItem.bind(this);
+  this._openLinkNewTab = this._openLinkNewTab.bind(this);
 
   this._prefObserver = new PrefObserver("devtools.styleeditor.");
   this._prefObserver.on(PREF_ORIG_SOURCES, this._onNewDocument);
@@ -164,6 +166,14 @@ StyleEditorUI.prototype = {
     });
 
     this._optionsButton = this._panelDoc.getElementById("style-editor-options");
+    this._panelDoc.addEventListener("contextmenu", () => {
+      this._contextMenuStyleSheet = null;
+    }, true);
+
+    this._contextMenu = this._panelDoc.getElementById("sidebar-context");
+    this._contextMenu.addEventListener("popupshowing",
+                                       this._updateOpenLinkItem);
+
     this._optionsMenu = this._panelDoc.getElementById("style-editor-options-popup");
     this._optionsMenu.addEventListener("popupshowing",
                                        this._onOptionsPopupShowing);
@@ -173,9 +183,14 @@ StyleEditorUI.prototype = {
     this._sourcesItem = this._panelDoc.getElementById("options-origsources");
     this._sourcesItem.addEventListener("command",
                                        this._toggleOrigSources);
+
     this._mediaItem = this._panelDoc.getElementById("options-show-media");
     this._mediaItem.addEventListener("command",
                                      this._toggleMediaSidebar);
+
+    this._openLinkNewTabItem = this._panelDoc.getElementById("context-openlinknewtab");
+    this._openLinkNewTabItem.addEventListener("command",
+                                              this._openLinkNewTab);
 
     let nav = this._panelDoc.querySelector(".splitview-controller");
     nav.setAttribute("width", Services.prefs.getIntPref(PREF_NAV_WIDTH));
@@ -224,7 +239,11 @@ StyleEditorUI.prototype = {
     this._clear();
 
     for (let sheet of styleSheets) {
-      yield this._addStyleSheet(sheet);
+      try {
+        yield this._addStyleSheet(sheet);
+      } catch (e) {
+        this.emit("error", { key: LOAD_ERROR });
+      }
     }
 
     this._root.classList.remove("loading");
@@ -345,7 +364,11 @@ StyleEditorUI.prototype = {
         // nothing selected
         return;
       }
-      NetUtil.asyncFetch2(file, (stream, status) => {
+      NetUtil.asyncFetch({
+        uri: NetUtil.newURI(file),
+        loadingNode: this._window.document,
+        contentPolicyType: Ci.nsIContentPolicy.TYPE_OTHER
+      }, (stream, status) => {
         if (!Components.isSuccessCode(status)) {
           this.emit("error", { key: LOAD_ERROR });
           return;
@@ -356,12 +379,7 @@ StyleEditorUI.prototype = {
         this._debuggee.addStyleSheet(source).then((styleSheet) => {
           this._onStyleSheetCreated(styleSheet, file);
         });
-      },
-      this._window.document,
-      null,  // aLoadingPrincipal
-      null,  // aTriggeringPrincipal
-      Ci.nsILoadInfo.SEC_NORMAL,
-      Ci.nsIContentPolicy.TYPE_OTHER);
+      });
     };
 
     showFilePicker(file, false, parentWindow, onFileSelected);
@@ -409,6 +427,29 @@ StyleEditorUI.prototype = {
    */
   _onMediaPrefChanged: function() {
     this.editors.forEach(this._updateMediaList);
+  },
+
+  /**
+   * This method handles the following cases related to the context menu item "_openLinkNewTabItem":
+   *
+   * 1) There was a stylesheet clicked on and it is external: show and enable the context menu item
+   * 2) There was a stylesheet clicked on and it is inline: show and disable the context menu item
+   * 3) There was no stylesheet clicked on (the right click happened below the list): hide the context menu
+   */
+  _updateOpenLinkItem: function() {
+    this._openLinkNewTabItem.setAttribute("hidden", !this._contextMenuStyleSheet);
+    if (this._contextMenuStyleSheet) {
+      this._openLinkNewTabItem.setAttribute("disabled", !this._contextMenuStyleSheet.href);
+    }
+  },
+
+  /**
+   * Open a particular stylesheet in a new tab.
+   */
+  _openLinkNewTab: function() {
+    if (this._contextMenuStyleSheet) {
+      this._window.openUILinkIn(this._contextMenuStyleSheet.href, "tab");
+    }
   },
 
   /**
@@ -493,6 +534,10 @@ StyleEditorUI.prototype = {
 
         this._updateSummaryForEditor(editor, summary);
 
+        summary.addEventListener("contextmenu", (event) => {
+          this._contextMenuStyleSheet = editor.styleSheet;
+        }, false);
+
         summary.addEventListener("focus", function onSummaryFocus(event) {
           if (event.target == summary) {
             // autofocus the stylesheet name
@@ -550,30 +595,29 @@ StyleEditorUI.prototype = {
           this.emit("editor-selected", editor);
 
           // Is there any CSS coverage markup to include?
-          csscoverage.getUsage(this._target).then(usage => {
-            if (usage == null) {
-              return;
+          let usage = yield csscoverage.getUsage(this._target);
+          if (usage == null) {
+            return;
+          }
+
+          let href = csscoverage.sheetToUrl(editor.styleSheet);
+          let data = yield usage.createEditorReport(href)
+
+          editor.removeAllUnusedRegions();
+
+          if (data.reports.length > 0) {
+            // Only apply if this file isn't compressed. We detect a
+            // compressed file if there are more rules than lines.
+            let text = editor.sourceEditor.getText();
+            let lineCount = text.split("\n").length;
+            let ruleCount = editor.styleSheet.ruleCount;
+            if (lineCount >= ruleCount) {
+              editor.addUnusedRegions(data.reports);
             }
-
-            let href = csscoverage.sheetToUrl(editor.styleSheet);
-            usage.createEditorReport(href).then(data => {
-              editor.removeAllUnusedRegions();
-
-              if (data.reports.length > 0) {
-                // Only apply if this file isn't compressed. We detect a
-                // compressed file if there are more rules than lines.
-                let text = editor.sourceEditor.getText();
-                let lineCount = text.split("\n").length;
-                let ruleCount = editor.styleSheet.ruleCount;
-                if (lineCount >= ruleCount) {
-                  editor.addUnusedRegions(data.reports);
-                }
-                else {
-                  this.emit("error", { key: "error-compressed", level: "info" });
-                }
-              }
-            }, Cu.reportError);
-          }, Cu.reportError);
+            else {
+              this.emit("error", { key: "error-compressed", level: "info" });
+            }
+          }
         }.bind(this)).then(null, Cu.reportError);
       }.bind(this)
     });
@@ -632,7 +676,8 @@ StyleEditorUI.prototype = {
    * @param  {number} col
    *         Column number to jump to
    * @return {Promise}
-   *         Promise that will resolve when the editor is selected.
+   *         Promise that will resolve when the editor is selected and ready
+   *         to be used.
    */
   _selectEditor: function(editor, line, col) {
     line = line || 0;
@@ -707,6 +752,9 @@ StyleEditorUI.prototype = {
    *        Line to which the caret should be moved (zero-indexed).
    * @param {Number} [col]
    *        Column to which the caret should be moved (zero-indexed).
+   * @return {Promise}
+   *         Promise that will resolve when the editor is selected and ready
+   *         to be used.
    */
   selectStyleSheet: function(stylesheet, line, col) {
     this._styleSheetToSelect = {
@@ -717,7 +765,7 @@ StyleEditorUI.prototype = {
 
     /* Switch to the editor for this sheet, if it exists yet.
        Otherwise each editor will be checked when it's created. */
-    this.switchToSelectedSheet();
+    return this.switchToSelectedSheet();
   },
 
 

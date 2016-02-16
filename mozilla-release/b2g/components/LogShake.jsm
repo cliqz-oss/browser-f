@@ -51,11 +51,18 @@ function debug(msg) {
 
 /**
  * An empirically determined amount of acceleration corresponding to a
- * shake
+ * shake.
  */
 const EXCITEMENT_THRESHOLD = 500;
+/**
+ * The maximum fraction to update the excitement value per frame. This
+ * corresponds to requiring shaking for approximately 10 motion events (1.6
+ * seconds)
+ */
+const EXCITEMENT_FILTER_ALPHA = 0.2;
 const DEVICE_MOTION_EVENT = "devicemotion";
 const SCREEN_CHANGE_EVENT = "screenchange";
+const CAPTURE_LOGS_CONTENT_EVENT = "requestSystemLogs";
 const CAPTURE_LOGS_START_EVENT = "capture-logs-start";
 const CAPTURE_LOGS_ERROR_EVENT = "capture-logs-error";
 const CAPTURE_LOGS_SUCCESS_EVENT = "capture-logs-success";
@@ -70,10 +77,27 @@ let LogShake = {
   deviceMotionEnabled: false,
 
   /**
+   * We only listen to motion events when the screen is enabled, keep track
+   * of its state.
+   */
+  screenEnabled: true,
+
+  /**
+   * Flag monitoring if the preference to enable shake to capture is
+   * enabled in gaia.
+   */
+  listenToDeviceMotion: true,
+
+  /**
    * If a capture has been requested and is waiting for reads/parsing. Used for
    * debouncing.
    */
   captureRequested: false,
+
+  /**
+   * The current excitement (movement) level
+   */
+  excitement: 0,
 
   /**
    * Map of files which have log-type information to their parsers
@@ -109,6 +133,10 @@ let LogShake = {
       screenEnabled: true
     }});
 
+    // Reset excitement to clear residual motion
+    this.excitement = 0;
+
+    SystemAppProxy.addEventListener(CAPTURE_LOGS_CONTENT_EVENT, this, false);
     SystemAppProxy.addEventListener(SCREEN_CHANGE_EVENT, this, false);
 
     Services.obs.addObserver(this, "xpcom-shutdown", false);
@@ -129,6 +157,10 @@ let LogShake = {
     case SCREEN_CHANGE_EVENT:
       this.handleScreenChangeEvent(event);
       break;
+
+    case CAPTURE_LOGS_CONTENT_EVENT:
+      this.startCapture();
+      break;
     }
   },
 
@@ -141,8 +173,20 @@ let LogShake = {
     }
   },
 
+  enableDeviceMotionListener: function() {
+    this.listenToDeviceMotion = true;
+    this.startDeviceMotionListener();
+  },
+
+  disableDeviceMotionListener: function() {
+    this.listenToDeviceMotion = false;
+    this.stopDeviceMotionListener();
+  },
+
   startDeviceMotionListener: function() {
-    if (!this.deviceMotionEnabled) {
+    if (!this.deviceMotionEnabled &&
+        this.listenToDeviceMotion &&
+        this.screenEnabled) {
       SystemAppProxy.addEventListener(DEVICE_MOTION_EVENT, this, false);
       this.deviceMotionEnabled = true;
     }
@@ -166,31 +210,39 @@ let LogShake = {
 
     var acc = event.accelerationIncludingGravity;
 
-    var excitement = acc.x * acc.x + acc.y * acc.y + acc.z * acc.z;
+    // Updates excitement by a factor of at most alpha, ignoring sudden device
+    // motion. See bug #1101994 for more information.
+    var newExcitement = acc.x * acc.x + acc.y * acc.y + acc.z * acc.z;
+    this.excitement += (newExcitement - this.excitement) * EXCITEMENT_FILTER_ALPHA;
 
-    if (excitement > EXCITEMENT_THRESHOLD) {
-      if (!this.captureRequested) {
-        this.captureRequested = true;
-        SystemAppProxy._sendCustomEvent(CAPTURE_LOGS_START_EVENT, {});
-        this.captureLogs().then(logResults => {
-          // On resolution send the success event to the requester
-          SystemAppProxy._sendCustomEvent(CAPTURE_LOGS_SUCCESS_EVENT, {
-            logFilenames: logResults.logFilenames,
-            logPrefix: logResults.logPrefix
-          });
-          this.captureRequested = false;
-        },
-        error => {
-          // On an error send the error event
-          SystemAppProxy._sendCustomEvent(CAPTURE_LOGS_ERROR_EVENT, {error: error});
-          this.captureRequested = false;
-        });
-      }
+    if (this.excitement > EXCITEMENT_THRESHOLD) {
+      this.startCapture();
     }
   },
 
+  startCapture: function() {
+    if (this.captureRequested) {
+      return;
+    }
+    this.captureRequested = true;
+    SystemAppProxy._sendCustomEvent(CAPTURE_LOGS_START_EVENT, {});
+    this.captureLogs().then(logResults => {
+      // On resolution send the success event to the requester
+      SystemAppProxy._sendCustomEvent(CAPTURE_LOGS_SUCCESS_EVENT, {
+        logFilenames: logResults.logFilenames,
+        logPrefix: logResults.logPrefix
+      });
+      this.captureRequested = false;
+    }, error => {
+      // On an error send the error event
+      SystemAppProxy._sendCustomEvent(CAPTURE_LOGS_ERROR_EVENT, {error: error});
+      this.captureRequested = false;
+    });
+  },
+
   handleScreenChangeEvent: function(event) {
-    if (event.detail.screenEnabled) {
+    this.screenEnabled = event.detail.screenEnabled;
+    if (this.screenEnabled) {
       this.startDeviceMotionListener();
     } else {
       this.stopDeviceMotionListener();
@@ -242,7 +294,7 @@ let LogShake = {
 
     try {
       LogCapture.getScreenshot().then(screenshot => {
-        logArrays["logshake-screenshot.png"] = screenshot;
+        logArrays["screenshot.png"] = screenshot;
       });
     } catch (ex) {
       Cu.reportError("Unable to get screenshot dump: " + ex);

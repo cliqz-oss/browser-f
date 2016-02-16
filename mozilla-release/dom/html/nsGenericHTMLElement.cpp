@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:set tw=80 expandtab softtabstop=2 ts=2 sw=2: */
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -17,6 +17,7 @@
 #include "nsAttrValueInlines.h"
 #include "nsCOMPtr.h"
 #include "nsIAtom.h"
+#include "nsQueryObject.h"
 #include "nsIContentInlines.h"
 #include "nsIContentViewer.h"
 #include "mozilla/css/StyleRule.h"
@@ -152,7 +153,7 @@ public:
         fm->GetFocusedContent()->OwnerDoc() != document) {
       mozilla::ErrorResult rv;
       mElement->Focus(rv);
-      return rv.ErrorCode();
+      return rv.StealNSResult();
     }
 
     return NS_OK;
@@ -430,7 +431,7 @@ nsGenericHTMLElement::InsertAdjacentHTML(const nsAString& aPosition,
 {
   ErrorResult rv;
   Element::InsertAdjacentHTML(aPosition, aText, rv);
-  return rv.ErrorCode();
+  return rv.StealNSResult();
 }
 
 bool
@@ -1731,35 +1732,51 @@ nsGenericHTMLElement::GetURIListAttr(nsIAtom* aAttr, nsAString& aResult)
   nsIDocument* doc = OwnerDoc(); 
   nsCOMPtr<nsIURI> baseURI = GetBaseURI();
 
-  // Value contains relative URIs split on spaces (U+0020)
-  const char16_t *start = value.BeginReading();
-  const char16_t *end   = value.EndReading();
-  const char16_t *iter  = start;
-  for (;;) {
-    if (iter < end && *iter != ' ') {
+  nsString::const_iterator end;
+  value.EndReading(end);
+
+  nsAString::const_iterator iter;
+  value.BeginReading(iter);
+
+  while (iter != end) {
+    while (*iter == ' ' && iter != end) {
       ++iter;
-    } else {  // iter is pointing at either end or a space
-      while (*start == ' ' && start < iter)
-        ++start;
-      if (iter != start) {
-        if (!aResult.IsEmpty())
-          aResult.Append(char16_t(' '));
-        const nsSubstring& uriPart = Substring(start, iter);
-        nsCOMPtr<nsIURI> attrURI;
-        nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(attrURI),
-                                                  uriPart, doc, baseURI);
-        if (attrURI) {
-          nsAutoCString spec;
-          attrURI->GetSpec(spec);
-          AppendUTF8toUTF16(spec, aResult);
-        } else {
-          aResult.Append(uriPart);
-        }
-      }
-      start = iter = iter + 1;
-      if (iter >= end)
-        break;
     }
+
+    if (iter == end) {
+      break;
+    }
+
+    nsAString::const_iterator start = iter;
+
+    while (iter != end && *iter != ' ') {
+      ++iter;
+    }
+
+    if (!aResult.IsEmpty()) {
+      aResult.Append(NS_LITERAL_STRING(" "));
+    }
+
+    const nsSubstring& uriPart = Substring(start, iter);
+    nsCOMPtr<nsIURI> attrURI;
+    nsresult rv =
+      nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(attrURI),
+                                                uriPart, doc, baseURI);
+    if (NS_FAILED(rv)) {
+      aResult.Append(uriPart);
+      continue;
+    }
+
+    MOZ_ASSERT(attrURI);
+
+    nsAutoCString spec;
+    rv = attrURI->GetSpec(spec);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      aResult.Append(uriPart);
+      continue;
+    }
+
+    AppendUTF8toUTF16(spec, aResult);
   }
 
   return NS_OK;
@@ -1858,12 +1875,12 @@ nsGenericHTMLElement::SetUndoScopeInternal(bool aUndoScope)
       ErrorResult rv;
       slots->mUndoManager->ClearRedo(rv);
       if (rv.Failed()) {
-        return rv.ErrorCode();
+        return rv.StealNSResult();
       }
 
       slots->mUndoManager->ClearUndo(rv);
       if (rv.Failed()) {
-        return rv.ErrorCode();
+        return rv.StealNSResult();
       }
 
       slots->mUndoManager->Disconnect();
@@ -3193,7 +3210,7 @@ nsGenericHTMLElement::IsEventAttributeName(nsIAtom *aName)
  * would be set to. Helper for the media elements.
  */
 nsresult
-nsGenericHTMLElement::NewURIFromString(const nsAutoString& aURISpec,
+nsGenericHTMLElement::NewURIFromString(const nsAString& aURISpec,
                                        nsIURI** aURI)
 {
   NS_ENSURE_ARG_POINTER(aURI);

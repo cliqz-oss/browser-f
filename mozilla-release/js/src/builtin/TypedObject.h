@@ -549,7 +549,8 @@ class TypedObject : public JSObject
     static bool obj_deleteProperty(JSContext* cx, HandleObject obj, HandleId id,
                                    ObjectOpResult& result);
 
-    static bool obj_enumerate(JSContext* cx, HandleObject obj, AutoIdVector& properties);
+    static bool obj_enumerate(JSContext* cx, HandleObject obj, AutoIdVector& properties,
+                              bool enumerableOnly);
 
   public:
     TypedProto& typedProto() const {
@@ -605,7 +606,7 @@ class TypedObject : public JSObject
     static bool GetBuffer(JSContext* cx, unsigned argc, Value* vp);
     static bool GetByteOffset(JSContext* cx, unsigned argc, Value* vp);
 
-    Shape* shapeFromGC() { return shape_; }
+    Shape** addressOfShapeFromGC() { return shape_.unsafeGet(); }
 };
 
 typedef Handle<TypedObject*> HandleTypedObject;

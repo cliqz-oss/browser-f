@@ -17,6 +17,7 @@
 #include "nsTObserverArray.h"
 #include "nsTArray.h"
 #include "nsTHashtable.h"
+#include "nsTObserverArray.h"
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
 #include "mozilla/Attributes.h"
@@ -28,7 +29,6 @@ class nsPresContext;
 class nsIPresShell;
 class nsIDocument;
 class imgIRequest;
-class nsIRunnable;
 
 namespace mozilla {
 class RefreshDriverTimer;
@@ -308,6 +308,8 @@ private:
   };
   typedef nsClassHashtable<nsUint32HashKey, ImageStartData> ImageStartTable;
 
+  void RunFrameRequestCallbacks(int64_t aNowEpoch, mozilla::TimeStamp aNowTime);
+
   void Tick(int64_t aNowEpoch, mozilla::TimeStamp aNowTime);
 
   enum EnsureTimerStartedFlags {
@@ -336,7 +338,9 @@ private:
 
   double GetRefreshTimerInterval() const;
   double GetRegularTimerInterval(bool *outIsDefault = nullptr) const;
-  double GetThrottledTimerInterval() const;
+  static double GetThrottledTimerInterval();
+
+  static mozilla::TimeDuration GetMinRecomputeVisibilityInterval();
 
   bool HaveFrameRequestCallbacks() const {
     return mFrameRequestCallbackDocs.Length() != 0;
@@ -361,7 +365,19 @@ private:
   uint64_t mCompletedTransaction;
 
   uint32_t mFreezeCount;
+
+  // How long we wait between ticks for throttled (which generally means
+  // non-visible) documents registered with a non-throttled refresh driver.
+  const mozilla::TimeDuration mThrottledFrameRequestInterval;
+
+  // How long we wait, at a minimum, before recomputing image visibility
+  // information. This is a minimum because, regardless of this interval, we
+  // only recompute visibility when we've seen a layout or style flush since the
+  // last time we did it.
+  const mozilla::TimeDuration mMinRecomputeVisibilityInterval;
+
   bool mThrottled;
+  bool mNeedToRecomputeVisibility;
   bool mTestControllingRefreshes;
   bool mViewManagerFlushIsPending;
   bool mRequestedHighPrecision;
@@ -379,6 +395,8 @@ private:
   mozilla::TimeStamp mMostRecentRefresh;
   mozilla::TimeStamp mMostRecentTick;
   mozilla::TimeStamp mTickStart;
+  mozilla::TimeStamp mNextThrottledFrameRequestTick;
+  mozilla::TimeStamp mNextRecomputeVisibilityTick;
 
   // separate arrays for each flush type we support
   ObserverArray mObservers[3];
@@ -390,7 +408,8 @@ private:
   nsAutoTArray<nsIPresShell*, 16> mPresShellsToInvalidateIfHidden;
   // nsTArray on purpose, because we want to be able to swap.
   nsTArray<nsIDocument*> mFrameRequestCallbackDocs;
-  nsTArray<nsAPostRefreshObserver*> mPostRefreshObservers;
+  nsTArray<nsIDocument*> mThrottledFrameRequestCallbackDocs;
+  nsTObserverArray<nsAPostRefreshObserver*> mPostRefreshObservers;
 
   // Helper struct for processing image requests
   struct ImageRequestParameters {

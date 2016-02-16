@@ -65,7 +65,7 @@
 #ifdef MOZ_LOGGING
 #define FORCE_PR_LOG 1 /* Allow logging in the release build */
 #endif /* MOZ_LOGGING */
-#include "prlog.h"
+#include "mozilla/Logging.h"
 
 #ifdef XP_MACOSX
 #include "gfxQuartzNativeDrawing.h"
@@ -93,7 +93,6 @@ using mozilla::DefaultXDisplay;
 #undef CreateEvent
 #endif
 
-#ifdef PR_LOGGING 
 static PRLogModuleInfo *
 GetObjectFrameLog()
 {
@@ -102,7 +101,6 @@ GetObjectFrameLog()
     sLog = PR_NewLogModule("nsPluginFrame");
   return sLog;
 }
-#endif /* PR_LOGGING */
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -157,15 +155,16 @@ protected:
 
 nsPluginFrame::nsPluginFrame(nsStyleContext* aContext)
   : nsPluginFrameSuper(aContext)
+  , mInstanceOwner(nullptr)
   , mReflowCallbackPosted(false)
 {
-  PR_LOG(GetObjectFrameLog(), PR_LOG_DEBUG,
+  MOZ_LOG(GetObjectFrameLog(), LogLevel::Debug,
          ("Created new nsPluginFrame %p\n", this));
 }
 
 nsPluginFrame::~nsPluginFrame()
 {
-  PR_LOG(GetObjectFrameLog(), PR_LOG_DEBUG,
+  MOZ_LOG(GetObjectFrameLog(), LogLevel::Debug,
          ("nsPluginFrame %p deleted\n", this));
 }
 
@@ -195,7 +194,7 @@ nsPluginFrame::Init(nsIContent*       aContent,
                     nsContainerFrame* aParent,
                     nsIFrame*         aPrevInFlow)
 {
-  PR_LOG(GetObjectFrameLog(), PR_LOG_DEBUG,
+  MOZ_LOG(GetObjectFrameLog(), LogLevel::Debug,
          ("Initializing nsPluginFrame %p for content %p\n", this, aContent));
 
   nsPluginFrameSuper::Init(aContent, aParent, aPrevInFlow);
@@ -608,9 +607,19 @@ nsPluginFrame::CallSetWindow(bool aCheckIsHidden)
   if (aCheckIsHidden && IsHidden())
     return NS_ERROR_FAILURE;
 
+  // Calling either nsPluginInstanceOwner::FixUpPluginWindow() (here,
+  // on OS X) or SetWindow() (below, on all platforms) can destroy this
+  // frame.  (FixUpPluginWindow() calls SetWindow()).  So grab a safe
+  // reference to mInstanceOwner which we can use below, if needed.
+  nsRefPtr<nsPluginInstanceOwner> instanceOwnerRef(mInstanceOwner);
+
   // refresh the plugin port as well
 #ifdef XP_MACOSX
   mInstanceOwner->FixUpPluginWindow(nsPluginInstanceOwner::ePluginPaintEnable);
+  // Bail now if our frame has been destroyed.
+  if (!instanceOwnerRef->GetFrame()) {
+    return NS_ERROR_FAILURE;
+  }
 #endif
   window->window = mInstanceOwner->GetPluginPort();
 
@@ -625,6 +634,12 @@ nsPluginFrame::CallSetWindow(bool aCheckIsHidden)
   nsRect bounds = GetContentRectRelativeToSelf() + GetOffsetToCrossDoc(rootFrame);
   nsIntRect intBounds = bounds.ToNearestPixels(appUnitsPerDevPixel);
 
+  // In e10s, this returns the offset to the top level window, in non-e10s
+  // it return 0,0.
+  LayoutDeviceIntPoint intOffset = GetRemoteTabChromeOffset();
+  intBounds.x += intOffset.x;
+  intBounds.y += intOffset.y;
+
   // window must be in "display pixels"
   double scaleFactor = 1.0;
   if (NS_FAILED(mInstanceOwner->GetContentsScaleFactor(&scaleFactor))) {
@@ -635,10 +650,6 @@ nsPluginFrame::CallSetWindow(bool aCheckIsHidden)
   window->y = intBounds.y / intScaleFactor;
   window->width = intBounds.width / intScaleFactor;
   window->height = intBounds.height / intScaleFactor;
-
-  // Calling SetWindow might destroy this frame. We need to use the instance
-  // owner to clean up so hold a ref.
-  nsRefPtr<nsPluginInstanceOwner> instanceOwnerRef(mInstanceOwner);
 
   // This will call pi->SetWindow and take care of window subclassing
   // if needed, see bug 132759. Calling SetWindow can destroy this frame
@@ -753,7 +764,30 @@ nsPluginFrame::IsHidden(bool aCheckVisibilityStyle) const
   return false;
 }
 
-nsIntPoint nsPluginFrame::GetWindowOriginInPixels(bool aWindowless)
+mozilla::LayoutDeviceIntPoint
+nsPluginFrame::GetRemoteTabChromeOffset()
+{
+  LayoutDeviceIntPoint offset;
+  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+    nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(GetContent()->OwnerDoc()->GetWindow());
+    if (window) {
+      nsCOMPtr<nsIDOMWindow> topWindow;
+      window->GetTop(getter_AddRefs(topWindow));
+      if (topWindow) {
+        dom::TabChild* tc = dom::TabChild::GetFrom(topWindow);
+        if (tc) {
+          LayoutDeviceIntPoint chromeOffset;
+          tc->SendGetTabOffset(&chromeOffset);
+          offset -= chromeOffset;
+        }
+      }
+    }
+  }
+  return offset;
+}
+
+nsIntPoint
+nsPluginFrame::GetWindowOriginInPixels(bool aWindowless)
 {
   nsView * parentWithView;
   nsPoint origin(0,0);
@@ -769,8 +803,19 @@ nsIntPoint nsPluginFrame::GetWindowOriginInPixels(bool aWindowless)
   }
   origin += GetContentRectRelativeToSelf().TopLeft();
 
-  return nsIntPoint(PresContext()->AppUnitsToDevPixels(origin.x),
-                    PresContext()->AppUnitsToDevPixels(origin.y));
+  nsIntPoint pt(PresContext()->AppUnitsToDevPixels(origin.x),
+                PresContext()->AppUnitsToDevPixels(origin.y));
+
+  // If we're in the content process offsetToWidget is tied to the top level
+  // widget we can access in the child process, which is the tab. We need the
+  // offset all the way up to the top level native window here. (If this is
+  // non-e10s this routine will return 0,0.)
+  if (aWindowless) {
+    mozilla::LayoutDeviceIntPoint lpt = GetRemoteTabChromeOffset();
+    pt += nsIntPoint(lpt.x, lpt.y);
+  }
+
+  return pt;
 }
 
 void
@@ -1743,7 +1788,7 @@ nsPluginFrame::HandleEvent(nsPresContext* aPresContext,
 
 #ifdef XP_MACOSX
   // we want to process some native mouse events in the cocoa event model
-  if ((anEvent->message == NS_MOUSE_ENTER ||
+  if ((anEvent->message == NS_MOUSE_ENTER_WIDGET ||
        anEvent->message == NS_WHEEL_WHEEL) &&
       mInstanceOwner->GetEventModel() == NPEventModelCocoa) {
     *anEventStatus = mInstanceOwner->ProcessEvent(*anEvent);

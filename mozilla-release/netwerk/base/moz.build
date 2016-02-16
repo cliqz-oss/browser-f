@@ -67,6 +67,7 @@ XPIDL_SOURCES += [
     'nsINSSErrorsService.idl',
     'nsINullChannel.idl',
     'nsIPACGenerator.idl',
+    'nsIPackagedAppService.idl',
     'nsIParentChannel.idl',
     'nsIParentRedirectingChannel.idl',
     'nsIPermission.idl',
@@ -91,6 +92,7 @@ XPIDL_SOURCES += [
     'nsIRequestObserverProxy.idl',
     'nsIResponseHeadProvider.idl',
     'nsIResumableChannel.idl',
+    'nsISecCheckWrapChannel.idl',
     'nsISecretDecoderRing.idl',
     'nsISecureBrowserUI.idl',
     'nsISecurityEventSink.idl',
@@ -98,7 +100,6 @@ XPIDL_SOURCES += [
     'nsISerializationHelper.idl',
     'nsIServerSocket.idl',
     'nsISimpleStreamListener.idl',
-    'nsISiteSecurityService.idl',
     'nsISocketTransport.idl',
     'nsISocketTransportService.idl',
     'nsISpeculativeConnect.idl',
@@ -144,6 +145,7 @@ EXPORTS += [
     'nsASocketHandler.h',
     'nsAsyncRedirectVerifyHelper.h',
     'nsFileStreams.h',
+    'nsInputStreamPump.h',
     'nsMIMEInputStream.h',
     'nsNetUtil.h',
     'nsReadLine.h',
@@ -213,6 +215,7 @@ UNIFIED_SOURCES += [
     'nsProtocolProxyService.cpp',
     'nsProxyInfo.cpp',
     'nsRequestObserverProxy.cpp',
+    'nsSecCheckWrapChannel.cpp',
     'nsSerializationHelper.cpp',
     'nsServerSocket.cpp',
     'nsSimpleNestedURI.cpp',
@@ -272,8 +275,6 @@ EXTRA_JS_MODULES += [
 ]
 
 FAIL_ON_WARNINGS = True
-
-MSVC_ENABLE_PGO = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
 

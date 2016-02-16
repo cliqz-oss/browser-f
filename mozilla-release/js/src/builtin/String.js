@@ -7,7 +7,7 @@
 /* ES6 Draft Oct 14, 2014 21.1.3.19 */
 function String_substring(start, end) {
     // Steps 1-3.
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var str = ToString(this);
 
     // Step 4.
@@ -44,14 +44,14 @@ function String_substring(start, end) {
 
 function String_static_substring(string, start, end) {
     if (arguments.length < 1)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'String.substring');
+        ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, 'String.substring');
     return callFunction(String_substring, string, start, end);
 }
 
 /* ES6 Draft Oct 14, 2014 B.2.3.1 */
 function String_substr(start, length) {
     // Steps 1-2.
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var str = ToString(this);
 
     // Steps 3-4.
@@ -83,14 +83,14 @@ function String_substr(start, length) {
 
 function String_static_substr(string, start, length) {
     if (arguments.length < 1)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'String.substr');
+        ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, 'String.substr');
     return callFunction(String_substr, string, start, length);
 }
 
 /* ES6 Draft Oct 14, 2014 21.1.3.16 */
 function String_slice(start, end) {
     // Steps 1-3.
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var str = ToString(this);
 
     // Step 4.
@@ -120,14 +120,14 @@ function String_slice(start, end) {
 
 function String_static_slice(string, start, end) {
     if (arguments.length < 1)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, 'String.slice');
+        ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, 'String.slice');
     return callFunction(String_slice, string, start, end);
 }
 
 /* ES6 Draft September 5, 2013 21.1.3.3 */
 function String_codePointAt(pos) {
     // Steps 1-3.
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
 
     // Steps 4-5.
@@ -159,7 +159,7 @@ var collatorCache = new Record();
 /* ES6 20121122 draft 15.5.4.21. */
 function String_repeat(count) {
     // Steps 1-3.
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
 
     // Steps 4-5.
@@ -167,10 +167,10 @@ function String_repeat(count) {
 
     // Steps 6-7.
     if (n < 0)
-        ThrowError(JSMSG_NEGATIVE_REPETITION_COUNT); // a RangeError
+        ThrowRangeError(JSMSG_NEGATIVE_REPETITION_COUNT);
 
     if (!(n * S.length < (1 << 28)))
-        ThrowError(JSMSG_RESULTING_STRING_TOO_LARGE); // a RangeError
+        ThrowRangeError(JSMSG_RESULTING_STRING_TOO_LARGE);
 
     // Communicate |n|'s possible range to the compiler.
     n = n & ((1 << 28) - 1);
@@ -194,7 +194,7 @@ function String_repeat(count) {
 
 // ES6 draft specification, section 21.1.3.27, version 2013-09-27.
 function String_iterator() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
     var iterator = NewStringIterator();
     UnsafeSetReservedSlot(iterator, STRING_ITERATOR_SLOT_ITERATED_STRING, S);
@@ -248,7 +248,7 @@ function StringIteratorNext() {
  */
 function String_localeCompare(that) {
     // Steps 1-3.
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
     var That = ToString(that);
 
@@ -290,11 +290,11 @@ function String_static_fromCodePoint(codePoints) {
 
         // Step 5d.
         if (nextCP !== ToInteger(nextCP) || Number_isNaN(nextCP))
-            ThrowError(JSMSG_NOT_A_CODEPOINT, ToString(nextCP));
+            ThrowRangeError(JSMSG_NOT_A_CODEPOINT, ToString(nextCP));
 
         // Step 5e.
         if (nextCP < 0 || nextCP > 0x10FFFF)
-            ThrowError(JSMSG_NOT_A_CODEPOINT, ToString(nextCP));
+            ThrowRangeError(JSMSG_NOT_A_CODEPOINT, ToString(nextCP));
 
         // Step 5f.
         // Inlined UTF-16 Encoding
@@ -373,7 +373,7 @@ function String_static_raw(callSite, ...substitutions) {
  */
 function String_static_localeCompare(str1, str2) {
     if (arguments.length < 1)
-        ThrowError(JSMSG_MISSING_FUN_ARG, 0, "String.localeCompare");
+        ThrowTypeError(JSMSG_MISSING_FUN_ARG, 0, "String.localeCompare");
     var locales = arguments.length > 2 ? arguments[2] : undefined;
     var options = arguments.length > 3 ? arguments[3] : undefined;
     return callFunction(String_localeCompare, str1, str2, locales, options);
@@ -381,55 +381,55 @@ function String_static_localeCompare(str1, str2) {
 
 // ES6 draft 2014-04-27 B.2.3.3
 function String_big() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<big>" + ToString(this) + "</big>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.4
 function String_blink() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<blink>" + ToString(this) + "</blink>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.5
 function String_bold() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<b>" + ToString(this) + "</b>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.6
 function String_fixed() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<tt>" + ToString(this) + "</tt>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.9
 function String_italics() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<i>" + ToString(this) + "</i>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.11
 function String_small() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<small>" + ToString(this) + "</small>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.12
 function String_strike() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<strike>" + ToString(this) + "</strike>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.13
 function String_sub() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<sub>" + ToString(this) + "</sub>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.14
 function String_sup() {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     return "<sup>" + ToString(this) + "</sup>";
 }
 
@@ -453,28 +453,28 @@ function EscapeAttributeValue(v) {
 
 // ES6 draft 2014-04-27 B.2.3.2
 function String_anchor(name) {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
     return '<a name="' + EscapeAttributeValue(name) + '">' + S + "</a>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.7
 function String_fontcolor(color) {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
     return '<font color="' + EscapeAttributeValue(color) + '">' + S + "</font>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.8
 function String_fontsize(size) {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
     return '<font size="' + EscapeAttributeValue(size) + '">' + S + "</font>";
 }
 
 // ES6 draft 2014-04-27 B.2.3.10
 function String_link(url) {
-    CheckObjectCoercible(this);
+    RequireObjectCoercible(this);
     var S = ToString(this);
     return '<a href="' + EscapeAttributeValue(url) + '">' + S + "</a>";
 }

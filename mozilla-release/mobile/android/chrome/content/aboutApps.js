@@ -6,6 +6,8 @@
  *
  * ***** END LICENSE BLOCK ***** */
 
+/*globals gChromeWin */
+
 let Ci = Components.interfaces, Cc = Components.classes, Cu = Components.utils;
 
 Cu.import("resource://gre/modules/Services.jsm")
@@ -18,14 +20,15 @@ const DEFAULT_ICON = "chrome://browser/skin/images/default-app-icon.png";
 
 let gStrings = Services.strings.createBundle("chrome://browser/locale/aboutApps.properties");
 
-XPCOMUtils.defineLazyGetter(window, "gChromeWin", function()
-  window.QueryInterface(Ci.nsIInterfaceRequestor)
-    .getInterface(Ci.nsIWebNavigation)
-    .QueryInterface(Ci.nsIDocShellTreeItem)
-    .rootTreeItem
-    .QueryInterface(Ci.nsIInterfaceRequestor)
-    .getInterface(Ci.nsIDOMWindow)
-    .QueryInterface(Ci.nsIDOMChromeWindow));
+XPCOMUtils.defineLazyGetter(window, "gChromeWin", function() {
+  return window.QueryInterface(Ci.nsIInterfaceRequestor)
+           .getInterface(Ci.nsIWebNavigation)
+           .QueryInterface(Ci.nsIDocShellTreeItem)
+           .rootTreeItem
+           .QueryInterface(Ci.nsIInterfaceRequestor)
+           .getInterface(Ci.nsIDOMWindow)
+           .QueryInterface(Ci.nsIDOMChromeWindow);
+});
 
 document.addEventListener("DOMContentLoaded", onLoad, false);
 
@@ -114,7 +117,7 @@ function addApplication(aApp) {
   container.setAttribute("title", manifest.name);
 
   let img = document.createElement("img");
-  img.src = manifest.biggestIconURL || DEFAULT_ICON;
+  img.src = manifest.biggestIconURL() || DEFAULT_ICON;
   img.onerror = function() {
     // If the image failed to load, and it was not our default icon, attempt to
     // use our default as a fallback.

@@ -6,8 +6,8 @@ from mozboot.base import BaseBootstrapper
 
 
 class FedoraBootstrapper(BaseBootstrapper):
-    def __init__(self, version, dist_id):
-        BaseBootstrapper.__init__(self)
+    def __init__(self, version, dist_id, **kwargs):
+        BaseBootstrapper.__init__(self, **kwargs)
 
         self.version = version
         self.dist_id = dist_id
@@ -29,6 +29,7 @@ class FedoraBootstrapper(BaseBootstrapper):
         self.browser_packages = [
             'alsa-lib-devel',
             'gcc-c++',
+            'GConf2-devel',
             'glibc-static',
             'gstreamer-devel',
             'gstreamer-plugins-base-devel',

@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* global loop:true */
-
 /**
  * The StandaloneMozLoop implementation reflects that of the mozLoop API for Loop
  * in the desktop code. Not all functions are implemented.
@@ -79,8 +77,8 @@ loop.StandaloneMozLoop = (function(mozL10n) {
      */
     get: function(roomToken, callback) {
       var req = $.ajax({
-        url:         this._baseServerUrl + "/rooms/" + roomToken,
-        method:      "GET",
+        url: this._baseServerUrl + "/rooms/" + roomToken,
+        method: "GET",
         contentType: "application/json",
         beforeSend: function(xhr) {
           if (this.sessionToken) {
@@ -121,10 +119,10 @@ loop.StandaloneMozLoop = (function(mozL10n) {
     _postToRoom: function(roomToken, sessionToken, roomData, expectedProps,
                           async, callback) {
       var req = $.ajax({
-        url:         this._baseServerUrl + "/rooms/" + roomToken,
-        method:      "POST",
+        url: this._baseServerUrl + "/rooms/" + roomToken,
+        method: "POST",
         contentType: "application/json",
-        dataType:    "json",
+        dataType: "json",
         data: JSON.stringify(roomData),
         beforeSend: function(xhr) {
           if (sessionToken) {
@@ -133,7 +131,6 @@ loop.StandaloneMozLoop = (function(mozL10n) {
         },
         async: async,
         success: function(responseData) {
-          console.log("done");
           try {
             callback(null, validate(responseData, expectedProps));
           } catch (err) {
@@ -220,6 +217,29 @@ loop.StandaloneMozLoop = (function(mozL10n) {
         action: "leave",
         sessionToken: sessionToken
       }, null, false, callback);
+    },
+
+    /**
+     * Forwards connection status to the server.
+     *
+     * @param {String} roomToken     The room token.
+     * @param {String} sessionToken  The session token for the session that has been
+     *                               joined.
+     * @param {sharedActions.SdkStatus} status  The connection status.
+     */
+    sendConnectionStatus: function(roomToken, sessionToken, status) {
+      this._postToRoom(roomToken, sessionToken, {
+        action: "status",
+        event: status.event,
+        state: status.state,
+        connections: status.connections,
+        sendStreams: status.sendStreams,
+        recvStreams: status.recvStreams
+      }, null, true, function(error) {
+        if (error) {
+          console.error(error);
+        }
+      });
     },
 
     // Dummy functions to reflect those in the desktop mozLoop.rooms that we

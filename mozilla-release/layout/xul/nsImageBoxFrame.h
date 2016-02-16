@@ -96,6 +96,7 @@ public:
                         const nsRect& aDirtyRect,
                         nsPoint aPt, uint32_t aFlags);
 
+  bool IsImageContainerAvailable(LayerManager* aManager, uint32_t aFlags);
   already_AddRefed<ImageContainer> GetContainer(LayerManager* aManager,
                                                 uint32_t aFlags);
 
@@ -115,14 +116,14 @@ private:
   nsSize mIntrinsicSize;
   nsSize mImageSize;
 
-  // Boolean variable to determine if the current image request has been
-  // registered with the refresh driver.
-  bool mRequestRegistered;
-
   nsRefPtr<imgRequestProxy> mImageRequest;
   nsCOMPtr<imgINotificationObserver> mListener;
 
   int32_t mLoadFlags;
+
+  // Boolean variable to determine if the current image request has been
+  // registered with the refresh driver.
+  bool mRequestRegistered;
 
   bool mUseSrcAttr; ///< Whether or not the image src comes from an attribute.
   bool mSuppressStyleCheck;
@@ -142,9 +143,12 @@ public:
   }
 #endif
 
+  virtual bool CanOptimizeToImageLayer(LayerManager* aManager,
+                                       nsDisplayListBuilder* aBuilder) override;
   virtual already_AddRefed<ImageContainer> GetContainer(LayerManager* aManager,
                                                         nsDisplayListBuilder* aBuilder) override;
-  virtual void ConfigureLayer(ImageLayer* aLayer, const nsIntPoint& aOffset) override;
+  virtual void ConfigureLayer(ImageLayer* aLayer,
+                              const ContainerLayerParameters& aParameters) override;
   virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder, bool* aSnap) override
   {
     *aSnap = true;

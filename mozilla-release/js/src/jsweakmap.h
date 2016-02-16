@@ -92,7 +92,7 @@ class WeakMapBase {
     virtual void finish() = 0;
 
     // Object that this weak map is part of, if any.
-    RelocatablePtrObject memberOf;
+    HeapPtrObject memberOf;
 
     // Compartment that this weak map is part of.
     JSCompartment* compartment;
@@ -161,7 +161,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
     bool markValue(JSTracer* trc, Value* x) {
         if (gc::IsMarked(x))
             return false;
-        gc::Mark(trc, x, "WeakMap entry value");
+        TraceEdge(trc, x, "WeakMap entry value");
         MOZ_ASSERT(gc::IsMarked(x));
         return true;
     }
@@ -169,7 +169,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
     void nonMarkingTraceKeys(JSTracer* trc) {
         for (Enum e(*this); !e.empty(); e.popFront()) {
             Key key(e.front().key());
-            gc::Mark(trc, &key, "WeakMap entry key");
+            TraceEdge(trc, &key, "WeakMap entry key");
             if (key != e.front().key())
                 entryMoved(e, key);
         }
@@ -177,7 +177,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
 
     void nonMarkingTraceValues(JSTracer* trc) {
         for (Range r = Base::all(); !r.empty(); r.popFront())
-            gc::Mark(trc, &r.front().value(), "WeakMap entry value");
+            TraceEdge(trc, &r.front().value(), "WeakMap entry value");
     }
 
     bool keyNeedsMark(JSObject* key) {
@@ -188,7 +188,7 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
              * gray marking when the key's delegate is black and the map is
              * gray.
              */
-            return delegate && gc::IsObjectMarked(&delegate);
+            return delegate && gc::IsMarkedUnbarriered(&delegate);
         }
         return false;
     }
@@ -208,8 +208,8 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
                 if (e.front().key() != key)
                     entryMoved(e, key);
             } else if (keyNeedsMark(key)) {
-                gc::Mark(trc, &e.front().value(), "WeakMap entry value");
-                gc::Mark(trc, &key, "proxy-preserved WeakMap entry key");
+                TraceEdge(trc, &e.front().value(), "WeakMap entry value");
+                TraceEdge(trc, &key, "proxy-preserved WeakMap entry key");
                 if (e.front().key() != key)
                     entryMoved(e, key);
                 markedAny = true;
@@ -250,21 +250,16 @@ class WeakMap : public HashMap<Key, Value, HashPolicy, RuntimeAllocPolicy>, publ
             gc::Cell* key = gc::ToMarkable(r.front().key());
             gc::Cell* value = gc::ToMarkable(r.front().value());
             if (key && value) {
-                tracer->callback(tracer, memberOf,
-                                 JS::GCCellPtr(r.front().key()),
-                                 JS::GCCellPtr(r.front().value()));
+                tracer->trace(memberOf,
+                              JS::GCCellPtr(r.front().key()),
+                              JS::GCCellPtr(r.front().value()));
             }
         }
     }
 
     /* Rekey an entry when moved, ensuring we do not trigger barriers. */
-    void entryMoved(Enum& eArg, const Key& k) {
-        typedef typename HashMap<typename Unbarriered<Key>::type,
-                                 typename Unbarriered<Value>::type,
-                                 typename Unbarriered<HashPolicy>::type,
-                                 RuntimeAllocPolicy>::Enum UnbarrieredEnum;
-        UnbarrieredEnum& e = reinterpret_cast<UnbarrieredEnum&>(eArg);
-        e.rekeyFront(reinterpret_cast<const typename Unbarriered<Key>::type&>(k));
+    void entryMoved(Enum& e, const Key& k) {
+        e.rekeyFront(k);
     }
 
 protected:
@@ -279,28 +274,6 @@ protected:
 #endif
     }
 };
-
-/*
- * At times, you will need to ignore barriers when accessing WeakMap entries.
- * Localize the templatized casting craziness here.
- */
-template <class Key, class Value>
-static inline gc::HashKeyRef<HashMap<Key, Value, DefaultHasher<Key>, RuntimeAllocPolicy>, Key>
-UnbarrieredRef(WeakMap<PreBarriered<Key>, RelocatablePtr<Value>>* map, Key key)
-{
-    /*
-     * Some compilers complain about instantiating the WeakMap class for
-     * unbarriered type arguments, so we cast to a HashMap instead. Because of
-     * WeakMap's multiple inheritance, we need to do this in two stages, first
-     * to the HashMap base class and then to the unbarriered version.
-     */
-
-    typedef typename WeakMap<PreBarriered<Key>, RelocatablePtr<Value>>::Base BaseMap;
-    auto baseMap = static_cast<BaseMap*>(map);
-    typedef HashMap<Key, Value, DefaultHasher<Key>, RuntimeAllocPolicy> UnbarrieredMap;
-    typedef gc::HashKeyRef<UnbarrieredMap, Key> UnbarrieredKeyRef;
-    return UnbarrieredKeyRef(reinterpret_cast<UnbarrieredMap*>(baseMap), key);
-}
 
 /* WeakMap methods exposed so they can be installed in the self-hosting global. */
 

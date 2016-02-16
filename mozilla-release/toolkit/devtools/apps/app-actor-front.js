@@ -5,6 +5,7 @@ const {FileUtils} = Cu.import("resource://gre/modules/FileUtils.jsm");
 const {NetUtil} = Cu.import("resource://gre/modules/NetUtil.jsm");
 const {devtools} = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 const {Promise: promise} = Cu.import("resource://gre/modules/Promise.jsm", {});
+const DevToolsUtils = devtools.require("devtools/toolkit/DevToolsUtils.js");
 const EventEmitter = require("devtools/toolkit/event-emitter");
 
 // XXX: bug 912476 make this module a real protocol.js front
@@ -187,9 +188,10 @@ function uploadPackageBulk(client, webappsActor, packageFile, progressCallback) 
     });
 
     request.on("bulk-send-ready", ({copyFrom}) => {
-      NetUtil.asyncFetch2(
-        packageFile,
-        function(inputStream) {
+      NetUtil.asyncFetch({
+        uri: NetUtil.newURI(packageFile),
+        loadUsingSystemPrincipal: true
+      }, function(inputStream) {
           let copying = copyFrom(inputStream);
           copying.on("progress", (e, progress) => {
             progressCallback(progress);
@@ -199,12 +201,7 @@ function uploadPackageBulk(client, webappsActor, packageFile, progressCallback) 
             inputStream.close();
             deferred.resolve(actor);
           });
-        },
-        null,      // aLoadingNode
-        Services.scriptSecurityManager.getSystemPrincipal(),
-        null,      // aTriggeringPrincipal
-        Ci.nsILoadInfo.SEC_NORMAL,
-        Ci.nsIContentPolicy.TYPE_OTHER);
+        });
     });
   }
 
@@ -345,6 +342,9 @@ function reloadApp(client, webappsActor, manifestURL) {
       let request = {
         to: target.form.actor,
         type: "reload",
+        options: {
+          force: true
+        },
         manifestURL: manifestURL
       };
       return client.request(request);
@@ -617,8 +617,9 @@ AppActorFront.prototype = {
     for (let [manifestURL, app] of this._apps) {
       promises.push(app.getIcon());
     }
-    return promise.all(promises)
-                  .then(null, () => {}); // Ignore any failure
+
+    return DevToolsUtils.settleAll(promises)
+                        .then(null, () => {});
   },
 
   _listenAppEvents: function (listener) {
@@ -828,4 +829,3 @@ AppActorFront.prototype = {
 }
 
 exports.AppActorFront = AppActorFront;
-

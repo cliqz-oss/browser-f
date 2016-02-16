@@ -36,6 +36,7 @@ WebGLContext::GetExtensionString(WebGLExtensionID ext)
         WEBGL_EXTENSION_IDENTIFIER(EXT_shader_texture_lod)
         WEBGL_EXTENSION_IDENTIFIER(EXT_sRGB)
         WEBGL_EXTENSION_IDENTIFIER(EXT_texture_filter_anisotropic)
+        WEBGL_EXTENSION_IDENTIFIER(EXT_disjoint_timer_query)
         WEBGL_EXTENSION_IDENTIFIER(OES_element_index_uint)
         WEBGL_EXTENSION_IDENTIFIER(OES_standard_derivatives)
         WEBGL_EXTENSION_IDENTIFIER(OES_texture_float)
@@ -158,6 +159,20 @@ WebGLContext::IsExtensionSupported(WebGLExtensionID ext) const
         return gl->IsExtensionSupported(gl::GLContext::EXT_texture_compression_dxt1) &&
                gl->IsExtensionSupported(gl::GLContext::ANGLE_texture_compression_dxt3) &&
                gl->IsExtensionSupported(gl::GLContext::ANGLE_texture_compression_dxt5);
+
+    case WebGLExtensionID::WEBGL_debug_renderer_info:
+        {
+            bool isEnabled = true;
+
+#ifdef RELEASE_BUILD
+            // Keep this disabled on Release and Beta for now. (see bug 1171228)
+            isEnabled = false;
+#endif
+            if (Preferences::GetBool("webgl.disable-debug-renderer-info", false))
+                isEnabled = false;
+
+            return isEnabled;
+        }
     case WebGLExtensionID::WEBGL_depth_texture:
         // WEBGL_depth_texture supports DEPTH_STENCIL textures
         if (!gl->IsSupported(gl::GLFeature::packed_depth_stencil))
@@ -179,13 +194,13 @@ WebGLContext::IsExtensionSupported(WebGLExtensionID ext) const
     if (Preferences::GetBool("webgl.enable-draft-extensions", false) ||
         IsWebGL2())
     {
-        /* None for now.
         switch (ext) {
+        case WebGLExtensionID::EXT_disjoint_timer_query:
+            return WebGLExtensionDisjointTimerQuery::IsSupported(this);
         default:
             // For warnings-as-errors.
             break;
         }
-        */
     }
 
     return false;
@@ -311,6 +326,9 @@ WebGLContext::EnableExtension(WebGLExtensionID ext)
         break;
     case WebGLExtensionID::EXT_color_buffer_half_float:
         obj = new WebGLExtensionColorBufferHalfFloat(this);
+        break;
+    case WebGLExtensionID::EXT_disjoint_timer_query:
+        obj = new WebGLExtensionDisjointTimerQuery(this);
         break;
     case WebGLExtensionID::EXT_frag_depth:
         obj = new WebGLExtensionFragDepth(this);

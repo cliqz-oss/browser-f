@@ -29,6 +29,7 @@ Cu.import('resource://gre/modules/FxAccountsMgmtService.jsm');
 Cu.import('resource://gre/modules/DownloadsAPI.jsm');
 Cu.import('resource://gre/modules/MobileIdentityManager.jsm');
 Cu.import('resource://gre/modules/PresentationDeviceInfoManager.jsm');
+Cu.import('resource://gre/modules/AboutServiceWorkers.jsm');
 
 XPCOMUtils.defineLazyModuleGetter(this, "SystemAppProxy",
                                   "resource://gre/modules/SystemAppProxy.jsm");
@@ -327,6 +328,18 @@ var shell = {
                   .sessionHistory = Cc["@mozilla.org/browser/shistory;1"]
                                       .createInstance(Ci.nsISHistory);
 
+    this.allowedAudioChannels = new Map();
+    let audioChannels = systemAppFrame.allowedAudioChannels;
+    audioChannels && audioChannels.forEach(function(audioChannel) {
+      this.allowedAudioChannels.set(audioChannel.name, audioChannel);
+      audioChannel.addEventListener('activestatechanged', this);
+      // Set all audio channels as unmuted by default
+      // because some audio in System app will be played
+      // before AudioChannelService[1] is Gaia is loaded.
+      // [1]: https://github.com/mozilla-b2g/gaia/blob/master/apps/system/js/audio_channel_service.js
+      audioChannel.setMuted(false);
+    }.bind(this));
+
     // On firefox mulet, shell.html is loaded in a tab
     // and we have to listen on the chrome event handler
     // to catch key events
@@ -349,6 +362,7 @@ var shell = {
     this.contentBrowser.addEventListener('mozbrowserloadstart', this, true);
     this.contentBrowser.addEventListener('mozbrowserselectionstatechanged', this, true);
     this.contentBrowser.addEventListener('mozbrowserscrollviewchange', this, true);
+    this.contentBrowser.addEventListener('mozbrowsercaretstatechanged', this);
 
     CustomEventManager.init();
     WebappsHelper.init();
@@ -379,6 +393,7 @@ var shell = {
     this.contentBrowser.removeEventListener('mozbrowserloadstart', this, true);
     this.contentBrowser.removeEventListener('mozbrowserselectionstatechanged', this, true);
     this.contentBrowser.removeEventListener('mozbrowserscrollviewchange', this, true);
+    this.contentBrowser.removeEventListener('mozbrowsercaretstatechanged', this);
     ppmm.removeMessageListener("content-handler", this);
 
     UserAgentOverrides.uninit();
@@ -489,6 +504,28 @@ var shell = {
           detail: data,
         });
         break;
+      case 'mozbrowsercaretstatechanged':
+        {
+          let elt = evt.target;
+          let win = elt.ownerDocument.defaultView;
+          let offsetX = win.mozInnerScreenX - window.mozInnerScreenX;
+          let offsetY = win.mozInnerScreenY - window.mozInnerScreenY;
+
+          let rect = elt.getBoundingClientRect();
+          offsetX += rect.left;
+          offsetY += rect.top;
+
+          let data = evt.detail;
+          data.offsetX = offsetX;
+          data.offsetY = offsetY;
+          data.sendDoCommandMsg = null;
+
+          shell.sendChromeEvent({
+            type: 'caretstatechanged',
+            detail: data,
+          });
+        }
+        break;
 
       case 'MozApplicationManifest':
         try {
@@ -535,6 +572,18 @@ var shell = {
         break;
       case 'unload':
         this.stop();
+        break;
+      case 'activestatechanged':
+        var channel = evt.target;
+        // TODO: We should get the `isActive` state from evt.isActive.
+        // Then we don't need to do `channel.isActive()` here.
+        channel.isActive().onsuccess = function(evt) {
+          this.sendChromeEvent({
+            type: 'system-audiochannel-state-changed',
+            name: channel.name,
+            isActive: evt.target.result
+          });
+        }.bind(this);
         break;
     }
   },
@@ -635,7 +684,27 @@ var shell = {
       }
       delete shell.pendingChromeEvents;
     });
-  }
+
+    shell.handleCmdLine();
+  },
+
+  handleCmdLine: function shell_handleCmdLine() {
+#ifndef MOZ_WIDGET_GONK
+    let b2gcmds = Cc["@mozilla.org/commandlinehandler/general-startup;1?type=b2gcmds"]
+                    .getService(Ci.nsISupports);
+    let args = b2gcmds.wrappedJSObject.cmdLine;
+    try {
+      // Returns null if -url is not present
+      let url = args.handleFlagWithParam("url", false);
+      if (url) {
+        this.sendChromeEvent({type: "mozbrowseropenwindow", url});
+        args.preventDefault = true;
+      }
+    } catch(e) {
+      // Throws if -url is present with no params
+    }
+#endif
+  },
 };
 
 Services.obs.addObserver(function onFullscreenOriginChange(subject, topic, data) {
@@ -694,8 +763,17 @@ var CustomEventManager = {
       case 'inputregistry-remove':
         KeyboardHelper.handleEvent(detail);
         break;
+      case 'system-audiochannel-list':
+      case 'system-audiochannel-mute':
+      case 'system-audiochannel-volume':
+        SystemAppMozBrowserHelper.handleEvent(detail);
+        break;
       case 'do-command':
         DoCommandHelper.handleEvent(detail.cmd);
+        break;
+      case 'copypaste-do-command':
+        Services.obs.notifyObservers({ wrappedJSObject: shell.contentBrowser },
+                                     'ask-children-to-execute-copypaste-command', detail.cmd);
         break;
     }
   }
@@ -813,6 +891,63 @@ let KeyboardHelper = {
       case 'inputregistry-remove':
         Keyboard.inputRegistryGlue.returnMessage(detail);
 
+        break;
+    }
+  }
+};
+
+let SystemAppMozBrowserHelper = {
+  handleEvent: function systemAppMozBrowser_handleEvent(detail) {
+    let request;
+    let name;
+    switch (detail.type) {
+      case 'system-audiochannel-list':
+        let audioChannels = [];
+        shell.allowedAudioChannels.forEach(function(value, name) {
+          audioChannels.push(name);
+        });
+        SystemAppProxy._sendCustomEvent('mozSystemWindowChromeEvent', {
+          type: 'system-audiochannel-list',
+          audioChannels: audioChannels
+        });
+        break;
+      case 'system-audiochannel-mute':
+        name = detail.name;
+        let isMuted = detail.isMuted;
+        request = shell.allowedAudioChannels.get(name).setMuted(isMuted);
+        request.onsuccess = function() {
+          SystemAppProxy._sendCustomEvent('mozSystemWindowChromeEvent', {
+            type: 'system-audiochannel-mute-onsuccess',
+            name: name,
+            isMuted: isMuted
+          });
+        };
+        request.onerror = function() {
+          SystemAppProxy._sendCustomEvent('mozSystemWindowChromeEvent', {
+            type: 'system-audiochannel-mute-onerror',
+            name: name,
+            isMuted: isMuted
+          });
+        };
+        break;
+      case 'system-audiochannel-volume':
+        name = detail.name;
+        let volume = detail.volume;
+        request = shell.allowedAudioChannels.get(name).setVolume(volume);
+        request.onsuccess = function() {
+          sSystemAppProxy._sendCustomEvent('mozSystemWindowChromeEvent', {
+            type: 'system-audiochannel-volume-onsuccess',
+            name: name,
+            volume: volume
+          });
+        };
+        request.onerror = function() {
+          SystemAppProxy._sendCustomEvent('mozSystemWindowChromeEvent', {
+            type: 'system-audiochannel-volume-onerror',
+            name: name,
+            volume: volume
+          });
+        };
         break;
     }
   }
@@ -1085,8 +1220,23 @@ window.addEventListener('ContentStart', function update_onContentStart() {
 
   // We must set the size in KB, and keep a bit of free space.
   let size = Math.floor(stats.totalBytes / 1024) - 1024;
-  Services.prefs.setIntPref("browser.cache.disk.capacity", size);
+
+  // keep the default value if it is smaller than the physical partition size.
+  let oldSize = Services.prefs.getIntPref("browser.cache.disk.capacity");
+  if (size < oldSize) {
+    Services.prefs.setIntPref("browser.cache.disk.capacity", size);
+  }
 })();
+#endif
+
+#ifdef MOZ_WIDGET_GONK
+try {
+  let gmpService = Cc["@mozilla.org/gecko-media-plugin-service;1"]
+                     .getService(Ci.mozIGeckoMediaPluginChromeService);
+  gmpService.addPluginDirectory("/system/b2g/gmp-clearkey/0.1");
+} catch(e) {
+  dump("Failed to add clearkey path! " + e + "\n");
+}
 #endif
 
 // Calling this observer will cause a shutdown an a profile reset.

@@ -11,6 +11,9 @@
 <pre id="test">
 <script class="testbody" type="text/javascript">
 
+const CLEARKEY_ID = 'org.w3.clearkey';
+const CLEARKEY_VERSION = '1';
+
 function Test(test) {
   var name = "'" + test.name + "'";
   return new Promise(function(resolve, reject) {
@@ -23,6 +26,7 @@ function Test(test) {
     p.then(
       function(keySystemAccess) {
         ok(test.shouldPass, name + " passed and was expected to " + (test.shouldPass ? "pass" : "fail"));
+        is(keySystemAccess.keySystem, CLEARKEY_ID + "." + CLEARKEY_VERSION, "CDM version should be in MediaKeySystemAccess.keySystem");
         resolve();
       },
       function(ex) {
@@ -34,8 +38,6 @@ function Test(test) {
       });
   });
 }
-
-const CLEARKEY_ID = 'org.w3.clearkey';
 
 var tests = [
   {
@@ -292,21 +294,8 @@ function beginTest() {
   Promise.all(tests.map(Test)).then(function() { SimpleTest.finish(); });
 }
 
-var prefs = [
-  [ "media.mediasource.enabled", true ],
-  [ "media.mediasource.whitelist", false ],
-  [ "media.mediasource.mp4.enabled", true ],
-];
-
-if (/Linux/.test(navigator.userAgent) ||
-    !document.createElement('video').canPlayType("video/mp4")) {
-  // XXX remove once we have mp4 PlatformDecoderModules on all platforms.
-  prefs.push([ "media.fragmented-mp4.exposed", true ]);
-  prefs.push([ "media.fragmented-mp4.use-blank-decoder", true ]);
-}
-
 SimpleTest.waitForExplicitFinish();
-SpecialPowers.pushPrefEnv({ "set" : prefs }, beginTest);
+SetupEMEPref(beginTest);
 
 </script>
 </pre>

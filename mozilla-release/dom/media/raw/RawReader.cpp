@@ -12,10 +12,11 @@
 #include "gfx2DGlue.h"
 
 using namespace mozilla;
+using namespace mozilla::media;
 
 RawReader::RawReader(AbstractMediaDecoder* aDecoder)
   : MediaDecoderReader(aDecoder),
-    mCurrentFrame(0), mFrameSize(0)
+    mCurrentFrame(0), mFrameSize(0), mResource(aDecoder->GetResource())
 {
   MOZ_COUNT_CTOR(RawReader);
 }
@@ -41,10 +42,7 @@ nsresult RawReader::ReadMetadata(MediaInfo* aInfo,
 {
   MOZ_ASSERT(OnTaskQueue());
 
-  MediaResource* resource = mDecoder->GetResource();
-  NS_ASSERTION(resource, "Decoder has no media resource");
-
-  if (!ReadFromResource(resource, reinterpret_cast<uint8_t*>(&mMetadata),
+  if (!ReadFromResource(reinterpret_cast<uint8_t*>(&mMetadata),
                         sizeof(mMetadata)))
     return NS_ERROR_FAILURE;
 
@@ -75,7 +73,6 @@ nsresult RawReader::ReadMetadata(MediaInfo* aInfo,
     return NS_ERROR_FAILURE;
   }
 
-  mInfo.mVideo.mHasVideo = true;
   mInfo.mVideo.mDisplay = display;
 
   mFrameRate = static_cast<float>(mMetadata.framerateNumerator) /
@@ -96,12 +93,10 @@ nsresult RawReader::ReadMetadata(MediaInfo* aInfo,
     (mMetadata.lumaChannelBpp + mMetadata.chromaChannelBpp) / 8.0 +
     sizeof(RawPacketHeader);
 
-  int64_t length = resource->GetLength();
+  int64_t length = mResource.GetLength();
   if (length != -1) {
-    ReentrantMonitorAutoEnter autoMonitor(mDecoder->GetReentrantMonitor());
-    mDecoder->SetMediaDuration(USECS_PER_S *
-                                      (length - sizeof(RawVideoHeader)) /
-                                      (mFrameSize * mFrameRate));
+    mInfo.mMetadataDuration.emplace(TimeUnit::FromSeconds((length - sizeof(RawVideoHeader)) /
+                                                          (mFrameSize * mFrameRate)));
   }
 
   *aInfo = mInfo;
@@ -126,22 +121,15 @@ RawReader::IsMediaSeekable()
 
 // Helper method that either reads until it gets aLength bytes
 // or returns false
-bool RawReader::ReadFromResource(MediaResource *aResource, uint8_t* aBuf,
-                                   uint32_t aLength)
+bool RawReader::ReadFromResource(uint8_t* aBuf, uint32_t aLength)
 {
-  while (aLength > 0) {
-    uint32_t bytesRead = 0;
-    nsresult rv;
+  uint32_t bytesRead = 0;
+  nsresult rv;
 
-    rv = aResource->Read(reinterpret_cast<char*>(aBuf), aLength, &bytesRead);
-    NS_ENSURE_SUCCESS(rv, false);
-
-    if (bytesRead == 0) {
-      return false;
-    }
-
-    aLength -= bytesRead;
-    aBuf += bytesRead;
+  rv = mResource.Read(reinterpret_cast<char*>(aBuf), aLength, &bytesRead);
+  NS_ENSURE_SUCCESS(rv, false);
+  if (bytesRead == 0) {
+    return false;
   }
 
   return true;
@@ -163,21 +151,19 @@ bool RawReader::DecodeVideoFrame(bool &aKeyframeSkip,
   uint32_t length = mFrameSize - sizeof(RawPacketHeader);
 
   nsAutoArrayPtr<uint8_t> buffer(new uint8_t[length]);
-  MediaResource* resource = mDecoder->GetResource();
-  NS_ASSERTION(resource, "Decoder has no media resource");
 
   // We're always decoding one frame when called
   while(true) {
     RawPacketHeader header;
 
     // Read in a packet header and validate
-    if (!(ReadFromResource(resource, reinterpret_cast<uint8_t*>(&header),
+    if (!(ReadFromResource(reinterpret_cast<uint8_t*>(&header),
                            sizeof(header))) ||
         !(header.packetID == 0xFF && header.codecID == RAW_ID /* "YUV" */)) {
       return false;
     }
 
-    if (!ReadFromResource(resource, buffer, length)) {
+    if (!ReadFromResource(buffer, length)) {
       return false;
     }
 
@@ -219,7 +205,7 @@ bool RawReader::DecodeVideoFrame(bool &aKeyframeSkip,
                                             b,
                                             1, // In raw video every frame is a keyframe
                                             -1,
-                                            ToIntRect(mPicture));
+                                            mPicture);
   if (!v)
     return false;
 
@@ -245,9 +231,6 @@ nsresult RawReader::SeekInternal(int64_t aTime)
 {
   MOZ_ASSERT(OnTaskQueue());
 
-  MediaResource *resource = mDecoder->GetResource();
-  NS_ASSERTION(resource, "Decoder has no media resource");
-
   uint32_t frame = mCurrentFrame;
   if (aTime >= UINT_MAX)
     return NS_ERROR_FAILURE;
@@ -257,7 +240,7 @@ nsresult RawReader::SeekInternal(int64_t aTime)
   offset += sizeof(RawVideoHeader);
   NS_ENSURE_TRUE(offset.isValid(), NS_ERROR_FAILURE);
 
-  nsresult rv = resource->Seek(nsISeekableStream::NS_SEEK_SET, offset.value());
+  nsresult rv = mResource.Seek(nsISeekableStream::NS_SEEK_SET, offset.value());
   NS_ENSURE_SUCCESS(rv, rv);
 
   mVideoQueue.Reset();
@@ -285,7 +268,8 @@ nsresult RawReader::SeekInternal(int64_t aTime)
   return NS_OK;
 }
 
-nsresult RawReader::GetBuffered(dom::TimeRanges* aBuffered)
+media::TimeIntervals RawReader::GetBuffered()
 {
-  return NS_OK;
+  MOZ_ASSERT(OnTaskQueue());
+  return media::TimeIntervals();
 }

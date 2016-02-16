@@ -154,6 +154,12 @@ RootActor.prototype = {
     // Trait added in Gecko 38, indicating that all features necessary for
     // grabbing allocations from the MemoryActor are available for the performance tool
     memoryActorAllocations: true,
+    // Added in Gecko 40, indicating that the backend isn't stupid about
+    // sending resumption packets on tab navigation.
+    noNeedToFakeResumptionOnNavigation: true,
+    // Added in Firefox 40. Indicates that the backend supports registering custom
+    // commands through the WebConsoleCommands API.
+    webConsoleCommands: true,
     // Whether root actor exposes tab actors
     // if allowChromeProcess is true, you can fetch a ChromeActor instance
     // to debug chrome and any non-content ressource via getProcess request
@@ -163,6 +169,9 @@ RootActor.prototype = {
     get allowChromeProcess() {
       return DebuggerServer.allowChromeProcess;
     },
+    // Whether or not `getProfile()` supports specifying a `startTime`
+    // and `endTime` to filter out samples. Fx40+
+    profilerDataFilterable: true
   },
 
   /**
@@ -193,6 +202,11 @@ RootActor.prototype = {
       this._parameters.onShutdown();
     }
     this._extraActors = null;
+    this.conn = null;
+    this._tabActorPool = null;
+    this._globalActorPool = null;
+    this._parameters = null;
+    this._chromeActor = null;
   },
 
   /* The 'listTabs' request and the 'tabListChanged' notification. */
@@ -246,7 +260,7 @@ RootActor.prototype = {
       let reply = {
         "from": this.actorID,
         "selected": selected || 0,
-        "tabs": [actor.form() for (actor of tabActorList)],
+        "tabs": tabActorList.map(actor => actor.form())
       };
 
       /* If a root window is accessible, include its URL. */
@@ -324,7 +338,7 @@ RootActor.prototype = {
 
       return {
         "from": this.actorID,
-        "addons": [addonActor.form() for (addonActor of addonActors)]
+        "addons": addonActors.map(addonActor => addonActor.form())
       };
     });
   },

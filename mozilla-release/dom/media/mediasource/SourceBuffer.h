@@ -11,6 +11,7 @@
 #include "MediaSource.h"
 #include "js/RootingAPI.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/SourceBufferBinding.h"
@@ -23,6 +24,7 @@
 #include "nsISupports.h"
 #include "nsString.h"
 #include "nscore.h"
+#include "SourceBufferContentManager.h"
 
 class JSObject;
 struct JSContext;
@@ -30,12 +32,14 @@ struct JSContext;
 namespace mozilla {
 
 class ErrorResult;
-class LargeDataBuffer;
-class TrackBuffer;
+class MediaByteBuffer;
 template <typename T> class AsyncEventRunner;
-typedef MediaPromise<bool, nsresult, /* IsExclusive = */ true> TrackBufferAppendPromise;
+class TrackBuffersManager;
 
 namespace dom {
+
+using media::TimeUnit;
+using media::TimeIntervals;
 
 class TimeRanges;
 
@@ -56,10 +60,11 @@ public:
   }
 
   already_AddRefed<TimeRanges> GetBuffered(ErrorResult& aRv);
+  TimeIntervals GetTimeIntervals();
 
   double TimestampOffset() const
   {
-    return mTimestampOffset;
+    return mApparentTimestampOffset;
   }
 
   void SetTimestampOffset(double aTimestampOffset, ErrorResult& aRv);
@@ -114,8 +119,6 @@ public:
 
   // Runs the range removal algorithm as defined by the MSE spec.
   void RangeRemoval(double aStart, double aEnd);
-  // Actually remove data between aStart and aEnd
-  void DoRangeRemoval(double aStart, double aEnd);
 
   bool IsActive() const
   {
@@ -130,8 +133,8 @@ private:
   ~SourceBuffer();
 
   friend class AsyncEventRunner<SourceBuffer>;
-  friend class AppendDataRunnable;
-  friend class RangeRemovalRunnable;
+  friend class BufferAppendRunnable;
+  friend class mozilla::TrackBuffersManager;
   void DispatchSimpleEvent(const char* aName);
   void QueueAsyncSimpleEvent(const char* aName);
 
@@ -147,8 +150,7 @@ private:
 
   // Shared implementation of AppendBuffer overloads.
   void AppendData(const uint8_t* aData, uint32_t aLength, ErrorResult& aRv);
-  void AppendData(LargeDataBuffer* aData, double aTimestampOffset,
-                  uint32_t aAppendID);
+  void BufferAppend(uint32_t aAppendID);
 
   // Implement the "Append Error Algorithm".
   // Will call endOfStream() with "decode" error if aDecodeError is true.
@@ -156,37 +158,44 @@ private:
   // http://w3c.github.io/media-source/#sourcebuffer-append-error
   void AppendError(bool aDecoderError);
 
-  // Implements the "Prepare Append Algorithm". Returns LargeDataBuffer object
+  // Implements the "Prepare Append Algorithm". Returns MediaByteBuffer object
   // on success or nullptr (with aRv set) on error.
-  already_AddRefed<LargeDataBuffer> PrepareAppend(const uint8_t* aData,
-                                                uint32_t aLength,
-                                                ErrorResult& aRv);
+  already_AddRefed<MediaByteBuffer> PrepareAppend(const uint8_t* aData,
+                                                  uint32_t aLength,
+                                                  ErrorResult& aRv);
 
-  void AppendDataCompletedWithSuccess(bool aValue);
+  void AppendDataCompletedWithSuccess(bool aHasActiveTracks);
   void AppendDataErrored(nsresult aError);
+
+  // Set timestampOffset, must be called on the main thread.
+  void SetTimestampOffset(const TimeUnit& aTimestampOffset);
 
   nsRefPtr<MediaSource> mMediaSource;
 
   uint32_t mEvictionThreshold;
 
-  nsRefPtr<TrackBuffer> mTrackBuffer;
+  nsRefPtr<SourceBufferContentManager> mContentManager;
 
   double mAppendWindowStart;
   double mAppendWindowEnd;
 
-  double mTimestampOffset;
+  double mApparentTimestampOffset;
+  TimeUnit mTimestampOffset;
 
   SourceBufferAppendMode mAppendMode;
   bool mUpdating;
+  bool mGenerateTimestamp;
+  bool mIsUsingFormatReader;
 
-  bool mActive;
+  mozilla::Atomic<bool> mActive;
 
   // Each time mUpdating is set to true, mUpdateID will be incremented.
   // This allows for a queued AppendData task to identify if it was earlier
   // aborted and another AppendData queued.
   uint32_t mUpdateID;
+  int64_t mReportedOffset;
 
-  MediaPromiseConsumerHolder<TrackBufferAppendPromise> mPendingAppend;
+  MediaPromiseRequestHolder<SourceBufferContentManager::AppendPromise> mPendingAppend;
   const nsCString mType;
 };
 

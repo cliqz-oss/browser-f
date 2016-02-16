@@ -18,7 +18,6 @@
 #include "nsIObjectOutputStream.h"
 #include "nsEscape.h"
 #include "nsError.h"
-#include "nsIProgrammingLanguage.h"
 #include "nsIIPCSerializableURI.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ipc/URIUtils.h"
@@ -262,8 +261,6 @@ nsSimpleURI::GetUserPass(nsACString &result)
 NS_IMETHODIMP
 nsSimpleURI::SetUserPass(const nsACString &userPass)
 {
-    NS_ENSURE_STATE(mMutable);
-    
     return NS_ERROR_FAILURE;
 }
 
@@ -584,17 +581,10 @@ nsSimpleURI::GetClassID(nsCID * *aClassID)
 {
     // Make sure to modify any subclasses as needed if this ever
     // changes to not call the virtual GetClassIDNoAlloc.
-    *aClassID = (nsCID*) nsMemory::Alloc(sizeof(nsCID));
+    *aClassID = (nsCID*) moz_xmalloc(sizeof(nsCID));
     if (!*aClassID)
         return NS_ERROR_OUT_OF_MEMORY;
     return GetClassIDNoAlloc(*aClassID);
-}
-
-NS_IMETHODIMP 
-nsSimpleURI::GetImplementationLanguage(uint32_t *aImplementationLanguage)
-{
-    *aImplementationLanguage = nsIProgrammingLanguage::CPLUSPLUS;
-    return NS_OK;
 }
 
 NS_IMETHODIMP 

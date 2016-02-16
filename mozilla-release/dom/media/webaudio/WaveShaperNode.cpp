@@ -48,7 +48,7 @@ static uint32_t ValueOf(OverSampleType aType)
   }
 }
 
-class Resampler
+class Resampler final
 {
 public:
   Resampler()
@@ -87,12 +87,12 @@ public:
     mUpSampler = speex_resampler_init(aChannels,
                                       aSampleRate,
                                       aSampleRate * ValueOf(aType),
-                                      SPEEX_RESAMPLER_QUALITY_DEFAULT,
+                                      SPEEX_RESAMPLER_QUALITY_MIN,
                                       nullptr);
     mDownSampler = speex_resampler_init(aChannels,
                                         aSampleRate * ValueOf(aType),
                                         aSampleRate,
-                                        SPEEX_RESAMPLER_QUALITY_DEFAULT,
+                                        SPEEX_RESAMPLER_QUALITY_MIN,
                                         nullptr);
     mBuffer.SetLength(WEBAUDIO_BLOCK_SIZE*ValueOf(aType));
   }
@@ -161,7 +161,7 @@ private:
   nsTArray<float> mBuffer;
 };
 
-class WaveShaperNodeEngine : public AudioNodeEngine
+class WaveShaperNodeEngine final : public AudioNodeEngine
 {
 public:
   explicit WaveShaperNodeEngine(AudioNode* aNode)
@@ -229,7 +229,9 @@ public:
 
     AllocateAudioBlock(channelCount, aOutput);
     for (uint32_t i = 0; i < channelCount; ++i) {
-      const float* inputBuffer = static_cast<const float*>(aInput.mChannelData[i]);
+      float* scaledSample = (float *)(aInput.mChannelData[i]);
+      AudioBlockInPlaceScale(scaledSample, aInput.mVolume);
+      const float* inputBuffer = static_cast<const float*>(scaledSample);
       float* outputBuffer = const_cast<float*> (static_cast<const float*>(aOutput->mChannelData[i]));
       float* sampleBuffer;
 
@@ -324,7 +326,7 @@ WaveShaperNode::SetCurve(const Nullable<Float32Array>& aCurve)
     mCurve = nullptr;
   }
 
-  AudioNodeStream* ns = static_cast<AudioNodeStream*>(mStream.get());
+  AudioNodeStream* ns = mStream;
   MOZ_ASSERT(ns, "Why don't we have a stream here?");
   ns->SetRawArrayData(curve);
 }

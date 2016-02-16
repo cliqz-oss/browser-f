@@ -146,6 +146,8 @@ public:
     COPY_OPT_FIELD(mDns1_long, 0)
     COPY_OPT_FIELD(mDns2_long, 0)
 
+    mLoopIndex = 0;
+
 #undef COPY_SEQUENCE_FIELD
 #undef COPY_OPT_STRING_FIELD
 #undef COPY_OPT_FIELD
@@ -198,7 +200,8 @@ public:
   long mDns2_long;
 
   // Auxiliary information required to carry accros command chain.
-  int mNetId;     // A locally defined id per interface.
+  int mNetId; // A locally defined id per interface.
+  uint32_t mLoopIndex; // Loop index for adding/removing multiple gateways.
 };
 
 // CommandChain store the necessary information to execute command one by one.
@@ -284,6 +287,7 @@ private:
    */
   CommandResult configureInterface(NetworkParams& aOptions);
   CommandResult dhcpRequest(NetworkParams& aOptions);
+  CommandResult stopDhcp(NetworkParams& aOptions);
   CommandResult enableInterface(NetworkParams& aOptions);
   CommandResult disableInterface(NetworkParams& aOptions);
   CommandResult resetConnections(NetworkParams& aOptions);
@@ -306,6 +310,7 @@ private:
   CommandResult updateUpStream(NetworkParams& aOptions);
   CommandResult createNetwork(NetworkParams& aOptions);
   CommandResult destroyNetwork(NetworkParams& aOptions);
+  CommandResult getNetId(NetworkParams& aOptions);
 
   CommandResult addHostRouteLegacy(NetworkParams& aOptions);
   CommandResult removeHostRouteLegacy(NetworkParams& aOptions);
@@ -358,6 +363,8 @@ private:
   static void addRouteToLocalNetwork(PARAMS);
   static void preTetherInterfaceList(PARAMS);
   static void postTetherInterfaceList(PARAMS);
+  static void addUpstreamInterface(PARAMS);
+  static void removeUpstreamInterface(PARAMS);
   static void setIpForwardingEnabled(PARAMS);
   static void tetheringStatus(PARAMS);
   static void stopTethering(PARAMS);

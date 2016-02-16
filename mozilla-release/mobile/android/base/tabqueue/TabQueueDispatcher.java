@@ -6,9 +6,13 @@
 package org.mozilla.gecko.tabqueue;
 
 import org.mozilla.gecko.AppConstants;
-import org.mozilla.gecko.BrowserApp;
+import org.mozilla.gecko.GeckoAppShell;
+import org.mozilla.gecko.GeckoSharedPrefs;
 import org.mozilla.gecko.Locales;
-import org.mozilla.gecko.sync.setup.activities.WebURLFinder;
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
+import org.mozilla.gecko.mozglue.ContextUtils;
+import org.mozilla.gecko.preferences.GeckoPreferences;
 
 import android.content.Intent;
 import android.os.Bundle;
@@ -28,30 +32,38 @@ public class TabQueueDispatcher extends Locales.LocaleAwareActivity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
+        GeckoAppShell.ensureCrashHandling();
+
+        // The EXCLUDE_FROM_RECENTS flag is sticky
+        // (see http://grepcode.com/file/repository.grepcode.com/java/ext/com.google.android/android/5.1.0_r1/com/android/server/am/ActivityRecord.java/#468)
+        // So let's remove this whilst keeping all other flags the same, otherwise BrowserApp will vanish from Recents!
         Intent intent = getIntent();
+        int flags = intent.getFlags() & ~Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS;
+        intent.setFlags(flags);
+
+        ContextUtils.SafeIntent safeIntent = new ContextUtils.SafeIntent(intent);
 
         // For the moment lets exit early and start fennec as normal if we're not in nightly with
         // the tab queue build flag.
-        if (!AppConstants.MOZ_ANDROID_TAB_QUEUE) {
-            loadNormally(intent);
-            finish();
+        if (!AppConstants.MOZ_ANDROID_TAB_QUEUE || !AppConstants.NIGHTLY_BUILD) {
+            loadNormally(safeIntent.getUnsafe());
+            return;
         }
 
         // The URL is usually hiding somewhere in the extra text. Extract it.
-        final String dataString = intent.getDataString();
+        final String dataString = safeIntent.getDataString();
         if (TextUtils.isEmpty(dataString)) {
             abortDueToNoURL(dataString);
             return;
         }
 
-        // TODO: This code is shared with ShareDialog - we should extract this to a helper class.
-        final String pageUrl = new WebURLFinder(dataString).bestWebURL();
-        if (TextUtils.isEmpty(pageUrl)) {
-            abortDueToNoURL(dataString);
-            return;
-        }
+        boolean shouldShowOpenInBackgroundToast = TabQueueHelper.isTabQueueEnabled(this);
 
-        showToast(intent);
+        if (shouldShowOpenInBackgroundToast) {
+            showToast(safeIntent.getUnsafe());
+        } else {
+            loadNormally(safeIntent.getUnsafe());
+        }
     }
 
     private void showToast(Intent intent) {
@@ -64,8 +76,9 @@ public class TabQueueDispatcher extends Locales.LocaleAwareActivity {
      * Start fennec with the supplied intent.
      */
     private void loadNormally(Intent intent) {
-        intent.setClass(getApplicationContext(), BrowserApp.class);
+        intent.setClassName(getApplicationContext(), AppConstants.MOZ_ANDROID_BROWSER_INTENT_CLASS);
         startActivity(intent);
+        Telemetry.sendUIEvent(TelemetryContract.Event.LOAD_URL, TelemetryContract.Method.INTENT, "");
         finish();
     }
 

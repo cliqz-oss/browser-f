@@ -11,11 +11,13 @@
 #include <stdarg.h>
 #include <algorithm>
 
+#include "gfx2DGlue.h"
 #include "gfxUtils.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/PathHelpers.h"
+#include "mozilla/Snprintf.h"
 
 #include "nsCOMPtr.h"
 #include "nsFrameList.h"
@@ -33,7 +35,7 @@
 #include "nsPresContext.h"
 #include "nsStyleConsts.h"
 #include "nsIPresShell.h"
-#include "prlog.h"
+#include "mozilla/Logging.h"
 #include "prprf.h"
 #include "nsFrameManager.h"
 #include "nsLayoutUtils.h"
@@ -51,11 +53,12 @@
 #include "nsRange.h"
 #include "nsITextControlFrame.h"
 #include "nsNameSpaceManager.h"
-#include "nsIPercentHeightObserver.h"
+#include "nsIPercentBSizeObserver.h"
 #include "nsStyleStructInlines.h"
 #include "FrameLayerBuilder.h"
 
 #include "nsBidiPresUtils.h"
+#include "RubyUtils.h"
 
 // For triple-click pref
 #include "imgIContainer.h"
@@ -480,10 +483,11 @@ IsFontSizeInflationContainer(nsIFrame* aFrame,
   }
 
   nsIContent *content = aFrame->GetContent();
+  nsIAtom* frameType = aFrame->GetType();
   bool isInline = (aFrame->GetDisplay() == NS_STYLE_DISPLAY_INLINE ||
-                   aFrame->StyleDisplay()->IsRubyDisplayType() ||
+                   RubyUtils::IsRubyBox(frameType) ||
                    (aFrame->IsFloating() &&
-                    aFrame->GetType() == nsGkAtoms::letterFrame) ||
+                    frameType == nsGkAtoms::letterFrame) ||
                    // Given multiple frames for the same node, only the
                    // outer one should be considered a container.
                    // (Important, e.g., for nsSelectsAreaFrame.)
@@ -1475,7 +1479,7 @@ void nsDisplaySelectionOverlay::Paint(nsDisplayListBuilder* aBuilder,
   nsIntRect pxRect =
     mVisibleRect.ToOutsidePixels(mFrame->PresContext()->AppUnitsPerDevPixel());
   Rect rect(pxRect.x, pxRect.y, pxRect.width, pxRect.height);
-  MaybeSnapToDevicePixels(rect, aDrawTarget);
+  MaybeSnapToDevicePixels(rect, aDrawTarget, true);
 
   aDrawTarget.FillRect(rect, color);
 }
@@ -1987,9 +1991,11 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
 
   bool usingSVGEffects = nsSVGIntegrationUtils::UsingEffectsForFrame(this);
   nsRect dirtyRectOutsideSVGEffects = dirtyRect;
+  nsDisplayList hoistedScrollInfoItemsStorage;
   if (usingSVGEffects) {
     dirtyRect =
       nsSVGIntegrationUtils::GetRequiredSourceForInvalidArea(this, dirtyRect);
+    aBuilder->EnterSVGEffectsContents(&hoistedScrollInfoItemsStorage);
   }
 
   bool useOpacity = HasVisualOpacity() && !nsSVGUtils::CanOptimizeOpacity(this);
@@ -2123,6 +2129,10 @@ nsIFrame::BuildDisplayListForStackingContext(nsDisplayListBuilder* aBuilder,
     /* List now emptied, so add the new list to the top. */
     resultList.AppendNewToTop(
         new (aBuilder) nsDisplaySVGEffects(aBuilder, this, &resultList));
+    // Also add the hoisted scroll info items. We need those for APZ scrolling
+    // because nsDisplaySVGEffects items can't build active layers.
+    aBuilder->ExitSVGEffectsContents();
+    resultList.AppendToTop(&hoistedScrollInfoItemsStorage);
   }
   /* Else, if the list is non-empty and there is CSS group opacity without SVG
    * effects, wrap it up in an opacity item.
@@ -2672,8 +2682,7 @@ nsFrame::GetDataForTableSelection(const nsFrameSelection* aFrameSelection,
   if (offset < 0) return NS_ERROR_FAILURE;
 
   // Everything is OK -- set the return values
-  *aParentContent = parentContent;
-  NS_ADDREF(*aParentContent);
+  parentContent.forget(aParentContent);
 
   *aContentOffset = offset;
 
@@ -3328,10 +3337,7 @@ NS_IMETHODIMP nsFrame::HandleRelease(nsPresContext* aPresContext,
       // If not, the user must have clicked in a part of the selection.
       // Place the caret before continuing!
 
-      bool mouseDown = frameselection->GetDragState();
-
-      if (!mouseDown && frameselection->HasDelayedCaretData() &&
-          frameselection->GetClickCountInDelayedCaretData() < 2) {
+      if (frameselection->MouseDownRecorded()) {
         nsPoint pt = nsLayoutUtils::GetEventCoordinatesRelativeTo(aEvent, this);
         offsets = GetContentOffsetsFromPoint(pt, SKIP_HIDDEN);
         handleTableSelection = false;
@@ -4049,7 +4055,6 @@ nsIFrame::InlinePrefISizeData::ForceBreak(nsRenderingContext *aRenderingContext)
 
 static void
 AddCoord(const nsStyleCoord& aStyle,
-         nsRenderingContext* aRenderingContext,
          nsIFrame* aFrame,
          nscoord* aCoord, float* aPercent,
          bool aClampNegativeToZero)
@@ -4085,47 +4090,76 @@ AddCoord(const nsStyleCoord& aStyle,
   }
 }
 
-/* virtual */ nsIFrame::IntrinsicISizeOffsetData
-nsFrame::IntrinsicISizeOffsets(nsRenderingContext* aRenderingContext)
+static nsIFrame::IntrinsicISizeOffsetData
+IntrinsicSizeOffsets(nsIFrame* aFrame, bool aForISize)
 {
-  IntrinsicISizeOffsetData result;
+  nsIFrame::IntrinsicISizeOffsetData result;
+  WritingMode wm = aFrame->GetWritingMode();
+  const nsStyleMargin* styleMargin = aFrame->StyleMargin();
+  bool verticalAxis = aForISize == wm.IsVertical();
+  AddCoord(verticalAxis ? styleMargin->mMargin.GetTop()
+                        : styleMargin->mMargin.GetLeft(),
+           aFrame, &result.hMargin, &result.hPctMargin,
+           false);
+  AddCoord(verticalAxis ? styleMargin->mMargin.GetBottom()
+                        : styleMargin->mMargin.GetRight(),
+           aFrame, &result.hMargin, &result.hPctMargin,
+           false);
 
-  const nsStyleMargin *styleMargin = StyleMargin();
-  AddCoord(styleMargin->mMargin.GetLeft(), aRenderingContext, this,
-           &result.hMargin, &result.hPctMargin, false);
-  AddCoord(styleMargin->mMargin.GetRight(), aRenderingContext, this,
-           &result.hMargin, &result.hPctMargin, false);
+  const nsStylePadding* stylePadding = aFrame->StylePadding();
+  AddCoord(verticalAxis ? stylePadding->mPadding.GetTop()
+                        : stylePadding->mPadding.GetLeft(),
+           aFrame, &result.hPadding, &result.hPctPadding,
+           true);
+  AddCoord(verticalAxis ? stylePadding->mPadding.GetBottom()
+                        : stylePadding->mPadding.GetRight(),
+           aFrame, &result.hPadding, &result.hPctPadding,
+           true);
 
-  const nsStylePadding *stylePadding = StylePadding();
-  AddCoord(stylePadding->mPadding.GetLeft(), aRenderingContext, this,
-           &result.hPadding, &result.hPctPadding, true);
-  AddCoord(stylePadding->mPadding.GetRight(), aRenderingContext, this,
-           &result.hPadding, &result.hPctPadding, true);
+  const nsStyleBorder* styleBorder = aFrame->StyleBorder();
+  if (verticalAxis) {
+    result.hBorder += styleBorder->GetComputedBorderWidth(NS_SIDE_TOP);
+    result.hBorder += styleBorder->GetComputedBorderWidth(NS_SIDE_BOTTOM);
+  } else {
+    result.hBorder += styleBorder->GetComputedBorderWidth(NS_SIDE_LEFT);
+    result.hBorder += styleBorder->GetComputedBorderWidth(NS_SIDE_RIGHT);
+  }
 
-  const nsStyleBorder *styleBorder = StyleBorder();
-  result.hBorder += styleBorder->GetComputedBorderWidth(NS_SIDE_LEFT);
-  result.hBorder += styleBorder->GetComputedBorderWidth(NS_SIDE_RIGHT);
-
-  const nsStyleDisplay *disp = StyleDisplay();
-  if (IsThemed(disp)) {
-    nsPresContext *presContext = PresContext();
+  const nsStyleDisplay* disp = aFrame->StyleDisplay();
+  if (aFrame->IsThemed(disp)) {
+    nsPresContext* presContext = aFrame->PresContext();
 
     nsIntMargin border;
     presContext->GetTheme()->GetWidgetBorder(presContext->DeviceContext(),
-                                             this, disp->mAppearance,
+                                             aFrame, disp->mAppearance,
                                              &border);
-    result.hBorder = presContext->DevPixelsToAppUnits(border.LeftRight());
+    result.hBorder =
+      presContext->DevPixelsToAppUnits(verticalAxis ? border.TopBottom()
+                                                    : border.LeftRight());
 
     nsIntMargin padding;
     if (presContext->GetTheme()->GetWidgetPadding(presContext->DeviceContext(),
-                                                  this, disp->mAppearance,
+                                                  aFrame, disp->mAppearance,
                                                   &padding)) {
-      result.hPadding = presContext->DevPixelsToAppUnits(padding.LeftRight());
+      result.hPadding =
+        presContext->DevPixelsToAppUnits(verticalAxis ? padding.TopBottom()
+                                                      : padding.LeftRight());
       result.hPctPadding = 0;
     }
   }
-
   return result;
+}
+
+/* virtual */ nsIFrame::IntrinsicISizeOffsetData
+nsFrame::IntrinsicISizeOffsets()
+{
+  return IntrinsicSizeOffsets(this, true);
+}
+
+nsIFrame::IntrinsicISizeOffsetData
+nsIFrame::IntrinsicBSizeOffsets()
+{
+  return IntrinsicSizeOffsets(this, false);
 }
 
 /* virtual */ IntrinsicSize
@@ -4169,12 +4203,8 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
     aMargin.ISize(aWM) + aBorder.ISize(aWM) + aPadding.ISize(aWM) -
     boxSizingAdjust.ISize(aWM);
 
-  bool isVertical = aWM.IsVertical();
-
-  const nsStyleCoord* inlineStyleCoord =
-    isVertical ? &(stylePos->mHeight) : &(stylePos->mWidth);
-  const nsStyleCoord* blockStyleCoord =
-    isVertical ? &(stylePos->mWidth) : &(stylePos->mHeight);
+  const nsStyleCoord* inlineStyleCoord = &stylePos->ISize(aWM);
+  const nsStyleCoord* blockStyleCoord = &stylePos->BSize(aWM);
 
   bool isFlexItem = IsFlexItem();
   bool isInlineFlexItem = false;
@@ -4220,8 +4250,7 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
         *inlineStyleCoord);
   }
 
-  const nsStyleCoord& maxISizeCoord =
-    isVertical ? stylePos->mMaxHeight : stylePos->mMaxWidth;
+  const nsStyleCoord& maxISizeCoord = stylePos->MaxISize(aWM);
 
   // Flex items ignore their min & max sizing properties in their
   // flex container's main-axis.  (Those properties get applied later in
@@ -4235,8 +4264,7 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
     result.ISize(aWM) = std::min(maxISize, result.ISize(aWM));
   }
 
-  const nsStyleCoord& minISizeCoord =
-    isVertical ? stylePos->mMinHeight : stylePos->mMinWidth;
+  const nsStyleCoord& minISizeCoord = stylePos->MinISize(aWM);
 
   nscoord minISize;
   if (minISizeCoord.GetUnit() != eStyleUnit_Auto &&
@@ -4267,8 +4295,7 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
                                        *blockStyleCoord);
   }
 
-  const nsStyleCoord& maxBSizeCoord =
-    isVertical ? stylePos->mMaxWidth : stylePos->mMaxHeight;
+  const nsStyleCoord& maxBSizeCoord = stylePos->MaxBSize(aWM);
 
   if (result.BSize(aWM) != NS_UNCONSTRAINEDSIZE) {
     if (!nsLayoutUtils::IsAutoBSize(maxBSizeCoord, aCBSize.BSize(aWM)) &&
@@ -4280,8 +4307,7 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
       result.BSize(aWM) = std::min(maxBSize, result.BSize(aWM));
     }
 
-    const nsStyleCoord& minBSizeCoord =
-      isVertical ? stylePos->mMinWidth : stylePos->mMinHeight;
+    const nsStyleCoord& minBSizeCoord = stylePos->MinBSize(aWM);
 
     if (!nsLayoutUtils::IsAutoBSize(minBSizeCoord, aCBSize.BSize(aWM)) &&
         !(isFlexItem && !isInlineFlexItem)) {
@@ -4295,7 +4321,7 @@ nsFrame::ComputeSize(nsRenderingContext *aRenderingContext,
 
   const nsStyleDisplay *disp = StyleDisplay();
   if (IsThemed(disp)) {
-    nsIntSize widget(0, 0);
+    LayoutDeviceIntSize widget;
     bool canOverride = true;
     nsPresContext *presContext = PresContext();
     presContext->GetTheme()->
@@ -4377,9 +4403,7 @@ nsFrame::ComputeAutoSize(nsRenderingContext *aRenderingContext,
   LogicalSize result(aWM, 0xdeadbeef, NS_UNCONSTRAINEDSIZE);
 
   // don't bother setting it if the result won't be used
-  const nsStyleCoord& inlineStyleCoord =
-    aWM.IsVertical() ? StylePosition()->mHeight : StylePosition()->mWidth;
-  if (inlineStyleCoord.GetUnit() == eStyleUnit_Auto) {
+  if (StylePosition()->ISize(aWM).GetUnit() == eStyleUnit_Auto) {
     nscoord availBased = aAvailableISize - aMargin.ISize(aWM) -
                          aBorder.ISize(aWM) - aPadding.ISize(aWM);
     result.ISize(aWM) = ShrinkWidthToFit(aRenderingContext, availBased);
@@ -4425,15 +4449,16 @@ nsFrame::DidReflow(nsPresContext*           aPresContext,
                 NS_FRAME_HAS_DIRTY_CHILDREN);
   }
 
-  // Notify the percent height observer if there is a percent height.
+  // Notify the percent bsize observer if there is a percent bsize.
   // The observer may be able to initiate another reflow with a computed
-  // height. This happens in the case where a table cell has no computed
-  // height but can fabricate one when the cell height is known.
-  if (aReflowState && aReflowState->mPercentHeightObserver &&
+  // bsize. This happens in the case where a table cell has no computed
+  // bsize but can fabricate one when the cell bsize is known.
+  if (aReflowState && aReflowState->mPercentBSizeObserver &&
       !GetPrevInFlow()) {
-    const nsStyleCoord &height = aReflowState->mStylePosition->mHeight;
-    if (height.HasPercent()) {
-      aReflowState->mPercentHeightObserver->NotifyPercentHeight(*aReflowState);
+    const nsStyleCoord &bsize =
+      aReflowState->mStylePosition->BSize(aReflowState->GetWritingMode());
+    if (bsize.HasPercent()) {
+      aReflowState->mPercentBSizeObserver->NotifyPercentBSize(*aReflowState);
     }
   }
 
@@ -4445,9 +4470,9 @@ nsFrame::FinishReflowWithAbsoluteFrames(nsPresContext*           aPresContext,
                                         nsHTMLReflowMetrics&     aDesiredSize,
                                         const nsHTMLReflowState& aReflowState,
                                         nsReflowStatus&          aStatus,
-                                        bool                     aConstrainHeight)
+                                        bool                     aConstrainBSize)
 {
-  ReflowAbsoluteFrames(aPresContext, aDesiredSize, aReflowState, aStatus, aConstrainHeight);
+  ReflowAbsoluteFrames(aPresContext, aDesiredSize, aReflowState, aStatus, aConstrainBSize);
 
   FinishAndStoreOverflow(&aDesiredSize);
 }
@@ -4457,7 +4482,7 @@ nsFrame::ReflowAbsoluteFrames(nsPresContext*           aPresContext,
                               nsHTMLReflowMetrics&     aDesiredSize,
                               const nsHTMLReflowState& aReflowState,
                               nsReflowStatus&          aStatus,
-                              bool                     aConstrainHeight)
+                              bool                     aConstrainBSize)
 {
   if (HasAbsolutelyPositionedChildren()) {
     nsAbsoluteContainingBlock* absoluteContainer = GetAbsoluteContainingBlock();
@@ -4479,7 +4504,7 @@ nsFrame::ReflowAbsoluteFrames(nsPresContext*           aPresContext,
     nsRect containingBlock(0, 0, containingBlockWidth, containingBlockHeight);
     absoluteContainer->Reflow(container, aPresContext, aReflowState, aStatus,
                               containingBlock,
-                              aConstrainHeight, true, true, // XXX could be optimized
+                              aConstrainBSize, true, true, // XXX could be optimized
                               &aDesiredSize.mOverflowAreas);
   }
 }
@@ -7904,7 +7929,11 @@ nsFrame::DoGetParentStyleContext(nsIFrame** aProviderFrame) const
     if (MOZ_LIKELY(parentContent)) {
       nsIAtom* pseudo = StyleContext()->GetPseudo();
       if (!pseudo || !mContent->IsElement() ||
-          !nsCSSAnonBoxes::IsAnonBox(pseudo) ||
+          (!nsCSSAnonBoxes::IsAnonBox(pseudo) &&
+           // Ensure that we don't return the display:contents style
+           // of the parent content for pseudos that have the same content
+           // as their primary frame (like -moz-list-bullets do):
+           mContent->GetPrimaryFrame() == this) ||
           /* if next is true then it's really a request for the table frame's
              parent context, see nsTable[Outer]Frame::GetParentStyleContext. */
           pseudo == nsCSSAnonBoxes::tableOuter) {
@@ -8559,7 +8588,7 @@ nsFrame::BoxReflow(nsBoxLayoutState&        aState,
     LogicalSize logicalSize(wm, nsSize(aWidth, aHeight));
     logicalSize.BSize(wm) = NS_INTRINSICSIZE;
     nsHTMLReflowState reflowState(aPresContext, *parentRS, this,
-                                  logicalSize, -1, -1,
+                                  logicalSize, nullptr,
                                   nsHTMLReflowState::DUMMY_PARENT_REFLOW_STATE);
 
     // XXX_jwir3: This is somewhat fishy. If this is actually changing the value
@@ -8754,7 +8783,25 @@ nsIFrame::SetParent(nsContainerFrame* aParent)
       f->AddStateBits(NS_FRAME_HAS_CHILD_WITH_VIEW);
     }
   }
-  
+
+  if (HasAnyStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE)) {
+    for (nsIFrame* f = aParent; f; f = f->GetParent()) {
+      if (f->HasAnyStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE)) {
+        break;
+      }
+      f->AddStateBits(NS_FRAME_CONTAINS_RELATIVE_BSIZE);
+    }
+  }
+
+  if (HasAnyStateBits(NS_FRAME_DESCENDANT_INTRINSIC_ISIZE_DEPENDS_ON_BSIZE)) {
+    for (nsIFrame* f = aParent; f; f = f->GetParent()) {
+      if (f->HasAnyStateBits(NS_FRAME_DESCENDANT_INTRINSIC_ISIZE_DEPENDS_ON_BSIZE)) {
+        break;
+      }
+      f->AddStateBits(NS_FRAME_DESCENDANT_INTRINSIC_ISIZE_DEPENDS_ON_BSIZE);
+    }
+  }
+
   if (HasInvalidFrameInSubtree()) {
     for (nsIFrame* f = aParent;
          f && !f->HasAnyStateBits(NS_FRAME_DESCENDANT_NEEDS_PAINT);
@@ -8839,22 +8886,6 @@ nsIFrame::GetPseudoElement(nsCSSPseudoElements::Type aType)
   }
   
   return nullptr;
-}
-
-nsIFrame::ContentOffsets::ContentOffsets()
-{
-}
-
-nsIFrame::ContentOffsets::ContentOffsets(const ContentOffsets& rhs)
-  : content(rhs.content),
-    offset(rhs.offset),
-    secondaryOffset(rhs.secondaryOffset),
-    associate(rhs.associate)
-{
-}
-
-nsIFrame::ContentOffsets::~ContentOffsets()
-{
 }
 
 nsIFrame::CaretPosition::CaretPosition()
@@ -9087,8 +9118,7 @@ DR_init_constraints_cookie::~DR_init_constraints_cookie()
 DR_init_offsets_cookie::DR_init_offsets_cookie(
                      nsIFrame*                aFrame,
                      nsCSSOffsetState*        aState,
-                     nscoord                  aHorizontalPercentBasis,
-                     nscoord                  aVerticalPercentBasis,
+                     const LogicalSize&       aPercentBasis,
                      const nsMargin*          aMargin,
                      const nsMargin*          aPadding)
   : mFrame(aFrame)
@@ -9096,8 +9126,7 @@ DR_init_offsets_cookie::DR_init_offsets_cookie(
 {
   MOZ_COUNT_CTOR(DR_init_offsets_cookie);
   mValue = nsCSSOffsetState::DisplayInitOffsetsEnter(mFrame, mState,
-                                                     aHorizontalPercentBasis,
-                                                     aVerticalPercentBasis,
+                                                     aPercentBasis,
                                                      aMargin, aPadding);
 }
 
@@ -9154,7 +9183,8 @@ struct DR_State
   bool GetNumber(char*    aBuf, 
                  int32_t&  aNumber);
   void PrettyUC(nscoord aSize,
-                char*   aBuf);
+                char*   aBuf,
+                int     aBufSize);
   void PrintMargin(const char* tag, const nsMargin* aMargin);
   void DisplayFrameTypeInfo(nsIFrame* aFrame,
                             int32_t   aIndent);
@@ -9446,6 +9476,8 @@ void DR_State::ParseRulesFile()
           mActive = true;
         }
       }
+
+      fclose(inFile);
     }
   }
 }
@@ -9645,7 +9677,8 @@ DR_FrameTreeNode* DR_State::CreateTreeNode(nsIFrame*                aFrame,
 }
 
 void DR_State::PrettyUC(nscoord aSize,
-                        char*   aBuf)
+                        char*   aBuf,
+                        int     aBufSize)
 {
   if (NS_UNCONSTRAINEDSIZE == aSize) {
     strcpy(aBuf, "UC");
@@ -9656,7 +9689,7 @@ void DR_State::PrettyUC(nscoord aSize,
       strcpy(aBuf, "deadbeef");
     }
     else {
-      sprintf(aBuf, "%d", aSize);
+      snprintf(aBuf, aBufSize, "%d", aSize);
     }
   }
 }
@@ -9665,10 +9698,10 @@ void DR_State::PrintMargin(const char *tag, const nsMargin* aMargin)
 {
   if (aMargin) {
     char t[16], r[16], b[16], l[16];
-    PrettyUC(aMargin->top, t);
-    PrettyUC(aMargin->right, r);
-    PrettyUC(aMargin->bottom, b);
-    PrettyUC(aMargin->left, l);
+    PrettyUC(aMargin->top, t, 16);
+    PrettyUC(aMargin->right, r, 16);
+    PrettyUC(aMargin->bottom, b, 16);
+    PrettyUC(aMargin->left, l, 16);
     printf(" %s=%s,%s,%s,%s", tag, t, r, b, l);
   } else {
     // use %p here for consistency with other null-pointer printouts
@@ -9714,12 +9747,12 @@ static void DisplayReflowEnterPrint(nsPresContext*          aPresContext,
     char width[16];
     char height[16];
 
-    DR_state->PrettyUC(aReflowState.AvailableWidth(), width);
-    DR_state->PrettyUC(aReflowState.AvailableHeight(), height);
+    DR_state->PrettyUC(aReflowState.AvailableWidth(), width, 16);
+    DR_state->PrettyUC(aReflowState.AvailableHeight(), height, 16);
     printf("Reflow a=%s,%s ", width, height);
 
-    DR_state->PrettyUC(aReflowState.ComputedWidth(), width);
-    DR_state->PrettyUC(aReflowState.ComputedHeight(), height);
+    DR_state->PrettyUC(aReflowState.ComputedWidth(), width, 16);
+    DR_state->PrettyUC(aReflowState.ComputedHeight(), height, 16);
     printf("c=%s,%s ", width, height);
 
     if (aFrame->GetStateBits() & NS_FRAME_IS_DIRTY)
@@ -9728,8 +9761,8 @@ static void DisplayReflowEnterPrint(nsPresContext*          aPresContext,
     if (aFrame->GetStateBits() & NS_FRAME_HAS_DIRTY_CHILDREN)
       printf("dirty-children ");
 
-    if (aReflowState.mFlags.mSpecialHeightReflow)
-      printf("special-height ");
+    if (aReflowState.mFlags.mSpecialBSizeReflow)
+      printf("special-bsize ");
 
     if (aReflowState.IsHResize())
       printf("h-resize ");
@@ -9841,38 +9874,38 @@ void nsFrame::DisplayReflowExit(nsPresContext*      aPresContext,
     char height[16];
     char x[16];
     char y[16];
-    DR_state->PrettyUC(aMetrics.Width(), width);
-    DR_state->PrettyUC(aMetrics.Height(), height);
+    DR_state->PrettyUC(aMetrics.Width(), width, 16);
+    DR_state->PrettyUC(aMetrics.Height(), height, 16);
     printf("Reflow d=%s,%s", width, height);
 
     if (!NS_FRAME_IS_FULLY_COMPLETE(aStatus)) {
       printf(" status=0x%x", aStatus);
     }
     if (aFrame->HasOverflowAreas()) {
-      DR_state->PrettyUC(aMetrics.VisualOverflow().x, x);
-      DR_state->PrettyUC(aMetrics.VisualOverflow().y, y);
-      DR_state->PrettyUC(aMetrics.VisualOverflow().width, width);
-      DR_state->PrettyUC(aMetrics.VisualOverflow().height, height);
+      DR_state->PrettyUC(aMetrics.VisualOverflow().x, x, 16);
+      DR_state->PrettyUC(aMetrics.VisualOverflow().y, y, 16);
+      DR_state->PrettyUC(aMetrics.VisualOverflow().width, width, 16);
+      DR_state->PrettyUC(aMetrics.VisualOverflow().height, height, 16);
       printf(" vis-o=(%s,%s) %s x %s", x, y, width, height);
 
       nsRect storedOverflow = aFrame->GetVisualOverflowRect();
-      DR_state->PrettyUC(storedOverflow.x, x);
-      DR_state->PrettyUC(storedOverflow.y, y);
-      DR_state->PrettyUC(storedOverflow.width, width);
-      DR_state->PrettyUC(storedOverflow.height, height);
+      DR_state->PrettyUC(storedOverflow.x, x, 16);
+      DR_state->PrettyUC(storedOverflow.y, y, 16);
+      DR_state->PrettyUC(storedOverflow.width, width, 16);
+      DR_state->PrettyUC(storedOverflow.height, height, 16);
       printf(" vis-sto=(%s,%s) %s x %s", x, y, width, height);
 
-      DR_state->PrettyUC(aMetrics.ScrollableOverflow().x, x);
-      DR_state->PrettyUC(aMetrics.ScrollableOverflow().y, y);
-      DR_state->PrettyUC(aMetrics.ScrollableOverflow().width, width);
-      DR_state->PrettyUC(aMetrics.ScrollableOverflow().height, height);
+      DR_state->PrettyUC(aMetrics.ScrollableOverflow().x, x, 16);
+      DR_state->PrettyUC(aMetrics.ScrollableOverflow().y, y, 16);
+      DR_state->PrettyUC(aMetrics.ScrollableOverflow().width, width, 16);
+      DR_state->PrettyUC(aMetrics.ScrollableOverflow().height, height, 16);
       printf(" scr-o=(%s,%s) %s x %s", x, y, width, height);
 
       storedOverflow = aFrame->GetScrollableOverflowRect();
-      DR_state->PrettyUC(storedOverflow.x, x);
-      DR_state->PrettyUC(storedOverflow.y, y);
-      DR_state->PrettyUC(storedOverflow.width, width);
-      DR_state->PrettyUC(storedOverflow.height, height);
+      DR_state->PrettyUC(storedOverflow.x, x, 16);
+      DR_state->PrettyUC(storedOverflow.y, y, 16);
+      DR_state->PrettyUC(storedOverflow.width, width, 16);
+      DR_state->PrettyUC(storedOverflow.height, height, 16);
       printf(" scr-sto=(%s,%s) %s x %s", x, y, width, height);
     }
     printf("\n");
@@ -9916,7 +9949,7 @@ void nsFrame::DisplayIntrinsicISizeExit(nsIFrame*            aFrame,
   if (treeNode->mDisplay) {
     DR_state->DisplayFrameTypeInfo(aFrame, treeNode->mIndent);
     char width[16];
-    DR_state->PrettyUC(aResult, width);
+    DR_state->PrettyUC(aResult, width, 16);
     printf("Get%sWidth=%s\n", aType, width);
   }
   DR_state->DeleteTreeNode(*treeNode);
@@ -9938,8 +9971,8 @@ void nsFrame::DisplayIntrinsicSizeExit(nsIFrame*            aFrame,
 
     char width[16];
     char height[16];
-    DR_state->PrettyUC(aResult.width, width);
-    DR_state->PrettyUC(aResult.height, height);
+    DR_state->PrettyUC(aResult.width, width, 16);
+    DR_state->PrettyUC(aResult.height, height, 16);
     printf("Get%sSize=%s,%s\n", aType, width, height);
   }
   DR_state->DeleteTreeNode(*treeNode);
@@ -9990,12 +10023,12 @@ nsHTMLReflowState::DisplayInitConstraintsEnter(nsIFrame* aFrame,
     char width[16];
     char height[16];
 
-    DR_state->PrettyUC(aContainingBlockWidth, width);
-    DR_state->PrettyUC(aContainingBlockHeight, height);
+    DR_state->PrettyUC(aContainingBlockWidth, width, 16);
+    DR_state->PrettyUC(aContainingBlockHeight, height, 16);
     printf(" cb=%s,%s", width, height);
 
-    DR_state->PrettyUC(aState->AvailableWidth(), width);
-    DR_state->PrettyUC(aState->AvailableHeight(), height);
+    DR_state->PrettyUC(aState->AvailableWidth(), width, 16);
+    DR_state->PrettyUC(aState->AvailableHeight(), height, 16);
     printf(" as=%s,%s", width, height);
 
     DR_state->PrintMargin("b", aBorder);
@@ -10020,12 +10053,12 @@ nsHTMLReflowState::DisplayInitConstraintsExit(nsIFrame* aFrame,
   if (treeNode->mDisplay) {
     DR_state->DisplayFrameTypeInfo(aFrame, treeNode->mIndent);
     char cmiw[16], cw[16], cmxw[16], cmih[16], ch[16], cmxh[16];
-    DR_state->PrettyUC(aState->ComputedMinWidth(), cmiw);
-    DR_state->PrettyUC(aState->ComputedWidth(), cw);
-    DR_state->PrettyUC(aState->ComputedMaxWidth(), cmxw);
-    DR_state->PrettyUC(aState->ComputedMinHeight(), cmih);
-    DR_state->PrettyUC(aState->ComputedHeight(), ch);
-    DR_state->PrettyUC(aState->ComputedMaxHeight(), cmxh);
+    DR_state->PrettyUC(aState->ComputedMinWidth(), cmiw, 16);
+    DR_state->PrettyUC(aState->ComputedWidth(), cw, 16);
+    DR_state->PrettyUC(aState->ComputedMaxWidth(), cmxw, 16);
+    DR_state->PrettyUC(aState->ComputedMinHeight(), cmih, 16);
+    DR_state->PrettyUC(aState->ComputedHeight(), ch, 16);
+    DR_state->PrettyUC(aState->ComputedMaxHeight(), cmxh, 16);
     printf("InitConstraints= cw=(%s <= %s <= %s) ch=(%s <= %s <= %s)",
            cmiw, cw, cmxw, cmih, ch, cmxh);
     DR_state->PrintMargin("co", &aState->ComputedPhysicalOffsets());
@@ -10038,8 +10071,7 @@ nsHTMLReflowState::DisplayInitConstraintsExit(nsIFrame* aFrame,
 /* static */ void*
 nsCSSOffsetState::DisplayInitOffsetsEnter(nsIFrame* aFrame,
                                           nsCSSOffsetState* aState,
-                                          nscoord aHorizontalPercentBasis,
-                                          nscoord aVerticalPercentBasis,
+                                          const LogicalSize& aPercentBasis,
                                           const nsMargin* aBorder,
                                           const nsMargin* aPadding)
 {
@@ -10056,8 +10088,9 @@ nsCSSOffsetState::DisplayInitOffsetsEnter(nsIFrame* aFrame,
 
     char horizPctBasisStr[16];
     char vertPctBasisStr[16];
-    DR_state->PrettyUC(aHorizontalPercentBasis, horizPctBasisStr);
-    DR_state->PrettyUC(aVerticalPercentBasis,   vertPctBasisStr);
+    WritingMode wm = aState->GetWritingMode();
+    DR_state->PrettyUC(aPercentBasis.ISize(wm), horizPctBasisStr, 16);
+    DR_state->PrettyUC(aPercentBasis.BSize(wm), vertPctBasisStr, 16);
     printf("InitOffsets pct_basis=%s,%s", horizPctBasisStr, vertPctBasisStr);
 
     DR_state->PrintMargin("b", aBorder);

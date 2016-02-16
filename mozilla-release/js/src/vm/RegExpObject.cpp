@@ -135,24 +135,6 @@ RegExpObjectBuilder::clone(Handle<RegExpObject*> other)
 /* MatchPairs */
 
 bool
-MatchPairs::initArray(size_t pairCount)
-{
-    MOZ_ASSERT(pairCount > 0);
-
-    /* Guarantee adequate space in buffer. */
-    if (!allocOrExpandArray(pairCount))
-        return false;
-
-    /* Initialize all MatchPair objects to invalid locations. */
-    for (size_t i = 0; i < pairCount; i++) {
-        pairs_[i].start = -1;
-        pairs_[i].limit = -1;
-    }
-
-    return true;
-}
-
-bool
 MatchPairs::initArrayFrom(MatchPairs& copyFrom)
 {
     MOZ_ASSERT(copyFrom.pairCount() > 0);
@@ -269,6 +251,7 @@ const Class RegExpObject::class_ = {
     nullptr, /* setProperty */
     nullptr, /* enumerate */
     nullptr, /* resolve */
+    nullptr, /* mayResolve */
     nullptr, /* convert */
     nullptr, /* finalize */
     nullptr, /* call */
@@ -278,7 +261,7 @@ const Class RegExpObject::class_ = {
 
     // ClassSpec
     {
-        GenericCreateConstructor<js::regexp_construct, 2, JSFunction::FinalizeKind>,
+        GenericCreateConstructor<js::regexp_construct, 2, gc::AllocKind::FUNCTION>,
         CreateRegExpPrototype,
         nullptr,
         js::regexp_static_props,
@@ -346,15 +329,9 @@ RegExpObject::assignInitialShape(ExclusiveContext* cx, Handle<RegExpObject*> sel
     MOZ_ASSERT(self->empty());
 
     JS_STATIC_ASSERT(LAST_INDEX_SLOT == 0);
-    JS_STATIC_ASSERT(SOURCE_SLOT == LAST_INDEX_SLOT + 1);
 
     /* The lastIndex property alone is writable but non-configurable. */
-    if (!self->addDataProperty(cx, cx->names().lastIndex, LAST_INDEX_SLOT, JSPROP_PERMANENT))
-        return nullptr;
-
-    /* Remaining instance property are non-writable and non-configurable. */
-    unsigned attrs = JSPROP_PERMANENT | JSPROP_READONLY;
-    return self->addDataProperty(cx, cx->names().source, SOURCE_SLOT, attrs);
+    return self->addDataProperty(cx, cx->names().lastIndex, LAST_INDEX_SLOT, JSPROP_PERMANENT);
 }
 
 bool
@@ -367,8 +344,6 @@ RegExpObject::init(ExclusiveContext* cx, HandleAtom source, RegExpFlag flags)
 
     MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().lastIndex))->slot() ==
                LAST_INDEX_SLOT);
-    MOZ_ASSERT(self->lookup(cx, NameToId(cx->names().source))->slot() ==
-               SOURCE_SLOT);
 
     /*
      * If this is a re-initialization with an existing RegExpShared, 'flags'
@@ -589,12 +564,12 @@ RegExpShared::trace(JSTracer* trc)
         marked_ = true;
 
     if (source)
-        MarkString(trc, &source, "RegExpShared source");
+        TraceEdge(trc, &source, "RegExpShared source");
 
     for (size_t i = 0; i < ArrayLength(compilationArray); i++) {
         RegExpCompilation& compilation = compilationArray[i];
         if (compilation.jitCode)
-            MarkJitCode(trc, &compilation.jitCode, "RegExpShared code");
+            TraceEdge(trc, &compilation.jitCode, "RegExpShared code");
     }
 }
 
@@ -701,8 +676,10 @@ RegExpShared::execute(JSContext* cx, HandleLinearString input, size_t start,
      * Ensure sufficient memory for output vector.
      * No need to initialize it. The RegExp engine fills them in on a match.
      */
-    if (matches && !matches->allocOrExpandArray(pairCount()))
+    if (matches && !matches->allocOrExpandArray(pairCount())) {
+        ReportOutOfMemory(cx);
         return RegExpRunStatus_Error;
+    }
 
     /*
      * |displacement| emulates sticky mode by matching from this offset
@@ -848,7 +825,7 @@ RegExpCompartment::createMatchResultTemplateObject(JSContext* cx)
     MOZ_ASSERT(!matchResultTemplateObject_);
 
     /* Create template array object */
-    RootedArrayObject templateObject(cx, NewDenseUnallocatedArray(cx, 0, NullPtr(), TenuredObject));
+    RootedArrayObject templateObject(cx, NewDenseUnallocatedArray(cx, 0, nullptr, TenuredObject));
     if (!templateObject)
         return matchResultTemplateObject_; // = nullptr
 
@@ -907,6 +884,9 @@ RegExpCompartment::init(JSContext* cx)
 void
 RegExpCompartment::sweep(JSRuntime* rt)
 {
+    if (!set_.initialized())
+        return;
+
     for (Set::Enum e(set_); !e.empty(); e.popFront()) {
         RegExpShared* shared = e.front();
 
@@ -920,16 +900,17 @@ RegExpCompartment::sweep(JSRuntime* rt)
         // the RegExpShared if it was accidentally marked earlier but wasn't
         // marked by the current trace.
         bool keep = shared->marked() &&
-                    IsStringMarkedFromAnyThread(&shared->source);
+                    IsMarked(&shared->source);
         for (size_t i = 0; i < ArrayLength(shared->compilationArray); i++) {
             RegExpShared::RegExpCompilation& compilation = shared->compilationArray[i];
             if (compilation.jitCode &&
-                IsJitCodeAboutToBeFinalizedFromAnyThread(compilation.jitCode.unsafeGet()))
+                IsAboutToBeFinalized(&compilation.jitCode))
             {
                 keep = false;
             }
         }
-        if (keep || rt->isHeapCompacting()) {
+        MOZ_ASSERT(rt->isHeapMajorCollecting());
+        if (keep || rt->gc.isHeapCompacting()) {
             shared->clearMarked();
         } else {
             js_delete(shared);
@@ -938,7 +919,7 @@ RegExpCompartment::sweep(JSRuntime* rt)
     }
 
     if (matchResultTemplateObject_ &&
-        IsObjectAboutToBeFinalizedFromAnyThread(matchResultTemplateObject_.unsafeGet()))
+        IsAboutToBeFinalized(&matchResultTemplateObject_))
     {
         matchResultTemplateObject_.set(nullptr);
     }

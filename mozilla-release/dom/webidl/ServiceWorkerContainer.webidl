@@ -8,7 +8,7 @@
  *
  */
 
-[Pref="dom.serviceWorkers.enabled",
+[Func="ServiceWorkerContainer::IsEnabled",
  Exposed=Window]
 interface ServiceWorkerContainer : EventTarget {
   // FIXME(nsm):
@@ -27,7 +27,7 @@ interface ServiceWorkerContainer : EventTarget {
   Promise<ServiceWorkerRegistration> getRegistration(optional USVString documentURL = "");
 
   [Throws]
-   Promise<sequence<ServiceWorkerRegistration>> getRegistrations();
+  Promise<sequence<ServiceWorkerRegistration>> getRegistrations();
 
   attribute EventHandler oncontrollerchange;
   attribute EventHandler onreloadpage;

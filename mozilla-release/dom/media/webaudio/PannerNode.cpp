@@ -39,7 +39,7 @@ NS_INTERFACE_MAP_END_INHERITING(AudioNode)
 NS_IMPL_ADDREF_INHERITED(PannerNode, AudioNode)
 NS_IMPL_RELEASE_INHERITED(PannerNode, AudioNode)
 
-class PannerNodeEngine : public AudioNodeEngine
+class PannerNodeEngine final : public AudioNodeEngine
 {
 public:
   explicit PannerNodeEngine(AudioNode* aNode)
@@ -311,7 +311,7 @@ PannerNodeEngine::HRTFPanningFunction(const AudioChunk& aInput,
   ComputeAzimuthAndElevation(azimuth, elevation);
 
   AudioChunk input = aInput;
-  // Gain is applied before the delay and convolution of the HRTF
+  // Gain is applied before the delay and convolution of the HRTF.
   input.mVolume *= ComputeConeGain() * ComputeDistanceGain();
 
   mHRTFPanner->pan(azimuth, elevation, &input, aOutput);
@@ -471,7 +471,7 @@ PannerNodeEngine::ComputeDistanceGain()
 {
   ThreeDPoint distanceVec = mPosition - mListenerPosition;
   float distance = sqrt(distanceVec.DotProduct(distanceVec));
-  return (this->*mDistanceModelFunction)(distance);
+  return std::max(0.0f, (this->*mDistanceModelFunction)(distance));
 }
 
 float
@@ -495,7 +495,7 @@ PannerNode::ComputeDopplerShift()
       listenerProjection = -listenerProjection;
       sourceProjection = -sourceProjection;
 
-      double scaledSpeedOfSound = listener->DopplerFactor() / listener->DopplerFactor();
+      double scaledSpeedOfSound = listener->SpeedOfSound() / listener->DopplerFactor();
       listenerProjection = min(listenerProjection, scaledSpeedOfSound);
       sourceProjection = min(sourceProjection, scaledSpeedOfSound);
 
@@ -540,9 +540,10 @@ PannerNode::FindConnectedSources(AudioNode* aNode,
     // Recurse
     FindConnectedSources(inputNodes[i].mInputNode, aSources, aNodesSeen);
 
-    // Check if this node is an AudioBufferSourceNode
+    // Check if this node is an AudioBufferSourceNode that still have a stream,
+    // which means it has not finished playing.
     AudioBufferSourceNode* node = inputNodes[i].mInputNode->AsAudioBufferSourceNode();
-    if (node) {
+    if (node && node->GetStream()) {
       aSources.AppendElement(node);
     }
   }

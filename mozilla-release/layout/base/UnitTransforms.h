@@ -22,6 +22,10 @@ namespace mozilla {
 enum class PixelCastJustification : uint8_t {
   // For the root layer, Screen Pixel = Parent Layer Pixel.
   ScreenIsParentLayerForRoot,
+  // On the layout side, Screen Pixel = LayoutDevice at the outer-window level.
+  LayoutDeviceIsScreenForBounds,
+  // For the root layer, Render Target Pixel = Parent Layer Pixel.
+  RenderTargetIsParentLayerForRoot,
   // For the root composition size we want to view it as layer pixels in any layer
   ParentLayerToLayerForRootComposition,
   // The Layer coordinate space for one layer is the ParentLayer coordinate
@@ -35,7 +39,10 @@ enum class PixelCastJustification : uint8_t {
   // technically in screen pixels, as it has not yet accounted for any
   // asynchronous transforms. This justification is for viewing the initial
   // reference point as a screen point.
-  LayoutDeviceToScreenForUntransformedEvent
+  LayoutDeviceToScreenForUntransformedEvent,
+  // Similar to LayoutDeviceToScreenForUntransformedEvent, PBrowser handles
+  // some widget/tab dimension information as the OS does -- in screen units.
+  LayoutDeviceIsScreenForTabDims
 };
 
 template <class TargetUnits, class SourceUnits>
@@ -53,6 +60,14 @@ gfx::PointTyped<TargetUnits> ViewAs(const gfx::PointTyped<SourceUnits>& aPoint, 
 template <class TargetUnits, class SourceUnits>
 gfx::IntPointTyped<TargetUnits> ViewAs(const gfx::IntPointTyped<SourceUnits>& aPoint, PixelCastJustification) {
   return gfx::IntPointTyped<TargetUnits>(aPoint.x, aPoint.y);
+}
+template <class TargetUnits, class SourceUnits>
+gfx::RectTyped<TargetUnits> ViewAs(const gfx::RectTyped<SourceUnits>& aRect, PixelCastJustification) {
+  return gfx::RectTyped<TargetUnits>(aRect.x, aRect.y, aRect.width, aRect.height);
+}
+template <class TargetUnits, class SourceUnits>
+gfx::IntRectTyped<TargetUnits> ViewAs(const gfx::IntRectTyped<SourceUnits>& aRect, PixelCastJustification) {
+  return gfx::IntRectTyped<TargetUnits>(aRect.x, aRect.y, aRect.width, aRect.height);
 }
 template <class NewTargetUnits, class OldTargetUnits, class SourceUnits>
 gfx::ScaleFactor<SourceUnits, NewTargetUnits> ViewTargetAs(

@@ -39,7 +39,6 @@
 #include "nsIMessageManager.h"
 #include "mozilla/RestyleLogging.h"
 
-class nsBidiPresUtils;
 class nsAString;
 class nsIPrintSettings;
 class nsDocShell;
@@ -52,14 +51,10 @@ class nsIFrame;
 class nsFrameManager;
 class nsILinkHandler;
 class nsIAtom;
-class nsICSSPseudoComparator;
-struct nsStyleBackground;
-struct nsStyleBorder;
 class nsIRunnable;
 class gfxUserFontEntry;
 class gfxUserFontSet;
 class gfxTextPerfMetrics;
-struct nsFontFaceRuleContainer;
 class nsPluginFrame;
 class nsTransitionManager;
 class nsAnimationManager;
@@ -72,9 +67,6 @@ namespace mozilla {
 class EventStateManager;
 class RestyleManager;
 class CounterStyleManager;
-namespace dom {
-class FontFaceSet;
-}
 namespace layers {
 class ContainerLayer;
 class LayerManager;
@@ -796,8 +788,14 @@ public:
    * Notify the pres context that the resolution of the user interface has
    * changed. This happens if a window is moved between HiDPI and non-HiDPI
    * displays, so that the ratio of points to device pixels changes.
+   * The notification happens asynchronously.
    */
   void UIResolutionChanged();
+
+ /*
+  * Like UIResolutionChanged() but invalidates values immediately.
+  */
+  void UIResolutionChangedSync();
 
   /*
    * Notify the pres context that a system color has changed
@@ -875,18 +873,9 @@ public:
   // as that value may be out of date when mPaintFlashingInitialized is false.
   bool GetPaintFlashing() const;
 
-  bool             SupressingResizeReflow() const { return mSupressResizeReflow; }
+  bool             SuppressingResizeReflow() const { return mSuppressResizeReflow; }
 
-  virtual gfxUserFontSet* GetUserFontSetExternal();
-  gfxUserFontSet* GetUserFontSetInternal();
-#ifdef MOZILLA_INTERNAL_API
-  gfxUserFontSet* GetUserFontSet() { return GetUserFontSetInternal(); }
-#else
-  gfxUserFontSet* GetUserFontSet() { return GetUserFontSetExternal(); }
-#endif
-
-  void FlushUserFontSet();
-  void RebuildUserFontSet(); // asynchronously
+  gfxUserFontSet* GetUserFontSet();
 
   // Should be called whenever the set of fonts available in the user
   // font set changes (e.g., because a new font loads, or because the
@@ -895,8 +884,6 @@ public:
 
   gfxMissingFontRecorder *MissingFontRecorder() { return mMissingFonts; }
   void NotifyMissingFonts();
-
-  mozilla::dom::FontFaceSet* Fonts();
 
   void FlushCounterStyles();
   void RebuildCounterStyles(); // asynchronously
@@ -1194,11 +1181,6 @@ protected:
 
   void AppUnitsPerDevPixelChanged();
 
-  void HandleRebuildUserFontSet() {
-    mPostedFlushUserFontSet = false;
-    FlushUserFontSet();
-  }
-
   void HandleRebuildCounterStyles() {
     mPostedFlushCounterStyles = false;
     FlushCounterStyles();
@@ -1216,7 +1198,9 @@ protected:
   // please make the ownership explicit (pinkerton, scc).
 
   nsPresContextType     mType;
-  nsIPresShell*         mShell;         // [WEAK]
+  // the nsPresShell owns a strong reference to the nsPresContext, and is responsible
+  // for nulling this pointer before it is destroyed
+  nsIPresShell* MOZ_NON_OWNING_REF mShell;         // [WEAK]
   nsCOMPtr<nsIDocument> mDocument;
   nsRefPtr<nsDeviceContext> mDeviceContext; // [STRONG] could be weak, but
                                             // better safe than sorry.
@@ -1229,11 +1213,12 @@ protected:
   nsRefPtr<nsAnimationManager> mAnimationManager;
   nsRefPtr<mozilla::RestyleManager> mRestyleManager;
   nsRefPtr<mozilla::CounterStyleManager> mCounterStyleManager;
-  nsIAtom*              mMedium;        // initialized by subclass ctors;
-                                        // weak pointer to static atom
+  nsIAtom* MOZ_UNSAFE_REF("always a static atom") mMedium; // initialized by subclass ctors
   nsCOMPtr<nsIAtom> mMediaEmulated;
 
-  nsILinkHandler*       mLinkHandler;   // [WEAK]
+  // This pointer is nulled out through SetLinkHandler() in the destructors of
+  // the classes which set it. (using SetLinkHandler() again).
+  nsILinkHandler* MOZ_NON_OWNING_REF mLinkHandler;
 
   // Formerly mLangGroup; moving from charset-oriented langGroup to
   // maintaining actual language settings everywhere (see bug 524107).
@@ -1273,9 +1258,6 @@ protected:
 
   nsInvalidateRequestList mInvalidateRequestsSinceLastPaint;
   nsInvalidateRequestList mUndeliveredInvalidateRequestsBeforeLastPaint;
-
-  // container for per-context fonts (downloadable, SVG, etc.)
-  nsRefPtr<mozilla::dom::FontFaceSet> mFontFaceSet;
 
   // text performance metrics
   nsAutoPtr<gfxTextPerfMetrics>   mTextPerf;
@@ -1365,13 +1347,6 @@ protected:
   // Has there been a change to the viewport's dimensions?
   unsigned              mPendingViewportChange : 1;
 
-  // Is the current mFontFaceSet valid?
-  unsigned              mFontFaceSetDirty : 1;
-  // Has GetUserFontSet() been called?
-  unsigned              mGetUserFontSetCalled : 1;
-  // Do we currently have an event posted to call FlushUserFontSet?
-  unsigned              mPostedFlushUserFontSet : 1;
-
   // Is the current mCounterStyleManager valid?
   unsigned              mCounterStylesDirty : 1;
   // Do we currently have an event posted to call FlushCounterStyles?
@@ -1379,7 +1354,7 @@ protected:
 
   // resize reflow is suppressed when the only change has been to zoom
   // the document rather than to change the document's dimensions
-  unsigned              mSupressResizeReflow : 1;
+  unsigned              mSuppressResizeReflow : 1;
 
   unsigned              mIsVisual : 1;
 
@@ -1394,6 +1369,9 @@ protected:
   mutable unsigned mPaintFlashingInitialized : 1;
 
   unsigned mHasWarnedAboutPositionedTableParts : 1;
+
+  // Have we added quirk.css to the style set?
+  unsigned              mQuirkSheetAdded : 1;
 
 #ifdef RESTYLE_LOGGING
   // Should we output debug information about restyling for this document?

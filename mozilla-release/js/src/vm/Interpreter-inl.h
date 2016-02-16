@@ -22,6 +22,7 @@
 #include "vm/ScopeObject-inl.h"
 #include "vm/Stack-inl.h"
 #include "vm/String-inl.h"
+#include "vm/UnboxedObject-inl.h"
 
 namespace js {
 
@@ -159,37 +160,6 @@ CheckUninitializedLexical(JSContext* cx, HandleScript script, jsbytecode* pc, Ha
     return true;
 }
 
-/*
- * Return an object on which we should look for the properties of |value|.
- * This helps us implement the custom [[Get]] method that ES5's GetValue
- * algorithm uses for primitive values, without actually constructing the
- * temporary object that the specification does.
- *
- * For objects, return the object itself. For string, boolean, and number
- * primitive values, return the appropriate constructor's prototype. For
- * undefined and null, throw an error and return nullptr, attributing the
- * problem to the value at |spindex| on the stack.
- */
-MOZ_ALWAYS_INLINE JSObject*
-ValuePropertyBearer(JSContext* cx, InterpreterFrame* fp, HandleValue v, int spindex)
-{
-    if (v.isObject())
-        return &v.toObject();
-
-    Rooted<GlobalObject*> global(cx, &fp->global());
-
-    if (v.isString())
-        return GlobalObject::getOrCreateStringPrototype(cx, global);
-    if (v.isNumber())
-        return GlobalObject::getOrCreateNumberPrototype(cx, global);
-    if (v.isBoolean())
-        return GlobalObject::getOrCreateBooleanPrototype(cx, global);
-
-    MOZ_ASSERT(v.isNull() || v.isUndefined());
-    ReportIsNullOrUndefined(cx, spindex, v, NullPtr());
-    return nullptr;
-}
-
 inline bool
 GetLengthProperty(const Value& lval, MutableHandleValue vp)
 {
@@ -303,9 +273,9 @@ SetNameOperation(JSContext* cx, JSScript* script, jsbytecode* pc, HandleObject s
                *pc == JSOP_STRICTSETNAME ||
                *pc == JSOP_SETGNAME ||
                *pc == JSOP_STRICTSETGNAME);
-    MOZ_ASSERT_IF(*pc == JSOP_SETGNAME && !script->hasPollutedGlobalScope(),
+    MOZ_ASSERT_IF(*pc == JSOP_SETGNAME && !script->hasNonSyntacticScope(),
                   scope == cx->global());
-    MOZ_ASSERT_IF(*pc == JSOP_STRICTSETGNAME && !script->hasPollutedGlobalScope(),
+    MOZ_ASSERT_IF(*pc == JSOP_STRICTSETGNAME && !script->hasNonSyntacticScope(),
                   scope == cx->global());
 
     bool strict = *pc == JSOP_STRICTSETNAME || *pc == JSOP_STRICTSETGNAME;
@@ -424,35 +394,36 @@ ToIdOperation(JSContext* cx, HandleScript script, jsbytecode* pc, HandleValue ob
 }
 
 static MOZ_ALWAYS_INLINE bool
-GetObjectElementOperation(JSContext* cx, JSOp op, JS::HandleObject receiver,
+GetObjectElementOperation(JSContext* cx, JSOp op, JS::HandleObject obj, JS::HandleObject receiver,
                           HandleValue key, MutableHandleValue res)
 {
-    MOZ_ASSERT(op == JSOP_GETELEM || op == JSOP_CALLELEM);
+    MOZ_ASSERT(op == JSOP_GETELEM || op == JSOP_CALLELEM || op == JSOP_GETELEM_SUPER);
+    MOZ_ASSERT_IF(op == JSOP_GETELEM || op == JSOP_CALLELEM, obj == receiver);
 
     do {
         uint32_t index;
         if (IsDefinitelyIndex(key, &index)) {
-            if (GetElementNoGC(cx, receiver, receiver, index, res.address()))
+            if (GetElementNoGC(cx, obj, receiver, index, res.address()))
                 break;
 
-            if (!GetElement(cx, receiver, receiver, index, res))
+            if (!GetElement(cx, obj, receiver, index, res))
                 return false;
             break;
         }
 
         if (IsSymbolOrSymbolWrapper(key)) {
             RootedId id(cx, SYMBOL_TO_JSID(ToSymbolPrimitive(key)));
-            if (!GetProperty(cx, receiver, receiver, id, res))
+            if (!GetProperty(cx, obj, receiver, id, res))
                 return false;
             break;
         }
 
         if (JSAtom* name = ToAtom<NoGC>(cx, key)) {
             if (name->isIndex(&index)) {
-                if (GetElementNoGC(cx, receiver, receiver, index, res.address()))
+                if (GetElementNoGC(cx, obj, receiver, index, res.address()))
                     break;
             } else {
-                if (GetPropertyNoGC(cx, receiver, receiver, name->asPropertyName(), res.address()))
+                if (GetPropertyNoGC(cx, obj, receiver, name->asPropertyName(), res.address()))
                     break;
             }
         }
@@ -462,10 +433,10 @@ GetObjectElementOperation(JSContext* cx, JSOp op, JS::HandleObject receiver,
             return false;
 
         if (name->isIndex(&index)) {
-            if (!GetElement(cx, receiver, receiver, index, res))
+            if (!GetElement(cx, obj, receiver, index, res))
                 return false;
         } else {
-            if (!GetProperty(cx, receiver, receiver, name->asPropertyName(), res))
+            if (!GetProperty(cx, obj, receiver, name->asPropertyName(), res))
                 return false;
         }
     } while (false);
@@ -588,7 +559,7 @@ GetElementOperation(JSContext* cx, JSOp op, MutableHandleValue lref, HandleValue
         return GetPrimitiveElementOperation(cx, op, lref, rref, res);
 
     RootedObject thisv(cx, &lref.toObject());
-    return GetObjectElementOperation(cx, op, thisv, rref, res);
+    return GetObjectElementOperation(cx, op, thisv, thisv, rref, res);
 }
 
 static MOZ_ALWAYS_INLINE JSString*
@@ -625,7 +596,7 @@ InitArrayElemOperation(JSContext* cx, jsbytecode* pc, HandleObject obj, uint32_t
     JSOp op = JSOp(*pc);
     MOZ_ASSERT(op == JSOP_INITELEM_ARRAY || op == JSOP_INITELEM_INC);
 
-    MOZ_ASSERT(obj->is<ArrayObject>());
+    MOZ_ASSERT(obj->is<ArrayObject>() || obj->is<UnboxedArrayObject>());
 
     /*
      * If val is a hole, do not call DefineElement.
@@ -687,7 +658,8 @@ ProcessCallSiteObjOperation(JSContext* cx, RootedObject& cso, RootedObject& raw,
             if (!ToPrimitive(cx, JSTYPE_NUMBER, rhs))                         \
                 return false;                                                 \
             if (lhs.isString() && rhs.isString()) {                           \
-                JSString* l = lhs.toString(), *r = rhs.toString();            \
+                JSString* l = lhs.toString();                                 \
+                JSString* r = rhs.toString();                                 \
                 int32_t result;                                               \
                 if (!CompareStrings(cx, l, r, &result))                       \
                     return false;                                             \

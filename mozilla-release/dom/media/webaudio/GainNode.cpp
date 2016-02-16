@@ -23,13 +23,13 @@ NS_INTERFACE_MAP_END_INHERITING(AudioNode)
 NS_IMPL_ADDREF_INHERITED(GainNode, AudioNode)
 NS_IMPL_RELEASE_INHERITED(GainNode, AudioNode)
 
-class GainNodeEngine : public AudioNodeEngine
+class GainNodeEngine final : public AudioNodeEngine
 {
 public:
   GainNodeEngine(AudioNode* aNode, AudioDestinationNode* aDestination)
     : AudioNodeEngine(aNode)
     , mSource(nullptr)
-    , mDestination(static_cast<AudioNodeStream*> (aDestination->Stream()))
+    , mDestination(aDestination->Stream())
     // Keep the default value in sync with the default value in GainNode::GainNode.
     , mGain(1.f)
   {
@@ -84,11 +84,12 @@ public:
       AllocateAudioBlock(aInput.mChannelData.Length(), aOutput);
 
       // Compute the gain values for the duration of the input AudioChunk
-      // XXX we need to add a method to AudioEventTimeline to compute this buffer directly.
+      StreamTime tick = aStream->GetCurrentPosition();
       float computedGain[WEBAUDIO_BLOCK_SIZE];
+      mGain.GetValuesAtTime(tick, computedGain, WEBAUDIO_BLOCK_SIZE);
+
       for (size_t counter = 0; counter < WEBAUDIO_BLOCK_SIZE; ++counter) {
-        StreamTime tick = aStream->GetCurrentPosition();
-        computedGain[counter] = mGain.GetValueAtTime(tick, counter) * aInput.mVolume;
+        computedGain[counter] *= aInput.mVolume;
       }
 
       // Apply the gain to the output buffer
@@ -125,11 +126,11 @@ GainNode::GainNode(AudioContext* aContext)
               2,
               ChannelCountMode::Max,
               ChannelInterpretation::Speakers)
-  , mGain(new AudioParam(this, SendGainToStream, 1.0f))
+  , mGain(new AudioParam(this, SendGainToStream, 1.0f, "gain"))
 {
   GainNodeEngine* engine = new GainNodeEngine(this, aContext->Destination());
   mStream = aContext->Graph()->CreateAudioNodeStream(engine, MediaStreamGraph::INTERNAL_STREAM);
-  engine->SetSourceStream(static_cast<AudioNodeStream*> (mStream.get()));
+  engine->SetSourceStream(mStream);
 }
 
 GainNode::~GainNode()
