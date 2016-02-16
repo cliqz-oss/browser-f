@@ -3,154 +3,143 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
- package org.mozilla.gecko.home;
+package org.mozilla.gecko.home;
 
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.support.v7.widget.LinearLayoutManager;
+import android.support.v7.widget.RecyclerView;
 import android.util.AttributeSet;
 import android.util.DisplayMetrics;
 import android.util.TypedValue;
-import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.AdapterView;
-import android.widget.BaseAdapter;
-import android.widget.ImageView;
 
+import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.R;
-import org.mozilla.gecko.widget.TwoWayView;
+import org.mozilla.gecko.util.ColorUtils;
+import org.mozilla.gecko.widget.RecyclerViewClickSupport;
 
-import java.util.ArrayList;
 import java.util.List;
 
-public class SearchEngineBar extends TwoWayView
-                             implements AdapterView.OnItemClickListener {
-    private static final String LOGTAG = "Gecko" + SearchEngineBar.class.getSimpleName();
+public class SearchEngineBar extends RecyclerView
+        implements RecyclerViewClickSupport.OnItemClickListener {
+    private static final String LOGTAG = SearchEngineBar.class.getSimpleName();
 
     private static final float ICON_CONTAINER_MIN_WIDTH_DP = 72;
+    private static final float LABEL_CONTAINER_WIDTH_DP = 48;
     private static final float DIVIDER_HEIGHT_DP = 1;
 
     public interface OnSearchBarClickListener {
-        public void onSearchBarClickListener(SearchEngine searchEngine);
+        void onSearchBarClickListener(SearchEngine searchEngine);
     }
 
-    private final SearchEngineAdapter adapter;
-    private final Paint dividerPaint;
-    private final float minIconContainerWidth;
-    private final float dividerHeight;
+    private final SearchEngineAdapter mAdapter;
+    private final LinearLayoutManager mLayoutManager;
+    private final Paint mDividerPaint;
+    private final float mMinIconContainerWidth;
+    private final float mDividerHeight;
+    private final int mLabelContainerWidth;
 
-    private int iconContainerWidth;
-    private OnSearchBarClickListener onSearchBarClickListener;
+    private int mIconContainerWidth;
+    private OnSearchBarClickListener mOnSearchBarClickListener;
 
     public SearchEngineBar(final Context context, final AttributeSet attrs) {
         super(context, attrs);
 
-        dividerPaint = new Paint();
-        dividerPaint.setColor(getResources().getColor(R.color.divider_light));
-        dividerPaint.setStyle(Paint.Style.FILL_AND_STROKE);
+        mDividerPaint = new Paint();
+        mDividerPaint.setColor(ColorUtils.getColor(context, R.color.divider_light));
+        mDividerPaint.setStyle(Paint.Style.FILL_AND_STROKE);
 
         final DisplayMetrics displayMetrics = getResources().getDisplayMetrics();
-        minIconContainerWidth = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, ICON_CONTAINER_MIN_WIDTH_DP, displayMetrics);
-        dividerHeight = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, DIVIDER_HEIGHT_DP, displayMetrics);
+        mMinIconContainerWidth = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, ICON_CONTAINER_MIN_WIDTH_DP, displayMetrics);
+        mDividerHeight = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, DIVIDER_HEIGHT_DP, displayMetrics);
+        mLabelContainerWidth = Math.round(TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, LABEL_CONTAINER_WIDTH_DP, displayMetrics));
 
-        iconContainerWidth =  (int) minIconContainerWidth;
+        mIconContainerWidth = Math.round(mMinIconContainerWidth);
 
-        adapter = new SearchEngineAdapter();
-        setAdapter(adapter);
-        setOnItemClickListener(this);
+        mAdapter = new SearchEngineAdapter(context);
+        mAdapter.setIconContainerWidth(mIconContainerWidth);
+        mLayoutManager = new LinearLayoutManager(context);
+        mLayoutManager.setOrientation(LinearLayoutManager.HORIZONTAL);
+
+        setAdapter(mAdapter);
+        setLayoutManager(mLayoutManager);
+
+        RecyclerViewClickSupport.addTo(this)
+            .setOnItemClickListener(this);
     }
 
-    @Override
-    public void onItemClick(final AdapterView<?> parent, final View view, final int position,
-            final long id) {
-        if (onSearchBarClickListener == null) {
-            throw new IllegalStateException(
-                    OnSearchBarClickListener.class.getSimpleName() + " is not initialized");
-        }
-
-        final SearchEngine searchEngine = adapter.getItem(position);
-        onSearchBarClickListener.onSearchBarClickListener(searchEngine);
+    public void setSearchEngines(List<SearchEngine> searchEngines) {
+        mAdapter.setSearchEngines(searchEngines);
     }
 
-    protected void setOnSearchBarClickListener(final OnSearchBarClickListener listener) {
-        onSearchBarClickListener = listener;
-    }
-
-    protected void setSearchEngines(final List<SearchEngine> searchEngines) {
-        adapter.setSearchEngines(searchEngines);
+    public void setOnSearchBarClickListener(OnSearchBarClickListener listener) {
+        mOnSearchBarClickListener = listener;
     }
 
     @Override
     protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
         super.onMeasure(widthMeasureSpec, heightMeasureSpec);
 
-        final int searchEngineCount = getCount();
+        final int searchEngineCount = mAdapter.getItemCount() - 1;
 
         if (searchEngineCount > 0) {
-            final float availableWidthPerContainer = getMeasuredWidth() / searchEngineCount;
+            final int availableWidth = getMeasuredWidth() - mLabelContainerWidth;
+            final double searchEnginesToDisplay;
 
-            final int desiredIconContainerSize = (int) Math.max(
-                    availableWidthPerContainer,
-                    minIconContainerWidth
-            );
-
-            if (desiredIconContainerSize != iconContainerWidth) {
-                iconContainerWidth = desiredIconContainerSize;
-                adapter.notifyDataSetChanged();
+            if (searchEngineCount * mMinIconContainerWidth <= availableWidth) {
+                // All search engines fit int: So let's just display all.
+                searchEnginesToDisplay = searchEngineCount;
+            } else {
+                // If only (n) search engines fit into the available space then display (n - 0.5): The last search
+                // engine will be cut-off to show ability to scroll this view
+                searchEnginesToDisplay = Math.floor(availableWidth / mMinIconContainerWidth) - 0.5;
             }
+
+            // Use all available width and spread search engine icons
+            final int availableWidthPerContainer = (int) (availableWidth / searchEnginesToDisplay);
+
+            if (availableWidthPerContainer != mIconContainerWidth) {
+                mIconContainerWidth = availableWidthPerContainer;
+            }
+            mAdapter.setIconContainerWidth(mIconContainerWidth);
         }
     }
 
     @Override
-    protected void onDraw(Canvas canvas) {
+    public void onDraw(Canvas canvas) {
         super.onDraw(canvas);
 
-        canvas.drawRect(0, 0, getWidth(), dividerHeight, dividerPaint);
+        canvas.drawRect(0, 0, getWidth(), mDividerHeight, mDividerPaint);
     }
 
-    public class SearchEngineAdapter extends BaseAdapter {
-        List<SearchEngine> searchEngines = new ArrayList<>();
-
-        public void setSearchEngines(final List<SearchEngine> searchEngines) {
-            this.searchEngines = searchEngines;
-            notifyDataSetChanged();
+    @Override
+    public void onItemClicked(RecyclerView recyclerView, int position, View v) {
+        if (mOnSearchBarClickListener == null) {
+            throw new IllegalStateException(
+                    OnSearchBarClickListener.class.getSimpleName() + " is not initializer."
+            );
         }
 
-        @Override
-        public int getCount() {
-            return searchEngines.size();
+        if (position == 0) {
+            return;
         }
 
-        @Override
-        public SearchEngine getItem(final int position) {
-            return searchEngines.get(position);
-        }
+        final SearchEngine searchEngine = mAdapter.getItem(position);
+        mOnSearchBarClickListener.onSearchBarClickListener(searchEngine);
+    }
 
-        @Override
-        public long getItemId(final int position) {
-            return position;
-        }
-
-        @Override
-        public View getView(final int position, final View convertView, final ViewGroup parent) {
-            final View view;
-            if (convertView == null) {
-                view = LayoutInflater.from(getContext()).inflate(R.layout.search_engine_bar_item, parent, false);
-            } else {
-                view = convertView;
-            }
-
-            view.setLayoutParams(new LayoutParams(iconContainerWidth, ViewGroup.LayoutParams.MATCH_PARENT));
-
-            final ImageView faviconView = (ImageView) view.findViewById(R.id.search_engine_icon);
-            final SearchEngine searchEngine = searchEngines.get(position);
-            faviconView.setImageBitmap(searchEngine.getIcon());
-
-            final String desc = getResources().getString(R.string.search_bar_item_desc, searchEngine.getEngineIdentifier());
-            view.setContentDescription(desc);
-
-            return view;
-        }
+    /**
+     * We manually add the override for getAdapter because we see this method getting stripped
+     * out during compile time by aggressive proguard rules.
+     */
+    @RobocopTarget
+    @Override
+    public SearchEngineAdapter getAdapter() {
+        return mAdapter;
     }
 }

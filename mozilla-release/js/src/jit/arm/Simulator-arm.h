@@ -34,6 +34,7 @@
 #include "jslock.h"
 
 #include "jit/arm/Architecture-arm.h"
+#include "jit/arm/disasm/Disasm-arm.h"
 #include "jit/IonTypes.h"
 
 namespace js {
@@ -161,8 +162,11 @@ class Simulator
     void set_pc(int32_t value);
     int32_t get_pc() const;
 
-    void set_resume_pc(int32_t value) {
-        resume_pc_ = value;
+    template <typename T>
+    T get_pc_as() const { return reinterpret_cast<T>(get_pc()); }
+
+    void set_resume_pc(void* value) {
+        resume_pc_ = int32_t(value);
     }
 
     void enable_single_stepping(SingleStepCallback cb, void* arg);

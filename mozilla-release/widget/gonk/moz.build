@@ -58,6 +58,7 @@ elif CONFIG['ANDROID_VERSION'] == '15':
 SOURCES += [
     'GeckoTouchDispatcher.cpp',
     'GfxInfo.cpp',
+    'GonkClipboardData.cpp',
     'GonkMemoryPressureMonitoring.cpp',
     'GonkPermission.cpp',
     'HwcComposer2D.cpp',
@@ -79,10 +80,10 @@ include('/ipc/chromium/chromium-config.mozbuild')
 FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
-    '/dom/media/omx/mediaresourcemanager',
     '/dom/system/android',
-    '/gfx/skia/trunk/include/config',
-    '/gfx/skia/trunk/include/core',
+    '/gfx/skia/skia/include/config',
+    '/gfx/skia/skia/include/core',
+    '/image',
     '/widget',
 ]
 

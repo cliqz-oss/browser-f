@@ -37,7 +37,7 @@ export USE_ELF_HACK ELF_HACK_FLAGS
 # Override the value of OMNIJAR_NAME from config.status with the value
 # set earlier in this file.
 
-stage-package: $(MOZ_PKG_MANIFEST)
+stage-package: $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
 	OMNIJAR_NAME=$(OMNIJAR_NAME) \
 	NO_PKG_FILES="$(NO_PKG_FILES)" \
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/packager.py $(DEFINES) \
@@ -152,12 +152,19 @@ ifdef INSTALL_SDK # Here comes the hard part
 endif # INSTALL_SDK
 
 make-sdk:
+ifndef SDK_UNIFY
 	$(MAKE) stage-package UNIVERSAL_BINARY= STAGE_SDK=1 MOZ_PKG_DIR=sdk-stage
+endif
 	@echo 'Packaging SDK...'
 	$(RM) -rf $(DIST)/$(MOZ_APP_NAME)-sdk
 	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/bin
+ifdef SDK_UNIFY
+	(cd $(UNIFY_DIST)/sdk-stage && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
+	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/bin && tar -xf -)
+else
 	(cd $(DIST)/sdk-stage && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
 	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/bin && tar -xf -)
+endif
 	$(NSINSTALL) -D $(DIST)/$(MOZ_APP_NAME)-sdk/host/bin
 	(cd $(DIST)/host/bin && $(TAR) $(TAR_CREATE_FLAGS) - .) | \
 	  (cd $(DIST)/$(MOZ_APP_NAME)-sdk/host/bin && tar -xf -)
@@ -180,6 +187,11 @@ ifndef PKG_SKIP_STRIP
 	USE_ELF_HACK= $(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/strip.py $(DIST)/$(MOZ_APP_NAME)-sdk
 endif
 	cd $(DIST) && $(MAKE_SDK)
+ifdef UNIFY_DIST
+ifndef SDK_UNIFY
+	$(MAKE) -C $(UNIFY_DIST)/.. sdk SDK_UNIFY=1
+endif
+endif
 
 checksum:
 	mkdir -p `dirname $(CHECKSUM_FILE)`
@@ -196,6 +208,8 @@ checksum:
 
 upload: checksum
 	$(PYTHON) $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) \
+		--package '$(PACKAGE)' \
+		--properties-file $(DIST)/mach_build_properties.json \
 		$(UPLOAD_FILES) \
 		$(CHECKSUM_FILES)
 
@@ -204,7 +218,7 @@ upload: checksum
 source-package:
 	@echo 'Packaging source tarball...'
 	$(MKDIR) -p $(DIST)/$(PKG_SRCPACK_PATH)
-	(cd $(MOZ_PKG_SRCDIR) && $(CREATE_SOURCE_TAR) - $(DIR_TO_BE_PACKAGED)) | xz -9e > $(SOURCE_TAR)
+	(cd $(MOZ_PKG_SRCDIR) && $(CREATE_SOURCE_TAR) - ./ ) | xz -9e > $(SOURCE_TAR)
 
 hg-bundle:
 	$(MKDIR) -p $(DIST)/$(PKG_SRCPACK_PATH)

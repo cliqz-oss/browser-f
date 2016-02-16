@@ -6,8 +6,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "PlacesTestUtils",
   "resource://testing-common/PlacesTestUtils.jsm");
 
 // We need to cache this before test runs...
-let cachedLeftPaneFolderIdGetter;
-let getter = PlacesUIUtils.__lookupGetter__("leftPaneFolderId");
+var cachedLeftPaneFolderIdGetter;
+var getter = PlacesUIUtils.__lookupGetter__("leftPaneFolderId");
 if (!cachedLeftPaneFolderIdGetter && typeof(getter) == "function") {
   cachedLeftPaneFolderIdGetter = getter;
 }
@@ -166,13 +166,13 @@ function promiseBookmarksNotification(notification, conditionFn) {
           return XPCOMUtils.generateQI([ Ci.nsINavBookmarkObserver ]);
         info(`promiseBookmarksNotification: got ${name} notification`);
         if (name == notification)
-          return () => {
-            if (conditionFn.apply(this, arguments)) {
+          return (...args) => {
+            if (conditionFn.apply(this, args)) {
               clearTimeout(timeout);
               PlacesUtils.bookmarks.removeObserver(proxifiedObserver, false);
               executeSoon(resolve);
             } else {
-              info(`promiseBookmarksNotification: skip cause condition doesn't apply to ${JSON.stringify(arguments)}`);
+              info(`promiseBookmarksNotification: skip cause condition doesn't apply to ${JSON.stringify(args)}`);
             }
           }
         return () => {};
@@ -194,8 +194,8 @@ function promiseHistoryNotification(notification, conditionFn) {
         if (name == "QueryInterface")
           return XPCOMUtils.generateQI([ Ci.nsINavHistoryObserver ]);
         if (name == notification)
-          return () => {
-            if (conditionFn.apply(this, arguments)) {
+          return (...args) => {
+            if (conditionFn.apply(this, args)) {
               clearTimeout(timeout);
               PlacesUtils.history.removeObserver(proxifiedObserver, false);
               executeSoon(resolve);
@@ -288,7 +288,7 @@ function isToolbarVisible(aToolbar) {
  * @param task
  *        the task to execute once the dialog is open
  */
-let withBookmarksDialog = Task.async(function* (autoCancel, openFn, taskFn) {
+var withBookmarksDialog = Task.async(function* (autoCancel, openFn, taskFn) {
   let closed = false;
   let dialogPromise = new Promise(resolve => {
     Services.ww.registerNotification(function winObserver(subject, topic, data) {
@@ -322,6 +322,15 @@ let withBookmarksDialog = Task.async(function* (autoCancel, openFn, taskFn) {
   yield waitForCondition(() => dialogWin.gEditItemOverlay.initialized,
                          "EditItemOverlay should be initialized");
 
+  // Check the first textbox is focused.
+  let doc = dialogWin.document;
+  let elt = doc.querySelector("textbox:not([collapsed=true])");
+  if (elt) {
+    info("waiting for focus on the first textfield");
+    yield waitForCondition(() => doc.activeElement == elt.inputField,
+                           "The first non collapsed textbox should have been focused");
+  }
+
   info("withBookmarksDialog: executing the task");
   try {
     yield taskFn(dialogWin);
@@ -331,7 +340,7 @@ let withBookmarksDialog = Task.async(function* (autoCancel, openFn, taskFn) {
         ok(false, "The test should have closed the dialog!");
       }
       info("withBookmarksDialog: canceling the dialog");
-      dialogWin.document.documentElement.cancelDialog();
+      doc.documentElement.cancelDialog();
     }
   }
 });
@@ -343,7 +352,7 @@ let withBookmarksDialog = Task.async(function* (autoCancel, openFn, taskFn) {
  *        Valid selector syntax
  * @return the target DOM node.
  */
-let openContextMenuForContentSelector = Task.async(function* (browser, selector) {
+var openContextMenuForContentSelector = Task.async(function* (browser, selector) {
   info("wait for the context menu");
   let contextPromise = BrowserTestUtils.waitForEvent(document.getElementById("contentAreaContextMenu"),
                                                      "popupshown");
@@ -377,7 +386,7 @@ let openContextMenuForContentSelector = Task.async(function* (browser, selector)
  *        Error message to use if the condition has not been satisfied after a
  *        meaningful amount of tries.
  */
-let waitForCondition = Task.async(function* (conditionFn, errorMsg) {
+var waitForCondition = Task.async(function* (conditionFn, errorMsg) {
   for (let tries = 0; tries < 100; ++tries) {
     if ((yield conditionFn()))
       return;
@@ -433,7 +442,7 @@ function fillBookmarkTextField(id, text, win, blur = true) {
  *        The task to execute once the sidebar is ready. Will get the Places
  *        tree view as input.
  */
-let withSidebarTree = Task.async(function* (type, taskFn) {
+var withSidebarTree = Task.async(function* (type, taskFn) {
   let sidebar = document.getElementById("sidebar");
   info("withSidebarTree: waiting sidebar load");
   let sidebarLoadedPromise = new Promise(resolve => {

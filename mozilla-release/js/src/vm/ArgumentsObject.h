@@ -19,7 +19,7 @@ class ScriptFrameIter;
 
 namespace jit {
 class JitFrameLayout;
-}
+} // namespace jit
 
 /*
  * ArgumentsData stores the initial indexed arguments provided to the
@@ -129,12 +129,15 @@ class ArgumentsObject : public NativeObject
 
   protected:
     template <typename CopyArgs>
-    static ArgumentsObject* create(JSContext* cx, HandleScript script, HandleFunction callee,
-                                   unsigned numActuals, CopyArgs& copy);
+    static ArgumentsObject* create(JSContext* cx, HandleFunction callee, unsigned numActuals,
+                                   CopyArgs& copy);
 
     ArgumentsData* data() const {
         return reinterpret_cast<ArgumentsData*>(getFixedSlot(DATA_SLOT).toPrivate());
     }
+
+    static bool obj_delProperty(JSContext* cx, HandleObject obj, HandleId id,
+                                ObjectOpResult& result);
 
   public:
     static const uint32_t RESERVED_SLOTS = 3;
@@ -153,6 +156,8 @@ class ArgumentsObject : public NativeObject
     static ArgumentsObject* createUnexpected(JSContext* cx, AbstractFramePtr frame);
     static ArgumentsObject* createForIon(JSContext* cx, jit::JitFrameLayout* frame,
                                          HandleObject scopeChain);
+
+    static ArgumentsObject* createTemplateObject(JSContext* cx, bool mapped);
 
     /*
      * Return the initial length of the arguments.  This may differ from the
@@ -308,7 +313,7 @@ class ArgumentsObject : public NativeObject
                                          ArgumentsObject* obj, ArgumentsData* data);
 };
 
-class NormalArgumentsObject : public ArgumentsObject
+class MappedArgumentsObject : public ArgumentsObject
 {
   public:
     static const Class class_;
@@ -325,12 +330,20 @@ class NormalArgumentsObject : public ArgumentsObject
     void clearCallee() {
         data()->callee = MagicValue(JS_OVERWRITTEN_CALLEE);
     }
+
+  private:
+    static bool obj_enumerate(JSContext* cx, HandleObject obj);
+    static bool obj_resolve(JSContext* cx, HandleObject obj, HandleId id, bool* resolvedp);
 };
 
-class StrictArgumentsObject : public ArgumentsObject
+class UnmappedArgumentsObject : public ArgumentsObject
 {
   public:
     static const Class class_;
+
+  private:
+    static bool obj_enumerate(JSContext* cx, HandleObject obj);
+    static bool obj_resolve(JSContext* cx, HandleObject obj, HandleId id, bool* resolvedp);
 };
 
 } // namespace js
@@ -339,7 +352,7 @@ template<>
 inline bool
 JSObject::is<js::ArgumentsObject>() const
 {
-    return is<js::NormalArgumentsObject>() || is<js::StrictArgumentsObject>();
+    return is<js::MappedArgumentsObject>() || is<js::UnmappedArgumentsObject>();
 }
 
 #endif /* vm_ArgumentsObject_h */

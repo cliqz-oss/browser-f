@@ -34,7 +34,7 @@ struct BaselineDebugModeOSRInfo;
 class BaselineFrame
 {
   public:
-    enum Flags {
+    enum Flags : uint32_t {
         // The frame has a valid return value. See also InterpreterFrame::HAS_RVAL.
         HAS_RVAL         = 1 << 0,
 
@@ -77,7 +77,12 @@ class BaselineFrame
         // If set, we're handling an exception for this frame. This is set for
         // debug mode OSR sanity checking when it handles corner cases which
         // only arise during exception handling.
-        HANDLING_EXCEPTION = 1 << 12
+        HANDLING_EXCEPTION = 1 << 12,
+
+        // If set, this frame has been on the stack when
+        // |js::SavedStacks::saveCurrentStack| was called, and so there is a
+        // |js::SavedFrame| object cached for this frame.
+        HAS_CACHED_SAVED_FRAME = 1 << 13
     };
 
   protected: // Silence Clang warning about unused private fields.
@@ -220,6 +225,7 @@ class BaselineFrame
   private:
     Value* evalNewTargetAddress() const {
         MOZ_ASSERT(isEvalFrame());
+        MOZ_ASSERT(isFunctionFrame());
         return (Value*)(reinterpret_cast<const uint8_t*>(this) +
                         BaselineFrame::Size() +
                         offsetOfEvalNewTarget());
@@ -274,8 +280,7 @@ class BaselineFrame
     inline void popBlock(JSContext* cx);
     inline bool freshenBlock(JSContext* cx);
 
-    bool strictEvalPrologue(JSContext* cx);
-    bool heavyweightFunPrologue(JSContext* cx);
+    bool initStrictEvalScopeObjects(JSContext* cx);
     bool initFunctionScopeObjects(JSContext* cx);
 
     void initArgsObjUnchecked(ArgumentsObject& argsobj) {
@@ -321,6 +326,13 @@ class BaselineFrame
     }
     void unsetIsHandlingException() {
         flags_ &= ~HANDLING_EXCEPTION;
+    }
+
+    bool hasCachedSavedFrame() const {
+        return flags_ & HAS_CACHED_SAVED_FRAME;
+    }
+    void setHasCachedSavedFrame() {
+        flags_ |= HAS_CACHED_SAVED_FRAME;
     }
 
     JSScript* evalScript() const {
@@ -396,9 +408,7 @@ class BaselineFrame
     bool isNonStrictEvalFrame() const {
         return isEvalFrame() && !script()->strict();
     }
-    bool isDirectEvalFrame() const {
-        return isEvalFrame() && script()->staticLevel() > 0;
-    }
+    bool isDirectEvalFrame() const;
     bool isNonStrictDirectEvalFrame() const {
         return isNonStrictEvalFrame() && isDirectEvalFrame();
     }

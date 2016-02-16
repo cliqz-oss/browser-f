@@ -13,7 +13,9 @@ const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
-const { require, TargetFactory } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools;
+const { require } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
+const { TargetFactory } = require("devtools/framework/target");
+const promise = require("promise");
 
 const Node = Ci.nsIDOMNode;
 
@@ -41,7 +43,7 @@ const Telemetry = require("devtools/shared/telemetry");
 
 XPCOMUtils.defineLazyGetter(this, "gcliInit", function() {
   try {
-    return require("gcli/commands/index");
+    return require("devtools/toolkit/gcli/commands/index");
   }
   catch (ex) {
     console.log(ex);
@@ -60,12 +62,10 @@ Object.defineProperty(this, "ConsoleServiceListener", {
   enumerable: true
 });
 
-const promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
-
 /**
  * A collection of utilities to help working with commands
  */
-let CommandUtils = {
+var CommandUtils = {
   /**
    * Utility to ensure that things are loaded in the correct order
    */
@@ -306,7 +306,7 @@ Object.defineProperty(DeveloperToolbar.prototype, "visible", {
   enumerable: true
 });
 
-let _gSequenceId = 0;
+var _gSequenceId = 0;
 
 /**
  * Getter for a unique ID.

@@ -18,7 +18,6 @@ import org.mozilla.gecko.db.LocalBrowserDB;
 import org.mozilla.gecko.db.RemoteClient;
 import org.mozilla.gecko.overlays.OverlayConstants;
 import org.mozilla.gecko.overlays.service.OverlayActionService;
-import org.mozilla.gecko.overlays.service.sharemethods.ParcelableClientRecord;
 import org.mozilla.gecko.overlays.service.sharemethods.SendTab;
 import org.mozilla.gecko.overlays.service.sharemethods.ShareMethod;
 import org.mozilla.gecko.sync.setup.activities.WebURLFinder;
@@ -349,10 +348,15 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
 
     @Override
     public void finish() {
-        super.finish();
+        finish(true);
+    }
 
-        // Don't perform an activity-dismiss animation.
-        overridePendingTransition(0, 0);
+    private void finish(final boolean shouldOverrideAnimations) {
+        super.finish();
+        if (shouldOverrideAnimations) {
+            // Don't perform an activity-dismiss animation.
+            overridePendingTransition(0, 0);
+        }
     }
 
     /*
@@ -414,7 +418,8 @@ public class ShareDialog extends Locales.LocaleAwareActivity implements SendTabT
         } catch (URISyntaxException e) {
             // Nothing much we can do.
         } finally {
-            slideOut();
+            // Since we're changing apps, users expect the default app switch animations.
+            finish(false);
         }
     }
 

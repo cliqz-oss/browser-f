@@ -89,7 +89,6 @@ void nsPKCS11Slot::destructorSafeDestroyNSSReference()
   }
 }
 
-/* readonly attribute wstring name; */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetName(char16_t **aName)
 {
@@ -113,7 +112,6 @@ nsPKCS11Slot::GetName(char16_t **aName)
   return NS_OK;
 }
 
-/* readonly attribute wstring desc; */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetDesc(char16_t **aDesc)
 {
@@ -130,7 +128,6 @@ nsPKCS11Slot::GetDesc(char16_t **aDesc)
   return NS_OK;
 }
 
-/* readonly attribute wstring manID; */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetManID(char16_t **aManID)
 {
@@ -142,7 +139,6 @@ nsPKCS11Slot::GetManID(char16_t **aManID)
   return NS_OK;
 }
 
-/* readonly attribute wstring HWVersion; */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetHWVersion(char16_t **aHWVersion)
 {
@@ -154,7 +150,6 @@ nsPKCS11Slot::GetHWVersion(char16_t **aHWVersion)
   return NS_OK;
 }
 
-/* readonly attribute wstring FWVersion; */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetFWVersion(char16_t **aFWVersion)
 {
@@ -166,7 +161,6 @@ nsPKCS11Slot::GetFWVersion(char16_t **aFWVersion)
   return NS_OK;
 }
 
-/* nsIPK11Token getToken (); */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetToken(nsIPK11Token **_retval)
 {
@@ -175,12 +169,10 @@ nsPKCS11Slot::GetToken(nsIPK11Token **_retval)
     return NS_ERROR_NOT_AVAILABLE;
 
   nsCOMPtr<nsIPK11Token> token = new nsPK11Token(mSlot);
-  *_retval = token;
-  NS_ADDREF(*_retval);
+  token.forget(_retval);
   return NS_OK;
 }
 
-/* readonly attribute wstring tokenName; */
 NS_IMETHODIMP 
 nsPKCS11Slot::GetTokenName(char16_t **aName)
 {
@@ -260,7 +252,6 @@ void nsPKCS11Module::destructorSafeDestroyNSSReference()
   }
 }
 
-/* readonly attribute wstring name; */
 NS_IMETHODIMP 
 nsPKCS11Module::GetName(char16_t **aName)
 {
@@ -272,7 +263,6 @@ nsPKCS11Module::GetName(char16_t **aName)
   return NS_OK;
 }
 
-/* readonly attribute wstring libName; */
 NS_IMETHODIMP 
 nsPKCS11Module::GetLibName(char16_t **aName)
 {
@@ -288,7 +278,6 @@ nsPKCS11Module::GetLibName(char16_t **aName)
   return NS_OK;
 }
 
-/*  nsIPKCS11Slot findSlotByName(in wstring name); */
 NS_IMETHODIMP 
 nsPKCS11Module::FindSlotByName(const char16_t *aName,
                                nsIPKCS11Slot **_retval)
@@ -329,12 +318,10 @@ nsPKCS11Module::FindSlotByName(const char16_t *aName,
   free(asciiname);
   nsCOMPtr<nsIPKCS11Slot> slot = new nsPKCS11Slot(slotinfo);
   PK11_FreeSlot(slotinfo);
-  *_retval = slot;
-  NS_ADDREF(*_retval);
+  slot.forget(_retval);
   return NS_OK;
 }
 
-/* nsIEnumerator listSlots (); */
 NS_IMETHODIMP 
 nsPKCS11Module::ListSlots(nsIEnumerator **_retval)
 {
@@ -375,7 +362,6 @@ nsPKCS11ModuleDB::~nsPKCS11ModuleDB()
 {
 }
 
-/* nsIPKCS11Module getInternal (); */
 NS_IMETHODIMP 
 nsPKCS11ModuleDB::GetInternal(nsIPKCS11Module **_retval)
 {
@@ -384,12 +370,10 @@ nsPKCS11ModuleDB::GetInternal(nsIPKCS11Module **_retval)
     SECMOD_CreateModule(nullptr, SECMOD_INT_NAME, nullptr, SECMOD_INT_FLAGS);
   nsCOMPtr<nsIPKCS11Module> module = new nsPKCS11Module(nssMod);
   SECMOD_DestroyModule(nssMod);
-  *_retval = module;
-  NS_ADDREF(*_retval);
+  module.forget(_retval);
   return NS_OK;
 }
 
-/* nsIPKCS11Module getInternalFIPS (); */
 NS_IMETHODIMP 
 nsPKCS11ModuleDB::GetInternalFIPS(nsIPKCS11Module **_retval)
 {
@@ -398,12 +382,10 @@ nsPKCS11ModuleDB::GetInternalFIPS(nsIPKCS11Module **_retval)
     SECMOD_CreateModule(nullptr, SECMOD_FIPS_NAME, nullptr, SECMOD_FIPS_FLAGS);
   nsCOMPtr<nsIPKCS11Module> module = new nsPKCS11Module(nssMod);
   SECMOD_DestroyModule(nssMod);
-  *_retval = module;
-  NS_ADDREF(*_retval);
+  module.forget(_retval);
   return NS_OK;
 }
 
-/* nsIPKCS11Module findModuleByName(in wstring name); */
 NS_IMETHODIMP 
 nsPKCS11ModuleDB::FindModuleByName(const char16_t *aName,
                                    nsIPKCS11Module **_retval)
@@ -416,15 +398,13 @@ nsPKCS11ModuleDB::FindModuleByName(const char16_t *aName,
     return NS_ERROR_FAILURE;
   nsCOMPtr<nsIPKCS11Module> module = new nsPKCS11Module(mod);
   SECMOD_DestroyModule(mod);
-  *_retval = module;
-  NS_ADDREF(*_retval);
+  module.forget(_retval);
   return NS_OK;
 }
 
 /* This is essentially the same as nsIPK11Token::findTokenByName, except
  * that it returns an nsIPKCS11Slot, which may be desired.
  */
-/* nsIPKCS11Module findSlotByName(in wstring name); */
 NS_IMETHODIMP 
 nsPKCS11ModuleDB::FindSlotByName(const char16_t *aName,
                                  nsIPKCS11Slot **_retval)
@@ -437,12 +417,10 @@ nsPKCS11ModuleDB::FindSlotByName(const char16_t *aName,
     return NS_ERROR_FAILURE;
   nsCOMPtr<nsIPKCS11Slot> slot = new nsPKCS11Slot(slotinfo);
   PK11_FreeSlot(slotinfo);
-  *_retval = slot;
-  NS_ADDREF(*_retval);
+  slot.forget(_retval);
   return NS_OK;
 }
 
-/* nsIEnumerator listModules (); */
 NS_IMETHODIMP 
 nsPKCS11ModuleDB::ListModules(nsIEnumerator **_retval)
 {
@@ -482,7 +460,6 @@ NS_IMETHODIMP nsPKCS11ModuleDB::GetCanToggleFIPS(bool *aCanToggleFIPS)
 }
 
 
-/* void toggleFIPSMode (); */
 NS_IMETHODIMP nsPKCS11ModuleDB::ToggleFIPSMode()
 {
   nsNSSShutDownPreventionLock locker;
@@ -506,7 +483,6 @@ NS_IMETHODIMP nsPKCS11ModuleDB::ToggleFIPSMode()
   return NS_OK;
 }
 
-/* readonly attribute boolean isFIPSEnabled; */
 NS_IMETHODIMP nsPKCS11ModuleDB::GetIsFIPSEnabled(bool *aIsFIPSEnabled)
 {
   nsNSSShutDownPreventionLock locker;

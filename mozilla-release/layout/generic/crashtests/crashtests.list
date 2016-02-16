@@ -540,7 +540,7 @@ load 862947-1.html
 load 863935.html
 needs-focus pref(accessibility.browsewithcaret,true) load 868906.html
 load 866547-1.html
-asserts-if(Android,0-4) asserts-if(!Android,1-4) load 876074-1.html # bug 876749
+asserts(0-5) load 876074-1.html # bug 876749
 load 885009-1.html
 load 893496-1.html
 load 893523.html
@@ -587,3 +587,5 @@ load 1156222.html
 load 1157011.html
 load 1169420-1.html
 load 1169420-2.html
+load 1183431.html
+load 1222783.xhtml

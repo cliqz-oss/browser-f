@@ -35,6 +35,6 @@
 <!ENTITY enablePhishingDetector.accesskey "V">
 
 <!-- Anti Virus -->
-<!ENTITY pref.antivirus.caption           "Anti-Virus">
-<!ENTITY antiVirus.label                  "Anti-Virus-Programmen das Scannen eingehender Nachrichten erleichtern">
+<!ENTITY pref.antivirus.caption           "Antivirus">
+<!ENTITY antiVirus.label                  "Antivirus-Programmen das Scannen eingehender Nachrichten erleichtern">
 <!ENTITY antiVirus.accesskey              "A">

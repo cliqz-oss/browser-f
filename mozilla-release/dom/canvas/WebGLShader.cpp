@@ -306,6 +306,16 @@ WebGLShader::CalcNumSamplerUniforms() const
     return 0;
 }
 
+size_t
+WebGLShader::NumAttributes() const
+{
+    if (mValidator)
+        return mValidator->NumAttributes();
+
+    // TODO
+    return 0;
+}
+
 void
 WebGLShader::BindAttribLocation(GLuint prog, const nsCString& userName,
                                 GLuint index) const
@@ -403,9 +413,9 @@ WebGLShader::ApplyTransformFeedbackVaryings(GLuint prog,
 // Boilerplate
 
 JSObject*
-WebGLShader::WrapObject(JSContext* js, JS::Handle<JSObject*> aGivenProto)
+WebGLShader::WrapObject(JSContext* js, JS::Handle<JSObject*> givenProto)
 {
-    return dom::WebGLShaderBinding::Wrap(js, this, aGivenProto);
+    return dom::WebGLShaderBinding::Wrap(js, this, givenProto);
 }
 
 size_t

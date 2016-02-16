@@ -57,7 +57,7 @@ VideoDecoder::InitDecode(const GMPVideoCodec& aCodecSettings,
   mCallback = aCallback;
   assert(mCallback);
   mDecoder = new WMFH264Decoder();
-  HRESULT hr = mDecoder->Init();
+  HRESULT hr = mDecoder->Init(aCoreCount);
   if (FAILED(hr)) {
     CK_LOGD("VideoDecoder::InitDecode failed to init WMFH264Decoder");
     mCallback->Error(GMPGenericErr);
@@ -141,15 +141,15 @@ VideoDecoder::DecodeTask(GMPVideoEncodedFrame* aInput)
   AutoReleaseVideoFrame ensureFrameReleased(aInput);
   HRESULT hr;
 
-  if (mIsFlushing) {
-    CK_LOGD("VideoDecoder::DecodeTask rejecting frame: flushing.");
-    return;
-  }
-
   {
     AutoLock lock(mMutex);
     mNumInputTasks--;
     assert(mNumInputTasks >= 0);
+  }
+
+  if (mIsFlushing) {
+    CK_LOGD("VideoDecoder::DecodeTask rejecting frame: flushing.");
+    return;
   }
 
   if (!aInput || !mHostAPI || !mDecoder) {

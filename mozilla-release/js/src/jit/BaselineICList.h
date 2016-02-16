@@ -30,16 +30,6 @@ namespace jit {
     _(NewObject_Fallback)                        \
     _(NewObject_WithTemplate)                    \
                                                  \
-    _(Compare_Fallback)                          \
-    _(Compare_Int32)                             \
-    _(Compare_Double)                            \
-    _(Compare_NumberWithUndefined)               \
-    _(Compare_String)                            \
-    _(Compare_Boolean)                           \
-    _(Compare_Object)                            \
-    _(Compare_ObjectWithUndefined)               \
-    _(Compare_Int32WithBoolean)                  \
-                                                 \
     _(ToBool_Fallback)                           \
     _(ToBool_Int32)                              \
     _(ToBool_String)                             \
@@ -48,18 +38,6 @@ namespace jit {
     _(ToBool_Object)                             \
                                                  \
     _(ToNumber_Fallback)                         \
-                                                 \
-    _(BinaryArith_Fallback)                      \
-    _(BinaryArith_Int32)                         \
-    _(BinaryArith_Double)                        \
-    _(BinaryArith_StringConcat)                  \
-    _(BinaryArith_StringObjectConcat)            \
-    _(BinaryArith_BooleanWithInt32)              \
-    _(BinaryArith_DoubleWithInt32)               \
-                                                 \
-    _(UnaryArith_Fallback)                       \
-    _(UnaryArith_Int32)                          \
-    _(UnaryArith_Double)                         \
                                                  \
     _(Call_Fallback)                             \
     _(Call_Scripted)                             \
@@ -73,11 +51,15 @@ namespace jit {
     _(Call_IsSuspendedStarGenerator)             \
                                                  \
     _(GetElem_Fallback)                          \
-    _(GetElem_NativeSlot)                        \
-    _(GetElem_NativePrototypeSlot)               \
-    _(GetElem_NativePrototypeCallNative)         \
-    _(GetElem_NativePrototypeCallScripted)       \
-    _(GetElem_UnboxedProperty)                   \
+    _(GetElem_NativeSlotName)                    \
+    _(GetElem_NativeSlotSymbol)                  \
+    _(GetElem_NativePrototypeSlotName)           \
+    _(GetElem_NativePrototypeSlotSymbol)         \
+    _(GetElem_NativePrototypeCallNativeName)     \
+    _(GetElem_NativePrototypeCallNativeSymbol)   \
+    _(GetElem_NativePrototypeCallScriptedName)   \
+    _(GetElem_NativePrototypeCallScriptedSymbol) \
+    _(GetElem_UnboxedPropertyName)               \
     _(GetElem_String)                            \
     _(GetElem_Dense)                             \
     _(GetElem_UnboxedArray)                      \

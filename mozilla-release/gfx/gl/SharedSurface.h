@@ -34,7 +34,7 @@ class nsIThread;
 namespace mozilla {
 namespace gfx {
 class DrawTarget;
-}
+} // namespace gfx
 
 namespace layers {
 class ISurfaceAllocator;
@@ -42,7 +42,7 @@ class SharedSurfaceTextureClient;
 enum class TextureFlags : uint32_t;
 class SurfaceDescriptor;
 class TextureClient;
-}
+} // namespace layers
 
 namespace gl {
 
@@ -78,6 +78,10 @@ protected:
 public:
     virtual ~SharedSurface() {
     }
+
+    // Specifies to the TextureClient any flags which
+    // are required by the SharedSurface backend.
+    virtual layers::TextureFlags GetTextureFlags() const;
 
     bool IsLocked() const {
         return mIsLocked;
@@ -328,8 +332,8 @@ protected:
 
 public:
     UniquePtr<SharedSurface> NewSharedSurface(const gfx::IntSize& size);
-    //TemporaryRef<ShSurfHandle> NewShSurfHandle(const gfx::IntSize& size);
-    TemporaryRef<layers::SharedSurfaceTextureClient> NewTexClient(const gfx::IntSize& size);
+    //already_AddRefed<ShSurfHandle> NewShSurfHandle(const gfx::IntSize& size);
+    already_AddRefed<layers::SharedSurfaceTextureClient> NewTexClient(const gfx::IntSize& size);
 
     static void RecycleCallback(layers::TextureClient* tc, void* /*closure*/);
 

@@ -6,6 +6,8 @@
 
 #include "nsIGlobalObject.h"
 #include "nsContentUtils.h"
+#include "nsThreadUtils.h"
+#include "nsHostObjectProtocolHandler.h"
 
 nsIGlobalObject::~nsIGlobalObject()
 {
@@ -62,7 +64,7 @@ private:
   nsTArray<nsCString> mURIs;
 };
 
-} // anonymous namespace
+} // namespace
 
 void
 nsIGlobalObject::UnlinkHostObjectURIs()

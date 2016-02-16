@@ -35,6 +35,7 @@ body {
   margin-bottom: -1px;
   overflow-y: hidden;
   max-height: 24px;
+  outline: 0 !important;
   transition-property: max-height;
   transition-duration: 150ms;
   transition-timing-function: ease;
@@ -64,14 +65,13 @@ body {
   pointer-events: none;
 }
 
-.ruleview-namecontainer,
-.ruleview-selectorcontainer {
+.ruleview-namecontainer {
   cursor: text;
 }
 
 .ruleview-propertyvaluecontainer {
   cursor: text;
-  padding-right: 15px;
+  padding-right: 5px;
 }
 
 .ruleview-propertyvaluecontainer a {
@@ -79,6 +79,7 @@ body {
 }
 
 .ruleview-computedlist,
+.ruleview-overridden-rule-filter[hidden],
 .ruleview-warning[hidden] {
   display: none;
 }

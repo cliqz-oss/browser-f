@@ -6,10 +6,21 @@
 <!ENTITY  no_space_to_start_error "Es ist nicht genügend Platz verfügbar, um &brandShortName; zu starten.">
 <!ENTITY  error_loading_file "Beim Versuch, Dateien zu laden, die &brandShortName; benötigt, ist ein Fehler aufgetreten">
 
+<!ENTITY firstrun_panel_title_welcome "Willkommen">
 <!ENTITY  onboard_start_message3 "Surfen Sie mit &brandShortName;">
 <!ENTITY  onboard_start_subtext3 "Passen Sie Ihr mobiles Surf-Erlebnis Ihren Wünschen an.">
 <!ENTITY  onboard_start_button_account "Bei &brandShortName; anmelden">
 <!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
+<!ENTITY firstrun_button_next "Weiter">
+
+<!ENTITY  onboard_start_restricted1 "Bleiben Sie geschützt und behalten Sie die Kontrolle mit dieser vereinfachten Version von &brandShortName;.">
+
+<!ENTITY firstrun_import_title "Importieren">
+<!ENTITY firstrun_import_message "Willkommen zu &brandShortName;">
+<!ENTITY firstrun_import_subtext "Importieren Sie Ihre Lesezeichen und Ihre Chronik aus einem anderen Browser.">
+<!ENTITY firstrun_import_action "Nach &brandShortName; übertragen">
+<!ENTITY firstrun_import_dialog_button "Übertragen">
+<!ENTITY firstrun_import_progress_title "Übertragung wird durchgeführt">
 
 <!-- Localization note: These are used as the titles of different pages on the home screen.
      They are automatically converted to all caps by the Android platform. -->
@@ -54,8 +65,9 @@
 
 <!ENTITY history_today_section "Heute">
 <!ENTITY history_yesterday_section "Gestern">
-<!ENTITY history_week_section2 "Während der letzten Woche">
-<!ENTITY history_older_section2 "Während des letzten Monats">
+<!ENTITY history_week_section3 "Letzte 7 Tage">
+<!ENTITY history_this_month_section "Dieser Monat">
+<!ENTITY history_older_section3 "Älter als 6 Monate">
 
 <!ENTITY go "Los">
 <!ENTITY search "Suchen">
@@ -78,6 +90,14 @@
      as possible because it's shown as a label in a toast.  Ideally, this string
      is upper-case, to match Google and Android's convention. -->
 <!ENTITY switch_button_message "WECHSELN">
+<!-- Localization note (tab_title_prefix_is_playing_audio): This string is not
+     visible in the UI, but rather used as a text-to-speech content description
+     for sight-impaired a11y users. The content description is set on a tab
+     title in a list of open tabs when content in that tab is playing audio.
+     &formatS; will be replaced with the title of the tab, as received from the
+     web page. When audio is not playing in a tab, &formatS; will be used as
+     the content description. -->
+<!ENTITY tab_title_prefix_is_playing_audio "Spielt Audio ab - &formatS;">
 
 <!ENTITY settings "Einstellungen">
 <!ENTITY settings_title "Einstellungen">
@@ -155,6 +175,9 @@
 <!ENTITY pref_search_hint "TIPP: Sie können die Suche jeder beliebigen Seite zu Ihren Suchmaschinen hinzufügen, indem Sie lang auf das Suchfeld drücken und anschließend das &formatI;-Symbol antippen.">
 <!ENTITY pref_category_devtools "Entwicklerwerkzeuge">
 <!ENTITY pref_developer_remotedebugging "Externes Debugging">
+<!ENTITY pref_developer_remotedebugging_usb "Externes Debugging über USB">
+<!ENTITY pref_developer_remotedebugging_wifi "Externes Debugging über WLAN">
+<!ENTITY pref_developer_remotedebugging_wifi_disabled_summary "WLAN-Debugging erfordert, dass eine App zum Lesen von QR-Codes auf Ihrem Gerät installiert ist.">
 <!ENTITY pref_category_logins "Zugangsdaten">
 <!ENTITY pref_remember_signons2 "Zugangsdaten speichern">
 <!ENTITY pref_open_external_urls_privately_title "Links im Privaten Modus öffnen">
@@ -176,6 +199,9 @@
 <!ENTITY pref_home_updates_wifi "Nur über WLAN">
 <!ENTITY pref_home_suggested_sites "Seitenvorschläge anzeigen">
 <!ENTITY pref_home_suggested_sites_summary "Auf der Startseite Seitenvorschläge anzeigen, von denen wir denken, dass sie für Sie interessant sind">
+<!ENTITY pref_category_home_homepage "Startseite">
+<!ENTITY home_homepage_title "Startseite festlegen">
+<!ENTITY home_homepage_use_current_tab "Aktuellen Tab verwenden">
 
 <!-- Localization note: These are shown in the left sidebar on tablets -->
 <!ENTITY pref_header_customize "Anpassung">
@@ -192,15 +218,20 @@
 <!ENTITY pref_cookies_disabled "Nicht erlauben">
 
 <!ENTITY pref_tracking_protection_title "Schutz vor Aktivitätenverfolgung">
-<!ENTITY pref_tracking_protection_summary "&brandShortName; wird Websites an der Verfolgung Ihrer Aktivitäten hindern.">
+<!ENTITY pref_tracking_protection_summary3 "Im privaten Modus aktiviert">
 <!ENTITY pref_donottrack_title "Aktivitäten nicht verfolgen">
 <!ENTITY pref_donottrack_summary "&brandShortName; wird Websites mitteilen, dass Ihre Aktivitäten nicht verfolgt werden sollen.">
 
-<!ENTITY tab_queue_toast_message3 "Tab in &brandShortName; gespeichert">
+<!ENTITY tracking_protection_prompt_title "Nun mit Schutz vor Aktivitätenverfolgung">
+<!ENTITY tracking_protection_prompt_text "Blockiert selbständig Inhalte zur Aktivitätenverfolgung, damit Sie sich keine Sorgen machen müssen.">
+<!ENTITY tracking_protection_prompt_tip_text "Rufen Sie die Privatsphäre-Einstellungen auf, um mehr zu erfahren">
+<!ENTITY tracking_protection_prompt_action_button "Verstanden!">
+
+<!ENTITY tab_queue_toast_message3 "Tab gespeichert in &brandShortName;">
 <!ENTITY tab_queue_toast_action "Jetzt öffnen">
 <!ENTITY tab_queue_prompt_title "Mehrere Links öffnen?">
-<!ENTITY tab_queue_prompt_text3 "Speichern Sie diese, bis Sie &brandShortName; das nächste Mal öffnen.">
-<!ENTITY tab_queue_prompt_tip_text "Sie können dies später in den Einstellungen ändern.">
+<!ENTITY tab_queue_prompt_text4 "Bis zum nächsten Öffnen von &brandShortName; speichern">
+<!ENTITY tab_queue_prompt_tip_text2 "Sie können dies später in den Einstellungen ändern.">
 <!ENTITY tab_queue_prompt_positive_action_button "Aktivieren">
 <!ENTITY tab_queue_prompt_negative_action_button "Nicht jetzt">
 <!ENTITY tab_queue_notification_title "&brandShortName;">
@@ -226,7 +257,6 @@
 <!ENTITY pref_plugins_tap_to_play "Antippen zum Aktivieren">
 <!ENTITY pref_plugins_disabled "Deaktiviert">
 <!ENTITY pref_text_size "Textgröße">
-<!ENTITY pref_reflow_on_zoom4 "Text neu umbrechen">
 <!ENTITY pref_restore "Tabs">
 <!ENTITY pref_restore_always "Immer wiederherstellen">
 <!ENTITY pref_restore_quit "Nach Beenden von &brandShortName; nicht wiederherstellen">
@@ -330,13 +360,13 @@ size. -->
 <!ENTITY addons "Add-ons">
 <!ENTITY logins "Zugangsdaten">
 <!ENTITY downloads "Downloads">
-<!ENTITY apps "Apps">
 <!ENTITY char_encoding "Zeichenkodierung">
 
 <!ENTITY share "Teilen">
 <!ENTITY share_title "Teilen mittels">
 <!ENTITY share_image_failed "Grafik konnte auf Grund eines Fehlers nicht geteilt werden">
 <!ENTITY save_as_pdf "Als PDF speichern">
+<!ENTITY print "Drucken">
 <!ENTITY find_in_page "In Seite suchen">
 <!ENTITY desktop_mode "Desktop-Seite">
 <!ENTITY page "Seite">
@@ -381,6 +411,8 @@ size. -->
 <!ENTITY contextmenu_top_sites_pin "Seite anheften">
 <!ENTITY contextmenu_top_sites_unpin "Seite ablösen">
 <!ENTITY contextmenu_add_search_engine "Suchmaschine hinzufügen">
+<!ENTITY contextmenu_mark_read "Als gelesen markieren">
+<!ENTITY contextmenu_mark_unread "Als ungelesen markieren">
 
 <!-- Localization note (doorhanger_login_no_username): This string is used in the save-login doorhanger
      where normally a username would be displayed. In this case, no username was found, and this placeholder
@@ -401,13 +433,18 @@ size. -->
 <!ENTITY pref_titlebar_mode_title "Seitentitel anzeigen">
 <!ENTITY pref_titlebar_mode_url "Seitenadresse anzeigen">
 
+<!-- Localization note (pref_prevent_magnifying_glass): Label for setting that controls
+     whether or not the magnifying glass is disabled. -->
+<!ENTITY pref_magnifying_glass_enabled "Kleine Bereiche vergrößern">
+<!ENTITY pref_magnifying_glass_enabled_summary "Links und Formularfelder durch Tippen in der Nähe vergrößern">
+
 <!-- Localization note (pref_scroll_title_bar2): Label for setting that controls
      whether or not the dynamic toolbar is enabled. -->
 <!ENTITY pref_scroll_title_bar2 "Vollbildmodus">
 <!ENTITY pref_scroll_title_bar_summary "Titelleiste von &brandShortName; beim Bildlauf der Seite ausblenden">
 
-<!ENTITY pref_tab_queue_title2 "Mehrere Links öffnen">
-<!ENTITY pref_tab_queue_summary3 "Bis zum nächsten Öffnen von &brandShortName; speichern">
+<!ENTITY pref_tab_queue_title2 "Beim Öffnen mehrerer Links">
+<!ENTITY pref_tab_queue_summary3 "Zurückstellen bis zum nächsten Öffnen von &brandShortName;">
 
 <!-- Localization note (page_removed): This string appears in a toast message when
      any page is removed frome about:home. This includes pages that are in history,
@@ -426,9 +463,9 @@ size. -->
 <!ENTITY site_settings_clear        "Löschen">
 <!ENTITY site_settings_no_settings  "Keine Einstellungen zum Löschen verfügbar">
 
-<!-- Localization note (reading_list_added2) : Used in a toast, please keep as short
+<!-- Localization note (reading_list_added3) : Used in a toast, please keep as short
      as possible. -->
-<!ENTITY reading_list_added2 "Zu Liste hinzugefügt">
+<!ENTITY reading_list_added3 "Zur Leseliste hinzugefügt">
 <!ENTITY reading_list_removed "Seite aus Leseliste entfernt">
 <!-- Localization note (reading_list_remove) : Used to remove the currently open page from
      the user's reading list. The opposite of overlay_share_reading_list_btn_label. -->
@@ -458,8 +495,6 @@ size. -->
 <!ENTITY button_set "Übernehmen">
 <!ENTITY button_clear "Leeren">
 <!ENTITY button_copy "Kopieren">
-
-<!ENTITY firstrun_panel_title_welcome "Willkommen">
 
 <!ENTITY home_top_sites_title "Meistbesuchte Seiten">
 <!-- Localization note (home_top_sites_add): This string is used as placeholder
@@ -545,21 +580,21 @@ The layout of the identity dialog prevents combining this into a single string w
 substitution variables.  If it is difficult to translate the sense of the string
 with that structure, consider a translation which ignores the preceding domain and
 just addresses the organization to follow, e.g. "This site is run by " -->
-<!ENTITY identity_run_by "Diese Seite wird betrieben von">
-<!ENTITY identity_no_info "Diese Website stellt keine Identitätsdaten zur Verfügung.">
-<!ENTITY identity_not_encrypted "Ihre Verbindung zu dieser Website ist nicht verschlüsselt.">
-<!ENTITY identity_encrypted "Verschlüsselt">
+<!ENTITY identity_connection_secure "Sichere Verbindung">
+<!ENTITY identity_connection_insecure "Nicht gesicherte Verbindung">
 
 <!-- Mixed content notifications in site identity popup -->
-<!ENTITY loaded_mixed_content_message "Diese Seite enthält Inhalt, der nicht sicher ist.">
-<!ENTITY blocked_mixed_content_message_top "&brandShortName; hat Inhalt blockiert, der nicht sicher ist.">
-<!ENTITY blocked_mixed_content_message_bottom "Die meisten Websites funktionieren weiterhin, wenn diese Art Inhalt blockiert wird.">
+<!ENTITY mixed_content_blocked_all1 "&brandShortName; hat nicht gesichert übertragene Inhalte auf dieser Seite blockiert.">
+<!ENTITY mixed_content_blocked_some1 "&brandShortName; hat einen Teil der nicht gesichert übertragenen Inhalte auf dieser Seite blockiert.">
+<!ENTITY mixed_content_display_loaded1 "Teile dieser Seite wurden nicht sicher übertragen (wie z.B. Grafiken).">
+<!ENTITY mixed_content_protection_disabled1 "Sie haben den Schutz vor nicht gesichert übertragenen Inhalten deaktiviert.">
 
 <!-- Tracking content notifications in site identity popup -->
-<!ENTITY loaded_tracking_content_message_top "Schutz vor Verfolgung von Aktivitäten ist deaktiviert.">
-<!ENTITY loaded_tracking_content_message_bottom "Teile dieser Seite können Ihre Aktivitäten im Internet verfolgen.">
-<!ENTITY blocked_tracking_content_message_top2 "Schutz vor Verfolgung von Aktivitäten ist aktiviert.">
-<!ENTITY blocked_tracking_content_message_bottom2 "Die Ihre Aktivitäten im Internet verfolgenden Teile dieser Seite wurden blockiert.">
+<!ENTITY doorhanger_tracking_title "Schutz vor Aktivitätenverfolgung">
+<!ENTITY doorhanger_tracking_state_enabled "Aktiviert">
+<!ENTITY doorhanger_tracking_state_disabled "Deaktiviert">
+<!ENTITY doorhanger_tracking_message_enabled1 "Versuche, Ihr Online-Verhalten zu verfolgen, wurden blockiert.">
+<!ENTITY doorhanger_tracking_message_disabled2 "Diese Seite enthält Elemente, die Ihre Surfaktivitäten verfolgen könnten.">
 
 <!-- Common mixed and tracking content strings in site identity popup -->
 <!ENTITY learn_more "Weitere Informationen">
@@ -642,10 +677,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 
 <!-- Voice search in the awesome bar -->
 <!ENTITY voicesearch_prompt "Jetzt sprechen">
-<!ENTITY voicesearch_failed_title "&brandShortName;-Sprachsuche">
-<!ENTITY voicesearch_failed_message "Es besteht derzeit ein Problem mit der Sprachsuche. Bitte versuchen Sie es später erneut.">
-<!ENTITY voicesearch_failed_message_recoverable "Leider konnte das Gesagte nicht erkannt werden. Bitte versuchen Sie es erneut.">
-<!ENTITY voicesearch_failed_retry "Nochmals versuchen">
 
 <!-- Localization note (remote_tabs_last_synced): the variable is replaced by a
      "relative time span string" produced by Android.  This string describes the
@@ -663,3 +694,39 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY find_matchcase "Aa">
 
 <!ENTITY intent_uri_cannot_open "Link kann nicht geöffnet werden">
+
+<!-- DevTools Authentication -->
+<!-- LOCALIZATION NOTE (devtools_auth_scan_header): This header text appears
+     above a QR reader that is actively scanning for QR codes.  The expected QR
+     code has already been displayed by the client trying to connect (such as
+     desktop Firefox via WebIDE), so you just need to aim this device at the QR
+     code. -->
+<!ENTITY devtools_auth_scan_header "Suche nach auf anderem Gerät angezeigten QR-Code wird durchgeführt">
+
+<!-- Restrictions -->
+<!-- Localization note: These are restrictions the device owner (e.g. parent) can enable for
+     a restricted profile (e.g. child). Used inside the Android settings UI. -->
+<!ENTITY restriction_disallow_import_settings_title2 "\'Von Android importieren\' deaktivieren">
+<!ENTITY restriction_disallow_addons_title2 "Installation von Add-ons deaktivieren">
+<!ENTITY restriction_disallow_devtools_title2 "Entwicklerwerkzeuge deaktivieren">
+<!ENTITY restriction_disallow_customize_home_title2 "Anpassung der Startseite deaktivieren">
+<!ENTITY restriction_disallow_private_browsing_title2 "Privaten Modus deaktivieren">
+<!ENTITY restriction_disallow_location_services_title2 "Standortdienste deaktivieren">
+<!ENTITY restriction_disallow_display_settings_title2 "Ansicht-Einstellungen deaktivieren">
+<!ENTITY restriction_disallow_clear_history_title2 "\'Browser-Chronik löschen\' deaktivieren">
+<!ENTITY restriction_disallow_master_password_title2 "Master-Passwort deaktivieren">
+<!ENTITY restriction_disallow_guest_browsing_title2 "Gastmodus deaktivieren">
+
+<!-- Default Bookmarks titles-->
+<!-- LOCALIZATION NOTE (bookmarks_about_browser): link title for about:fennec -->
+<!ENTITY bookmarks_about_browser "Firefox: Über Ihren Browser">
+<!-- LOCALIZATION NOTE (bookmarks_addons): link title for https://addons.mozilla.org/en-US/mobile -->
+<!ENTITY bookmarks_addons "Firefox: Mit Add-ons anpassen">
+<!-- LOCALIZATION NOTE (bookmarks_support): link title for https://support.mozilla.org/ -->
+<!ENTITY bookmarks_support "Firefox: Hilfe">
+<!--LOCALIZATION NOTE (bookmarks_marketplace):link title for https://marketplace.firefox.com -->
+<!ENTITY bookmarks_marketplace "Firefox Marketplace">
+<!-- LOCALIZATION NOTE (bookmarks_restricted_support): link title for https://support.mozilla.org/kb/controlledaccess -->
+<!ENTITY bookmarks_restricted_support2 "Firefox: Hilfe und Unterstützung für eingeschränkte Profile auf Android-Tablets">
+<!-- LOCALIZATION NOTE (bookmarks_restricted_webmaker):link title for https://webmaker.org -->
+<!ENTITY bookmarks_restricted_webmaker "Erlerne das Web: Mozilla Webmaker">

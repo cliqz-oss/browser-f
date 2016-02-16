@@ -6,6 +6,18 @@ $inherits:
   from: tasks/branches/base_jobs.yml
 
 builds:
+  android-api-11:
+    platforms:
+      - Android
+    types:
+      opt:
+        task: tasks/builds/android_api_11.yml
+  aries-dogfood:
+    platforms:
+      - b2g
+    types:
+      opt:
+        task: tasks/builds/b2g_aries_spark_dogfood.yml
   aries-ota:
     platforms:
       - b2g
@@ -14,12 +26,6 @@ builds:
         task: tasks/builds/b2g_aries_spark_ota_opt.yml
       debug:
         task: tasks/builds/b2g_aries_spark_ota_debug.yml
-  aries-dogfood:
-    platforms:
-      - b2g
-    types:
-      opt:
-        task: tasks/builds/b2g_aries_spark_dogfood.yml
   flame-kk-ota:
     platforms:
       - b2g
@@ -28,3 +34,11 @@ builds:
         task: tasks/builds/b2g_flame_kk_ota_opt.yml
       debug:
         task: tasks/builds/b2g_flame_kk_ota_debug.yml
+  linux64:
+    platforms:
+      - Linux64
+    types:
+      opt:
+        task: tasks/builds/opt_linux64.yml
+      debug:
+        task: tasks/builds/dbg_linux64.yml

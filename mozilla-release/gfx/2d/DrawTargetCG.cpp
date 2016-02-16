@@ -186,7 +186,7 @@ DrawTargetCG::GetBackendType() const
   }
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCG::Snapshot()
 {
   if (!mSnapshot) {
@@ -201,7 +201,7 @@ DrawTargetCG::Snapshot()
   return snapshot.forget();
 }
 
-TemporaryRef<DrawTarget>
+already_AddRefed<DrawTarget>
 DrawTargetCG::CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aFormat) const
 {
   // XXX: in thebes we use CGLayers to do this kind of thing. It probably makes sense
@@ -213,7 +213,7 @@ DrawTargetCG::CreateSimilarDrawTarget(const IntSize &aSize, SurfaceFormat aForma
   return nullptr;
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCG::CreateSourceSurfaceFromData(unsigned char *aData,
                                            const IntSize &aSize,
                                            int32_t aStride,
@@ -260,7 +260,7 @@ GetRetainedImageFromSourceSurface(SourceSurface *aSurface)
   }
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 DrawTargetCG::OptimizeSourceSurface(SourceSurface *aSurface) const
 {
   RefPtr<SourceSurface> surface(aSurface);
@@ -392,7 +392,7 @@ DrawTargetCG::DrawSurface(SourceSurface *aSurface,
   CGContextRestoreGState(mCg);
 }
 
-TemporaryRef<FilterNode>
+already_AddRefed<FilterNode>
 DrawTargetCG::CreateFilter(FilterType aType)
 {
   return FilterNodeSoftware::Create(aType);
@@ -468,7 +468,7 @@ class GradientStopsCG : public GradientStops
   ExtendMode mExtend;
 };
 
-TemporaryRef<GradientStops>
+already_AddRefed<GradientStops>
 DrawTargetCG::CreateGradientStops(GradientStop *aStops, uint32_t aNumStops,
                                   ExtendMode aExtendMode) const
 {
@@ -1757,7 +1757,7 @@ DrawTargetCG::Init(BackendType aType,
 
   assert(mCg);
   if (!mCg) {
-    gfxCriticalError() << "Failed to create CG context";
+    gfxCriticalError() << "Failed to create CG context" << mSize << ", " << aStride;
     return false;
   }
 
@@ -1860,7 +1860,7 @@ DrawTargetCG::Init(CGContextRef cgContext, const IntSize &aSize)
 
   assert(mCg);
   if (!mCg) {
-    gfxCriticalError() << "Invalid CG context at Init";
+    gfxCriticalError() << "Invalid CG context at Init " << aSize;
     return false;
   }
 
@@ -1897,7 +1897,7 @@ DrawTargetCG::Init(BackendType aType, const IntSize &aSize, SurfaceFormat &aForm
   return Init(aType, nullptr, aSize, stride, aFormat);
 }
 
-TemporaryRef<PathBuilder>
+already_AddRefed<PathBuilder>
 DrawTargetCG::CreatePathBuilder(FillRule aFillRule) const
 {
   return MakeAndAddRef<PathBuilderCG>(aFillRule);
@@ -2051,5 +2051,5 @@ BorrowedCGContext::ReturnCGContextToDrawTarget(DrawTarget *aDT, CGContextRef cg)
 }
 
 
-}
-}
+} // namespace gfx
+} // namespace mozilla

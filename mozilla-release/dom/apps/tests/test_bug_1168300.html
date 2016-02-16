@@ -7,6 +7,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1168300
   <meta charset="utf-8">
   <title>Test for Bug 1168300</title>
   <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="common.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
   <script type="application/javascript;version=1.7">
 
@@ -52,20 +53,17 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1168300
     yield undefined;
     let app = request.result;
 
-    let _topic = "clear-cookiejar-data";
+    let _topic = "clear-origin-data";
     let observer = new Observer(_topic);
     observer.onobserve = function(subject, topic, data, count) {
       ok(topic == _topic, "unknown topic " + topic);
 
-      let cookieJar = data;
-      ok(cookieJar, "params.cookieJar should have value for an app.");
+      let props = Object.getOwnPropertyNames(JSON.parse(data));
+      is(props.length, 1, "pattern should have one property");
+      is(props[0], 'appId', "pattern property should be appId");
 
-      // should receive 2 notifications when an app is uninstalled.
-      if (count == 2) {
-        ok(true);
-        observer.shutdown();
-        continueTest();
-      }
+      observer.shutdown();
+      continueTest();
     };
 
     request = navigator.mozApps.mgmt.uninstall(app);
@@ -79,7 +77,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1168300
       continueTest();
     };
 
-    // we now wait for "clear-cookiejar-data" notifications and onuninstall
+    // we now wait for "clear-origin-data" notifications and onuninstall
     // callback.
     yield undefined;
     yield undefined;
@@ -114,7 +112,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1168300
   SimpleTest.waitForExplicitFinish();
   </script>
 </head>
-<body onload="go()">
+<body onload="prepareEnv(go)">
 <a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1168300">Mozilla Bug 1168300</a>
 <p id="display"></p>
 <div id="content" style="display: none">

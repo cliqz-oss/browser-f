@@ -25,6 +25,7 @@ from .mozconfig import (
     MozconfigLoadException,
     MozconfigLoader,
 )
+from .util import memoized_property
 from .virtualenv import VirtualenvManager
 
 
@@ -290,17 +291,47 @@ class MozbuildObject(ProcessExecutionMixin):
     def statedir(self):
         return os.path.join(self.topobjdir, '.mozbuild')
 
+    @memoized_property
+    def extra_environment_variables(self):
+        '''Some extra environment variables are stored in .mozconfig.mk.
+        This functions extracts and returns them.'''
+        from pymake.process import ClineSplitter
+        mozconfig_mk = os.path.join(self.topobjdir, '.mozconfig.mk')
+        env = {}
+        with open(mozconfig_mk) as fh:
+            for line in fh:
+                if line.startswith('export '):
+                    exports = ClineSplitter(line, self.topobjdir)[1:]
+                    for e in exports:
+                        if '=' in e:
+                            key, value = e.split('=')
+                            env[key] = value
+        return env
+
     def is_clobber_needed(self):
         if not os.path.exists(self.topobjdir):
             return False
         return Clobberer(self.topsrcdir, self.topobjdir).clobber_needed()
 
+    def have_winrm(self):
+        # `winrm -h` should print 'winrm version ...' and exit 1
+        try:
+            p = subprocess.Popen(['winrm.exe', '-h'],
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.STDOUT)
+            return p.wait() == 1 and p.stdout.read().startswith('winrm')
+        except:
+            return False
+
     def remove_objdir(self):
         """Remove the entire object directory."""
 
-        # We use mozfile because it is faster than shutil.rmtree().
-        # mozfile doesn't like unicode arguments (bug 818783).
-        rmtree(self.topobjdir.encode('utf-8'))
+        if sys.platform.startswith('win') and self.have_winrm():
+            subprocess.check_call(['winrm', '-rf', self.topobjdir])
+        else:
+            # We use mozfile because it is faster than shutil.rmtree().
+            # mozfile doesn't like unicode arguments (bug 818783).
+            rmtree(self.topobjdir.encode('utf-8'))
 
     def get_binary_path(self, what='app', validate_exists=True, where='default'):
         """Obtain the path to a compiled binary for this build configuration.

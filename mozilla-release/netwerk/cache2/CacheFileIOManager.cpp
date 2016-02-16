@@ -110,7 +110,6 @@ NS_INTERFACE_MAP_END_THREADSAFE
 
 CacheFileHandle::CacheFileHandle(const SHA1Sum::Hash *aHash, bool aPriority)
   : mHash(aHash)
-  , mIsDoomed(false)
   , mPriority(aPriority)
   , mClosed(false)
   , mSpecialFile(false)
@@ -119,13 +118,17 @@ CacheFileHandle::CacheFileHandle(const SHA1Sum::Hash *aHash, bool aPriority)
   , mFileSize(-1)
   , mFD(nullptr)
 {
+  // If we initialize mDoomed in the initialization list, that initialization is
+  // not guaranteeded to be atomic.  Whereas this assignment here is guaranteed
+  // to be atomic.  TSan will see this (atomic) assignment and be satisfied
+  // that cross-thread accesses to mIsDoomed are properly synchronized.
+  mIsDoomed = false;
   LOG(("CacheFileHandle::CacheFileHandle() [this=%p, hash=%08x%08x%08x%08x%08x]"
        , this, LOGSHA1(aHash)));
 }
 
 CacheFileHandle::CacheFileHandle(const nsACString &aKey, bool aPriority)
   : mHash(nullptr)
-  , mIsDoomed(false)
   , mPriority(aPriority)
   , mClosed(false)
   , mSpecialFile(true)
@@ -135,6 +138,8 @@ CacheFileHandle::CacheFileHandle(const nsACString &aKey, bool aPriority)
   , mFD(nullptr)
   , mKey(aKey)
 {
+  // See comment above about the initialization of mIsDoomed.
+  mIsDoomed = false;
   LOG(("CacheFileHandle::CacheFileHandle() [this=%p, key=%s]", this,
        PromiseFlatCString(aKey).get()));
 }
@@ -162,13 +167,13 @@ CacheFileHandle::Log()
   if (mSpecialFile) {
     LOG(("CacheFileHandle::Log() - special file [this=%p, isDoomed=%d, "
          "priority=%d, closed=%d, invalid=%d, fileExists=%d, fileSize=%lld, "
-         "leafName=%s, key=%s]", this, mIsDoomed, mPriority, mClosed, mInvalid,
+         "leafName=%s, key=%s]", this, int(mIsDoomed), mPriority, mClosed, mInvalid,
          mFileExists, mFileSize, leafName.get(), mKey.get()));
   } else {
     LOG(("CacheFileHandle::Log() - entry file [this=%p, hash=%08x%08x%08x%08x"
          "%08x, isDoomed=%d, priority=%d, closed=%d, invalid=%d, fileExists=%d,"
          " fileSize=%lld, leafName=%s, key=%s]", this, LOGSHA1(mHash),
-         mIsDoomed, mPriority, mClosed, mInvalid, mFileExists, mFileSize,
+         int(mIsDoomed), mPriority, mClosed, mInvalid, mFileExists, mFileSize,
          leafName.get(), mKey.get()));
   }
 }
@@ -427,37 +432,13 @@ CacheFileHandles::RemoveHandle(CacheFileHandle *aHandle)
   }
 }
 
-static PLDHashOperator
-GetAllHandlesEnum(CacheFileHandles::HandleHashKey* aEntry, void *aClosure)
-{
-  nsTArray<nsRefPtr<CacheFileHandle> > *array =
-    static_cast<nsTArray<nsRefPtr<CacheFileHandle> > *>(aClosure);
-
-  aEntry->GetHandles(*array);
-  return PL_DHASH_NEXT;
-}
-
 void
 CacheFileHandles::GetAllHandles(nsTArray<nsRefPtr<CacheFileHandle> > *_retval)
 {
   MOZ_ASSERT(CacheFileIOManager::IsOnIOThreadOrCeased());
-  mTable.EnumerateEntries(&GetAllHandlesEnum, _retval);
-}
-
-static PLDHashOperator
-GetActiveHandlesEnum(CacheFileHandles::HandleHashKey* aEntry, void *aClosure)
-{
-  nsTArray<nsRefPtr<CacheFileHandle> > *array =
-    static_cast<nsTArray<nsRefPtr<CacheFileHandle> > *>(aClosure);
-
-  nsRefPtr<CacheFileHandle> handle = aEntry->GetNewestHandle();
-  MOZ_ASSERT(handle);
-
-  if (!handle->IsDoomed()) {
-    array->AppendElement(handle);
+  for (auto iter = mTable.Iter(); !iter.Done(); iter.Next()) {
+    iter.Get()->GetHandles(*_retval);
   }
-
-  return PL_DHASH_NEXT;
 }
 
 void
@@ -465,7 +446,14 @@ CacheFileHandles::GetActiveHandles(
   nsTArray<nsRefPtr<CacheFileHandle> > *_retval)
 {
   MOZ_ASSERT(CacheFileIOManager::IsOnIOThreadOrCeased());
-  mTable.EnumerateEntries(&GetActiveHandlesEnum, _retval);
+  for (auto iter = mTable.Iter(); !iter.Done(); iter.Next()) {
+    nsRefPtr<CacheFileHandle> handle = iter.Get()->GetNewestHandle();
+    MOZ_ASSERT(handle);
+
+    if (!handle->IsDoomed()) {
+      _retval->AppendElement(handle);
+    }
+  }
 }
 
 void
@@ -2719,7 +2707,7 @@ EvictionNotifierRunnable::Run()
   return NS_OK;
 }
 
-} // anonymous namespace
+} // namespace
 
 nsresult
 CacheFileIOManager::EvictAllInternal()
@@ -3883,7 +3871,7 @@ CacheFileIOManager::UpdateSmartCacheSize(int64_t aFreeSpace)
 
 // Memory reporting
 
-namespace { // anon
+namespace {
 
 // A helper class that dispatches and waits for an event that gets result of
 // CacheFileIOManager->mHandles.SizeOfExcludingThis() on the I/O thread
@@ -3944,7 +3932,7 @@ private:
   size_t mSize;
 };
 
-} // anon
+} // namespace
 
 size_t
 CacheFileIOManager::SizeOfExcludingThisInternal(mozilla::MallocSizeOf mallocSizeOf) const
@@ -4004,5 +3992,5 @@ CacheFileIOManager::SizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf)
   return mallocSizeOf(gInstance) + SizeOfExcludingThis(mallocSizeOf);
 }
 
-} // net
-} // mozilla
+} // namespace net
+} // namespace mozilla

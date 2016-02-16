@@ -12,7 +12,6 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/HTMLCanvasElementBinding.h"
 #include "nsLayoutUtils.h"
-#include "nsNetUtil.h"
 #include "nsSize.h"
 
 class nsICanvasRenderingContextInternal;
@@ -21,7 +20,7 @@ namespace mozilla {
 
 namespace layers {
 class Image;
-}
+} // namespace layers
 
 namespace dom {
 

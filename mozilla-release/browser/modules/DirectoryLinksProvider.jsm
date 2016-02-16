@@ -105,12 +105,18 @@ const PING_ACTIONS = ["block", "click", "pin", "sponsored", "sponsored_link", "u
 // Location of inadjacent sites json
 const INADJACENCY_SOURCE = "chrome://browser/content/newtab/newTab.inadjacent.json";
 
+// Fake URL to keep track of last block of a suggested tile in the frequency cap object
+const FAKE_SUGGESTED_BLOCK_URL = "ignore://suggested_block";
+
+// Time before suggested tile is allowed to play again after block - default to 1 day
+const AFTER_SUGGESTED_BLOCK_DECAY_TIME = 24*60*60*1000;
+
 /**
  * Singleton that serves as the provider of directory links.
  * Directory links are a hard-coded set of links shown if a user's link
  * inventory is empty.
  */
-let DirectoryLinksProvider = {
+var DirectoryLinksProvider = {
 
   __linksURL: null,
 
@@ -216,7 +222,7 @@ let DirectoryLinksProvider = {
    */
   _setDefaultEnhanced: function DirectoryLinksProvider_setDefaultEnhanced() {
     if (!Services.prefs.prefHasUserValue(PREF_NEWTAB_ENHANCED)) {
-      let enhanced = true;
+      let enhanced = Services.prefs.getBoolPref(PREF_NEWTAB_ENHANCED);
       try {
         // Default to not enhanced if DNT is set to tell websites to not track
         if (Services.prefs.getBoolPref("privacy.donottrackheader.enabled")) {
@@ -491,6 +497,28 @@ let DirectoryLinksProvider = {
   },
 
   /**
+   * Handles block on suggested tile: updates fake block url with current timestamp
+   */
+  handleSuggestedTileBlock: function DirectoryLinksProvider_handleSuggestedTileBlock() {
+    this._updateFrequencyCapSettings({url: FAKE_SUGGESTED_BLOCK_URL});
+    this._writeFrequencyCapFile();
+  },
+
+  /**
+   * Checks if suggested tile is being blocked for the rest of "decay time"
+   * @return True if blocked, false otherwise
+   */
+  _isSuggestedTileBlocked: function DirectoryLinksProvider__isSuggestedTileBlocked() {
+    let capObject = this._frequencyCaps[FAKE_SUGGESTED_BLOCK_URL];
+    if (!capObject || !capObject.lastUpdated) {
+      // user never blocked suggested tile or lastUpdated is missing
+      return false;
+    }
+    // otherwise, make sure that enough time passed after suggested tile was blocked
+    return (capObject.lastUpdated + AFTER_SUGGESTED_BLOCK_DECAY_TIME) > Date.now();
+  },
+
+  /**
    * Report some action on a newtab page (view, click)
    * @param sites Array of sites shown on newtab page
    * @param action String of the behavior to report
@@ -498,19 +526,31 @@ let DirectoryLinksProvider = {
    * @return download promise
    */
   reportSitesAction: function DirectoryLinksProvider_reportSitesAction(sites, action, triggeringSiteIndex) {
+    let pastImpressions;
     // Check if the suggested tile was shown
     if (action == "view") {
-      sites.slice(0, triggeringSiteIndex + 1).forEach(site => {
+      sites.slice(0, triggeringSiteIndex + 1).filter(s => s).forEach(site => {
         let {targetedSite, url} = site.link;
         if (targetedSite) {
           this._addFrequencyCapView(url);
         }
       });
     }
-    // Use up all views if the user clicked on a frequency capped tile
-    else if (action == "click") {
-      let {targetedSite, url} = sites[triggeringSiteIndex].link;
-      if (targetedSite) {
+    // any click action on a suggested tile should stop that tile suggestion
+    // click/block - user either removed a tile or went to a landing page
+    // pin - tile turned into history tile, should no longer be suggested
+    // unpin - the tile was pinned before, should not matter
+    else {
+      // suggested tile has targetedSite, or frecent_sites if it was pinned
+      let {frecent_sites, targetedSite, url} = sites[triggeringSiteIndex].link;
+      if (frecent_sites || targetedSite) {
+        // skip past_impressions for "unpin" to avoid chance of tracking
+        if (this._frequencyCaps[url] && action != "unpin") {
+          pastImpressions = {
+            total: this._frequencyCaps[url].totalViews,
+            daily: this._frequencyCaps[url].dailyViews
+          };
+        }
         this._setFrequencyCapClick(url);
       }
     }
@@ -548,6 +588,7 @@ let DirectoryLinksProvider = {
             id: id || site.enhancedId,
             pin: site.isPinned() ? 1 : undefined,
             pos: pos != tilesIndex ? pos : undefined,
+            past_impressions: pos == triggeringSiteIndex ? pastImpressions : undefined,
             score: Math.round(link.frecency / PING_SCORE_DIVISOR) || undefined,
             url: site.enhancedId && "",
           });
@@ -644,7 +685,7 @@ let DirectoryLinksProvider = {
       }.bind(this);
 
       rawLinks.suggested.filter(validityFilter).forEach((link, position) => {
-        // Suggested sites should always have an adgroup name.
+        // Suggested sites must have an adgroup name.
         if (!link.adgroup_name) {
           return;
         }
@@ -875,9 +916,12 @@ let DirectoryLinksProvider = {
       }
     }
 
-    if (this._topSitesWithSuggestedLinks.size == 0 || !this._shouldUpdateSuggestedTile()) {
+    if (this._topSitesWithSuggestedLinks.size == 0 ||
+        !this._shouldUpdateSuggestedTile() ||
+        this._isSuggestedTileBlocked()) {
       // There are no potential suggested links we can show or not
-      // enough history for a suggested tile.
+      // enough history for a suggested tile, or suggested tile was
+      // recently blocked and wait time interval has not decayed yet
       return;
     }
 
@@ -1098,7 +1142,8 @@ let DirectoryLinksProvider = {
   _pruneFrequencyCapUrls: function DirectoryLinksProvider_pruneFrequencyCapUrls(timeDelta = DEFAULT_PRUNE_TIME_DELTA) {
     let timeThreshold = Date.now() - timeDelta;
     Object.keys(this._frequencyCaps).forEach(url => {
-      if (this._frequencyCaps[url].lastUpdated <= timeThreshold) {
+      // remove url if it is not ignorable and wasn't updated for a while
+      if (!url.startsWith("ignore") && this._frequencyCaps[url].lastUpdated <= timeThreshold) {
         delete this._frequencyCaps[url];
       }
     });
@@ -1136,7 +1181,7 @@ let DirectoryLinksProvider = {
       capObject.lastShownDate = Date.now();
     }
 
-    // bump both dialy and total counters
+    // bump both daily and total counters
     capObject.totalViews++;
     capObject.dailyViews++;
 
@@ -1151,7 +1196,7 @@ let DirectoryLinksProvider = {
    * Sets clicked flag for link url
    * @param url String url of the suggested link
    */
-  _setFrequencyCapClick: function DirectoryLinksProvider_reportFrequencyCapClick(url) {
+  _setFrequencyCapClick(url) {
     let capObject = this._frequencyCaps[url];
     // sanity check
     if (!capObject) {

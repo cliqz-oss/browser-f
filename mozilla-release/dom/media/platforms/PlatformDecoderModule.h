@@ -7,7 +7,9 @@
 #if !defined(PlatformDecoderModule_h_)
 #define PlatformDecoderModule_h_
 
+#include "FlushableTaskQueue.h"
 #include "MediaDecoderReader.h"
+#include "mozilla/MozPromise.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "nsTArray.h"
 #include "mozilla/RefPtr.h"
@@ -21,13 +23,12 @@ class MediaRawData;
 
 namespace layers {
 class ImageContainer;
-}
+} // namespace layers
 
 class MediaDataDecoder;
 class MediaDataDecoderCallback;
-class FlushableMediaTaskQueue;
+class FlushableTaskQueue;
 class CDMProxy;
-typedef int64_t Microseconds;
 
 // The PlatformDecoderModule interface is used by the MP4Reader to abstract
 // access to the H264 and Audio (AAC/MP3) decoders provided by various platforms.
@@ -76,16 +77,14 @@ public:
   // that we use on on aTaskQueue to decode the decrypted stream.
   // This is called on the decode task queue.
   static already_AddRefed<PlatformDecoderModule>
-  CreateCDMWrapper(CDMProxy* aProxy,
-                   bool aHasAudio,
-                   bool aHasVideo);
+  CreateCDMWrapper(CDMProxy* aProxy);
 #endif
 
   // Creates a decoder.
   // See CreateVideoDecoder and CreateAudioDecoder for implementation details.
   virtual already_AddRefed<MediaDataDecoder>
   CreateDecoder(const TrackInfo& aConfig,
-                FlushableMediaTaskQueue* aTaskQueue,
+                FlushableTaskQueue* aTaskQueue,
                 MediaDataDecoderCallback* aCallback,
                 layers::LayersBackend aLayersBackend = layers::LayersBackend::LAYERS_NONE,
                 layers::ImageContainer* aImageContainer = nullptr);
@@ -95,6 +94,10 @@ public:
   // If more codecs are to be supported, SupportsMimeType will have
   // to be extended
   virtual bool SupportsMimeType(const nsACString& aMimeType);
+
+  // MimeType can be decoded with shipped decoders if no platform decoders exist
+  static bool AgnosticMimeType(const nsACString& aMimeType);
+
 
   enum ConversionRequired {
     kNeedNone,
@@ -107,10 +110,8 @@ public:
   // feeding it to MediaDataDecoder::Input.
   virtual ConversionRequired DecoderNeedsConversion(const TrackInfo& aConfig) const = 0;
 
-  virtual void DisableHardwareAcceleration() {}
-
   virtual bool SupportsSharedDecoders(const VideoInfo& aConfig) const {
-    return true;
+    return !AgnosticMimeType(aConfig.mMimeType);
   }
 
 protected:
@@ -133,7 +134,7 @@ protected:
   CreateVideoDecoder(const VideoInfo& aConfig,
                      layers::LayersBackend aLayersBackend,
                      layers::ImageContainer* aImageContainer,
-                     FlushableMediaTaskQueue* aVideoTaskQueue,
+                     FlushableTaskQueue* aVideoTaskQueue,
                      MediaDataDecoderCallback* aCallback) = 0;
 
   // Creates an Audio decoder with the specified properties.
@@ -148,7 +149,7 @@ protected:
   // This is called on the decode task queue.
   virtual already_AddRefed<MediaDataDecoder>
   CreateAudioDecoder(const AudioInfo& aConfig,
-                     FlushableMediaTaskQueue* aAudioTaskQueue,
+                     FlushableTaskQueue* aAudioTaskQueue,
                      MediaDataDecoderCallback* aCallback) = 0;
 
   // Caches pref media.fragmented-mp4.use-blank-decoder
@@ -158,6 +159,9 @@ protected:
   static bool sAndroidMCDecoderPreferred;
   static bool sAndroidMCDecoderEnabled;
   static bool sGMPDecoderEnabled;
+  static bool sEnableFuzzingWrapper;
+  static uint32_t sVideoOutputMinimumInterval_ms;
+  static bool sDontDelayInputExhausted;
 };
 
 // A callback used by MediaDataDecoder to return output/errors to the
@@ -198,7 +202,7 @@ public:
 // should (like in Flush()).
 //
 // Decoding is done asynchronously. Any async work can be done on the
-// MediaTaskQueue passed into the PlatformDecoderModules's Create*Decoder()
+// TaskQueue passed into the PlatformDecoderModules's Create*Decoder()
 // function. This may not be necessary for platforms with async APIs
 // for decoding.
 class MediaDataDecoder {
@@ -206,16 +210,24 @@ protected:
   virtual ~MediaDataDecoder() {};
 
 public:
+  enum DecoderFailureReason {
+    INIT_ERROR,
+    CANCELED
+  };
+
+  typedef TrackInfo::TrackType TrackType;
+  typedef MozPromise<TrackType, DecoderFailureReason, /* IsExclusive = */ true> InitPromise;
+
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaDataDecoder)
 
-  // Initialize the decoder. The decoder should be ready to decode after
-  // this returns. The decoder should do any initialization here, rather
+  // Initialize the decoder. The decoder should be ready to decode once
+  // promise resolves. The decoder should do any initialization here, rather
   // than in its constructor or PlatformDecoderModule::Create*Decoder(),
   // so that if the MP4Reader needs to shutdown during initialization,
   // it can call Shutdown() to cancel this operation. Any initialization
   // that requires blocking the calling thread in this function *must*
   // be done here so that it can be canceled by calling Shutdown()!
-  virtual nsresult Init() = 0;
+  virtual nsRefPtr<InitPromise> Init() = 0;
 
   // Inserts a sample into the decoder's decode pipeline.
   virtual nsresult Input(MediaRawData* aSample) = 0;
@@ -250,7 +262,9 @@ public:
   virtual nsresult Shutdown() = 0;
 
   // Called from the state machine task queue or main thread.
-  virtual bool IsHardwareAccelerated() const { return false; }
+  // Decoder needs to decide whether or not hardware accelearation is supported
+  // after creating. It doesn't need to call Init() before calling this function.
+  virtual bool IsHardwareAccelerated(nsACString& aFailureReason) const { return false; }
 
   // ConfigurationChanged will be called to inform the video or audio decoder
   // that the format of the next input sample is about to change.

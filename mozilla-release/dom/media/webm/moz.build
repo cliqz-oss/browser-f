@@ -6,9 +6,11 @@
 
 EXPORTS += [
     'IntelWebMVideoDecoder.h',
+    'NesteggPacketHolder.h',
     'SoftwareWebMVideoDecoder.h',
     'WebMBufferedParser.h',
     'WebMDecoder.h',
+    'WebMDemuxer.h',
     'WebMReader.h',
 ]
 
@@ -17,6 +19,7 @@ UNIFIED_SOURCES += [
     'SoftwareWebMVideoDecoder.cpp',
     'WebMBufferedParser.cpp',
     'WebMDecoder.cpp',
+    'WebMDemuxer.cpp',
     'WebMReader.cpp',
 ]
 
@@ -31,7 +34,5 @@ if CONFIG['MOZ_WEBM_ENCODER']:
     ]
 
 CXXFLAGS += CONFIG['MOZ_LIBVPX_CFLAGS']
-
-FAIL_ON_WARNINGS = True
 
 FINAL_LIBRARY = 'xul'

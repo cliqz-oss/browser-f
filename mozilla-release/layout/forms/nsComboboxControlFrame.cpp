@@ -316,9 +316,8 @@ nsComboboxControlFrame::ShowPopup(bool aShowPopup)
 
   // fire a popup dom event
   nsEventStatus status = nsEventStatus_eIgnore;
-  WidgetMouseEvent event(true, aShowPopup ?
-                         NS_XUL_POPUP_SHOWING : NS_XUL_POPUP_HIDING, nullptr,
-                         WidgetMouseEvent::eReal);
+  WidgetMouseEvent event(true, aShowPopup ? eXULPopupShowing : eXULPopupHiding,
+                         nullptr, WidgetMouseEvent::eReal);
 
   nsCOMPtr<nsIPresShell> shell = PresContext()->GetPresShell();
   if (shell)
@@ -463,19 +462,20 @@ nsComboboxControlFrame::ReflowDropdown(nsPresContext*  aPresContext,
 
   //XXX Can this be different from the dropdown's writing mode?
   // That would be odd!
-  // Note that we don't need to pass the true frame position or container width
+  // Note that we don't need to pass the true frame position or container size
   // to ReflowChild or FinishReflowChild here; it will be positioned as needed
   // by AbsolutelyPositionDropDown().
   WritingMode outerWM = GetWritingMode();
+  const nsSize dummyContainerSize;
   nsHTMLReflowMetrics desiredSize(aReflowState);
   nsReflowStatus ignoredStatus;
   ReflowChild(mDropdownFrame, aPresContext, desiredSize,
-              kidReflowState, outerWM, LogicalPoint(outerWM), 0,
-              flags, ignoredStatus);
+              kidReflowState, outerWM, LogicalPoint(outerWM),
+              dummyContainerSize, flags, ignoredStatus);
 
    // Set the child's width and height to its desired size
   FinishReflowChild(mDropdownFrame, aPresContext, desiredSize, &kidReflowState,
-                    outerWM, LogicalPoint(outerWM), 0, flags);
+                    outerWM, LogicalPoint(outerWM), dummyContainerSize, flags);
 }
 
 nsPoint
@@ -575,16 +575,19 @@ nsComboboxControlFrame::GetAvailableDropdownSpace(WritingMode aWM,
   // Normal frame geometry (eg GetOffsetTo, mRect) doesn't include transforms.
   // In the special case that our transform is only a 2D translation we
   // introduce this hack so that the dropdown will show up in the right place.
-  *aTranslation = LogicalPoint(aWM, GetCSSTransformTranslation(), 0);
+  // Use null container size when converting a vector from logical to physical.
+  const nsSize nullContainerSize;
+  *aTranslation = LogicalPoint(aWM, GetCSSTransformTranslation(),
+                               nullContainerSize);
   *aBefore = 0;
   *aAfter = 0;
 
   nsRect screen = nsFormControlFrame::GetUsableScreenRect(PresContext());
-  nscoord containerWidth = screen.width;
-  LogicalRect logicalScreen(aWM, screen, containerWidth);
+  nsSize containerSize = screen.Size();
+  LogicalRect logicalScreen(aWM, screen, containerSize);
   if (mLastDropDownAfterScreenBCoord == nscoord_MIN) {
     LogicalRect thisScreenRect(aWM, GetScreenRectInAppUnits(),
-                               containerWidth);
+                               containerSize);
     mLastDropDownAfterScreenBCoord = thisScreenRect.BEnd(aWM) +
                                      aTranslation->B(aWM);
     mLastDropDownBeforeScreenBCoord = thisScreenRect.BEnd(aWM) +
@@ -597,7 +600,7 @@ nsComboboxControlFrame::GetAvailableDropdownSpace(WritingMode aWM,
   if (root) {
     minBCoord = LogicalRect(aWM,
                             root->GetScreenRectInAppUnits(),
-                            containerWidth).BStart(aWM);
+                            containerSize).BStart(aWM);
     if (mLastDropDownAfterScreenBCoord < minBCoord) {
       // Don't allow the drop-down to be placed before the content area.
       return;
@@ -669,12 +672,12 @@ nsComboboxControlFrame::AbsolutelyPositionDropDown()
 
   // Don't position the view unless the position changed since it might cause
   // a call to NotifyGeometryChange() and an infinite loop here.
-  nscoord containerWidth = GetRect().width;
+  nsSize containerSize = GetSize();
   const LogicalPoint currentPos =
-    mDropdownFrame->GetLogicalPosition(containerWidth);
+    mDropdownFrame->GetLogicalPosition(containerSize);
   const LogicalPoint newPos = dropdownPosition + translation;
   if (currentPos != newPos) {
-    mDropdownFrame->SetPosition(wm, newPos, containerWidth);
+    mDropdownFrame->SetPosition(wm, newPos, containerSize);
     nsContainerFrame::PositionFrameView(mDropdownFrame);
   }
   return eDropDownPositionFinal;
@@ -729,7 +732,7 @@ nsComboboxControlFrame::GetIntrinsicISize(nsRenderingContext* aRenderingContext,
     nsIScrollableFrame* scrollable = do_QueryFrame(mListControlFrame);
     NS_ASSERTION(scrollable, "List must be a scrollable frame");
     scrollbarWidth = scrollable->GetNondisappearingScrollbarWidth(
-      presContext, aRenderingContext);
+      presContext, aRenderingContext, GetWritingMode());
   }
 
   nscoord displayISize = 0;
@@ -844,6 +847,7 @@ nsComboboxControlFrame::Reflow(nsPresContext*          aPresContext,
 
   // Get the width of the vertical scrollbar.  That will be the inline
   // size of the dropdown button.
+  WritingMode wm = aReflowState.GetWritingMode();
   nscoord buttonISize;
   const nsStyleDisplay *disp = StyleDisplay();
   if ((IsThemed(disp) && !aPresContext->GetTheme()->ThemeNeedsComboboxDropmarker()) ||
@@ -854,7 +858,7 @@ nsComboboxControlFrame::Reflow(nsPresContext*          aPresContext,
     nsIScrollableFrame* scrollable = do_QueryFrame(mListControlFrame);
     NS_ASSERTION(scrollable, "List must be a scrollable frame");
     buttonISize = scrollable->GetNondisappearingScrollbarWidth(
-      PresContext(), aReflowState.rendContext);
+      PresContext(), aReflowState.rendContext, wm);
     if (buttonISize > aReflowState.ComputedISize()) {
       buttonISize = 0;
     }
@@ -865,10 +869,8 @@ nsComboboxControlFrame::Reflow(nsPresContext*          aPresContext,
   nsBlockFrame::Reflow(aPresContext, aDesiredSize, aReflowState, aStatus);
 
   // The button should occupy the same space as a scrollbar
-  WritingMode wm = aReflowState.GetWritingMode();
-  nscoord containerWidth = aReflowState.ComputedWidth() +
-    aReflowState.ComputedPhysicalBorderPadding().LeftRight();
-  LogicalRect buttonRect = mButtonFrame->GetLogicalRect(containerWidth);
+  nsSize containerSize = aDesiredSize.PhysicalSize();
+  LogicalRect buttonRect = mButtonFrame->GetLogicalRect(containerSize);
 
   buttonRect.IStart(wm) =
     aReflowState.ComputedLogicalBorderPadding().IStartEnd(wm) +
@@ -881,7 +883,7 @@ nsComboboxControlFrame::Reflow(nsPresContext*          aPresContext,
   buttonRect.BSize(wm) = mDisplayFrame->BSize(wm) +
                          this->GetLogicalUsedPadding(wm).BStartEnd(wm);
 
-  mButtonFrame->SetRect(buttonRect, containerWidth);
+  mButtonFrame->SetRect(buttonRect, containerSize);
 
   if (!NS_INLINE_IS_BREAK_BEFORE(aStatus) &&
       !NS_FRAME_IS_FULLY_COMPLETE(aStatus)) {
@@ -1130,7 +1132,7 @@ nsComboboxControlFrame::HandleEvent(nsPresContext* aPresContext,
   }
 
 #if COMBOBOX_ROLLUP_CONSUME_EVENT == 0
-  if (aEvent->message == NS_MOUSE_BUTTON_DOWN) {
+  if (aEvent->mMessage == eMouseDown) {
     nsIWidget* widget = GetNearestWidget();
     if (widget && GetContent() == widget->GetLastRollup()) {
       // This event did a Rollup on this control - prevent it from opening
@@ -1217,6 +1219,14 @@ nsComboboxControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   // Set tabindex="-1" so that the button is not tabbable
   mButtonContent->SetAttr(kNameSpaceID_None, nsGkAtoms::tabindex,
                           NS_LITERAL_STRING("-1"), false);
+
+  WritingMode wm = GetWritingMode();
+  if (wm.IsVertical()) {
+    mButtonContent->SetAttr(kNameSpaceID_None, nsGkAtoms::orientation,
+                            wm.IsVerticalRL() ? NS_LITERAL_STRING("left")
+                                              : NS_LITERAL_STRING("right"),
+                            false);
+  }
 
   if (!aElements.AppendElement(mButtonContent))
     return NS_ERROR_OUT_OF_MEMORY;

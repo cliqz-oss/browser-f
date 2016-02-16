@@ -5,15 +5,21 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORTS += [
+    'agnostic/OpusDecoder.h',
+    'agnostic/VorbisDecoder.h',
+    'agnostic/VPXDecoder.h',
     'PlatformDecoderModule.h',
-    'SharedDecoderManager.h',
+    'wrappers/FuzzingWrapper.h',
     'wrappers/H264Converter.h'
 ]
 
 UNIFIED_SOURCES += [
     'agnostic/BlankDecoderModule.cpp',
+    'agnostic/OpusDecoder.cpp',
+    'agnostic/VorbisDecoder.cpp',
+    'agnostic/VPXDecoder.cpp',
     'PlatformDecoderModule.cpp',
-    'SharedDecoderManager.cpp',
+    'wrappers/FuzzingWrapper.cpp',
     'wrappers/H264Converter.cpp'
 ]
 
@@ -30,7 +36,6 @@ if CONFIG['MOZ_FFMPEG']:
         'ffmpeg/FFmpegRuntimeLinker.h',
     ]
     UNIFIED_SOURCES += [
-        'ffmpeg/FFmpegLog.cpp',
         'ffmpeg/FFmpegRuntimeLinker.cpp',
     ]
     DIRS += [
@@ -74,8 +79,3 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     ]
 
 FINAL_LIBRARY = 'xul'
-
-FAIL_ON_WARNINGS = True
-
-if CONFIG['OS_ARCH'] == 'WINNT':
-    DEFINES['NOMINMAX'] = True

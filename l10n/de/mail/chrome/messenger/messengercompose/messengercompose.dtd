@@ -215,6 +215,7 @@
 <!ENTITY addressButton.tooltip "Kontakte-Sidebar ein-/ausblenden">
 <!ENTITY attachButton.tooltip "Datei-Anhang zu dieser Nachricht anfügen">
 <!ENTITY spellingButton.tooltip "Rechtschreibung der Auswahl oder der gesamten Nachricht prüfen">
+<!ENTITY statusLanguageText.tooltip "Sprache für Rechtschreibprüfung">
 <!ENTITY saveButton.tooltip "Diese Nachricht speichern">
 <!ENTITY cutButton.tooltip              "Ausschneiden">
 <!ENTITY copyButton.tooltip             "Kopieren">

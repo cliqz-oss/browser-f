@@ -5,14 +5,14 @@
  * Tests that when displaying only content nodes, platform nodes are generalized.
  */
 
-let { CATEGORY_MASK } = devtools.require("devtools/performance/global");
+var { CATEGORY_MASK } = require("devtools/performance/global");
 
 function run_test() {
   run_next_test();
 }
 
 add_task(function test() {
-  let { ThreadNode } = devtools.require("devtools/performance/tree-model");
+  let { ThreadNode } = require("devtools/performance/tree-model");
   let url = (n) => `http://content/${n}`;
 
   // Create a root node from a given samples array.
@@ -52,7 +52,7 @@ add_task(function test() {
      "generalized frames of same type are duplicated in top-down view");
 });
 
-let gThread = synthesizeProfileForTest([{
+var gThread = synthesizeProfileForTest([{
   time: 5,
   frames: [
     { location: "(root)" },

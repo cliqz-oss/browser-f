@@ -34,7 +34,7 @@
 using namespace mozilla;
 using namespace mozilla::a11y;
 
-AccessibleWrap::EAvailableAtkSignals AccessibleWrap::gAvailableAtkSignals =
+MaiAtkObject::EAvailableAtkSignals MaiAtkObject::gAvailableAtkSignals =
   eUnknown;
 
 //defined in ApplicationAccessibleWrap.cpp
@@ -822,12 +822,20 @@ getParentCB(AtkObject *aAtkObj)
 gint
 getChildCountCB(AtkObject *aAtkObj)
 {
-    AccessibleWrap* accWrap = GetAccessibleWrap(aAtkObj);
-    if (!accWrap || nsAccUtils::MustPrune(accWrap)) {
-        return 0;
+  if (AccessibleWrap* accWrap = GetAccessibleWrap(aAtkObj)) {
+    if (nsAccUtils::MustPrune(accWrap)) {
+      return 0;
     }
 
     return static_cast<gint>(accWrap->EmbeddedChildCount());
+  }
+
+  ProxyAccessible* proxy = GetProxy(aAtkObj);
+  if (proxy && !proxy->MustPruneChildren()) {
+    return proxy->EmbeddedChildCount();
+  }
+
+  return 0;
 }
 
 AtkObject *
@@ -1034,14 +1042,17 @@ refRelationSetCB(AtkObject *aAtkObj)
 AccessibleWrap*
 GetAccessibleWrap(AtkObject* aAtkObj)
 {
-  NS_ENSURE_TRUE(IS_MAI_OBJECT(aAtkObj), nullptr);
+  bool isMAIObject = IS_MAI_OBJECT(aAtkObj);
+  NS_ENSURE_TRUE(isMAIObject || MAI_IS_ATK_SOCKET(aAtkObj),
+                 nullptr);
 
-  // Make sure its native is an AccessibleWrap not a proxy.
-  if (MAI_ATK_OBJECT(aAtkObj)->accWrap & IS_PROXY)
+  uintptr_t accWrapPtr = isMAIObject ?
+    MAI_ATK_OBJECT(aAtkObj)->accWrap :
+    reinterpret_cast<uintptr_t>(MAI_ATK_SOCKET(aAtkObj)->accWrap);
+  if (accWrapPtr & IS_PROXY)
     return nullptr;
 
-    AccessibleWrap* accWrap =
-      reinterpret_cast<AccessibleWrap*>(MAI_ATK_OBJECT(aAtkObj)->accWrap);
+  AccessibleWrap* accWrap = reinterpret_cast<AccessibleWrap*>(accWrapPtr);
 
   // Check if the accessible was deconstructed.
   if (!accWrap)
@@ -1059,7 +1070,8 @@ GetAccessibleWrap(AtkObject* aAtkObj)
 ProxyAccessible*
 GetProxy(AtkObject* aObj)
 {
-  if (!aObj || !(MAI_ATK_OBJECT(aObj)->accWrap & IS_PROXY))
+  if (!aObj || !IS_MAI_OBJECT(aObj) ||
+      !(MAI_ATK_OBJECT(aObj)->accWrap & IS_PROXY))
     return nullptr;
 
   return reinterpret_cast<ProxyAccessible*>(MAI_ATK_OBJECT(aObj)->accWrap
@@ -1081,19 +1093,19 @@ GetInterfacesForProxy(ProxyAccessible* aProxy, uint32_t aInterfaces)
         | (1 << MAI_INTERFACE_EDITABLE_TEXT);
 
   if (aInterfaces & Interfaces::HYPERLINK)
-    interfaces |= MAI_INTERFACE_HYPERLINK_IMPL;
+    interfaces |= 1 << MAI_INTERFACE_HYPERLINK_IMPL;
 
   if (aInterfaces & Interfaces::VALUE)
-    interfaces |= MAI_INTERFACE_VALUE;
+    interfaces |= 1 << MAI_INTERFACE_VALUE;
 
   if (aInterfaces & Interfaces::TABLE)
-    interfaces |= MAI_INTERFACE_TABLE;
+    interfaces |= 1 << MAI_INTERFACE_TABLE;
 
   if (aInterfaces & Interfaces::IMAGE)
-    interfaces |= MAI_INTERFACE_IMAGE;
+    interfaces |= 1 << MAI_INTERFACE_IMAGE;
 
   if (aInterfaces & Interfaces::DOCUMENT)
-    interfaces |= MAI_INTERFACE_DOCUMENT;
+    interfaces |= 1 << MAI_INTERFACE_DOCUMENT;
 
   return interfaces;
 }
@@ -1132,6 +1144,10 @@ AccessibleWrap::HandleAccEvent(AccEvent* aEvent)
   nsresult rv = Accessible::HandleAccEvent(aEvent);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  if (IPCAccessibilityActive()) {
+    return NS_OK;
+  }
+
     Accessible* accessible = aEvent->GetAccessible();
     NS_ENSURE_TRUE(accessible, NS_ERROR_FAILURE);
 
@@ -1169,7 +1185,18 @@ AccessibleWrap::HandleAccEvent(AccEvent* aEvent)
 
     case nsIAccessibleEvent::EVENT_TEXT_REMOVED:
     case nsIAccessibleEvent::EVENT_TEXT_INSERTED:
-        return FireAtkTextChangedEvent(aEvent, atkObj);
+      {
+        AccTextChangeEvent* event = downcast_accEvent(aEvent);
+        NS_ENSURE_TRUE(event, NS_ERROR_FAILURE);
+
+        MAI_ATK_OBJECT(atkObj)-> FireTextChangeEvent(event->ModifiedText(),
+                                                     event->GetStartOffset(),
+                                                     event->GetLength(),
+                                                     event->IsTextInserted(),
+                                                     event->IsFromUserInput());
+
+        return NS_OK;
+      }
 
     case nsIAccessibleEvent::EVENT_FOCUS:
       {
@@ -1455,6 +1482,15 @@ MaiAtkObject::FireStateChangeEvent(uint64_t aState, bool aEnabled)
     }
 }
 
+void
+a11y::ProxyTextChangeEvent(ProxyAccessible* aTarget, const nsString& aStr,
+                           int32_t aStart, uint32_t aLen, bool aIsInsert,
+                           bool aFromUser)
+{
+  MaiAtkObject* atkObj = MAI_ATK_OBJECT(GetWrapperFor(aTarget));
+  atkObj->FireTextChangeEvent(aStr, aStart, aLen, aIsInsert, aFromUser);
+}
+
 #define OLD_TEXT_INSERTED "text_changed::insert"
 #define OLD_TEXT_REMOVED "text_changed::delete"
 static const char* oldTextChangeStrings[2][2] = {
@@ -1470,21 +1506,14 @@ static const char* textChangedStrings[2][2] = {
   { TEXT_REMOVED, TEXT_INSERTED}
 };
 
-nsresult
-AccessibleWrap::FireAtkTextChangedEvent(AccEvent* aEvent,
-                                        AtkObject* aObject)
+void
+MaiAtkObject::FireTextChangeEvent(const nsString& aStr, int32_t aStart,
+                                  uint32_t aLen, bool aIsInsert,
+                                  bool aFromUser)
 {
-    AccTextChangeEvent* event = downcast_accEvent(aEvent);
-    NS_ENSURE_TRUE(event, NS_ERROR_FAILURE);
-
-    int32_t start = event->GetStartOffset();
-    uint32_t length = event->GetLength();
-    bool isInserted = event->IsTextInserted();
-    bool isFromUserInput = aEvent->IsFromUserInput();
-
   if (gAvailableAtkSignals == eUnknown)
     gAvailableAtkSignals =
-      g_signal_lookup("text-insert", G_OBJECT_TYPE(aObject)) ?
+      g_signal_lookup("text-insert", G_OBJECT_TYPE(this)) ?
         eHaveNewAtkTextSignals : eNoNewAtkSignals;
 
   if (gAvailableAtkSignals == eNoNewAtkSignals) {
@@ -1492,18 +1521,14 @@ AccessibleWrap::FireAtkTextChangedEvent(AccEvent* aEvent,
     // stop supporting old atk since it doesn't really work anyway
     // see bug 619002
     const char* signal_name =
-      oldTextChangeStrings[isFromUserInput][isInserted];
-    g_signal_emit_by_name(aObject, signal_name, start, length);
+      oldTextChangeStrings[aFromUser][aIsInsert];
+    g_signal_emit_by_name(this, signal_name, aStart, aLen);
   } else {
-    nsAutoString text;
-    event->GetModifiedText(text);
     const char* signal_name =
-      textChangedStrings[isFromUserInput][isInserted];
-    g_signal_emit_by_name(aObject, signal_name, start, length,
-                          NS_ConvertUTF16toUTF8(text).get());
+      textChangedStrings[aFromUser][aIsInsert];
+    g_signal_emit_by_name(this, signal_name, aStart, aLen,
+                          NS_ConvertUTF16toUTF8(aStr).get());
   }
-
-  return NS_OK;
 }
 
 #define ADD_EVENT "children_changed::add"

@@ -85,6 +85,7 @@ EXPORTS.mozilla += [
     'CSSVariableResolver.h',
     'CSSVariableValues.h',
     'IncrementalClearCOMRuleArray.h',
+    'LayerAnimationInfo.h',
     'RuleNodeCacheConditions.h',
     'RuleProcessorCache.h',
     'StyleAnimationValue.h',
@@ -126,9 +127,11 @@ UNIFIED_SOURCES += [
     'Declaration.cpp',
     'ErrorReporter.cpp',
     'FontFace.cpp',
+    'FontFaceSet.cpp',
     'FontFaceSetIterator.cpp',
     'ImageLoader.cpp',
     'IncrementalClearCOMRuleArray.cpp',
+    'LayerAnimationInfo.cpp',
     'Loader.cpp',
     'MediaQueryList.cpp',
     'nsAnimationManager.cpp',
@@ -172,10 +175,8 @@ UNIFIED_SOURCES += [
     'SVGAttrAnimationRuleProcessor.cpp',
 ]
 
-# FontFaceSet.cpp needs to be built separately because it redefines LOG.
 # nsCSSRuleProcessor.cpp needs to be built separately because it uses plarena.h.
 SOURCES += [
-    'FontFaceSet.cpp',
     'nsCSSRuleProcessor.cpp',
 ]
 
@@ -183,8 +184,6 @@ EXTRA_COMPONENTS += [
     'CSSUnprefixingService.js',
     'CSSUnprefixingService.manifest',
 ]
-
-FAIL_ON_WARNINGS = True
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
@@ -199,6 +198,7 @@ LOCAL_INCLUDES += [
     '/dom/html',
     '/dom/xbl',
     '/dom/xul',
+    '/image',
 ]
 
 JAR_MANIFESTS += ['jar.mn']

@@ -24,6 +24,7 @@
 
 #include "WorkerPrivate.h"
 #include "WorkerRunnable.h"
+#include "WorkerScope.h"
 
 BEGIN_WORKERS_NAMESPACE
 using mozilla::dom::GlobalObject;
@@ -259,11 +260,12 @@ public:
 
     nsRefPtr<mozilla::dom::URL> url;
     if (mBaseProxy) {
-      url = mozilla::dom::URL::Constructor(mURL, mBaseProxy->URI(), mRv);
+      url = mozilla::dom::URL::Constructor(nullptr, mURL, mBaseProxy->URI(),
+                                           mRv);
     } else if (!mBase.IsVoid()) {
-      url = mozilla::dom::URL::Constructor(mURL, mBase, mRv);
+      url = mozilla::dom::URL::Constructor(nullptr, mURL, mBase, mRv);
     } else {
-      url = mozilla::dom::URL::Constructor(mURL, nullptr, mRv);
+      url = mozilla::dom::URL::Constructor(nullptr, mURL, nullptr, mRv);
     }
 
     if (mRv.Failed()) {
@@ -480,7 +482,7 @@ private:
   mozilla::ErrorResult& mRv;
 };
 
-NS_IMPL_CYCLE_COLLECTION(URL, mSearchParams)
+NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(URL, mSearchParams)
 
 // The reason for using worker::URL is to have different refcnt logging than
 // for main thread URL.
@@ -488,6 +490,7 @@ NS_IMPL_CYCLE_COLLECTING_ADDREF(workers::URL)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(workers::URL)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(URL)
+  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
@@ -580,10 +583,10 @@ URL::~URL()
   }
 }
 
-bool
-URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto, JS::MutableHandle<JSObject*> aReflector)
+JSObject*
+URL::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aGivenProto)
 {
-  return URLBinding_workers::Wrap(aCx, this, aGivenProto, aReflector);
+  return URLBinding_workers::Wrap(aCx, this, aGivenProto);
 }
 
 void
@@ -952,7 +955,7 @@ void
 URL::CreateSearchParamsIfNeeded()
 {
   if (!mSearchParams) {
-    mSearchParams = new URLSearchParams(this);
+    mSearchParams = new URLSearchParams(nullptr, this);
     UpdateURLSearchParams();
   }
 }

@@ -6,10 +6,10 @@
 #include "mozilla/Preferences.h"
 #include "MediaResource.h"
 #include "mozilla/dom/HTMLMediaElement.h"
+#include "mozilla/Services.h"
 #include "AndroidMediaPluginHost.h"
 #include "nsXPCOMStrings.h"
 #include "nsISeekableStream.h"
-#include "AndroidMediaReader.h"
 #include "nsIGfxInfo.h"
 #include "gfxCrashReporterUtils.h"
 #include "prmem.h"
@@ -111,7 +111,7 @@ static bool IsOmxSupported()
   ScopedGfxFeatureReporter reporter("Stagefright", forceEnabled);
 
   if (!forceEnabled) {
-    nsCOMPtr<nsIGfxInfo> gfxInfo = do_GetService("@mozilla.org/gfx/info;1");
+    nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
     if (gfxInfo) {
       int32_t status;
       if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_STAGEFRIGHT, &status))) {
@@ -287,7 +287,6 @@ MPAPI::Decoder *AndroidMediaPluginHost::CreateDecoder(MediaResource *aResource, 
 
     decoder->mResource = strdup(url.get());
     if (plugin->CreateDecoder(&sPluginHost, decoder, chars, len)) {
-      aResource->AddRef();
       return decoder.forget();
     }
   }

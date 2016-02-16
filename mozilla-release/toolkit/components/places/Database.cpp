@@ -11,6 +11,7 @@
 #include "nsINavBookmarksService.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIFile.h"
+#include "nsIWritablePropertyBag2.h"
 
 #include "nsNavHistory.h"
 #include "nsPlacesTables.h"
@@ -290,7 +291,7 @@ CreateRoot(nsCOMPtr<mozIStorageConnection>& aDBConn,
 }
 
 
-} // Anonymous namespace
+} // namespace
 
 /**
  * An AsyncShutdown blocker in charge of shutting down places
@@ -582,7 +583,7 @@ Database::Database()
   , mClosed(false)
   , mConnectionShutdown(new DatabaseShutdown(this))
 {
-  MOZ_ASSERT(XRE_GetProcessType() != GeckoProcessType_Content,
+  MOZ_ASSERT(!XRE_IsContentProcess(),
              "Cannot instantiate Places in the content process");
   // Attempting to create two instances of the service?
   MOZ_ASSERT(!gDatabase);
