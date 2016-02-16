@@ -22,7 +22,7 @@ namespace gl {
 class GLContext;
 class SharedSurface;
 class SurfaceFactory;
-}
+} // namespace gl
 
 namespace layers {
 
@@ -49,7 +49,7 @@ public:
     return gfx::SurfaceFormat::UNKNOWN;
   }
 
-  virtual TemporaryRef<TextureClient>
+  virtual already_AddRefed<TextureClient>
   CreateSimilar(TextureFlags, TextureAllocationFlags) const override {
     return nullptr;
   }

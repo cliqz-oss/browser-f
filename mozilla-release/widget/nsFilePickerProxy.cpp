@@ -6,7 +6,6 @@
 
 #include "nsFilePickerProxy.h"
 #include "nsComponentManagerUtils.h"
-#include "nsNetUtil.h"
 #include "nsIFile.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/TabChild.h"
@@ -100,7 +99,6 @@ nsFilePickerProxy::SetFilterIndex(int32_t aFilterIndex)
   return NS_OK;
 }
 
-/* readonly attribute nsIFile file; */
 NS_IMETHODIMP
 nsFilePickerProxy::GetFile(nsIFile** aFile)
 {
@@ -108,7 +106,6 @@ nsFilePickerProxy::GetFile(nsIFile** aFile)
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute nsIFileURL fileURL; */
 NS_IMETHODIMP
 nsFilePickerProxy::GetFileURL(nsIURI** aFileURL)
 {
@@ -116,7 +113,6 @@ nsFilePickerProxy::GetFileURL(nsIURI** aFileURL)
   return NS_ERROR_FAILURE;
 }
 
-/* readonly attribute nsISimpleEnumerator files; */
 NS_IMETHODIMP
 nsFilePickerProxy::GetFiles(nsISimpleEnumerator** aFiles)
 {
@@ -231,7 +227,7 @@ private:
 
 NS_IMPL_ISUPPORTS(SimpleEnumerator, nsISimpleEnumerator)
 
-} // anonymous namespace
+} // namespace
 
 NS_IMETHODIMP
 nsFilePickerProxy::GetDomfiles(nsISimpleEnumerator** aDomfiles)

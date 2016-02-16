@@ -1,4 +1,4 @@
-FROM          32bit/ubuntu:14.04
+FROM          quay.io/mrrrgn/ubuntu32:14.04
 MAINTAINER    Morgan Reece Phillips <winter2718@gmail.com>
 
 ### add worker user and setup its workspace
@@ -11,7 +11,7 @@ RUN           bash /tmp/system-setup.sh
 # configure git and install tc-vcs
 RUN git config --global user.email "nobody@mozilla.com" && \
     git config --global user.name "mozilla"
-RUN npm install -g taskcluster-vcs@2.3.6
+RUN npm install -g taskcluster-vcs@2.3.12
 
 # Ensure that build specific dependencies live in a single layer
 ADD           build-setup.sh   /tmp/build-setup.sh

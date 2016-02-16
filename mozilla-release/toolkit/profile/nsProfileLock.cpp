@@ -34,6 +34,10 @@
 #include <rmsdef.h>
 #endif
 
+#if defined(MOZ_WIDGET_GONK) && !defined(MOZ_CRASHREPORTER)
+#include <sys/syscall.h>
+#endif
+
 // **********************************************************************
 // class nsProfileLock
 //
@@ -192,6 +196,27 @@ void nsProfileLock::FatalSignalHandler(int signo
         }
     }
 
+#ifdef MOZ_WIDGET_GONK
+    switch (signo) {
+        case SIGQUIT:
+        case SIGILL:
+        case SIGABRT:
+        case SIGSEGV:
+#ifndef MOZ_CRASHREPORTER
+            // Retrigger the signal for those that can generate a core dump
+            signal(signo, SIG_DFL);
+            if (info->si_code <= 0) {
+                if (syscall(__NR_tgkill, getpid(), syscall(__NR_gettid), signo) < 0) {
+                    break;
+                }
+            }
+#endif
+            return;
+        default:
+            break;
+    }
+#endif
+
     // Backstop exit call, just in case.
     _exit(signo);
 }
@@ -277,7 +302,7 @@ static bool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
                     // so the process that created this obsolete lock must be gone
                     return true;
                 }
-                    
+
                 char *after = nullptr;
                 pid_t pid = strtol(colon, &after, 0);
                 if (pid != 0 && *after == '\0')
@@ -287,7 +312,7 @@ static bool IsSymlinkStaleLock(struct in_addr* aAddr, const char* aFileName,
                         // Remote lock: give up even if stuck.
                         return false;
                     }
-    
+
                     // kill(pid,0) is a neat trick to check if a
                     // process exists
                     if (kill(pid, 0) == 0 || errno != ESRCH)
@@ -464,7 +489,7 @@ nsresult nsProfileLock::Lock(nsIFile* aProfileDir,
     rv = lockFile->Append(LOCKFILE_NAME);
     if (NS_FAILED(rv))
         return rv;
-        
+
 #if defined(XP_MACOSX)
     // First, try locking using fcntl. It is more reliable on
     // a local machine, but may not be supported by an NFS server.
@@ -476,7 +501,7 @@ nsresult nsProfileLock::Lock(nsIFile* aProfileDir,
         // assume we tried an NFS that does not support it. Now, try with symlink.
         rv = LockWithSymlink(lockFile, false);
     }
-    
+
     if (NS_SUCCEEDED(rv))
     {
         // Check for the old-style lock used by pre-mozilla 1.3 builds.

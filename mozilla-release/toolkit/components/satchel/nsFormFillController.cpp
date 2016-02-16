@@ -114,7 +114,8 @@ void
 nsFormFillController::AttributeChanged(nsIDocument* aDocument,
                                        mozilla::dom::Element* aElement,
                                        int32_t aNameSpaceID,
-                                       nsIAtom* aAttribute, int32_t aModType)
+                                       nsIAtom* aAttribute, int32_t aModType,
+                                       const nsAttrValue* aOldValue)
 {
   if ((aAttribute == nsGkAtoms::type || aAttribute == nsGkAtoms::readonly ||
        aAttribute == nsGkAtoms::autocomplete) &&
@@ -188,7 +189,8 @@ void
 nsFormFillController::AttributeWillChange(nsIDocument* aDocument,
                                           mozilla::dom::Element* aElement,
                                           int32_t aNameSpaceID,
-                                          nsIAtom* aAttribute, int32_t aModType)
+                                          nsIAtom* aAttribute, int32_t aModType,
+                                          const nsAttrValue* aNewValue)
 {
 }
 
@@ -739,7 +741,7 @@ void nsFormFillController::RevalidateDataList()
     return;
   }
 
-  if (XRE_GetProcessType() == GeckoProcessType_Content) {
+  if (XRE_IsContentProcess()) {
     nsCOMPtr<nsIAutoCompleteController> controller(do_QueryInterface(mLastListener));
     if (!controller) {
       return;

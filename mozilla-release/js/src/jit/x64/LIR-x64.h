@@ -10,28 +10,6 @@
 namespace js {
 namespace jit {
 
-// Given a typed input, returns an untyped box.
-class LBox : public LInstructionHelper<1, 1, 0>
-{
-    MIRType type_;
-
-  public:
-    LIR_HEADER(Box)
-
-    LBox(MIRType type, const LAllocation& payload)
-      : type_(type)
-    {
-        setOperand(0, payload);
-    }
-
-    MIRType type() const {
-        return type_;
-    }
-    const char* extraName() const {
-        return StringFromMIRType(type_);
-    }
-};
-
 // Given an untyped input, guards on whether it's a specific type and returns
 // the unboxed payload.
 class LUnboxBase : public LInstructionHelper<1, 1, 0>
@@ -118,41 +96,6 @@ class LAsmJSLoadFuncPtr : public LInstructionHelper<1, 1, 1>
     }
     const LDefinition* temp() {
         return getTemp(0);
-    }
-};
-
-// Math.random().
-class LRandom : public LInstructionHelper<1, 0, 5>
-{
-  public:
-    LIR_HEADER(Random)
-    LRandom(const LDefinition &temp, const LDefinition &temp2, const LDefinition &temp3,
-            const LDefinition &temp4, const LDefinition &temp5)
-    {
-        setTemp(0, temp);
-        setTemp(1, temp2);
-        setTemp(2, temp3);
-        setTemp(3, temp4);
-        setTemp(4, temp5);
-    }
-    const LDefinition* temp() {
-        return getTemp(0);
-    }
-    const LDefinition* temp2() {
-        return getTemp(1);
-    }
-    const LDefinition *temp3() {
-        return getTemp(2);
-    }
-    const LDefinition *temp4() {
-        return getTemp(3);
-    }
-    const LDefinition *temp5() {
-        return getTemp(4);
-    }
-
-    MRandom* mir() const {
-        return mir_->toRandom();
     }
 };
 

@@ -404,13 +404,11 @@ private:
      */
     nsTArray<nsString> mNonExistingFonts;
 
-    typedef nsRefPtrHashtable<nsStringHashKey, gfxFontFamily> FontTable;
-
     /**
      * Table of font substitutes, we grab this from the registry to get
      * alternative font names.
      */
-    FontTable mFontSubstitutes;
+    FontFamilyTable mFontSubstitutes;
 
     virtual already_AddRefed<FontInfoData> CreateFontInfoData();
 

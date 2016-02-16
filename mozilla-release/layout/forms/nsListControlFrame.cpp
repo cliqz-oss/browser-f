@@ -881,7 +881,7 @@ nsListControlFrame::HandleEvent(nsPresContext* aPresContext,
 {
   NS_ENSURE_ARG_POINTER(aEventStatus);
 
-  /*const char * desc[] = {"NS_MOUSE_MOVE", 
+  /*const char * desc[] = {"eMouseMove", 
                           "NS_MOUSE_LEFT_BUTTON_UP",
                           "NS_MOUSE_LEFT_BUTTON_DOWN",
                           "<NA>","<NA>","<NA>","<NA>","<NA>","<NA>","<NA>",
@@ -890,19 +890,19 @@ nsListControlFrame::HandleEvent(nsPresContext* aPresContext,
                           "<NA>","<NA>","<NA>","<NA>","<NA>","<NA>","<NA>","<NA>",
                           "NS_MOUSE_RIGHT_BUTTON_UP",
                           "NS_MOUSE_RIGHT_BUTTON_DOWN",
-                          "NS_MOUSE_OVER",
-                          "NS_MOUSE_OUT",
+                          "eMouseOver",
+                          "eMouseOut",
                           "NS_MOUSE_LEFT_DOUBLECLICK",
                           "NS_MOUSE_MIDDLE_DOUBLECLICK",
                           "NS_MOUSE_RIGHT_DOUBLECLICK",
                           "NS_MOUSE_LEFT_CLICK",
                           "NS_MOUSE_MIDDLE_CLICK",
                           "NS_MOUSE_RIGHT_CLICK"};
-  int inx = aEvent->message-NS_MOUSE_MESSAGE_START;
-  if (inx >= 0 && inx <= (NS_MOUSE_RIGHT_CLICK-NS_MOUSE_MESSAGE_START)) {
-    printf("Mouse in ListFrame %s [%d]\n", desc[inx], aEvent->message);
+  int inx = aEvent->mMessage - eMouseEventFirst;
+  if (inx >= 0 && inx <= (NS_MOUSE_RIGHT_CLICK - eMouseEventFirst)) {
+    printf("Mouse in ListFrame %s [%d]\n", desc[inx], aEvent->mMessage);
   } else {
-    printf("Mouse in ListFrame <UNKNOWN> [%d]\n", aEvent->message);
+    printf("Mouse in ListFrame <UNKNOWN> [%d]\n", aEvent->mMessage);
   }*/
 
   if (nsEventStatus_eConsumeNoDefault == *aEventStatus)
@@ -1751,47 +1751,13 @@ nsListControlFrame::GetIndexFromDOMEvent(nsIDOMEvent* aMouseEvent,
     return NS_OK;
   }
 
-  int32_t numOptions = GetNumberOfOptions();
-  if (numOptions < 1)
-    return NS_ERROR_FAILURE;
-
-  nsPoint pt = nsLayoutUtils::GetDOMEventCoordinatesRelativeTo(aMouseEvent, this);
-
-  // If the event coordinate is above the first option frame, then target the
-  // first option frame
-  nsRefPtr<dom::HTMLOptionElement> firstOption = GetOption(0);
-  NS_ASSERTION(firstOption, "Can't find first option that's supposed to be there");
-  nsIFrame* optionFrame = firstOption->GetPrimaryFrame();
-  if (optionFrame) {
-    nsPoint ptInOptionFrame = pt - optionFrame->GetOffsetTo(this);
-    if (ptInOptionFrame.y < 0 && ptInOptionFrame.x >= 0 &&
-        ptInOptionFrame.x < optionFrame->GetSize().width) {
-      aCurIndex = 0;
-      return NS_OK;
-    }
-  }
-
-  nsRefPtr<dom::HTMLOptionElement> lastOption = GetOption(numOptions - 1);
-  // If the event coordinate is below the last option frame, then target the
-  // last option frame
-  NS_ASSERTION(lastOption, "Can't find last option that's supposed to be there");
-  optionFrame = lastOption->GetPrimaryFrame();
-  if (optionFrame) {
-    nsPoint ptInOptionFrame = pt - optionFrame->GetOffsetTo(this);
-    if (ptInOptionFrame.y >= optionFrame->GetSize().height && ptInOptionFrame.x >= 0 &&
-        ptInOptionFrame.x < optionFrame->GetSize().width) {
-      aCurIndex = numOptions - 1;
-      return NS_OK;
-    }
-  }
-
   return NS_ERROR_FAILURE;
 }
 
 static bool
 FireShowDropDownEvent(nsIContent* aContent)
 {
-  if (XRE_GetProcessType() == GeckoProcessType_Content &&
+  if (XRE_IsContentProcess() &&
       Preferences::GetBool("browser.tabs.remote.desktopbehavior", false)) {
     nsContentUtils::DispatchChromeEvent(aContent->OwnerDoc(), aContent,
                                         NS_LITERAL_STRING("mozshowdropdown"), true,

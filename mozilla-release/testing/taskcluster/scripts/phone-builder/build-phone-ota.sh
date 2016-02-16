@@ -4,7 +4,7 @@
 
 if [ $TARGET == "aries" -o $TARGET == "shinano" ]; then
   # caching objects might be dangerous for some devices (aka aries)
-  rm -rf $WORKSPACE/B2G/objdir*
+  rm -rf $gecko_objdir
   rm -rf $WORKSPACE/B2G/out
 fi
 
@@ -20,18 +20,13 @@ if [ 0$DOGFOOD -ne 1 -a $VARIANT != "user" ]; then
   PLATFORM=$PLATFORM-$VARIANT
 fi
 
-if ! test $MOZHARNESS_CONFIG; then
-  MOZHARNESS_CONFIG=b2g/taskcluster-phone-ota.py
-fi
-
-if ! test $BALROG_SERVER_CONFIG; then
-  BALROG_SERVER_CONFIG=balrog/docker-worker.py
-fi
+MOZHARNESS_CONFIG=${MOZHARNESS_CONFIG:=b2g/taskcluster-phone-ota.py}
+BALROG_SERVER_CONFIG=${BALROG_SERVER_CONFIG:=balrog/docker-worker.py}
 
 rm -rf $WORKSPACE/B2G/upload-public/
 rm -rf $WORKSPACE/B2G/upload/
 
-./mozharness/scripts/b2g_build.py \
+$WORKSPACE/gecko/testing/mozharness/scripts/b2g_build.py \
   --config $MOZHARNESS_CONFIG \
   --config $BALROG_SERVER_CONFIG \
   "$debug_flag" \
@@ -43,27 +38,9 @@ rm -rf $WORKSPACE/B2G/upload/
   --target=$TARGET \
   --b2g-config-dir=$TARGET \
   --checkout-revision=$GECKO_HEAD_REV \
-  --base-repo=$GECKO_BASE_REPOSITORY \
-  --repo=$GECKO_HEAD_REPOSITORY \
+  --repo=$WORKSPACE/gecko \
   --platform $PLATFORM \
+  --gecko-objdir=$gecko_objdir \
   --complete-mar-url https://queue.taskcluster.net/v1/task/$TASK_ID/runs/$RUN_ID/artifacts/public/build/$mar_file
 
-# Don't cache backups
-rm -rf $WORKSPACE/B2G/backup-*
-rm -f balrog_credentials
-
-mkdir -p $HOME/artifacts
-mkdir -p $HOME/artifacts-public
-
-mv $WORKSPACE/B2G/upload-public/$mar_file $HOME/artifacts-public/
-mv $WORKSPACE/B2G/upload/sources.xml $HOME/artifacts/sources.xml
-mv $WORKSPACE/B2G/upload/b2g-*.android-arm.tar.gz $HOME/artifacts/b2g-android-arm.tar.gz
-mv $WORKSPACE/B2G/upload/${TARGET}.zip $HOME/artifacts/${TARGET}.zip
-mv $WORKSPACE/B2G/upload/gaia.zip $HOME/artifacts/gaia.zip
-
-if [ -f $WORKSPACE/B2G/upload/b2g-*.crashreporter-symbols.zip ]; then
-  mv $WORKSPACE/B2G/upload/b2g-*.crashreporter-symbols.zip $HOME/artifacts/b2g-crashreporter-symbols.zip
-fi
-
-ccache -s
-
+. post-build.sh

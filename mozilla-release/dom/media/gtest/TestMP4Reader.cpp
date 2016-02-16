@@ -6,7 +6,7 @@
 #include "gtest/gtest.h"
 #include "MP4Reader.h"
 #include "MP4Decoder.h"
-#include "SharedThreadPool.h"
+#include "mozilla/SharedThreadPool.h"
 #include "MockMediaResource.h"
 #include "MockMediaDecoderOwner.h"
 #include "mozilla/Preferences.h"
@@ -53,7 +53,7 @@ private:
   virtual ~TestBinding()
   {
     {
-      nsRefPtr<MediaTaskQueue> queue = reader->TaskQueue();
+      nsRefPtr<TaskQueue> queue = reader->OwnerThread();
       nsCOMPtr<nsIRunnable> task = NS_NewRunnableMethod(reader, &MP4Reader::Shutdown);
       // Hackily bypass the tail dispatcher so that we can AwaitShutdownAndIdle.
       // In production code we'd use BeginShutdown + promises.
@@ -64,7 +64,7 @@ private:
     decoder = nullptr;
     resource = nullptr;
     reader = nullptr;
-    SharedThreadPool::SpinUntilShutdown();
+    SharedThreadPool::SpinUntilEmpty();
   }
 
   void ReadMetadata()

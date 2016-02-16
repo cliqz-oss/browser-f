@@ -33,8 +33,7 @@ class nsPluginInstanceOwner;
 namespace mozilla {
 namespace layers {
 class ImageContainer;
-class CompositionNotifySink;
-}
+} // namespace layers
 namespace plugins {
 
 class PBrowserStreamParent;
@@ -129,6 +128,9 @@ public:
     virtual bool
     AnswerNPN_SetValue_NPPVpluginEventModel(const int& eventModel,
                                              NPError* result) override;
+    virtual bool
+    AnswerNPN_SetValue_NPPVpluginIsPlayingAudio(const bool& isAudioPlaying,
+                                                NPError* result) override;
 
     virtual bool
     AnswerNPN_GetURL(const nsCString& url, const nsCString& target,
@@ -346,7 +348,6 @@ private:
     bool mIsWhitelistedForShumway;
     NPWindowType mWindowType;
     int16_t            mDrawingModel;
-    nsAutoPtr<mozilla::layers::CompositionNotifySink> mNotifySink;
 
     nsDataHashtable<nsPtrHashKey<NPObject>, PluginScriptableObjectParent*> mScriptableObjects;
 

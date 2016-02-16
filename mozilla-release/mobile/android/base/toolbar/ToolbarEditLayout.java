@@ -6,17 +6,16 @@
 package org.mozilla.gecko.toolbar;
 
 import android.app.Activity;
-import android.app.AlertDialog;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.speech.RecognizerIntent;
 import android.widget.Button;
 import android.widget.ImageButton;
 import org.mozilla.gecko.ActivityHandlerHelper;
-import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoSharedPrefs;
 import org.mozilla.gecko.R;
+import org.mozilla.gecko.Telemetry;
+import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.animation.PropertyAnimator;
 import org.mozilla.gecko.animation.PropertyAnimator.PropertyAnimationListener;
 import org.mozilla.gecko.preferences.GeckoPreferences;
@@ -27,7 +26,7 @@ import org.mozilla.gecko.toolbar.BrowserToolbar.TabEditingState;
 import org.mozilla.gecko.util.ActivityResultHandler;
 import org.mozilla.gecko.util.StringUtils;
 import org.mozilla.gecko.util.InputOptionsUtils;
-import org.mozilla.gecko.widget.ThemedLinearLayout;
+import org.mozilla.gecko.widget.themed.ThemedLinearLayout;
 
 import android.content.Context;
 import android.util.AttributeSet;
@@ -218,10 +217,6 @@ public class ToolbarEditLayout extends ThemedLinearLayout {
     }
 
     private boolean voiceIsEnabled(Context context, String prompt) {
-        // Voice input is enabled for nightly only
-        if(!AppConstants.NIGHTLY_BUILD) {
-            return false;
-        }
         final boolean voiceIsSupported = InputOptionsUtils.supportsVoiceRecognizer(context, prompt);
         if (!voiceIsSupported) {
             return false;
@@ -231,32 +226,18 @@ public class ToolbarEditLayout extends ThemedLinearLayout {
     }
 
     private void launchVoiceRecognizer() {
+        Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.ACTIONBAR, "voice_input_launch");
         final Intent intent = InputOptionsUtils.createVoiceRecognizerIntent(getResources().getString(R.string.voicesearch_prompt));
 
         Activity activity = GeckoAppShell.getGeckoInterface().getActivity();
         ActivityHandlerHelper.startIntentForActivity(activity, intent, new ActivityResultHandler() {
             @Override
             public void onActivityResult(int resultCode, Intent data) {
-                switch (resultCode) {
-                    case RecognizerIntent.RESULT_CLIENT_ERROR:
-                    case RecognizerIntent.RESULT_NETWORK_ERROR:
-                    case RecognizerIntent.RESULT_SERVER_ERROR:
-                        // We have an temporarily unrecoverable error.
-                        handleVoiceSearchError(false);
-                        break;
-                    case RecognizerIntent.RESULT_AUDIO_ERROR:
-                    case RecognizerIntent.RESULT_NO_MATCH:
-                        // Maybe the user can say it differently?
-                        handleVoiceSearchError(true);
-                        break;
-                    case Activity.RESULT_CANCELED:
-                        break;
-                }
-
                 if (resultCode != Activity.RESULT_OK) {
                     return;
                 }
 
+                Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.ACTIONBAR, "voice_input_success");
                 // We have RESULT_OK, not RESULT_NO_MATCH so it should be safe to assume that
                 // we have at least one match. We only need one: this will be
                 // used for showing the user search engines with this search term in it.
@@ -272,38 +253,7 @@ public class ToolbarEditLayout extends ThemedLinearLayout {
         });
     }
 
-    private void handleVoiceSearchError(boolean offerRetry) {
-        AlertDialog.Builder builder = new AlertDialog.Builder(getContext())
-                .setTitle(R.string.voicesearch_failed_title)
-                .setIcon(R.drawable.icon).setNeutralButton(android.R.string.cancel, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        dialog.dismiss();
-                    }
-                });
-
-        if (offerRetry) {
-            builder.setMessage(R.string.voicesearch_failed_message_recoverable)
-                    .setNegativeButton(R.string.voicesearch_failed_retry, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            launchVoiceRecognizer();
-                        }
-                    });
-        } else {
-            builder.setMessage(R.string.voicesearch_failed_message);
-        }
-
-        AlertDialog dialog = builder.create();
-
-        dialog.show();
-    }
-
     private boolean qrCodeIsEnabled(Context context) {
-        // QR code is enabled for nightly only
-        if(!AppConstants.NIGHTLY_BUILD) {
-            return false;
-        }
         final boolean qrCodeIsSupported = InputOptionsUtils.supportsQrCodeReader(context);
         if (!qrCodeIsSupported) {
             return false;
@@ -313,6 +263,7 @@ public class ToolbarEditLayout extends ThemedLinearLayout {
     }
 
     private void launchQRCodeReader() {
+        Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.ACTIONBAR, "qrcode_input_launch");
         final Intent intent = InputOptionsUtils.createQRCodeReaderIntent();
 
         Activity activity = GeckoAppShell.getGeckoInterface().getActivity();
@@ -322,6 +273,7 @@ public class ToolbarEditLayout extends ThemedLinearLayout {
                 if (resultCode == Activity.RESULT_OK) {
                     String text = intent.getStringExtra("SCAN_RESULT");
                     if (!StringUtils.isSearchQuery(text, false)) {
+                        Telemetry.sendUIEvent(TelemetryContract.Event.ACTION, TelemetryContract.Method.ACTIONBAR, "qrcode_input_success");
                         mEditText.setText(text);
                         mEditText.selectAll();
 

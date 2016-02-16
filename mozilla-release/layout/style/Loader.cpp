@@ -32,6 +32,7 @@
 #include "nsIDOMDocument.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
+#include "nsIProtocolHandler.h"
 #include "nsContentUtils.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsContentPolicyUtils.h"
@@ -61,6 +62,7 @@
 #include "nsError.h"
 
 #include "nsIContentSecurityPolicy.h"
+#include "mozilla/dom/SRICheck.h"
 
 #include "mozilla/dom/EncodingUtils.h"
 using mozilla::dom::EncodingUtils;
@@ -264,6 +266,16 @@ GetLoaderLog()
   return sLog;
 }
 
+static PRLogModuleInfo*
+GetSriLog()
+{
+  static PRLogModuleInfo *gSriPRLog;
+  if (!gSriPRLog) {
+    gSriPRLog = PR_NewLogModule("SRI");
+  }
+  return gSriPRLog;
+}
+
 #define LOG_ERROR(args) MOZ_LOG(GetLoaderLog(), mozilla::LogLevel::Error, args)
 #define LOG_WARN(args) MOZ_LOG(GetLoaderLog(), mozilla::LogLevel::Warning, args)
 #define LOG_DEBUG(args) MOZ_LOG(GetLoaderLog(), mozilla::LogLevel::Debug, args)
@@ -430,9 +442,9 @@ SheetLoadData::OnDispatchedEvent(nsIThreadInternal* aThread)
 
 NS_IMETHODIMP
 SheetLoadData::OnProcessNextEvent(nsIThreadInternal* aThread,
-                                  bool aMayWait,
-                                  uint32_t aRecursionDepth)
+                                  bool aMayWait)
 {
+  // XXXkhuey this is insane!
   // We want to fire our load even before or after event processing,
   // whichever comes first.
   FireLoadEvent(aThread);
@@ -441,9 +453,9 @@ SheetLoadData::OnProcessNextEvent(nsIThreadInternal* aThread,
 
 NS_IMETHODIMP
 SheetLoadData::AfterProcessNextEvent(nsIThreadInternal* aThread,
-                                     uint32_t aRecursionDepth,
                                      bool aEventWasProcessed)
 {
+  // XXXkhuey this too!
   // We want to fire our load even before or after event processing,
   // whichever comes first.
   FireLoadEvent(aThread);
@@ -927,6 +939,18 @@ SheetLoadData::OnStreamComplete(nsIUnicharStreamLoader* aLoader,
     }
   }
 
+  SRIMetadata sriMetadata = mSheet->GetIntegrity();
+  if (!sriMetadata.IsEmpty() &&
+      NS_FAILED(SRICheck::VerifyIntegrity(sriMetadata, aLoader,
+                                          mSheet->GetCORSMode(), aBuffer,
+                                          mLoader->mDocument))) {
+    LOG(("  Load was blocked by SRI"));
+    MOZ_LOG(GetSriLog(), mozilla::LogLevel::Debug,
+            ("css::Loader::OnStreamComplete, bad metadata"));
+    mLoader->SheetComplete(this, NS_ERROR_SRI_CORRUPT);
+    return NS_OK;
+  }
+
   // Enough to set the URIs on mSheet, since any sibling datas we have share
   // the same mInner as mSheet and will thus get the same URI.
   mSheet->SetURIs(channelURI, originalURI, channelURI);
@@ -1056,6 +1080,7 @@ Loader::CreateSheet(nsIURI* aURI,
                     nsIPrincipal* aLoaderPrincipal,
                     CORSMode aCORSMode,
                     ReferrerPolicy aReferrerPolicy,
+                    const nsAString& aIntegrity,
                     bool aSyncLoad,
                     bool aHasAlternateRel,
                     const nsAString& aTitle,
@@ -1203,7 +1228,17 @@ Loader::CreateSheet(nsIURI* aURI,
       originalURI = aURI;
     }
 
-    nsRefPtr<CSSStyleSheet> sheet = new CSSStyleSheet(aCORSMode, aReferrerPolicy);
+    SRIMetadata sriMetadata;
+    if (!aIntegrity.IsEmpty()) {
+      MOZ_LOG(GetSriLog(), mozilla::LogLevel::Debug,
+              ("css::Loader::CreateSheet, integrity=%s",
+               NS_ConvertUTF16toUTF8(aIntegrity).get()));
+      SRICheck::IntegrityMetadata(aIntegrity, mDocument, &sriMetadata);
+    }
+
+    nsRefPtr<CSSStyleSheet> sheet = new CSSStyleSheet(aCORSMode,
+                                                      aReferrerPolicy,
+                                                      sriMetadata);
     sheet->SetURIs(sheetURI, originalURI, baseURI);
     sheet.forget(aSheet);
   }
@@ -1414,6 +1449,8 @@ Loader::LoadSheet(SheetLoadData* aLoadData, StyleSheetState aSheetState)
     triggeringPrincipal = nsContentUtils::GetSystemPrincipal();
   }
 
+  SRIMetadata sriMetadata = aLoadData->mSheet->GetIntegrity();
+
   if (aLoadData->mSyncLoad) {
     LOG(("  Synchronous load"));
     NS_ASSERTION(!aLoadData->mObserver, "Observer for a sync load?");
@@ -1598,7 +1635,7 @@ Loader::LoadSheet(SheetLoadData* aLoadData, StyleSheetState aSheetState)
 
   nsCOMPtr<nsIHttpChannel> httpChannel(do_QueryInterface(channel));
   if (httpChannel) {
-    // send a minimal Accept header for text/css
+    // Send a minimal Accept header for text/css
     httpChannel->SetRequestHeader(NS_LITERAL_CSTRING("Accept"),
                                   NS_LITERAL_CSTRING("text/css,*/*;q=0.1"),
                                   false);
@@ -1931,8 +1968,10 @@ Loader::LoadInlineStyle(nsIContent* aElement,
   StyleSheetState state;
   nsRefPtr<CSSStyleSheet> sheet;
   nsresult rv = CreateSheet(nullptr, aElement, nullptr, CORS_NONE,
-                            mDocument->GetReferrerPolicy(), false, false,
-                            aTitle, state, aIsAlternate, getter_AddRefs(sheet));
+                            mDocument->GetReferrerPolicy(),
+                            EmptyString(), // no inline integrity checks
+                            false, false, aTitle, state, aIsAlternate,
+                            getter_AddRefs(sheet));
   NS_ENSURE_SUCCESS(rv, rv);
   NS_ASSERTION(state == eSheetNeedsParser,
                "Inline sheets should not be cached");
@@ -1978,6 +2017,7 @@ Loader::LoadStyleLink(nsIContent* aElement,
                       bool aHasAlternateRel,
                       CORSMode aCORSMode,
                       ReferrerPolicy aReferrerPolicy,
+                      const nsAString& aIntegrity,
                       nsICSSLoaderObserver* aObserver,
                       bool* aIsAlternate)
 {
@@ -2012,7 +2052,7 @@ Loader::LoadStyleLink(nsIContent* aElement,
   StyleSheetState state;
   nsRefPtr<CSSStyleSheet> sheet;
   rv = CreateSheet(aURL, aElement, principal, aCORSMode,
-                   aReferrerPolicy, false,
+                   aReferrerPolicy, aIntegrity, false,
                    aHasAlternateRel, aTitle, state, aIsAlternate,
                    getter_AddRefs(sheet));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -2176,6 +2216,7 @@ Loader::LoadChildSheet(CSSStyleSheet* aParentSheet,
   // For now, use CORS_NONE for child sheets
   rv = CreateSheet(aURL, nullptr, principal, CORS_NONE,
                    aParentSheet->GetReferrerPolicy(),
+                   EmptyString(), // integrity is only checked on main sheet
                    parentData ? parentData->mSyncLoad : false,
                    false, empty, state, &isAlternate, getter_AddRefs(sheet));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -2242,13 +2283,14 @@ Loader::LoadSheet(nsIURI* aURL,
                   const nsCString& aCharset,
                   nsICSSLoaderObserver* aObserver,
                   CORSMode aCORSMode,
-                  ReferrerPolicy aReferrerPolicy)
+                  ReferrerPolicy aReferrerPolicy,
+                  const nsAString& aIntegrity)
 {
   LOG(("css::Loader::LoadSheet(aURL, aObserver) api call"));
   return InternalLoadNonDocumentSheet(aURL, false, false,
                                       aOriginPrincipal, aCharset,
                                       nullptr, aObserver, aCORSMode,
-                                      aReferrerPolicy);
+                                      aReferrerPolicy, aIntegrity);
 }
 
 nsresult
@@ -2260,7 +2302,8 @@ Loader::InternalLoadNonDocumentSheet(nsIURI* aURL,
                                      CSSStyleSheet** aSheet,
                                      nsICSSLoaderObserver* aObserver,
                                      CORSMode aCORSMode,
-                                     ReferrerPolicy aReferrerPolicy)
+                                     ReferrerPolicy aReferrerPolicy,
+                                     const nsAString& aIntegrity)
 {
   NS_PRECONDITION(aURL, "Must have a URI to load");
   NS_PRECONDITION(aSheet || aObserver, "Sheet and observer can't both be null");
@@ -2291,7 +2334,7 @@ Loader::InternalLoadNonDocumentSheet(nsIURI* aURL,
   const nsSubstring& empty = EmptyString();
 
   rv = CreateSheet(aURL, nullptr, aOriginPrincipal, aCORSMode,
-                   aReferrerPolicy, syncLoad, false,
+                   aReferrerPolicy, aIntegrity, syncLoad, false,
                    empty, state, &isAlternate, getter_AddRefs(sheet));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2546,36 +2589,26 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_ROOT_NATIVE(Loader, AddRef)
 NS_IMPL_CYCLE_COLLECTION_UNROOT_NATIVE(Loader, Release)
 
-struct SheetMemoryCounter {
-  size_t size;
-  mozilla::MallocSizeOf mallocSizeOf;
-};
-
-static size_t
-CountSheetMemory(URIPrincipalReferrerPolicyAndCORSModeHashKey* /* unused */,
-                 const nsRefPtr<CSSStyleSheet>& aSheet,
-                 mozilla::MallocSizeOf aMallocSizeOf,
-                 void* /* unused */)
-{
-  // If aSheet has a parent, then its parent will report it so we don't
-  // have to worry about it here.
-  // Likewise, if aSheet has an owning node, then the document that
-  // node is in will report it.
-  if (aSheet->GetOwnerNode() || aSheet->GetParentSheet()) {
-    return 0;
-  }
-  return aSheet->SizeOfIncludingThis(aMallocSizeOf);
-}
-
 size_t
 Loader::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
 {
-  size_t s = aMallocSizeOf(this);
+  size_t n = aMallocSizeOf(this);
 
   if (mSheets) {
-    s += mSheets->mCompleteSheets.SizeOfExcludingThis(CountSheetMemory, aMallocSizeOf);
+    n += mSheets->mCompleteSheets.ShallowSizeOfExcludingThis(aMallocSizeOf);
+    for (auto iter = mSheets->mCompleteSheets.ConstIter();
+         !iter.Done();
+         iter.Next()) {
+      // If aSheet has a parent, then its parent will report it so we don't
+      // have to worry about it here. Likewise, if aSheet has an owning node,
+      // then the document that node is in will report it.
+      const nsRefPtr<CSSStyleSheet>& aSheet = iter.Data();
+      n += (aSheet->GetOwnerNode() || aSheet->GetParentSheet())
+         ? 0
+         : aSheet->SizeOfIncludingThis(aMallocSizeOf);
+    }
   }
-  s += mObservers.SizeOfExcludingThis(aMallocSizeOf);
+  n += mObservers.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
   // Measurement of the following members may be added later if DMD finds it is
   // worthwhile:
@@ -2588,7 +2621,7 @@ Loader::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
   // - mDocument, because it's a weak backpointer
   // - mPreferredSheet, because it can be a shared string
 
-  return s;
+  return n;
 }
 
 } // namespace css

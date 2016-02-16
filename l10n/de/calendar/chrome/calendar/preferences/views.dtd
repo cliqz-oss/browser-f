@@ -14,6 +14,8 @@
 
 <!ENTITY pref.weekstarts.label "Erster Tag der Woche:">
 <!ENTITY pref.weekstarts.accesskey "r">
+<!ENTITY pref.calendar.view-minimonth.showweeknumber.label "Wochennummer in Ansichten und Miniaturkalender anzeigen">
+<!ENTITY pref.calendar.view-minimonth.showweeknumber.accesskey "W">
 <!ENTITY pref.daysoff.label "Werktage in jeder Woche:">
 
 <!ENTITY pref.calendar.view.daystart.label "Tag beginnt um:">

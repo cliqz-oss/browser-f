@@ -4,13 +4,22 @@
 
 <!ENTITY tracking.label                 "Verfolgung von Nutzeraktivitäten">
 
-<!ENTITY dntTrackingNotOkay.label2      "Websites mitteilen, meine Aktivitäten nicht zu verfolgen">
-<!ENTITY dntTrackingNotOkay.accesskey   "n">
-<!ENTITY trackingProtection.label       "Verfolgung meiner Aktivitäten durch Websites unterbinden">
-<!ENTITY trackingProtection.accesskey   "u">
-<!ENTITY trackingProtectionLearnMore.label "Weitere Informationen">
+<!ENTITY dntTrackingNotOkay4.label     "Websites auffordern, meine Aktivitäten nicht zu verfolgen">
+<!ENTITY dntTrackingNotOkay4.accesskey "n">
 <!ENTITY doNotTrackInfo.label           "Weitere Informationen">
+<<<<<<< HEAD
 <!ENTITY doNotTrackInfo.label2          "Wenn diese Funktion aktiviert ist, teilt CLIQZ Werbenetzwerken, Websites und Anwendungen mit, dass Du nicht zwecks verhaltensbasierter Werbung und Ähnlichem verfolgt werden möchtest.">
+||||||| merged common ancestors
+=======
+<!ENTITY trackingProtection5.label     "Schutz vor Aktivitätenverfolgung verwenden">
+<!ENTITY trackingProtection5.accesskey "A">
+<!ENTITY trackingProtectionLearnMore.label "Weitere Informationen">
+<!ENTITY trackingProtectionPBM5.label         "Schutz vor Aktivitätenverfolgung in privaten Fenstern verwenden">
+<!ENTITY trackingProtectionPBM5.accesskey     "p">
+<!ENTITY trackingProtectionPBMLearnMore.label "Weitere Informationen">
+<!ENTITY changeBlockList.label          "Blockierliste ändern">
+<!ENTITY changeBlockList.accesskey      "B">
+>>>>>>> 096bac829b2b5773c86f81a6b1ce0e3cd02fe6ba
 
 <!ENTITY  history.label                 "Chronik">
 
@@ -25,6 +34,9 @@
 <!ENTITY  locbar.openpage.accesskey     "O">
 <!ENTITY  locbar.searches.label         "Verwandte Suchanfragen mit der Standardsuchmaschine">
 <!ENTITY  locbar.searches.accesskey     "S">
+
+<!ENTITY  suggestionSettings.label      "Einstellungen für Suchvorschläge öffnen…">
+<!ENTITY  suggestionSettings.accesskey  "v">
 
 <!ENTITY  acceptCookies.label           "Cookies akzeptieren">
 <!ENTITY  acceptCookies.accesskey       "C">

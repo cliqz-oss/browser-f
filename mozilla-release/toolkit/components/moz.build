@@ -22,6 +22,7 @@ DIRS += [
     'crashmonitor',
     'diskspacewatcher',
     'downloads',
+    'extensions',
     'exthelper',
     'filepicker',
     'filewatcher',
@@ -37,6 +38,7 @@ DIRS += [
     'passwordmgr',
     'perf',
     'places',
+    'privatebrowsing',
     'processsingleton',
     'promiseworker',
     'prompts',
@@ -50,6 +52,7 @@ DIRS += [
     'thumbnails',
     'timermanager',
     'typeaheadfind',
+    'utils',
     'urlformatter',
     'viewconfig',
     'workerloader',
@@ -87,8 +90,7 @@ if CONFIG['MOZ_TOOLKIT_SEARCH']:
 if CONFIG['MOZ_URL_CLASSIFIER']:
     DIRS += ['url-classifier']
 
-if CONFIG['MOZ_CAPTIVEDETECT']:
-    DIRS += ['captivedetect']
+DIRS += ['captivedetect']
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] != "gonk" and CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
     DIRS += ['terminator']

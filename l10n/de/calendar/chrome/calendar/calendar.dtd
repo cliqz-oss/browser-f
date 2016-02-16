@@ -123,6 +123,12 @@
 <!ENTITY calendar.task.filter.completed.accesskey  "b">
 <!ENTITY calendar.task.filter.open.label           "Offene Aufgaben">
 <!ENTITY calendar.task.filter.open.accesskey       "O">
+
+<!-- LOCALIZATION NOTE(calendar.task.filter.current.label)
+     "Current Tasks" will show all tasks, except those with a start date set
+     that is after today and after the selected date. If a task repeats, a
+     separate entry will be shown for each of the occurrences that happen on or
+     before today (or the selected date, whichever is later). -->
 <!ENTITY calendar.task.filter.current.label        "Aktuelle Aufgaben">
 <!ENTITY calendar.task.filter.current.accesskey    "u">
 
@@ -246,9 +252,13 @@
 <!ENTITY calendar.context.properties.label             "Eigenschaften">
 <!ENTITY calendar.context.properties.accesskey         "E">
 
-<!-- LOCALIZATION NOTE (calendar.context.togglevisible.accesskey)
+<!-- LOCALIZATION NOTE (calendar.context.showcalendar.accesskey)
      This is the access key used for the showCalendar string -->
-<!ENTITY calendar.context.togglevisible.accesskey      "A">
+<!ENTITY calendar.context.showcalendar.accesskey      "a">
+
+<!-- LOCALIZATION NOTE (calendar.context.hidecalendar.accesskey)
+     This is the access key used for the hideCalendar string -->
+<!ENTITY calendar.context.hidecalendar.accesskey      "a">
 
 <!-- LOCALIZATION NOTE (calendar.context.showonly.accesskey)
      This is the access key used for the showOnlyCalendar string -->

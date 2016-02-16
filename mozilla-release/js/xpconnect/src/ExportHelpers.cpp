@@ -271,7 +271,17 @@ StackScopedClone(JSContext* cx, StackScopedCloneOptions& options,
     }
 
     // Now recreate the clones in the target compartment.
-    return buffer.read(cx, val, &gStackScopedCloneCallbacks, &data);
+    if (!buffer.read(cx, val, &gStackScopedCloneCallbacks, &data))
+        return false;
+
+    // Deep-freeze if requested.
+    if (options.deepFreeze && val.isObject()) {
+        RootedObject obj(cx, &val.toObject());
+        if (!JS_DeepFreezeObject(cx, obj))
+            return false;
+    }
+
+    return true;
 }
 
 // Note - This function mirrors the logic of CheckPassToChrome in
@@ -436,7 +446,7 @@ ExportFunction(JSContext* cx, HandleValue vfunction, HandleValue vscope, HandleV
             JSFunction* fun = JS_GetObjectFunction(funObj);
             RootedString funName(cx, JS_GetFunctionId(fun));
             if (!funName)
-                funName = JS_InternString(cx, "");
+                funName = JS_AtomizeAndPinString(cx, "");
 
             if (!JS_StringToId(cx, funName, &id))
                 return false;

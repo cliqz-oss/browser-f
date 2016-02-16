@@ -72,8 +72,8 @@
 <!ENTITY cmd.pause.accesskey             "P">
 <!ENTITY cmd.resume.label                "Fortsetzen">
 <!ENTITY cmd.resume.accesskey            "F">
-<!ENTITY cmd.retry.label                 "Nochmal versuchen">
-<!ENTITY cmd.retry.accesskey             "N">
+<!ENTITY cmd.retry.label                 "Erneut versuchen">
+<!ENTITY cmd.retry.accesskey             "n">
 <!ENTITY cmd.cancel.label                "Abbrechen">
 <!ENTITY cmd.cancel.accesskey            "A">
 <!ENTITY cmd.remove.label                "Von der Liste entfernen">

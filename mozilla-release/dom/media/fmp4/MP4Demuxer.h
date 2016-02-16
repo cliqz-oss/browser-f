@@ -13,11 +13,10 @@
 #include "MediaResource.h"
 
 namespace mp4_demuxer {
-class Index;
 class MP4Metadata;
 class ResourceStream;
 class SampleIterator;
-}
+} // namespace mp4_demuxer
 
 namespace mozilla {
 
@@ -29,8 +28,6 @@ public:
   explicit MP4Demuxer(MediaResource* aResource);
 
   virtual nsRefPtr<InitPromise> Init() override;
-
-  virtual already_AddRefed<MediaDataDemuxer> Clone() const override;
 
   virtual bool HasTrackType(TrackInfo::TrackType aType) const override;
 
@@ -54,52 +51,6 @@ private:
   nsRefPtr<MediaByteBuffer> mInitData;
   UniquePtr<mp4_demuxer::MP4Metadata> mMetadata;
   nsTArray<nsRefPtr<MP4TrackDemuxer>> mDemuxers;
-};
-
-class MP4TrackDemuxer : public MediaTrackDemuxer
-{
-public:
-  MP4TrackDemuxer(MP4Demuxer* aParent,
-                  TrackInfo::TrackType aType,
-                  uint32_t aTrackNumber);
-
-  virtual UniquePtr<TrackInfo> GetInfo() const override;
-
-  virtual nsRefPtr<SeekPromise> Seek(media::TimeUnit aTime) override;
-
-  virtual nsRefPtr<SamplesPromise> GetSamples(int32_t aNumSamples = 1) override;
-
-  virtual void Reset() override;
-
-  virtual nsresult GetNextRandomAccessPoint(media::TimeUnit* aTime) override;
-
-  nsRefPtr<SkipAccessPointPromise> SkipToNextRandomAccessPoint(media::TimeUnit aTimeThreshold) override;
-
-  virtual media::TimeIntervals GetBuffered() override;
-
-  virtual int64_t GetEvictionOffset(media::TimeUnit aTime) override;
-
-  virtual void BreakCycles() override;
-
-private:
-  friend class MP4Demuxer;
-  void NotifyDataArrived();
-  void UpdateSamples(nsTArray<nsRefPtr<MediaRawData>>& aSamples);
-  void EnsureUpToDateIndex();
-  void SetNextKeyFrameTime();
-  nsRefPtr<MP4Demuxer> mParent;
-  nsRefPtr<mp4_demuxer::Index> mIndex;
-  UniquePtr<mp4_demuxer::SampleIterator> mIterator;
-  UniquePtr<TrackInfo> mInfo;
-  nsRefPtr<mp4_demuxer::ResourceStream> mStream;
-  Maybe<media::TimeUnit> mNextKeyframeTime;
-  // Queued samples extracted by the demuxer, but not yet returned.
-  nsRefPtr<MediaRawData> mQueuedSample;
-  bool mNeedReIndex;
-
-  // We do not actually need a monitor, however MoofParser will assert
-  // if a monitor isn't held.
-  Monitor mMonitor;
 };
 
 } // namespace mozilla

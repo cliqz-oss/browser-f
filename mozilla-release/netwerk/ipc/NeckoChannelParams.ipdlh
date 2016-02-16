@@ -26,13 +26,26 @@ namespace net {
 
 struct LoadInfoArgs
 {
-  PrincipalInfo requestingPrincipalInfo;
-  PrincipalInfo triggeringPrincipalInfo;
-  uint32_t      securityFlags;
-  uint32_t      contentPolicyType;
-  uint64_t      innerWindowID;
-  uint64_t      outerWindowID;
-  uint64_t      parentOuterWindowID;
+  PrincipalInfo   requestingPrincipalInfo;
+  PrincipalInfo   triggeringPrincipalInfo;
+  uint32_t        securityFlags;
+  uint32_t        contentPolicyType;
+  bool            upgradeInsecureRequests;
+  uint64_t        innerWindowID;
+  uint64_t        outerWindowID;
+  uint64_t        parentOuterWindowID;
+  bool            enforceSecurity;
+  bool            initialSecurityCheckDone;
+  PrincipalInfo[] redirectChain;
+};
+
+/**
+ * Not every channel necessarily has a loadInfo attached.
+ */
+union OptionalLoadInfoArgs
+{
+  void_t;
+  LoadInfoArgs;
 };
 
 //-----------------------------------------------------------------------------
@@ -43,6 +56,19 @@ union OptionalHttpResponseHead
 {
   void_t;
   nsHttpResponseHead;
+};
+
+struct CorsPreflightArgs
+{
+  bool          withCredentials;
+  PrincipalInfo preflightPrincipal;
+  nsCString[]   unsafeHeaders;
+};
+
+union OptionalCorsPreflightArgs
+{
+  void_t;
+  CorsPreflightArgs;
 };
 
 struct HttpChannelOpenArgs
@@ -76,9 +102,12 @@ struct HttpChannelOpenArgs
   bool                        allowSpdy;
   bool                        allowAltSvc;
   OptionalFileDescriptorSet   fds;
-  LoadInfoArgs                loadInfo;
+  OptionalLoadInfoArgs        loadInfo;
   OptionalHttpResponseHead    synthesizedResponseHead;
+  nsCString                   synthesizedSecurityInfoSerialization;
   uint32_t                    cacheKey;
+  nsCString                   schedulingContextID;
+  OptionalCorsPreflightArgs   preflightArgs;
 };
 
 struct HttpChannelConnectArgs
@@ -103,7 +132,7 @@ struct FTPChannelOpenArgs
   uint64_t                  startPos;
   nsCString                 entityID;
   OptionalInputStreamParams uploadStream;
-  LoadInfoArgs              loadInfo;
+  OptionalLoadInfoArgs      loadInfo;
 };
 
 struct FTPChannelConnectArgs

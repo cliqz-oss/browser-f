@@ -30,8 +30,8 @@ class nsITransferable;
 namespace mozilla {
 namespace dom {
 class Selection;
-}
-}
+} // namespace dom
+} // namespace mozilla
 
 /**
  * The text editor implementation.
@@ -207,7 +207,9 @@ protected:
     ePasswordFieldNotAllowed
   };
   bool CanCutOrCopy(PasswordFieldAllowed aPasswordFieldAllowed);
-  bool FireClipboardEvent(int32_t aType, int32_t aSelectionType, bool* aActionTaken = nullptr);
+  bool FireClipboardEvent(mozilla::EventMessage aEventMessage,
+                          int32_t aSelectionType,
+                          bool* aActionTaken = nullptr);
 
   bool UpdateMetaCharset(nsIDOMDocument* aDocument,
                          const nsACString& aCharacterSet);

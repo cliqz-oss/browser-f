@@ -1052,14 +1052,14 @@ bool
 RRegExpReplace::recover(JSContext* cx, SnapshotIterator& iter) const
 {
     RootedString string(cx, iter.read().toString());
-    RootedObject regexp(cx, &iter.read().toObject());
+    Rooted<RegExpObject*> regexp(cx, &iter.read().toObject().as<RegExpObject>());
     RootedString repl(cx, iter.read().toString());
-    RootedValue result(cx);
 
-    if (!js::str_replace_regexp_raw(cx, string, regexp, repl, &result))
+    JSString* result = js::str_replace_regexp_raw(cx, string, regexp, repl);
+    if (!result)
         return false;
 
-    iter.storeInstructionResult(result);
+    iter.storeInstructionResult(StringValue(result));
     return true;
 }
 
@@ -1098,10 +1098,18 @@ RToDouble::RToDouble(CompactBufferReader& reader)
 bool
 RToDouble::recover(JSContext* cx, SnapshotIterator& iter) const
 {
-    Value v = iter.read();
+    RootedValue v(cx, iter.read());
+    RootedValue result(cx);
 
     MOZ_ASSERT(!v.isObject());
-    iter.storeInstructionResult(v);
+    MOZ_ASSERT(!v.isSymbol());
+
+    double dbl;
+    if (!ToNumber(cx, v, &dbl))
+        return false;
+
+    result.setDouble(dbl);
+    iter.storeInstructionResult(result);
     return true;
 }
 
@@ -1344,6 +1352,12 @@ RSimdBox::recover(JSContext* cx, SnapshotIterator& iter) const
       case SimdTypeDescr::Float64x2:
         MOZ_CRASH("NYI, RSimdBox of Float64x2");
         break;
+      case SimdTypeDescr::Int8x16:
+        MOZ_CRASH("NYI, RSimdBox of Int8x16");
+        break;
+      case SimdTypeDescr::Int16x8:
+        MOZ_CRASH("NYI, RSimdBox of Int16x8");
+        break;
     }
 
     if (!resultObject)
@@ -1488,11 +1502,37 @@ bool RStringReplace::recover(JSContext* cx, SnapshotIterator& iter) const
     RootedString string(cx, iter.read().toString());
     RootedString pattern(cx, iter.read().toString());
     RootedString replace(cx, iter.read().toString());
-    RootedValue result(cx);
 
-    if (!js::str_replace_string_raw(cx, string, pattern, replace, &result))
+    JSString* result = js::str_replace_string_raw(cx, string, pattern, replace);
+    if (!result)
         return false;
 
-    iter.storeInstructionResult(result);
+    iter.storeInstructionResult(StringValue(result));
+    return true;
+}
+
+bool
+MAtomicIsLockFree::writeRecoverData(CompactBufferWriter& writer) const
+{
+    MOZ_ASSERT(canRecoverOnBailout());
+    writer.writeUnsigned(uint32_t(RInstruction::Recover_AtomicIsLockFree));
+    return true;
+}
+
+RAtomicIsLockFree::RAtomicIsLockFree(CompactBufferReader& reader)
+{ }
+
+bool
+RAtomicIsLockFree::recover(JSContext* cx, SnapshotIterator& iter) const
+{
+    RootedValue operand(cx, iter.read());
+    MOZ_ASSERT(operand.isInt32());
+
+    int32_t result;
+    if (!js::AtomicIsLockFree(cx, operand, &result))
+        return false;
+
+    RootedValue rootedResult(cx, js::Int32Value(result));
+    iter.storeInstructionResult(rootedResult);
     return true;
 }

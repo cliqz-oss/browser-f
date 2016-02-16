@@ -8,7 +8,7 @@
 
 #include "ipc/IPCMessageUtils.h"
 #include "js/TypeDecls.h"
-#include "nsRefPtr.h"
+#include "mozilla/nsRefPtr.h"
 
 namespace mozilla {
 namespace layers {
@@ -48,8 +48,8 @@ private:
   std::map<uintptr_t,LayerTransforms*> mFrameTransforms;
 };
 
-} // mozilla
-} // layers
+} // namespace layers
+} // namespace mozilla
 
 namespace IPC {
 template<>
@@ -68,6 +68,6 @@ struct ParamTraits<mozilla::layers::FrameUniformityData>
   }
 };
 
-}// ipc
+} // namespace IPC
 
 #endif // mozilla_layers_FrameUniformityData_h_

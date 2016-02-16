@@ -103,7 +103,7 @@
 //
 //   CSS_PROP_LIST_EXCLUDE_LOGICAL
 //     Does not include logical properties (defined with CSS_PROP_LOGICAL,
-//     such as -moz-margin-start) when capturing properties to CSS_PROP.
+//     such as margin-inline-start) when capturing properties to CSS_PROP.
 //
 //   CSS_PROP_LIST_INCLUDE_LOGICAL
 //     Does include logical properties when capturing properties to
@@ -949,15 +949,15 @@ CSS_PROP_BORDER(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_SHORTHAND(
-    -moz-border-end,
-    border_end,
-    CSS_PROP_DOMPROP_PREFIXED(BorderEnd),
+    border-inline-end,
+    border_inline_end,
+    BorderInlineEnd,
     CSS_PROPERTY_PARSE_FUNCTION,
     "")
 CSS_PROP_LOGICAL(
-    -moz-border-end-color,
-    border_end_color,
-    CSS_PROP_DOMPROP_PREFIXED(BorderEndColor),
+    border-inline-end-color,
+    border_inline_end_color,
+    BorderInlineEndColor,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_LOGICAL |
@@ -970,9 +970,9 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_LOGICAL(
-    -moz-border-end-style,
-    border_end_style,
-    CSS_PROP_DOMPROP_PREFIXED(BorderEndStyle),
+    border-inline-end-style,
+    border_inline_end_style,
+    BorderInlineEndStyle,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_LOGICAL |
@@ -985,9 +985,9 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_LOGICAL(
-    -moz-border-end-width,
-    border_end_width,
-    CSS_PROP_DOMPROP_PREFIXED(BorderEndWidth),
+    border-inline-end-width,
+    border_inline_end_width,
+    BorderInlineEndWidth,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_VALUE_NONNEGATIVE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
@@ -1002,15 +1002,15 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_SHORTHAND(
-    -moz-border-start,
-    border_start,
-    CSS_PROP_DOMPROP_PREFIXED(BorderStart),
+    border-inline-start,
+    border_inline_start,
+    BorderInlineStart,
     CSS_PROPERTY_PARSE_FUNCTION,
     "")
 CSS_PROP_LOGICAL(
-    -moz-border-start-color,
-    border_start_color,
-    CSS_PROP_DOMPROP_PREFIXED(BorderStartColor),
+    border-inline-start-color,
+    border_inline_start_color,
+    BorderInlineStartColor,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_LOGICAL,
@@ -1022,9 +1022,9 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_LOGICAL(
-    -moz-border-start-style,
-    border_start_style,
-    CSS_PROP_DOMPROP_PREFIXED(BorderStartStyle),
+    border-inline-start-style,
+    border_inline_start_style,
+    BorderInlineStartStyle,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_LOGICAL,
@@ -1036,9 +1036,9 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_LOGICAL(
-    -moz-border-start-width,
-    border_start_width,
-    CSS_PROP_DOMPROP_PREFIXED(BorderStartWidth),
+    border-inline-start-width,
+    border_inline_start_width,
+    BorderInlineStartWidth,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_VALUE_NONNEGATIVE |
         CSS_PROPERTY_GETCS_NEEDS_LAYOUT_FLUSH |
@@ -2318,9 +2318,9 @@ CSS_PROP_MARGIN(
     offsetof(nsStyleMargin, mMargin),
     eStyleAnimType_Sides_Bottom)
 CSS_PROP_LOGICAL(
-    -moz-margin-end,
-    margin_end,
-    CSS_PROP_DOMPROP_PREFIXED(MarginEnd),
+    margin-inline-end,
+    margin_inline_end,
+    MarginInlineEnd,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_STORES_CALC |
@@ -2335,9 +2335,9 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_LOGICAL(
-    -moz-margin-start,
-    margin_start,
-    CSS_PROP_DOMPROP_PREFIXED(MarginStart),
+    margin-inline-start,
+    margin_inline_start,
+    MarginInlineStart,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
         CSS_PROPERTY_STORES_CALC |
@@ -2663,7 +2663,8 @@ CSS_PROP_DISPLAY(
     Opacity,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_APPLIES_TO_PLACEHOLDER |
-        CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR,
+        CSS_PROPERTY_CAN_ANIMATE_ON_COMPOSITOR |
+        CSS_PROPERTY_CREATES_STACKING_CONTEXT,
     "",
     VARIANT_HN,
     nullptr,
@@ -2846,9 +2847,9 @@ CSS_PROP_PADDING(
     offsetof(nsStylePadding, mPadding),
     eStyleAnimType_Sides_Bottom)
 CSS_PROP_LOGICAL(
-    -moz-padding-end,
-    padding_end,
-    CSS_PROP_DOMPROP_PREFIXED(PaddingEnd),
+    padding-inline-end,
+    padding_inline_end,
+    PaddingInlineEnd,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_VALUE_NONNEGATIVE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
@@ -2866,9 +2867,9 @@ CSS_PROP_LOGICAL(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_LOGICAL(
-    -moz-padding-start,
-    padding_start,
-    CSS_PROP_DOMPROP_PREFIXED(PaddingStart),
+    padding-inline-start,
+    padding_inline_start,
+    PaddingInlineStart,
     CSS_PROPERTY_PARSE_VALUE |
         CSS_PROPERTY_VALUE_NONNEGATIVE |
         CSS_PROPERTY_APPLIES_TO_FIRST_LETTER |
@@ -3335,7 +3336,7 @@ CSS_PROP_DISPLAY(
     transform_box,
     TransformBox,
     CSS_PROPERTY_PARSE_VALUE,
-    "svg.transform-origin.enabled",
+    "svg.transform-box.enabled",
     VARIANT_HK,
     kTransformBoxKTable,
     CSS_PROP_NO_OFFSET,
@@ -3639,9 +3640,9 @@ CSS_PROP_TEXT(
     CSS_PROP_NO_OFFSET,
     eStyleAnimType_None)
 CSS_PROP_TEXT(
-    -moz-hyphens,
     hyphens,
-    CSS_PROP_DOMPROP_PREFIXED(Hyphens),
+    hyphens,
+    Hyphens,
     CSS_PROPERTY_PARSE_VALUE,
     "",
     VARIANT_HK,
@@ -4150,9 +4151,8 @@ CSS_PROP_DISPLAY(
     will_change,
     WillChange,
     CSS_PROPERTY_PARSE_FUNCTION |
-        CSS_PROPERTY_VALUE_LIST_USES_COMMAS |
-        CSS_PROPERTY_ALWAYS_ENABLED_IN_CHROME_OR_CERTIFIED_APP,
-    "layout.css.will-change.enabled",
+        CSS_PROPERTY_VALUE_LIST_USES_COMMAS,
+    "",
     0,
     nullptr,
     CSS_PROP_NO_OFFSET,

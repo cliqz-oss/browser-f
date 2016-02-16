@@ -147,22 +147,33 @@ private:
 
 class TestAPZCTreeManager : public APZCTreeManager {
 public:
-  TestAPZCTreeManager() {}
+  explicit TestAPZCTreeManager(MockContentControllerDelayed* aMcc) : mcc(aMcc) {}
 
   nsRefPtr<InputQueue> GetInputQueue() const {
     return mInputQueue;
   }
 
 protected:
-  AsyncPanZoomController* MakeAPZCInstance(uint64_t aLayersId, GeckoContentController* aController) override;
+  AsyncPanZoomController* NewAPZCInstance(uint64_t aLayersId,
+                                          GeckoContentController* aController,
+                                          TaskThrottler* aPaintThrottler) override;
+
+  TimeStamp GetFrameTime() override {
+    return mcc->Time();
+  }
+
+private:
+  nsRefPtr<MockContentControllerDelayed> mcc;
 };
 
 class TestAsyncPanZoomController : public AsyncPanZoomController {
 public:
   TestAsyncPanZoomController(uint64_t aLayersId, MockContentControllerDelayed* aMcc,
                              TestAPZCTreeManager* aTreeManager,
+                             TaskThrottler* aPaintThrottler,
                              GestureBehavior aBehavior = DEFAULT_GESTURES)
-    : AsyncPanZoomController(aLayersId, aTreeManager, aTreeManager->GetInputQueue(), aMcc, aBehavior)
+    : AsyncPanZoomController(aLayersId, aTreeManager, aTreeManager->GetInputQueue(),
+        aMcc, aPaintThrottler, aBehavior)
     , mWaitForMainThread(false)
     , mcc(aMcc)
   {}
@@ -239,10 +250,6 @@ public:
     mWaitForMainThread = true;
   }
 
-  TimeStamp GetFrameTime() const {
-    return mcc->Time();
-  }
-
   static TimeStamp GetStartupTime() {
     static TimeStamp sStartupTime = TimeStamp::Now();
     return sStartupTime;
@@ -254,10 +261,12 @@ private:
 };
 
 AsyncPanZoomController*
-TestAPZCTreeManager::MakeAPZCInstance(uint64_t aLayersId, GeckoContentController* aController)
+TestAPZCTreeManager::NewAPZCInstance(uint64_t aLayersId,
+                                     GeckoContentController* aController,
+                                     TaskThrottler* aPaintThrottler)
 {
   MockContentControllerDelayed* mcc = static_cast<MockContentControllerDelayed*>(aController);
-  return new TestAsyncPanZoomController(aLayersId, mcc, this,
+  return new TestAsyncPanZoomController(aLayersId, mcc, this, aPaintThrottler,
       AsyncPanZoomController::USE_GESTURE_DETECTOR);
 }
 
@@ -289,8 +298,9 @@ protected:
     APZThreadUtils::SetControllerThread(MessageLoop::current());
 
     mcc = new NiceMock<MockContentControllerDelayed>();
-    tm = new TestAPZCTreeManager();
-    apzc = new TestAsyncPanZoomController(0, mcc, tm, mGestureBehavior);
+    mPaintThrottler = new TaskThrottler(mcc->Time(), TimeDuration::FromMilliseconds(500));
+    tm = new TestAPZCTreeManager(mcc);
+    apzc = new TestAsyncPanZoomController(0, mcc, tm, mPaintThrottler, mGestureBehavior);
     apzc->SetFrameMetrics(TestFrameMetrics());
   }
 
@@ -373,6 +383,7 @@ protected:
 
   AsyncPanZoomController::GestureBehavior mGestureBehavior;
   nsRefPtr<MockContentControllerDelayed> mcc;
+  nsRefPtr<TaskThrottler> mPaintThrottler;
   nsRefPtr<TestAPZCTreeManager> tm;
   nsRefPtr<TestAsyncPanZoomController> apzc;
 };
@@ -643,7 +654,7 @@ ApzcPanNoFling(const nsRefPtr<TestAsyncPanZoomController>& aApzc,
 
 template<class InputReceiver> static void
 PinchWithPinchInput(const nsRefPtr<InputReceiver>& aTarget,
-                    int aFocusX, int aFocusY, float aScale,
+                    int aFocusX, int aFocusY, int aSecondFocusX, int aSecondFocusY, float aScale,
                     nsEventStatus (*aOutEventStatuses)[3] = nullptr)
 {
   nsEventStatus actualStatus = aTarget->ReceiveInputEvent(
@@ -655,7 +666,7 @@ PinchWithPinchInput(const nsRefPtr<InputReceiver>& aTarget,
   }
   actualStatus = aTarget->ReceiveInputEvent(
       CreatePinchGestureInput(PinchGestureInput::PINCHGESTURE_SCALE,
-                              aFocusX, aFocusY, 10.0 * aScale, 10.0),
+                              aSecondFocusX, aSecondFocusY, 10.0 * aScale, 10.0),
       nullptr);
   if (aOutEventStatuses) {
     (*aOutEventStatuses)[1] = actualStatus;
@@ -677,7 +688,7 @@ PinchWithPinchInputAndCheckStatus(const nsRefPtr<InputReceiver>& aTarget,
                                   bool aShouldTriggerPinch)
 {
   nsEventStatus statuses[3];  // scalebegin, scale, scaleend
-  PinchWithPinchInput(aTarget, aFocusX, aFocusY, aScale, &statuses);
+  PinchWithPinchInput(aTarget, aFocusX, aFocusY, aFocusX, aFocusY, aScale, &statuses);
 
   nsEventStatus expectedStatus = aShouldTriggerPinch
       ? nsEventStatus_eConsumeNoDefault
@@ -967,7 +978,7 @@ TEST_F(APZCBasicTester, ComplexTransform) {
   // sides.
 
   nsRefPtr<TestAsyncPanZoomController> childApzc =
-      new TestAsyncPanZoomController(0, mcc, tm);
+      new TestAsyncPanZoomController(0, mcc, tm, mPaintThrottler);
 
   const char* layerTreeSyntax = "c(c)";
   // LayerID                     0 1
@@ -1049,6 +1060,24 @@ TEST_F(APZCBasicTester, ComplexTransform) {
   EXPECT_EQ(ParentLayerPoint(135, 90), pointOut);
 
   childApzc->Destroy();
+}
+
+TEST_F(APZCPinchTester, Panning_TwoFinger_ZoomDisabled) {
+  // set up APZ
+  apzc->SetFrameMetrics(GetPinchableFrameMetrics());
+  MakeApzcUnzoomable();
+
+  nsEventStatus statuses[3];  // scalebegin, scale, scaleend
+  PinchWithPinchInput(apzc, 250, 350, 200, 300, 10, &statuses);
+
+  FrameMetrics fm = apzc->GetFrameMetrics();
+
+  // It starts from (300, 300), then moves the focus point from (250, 350) to
+  // (200, 300) pans by (50, 50) screen pixels, but there is a 2x zoom, which
+  // causes the scroll offset to change by half of that (25, 25) pixels.
+  EXPECT_EQ(325, fm.GetScrollOffset().x);
+  EXPECT_EQ(325, fm.GetScrollOffset().y);
+  EXPECT_EQ(2.0, fm.GetZoom().ToScaleFactor().scale);
 }
 
 class APZCPanningTester : public APZCBasicTester {
@@ -1852,7 +1881,7 @@ protected:
     APZThreadUtils::SetControllerThread(MessageLoop::current());
 
     mcc = new NiceMock<MockContentControllerDelayed>();
-    manager = new TestAPZCTreeManager();
+    manager = new TestAPZCTreeManager(mcc);
   }
 
   virtual void TearDown() {
@@ -1933,6 +1962,20 @@ protected:
     SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID, CSSRect(0, 0, 500, 500));
   }
 
+  void CreateSimpleDTCScrollingLayer() {
+    const char* layerTreeSyntax = "t";
+    nsIntRegion layerVisibleRegion[] = {
+      nsIntRegion(IntRect(0,0,200,200)),
+    };
+    root = CreateLayerTree(layerTreeSyntax, layerVisibleRegion, nullptr, lm, layers);
+    SetScrollableFrameMetrics(root, FrameMetrics::START_SCROLL_ID, CSSRect(0, 0, 500, 500));
+
+    EventRegions regions;
+    regions.mHitRegion = nsIntRegion(IntRect(0, 0, 200, 200));
+    regions.mDispatchToContentHitRegion = regions.mHitRegion;
+    layers[0]->SetEventRegions(regions);
+  }
+
   void CreateSimpleMultiLayerTree() {
     const char* layerTreeSyntax = "c(tt)";
     // LayerID                     0 12
@@ -1953,6 +1996,30 @@ protected:
     SetScrollableFrameMetrics(layers[5], FrameMetrics::START_SCROLL_ID + 1);
     SetScrollableFrameMetrics(layers[3], FrameMetrics::START_SCROLL_ID + 2);
     SetScrollableFrameMetrics(layers[6], FrameMetrics::START_SCROLL_ID + 3);
+  }
+
+  void CreateBug1194876Tree() {
+    const char* layerTreeSyntax = "c(t)";
+    // LayerID                     0 1
+    nsIntRegion layerVisibleRegion[] = {
+      nsIntRegion(IntRect(0,0,100,100)),
+      nsIntRegion(IntRect(0,0,100,100)),
+    };
+    root = CreateLayerTree(layerTreeSyntax, layerVisibleRegion, nullptr, lm, layers);
+    SetScrollableFrameMetrics(layers[0], FrameMetrics::START_SCROLL_ID);
+    SetScrollableFrameMetrics(layers[1], FrameMetrics::START_SCROLL_ID + 1);
+
+    // Make layers[1] the root content
+    FrameMetrics childMetrics = layers[1]->GetFrameMetrics(0);
+    childMetrics.SetIsRootContent(true);
+    layers[1]->SetFrameMetrics(childMetrics);
+
+    // Both layers are fully dispatch-to-content
+    EventRegions regions;
+    regions.mHitRegion = nsIntRegion(IntRect(0, 0, 100, 100));
+    regions.mDispatchToContentHitRegion = regions.mHitRegion;
+    layers[0]->SetEventRegions(regions);
+    layers[1]->SetEventRegions(regions);
   }
 };
 
@@ -2269,6 +2336,58 @@ TEST_F(APZCTreeManagerTester, Bug1068268) {
   EXPECT_EQ(ApzcOf(layers[6]), node5->GetLastChild()->GetApzc());
   EXPECT_EQ(ApzcOf(layers[2]), ApzcOf(layers[3])->GetParent());
   EXPECT_EQ(ApzcOf(layers[5]), ApzcOf(layers[6])->GetParent());
+}
+
+TEST_F(APZCTreeManagerTester, Bug1194876) {
+  CreateBug1194876Tree();
+  ScopedLayerTreeRegistration registration(0, root, mcc);
+  manager->UpdateHitTestingTree(nullptr, root, false, 0, 0);
+
+  uint64_t blockId;
+  nsTArray<ScrollableLayerGuid> targets;
+
+  // First touch goes down, APZCTM will hit layers[1] because it is on top of
+  // layers[0], but we tell it the real target APZC is layers[0].
+  MultiTouchInput mti;
+  mti = CreateMultiTouchInput(MultiTouchInput::MULTITOUCH_START, mcc->Time());
+  mti.mTouches.AppendElement(SingleTouchData(0, ParentLayerPoint(25, 50), ScreenSize(0, 0), 0, 0));
+  manager->ReceiveInputEvent(mti, nullptr, &blockId);
+  manager->ContentReceivedInputBlock(blockId, false);
+  targets.AppendElement(ApzcOf(layers[0])->GetGuid());
+  manager->SetTargetAPZC(blockId, targets);
+
+  // Around here, the above touch will get processed by ApzcOf(layers[0])
+
+  // Second touch goes down (first touch remains down), APZCTM will again hit
+  // layers[1]. Again we tell it both touches landed on layers[0], but because
+  // layers[1] is the RCD layer, it will end up being the multitouch target.
+  mti.mTouches.AppendElement(SingleTouchData(1, ParentLayerPoint(75, 50), ScreenSize(0, 0), 0, 0));
+  manager->ReceiveInputEvent(mti, nullptr, &blockId);
+  manager->ContentReceivedInputBlock(blockId, false);
+  targets.AppendElement(ApzcOf(layers[0])->GetGuid());
+  manager->SetTargetAPZC(blockId, targets);
+
+  // Around here, the above multi-touch will get processed by ApzcOf(layers[1]).
+  // We want to ensure that ApzcOf(layers[0]) has had its state cleared, because
+  // otherwise it will do things like dispatch spurious long-tap events.
+
+  EXPECT_CALL(*mcc, HandleLongTap(_, _, _, _)).Times(0);
+}
+
+TEST_F(APZCTreeManagerTester, Bug1198900) {
+  // This is just a test that cancels a wheel event to make sure it doesn't
+  // crash.
+  CreateSimpleDTCScrollingLayer();
+  ScopedLayerTreeRegistration registration(0, root, mcc);
+  manager->UpdateHitTestingTree(nullptr, root, false, 0, 0);
+
+  ScreenPoint origin(100, 50);
+  ScrollWheelInput swi(MillisecondsSinceStartup(mcc->Time()), mcc->Time(), 0,
+    ScrollWheelInput::SCROLLMODE_INSTANT, ScrollWheelInput::SCROLLDELTA_PIXEL,
+    origin, 0, 10);
+  uint64_t blockId;
+  manager->ReceiveInputEvent(swi, nullptr, &blockId);
+  manager->ContentReceivedInputBlock(blockId, /* preventDefault= */ true);
 }
 
 TEST_F(APZHitTestingTester, ComplexMultiLayerTree) {
@@ -3128,7 +3247,7 @@ public:
   APZTaskThrottlerTester()
   {
     now = TimeStamp::Now();
-    throttler = MakeUnique<TaskThrottler>(now, TimeDuration::FromMilliseconds(100));
+    throttler = new TaskThrottler(now, TimeDuration::FromMilliseconds(100));
   }
 
 protected:
@@ -3144,7 +3263,7 @@ protected:
   }
 
   TimeStamp now;
-  UniquePtr<TaskThrottler> throttler;
+  nsRefPtr<TaskThrottler> throttler;
   TaskRunMetrics metrics;
 };
 

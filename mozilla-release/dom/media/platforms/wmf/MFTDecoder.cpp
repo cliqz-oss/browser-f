@@ -9,8 +9,8 @@
 #include "WMFUtils.h"
 #include "mozilla/Logging.h"
 
-PRLogModuleInfo* GetDemuxerLog();
-#define LOG(...) MOZ_LOG(GetDemuxerLog(), mozilla::LogLevel::Debug, (__VA_ARGS__))
+extern PRLogModuleInfo* GetPDMLog();
+#define LOG(...) MOZ_LOG(GetPDMLog(), mozilla::LogLevel::Debug, (__VA_ARGS__))
 
 namespace mozilla {
 
@@ -68,7 +68,7 @@ MFTDecoder::SetMediaTypes(IMFMediaType* aInputType,
   return S_OK;
 }
 
-TemporaryRef<IMFAttributes>
+already_AddRefed<IMFAttributes>
 MFTDecoder::GetAttributes()
 {
   RefPtr<IMFAttributes> attr;
@@ -180,10 +180,6 @@ MFTDecoder::CreateOutputSample(RefPtr<IMFSample>* aOutSample)
   hr = wmf::MFCreateAlignedMemoryBuffer(bufferSize, alignment, byRef(buffer));
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
-  DWORD maxLength = 0;
-  DWORD currentLength = 0;
-  BYTE* dst = nullptr;
-
   hr = sample->AddBuffer(buffer);
   NS_ENSURE_TRUE(SUCCEEDED(hr), hr);
 
@@ -222,7 +218,7 @@ MFTDecoder::Output(RefPtr<IMFSample>* aOutput)
   }
 
   if (hr == MF_E_TRANSFORM_STREAM_CHANGE) {
-    // Type change, probably geometric aperature change.
+    // Type change, probably geometric aperture change.
     // Reconfigure decoder output type, so that GetOutputMediaType()
     // returns the new type, and return the error code to caller.
     // This is an expected failure, so don't warn on encountering it.

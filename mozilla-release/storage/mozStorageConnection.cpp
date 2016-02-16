@@ -375,7 +375,7 @@ WaitForUnlockNotify(sqlite3* aDatabase)
   return srv;
 }
 
-} // anonymous namespace
+} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Local Classes
@@ -517,7 +517,7 @@ private:
   nsCOMPtr<mozIStorageCompletionCallback> mCallback;
 };
 
-} // anonymous namespace
+} // namespace
 
 ////////////////////////////////////////////////////////////////////////////////
 //// Connection
@@ -1583,7 +1583,7 @@ Connection::ExecuteSimpleSQLAsync(const nsACString &aSQLStatement,
     return rv;
   }
 
-  NS_ADDREF(*_handle = pendingStatement);
+  pendingStatement.forget(_handle);
   return rv;
 }
 

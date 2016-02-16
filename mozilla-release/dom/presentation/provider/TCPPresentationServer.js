@@ -26,7 +26,7 @@ function TCPPresentationServer() {
   this._id = null;
   this._port = 0;
   this._serverSocket = null;
-  this._devices = null;
+  this._devices = new Map(); // id -> device
 }
 
 TCPPresentationServer.prototype = {
@@ -78,7 +78,6 @@ TCPPresentationServer.prototype = {
      */
     this.id = aId;
     this._port = this._serverSocket.port;
-    this._devices = new Map(); // id -> device
   },
 
   get id() {
@@ -126,6 +125,21 @@ TCPPresentationServer.prototype = {
                                                 host: aHost,
                                                 port: aPort}));
     return this._devices.get(aId);
+  },
+
+  updateTCPDevice: function(aId, aName, aType, aHost, aPort) {
+    DEBUG && log("TCPPresentationServer - updateTCPDevice with id: " + aId);
+    if (!this._devices.has(aId)) {
+      throw Cr.NS_ERROR_INVALID_ARG;
+    }
+
+    let device = this._devices.get(aId);
+    device.name = aName;
+    device.type = aType;
+    device.host = aHost;
+    device.port = aPort;
+
+    return device;
   },
 
   getTCPDevice: function(aId) {
@@ -251,7 +265,6 @@ TCPPresentationServer.prototype = {
     this._id = null;
     this._port = 0;
     this._devices && this._devices.clear();
-    this._devices = null;
   },
 
   classID: Components.ID("{f4079b8b-ede5-4b90-a112-5b415a931deb}"),
@@ -266,8 +279,8 @@ function ChannelDescription(aInit) {
       this._tcpAddresses = Cc["@mozilla.org/array;1"]
                            .createInstance(Ci.nsIMutableArray);
       for (let address of aInit.tcpAddress) {
-        let wrapper = Cc["@mozilla.org/supports-string;1"]
-                      .createInstance(Ci.nsISupportsString);
+        let wrapper = Cc["@mozilla.org/supports-cstring;1"]
+                      .createInstance(Ci.nsISupportsCString);
         wrapper.data = address;
         this._tcpAddresses.appendElement(wrapper, false);
       }
@@ -315,7 +328,7 @@ function discriptionAsJson(aDescription) {
       let addresses = aDescription.tcpAddress.QueryInterface(Ci.nsIArray);
       json.tcpAddress = [];
       for (let idx = 0; idx < addresses.length; idx++) {
-        let address = addresses.queryElementAt(idx, Ci.nsISupportsString);
+        let address = addresses.queryElementAt(idx, Ci.nsISupportsCString);
         json.tcpAddress.push(address.data);
       }
       json.tcpPort = aDescription.tcpPort;
@@ -543,11 +556,11 @@ TCPControlChannel.prototype = {
         break;
       }
       case "requestSession:Offer": {
-        this._listener.onOffer(new ChannelDescription(aMsg.offer));
+        this._onOffer(aMsg.offer);
         break;
       }
       case "requestSession:Answer": {
-        this._listener.onAnswer(new ChannelDescription(aMsg.answer));
+        this._onAnswer(aMsg.answer);
         break;
       }
     }

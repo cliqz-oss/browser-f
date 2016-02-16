@@ -16,11 +16,11 @@ using namespace gfx;
 
 namespace layers {
 
-PersistentBufferProviderBasic::PersistentBufferProviderBasic(LayerManager* aManager, gfx::IntSize aSize,
-                                                             gfx::SurfaceFormat aFormat, gfx::BackendType aBackend)
+PersistentBufferProviderBasic::PersistentBufferProviderBasic(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
+                                                             gfx::BackendType aBackend)
 {
   mDrawTarget = gfxPlatform::GetPlatform()->CreateDrawTargetForBackend(aBackend, aSize, aFormat);
 }
 
-}
-}
+} // namespace layers
+} // namespace mozilla

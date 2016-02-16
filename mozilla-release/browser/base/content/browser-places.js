@@ -229,20 +229,14 @@ var StarUI = {
 
     gEditItemOverlay.initPanel({ node: aNode
                                , hiddenRows: ["description", "location",
-                                              "loadInSidebar", "keyword"] });
+                                              "loadInSidebar", "keyword"]
+                               , focusedElement: "preferred" });
   }),
 
   panelShown:
   function SU_panelShown(aEvent) {
     if (aEvent.target == this.panel) {
-      if (!this._element("editBookmarkPanelContent").hidden) {
-        let fieldToFocus = "editBMPanel_" +
-          gPrefService.getCharPref("browser.bookmarks.editDialog.firstEditField");
-        var elt = this._element(fieldToFocus);
-        elt.focus();
-        elt.select();
-      }
-      else {
+      if (this._element("editBookmarkPanelContent").hidden) {
         // Note this isn't actually used anymore, we should remove this
         // once we decide not to bring back the page bookmarked notification
         this.panel.focus();
@@ -1027,7 +1021,7 @@ var PlacesMenuDNDHandler = {
  * This object handles the initialization and uninitialization of the bookmarks
  * toolbar.
  */
-let PlacesToolbarHelper = {
+var PlacesToolbarHelper = {
   _place: "place:folder=TOOLBAR",
 
   get _viewElt() {
@@ -1174,7 +1168,7 @@ let PlacesToolbarHelper = {
  * Handles the bookmarks menu-button in the toolbar.
  */
 
-let BookmarkingUI = {
+var BookmarkingUI = {
   BOOKMARK_BUTTON_ID: "bookmarks-menu-button",
   BOOKMARK_BUTTON_SHORTCUT: "addBookmarkAsKb",
   get button() {
@@ -1353,26 +1347,11 @@ let BookmarkingUI = {
       this.broadcaster.removeAttribute("stardisabled");
       this._updateStar();
     }
-    this._updateToolbarStyle();
   },
 
   _updateCustomizationState: function BUI__updateCustomizationState() {
     let placement = CustomizableUI.getPlacementOfWidget(this.BOOKMARK_BUTTON_ID);
     this._currentAreaType = placement && CustomizableUI.getAreaType(placement.area);
-  },
-
-  _updateToolbarStyle: function BUI__updateToolbarStyle() {
-    let onPersonalToolbar = false;
-    if (this._currentAreaType == CustomizableUI.TYPE_TOOLBAR) {
-      let personalToolbar = document.getElementById("PersonalToolbar");
-      onPersonalToolbar = this.button.parentNode == personalToolbar ||
-                          this.button.parentNode.parentNode == personalToolbar;
-    }
-
-    if (onPersonalToolbar)
-      this.button.classList.add("bookmark-item");
-    else
-      this.button.classList.remove("bookmark-item");
   },
 
   _uninitView: function BUI__uninitView() {
@@ -1437,14 +1416,12 @@ let BookmarkingUI = {
     if (!this._isCustomizing) {
       this._uninitView();
     }
-    this._updateToolbarStyle();
   },
 
   onCustomizeEnd: function BUI_customizeEnd(aWindow) {
     if (aWindow == window) {
       this._isCustomizing = false;
       this.onToolbarVisibilityChange();
-      this._updateToolbarStyle();
     }
   },
 

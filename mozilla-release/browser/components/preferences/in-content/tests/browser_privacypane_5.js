@@ -20,8 +20,5 @@ function test() {
     test_locbar_suggestion_retention("history", false),
   ];
 
-  if (AppConstants.NIGHTLY_BUILD)
-    tests.push(test_locbar_suggestion_retention("searches", true));
-
   run_test_subset(tests);
 }

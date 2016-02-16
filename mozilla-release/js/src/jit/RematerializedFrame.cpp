@@ -14,6 +14,7 @@
 
 #include "jsscriptinlines.h"
 #include "jit/JitFrames-inl.h"
+#include "vm/ScopeObject-inl.h"
 
 using namespace js;
 using namespace jit;
@@ -36,6 +37,7 @@ RematerializedFrame::RematerializedFrame(JSContext* cx, uint8_t* top, unsigned n
   : prevUpToDate_(false),
     isDebuggee_(iter.script()->isDebuggee()),
     isConstructing_(iter.isConstructing()),
+    hasCachedSavedFrame_(false),
     top_(top),
     pc_(iter.pc()),
     frameNo_(iter.frameNo()),
@@ -141,7 +143,7 @@ bool
 RematerializedFrame::initFunctionScopeObjects(JSContext* cx)
 {
     MOZ_ASSERT(isNonEvalFunctionFrame());
-    MOZ_ASSERT(fun()->isHeavyweight());
+    MOZ_ASSERT(fun()->needsCallObject());
     CallObject* callobj = CallObject::createForFunction(cx, this);
     if (!callobj)
         return false;
@@ -157,6 +159,8 @@ RematerializedFrame::mark(JSTracer* trc)
     TraceRoot(trc, &scopeChain_, "remat ion frame scope chain");
     if (callee_)
         TraceRoot(trc, &callee_, "remat ion frame callee");
+    if (argsObj_)
+        TraceRoot(trc, &argsObj_, "remat ion frame argsobj");
     TraceRoot(trc, &returnValue_, "remat ion frame return value");
     TraceRoot(trc, &thisValue_, "remat ion frame this");
     TraceRootRange(trc, numActualArgs_ + isConstructing_ + script_->nfixed(),

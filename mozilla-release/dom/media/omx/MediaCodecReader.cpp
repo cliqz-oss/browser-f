@@ -25,18 +25,18 @@
 #include <stagefright/MetaData.h>
 #include <stagefright/Utils.h>
 
+#include "mozilla/TaskQueue.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/layers/GrallocTextureClient.h"
 
 #include "gfx2DGlue.h"
 
 #include "MediaStreamSource.h"
-#include "MediaTaskQueue.h"
 #include "MP3FrameParser.h"
 #include "nsMimeTypes.h"
 #include "nsThreadUtils.h"
 #include "ImageContainer.h"
-#include "SharedThreadPool.h"
+#include "mozilla/SharedThreadPool.h"
 #include "VideoFrameContainer.h"
 #include "VideoUtils.h"
 
@@ -526,27 +526,39 @@ void
 MediaCodecReader::NotifyDataArrivedInternal(uint32_t aLength,
                                             int64_t aOffset)
 {
-  nsRefPtr<MediaByteBuffer> bytes =
-    mDecoder->GetResource()->MediaReadAt(aOffset, aLength);
-  NS_ENSURE_TRUE_VOID(bytes);
+  AutoPinned<MediaResource> resource(mDecoder->GetResource());
+  nsTArray<MediaByteRange> byteRanges;
+  nsresult rv = resource->GetCachedRanges(byteRanges);
 
-  MonitorAutoLock monLock(mParserMonitor);
-  if (mNextParserPosition == mParsedDataLength &&
-      mNextParserPosition >= aOffset &&
-      mNextParserPosition <= aOffset + aLength) {
-    // No pending parsing runnable currently. And available data are adjacent to
-    // parsed data.
-    int64_t shift = mNextParserPosition - aOffset;
-    const char* buffer = reinterpret_cast<const char*>(bytes->Elements()) + shift;
-    uint32_t length = aLength - shift;
-    int64_t offset = mNextParserPosition;
-    if (length > 0) {
-      MonitorAutoUnlock monUnlock(mParserMonitor);
-      ParseDataSegment(buffer, length, offset);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  IntervalSet<int64_t> intervals;
+  for (auto& range : byteRanges) {
+    intervals += mFilter.NotifyDataArrived(range.Length(), range.mStart);
+  }
+  for (const auto& interval : intervals) {
+    nsRefPtr<MediaByteBuffer> bytes =
+      resource->MediaReadAt(interval.mStart, interval.Length());
+    MonitorAutoLock monLock(mParserMonitor);
+    if (mNextParserPosition == mParsedDataLength &&
+        mNextParserPosition >= interval.mStart &&
+        mNextParserPosition <= interval.mEnd) {
+      // No pending parsing runnable currently. And available data are adjacent to
+      // parsed data.
+      int64_t shift = mNextParserPosition - interval.mStart;
+      const char* buffer = reinterpret_cast<const char*>(bytes->Elements()) + shift;
+      uint32_t length = interval.Length() - shift;
+      int64_t offset = mNextParserPosition;
+      if (length > 0) {
+        MonitorAutoUnlock monUnlock(mParserMonitor);
+        ParseDataSegment(buffer, length, offset);
+      }
+      mParseDataFromCache = false;
+      mParsedDataLength = offset + length;
+      mNextParserPosition = mParsedDataLength;
     }
-    mParseDataFromCache = false;
-    mParsedDataLength = offset + length;
-    mNextParserPosition = mParsedDataLength;
   }
 }
 
@@ -683,7 +695,7 @@ MediaCodecReader::AsyncReadMetadata()
 
   nsRefPtr<MediaCodecReader> self = this;
   mMediaResourceRequest.Begin(CreateMediaCodecs()
-    ->Then(TaskQueue(), __func__,
+    ->Then(OwnerThread(), __func__,
       [self] (bool) -> void {
         self->mMediaResourceRequest.Complete();
         self->HandleResourceAllocated();
@@ -743,10 +755,8 @@ MediaCodecReader::HandleResourceAllocated()
   // Video track's frame sizes will not overflow. Activate the video track.
   VideoFrameContainer* container = mDecoder->GetVideoFrameContainer();
   if (container) {
-    container->SetCurrentFrame(
-      gfxIntSize(mInfo.mVideo.mDisplay.width, mInfo.mVideo.mDisplay.height),
-      nullptr,
-      mozilla::TimeStamp::Now());
+    container->ClearCurrentFrame(
+      gfxIntSize(mInfo.mVideo.mDisplay.width, mInfo.mVideo.mDisplay.height));
   }
 
   nsRefPtr<MetadataHolder> metadata = new MetadataHolder();
@@ -1055,14 +1065,6 @@ MediaCodecReader::Seek(int64_t aTime, int64_t aEndTime)
     mVideoTrack.mInputEndOfStream = false;
     mVideoTrack.mOutputEndOfStream = false;
     mVideoTrack.mFlushed = false;
-
-    VideoFrameContainer* videoframe = mDecoder->GetVideoFrameContainer();
-    if (videoframe) {
-      layers::ImageContainer* image = videoframe->GetImageContainer();
-      if (image) {
-        image->ClearAllImagesExceptFront();
-      }
-    }
 
     MediaBuffer* source_buffer = nullptr;
     MediaSource::ReadOptions options;

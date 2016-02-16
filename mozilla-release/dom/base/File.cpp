@@ -41,8 +41,6 @@
 #include "mozilla/dom/WorkerPrivate.h"
 #include "nsThreadUtils.h"
 
-#include "mozilla/dom/FileListBinding.h"
-
 namespace mozilla {
 namespace dom {
 
@@ -229,6 +227,12 @@ Blob::IsFile() const
   return mImpl->IsFile();
 }
 
+bool
+Blob::IsDirectory() const
+{
+  return mImpl->IsDirectory();
+}
+
 const nsTArray<nsRefPtr<BlobImpl>>*
 Blob::GetSubBlobImpls() const
 {
@@ -376,18 +380,6 @@ Blob::GetFileId()
   return mImpl->GetFileId();
 }
 
-void
-Blob::AddFileInfo(indexedDB::FileInfo* aFileInfo)
-{
-  mImpl->AddFileInfo(aFileInfo);
-}
-
-indexedDB::FileInfo*
-Blob::GetFileInfo(indexedDB::FileManager* aFileManager)
-{
-  return mImpl->GetFileInfo(aFileManager);
-}
-
 bool
 Blob::IsMemoryFile() const
 {
@@ -421,10 +413,11 @@ File::Create(nsISupports* aParent, BlobImpl* aImpl)
 /* static */ already_AddRefed<File>
 File::Create(nsISupports* aParent, const nsAString& aName,
              const nsAString& aContentType, uint64_t aLength,
-             int64_t aLastModifiedDate)
+             int64_t aLastModifiedDate, BlobDirState aDirState)
 {
   nsRefPtr<File> file = new File(aParent,
-    new BlobImplBase(aName, aContentType, aLength, aLastModifiedDate));
+    new BlobImplBase(aName, aContentType, aLength, aLastModifiedDate,
+                     aDirState));
   return file.forget();
 }
 
@@ -453,36 +446,6 @@ File::CreateMemoryFile(nsISupports* aParent, void* aMemoryBuffer,
 File::CreateFromFile(nsISupports* aParent, nsIFile* aFile, bool aTemporary)
 {
   nsRefPtr<File> file = new File(aParent, new BlobImplFile(aFile, aTemporary));
-  return file.forget();
-}
-
-/* static */ already_AddRefed<File>
-File::CreateFromFile(nsISupports* aParent, const nsAString& aContentType,
-                     uint64_t aLength, nsIFile* aFile,
-                     indexedDB::FileInfo* aFileInfo)
-{
-  nsRefPtr<File> file = new File(aParent,
-    new BlobImplFile(aContentType, aLength, aFile, aFileInfo));
-  return file.forget();
-}
-
-/* static */ already_AddRefed<File>
-File::CreateFromFile(nsISupports* aParent, const nsAString& aName,
-                     const nsAString& aContentType,
-                     uint64_t aLength, nsIFile* aFile,
-                     indexedDB::FileInfo* aFileInfo)
-{
-  nsRefPtr<File> file = new File(aParent,
-    new BlobImplFile(aName, aContentType, aLength, aFile, aFileInfo));
-  return file.forget();
-}
-
-/* static */ already_AddRefed<File>
-File::CreateFromFile(nsISupports* aParent, nsIFile* aFile,
-                     indexedDB::FileInfo* aFileInfo)
-{
-  nsRefPtr<File> file = new File(aParent,
-    new BlobImplFile(aFile, aFileInfo));
   return file.forget();
 }
 
@@ -521,7 +484,7 @@ File::GetLastModifiedDate(ErrorResult& aRv)
     return Date();
   }
 
-  return Date(value);
+  return Date(JS::TimeClip(value));
 }
 
 int64_t
@@ -795,78 +758,7 @@ BlobImplBase::SetLastModified(int64_t aLastModified)
 int64_t
 BlobImplBase::GetFileId()
 {
-  int64_t id = -1;
-
-  if (IsStoredFile() && IsWholeFile() && !IsSnapshot()) {
-    if (!indexedDB::IndexedDatabaseManager::IsClosed()) {
-      indexedDB::IndexedDatabaseManager::FileMutex().Lock();
-    }
-
-    NS_ASSERTION(!mFileInfos.IsEmpty(),
-                 "A stored file must have at least one file info!");
-
-    nsRefPtr<indexedDB::FileInfo>& fileInfo = mFileInfos.ElementAt(0);
-    if (fileInfo) {
-      id =  fileInfo->Id();
-    }
-
-    if (!indexedDB::IndexedDatabaseManager::IsClosed()) {
-      indexedDB::IndexedDatabaseManager::FileMutex().Unlock();
-    }
-  }
-
-  return id;
-}
-
-void
-BlobImplBase::AddFileInfo(indexedDB::FileInfo* aFileInfo)
-{
-  if (indexedDB::IndexedDatabaseManager::IsClosed()) {
-    NS_ERROR("Shouldn't be called after shutdown!");
-    return;
-  }
-
-  nsRefPtr<indexedDB::FileInfo> fileInfo = aFileInfo;
-
-  MutexAutoLock lock(indexedDB::IndexedDatabaseManager::FileMutex());
-
-  NS_ASSERTION(!mFileInfos.Contains(aFileInfo),
-               "Adding the same file info agan?!");
-
-  nsRefPtr<indexedDB::FileInfo>* element = mFileInfos.AppendElement();
-  element->swap(fileInfo);
-}
-
-indexedDB::FileInfo*
-BlobImplBase::GetFileInfo(indexedDB::FileManager* aFileManager)
-{
-  if (indexedDB::IndexedDatabaseManager::IsClosed()) {
-    NS_ERROR("Shouldn't be called after shutdown!");
-    return nullptr;
-  }
-
-  // A slice created from a stored file must keep the file info alive.
-  // However, we don't support sharing of slices yet, so the slice must be
-  // copied again. That's why we have to ignore the first file info.
-  // Snapshots are handled in a similar way (they have to be copied).
-  uint32_t startIndex;
-  if (IsStoredFile() && (!IsWholeFile() || IsSnapshot())) {
-    startIndex = 1;
-  }
-  else {
-    startIndex = 0;
-  }
-
-  MutexAutoLock lock(indexedDB::IndexedDatabaseManager::FileMutex());
-
-  for (uint32_t i = startIndex; i < mFileInfos.Length(); i++) {
-    nsRefPtr<indexedDB::FileInfo>& fileInfo = mFileInfos.ElementAt(i);
-    if (fileInfo->Manager() == aFileManager) {
-      return fileInfo;
-    }
-  }
-
-  return nullptr;
+  return -1;
 }
 
 nsresult
@@ -1056,6 +948,17 @@ BlobImplFile::SetPath(const nsAString& aPath)
   mPath = aPath;
 }
 
+void
+BlobImplFile::LookupAndCacheIsDirectory()
+{
+  MOZ_ASSERT(mIsFile,
+             "This should only be called when this object has been created "
+             "from an nsIFile to note that the nsIFile is a directory");
+  bool isDir;
+  mFile->IsDirectory(&isDir);
+  mDirState = isDir ? BlobDirState::eIsDir : BlobDirState::eIsNotDir;
+}
+
 ////////////////////////////////////////////////////////////////////////////
 // BlobImplMemory implementation
 
@@ -1215,42 +1118,6 @@ BlobImplTemporaryBlob::GetInternalStream(nsIInputStream** aStream,
 }
 
 ////////////////////////////////////////////////////////////////////////////
-// FileList implementation
-
-NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(FileList, mFiles)
-
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(FileList)
-  NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
-  NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIDOMFileList)
-  NS_INTERFACE_MAP_ENTRY(nsIDOMFileList)
-NS_INTERFACE_MAP_END
-
-NS_IMPL_CYCLE_COLLECTING_ADDREF(FileList)
-NS_IMPL_CYCLE_COLLECTING_RELEASE(FileList)
-
-JSObject*
-FileList::WrapObject(JSContext *cx, JS::Handle<JSObject*> aGivenProto)
-{
-  return mozilla::dom::FileListBinding::Wrap(cx, this, aGivenProto);
-}
-
-NS_IMETHODIMP
-FileList::GetLength(uint32_t* aLength)
-{
-  *aLength = Length();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-FileList::Item(uint32_t aIndex, nsISupports** aFile)
-{
-  nsCOMPtr<nsIDOMBlob> file = Item(aIndex);
-  file.forget(aFile);
-  return NS_OK;
-}
-
-////////////////////////////////////////////////////////////////////////////
 // BlobSet implementation
 
 already_AddRefed<Blob>
@@ -1282,7 +1149,7 @@ BlobSet::AppendString(const nsAString& aString, bool nativeEOL, JSContext* aCx)
   nsCString utf8Str = NS_ConvertUTF16toUTF8(aString);
 
   if (nativeEOL) {
-    if (utf8Str.FindChar('\r') != kNotFound) {
+    if (utf8Str.Contains('\r')) {
       utf8Str.ReplaceSubstring("\r\n", "\n");
       utf8Str.ReplaceSubstring("\r", "\n");
     }
@@ -1315,5 +1182,5 @@ BlobSet::AppendBlobImpls(const nsTArray<nsRefPtr<BlobImpl>>& aBlobImpls)
   return NS_OK;
 }
 
-} // dom namespace
-} // mozilla namespace
+} // namespace dom
+} // namespace mozilla

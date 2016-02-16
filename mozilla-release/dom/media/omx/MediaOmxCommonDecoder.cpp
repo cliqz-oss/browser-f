@@ -28,7 +28,9 @@ MediaOmxCommonDecoder::MediaOmxCommonDecoder()
   , mReader(nullptr)
   , mCanOffloadAudio(false)
   , mFallbackToStateMachine(false)
+  , mIsCaptured(false)
 {
+  mDormantSupported = true;
   if (!gMediaDecoderLog) {
     gMediaDecoderLog = PR_NewLogModule("MediaDecoder");
   }
@@ -47,8 +49,7 @@ bool
 MediaOmxCommonDecoder::CheckDecoderCanOffloadAudio()
 {
   return (mCanOffloadAudio && !mFallbackToStateMachine &&
-          !(GetStateMachine() && GetStateMachine()->GetDecodedStream()) &&
-          mPlaybackRate == 1.0);
+          !mIsCaptured && mPlaybackRate == 1.0);
 }
 
 void
@@ -120,7 +121,7 @@ MediaOmxCommonDecoder::PauseStateMachine()
       GetStateMachine(),
       &MediaDecoderStateMachine::SetDormant,
       true);
-  GetStateMachine()->TaskQueue()->Dispatch(event.forget());
+  GetStateMachine()->OwnerThread()->Dispatch(event.forget());
 }
 
 void
@@ -149,7 +150,7 @@ MediaOmxCommonDecoder::ResumeStateMachine()
       GetStateMachine(),
       &MediaDecoderStateMachine::Seek,
       target);
-  GetStateMachine()->TaskQueue()->Dispatch(event.forget());
+  GetStateMachine()->OwnerThread()->Dispatch(event.forget());
 
   mNextState = mPlayState;
   ChangeState(PLAY_STATE_LOADING);
@@ -159,7 +160,7 @@ MediaOmxCommonDecoder::ResumeStateMachine()
       GetStateMachine(),
       &MediaDecoderStateMachine::SetDormant,
       false);
-  GetStateMachine()->TaskQueue()->Dispatch(event.forget());
+  GetStateMachine()->OwnerThread()->Dispatch(event.forget());
   UpdateLogicalPosition();
 }
 
@@ -181,6 +182,8 @@ MediaOmxCommonDecoder::AddOutputStream(ProcessedMediaStream* aStream,
                                        bool aFinishWhenEnded)
 {
   MOZ_ASSERT(NS_IsMainThread());
+
+  mIsCaptured = true;
 
   if (mAudioOffloadPlayer) {
     ResumeStateMachine();

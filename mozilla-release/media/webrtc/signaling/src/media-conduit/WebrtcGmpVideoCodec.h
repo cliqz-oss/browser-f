@@ -109,7 +109,8 @@ class GmpInitDoneRunnable : public nsRunnable
         // For some reason, the compiler on CI is treating |this| as a const
         // pointer, despite the fact that we're in a non-const function. And,
         // interestingly enough, correcting this doesn't require a const_cast.
-        mainThread->Dispatch(this, NS_DISPATCH_NORMAL);
+        mainThread->Dispatch(do_AddRef(static_cast<nsIRunnable*>(this)),
+                             NS_DISPATCH_NORMAL);
       }
     }
 

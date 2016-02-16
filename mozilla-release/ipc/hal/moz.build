@@ -5,19 +5,23 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXPORTS.mozilla.ipc += [
+    'DaemonRunnables.h',
     'DaemonSocket.h',
+    'DaemonSocketConnector.h',
     'DaemonSocketConsumer.h',
-    'DaemonSocketPDU.h'
+    'DaemonSocketMessageHandlers.h',
+    'DaemonSocketPDU.h',
+    'DaemonSocketPDUHelpers.h'
 ]
 
 UNIFIED_SOURCES += [
     'DaemonSocket.cpp',
+    'DaemonSocketConnector.cpp',
     'DaemonSocketConsumer.cpp',
-    'DaemonSocketPDU.cpp'
+    'DaemonSocketPDU.cpp',
+    'DaemonSocketPDUHelpers.cpp'
 ]
 
 include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
-
-FAIL_ON_WARNINGS = True

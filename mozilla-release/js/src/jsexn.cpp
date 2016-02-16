@@ -68,7 +68,6 @@ static const JSFunctionSpec exception_methods[] = {
 #define IMPLEMENT_ERROR_SUBCLASS(name) \
     { \
         js_Error_str, /* yes, really */ \
-        JSCLASS_IMPLEMENTS_BARRIERS | \
         JSCLASS_HAS_CACHED_PROTO(JSProto_##name) | \
         JSCLASS_HAS_RESERVED_SLOTS(ErrorObject::RESERVED_SLOTS), \
         nullptr,                 /* addProperty */ \
@@ -100,7 +99,6 @@ const Class
 ErrorObject::classes[JSEXN_LIMIT] = {
     {
         js_Error_str,
-        JSCLASS_IMPLEMENTS_BARRIERS |
         JSCLASS_HAS_CACHED_PROTO(JSProto_Error) |
         JSCLASS_HAS_RESERVED_SLOTS(ErrorObject::RESERVED_SLOTS),
         nullptr,                 /* addProperty */
@@ -321,6 +319,20 @@ js::ErrorFromException(JSContext* cx, HandleObject objArg)
         return nullptr;
 
     return obj->as<ErrorObject>().getOrCreateErrorReport(cx);
+}
+
+JS_PUBLIC_API(JSObject*)
+ExceptionStackOrNull(JSContext* cx, HandleObject objArg)
+{
+    AssertHeapIsIdle(cx);
+    CHECK_REQUEST(cx);
+    assertSameCompartment(cx, objArg);
+    RootedObject obj(cx, CheckedUnwrap(objArg));
+    if (!obj || !obj->is<ErrorObject>()) {
+      return nullptr;
+    }
+
+    return obj->as<ErrorObject>().stack();
 }
 
 bool

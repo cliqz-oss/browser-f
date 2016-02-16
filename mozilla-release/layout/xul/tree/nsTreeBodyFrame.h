@@ -32,8 +32,8 @@ class nsTreeImageListener;
 namespace mozilla {
 namespace layout {
 class ScrollbarActivity;
-}
-}
+} // namespace layout
+} // namespace mozilla
 
 // An entry in the tree's image cache
 struct nsTreeImageCacheEntry
@@ -325,7 +325,6 @@ protected:
                           nsRect& aImageRect,
                           nsRect& aTwistyRect,
                           nsPresContext* aPresContext,
-                          nsRenderingContext& aRenderingContext,
                           nsStyleContext* aTwistyContext);
 
   // Fetch an image from the image cache.

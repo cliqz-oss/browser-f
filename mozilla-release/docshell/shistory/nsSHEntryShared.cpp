@@ -27,7 +27,7 @@ namespace {
 
 uint64_t gSHEntrySharedID = 0;
 
-} // anonymous namespace
+} // namespace
 
 #define CONTENT_VIEWER_TIMEOUT_SECONDS "browser.sessionhistory.contentViewerTimeout"
 // Default this to time out unused content viewers after 30 minutes
@@ -38,7 +38,7 @@ class HistoryTracker final : public HistoryTrackerBase
 {
 public:
   explicit HistoryTracker(uint32_t aTimeout)
-    : HistoryTrackerBase(1000 * aTimeout / 2)
+    : HistoryTrackerBase(1000 * aTimeout / 2, "HistoryTracker")
   {
   }
 
@@ -327,7 +327,8 @@ nsSHEntryShared::AttributeWillChange(nsIDocument* aDocument,
                                      dom::Element* aContent,
                                      int32_t aNameSpaceID,
                                      nsIAtom* aAttribute,
-                                     int32_t aModType)
+                                     int32_t aModType,
+                                     const nsAttrValue* aNewValue)
 {
 }
 
@@ -336,7 +337,8 @@ nsSHEntryShared::AttributeChanged(nsIDocument* aDocument,
                                   dom::Element* aElement,
                                   int32_t aNameSpaceID,
                                   nsIAtom* aAttribute,
-                                  int32_t aModType)
+                                  int32_t aModType,
+                                  const nsAttrValue* aOldValue)
 {
   RemoveFromBFCacheAsync();
 }

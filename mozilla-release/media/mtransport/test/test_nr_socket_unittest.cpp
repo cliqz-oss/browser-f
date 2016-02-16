@@ -67,7 +67,7 @@ class TestNrSocketTest : public ::testing::Test {
     // is how we simulate a non-natted socket.
     nsRefPtr<TestNrSocket> sock(new TestNrSocket(nat ? nat : new TestNat));
     nr_transport_addr address;
-    nr_ip4_str_port_to_transport_addr(ip_str, 0, IPPROTO_UDP, &address);
+    nr_str_port_to_transport_addr(ip_str, 0, IPPROTO_UDP, &address);
     int r = sock->create(&address);
     if (r) {
       return nullptr;
@@ -225,7 +225,7 @@ class TestNrSocketTest : public ::testing::Test {
                    NS_DISPATCH_SYNC);
 
     bool res;
-    WAIT_(wait_done_for_main_, 100, res);
+    WAIT_(wait_done_for_main_, 500, res);
     wait_done_for_main_ = false;
 
     if (!res) {

@@ -21,15 +21,15 @@ Cu.import("resource:///modules/devtools/gDevTools.jsm");
 Cu.import("resource:///modules/devtools/StyleEditorUtil.jsm");
 Cu.import("resource:///modules/devtools/SplitView.jsm");
 Cu.import("resource:///modules/devtools/StyleSheetEditor.jsm");
-const { Promise: promise } = Cu.import("resource://gre/modules/Promise.jsm", {});
 
 XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
                                   "resource://gre/modules/PluralForm.jsm");
 
-const require = Cu.import("resource://gre/modules/devtools/Loader.jsm", {}).devtools.require;
+const { require } = Cu.import("resource://gre/modules/devtools/Loader.jsm", {});
 const { PrefObserver, PREF_ORIG_SOURCES } = require("devtools/styleeditor/utils");
 const csscoverage = require("devtools/server/actors/csscoverage");
 const console = require("resource://gre/modules/devtools/Console.jsm").console;
+const promise = require("promise");
 
 const LOAD_ERROR = "error-load";
 const STYLE_EDITOR_TEMPLATE = "stylesheet";

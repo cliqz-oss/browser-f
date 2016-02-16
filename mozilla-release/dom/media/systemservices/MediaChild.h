@@ -25,10 +25,10 @@ namespace media {
 // (promise-like objects) with the future value. Use pledge.Then(func) to access.
 
 already_AddRefed<Pledge<nsCString>>
-GetOriginKey(const nsCString& aOrigin, bool aPrivateBrowsing);
+GetOriginKey(const nsCString& aOrigin, bool aPrivateBrowsing, bool aPersist);
 
 void
-SanitizeOriginKeys(const uint64_t& aSinceWhen);
+SanitizeOriginKeys(const uint64_t& aSinceWhen, bool aOnlyPrivateBrowsing);
 
 class Child : public PMediaChild
 {

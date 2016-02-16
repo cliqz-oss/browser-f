@@ -10,15 +10,18 @@
 #include "RasterImage.h"
 #include "mozilla/RefPtr.h"
 #include "DecodePool.h"
+#include "DecoderFlags.h"
+#include "Downscaler.h"
 #include "ImageMetadata.h"
 #include "Orientation.h"
 #include "SourceBuffer.h"
+#include "SurfaceFlags.h"
 
 namespace mozilla {
 
 namespace Telemetry {
   enum ID : uint32_t;
-}
+} // namespace Telemetry
 
 namespace image {
 
@@ -34,48 +37,22 @@ public:
   void Init();
 
   /**
-   * Initializes a decoder whose image and observer is already being used by a
-   * parent decoder. Decoders may not be re-initialized.
+   * Decodes, reading all data currently available in the SourceBuffer.
    *
-   * Notifications Sent: TODO
-   */
-  void InitSharedDecoder(uint8_t* aImageData, uint32_t aImageDataLength,
-                         uint32_t* aColormap, uint32_t aColormapSize,
-                         RawAccessFrameRef&& aFrameRef);
-
-  /**
-   * Decodes, reading all data currently available in the SourceBuffer. If more
-   * If aBuffer is null and aCount is 0, Write() flushes any buffered data to
-   * the decoder. Data is buffered if the decoder wasn't able to completely
-   * decode it because it needed a new frame.  If it's necessary to flush data,
-   * NeedsToFlushData() will return true.
-   *
-   * data is needed, Decode() automatically ensures that it will be called again
-   * on a DecodePool thread when the data becomes available.
+   * If more data is needed, Decode() will schedule @aOnResume to be called when
+   * more data is available. If @aOnResume is null or unspecified, the default
+   * implementation resumes decoding on a DecodePool thread. Most callers should
+   * use the default implementation.
    *
    * Any errors are reported by setting the appropriate state on the decoder.
    */
-  nsresult Decode();
-
-  /**
-   * Cleans up the decoder's state and notifies our image about success or
-   * failure. May only be called on the main thread.
-   */
-  void Finish();
+  nsresult Decode(IResumable* aOnResume = nullptr);
 
   /**
    * Given a maximum number of bytes we're willing to decode, @aByteLimit,
    * returns true if we should attempt to run this decoder synchronously.
    */
   bool ShouldSyncDecode(size_t aByteLimit);
-
-  /**
-   * Informs the shared decoder that all the data has been written.
-   * Should only be used if InitSharedDecoder was useed
-   *
-   * Notifications Sent: TODO
-   */
-  void FinishSharedDecoder();
 
   /**
    * Gets the invalidation region accumulated by the decoder so far, and clears
@@ -120,51 +97,46 @@ public:
    * State.
    */
 
-  // If we're doing a "size decode", we more or less pass through the image
-  // data, stopping only to scoop out the image dimensions. A size decode
-  // must be enabled by SetSizeDecode() _before_calling Init().
-  bool IsSizeDecode() { return mSizeDecode; }
-  void SetSizeDecode(bool aSizeDecode)
+  /**
+   * If we're doing a metadata decode, we only decode the image's headers, which
+   * is enough to determine the image's intrinsic size. A metadata decode is
+   * enabled by calling SetMetadataDecode() *before* calling Init().
+   */
+  void SetMetadataDecode(bool aMetadataDecode)
   {
     MOZ_ASSERT(!mInitialized, "Shouldn't be initialized yet");
-    mSizeDecode = aSizeDecode;
+    mMetadataDecode = aMetadataDecode;
   }
+  bool IsMetadataDecode() const { return mMetadataDecode; }
 
   /**
    * If this decoder supports downscale-during-decode, sets the target size that
    * this image should be decoded to.
    *
-   * If this decoder *doesn't* support downscale-during-decode, returns
-   * NS_ERROR_NOT_AVAILABLE. If the provided size is unacceptable, returns
-   * another error.
+   * If the provided size is unacceptable, an error is returned.
    *
    * Returning NS_OK from this method is a promise that the decoder will decode
    * the image to the requested target size unless it encounters an error.
    *
    * This must be called before Init() is called.
    */
-  virtual nsresult SetTargetSize(const nsIntSize& aSize)
-  {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
+  nsresult SetTargetSize(const nsIntSize& aSize);
 
   /**
-   * Set whether should send partial invalidations.
+   * Set the requested sample size for this decoder. Used to implement the
+   * -moz-sample-size media fragment.
    *
-   * If @aSend is true, we'll send partial invalidations when decoding the first
-   * frame of the image, so image notifications observers will be able to
-   * gradually draw in the image as it downloads.
-   *
-   * If @aSend is false (the default), we'll only send an invalidation when we
-   * complete the first frame.
-   *
-   * This must be called before Init() is called.
+   *  XXX(seth): Support for -moz-sample-size will be removed in bug 1120056.
    */
-  void SetSendPartialInvalidations(bool aSend)
-  {
-    MOZ_ASSERT(!mInitialized, "Shouldn't be initialized yet");
-    mSendPartialInvalidations = aSend;
-  }
+  virtual void SetSampleSize(int aSampleSize) { }
+
+  /**
+   * Set the requested resolution for this decoder. Used to implement the
+   * -moz-resolution media fragment.
+   *
+   *  XXX(seth): Support for -moz-resolution will be removed in bug 1118926.
+   */
+  virtual void SetResolution(const gfx::IntSize& aResolution) { }
 
   /**
    * Set an iterator to the SourceBuffer which will feed data to this decoder.
@@ -182,28 +154,20 @@ public:
   }
 
   /**
-   * Set whether this decoder is associated with a transient image. The decoder
-   * may choose to avoid certain optimizations that don't pay off for
-   * short-lived images in this case.
+   * Should this decoder send partial invalidations?
    */
-  void SetImageIsTransient(bool aIsTransient)
+  bool ShouldSendPartialInvalidations() const
   {
-    MOZ_ASSERT(!mInitialized, "Shouldn't be initialized yet");
-    mImageIsTransient = aIsTransient;
+    return !(mDecoderFlags & DecoderFlags::IS_REDECODE);
   }
 
   /**
-   * Set whether the image is locked for the lifetime of this decoder. We lock
-   * the image during our initial decode to ensure that we don't evict any
-   * surfaces before we realize that the image is animated.
+   * Should we stop decoding after the first frame?
    */
-  void SetImageIsLocked()
+  bool IsFirstFrameDecode() const
   {
-    MOZ_ASSERT(!mInitialized, "Shouldn't be initialized yet");
-    mImageIsLocked = true;
+    return bool(mDecoderFlags & DecoderFlags::FIRST_FRAME_ONLY);
   }
-
-  bool ImageIsLocked() const { return mImageIsLocked; }
 
   size_t BytesDecoded() const { return mBytesDecoded; }
 
@@ -223,17 +187,28 @@ public:
     return mInFrame ? mFrameCount - 1 : mFrameCount;
   }
 
+  // Did we discover that the image we're decoding is animated?
+  bool HasAnimation() const { return mImageMetadata.HasAnimation(); }
+
   // Error tracking
   bool HasError() const { return HasDataError() || HasDecoderError(); }
   bool HasDataError() const { return mDataError; }
   bool HasDecoderError() const { return NS_FAILED(mFailCode); }
+  bool ShouldReportError() const { return mShouldReportError; }
   nsresult GetDecoderError() const { return mFailCode; }
-  void PostResizeError() { PostDataError(); }
 
+  /// Did we finish decoding enough that calling Decode() again would be useless?
   bool GetDecodeDone() const
   {
-    return mDecodeDone || (mSizeDecode && HasSize()) || HasError() || mDataDone;
+    return mDecodeDone || (mMetadataDecode && HasSize()) ||
+           HasError() || mDataDone;
   }
+
+  /// Are we in the middle of a frame right now? Used for assertions only.
+  bool InFrame() const { return mInFrame; }
+
+  /// Should we store surfaces created by this decoder in the SurfaceCache?
+  bool ShouldUseSurfaceCache() const { return bool(mImage); }
 
   /**
    * Returns true if this decoder was aborted.
@@ -252,17 +227,28 @@ public:
       SEQUENTIAL   // decode to final image immediately
   };
 
-  void SetFlags(uint32_t aFlags) { mFlags = aFlags; }
-  uint32_t GetFlags() const { return mFlags; }
-  uint32_t GetDecodeFlags() const { return DecodeFlags(mFlags); }
+  /**
+   * Get or set the DecoderFlags that influence the behavior of this decoder.
+   */
+  void SetDecoderFlags(DecoderFlags aDecoderFlags)
+  {
+    MOZ_ASSERT(!mInitialized);
+    mDecoderFlags = aDecoderFlags;
+  }
+  DecoderFlags GetDecoderFlags() const { return mDecoderFlags; }
+
+  /**
+   * Get or set the SurfaceFlags that select the kind of output this decoder
+   * will produce.
+   */
+  void SetSurfaceFlags(SurfaceFlags aSurfaceFlags)
+  {
+    MOZ_ASSERT(!mInitialized);
+    mSurfaceFlags = aSurfaceFlags;
+  }
+  SurfaceFlags GetSurfaceFlags() const { return mSurfaceFlags; }
 
   bool HasSize() const { return mImageMetadata.HasSize(); }
-  void SetSizeOnImage();
-
-  void SetSize(const nsIntSize& aSize, const Orientation& aOrientation)
-  {
-    PostSize(aSize.width, aSize.height, aOrientation);
-  }
 
   nsIntSize GetSize() const
   {
@@ -278,30 +264,6 @@ public:
    * Returns a weak pointer to the image associated with this decoder.
    */
   RasterImage* GetImage() const { MOZ_ASSERT(mImage); return mImage.get(); }
-
-  // Tell the decoder infrastructure to allocate a frame. By default, frame 0
-  // is created as an ARGB frame with no offset and with size width * height.
-  // If decoders need something different, they must ask for it.
-  // This is called by decoders when they need a new frame. These decoders
-  // must then save the data they have been sent but not yet processed and
-  // return from WriteInternal. When the new frame is created, WriteInternal
-  // will be called again with nullptr and 0 as arguments.
-  void NeedNewFrame(uint32_t frameNum, uint32_t x_offset, uint32_t y_offset,
-                    uint32_t width, uint32_t height,
-                    gfx::SurfaceFormat format,
-                    uint8_t palette_depth = 0);
-
-  virtual bool NeedsNewFrame() const { return mNeedsNewFrame; }
-
-  // Try to allocate a frame as described in mNewFrameData and return the
-  // status code from that attempt. Clears mNewFrameData.
-  virtual nsresult AllocateFrame(const nsIntSize& aTargetSize = nsIntSize());
-
-  already_AddRefed<imgFrame> GetCurrentFrame()
-  {
-    nsRefPtr<imgFrame> frame = mCurrentFrame.get();
-    return frame.forget();
-  }
 
   RawAccessFrameRef GetCurrentFrameRef()
   {
@@ -322,6 +284,8 @@ public:
 
 
 protected:
+  friend class nsICODecoder;
+
   virtual ~Decoder();
 
   /*
@@ -329,8 +293,9 @@ protected:
    * only these methods.
    */
   virtual void InitInternal();
-  virtual void WriteInternal(const char* aBuffer, uint32_t aCount);
+  virtual void WriteInternal(const char* aBuffer, uint32_t aCount) = 0;
   virtual void FinishInternal();
+  virtual void FinishWithErrorInternal();
 
   /*
    * Progress notifications.
@@ -354,9 +319,11 @@ protected:
   // actual contents of the frame and give a more accurate result.
   void PostHasTransparency();
 
-  // Called by decoders when they begin a frame. Informs the image, sends
-  // notifications, and does internal book-keeping.
-  void PostFrameStart();
+  // Called by decoders if they determine that the image is animated.
+  //
+  // @param aTimeout The time for which the first frame should be shown before
+  //                 we advance to the next frame.
+  void PostIsAnimated(int32_t aFirstFrameTimeout);
 
   // Called by decoders when they end a frame. Informs the image, sends
   // notifications, and does internal book-keeping.
@@ -396,11 +363,6 @@ protected:
   void PostDataError();
   void PostDecoderError(nsresult aFailCode);
 
-  // Returns true if we may have stored data that we need to flush now that we
-  // have a new frame to decode into. Callers can use Write() to actually
-  // flush the data; see the documentation for that method.
-  bool NeedsToFlushData() const { return mNeedsToFlushData; }
-
   /**
    * CompleteDecode() finishes up the decoding process after Decode() determines
    * that we're finished. It records final progress and does all the cleanup
@@ -409,37 +371,42 @@ protected:
   void CompleteDecode();
 
   /**
-   * Ensures that a given frame number exists with the given parameters, and
-   * returns a RawAccessFrameRef for that frame.
-   * It is not possible to create sparse frame arrays; you can only append
-   * frames to the current frame array, or if there is only one frame in the
-   * array, replace that frame.
-   * @aTargetSize specifies the target size we're decoding to. If we're not
-   * downscaling during decode, this will always be the same as the image's
-   * intrinsic size.
+   * Allocates a new frame, making it our current frame if successful.
+   *
+   * The @aFrameNum parameter only exists as a sanity check; it's illegal to
+   * create a new frame anywhere but immediately after the existing frames.
    *
    * If a non-paletted frame is desired, pass 0 for aPaletteDepth.
    */
-  RawAccessFrameRef EnsureFrame(uint32_t aFrameNum,
-                                const nsIntSize& aTargetSize,
-                                const nsIntRect& aFrameRect,
-                                uint32_t aDecodeFlags,
-                                gfx::SurfaceFormat aFormat,
-                                uint8_t aPaletteDepth,
-                                imgFrame* aPreviousFrame);
+  nsresult AllocateFrame(uint32_t aFrameNum,
+                         const nsIntSize& aTargetSize,
+                         const nsIntRect& aFrameRect,
+                         gfx::SurfaceFormat aFormat,
+                         uint8_t aPaletteDepth = 0);
 
-  RawAccessFrameRef InternalAddFrame(uint32_t aFrameNum,
-                                     const nsIntSize& aTargetSize,
-                                     const nsIntRect& aFrameRect,
-                                     uint32_t aDecodeFlags,
-                                     gfx::SurfaceFormat aFormat,
-                                     uint8_t aPaletteDepth,
-                                     imgFrame* aPreviousFrame);
+  /// Helper method for decoders which only have 'basic' frame allocation needs.
+  nsresult AllocateBasicFrame() {
+    nsIntSize size = GetSize();
+    return AllocateFrame(0, size, nsIntRect(nsIntPoint(), size),
+                         gfx::SurfaceFormat::B8G8R8A8);
+  }
 
-  /*
-   * Member variables.
-   *
-   */
+  RawAccessFrameRef AllocateFrameInternal(uint32_t aFrameNum,
+                                          const nsIntSize& aTargetSize,
+                                          const nsIntRect& aFrameRect,
+                                          gfx::SurfaceFormat aFormat,
+                                          uint8_t aPaletteDepth,
+                                          imgFrame* aPreviousFrame);
+
+protected:
+  Maybe<Downscaler> mDownscaler;
+
+  uint8_t* mImageData;  // Pointer to image data in either Cairo or 8bit format
+  uint32_t mImageDataLength;
+  uint32_t* mColormap;  // Current colormap to be used in Cairo format
+  uint32_t mColormapSize;
+
+private:
   nsRefPtr<RasterImage> mImage;
   Maybe<SourceBufferIterator> mIterator;
   RawAccessFrameRef mCurrentFrame;
@@ -447,56 +414,26 @@ protected:
   nsIntRect mInvalidRect; // Tracks an invalidation region in the current frame.
   Progress mProgress;
 
-  uint8_t* mImageData;  // Pointer to image data in either Cairo or 8bit format
-  uint32_t mImageDataLength;
-  uint32_t* mColormap;  // Current colormap to be used in Cairo format
-  uint32_t mColormapSize;
+  uint32_t mFrameCount; // Number of frames, including anything in-progress
+
+  nsresult mFailCode;
 
   // Telemetry data for this decoder.
   TimeDuration mDecodeTime;
   uint32_t mChunkCount;
 
-  uint32_t mFlags;
+  DecoderFlags mDecoderFlags;
+  SurfaceFlags mSurfaceFlags;
   size_t mBytesDecoded;
-  bool mSendPartialInvalidations;
-  bool mDataDone;
-  bool mDecodeDone;
-  bool mDataError;
-  bool mDecodeAborted;
-  bool mShouldReportError;
-  bool mImageIsTransient;
-  bool mImageIsLocked;
 
-private:
-  uint32_t mFrameCount; // Number of frames, including anything in-progress
-
-  nsresult mFailCode;
-
-  struct NewFrameData
-  {
-    NewFrameData() { }
-
-    NewFrameData(uint32_t aFrameNum, const nsIntRect& aFrameRect,
-                 gfx::SurfaceFormat aFormat, uint8_t aPaletteDepth)
-      : mFrameNum(aFrameNum)
-      , mFrameRect(aFrameRect)
-      , mFormat(aFormat)
-      , mPaletteDepth(aPaletteDepth)
-    { }
-
-    uint32_t mFrameNum;
-    nsIntRect mFrameRect;
-    gfx::SurfaceFormat mFormat;
-    uint8_t mPaletteDepth;
-  };
-
-  NewFrameData mNewFrameData;
-  bool mNeedsNewFrame;
-  bool mNeedsToFlushData;
-  bool mInitialized;
-  bool mSizeDecode;
-  bool mInFrame;
-  bool mIsAnimated;
+  bool mInitialized : 1;
+  bool mMetadataDecode : 1;
+  bool mInFrame : 1;
+  bool mDataDone : 1;
+  bool mDecodeDone : 1;
+  bool mDataError : 1;
+  bool mDecodeAborted : 1;
+  bool mShouldReportError : 1;
 };
 
 } // namespace image

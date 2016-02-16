@@ -138,6 +138,6 @@ private:
   const nsAutoCString mContentType;
 };
 
-}
+} // namespace mozilla
 
 #endif

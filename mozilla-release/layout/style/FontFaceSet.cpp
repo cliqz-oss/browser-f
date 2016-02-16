@@ -33,6 +33,8 @@
 #include "nsISupportsPriority.h"
 #include "nsIWebNavigation.h"
 #include "nsNetUtil.h"
+#include "nsIProtocolHandler.h"
+#include "nsIInputStream.h"
 #include "nsPresContext.h"
 #include "nsPrintfCString.h"
 #include "nsStyleSet.h"
@@ -123,19 +125,14 @@ FontFaceSet::FontFaceSet(nsPIDOMWindow* aWindow, nsIDocument* aDocument)
   mUserFontSet = new UserFontSet(this);
 }
 
-static PLDHashOperator DestroyIterator(nsPtrHashKey<nsFontFaceLoader>* aKey,
-                                       void* aUserArg)
-{
-  aKey->GetKey()->Cancel();
-  return PL_DHASH_REMOVE;
-}
-
 FontFaceSet::~FontFaceSet()
 {
   MOZ_COUNT_DTOR(FontFaceSet);
 
   Disconnect();
-  mLoaders.EnumerateEntries(DestroyIterator, nullptr);
+  for (auto it = mLoaders.Iter(); !it.Done(); it.Next()) {
+    it.Get()->GetKey()->Cancel();
+  }
 }
 
 JSObject*
@@ -336,6 +333,11 @@ FontFaceSet::Load(JSContext* aCx,
   }
 
   nsIGlobalObject* globalObject = GetParentObject();
+  if (!globalObject) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
   JS::Rooted<JSObject*> jsGlobal(aCx, globalObject->GetGlobalJSObject());
   GlobalObject global(aCx, jsGlobal);
 
@@ -1341,6 +1343,12 @@ FontFaceSet::CheckFontLoad(const gfxFontFaceSrc* aFontFaceSrc,
         *aBypassCache = true;
       }
     }
+    uint32_t flags;
+    if (NS_SUCCEEDED(docShell->GetDefaultLoadFlags(&flags))) {
+      if (flags & nsIRequest::LOAD_BYPASS_CACHE) {
+        *aBypassCache = true;
+      }
+    }
   }
 
   return rv;
@@ -1787,3 +1795,6 @@ FontFaceSet::UserFontSet::CreateUserFontEntry(
                         aFeatureSettings, aLanguageOverride, aUnicodeRanges);
   return entry.forget();
 }
+
+#undef LOG_ENABLED
+#undef LOG

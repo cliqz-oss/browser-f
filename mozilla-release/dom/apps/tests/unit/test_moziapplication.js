@@ -1,8 +1,6 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-const {interfaces: Ci, utils: Cu} = Components;
-
 Cu.import("resource:///modules/AppsUtils.jsm");
 
 add_test(() => {
@@ -51,7 +49,7 @@ add_test(() => {
   });
 
   Assert.ok(mozapp.principal, "app principal should exist");
-  let expectedPrincipalOrigin = app.origin + "!appId=" + app.localId;
+  let expectedPrincipalOrigin = app.origin + "^appId=" + app.localId;
   Assert.equal(mozapp.principal.origin, expectedPrincipalOrigin,
                "app principal origin ok");
   Assert.equal(mozapp.principal.appId, app.localId, "app principal appId ok");

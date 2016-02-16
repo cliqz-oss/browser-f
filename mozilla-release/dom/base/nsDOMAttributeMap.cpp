@@ -15,7 +15,6 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/NamedNodeMapBinding.h"
 #include "mozilla/dom/NodeInfoInlines.h"
-#include "mozilla/Telemetry.h"
 #include "nsAttrName.h"
 #include "nsContentUtils.h"
 #include "nsError.h"
@@ -271,21 +270,6 @@ nsDOMAttributeMap::SetNamedItemInternal(Attr& aAttr,
                                         ErrorResult& aError)
 {
   NS_ENSURE_TRUE(mContent, nullptr);
-
-  if (!aAttr.IsNSAware() &&
-      !mContent->IsHTMLElement() &&
-      aAttr.OwnerDoc()->IsHTMLDocument()) {
-    // Check whether we have a non-lowercase name, and if so log some telemetry.
-    // We check whether the attr's document is HTML _before_ the adopt we do
-    // below, because we're trying to figure out whether we could lowercase the
-    // attr name at creation time.  We restrict this to the !IsNSAware() case,
-    // because we only care about Attr nodes created via createAttribute.
-    nsIAtom* nameAtom = aAttr.NodeInfo()->NameAtom();
-    if (nsContentUtils::StringContainsASCIIUpper(nsDependentAtomString(nameAtom))) {
-        Telemetry::Accumulate(Telemetry::NONLOWERCASE_NONHTML_ATTR_NODE_SET,
-                              true);
-      }
-  }
 
   // XXX should check same-origin between mContent and aAttr however
   // nsContentUtils::CheckSameOrigin can't deal with attributenodes yet
@@ -556,20 +540,14 @@ nsDOMAttributeMap::Enumerate(AttrCache::EnumReadFunction aFunc,
 }
 
 size_t
-AttrCacheSizeEnumerator(const nsAttrKey& aKey,
-                        const nsRefPtr<Attr>& aValue,
-                        MallocSizeOf aMallocSizeOf,
-                        void* aUserArg)
-{
-  return aMallocSizeOf(aValue.get());
-}
-
-size_t
 nsDOMAttributeMap::SizeOfIncludingThis(MallocSizeOf aMallocSizeOf) const
 {
   size_t n = aMallocSizeOf(this);
-  n += mAttributeCache.SizeOfExcludingThis(AttrCacheSizeEnumerator,
-                                           aMallocSizeOf);
+
+  n += mAttributeCache.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  for (auto iter = mAttributeCache.ConstIter(); !iter.Done(); iter.Next()) {
+    n += aMallocSizeOf(iter.Data().get());
+  }
 
   // NB: mContent is non-owning and thus not counted.
   return n;

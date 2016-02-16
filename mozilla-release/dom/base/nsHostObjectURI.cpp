@@ -106,7 +106,7 @@ nsHostObjectURI::Serialize(mozilla::ipc::URIParams& aParams)
 
     hostParams.principal() = info;
   } else {
-    hostParams.principal() = void_t();
+    hostParams.principal() = mozilla::void_t();
   }
 
   aParams = hostParams;
@@ -133,6 +133,15 @@ nsHostObjectURI::Deserialize(const mozilla::ipc::URIParams& aParams)
 
   mPrincipal = PrincipalInfoToPrincipal(hostParams.principal().get_PrincipalInfo());
   return mPrincipal != nullptr;
+}
+
+NS_IMETHODIMP
+nsHostObjectURI::SetScheme(const nsACString& aScheme)
+{
+  // Disallow setting the scheme, since that could cause us to be associated
+  // with a different protocol handler that doesn't expect us to be carrying
+  // around a principal with nsIURIWithPrincipal.
+  return NS_ERROR_FAILURE;
 }
 
 // nsIURI methods:

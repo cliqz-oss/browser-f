@@ -15,6 +15,9 @@
 #include "mozilla/Monitor.h"
 #include "mozilla/Vector.h"
 #include "mozilla/WeakPtr.h"
+#if defined(OS_WIN)
+#include "mozilla/ipc/Neutering.h"
+#endif // defined(OS_WIN)
 #include "mozilla/ipc/Transport.h"
 #include "MessageLink.h"
 #include "nsAutoPtr.h"
@@ -171,6 +174,16 @@ class MessageChannel : HasResultCodes
     static void SetIsPumpingMessages(bool aIsPumping) {
         sIsPumpingMessages = aIsPumping;
     }
+
+#ifdef MOZ_NUWA_PROCESS
+    void Block() {
+        mLink->Block();
+    }
+
+    void Unblock() {
+        mLink->Unblock();
+    }
+#endif
 
 #ifdef OS_WIN
     struct MOZ_STACK_CLASS SyncStackFrame

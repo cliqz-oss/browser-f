@@ -4,7 +4,7 @@
 MARIONETTE_TIMEOUT = 90000;
 MARIONETTE_HEAD_JS = "head.js";
 
-let TEST_ADD_DATA = [{
+var TEST_ADD_DATA = [{
     // a contact without email and anr.
     name: ["add1"],
     tel: [{value: "0912345678"}],
@@ -72,7 +72,7 @@ function removeContact(aIcc, aContactId, aType, aPin2) {
       ", type=" + aType + ", pin2=" + aPin2);
 
   let contact = new mozContact({});
-  contact.id = aIcc.iccInfo.iccid + aContactId;
+  contact.id = aContactId;
 
   return aIcc.updateContact(aType, contact, aPin2);
 }

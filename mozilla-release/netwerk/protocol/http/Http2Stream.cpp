@@ -363,10 +363,10 @@ Http2Stream::ParseHttpRequestHeaders(const char *buf,
   // check the push cache for GET
   if (head->IsGet()) {
     // from :scheme, :authority, :path
-    nsILoadGroupConnectionInfo *loadGroupCI = mTransaction->LoadGroupConnectionInfo();
+    nsISchedulingContext *schedulingContext = mTransaction->SchedulingContext();
     SpdyPushCache *cache = nullptr;
-    if (loadGroupCI) {
-      loadGroupCI->GetSpdyPushCache(&cache);
+    if (schedulingContext) {
+      schedulingContext->GetSpdyPushCache(&cache);
     }
 
     Http2PushedStream *pushedStream = nullptr;
@@ -393,8 +393,8 @@ Http2Stream::ParseHttpRequestHeaders(const char *buf,
     }
 
     LOG3(("Pushed Stream Lookup "
-          "session=%p key=%s loadgroupci=%p cache=%p hit=%p\n",
-          mSession, hashkey.get(), loadGroupCI, cache, pushedStream));
+          "session=%p key=%s schedulingcontext=%p cache=%p hit=%p\n",
+          mSession, hashkey.get(), schedulingContext, cache, pushedStream));
 
     if (pushedStream) {
       LOG3(("Pushed Stream Match located id=0x%X key=%s\n",
@@ -629,9 +629,9 @@ Http2Stream::AdjustInitialWindow()
     return;
   }
 
-  uint8_t *packet = mTxInlineFrame.get() + mTxInlineFrameUsed;
   EnsureBuffer(mTxInlineFrame, mTxInlineFrameUsed + Http2Session::kFrameHeaderBytes + 4,
                mTxInlineFrameUsed, mTxInlineFrameSize);
+  uint8_t *packet = mTxInlineFrame.get() + mTxInlineFrameUsed;
   mTxInlineFrameUsed += Http2Session::kFrameHeaderBytes + 4;
 
   mSession->CreateFrameHeader(packet, 4,
@@ -661,9 +661,9 @@ Http2Stream::AdjustPushedPriority()
   if (mPushSource->RecvdFin() || mPushSource->RecvdReset())
     return;
 
-  uint8_t *packet = mTxInlineFrame.get() + mTxInlineFrameUsed;
   EnsureBuffer(mTxInlineFrame, mTxInlineFrameUsed + Http2Session::kFrameHeaderBytes + 5,
                mTxInlineFrameUsed, mTxInlineFrameSize);
+  uint8_t *packet = mTxInlineFrame.get() + mTxInlineFrameUsed;
   mTxInlineFrameUsed += Http2Session::kFrameHeaderBytes + 5;
 
   mSession->CreateFrameHeader(packet, 5,
@@ -1248,15 +1248,15 @@ Http2Stream::OnReadSegment(const char *buf,
       dataLength = static_cast<uint32_t>(mServerReceiveWindow);
 
     LOG3(("Http2Stream this=%p id 0x%X send calculation "
-          "avail=%d chunksize=%d stream window=%d session window=%d "
-          "max frame=%d USING=%d\n", this, mStreamID,
+          "avail=%d chunksize=%d stream window=%" PRId64 " session window=%" PRId64 " "
+          "max frame=%d USING=%u\n", this, mStreamID,
           count, mChunkSize, mServerReceiveWindow, mSession->ServerSessionWindow(),
           Http2Session::kMaxFrameData, dataLength));
 
     mSession->DecrementServerSessionWindow(dataLength);
     mServerReceiveWindow -= dataLength;
 
-    LOG3(("Http2Stream %p id %x request len remaining %u, "
+    LOG3(("Http2Stream %p id 0x%x request len remaining %" PRId64 ", "
           "count avail %u, chunk used %u",
           this, mStreamID, mRequestBodyLenRemaining, count, dataLength));
     if (!dataLength && mRequestBodyLenRemaining) {
@@ -1361,6 +1361,6 @@ Http2Stream::MapStreamToHttpConnection()
                                      mTransaction->ConnectionInfo());
 }
 
-} // namespace mozilla::net
+} // namespace net
 } // namespace mozilla
 

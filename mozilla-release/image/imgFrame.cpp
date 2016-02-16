@@ -48,7 +48,7 @@ VolatileSurfaceStride(const IntSize& size, SurfaceFormat format)
   return (size.width * BytesPerPixel(format) + 0x3) & ~0x3;
 }
 
-static TemporaryRef<DataSourceSurface>
+static already_AddRefed<DataSourceSurface>
 CreateLockedSurface(VolatileBuffer* vbuf,
                     const IntSize& size,
                     SurfaceFormat format)
@@ -69,7 +69,7 @@ CreateLockedSurface(VolatileBuffer* vbuf,
   return surf.forget();
 }
 
-static TemporaryRef<VolatileBuffer>
+static already_AddRefed<VolatileBuffer>
 AllocateBufferForImage(const IntSize& size, SurfaceFormat format)
 {
   int32_t stride = VolatileSurfaceStride(size, format);
@@ -140,12 +140,12 @@ imgFrame::imgFrame()
   , mBlendMethod(BlendMethod::OVER)
   , mHasNoAlpha(false)
   , mAborted(false)
+  , mOptimizable(false)
   , mPalettedImageData(nullptr)
   , mPaletteDepth(0)
   , mNonPremult(false)
   , mSinglePixel(false)
   , mCompositingFailed(false)
-  , mOptimizable(false)
 {
   static bool hasCheckedOptimize = false;
   if (!hasCheckedOptimize) {
@@ -165,80 +165,6 @@ imgFrame::~imgFrame()
 
   free(mPalettedImageData);
   mPalettedImageData = nullptr;
-}
-
-nsresult
-imgFrame::ReinitForDecoder(const nsIntSize& aImageSize,
-                           const nsIntRect& aRect,
-                           SurfaceFormat aFormat,
-                           uint8_t aPaletteDepth /* = 0 */,
-                           bool aNonPremult /* = false */)
-{
-  MonitorAutoLock lock(mMonitor);
-
-  if (mDecoded.x != 0 || mDecoded.y != 0 ||
-      mDecoded.width != 0 || mDecoded.height != 0) {
-    MOZ_ASSERT_UNREACHABLE("Shouldn't reinit after write");
-    return NS_ERROR_FAILURE;
-  }
-  if (mAborted) {
-    MOZ_ASSERT_UNREACHABLE("Shouldn't reinit if aborted");
-    return NS_ERROR_FAILURE;
-  }
-  if (mLockCount < 1) {
-    MOZ_ASSERT_UNREACHABLE("Shouldn't reinit unless locked");
-    return NS_ERROR_FAILURE;
-  }
-
-  // Restore everything (except mLockCount, which we need to keep) to how it was
-  // when we were first created.
-  // XXX(seth): This is probably a little excessive, but I want to be *really*
-  // sure that nothing got missed.
-  mDecoded = nsIntRect(0, 0, 0, 0);
-  mTimeout = 100;
-  mDisposalMethod = DisposalMethod::NOT_SPECIFIED;
-  mBlendMethod = BlendMethod::OVER;
-  mHasNoAlpha = false;
-  mAborted = false;
-  mPaletteDepth = 0;
-  mNonPremult = false;
-  mSinglePixel = false;
-  mCompositingFailed = false;
-  mOptimizable = false;
-  mImageSize = IntSize();
-  mSize = IntSize();
-  mOffset = nsIntPoint();
-  mSinglePixelColor = Color();
-
-  // Release all surfaces.
-  mImageSurface = nullptr;
-  mOptSurface = nullptr;
-  mVBuf = nullptr;
-  mVBufPtr = nullptr;
-  free(mPalettedImageData);
-  mPalettedImageData = nullptr;
-
-  // Reinitialize.
-  nsresult rv = InitForDecoder(aImageSize, aRect, aFormat,
-                               aPaletteDepth, aNonPremult);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  // We were locked before; perform the same actions we would've performed when
-  // we originally got locked.
-  if (mImageSurface) {
-    mVBufPtr = mVBuf;
-    return NS_OK;
-  }
-
-  if (!mPalettedImageData) {
-    MOZ_ASSERT_UNREACHABLE("We got optimized somehow during reinit");
-    return NS_ERROR_FAILURE;
-  }
-
-  // Paletted images don't have surfaces, so there's nothing to do.
-  return NS_OK;
 }
 
 nsresult
@@ -870,88 +796,8 @@ imgFrame::LockImageData()
     return NS_OK;
   }
 
-  return Deoptimize();
-}
-
-nsresult
-imgFrame::Deoptimize()
-{
-  MOZ_ASSERT(NS_IsMainThread());
-  mMonitor.AssertCurrentThreadOwns();
-  MOZ_ASSERT(!mImageSurface);
-
-  if (!mImageSurface) {
-    if (mVBuf) {
-      VolatileBufferPtr<uint8_t> ref(mVBuf);
-      if (ref.WasBufferPurged()) {
-        return NS_ERROR_FAILURE;
-      }
-
-      mImageSurface = CreateLockedSurface(mVBuf, mSize, mFormat);
-      if (!mImageSurface) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
-    }
-    if (mOptSurface || mSinglePixel || mFormat == SurfaceFormat::R5G6B5) {
-      SurfaceFormat format = mFormat;
-      if (mFormat == SurfaceFormat::R5G6B5) {
-        format = SurfaceFormat::B8G8R8A8;
-      }
-
-      // Recover the pixels
-      RefPtr<VolatileBuffer> buf =
-        AllocateBufferForImage(mSize, format);
-      if (!buf) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
-
-      RefPtr<DataSourceSurface> surf =
-        CreateLockedSurface(buf, mSize, format);
-      if (!surf) {
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
-
-      DataSourceSurface::MappedSurface mapping;
-      if (!surf->Map(DataSourceSurface::MapType::WRITE, &mapping)) {
-        gfxCriticalError() << "imgFrame::Deoptimize failed to map surface";
-        return NS_ERROR_FAILURE;
-      }
-
-      RefPtr<DrawTarget> target =
-        Factory::CreateDrawTargetForData(BackendType::CAIRO,
-                                         mapping.mData,
-                                         mSize,
-                                         mapping.mStride,
-                                         format);
-      if (!target) {
-        gfxWarning() <<
-          "imgFrame::Deoptimize failed in CreateDrawTargetForData";
-        return NS_ERROR_OUT_OF_MEMORY;
-      }
-
-      Rect rect(0, 0, mSize.width, mSize.height);
-      if (mSinglePixel) {
-        target->FillRect(rect, ColorPattern(mSinglePixelColor),
-                         DrawOptions(1.0f, CompositionOp::OP_SOURCE));
-      } else if (mFormat == SurfaceFormat::R5G6B5) {
-        target->DrawSurface(mImageSurface, rect, rect);
-      } else {
-        target->DrawSurface(mOptSurface, rect, rect,
-                            DrawSurfaceOptions(),
-                            DrawOptions(1.0f, CompositionOp::OP_SOURCE));
-      }
-      target->Flush();
-      surf->Unmap();
-
-      mFormat = format;
-      mVBuf = buf;
-      mImageSurface = surf;
-      mOptSurface = nullptr;
-    }
-  }
-
-  mVBufPtr = mVBuf;
-  return NS_OK;
+  MOZ_ASSERT_UNREACHABLE("It's illegal to re-lock an optimized imgFrame");
+  return NS_ERROR_FAILURE;
 }
 
 void
@@ -1026,8 +872,8 @@ imgFrame::UnlockImageData()
 void
 imgFrame::SetOptimizable()
 {
-  MOZ_ASSERT(NS_IsMainThread());
   AssertImageDataLocked();
+  MonitorAutoLock lock(mMonitor);
   mOptimizable = true;
 }
 
@@ -1045,14 +891,14 @@ imgFrame::IsSinglePixel() const
   return mSinglePixel;
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 imgFrame::GetSurface()
 {
   MonitorAutoLock lock(mMonitor);
   return GetSurfaceInternal();
 }
 
-TemporaryRef<SourceSurface>
+already_AddRefed<SourceSurface>
 imgFrame::GetSurfaceInternal()
 {
   mMonitor.AssertCurrentThreadOwns();
@@ -1083,7 +929,7 @@ imgFrame::GetSurfaceInternal()
   return CreateLockedSurface(mVBuf, mSize, mFormat);
 }
 
-TemporaryRef<DrawTarget>
+already_AddRefed<DrawTarget>
 imgFrame::GetDrawTarget()
 {
   MonitorAutoLock lock(mMonitor);
@@ -1189,42 +1035,28 @@ imgFrame::SetCompositingFailed(bool val)
   mCompositingFailed = val;
 }
 
-size_t
-imgFrame::SizeOfExcludingThis(gfxMemoryLocation aLocation,
-                              MallocSizeOf aMallocSizeOf) const
+void
+imgFrame::AddSizeOfExcludingThis(MallocSizeOf aMallocSizeOf,
+                                 size_t& aHeapSizeOut,
+                                 size_t& aNonHeapSizeOut) const
 {
   MonitorAutoLock lock(mMonitor);
 
-  // aMallocSizeOf is only used if aLocation is
-  // gfxMemoryLocation::IN_PROCESS_HEAP.  It
-  // should be nullptr otherwise.
-  MOZ_ASSERT(
-    (aLocation == gfxMemoryLocation::IN_PROCESS_HEAP &&  aMallocSizeOf) ||
-    (aLocation != gfxMemoryLocation::IN_PROCESS_HEAP && !aMallocSizeOf),
-    "mismatch between aLocation and aMallocSizeOf");
-
-  size_t n = 0;
-
-  if (mPalettedImageData && aLocation == gfxMemoryLocation::IN_PROCESS_HEAP) {
-    n += aMallocSizeOf(mPalettedImageData);
+  if (mPalettedImageData) {
+    aHeapSizeOut += aMallocSizeOf(mPalettedImageData);
   }
-  if (mImageSurface && aLocation == gfxMemoryLocation::IN_PROCESS_HEAP) {
-    n += aMallocSizeOf(mImageSurface);
+  if (mImageSurface) {
+    aHeapSizeOut += aMallocSizeOf(mImageSurface);
   }
-  if (mOptSurface && aLocation == gfxMemoryLocation::IN_PROCESS_HEAP) {
-    n += aMallocSizeOf(mOptSurface);
+  if (mOptSurface) {
+    aHeapSizeOut += aMallocSizeOf(mOptSurface);
   }
 
-  if (mVBuf && aLocation == gfxMemoryLocation::IN_PROCESS_HEAP) {
-    n += aMallocSizeOf(mVBuf);
-    n += mVBuf->HeapSizeOfExcludingThis(aMallocSizeOf);
+  if (mVBuf) {
+    aHeapSizeOut += aMallocSizeOf(mVBuf);
+    aHeapSizeOut += mVBuf->HeapSizeOfExcludingThis(aMallocSizeOf);
+    aNonHeapSizeOut += mVBuf->NonHeapSizeOfExcludingThis();
   }
-
-  if (mVBuf && aLocation == gfxMemoryLocation::IN_PROCESS_NONHEAP) {
-    n += mVBuf->NonHeapSizeOfExcludingThis();
-  }
-
-  return n;
 }
 
 } // namespace image

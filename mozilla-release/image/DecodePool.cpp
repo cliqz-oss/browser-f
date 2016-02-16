@@ -47,35 +47,37 @@ public:
   static void Dispatch(RasterImage* aImage,
                        Progress aProgress,
                        const nsIntRect& aInvalidRect,
-                       uint32_t aFlags)
+                       SurfaceFlags aSurfaceFlags)
   {
     MOZ_ASSERT(aImage);
 
     nsCOMPtr<nsIRunnable> worker =
-      new NotifyProgressWorker(aImage, aProgress, aInvalidRect, aFlags);
+      new NotifyProgressWorker(aImage, aProgress, aInvalidRect, aSurfaceFlags);
     NS_DispatchToMainThread(worker);
   }
 
   NS_IMETHOD Run() override
   {
     MOZ_ASSERT(NS_IsMainThread());
-    mImage->NotifyProgress(mProgress, mInvalidRect, mFlags);
+    mImage->NotifyProgress(mProgress, mInvalidRect, mSurfaceFlags);
     return NS_OK;
   }
 
 private:
-  NotifyProgressWorker(RasterImage* aImage, Progress aProgress,
-                       const nsIntRect& aInvalidRect, uint32_t aFlags)
+  NotifyProgressWorker(RasterImage* aImage,
+                       Progress aProgress,
+                       const nsIntRect& aInvalidRect,
+                       SurfaceFlags aSurfaceFlags)
     : mImage(aImage)
     , mProgress(aProgress)
     , mInvalidRect(aInvalidRect)
-    , mFlags(aFlags)
+    , mSurfaceFlags(aSurfaceFlags)
   { }
 
   nsRefPtr<RasterImage> mImage;
   const Progress mProgress;
   const nsIntRect mInvalidRect;
-  const uint32_t mFlags;
+  const SurfaceFlags mSurfaceFlags;
 };
 
 class NotifyDecodeCompleteWorker : public nsRunnable
@@ -96,7 +98,6 @@ public:
   NS_IMETHOD Run() override
   {
     MOZ_ASSERT(NS_IsMainThread());
-    mDecoder->Finish();
     mDecoder->GetImage()->FinalizeDecoder(mDecoder);
     return NS_OK;
   }
@@ -129,6 +130,7 @@ public:
 ///////////////////////////////////////////////////////////////////////////////
 
 /* static */ StaticRefPtr<DecodePool> DecodePool::sSingleton;
+/* static */ uint32_t DecodePool::sNumCores = 0;
 
 NS_IMPL_ISUPPORTS(DecodePool, nsIObserver)
 
@@ -202,8 +204,8 @@ public:
       return;
     }
 
-    if (aDecoder->IsSizeDecode()) {
-      mSizeDecodeQueue.AppendElement(Move(decoder));
+    if (aDecoder->IsMetadataDecode()) {
+      mMetadataDecodeQueue.AppendElement(Move(decoder));
     } else {
       mFullDecodeQueue.AppendElement(Move(decoder));
     }
@@ -217,9 +219,9 @@ public:
     MonitorAutoLock lock(mMonitor);
 
     do {
-      // Prioritize size decodes over full decodes.
-      if (!mSizeDecodeQueue.IsEmpty()) {
-        return PopWorkFromQueue(mSizeDecodeQueue);
+      // Prioritize metadata decodes over full decodes.
+      if (!mMetadataDecodeQueue.IsEmpty()) {
+        return PopWorkFromQueue(mMetadataDecodeQueue);
       }
 
       if (!mFullDecodeQueue.IsEmpty()) {
@@ -252,9 +254,9 @@ private:
 
   nsThreadPoolNaming mThreadNaming;
 
-  // mMonitor guards mQueue and mShuttingDown.
+  // mMonitor guards the queues and mShuttingDown.
   Monitor mMonitor;
-  nsTArray<nsRefPtr<Decoder>> mSizeDecodeQueue;
+  nsTArray<nsRefPtr<Decoder>> mMetadataDecodeQueue;
   nsTArray<nsRefPtr<Decoder>> mFullDecodeQueue;
   bool mShuttingDown;
 };
@@ -301,6 +303,7 @@ private:
 DecodePool::Initialize()
 {
   MOZ_ASSERT(NS_IsMainThread());
+  sNumCores = max<int32_t>(PR_GetNumberOfProcessors(), 1);
   DecodePool::Singleton();
 }
 
@@ -316,6 +319,12 @@ DecodePool::Singleton()
   return sSingleton;
 }
 
+/* static */ uint32_t
+DecodePool::NumberOfCores()
+{
+  return sNumCores;
+}
+
 DecodePool::DecodePool()
   : mImpl(new DecodePoolImpl)
   , mMutex("image::DecodePool")
@@ -324,7 +333,7 @@ DecodePool::DecodePool()
   int32_t prefLimit = gfxPrefs::ImageMTDecodingLimit();
   uint32_t limit;
   if (prefLimit <= 0) {
-    int32_t numCores = PR_GetNumberOfProcessors();
+    int32_t numCores = NumberOfCores();
     if (numCores <= 1) {
       limit = 1;
     } else if (numCores == 2) {
@@ -337,6 +346,9 @@ DecodePool::DecodePool()
     }
   } else {
     limit = static_cast<uint32_t>(prefLimit);
+  }
+  if (limit > 32) {
+    limit = 32;
   }
 
   // Initialize the thread pool.
@@ -444,7 +456,10 @@ DecodePool::Decode(Decoder* aDecoder)
   nsresult rv = aDecoder->Decode();
 
   if (NS_SUCCEEDED(rv) && !aDecoder->GetDecodeDone()) {
-    if (aDecoder->HasProgress()) {
+    // If this isn't a metadata decode, notify for the progress we've made so
+    // far. It's important that metadata decode results are delivered
+    // atomically, so for those decodes we wait until NotifyDecodeComplete.
+    if (aDecoder->HasProgress() && !aDecoder->IsMetadataDecode()) {
       NotifyProgress(aDecoder);
     }
     // The decoder will ensure that a new worker gets enqueued to continue
@@ -460,17 +475,17 @@ DecodePool::NotifyProgress(Decoder* aDecoder)
   MOZ_ASSERT(aDecoder);
 
   if (!NS_IsMainThread() ||
-      (aDecoder->GetFlags() & imgIContainer::FLAG_ASYNC_NOTIFY)) {
+      (aDecoder->GetDecoderFlags() & DecoderFlags::ASYNC_NOTIFY)) {
     NotifyProgressWorker::Dispatch(aDecoder->GetImage(),
                                    aDecoder->TakeProgress(),
                                    aDecoder->TakeInvalidRect(),
-                                   aDecoder->GetDecodeFlags());
+                                   aDecoder->GetSurfaceFlags());
     return;
   }
 
   aDecoder->GetImage()->NotifyProgress(aDecoder->TakeProgress(),
                                        aDecoder->TakeInvalidRect(),
-                                       aDecoder->GetDecodeFlags());
+                                       aDecoder->GetSurfaceFlags());
 }
 
 void
@@ -479,12 +494,11 @@ DecodePool::NotifyDecodeComplete(Decoder* aDecoder)
   MOZ_ASSERT(aDecoder);
 
   if (!NS_IsMainThread() ||
-      (aDecoder->GetFlags() & imgIContainer::FLAG_ASYNC_NOTIFY)) {
+      (aDecoder->GetDecoderFlags() & DecoderFlags::ASYNC_NOTIFY)) {
     NotifyDecodeCompleteWorker::Dispatch(aDecoder);
     return;
   }
 
-  aDecoder->Finish();
   aDecoder->GetImage()->FinalizeDecoder(aDecoder);
 }
 

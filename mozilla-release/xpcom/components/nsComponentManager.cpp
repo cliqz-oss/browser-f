@@ -250,7 +250,7 @@ private:
   bool mLocked;
 };
 
-} // anonymous namespace
+} // namespace
 
 #if !defined(MOZILLA_XPCOMRT_API)
 // this is safe to call during InitXPCOM
@@ -1237,16 +1237,6 @@ nsComponentManagerImpl::CreateInstanceByContractID(const char* aContractID,
   return rv;
 }
 
-static PLDHashOperator
-FreeFactoryEntries(const nsID& aCID,
-                   nsFactoryEntry* aEntry,
-                   void* aArg)
-{
-  aEntry->mFactory = nullptr;
-  aEntry->mServiceObject = nullptr;
-  return PL_DHASH_NEXT;
-}
-
 nsresult
 nsComponentManagerImpl::FreeServices()
 {
@@ -1257,7 +1247,12 @@ nsComponentManagerImpl::FreeServices()
     return NS_ERROR_FAILURE;
   }
 
-  mFactories.EnumerateRead(FreeFactoryEntries, nullptr);
+  for (auto iter = mFactories.Iter(); !iter.Done(); iter.Next()) {
+    nsFactoryEntry* entry = iter.UserData();
+    entry->mFactory = nullptr;
+    entry->mServiceObject = nullptr;
+  }
+
   return NS_OK;
 }
 
@@ -1757,47 +1752,39 @@ nsComponentManagerImpl::IsContractIDRegistered(const char* aClass,
   nsFactoryEntry* entry = GetFactoryEntry(aClass, strlen(aClass));
 
   if (entry) {
-    *aResult = true;
+    // UnregisterFactory might have left a stale nsFactoryEntry in
+    // mContractIDs, so we should check to see whether this entry has
+    // anything useful.
+    *aResult = (bool(entry->mModule) ||
+                bool(entry->mFactory) ||
+                bool(entry->mServiceObject));
   } else {
     *aResult = false;
   }
   return NS_OK;
 }
 
-static PLDHashOperator
-EnumerateCIDHelper(const nsID& aId, nsFactoryEntry* aEntry, void* aClosure)
-{
-  nsCOMArray<nsISupports>* array =
-    static_cast<nsCOMArray<nsISupports>*>(aClosure);
-  nsCOMPtr<nsISupportsID> wrapper = new nsSupportsIDImpl();
-  wrapper->SetData(&aId);
-  array->AppendObject(wrapper);
-  return PL_DHASH_NEXT;
-}
-
 NS_IMETHODIMP
 nsComponentManagerImpl::EnumerateCIDs(nsISimpleEnumerator** aEnumerator)
 {
   nsCOMArray<nsISupports> array;
-  mFactories.EnumerateRead(EnumerateCIDHelper, &array);
-
+  for (auto iter = mFactories.Iter(); !iter.Done(); iter.Next()) {
+    const nsID& id = iter.Key();
+    nsCOMPtr<nsISupportsID> wrapper = new nsSupportsIDImpl();
+    wrapper->SetData(&id);
+    array.AppendObject(wrapper);
+  }
   return NS_NewArrayEnumerator(aEnumerator, array);
-}
-
-static PLDHashOperator
-EnumerateContractsHelper(const nsACString& aContract, nsFactoryEntry* aEntry,
-                         void* aClosure)
-{
-  nsTArray<nsCString>* array = static_cast<nsTArray<nsCString>*>(aClosure);
-  array->AppendElement(aContract);
-  return PL_DHASH_NEXT;
 }
 
 NS_IMETHODIMP
 nsComponentManagerImpl::EnumerateContractIDs(nsISimpleEnumerator** aEnumerator)
 {
   nsTArray<nsCString>* array = new nsTArray<nsCString>;
-  mContractIDs.EnumerateRead(EnumerateContractsHelper, array);
+  for (auto iter = mContractIDs.Iter(); !iter.Done(); iter.Next()) {
+    const nsACString& contract = iter.Key();
+    array->AppendElement(contract);
+  }
 
   nsCOMPtr<nsIUTF8StringEnumerator> e;
   nsresult rv = NS_NewAdoptingUTF8StringEnumerator(getter_AddRefs(e), array);
@@ -1833,26 +1820,6 @@ nsComponentManagerImpl::ContractIDToCID(const char* aContractID,
   return NS_ERROR_FACTORY_NOT_REGISTERED;
 }
 
-static size_t
-SizeOfFactoriesEntryExcludingThis(nsIDHashKey::KeyType aKey,
-                                  nsFactoryEntry* const& aData,
-                                  MallocSizeOf aMallocSizeOf,
-                                  void* aUserArg)
-{
-  return aData->SizeOfIncludingThis(aMallocSizeOf);
-}
-
-static size_t
-SizeOfContractIDsEntryExcludingThis(nsCStringHashKey::KeyType aKey,
-                                    nsFactoryEntry* const& aData,
-                                    MallocSizeOf aMallocSizeOf,
-                                    void* aUserArg)
-{
-  // We don't measure the nsFactoryEntry data because its owned by mFactories
-  // (which measures them in SizeOfFactoriesEntryExcludingThis).
-  return aKey.SizeOfExcludingThisMustBeUnshared(aMallocSizeOf);
-}
-
 MOZ_DEFINE_MALLOC_SIZE_OF(ComponentManagerMallocSizeOf)
 
 NS_IMETHODIMP
@@ -1867,23 +1834,33 @@ nsComponentManagerImpl::CollectReports(nsIHandleReportCallback* aHandleReport,
 
 size_t
 nsComponentManagerImpl::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf)
+  const
 {
   size_t n = aMallocSizeOf(this);
-  n += mLoaderMap.SizeOfExcludingThis(nullptr, aMallocSizeOf);
-  n += mFactories.SizeOfExcludingThis(SizeOfFactoriesEntryExcludingThis,
-                                      aMallocSizeOf);
-  n += mContractIDs.SizeOfExcludingThis(SizeOfContractIDsEntryExcludingThis,
-                                        aMallocSizeOf);
 
-  n += sStaticModules->SizeOfIncludingThis(aMallocSizeOf);
-  n += sModuleLocations->SizeOfIncludingThis(aMallocSizeOf);
+  n += mLoaderMap.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
-  n += mKnownStaticModules.SizeOfExcludingThis(aMallocSizeOf);
-  n += mKnownModules.SizeOfExcludingThis(nullptr, aMallocSizeOf);
+  n += mFactories.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  for (auto iter = mFactories.ConstIter(); !iter.Done(); iter.Next()) {
+    n += iter.Data()->SizeOfIncludingThis(aMallocSizeOf);
+  }
+
+  n += mContractIDs.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  for (auto iter = mContractIDs.ConstIter(); !iter.Done(); iter.Next()) {
+    // We don't measure the nsFactoryEntry data because it's owned by
+    // mFactories (which is measured above).
+    n += iter.Key().SizeOfExcludingThisMustBeUnshared(aMallocSizeOf);
+  }
+
+  n += sStaticModules->ShallowSizeOfIncludingThis(aMallocSizeOf);
+  n += sModuleLocations->ShallowSizeOfIncludingThis(aMallocSizeOf);
+
+  n += mKnownStaticModules.ShallowSizeOfExcludingThis(aMallocSizeOf);
+  n += mKnownModules.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
   n += PL_SizeOfArenaPoolExcludingPool(&mArena, aMallocSizeOf);
 
-  n += mPendingServices.SizeOfExcludingThis(aMallocSizeOf);
+  n += mPendingServices.ShallowSizeOfExcludingThis(aMallocSizeOf);
 
   // Measurement of the following members may be added later if DMD finds it is
   // worthwhile:

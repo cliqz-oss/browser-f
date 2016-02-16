@@ -13,7 +13,7 @@ const TEST_URI = `data:text/html,<script>
   console.log("foo", window);
 </script>`;
 
-let test = asyncTest(function*() {
+var test = asyncTest(function*() {
   yield loadTab(TEST_URI);
   let hud = yield openConsole();
 
@@ -30,8 +30,8 @@ let test = asyncTest(function*() {
   let [msgWithText, msgWithObj] = [...result.matched];
   ok(msgWithText && msgWithObj, "Two messages should have appeared");
 
-  let contextMenu = hud.iframeWindow.
-    document.getElementById("output-contextmenu");
+  let contextMenu = hud.iframeWindow.document
+                                    .getElementById("output-contextmenu");
   let openInVarViewItem = contextMenu.querySelector("#menu_openInVarView");
   let obj = msgWithObj.querySelector(".cm-variable");
   let text = msgWithText.querySelector(".console-string");

@@ -193,7 +193,8 @@ static inline unsigned int ARRAY_LENGTH (const Type (&)[n]) { return n; }
 #define _ASSERT_STATIC0(_line, _cond)	_ASSERT_STATIC1 (_line, (_cond))
 #define ASSERT_STATIC(_cond)		_ASSERT_STATIC0 (__LINE__, (_cond))
 
-#define ASSERT_STATIC_EXPR(_cond)((void) sizeof (char[(_cond) ? 1 : -1]))
+/* Note: C++ allows sizeof() of variable-lengh arrays.  So, if _cond is not
+ * constant, it still compiles (ouch!), but at least we'll get a -Wvla warning. */
 #define ASSERT_STATIC_EXPR_ZERO(_cond) (0 * sizeof (char[(_cond) ? 1 : -1]))
 
 #define _PASTE1(a,b) a##b
@@ -247,8 +248,8 @@ ASSERT_STATIC (sizeof (hb_var_int_t) == 4);
 
 /* Void! */
 struct _hb_void_t {};
-typedef const _hb_void_t &hb_void_t;
-#define HB_VOID (* (const _hb_void_t *) NULL)
+typedef const _hb_void_t *hb_void_t;
+#define HB_VOID ((const _hb_void_t *) NULL)
 
 /* Return the number of 1 bits in mask. */
 static inline HB_CONST_FUNC unsigned int
@@ -845,49 +846,43 @@ hb_in_ranges (T u, T lo1, T hi1, T lo2, T hi2, T lo3, T hi3)
 
 /* Useful for set-operations on small enums.
  * For example, for testing "x ∈ {x1, x2, x3}" use:
- * (FLAG(x) & (FLAG(x1) | FLAG(x2) | FLAG(x3)))
+ * (FLAG_SAFE(x) & (FLAG(x1) | FLAG(x2) | FLAG(x3)))
  */
-#define FLAG(x) (1<<(x))
+#define FLAG(x) (ASSERT_STATIC_EXPR_ZERO ((x) < 32) + (1U << (x)))
+#define FLAG_SAFE(x) (1U << (x))
+#define FLAG_UNSAFE(x) ((x) < 32 ? FLAG_SAFE(x) : 0)
 #define FLAG_RANGE(x,y) (ASSERT_STATIC_EXPR_ZERO ((x) < (y)) + FLAG(y+1) - FLAG(x))
 
 
 template <typename T, typename T2> static inline void
-hb_bubble_sort (T *array, unsigned int len, int(*compar)(const T *, const T *), T2 *array2)
+hb_stable_sort (T *array, unsigned int len, int(*compar)(const T *, const T *), T2 *array2)
 {
-  if (unlikely (!len))
-    return;
-
-  unsigned int k = len - 1;
-  do {
-    unsigned int new_k = 0;
-
-    for (unsigned int j = 0; j < k; j++)
-      if (compar (&array[j], &array[j+1]) > 0)
-      {
-        {
-	  T t;
-	  t = array[j];
-	  array[j] = array[j + 1];
-	  array[j + 1] = t;
-	}
-        if (array2)
-        {
-	  T2 t;
-	  t = array2[j];
-	  array2[j] = array2[j + 1];
-	  array2[j + 1] = t;
-	}
-
-	new_k = j;
-      }
-    k = new_k;
-  } while (k);
+  for (unsigned int i = 1; i < len; i++)
+  {
+    unsigned int j = i;
+    while (j && compar (&array[j - 1], &array[i]) > 0)
+      j--;
+    if (i == j)
+      continue;
+    /* Move item i to occupy place for item j, shift what's in between. */
+    {
+      T t = array[i];
+      memmove (&array[j + 1], &array[j], (i - j) * sizeof (T));
+      array[j] = t;
+    }
+    if (array2)
+    {
+      T2 t = array2[i];
+      memmove (&array2[j + 1], &array2[j], (i - j) * sizeof (T2));
+      array2[j] = t;
+    }
+  }
 }
 
 template <typename T> static inline void
-hb_bubble_sort (T *array, unsigned int len, int(*compar)(const T *, const T *))
+hb_stable_sort (T *array, unsigned int len, int(*compar)(const T *, const T *))
 {
-  hb_bubble_sort (array, len, compar, (int *) NULL);
+  hb_stable_sort (array, len, compar, (int *) NULL);
 }
 
 static inline hb_bool_t

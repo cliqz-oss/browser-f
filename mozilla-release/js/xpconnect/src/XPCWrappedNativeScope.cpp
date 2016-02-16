@@ -497,10 +497,7 @@ XPCWrappedNativeScope::SuspectAllWrappers(XPCJSRuntime* rt,
 {
     for (XPCWrappedNativeScope* cur = gScopes; cur; cur = cur->mNext) {
         for (auto i = cur->mWrappedNativeMap->Iter(); !i.Done(); i.Next()) {
-            auto entry = static_cast<Native2WrappedNativeMap::Entry*>(i.Get());
-            XPCWrappedNative* wrapper = entry->value;
-            if (wrapper->HasExternalReference())
-                XPCJSRuntime::SuspectWrappedNative(wrapper, cb);
+            static_cast<Native2WrappedNativeMap::Entry*>(i.Get())->value->Suspect(cb);
         }
 
         if (cur->mDOMExpandoSet) {
@@ -651,12 +648,12 @@ XPCWrappedNativeScope::SystemIsBeingShutDown()
 
         // Walk the protos first. Wrapper shutdown can leave dangling
         // proto pointers in the proto map.
-        for (auto i = cur->mWrappedNativeProtoMap->RemovingIter(); !i.Done(); i.Next()) {
+        for (auto i = cur->mWrappedNativeProtoMap->Iter(); !i.Done(); i.Next()) {
             auto entry = static_cast<ClassInfo2WrappedNativeProtoMap::Entry*>(i.Get());
             entry->value->SystemIsBeingShutDown();
             i.Remove();
         }
-        for (auto i = cur->mWrappedNativeMap->RemovingIter(); !i.Done(); i.Next()) {
+        for (auto i = cur->mWrappedNativeMap->Iter(); !i.Done(); i.Next()) {
             auto entry = static_cast<Native2WrappedNativeMap::Entry*>(i.Get());
             XPCWrappedNative* wrapper = entry->value;
             if (wrapper->IsValid()) {
@@ -804,7 +801,7 @@ XPCWrappedNativeScope::UpdateInterpositionWhitelist(JSContext* cx,
             }
 
             RootedString str(cx, idval.toString());
-            str = JS_InternJSString(cx, str);
+            str = JS_AtomizeAndPinJSString(cx, str);
             if (!str) {
                 JS_ReportError(cx, "String internization failed.");
                 return false;

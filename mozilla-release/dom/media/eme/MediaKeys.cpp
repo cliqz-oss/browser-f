@@ -150,8 +150,8 @@ MediaKeys::GetKeySystem(nsString& aOutKeySystem) const
 already_AddRefed<DetailedPromise>
 MediaKeys::SetServerCertificate(const ArrayBufferViewOrArrayBuffer& aCert, ErrorResult& aRv)
 {
-  nsRefPtr<DetailedPromise>
-    promise(MakePromise(aRv));
+  nsRefPtr<DetailedPromise> promise(MakePromise(aRv,
+    NS_LITERAL_CSTRING("MediaKeys.setServerCertificate")));
   if (aRv.Failed()) {
     return nullptr;
   }
@@ -175,7 +175,7 @@ MediaKeys::SetServerCertificate(const ArrayBufferViewOrArrayBuffer& aCert, Error
 }
 
 already_AddRefed<DetailedPromise>
-MediaKeys::MakePromise(ErrorResult& aRv)
+MediaKeys::MakePromise(ErrorResult& aRv, const nsACString& aName)
 {
   nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(GetParentObject());
   if (!global) {
@@ -183,7 +183,7 @@ MediaKeys::MakePromise(ErrorResult& aRv)
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return nullptr;
   }
-  return DetailedPromise::Create(global, aRv);
+  return DetailedPromise::Create(global, aRv, aName);
 }
 
 PromiseId
@@ -198,6 +198,13 @@ MediaKeys::StorePromise(DetailedPromise* aPromise)
   // Keep MediaKeys alive for the lifetime of its promises. Any still-pending
   // promises are rejected in Shutdown().
   AddRef();
+
+#ifdef DEBUG
+  // We should not have already stored this promise!
+  for (auto iter = mPromises.ConstIter(); !iter.Done(); iter.Next()) {
+    MOZ_ASSERT(iter.Data() != aPromise);
+  }
+#endif
 
   mPromises.Put(id, aPromise);
   return id;
@@ -293,13 +300,14 @@ MediaKeys::ResolvePromise(PromiseId aId)
   } else {
     promise->MaybeResolve(JS::UndefinedHandleValue);
   }
+  MOZ_ASSERT(!mPromises.Contains(aId));
 }
 
 already_AddRefed<DetailedPromise>
 MediaKeys::Init(ErrorResult& aRv)
 {
-  nsRefPtr<DetailedPromise>
-    promise(MakePromise(aRv));
+  nsRefPtr<DetailedPromise> promise(MakePromise(aRv,
+    NS_LITERAL_CSTRING("MediaKeys::Init()")));
   if (aRv.Failed()) {
     return nullptr;
   }

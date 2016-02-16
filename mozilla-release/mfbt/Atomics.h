@@ -28,7 +28,9 @@
  * does not have <atomic>.  So be sure to check for <atomic> support
  * along with C++0x support.
  */
-#if defined(__clang__) || defined(__GNUC__)
+#if defined(_MSC_VER)
+#  define MOZ_HAVE_CXX11_ATOMICS
+#elif defined(__clang__) || defined(__GNUC__)
    /*
     * Clang doesn't like <atomic> from libstdc++ before 4.7 due to the
     * loose typing of the atomic builtins. GCC 4.5 and 4.6 lacks inline
@@ -42,8 +44,6 @@
 #  elif MOZ_USING_LIBCXX && defined(__clang__)
 #    define MOZ_HAVE_CXX11_ATOMICS
 #  endif
-#elif defined(_MSC_VER)
-#  define MOZ_HAVE_CXX11_ATOMICS
 #endif
 
 namespace mozilla {
@@ -267,28 +267,12 @@ struct IntrinsicAddSub<T*, Order> : public IntrinsicBase<T*, Order>
 
   static T* add(typename Base::ValueType& aPtr, ptrdiff_t aVal)
   {
-    return aPtr.fetch_add(fixupAddend(aVal), Base::OrderedOp::AtomicRMWOrder);
+    return aPtr.fetch_add(aVal, Base::OrderedOp::AtomicRMWOrder);
   }
 
   static T* sub(typename Base::ValueType& aPtr, ptrdiff_t aVal)
   {
-    return aPtr.fetch_sub(fixupAddend(aVal), Base::OrderedOp::AtomicRMWOrder);
-  }
-private:
-  /*
-   * GCC 4.6's <atomic> header has a bug where adding X to an
-   * atomic<T*> is not the same as adding X to a T*.  Hence the need
-   * for this function to provide the correct addend.
-   */
-  static ptrdiff_t fixupAddend(ptrdiff_t aVal)
-  {
-#if defined(__clang__) || defined(_MSC_VER)
-    return aVal;
-#elif defined(__GNUC__) && !MOZ_GCC_VERSION_AT_LEAST(4, 7, 0)
-    return aVal * sizeof(T);
-#else
-    return aVal;
-#endif
+    return aPtr.fetch_sub(aVal, Base::OrderedOp::AtomicRMWOrder);
   }
 };
 

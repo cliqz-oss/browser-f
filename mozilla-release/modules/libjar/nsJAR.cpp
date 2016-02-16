@@ -141,7 +141,7 @@ nsJAR::Open(nsIFile* zipFile)
     mZip = zip;
     return NS_OK;
   }
-  return mZip->OpenArchive(zipFile, mCache ? mCache->IsMustCacheFdEnabled() : false);
+  return mZip->OpenArchive(zipFile);
 }
 
 NS_IMETHODIMP
@@ -445,14 +445,19 @@ nsJAR::LoadEntry(const nsACString &aFilename, char** aBuf, uint32_t* aBufLen)
   uint64_t len64;
   rv = manifestStream->Available(&len64);
   if (NS_FAILED(rv)) return rv;
-  NS_ENSURE_TRUE(len64 < UINT32_MAX, NS_ERROR_FILE_CORRUPTED); // bug 164695
+  if (len64 >= UINT32_MAX) { // bug 164695
+    nsZipArchive::sFileCorruptedReason = "nsJAR: invalid manifest size";
+    return NS_ERROR_FILE_CORRUPTED;
+  }
   uint32_t len = (uint32_t)len64;
   buf = (char*)malloc(len+1);
   if (!buf) return NS_ERROR_OUT_OF_MEMORY;
   uint32_t bytesRead;
   rv = manifestStream->Read(buf, len, &bytesRead);
-  if (bytesRead != len)
+  if (bytesRead != len) {
+    nsZipArchive::sFileCorruptedReason = "nsJAR: manifest too small";
     rv = NS_ERROR_FILE_CORRUPTED;
+  }
   if (NS_FAILED(rv)) {
     free(buf);
     return rv;
@@ -538,6 +543,7 @@ nsJAR::ParseManifest()
   if (more)
   {
     mParsedManifest = true;
+    nsZipArchive::sFileCorruptedReason = "nsJAR: duplicate manifests";
     return NS_ERROR_FILE_CORRUPTED; // More than one MF file
   }
 
@@ -637,8 +643,10 @@ nsJAR::ParseOneFile(const char* filebuf, int16_t aFileType)
   curLine.Assign(filebuf, linelen);
 
   if ( ((aFileType == JAR_MF) && !curLine.Equals(JAR_MF_HEADER) ) ||
-       ((aFileType == JAR_SF) && !curLine.Equals(JAR_SF_HEADER) ) )
+       ((aFileType == JAR_SF) && !curLine.Equals(JAR_SF_HEADER) ) ) {
+     nsZipArchive::sFileCorruptedReason = "nsJAR: invalid manifest header";
      return NS_ERROR_FILE_CORRUPTED;
+  }
 
   //-- Skip header section
   do {
@@ -1047,7 +1055,6 @@ NS_IMPL_ISUPPORTS(nsZipReaderCache, nsIZipReaderCache, nsIObserver, nsISupportsW
 nsZipReaderCache::nsZipReaderCache()
   : mLock("nsZipReaderCache.mLock")
   , mZips()
-  , mMustCacheFd(false)
 #ifdef ZIP_CACHE_HIT_RATE
     ,
     mZipCacheLookups(0),
@@ -1200,54 +1207,6 @@ nsZipReaderCache::GetInnerZip(nsIFile* zipFile, const nsACString &entry,
   }
   zip.forget(result);
   return rv;
-}
-
-NS_IMETHODIMP
-nsZipReaderCache::SetMustCacheFd(nsIFile* zipFile, bool aMustCacheFd)
-{
-#if defined(XP_WIN)
-  MOZ_CRASH("Not implemented");
-  return NS_ERROR_NOT_IMPLEMENTED;
-#else
-
-  if (!aMustCacheFd) {
-    return NS_OK;
-  }
-
-  if (!zipFile) {
-    return NS_ERROR_FAILURE;
-  }
-
-  nsresult rv;
-  nsAutoCString uri;
-  rv = zipFile->GetNativePath(uri);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-  uri.Insert(NS_LITERAL_CSTRING("file:"), 0);
-
-  MutexAutoLock lock(mLock);
-
-  mMustCacheFd = aMustCacheFd;
-
-  nsRefPtr<nsJAR> zip;
-  mZips.Get(uri, getter_AddRefs(zip));
-  if (!zip) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // Flush the file from the cache if its file descriptor was not cached.
-  PRFileDesc* fd = nullptr;
-  zip->GetNSPRFileDesc(&fd);
-  if (!fd) {
-#ifdef ZIP_CACHE_HIT_RATE
-    mZipCacheFlushes++;
-#endif
-    zip->SetZipReaderCache(nullptr);
-    mZips.Remove(uri);
-  }
-  return NS_OK;
-#endif /* XP_WIN */
 }
 
 NS_IMETHODIMP

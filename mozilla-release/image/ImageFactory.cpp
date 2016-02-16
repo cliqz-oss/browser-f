@@ -32,14 +32,6 @@ namespace image {
 ImageFactory::Initialize()
 { }
 
-static bool
-ShouldDownscaleDuringDecode(const nsCString& aMimeType)
-{
-  return aMimeType.EqualsLiteral(IMAGE_JPEG) ||
-         aMimeType.EqualsLiteral(IMAGE_JPG) ||
-         aMimeType.EqualsLiteral(IMAGE_PJPEG);
-}
-
 static uint32_t
 ComputeImageFlags(ImageURL* uri, const nsCString& aMimeType, bool isMultiPart)
 {
@@ -48,48 +40,26 @@ ComputeImageFlags(ImageURL* uri, const nsCString& aMimeType, bool isMultiPart)
   // We default to the static globals.
   bool isDiscardable = gfxPrefs::ImageMemDiscardable();
   bool doDecodeImmediately = gfxPrefs::ImageDecodeImmediatelyEnabled();
-  bool doDownscaleDuringDecode = gfxPrefs::ImageDownscaleDuringDecodeEnabled();
-
-  // We use the compositor APZ pref here since we don't have a widget to test.
-  // It's safe since this is an optimization, and the only platform
-  // ImageDecodeOnlyOnDraw is disabled on is B2G (where APZ is enabled in all
-  // widgets anyway).
-  bool doDecodeOnlyOnDraw = gfxPrefs::ImageDecodeOnlyOnDrawEnabled() &&
-                            gfxPrefs::AsyncPanZoomEnabledDoNotUseDirectly();
 
   // We want UI to be as snappy as possible and not to flicker. Disable
-  // discarding and decode-only-on-draw for chrome URLS.
+  // discarding for chrome URLS.
   bool isChrome = false;
   rv = uri->SchemeIs("chrome", &isChrome);
   if (NS_SUCCEEDED(rv) && isChrome) {
-    isDiscardable = doDecodeOnlyOnDraw = false;
+    isDiscardable = false;
   }
 
-  // We don't want resources like the "loading" icon to be discardable or
-  // decode-only-on-draw either.
+  // We don't want resources like the "loading" icon to be discardable either.
   bool isResource = false;
   rv = uri->SchemeIs("resource", &isResource);
   if (NS_SUCCEEDED(rv) && isResource) {
-    isDiscardable = doDecodeOnlyOnDraw = false;
-  }
-
-  // Downscale-during-decode and decode-only-on-draw are only enabled for
-  // certain content types.
-  if ((doDownscaleDuringDecode || doDecodeOnlyOnDraw) &&
-      !ShouldDownscaleDuringDecode(aMimeType)) {
-    doDownscaleDuringDecode = false;
-    doDecodeOnlyOnDraw = false;
-  }
-
-  // If we're decoding immediately, disable decode-only-on-draw.
-  if (doDecodeImmediately) {
-    doDecodeOnlyOnDraw = false;
+    isDiscardable = false;
   }
 
   // For multipart/x-mixed-replace, we basically want a direct channel to the
   // decoder. Disable everything for this case.
   if (isMultiPart) {
-    isDiscardable = doDecodeOnlyOnDraw = doDownscaleDuringDecode = false;
+    isDiscardable = false;
   }
 
   // We have all the information we need.
@@ -97,17 +67,11 @@ ComputeImageFlags(ImageURL* uri, const nsCString& aMimeType, bool isMultiPart)
   if (isDiscardable) {
     imageFlags |= Image::INIT_FLAG_DISCARDABLE;
   }
-  if (doDecodeOnlyOnDraw) {
-    imageFlags |= Image::INIT_FLAG_DECODE_ONLY_ON_DRAW;
-  }
   if (doDecodeImmediately) {
     imageFlags |= Image::INIT_FLAG_DECODE_IMMEDIATELY;
   }
   if (isMultiPart) {
     imageFlags |= Image::INIT_FLAG_TRANSIENT;
-  }
-  if (doDownscaleDuringDecode) {
-    imageFlags |= Image::INIT_FLAG_DOWNSCALE_DURING_DECODE;
   }
 
   return imageFlags;
@@ -137,15 +101,14 @@ ImageFactory::CreateImage(nsIRequest* aRequest,
   }
 }
 
-// Marks an image as having an error before returning it. Used with macros like
-// NS_ENSURE_SUCCESS, since we guarantee to always return an image even if an
-// error occurs, but callers need to be able to tell that this happened.
+// Marks an image as having an error before returning it.
 template <typename T>
 static already_AddRefed<Image>
-BadImage(nsRefPtr<T>& image)
+BadImage(const char* aMessage, nsRefPtr<T>& aImage)
 {
-  image->SetHasError();
-  return image.forget();
+  NS_WARNING(aMessage);
+  aImage->SetHasError();
+  return aImage.forget();
 }
 
 /* static */ already_AddRefed<Image>
@@ -159,8 +122,10 @@ ImageFactory::CreateAnonymousImage(const nsCString& aMimeType)
   newTracker->SetImage(newImage);
   newImage->SetProgressTracker(newTracker);
 
-  rv = newImage->Init(aMimeType.get(), Image::INIT_FLAG_NONE);
-  NS_ENSURE_SUCCESS(rv, BadImage(newImage));
+  rv = newImage->Init(aMimeType.get(), Image::INIT_FLAG_SYNC_LOAD);
+  if (NS_FAILED(rv)) {
+    return BadImage("RasterImage::Init failed", newImage);
+  }
 
   return newImage.forget();
 }
@@ -240,30 +205,6 @@ ImageFactory::CreateRasterImage(nsIRequest* aRequest,
   aProgressTracker->SetImage(newImage);
   newImage->SetProgressTracker(aProgressTracker);
 
-  rv = newImage->Init(aMimeType.get(), aImageFlags);
-  NS_ENSURE_SUCCESS(rv, BadImage(newImage));
-
-  newImage->SetInnerWindowID(aInnerWindowId);
-
-  uint32_t len = GetContentSize(aRequest);
-
-  // Pass anything usable on so that the RasterImage can preallocate
-  // its source buffer.
-  if (len > 0) {
-    // Bound by something reasonable
-    uint32_t sizeHint = std::min<uint32_t>(len, 20000000);
-    rv = newImage->SetSourceSizeHint(sizeHint);
-    if (NS_FAILED(rv)) {
-      // Flush memory, try to get some back, and try again.
-      rv = nsMemory::HeapMinimize(true);
-      nsresult rv2 = newImage->SetSourceSizeHint(sizeHint);
-      // If we've still failed at this point, things are going downhill.
-      if (NS_FAILED(rv) || NS_FAILED(rv2)) {
-        NS_WARNING("About to hit OOM in imagelib!");
-      }
-    }
-  }
-
   nsAutoCString ref;
   aURI->GetRef(ref);
   net::nsMediaFragmentURIParser parser(ref);
@@ -287,6 +228,32 @@ ImageFactory::CreateRasterImage(nsIRequest* aRequest,
       }
   }
 
+  rv = newImage->Init(aMimeType.get(), aImageFlags);
+  if (NS_FAILED(rv)) {
+    return BadImage("RasterImage::Init failed", newImage);
+  }
+
+  newImage->SetInnerWindowID(aInnerWindowId);
+
+  uint32_t len = GetContentSize(aRequest);
+
+  // Pass anything usable on so that the RasterImage can preallocate
+  // its source buffer.
+  if (len > 0) {
+    // Bound by something reasonable
+    uint32_t sizeHint = std::min<uint32_t>(len, 20000000);
+    rv = newImage->SetSourceSizeHint(sizeHint);
+    if (NS_FAILED(rv)) {
+      // Flush memory, try to get some back, and try again.
+      rv = nsMemory::HeapMinimize(true);
+      nsresult rv2 = newImage->SetSourceSizeHint(sizeHint);
+      // If we've still failed at this point, things are going downhill.
+      if (NS_FAILED(rv) || NS_FAILED(rv2)) {
+        NS_WARNING("About to hit OOM in imagelib!");
+      }
+    }
+  }
+
   return newImage.forget();
 }
 
@@ -307,12 +274,16 @@ ImageFactory::CreateVectorImage(nsIRequest* aRequest,
   newImage->SetProgressTracker(aProgressTracker);
 
   rv = newImage->Init(aMimeType.get(), aImageFlags);
-  NS_ENSURE_SUCCESS(rv, BadImage(newImage));
+  if (NS_FAILED(rv)) {
+    return BadImage("VectorImage::Init failed", newImage);
+  }
 
   newImage->SetInnerWindowID(aInnerWindowId);
 
   rv = newImage->OnStartRequest(aRequest, nullptr);
-  NS_ENSURE_SUCCESS(rv, BadImage(newImage));
+  if (NS_FAILED(rv)) {
+    return BadImage("VectorImage::OnStartRequest failed", newImage);
+  }
 
   return newImage.forget();
 }

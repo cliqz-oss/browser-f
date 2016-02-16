@@ -5,15 +5,15 @@
 
 package org.mozilla.gecko;
 
+import org.mozilla.gecko.annotation.RobocopTarget;
 import org.mozilla.gecko.home.HomeConfig;
 import org.mozilla.gecko.home.HomeConfig.PanelType;
-import org.mozilla.gecko.mozglue.RobocopTarget;
 import org.mozilla.gecko.util.StringUtils;
 
 public class AboutPages {
     // All of our special pages.
+    public static final String ACCOUNTS        = "about:accounts";
     public static final String ADDONS          = "about:addons";
-    public static final String APPS            = "about:apps";
     public static final String CONFIG          = "about:config";
     public static final String DOWNLOADS       = "about:downloads";
     public static final String FIREFOX         = "about:firefox";
@@ -51,14 +51,29 @@ public class AboutPages {
         return StringUtils.getQueryParameter(aboutHomeUrl, PANEL_PARAM);
     }
 
-    public static final boolean isAboutReader(final String url) {
-        if (url == null) {
-            return false;
-        }
-        return url.startsWith(READER);
+    public static boolean isAboutReader(final String url) {
+        return isAboutPage(READER, url);
+    }
+
+    public static boolean isAboutConfig(final String url) {
+        return isAboutPage(CONFIG, url);
+    }
+
+    public static boolean isAboutAddons(final String url) {
+        return isAboutPage(ADDONS, url);
+    }
+
+    public static boolean isAboutPrivateBrowsing(final String url) {
+        return isAboutPage(PRIVATEBROWSING, url);
+    }
+
+    public static boolean isAboutPage(String page, String url) {
+        return url != null && url.toLowerCase().startsWith(page);
+
     }
 
     private static final String[] DEFAULT_ICON_PAGES = new String[] {
+        ACCOUNTS,
         ADDONS,
         CONFIG,
         DOWNLOADS,

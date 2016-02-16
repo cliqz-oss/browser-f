@@ -7,6 +7,18 @@ onfetch = function(ev) {
     ));
   }
 
+  else if (ev.request.url.includes('file_CrossSiteXHR_server.sjs')) {
+    // N.B. this response would break the rules of CORS if it were allowed, but
+    //      this test relies upon the preflight request not being intercepted and
+    //      thus this response should not be used.
+    if (ev.request.method == 'OPTIONS') {
+      ev.respondWith(new Response('', {headers: {'Access-Control-Allow-Origin': '*',
+                                                 'Access-Control-Allow-Headers': 'X-Unsafe'}}))
+    } else if (ev.request.url.includes('example.org')) {
+      ev.respondWith(fetch(ev.request));
+    }
+  }
+
   else if (ev.request.url.includes("synthesized-404.txt")) {
     ev.respondWith(Promise.resolve(
       new Response("synthesized response body", { status: 404 })
@@ -66,6 +78,17 @@ onfetch = function(ev) {
     ev.respondWith(Promise.resolve({}));
   }
 
+  else if (ev.request.url.includes("nonpromise.txt")) {
+    try {
+      // This should coerce to Promise(5) instead of throwing
+      ev.respondWith(5);
+    } catch (e) {
+      // test is expecting failure, so return a success if we get a thrown
+      // exception
+      ev.respondWith(new Response('respondWith(5) threw ' + e));
+    }
+  }
+
   else if (ev.request.url.includes("headers.txt")) {
     var ok = true;
     ok &= ev.request.headers.get("X-Test1") == "header1";
@@ -76,12 +99,20 @@ onfetch = function(ev) {
   }
 
   else if (ev.request.url.includes("nonexistent_image.gif")) {
+    var imageAsBinaryString = atob("R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs");
+    var imageLength = imageAsBinaryString.length;
+
+    // If we just pass |imageAsBinaryString| to the Response constructor, an
+    // encoding conversion occurs that corrupts the image. Instead, we need to
+    // convert it to a typed array.
+    // typed array.
+    var imageAsArray = new Uint8Array(imageLength);
+    for (var i = 0; i < imageLength; ++i) {
+      imageAsArray[i] = imageAsBinaryString.charCodeAt(i);
+    }
+
     ev.respondWith(Promise.resolve(
-      new Response(atob("R0lGODlhAQABAIAAAAUEBAAAACwAAAAAAQABAAACAkQBADs"), {
-        headers: {
-          "Content-Type": "image/gif"
-        }
-      })
+      new Response(imageAsArray, { headers: { "Content-Type": "image/gif" } })
     ));
   }
 
@@ -205,5 +236,51 @@ onfetch = function(ev) {
     // The redirected fetch should not go through the SW since the original
     // fetch was initiated from a SW.
     ev.respondWith(fetch('redirect_serviceworker.sjs'));
+  }
+
+  else if (ev.request.url.includes('load_cross_origin_xml_document_synthetic.xml')) {
+    if (ev.request.mode != 'same-origin') {
+      ev.respondWith(Promise.reject());
+      return;
+    }
+
+    ev.respondWith(Promise.resolve(
+      new Response("<response>body</response>", { headers: {'Content-Type': 'text/xtml'}})
+    ));
+  }
+
+  else if (ev.request.url.includes('load_cross_origin_xml_document_cors.xml')) {
+    if (ev.request.mode != 'same-origin') {
+      ev.respondWith(Promise.reject());
+      return;
+    }
+
+    var url = 'http://example.com/tests/dom/security/test/cors/file_CrossSiteXHR_server.sjs?status=200&allowOrigin=*';
+    ev.respondWith(fetch(url, { mode: 'cors' }));
+  }
+
+  else if (ev.request.url.includes('load_cross_origin_xml_document_opaque.xml')) {
+    if (ev.request.mode != 'same-origin') {
+      Promise.resolve(
+        new Response("<error>Invalid Request mode</error>", { headers: {'Content-Type': 'text/xtml'}})
+      );
+      return;
+    }
+
+    var url = 'http://example.com/tests/dom/security/test/cors/file_CrossSiteXHR_server.sjs?status=200';
+    ev.respondWith(fetch(url, { mode: 'no-cors' }));
+  }
+
+  else if (ev.request.url.includes('xhr-method-test.txt')) {
+    ev.respondWith(new Response('intercepted ' + ev.request.method));
+  }
+
+  else if (ev.request.url.includes('empty-header')) {
+    if (!ev.request.headers.has("emptyheader") ||
+        ev.request.headers.get("emptyheader") !== "") {
+      ev.respondWith(Promise.reject());
+      return;
+    }
+    ev.respondWith(new Response("emptyheader"));
   }
 };

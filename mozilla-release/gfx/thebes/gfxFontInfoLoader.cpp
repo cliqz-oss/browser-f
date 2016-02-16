@@ -26,7 +26,14 @@ FontInfoData::Load()
     uint32_t i, n = mFontFamiliesToLoad.Length();
     mLoadStats.families = n;
     for (i = 0; i < n; i++) {
-        LoadFontFamilyData(mFontFamiliesToLoad[i]);
+        // font file memory mapping sometimes causes exceptions - bug 1100949
+        MOZ_SEH_TRY {
+            LoadFontFamilyData(mFontFamiliesToLoad[i]);
+        } MOZ_SEH_EXCEPT(EXCEPTION_EXECUTE_HANDLER) {
+            gfxCriticalError() <<
+                "Exception occurred reading font data for " <<
+                NS_ConvertUTF16toUTF8(mFontFamiliesToLoad[i]).get();
+        }
     }
 
     mLoadTime = TimeStamp::Now() - start;
@@ -87,7 +94,6 @@ FontInfoLoadCompleteEvent::Run()
 
     loader->FinalizeLoader(mFontInfo);
 
-    mFontInfo = nullptr;
     return NS_OK;
 }
 
@@ -102,7 +108,6 @@ AsyncFontInfoLoader::Run()
 
     // post a completion event that transfer the data to the fontlist
     NS_DispatchToMainThread(mCompleteEvent);
-    mFontInfo = nullptr;
 
     return NS_OK;
 }
@@ -164,17 +169,17 @@ gfxFontInfoLoader::StartLoader(uint32_t aDelay, uint32_t aInterval)
     InitLoader();
 
     // start async load
-    mState = stateAsyncLoad;
     nsresult rv = NS_NewNamedThread("Font Loader",
                                     getter_AddRefs(mFontLoaderThread),
                                     nullptr);
-    if (NS_FAILED(rv)) {
+    if (NS_WARN_IF(NS_FAILED(rv))) {
         return;
     }
+    mState = stateAsyncLoad;
 
     nsCOMPtr<nsIRunnable> loadEvent = new AsyncFontInfoLoader(mFontInfo);
 
-    mFontLoaderThread->Dispatch(loadEvent, NS_DISPATCH_NORMAL);
+    mFontLoaderThread->Dispatch(loadEvent.forget(), NS_DISPATCH_NORMAL);
 
     if (LOG_FONTINIT_ENABLED()) {
         LOG_FONTINIT(("(fontinit) fontloader started (fontinfo: %p)\n",
@@ -185,7 +190,11 @@ gfxFontInfoLoader::StartLoader(uint32_t aDelay, uint32_t aInterval)
 void
 gfxFontInfoLoader::FinalizeLoader(FontInfoData *aFontInfo)
 {
-    // avoid loading data if loader has already been canceled
+    // Avoid loading data if loader has already been canceled.
+    // This should mean that CancelLoader() ran and the Load
+    // thread has already Shutdown(), and likely before processing
+    // the Shutdown event it handled the load event and sent back
+    // our Completion event, thus we end up here.
     if (mState != stateAsyncLoad || mFontInfo != aFontInfo) {
         return;
     }

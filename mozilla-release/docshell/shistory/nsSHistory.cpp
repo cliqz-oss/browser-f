@@ -227,7 +227,7 @@ EvictContentViewerForTransaction(nsISHTransaction* aTrans)
   }
 }
 
-} // anonymous namespace
+} // namespace
 
 nsSHistory::nsSHistory()
   : mIndex(-1)
@@ -1046,7 +1046,7 @@ public:
   int32_t mDistance;
 };
 
-} // anonymous namespace
+} // namespace
 
 // static
 void
@@ -1315,7 +1315,9 @@ nsSHistory::RemoveDuplicate(int32_t aIndex, bool aKeepNext)
     nsCOMPtr<nsISHTransaction> txToRemove, txToKeep, txNext, txPrev;
     GetTransactionAtIndex(aIndex, getter_AddRefs(txToRemove));
     GetTransactionAtIndex(compareIndex, getter_AddRefs(txToKeep));
-    NS_ENSURE_TRUE(txToRemove, false);
+    if (!txToRemove) {
+      return false;
+    }
     NS_ENSURE_TRUE(txToKeep, false);
     txToRemove->GetNext(getter_AddRefs(txNext));
     txToRemove->GetPrev(getter_AddRefs(txPrev));
@@ -1768,6 +1770,14 @@ nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry, nsIDocShell* aFrameDS,
 
   loadInfo->SetLoadType(aLoadType);
   loadInfo->SetSHEntry(aFrameEntry);
+
+  nsCOMPtr<nsIURI> originalURI;
+  aFrameEntry->GetOriginalURI(getter_AddRefs(originalURI));
+  loadInfo->SetOriginalURI(originalURI);
+
+  bool loadReplace;
+  aFrameEntry->GetLoadReplace(&loadReplace);
+  loadInfo->SetLoadReplace(loadReplace);
 
   nsCOMPtr<nsIURI> nextURI;
   aFrameEntry->GetURI(getter_AddRefs(nextURI));
