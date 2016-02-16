@@ -4,27 +4,13 @@
 
 <!ENTITY tracking.label                 "Verfolgung von Nutzeraktivitäten">
 
-<<<<<<< HEAD
-<!ENTITY dntTrackingNotOkay4.label     "Websites auffordern, meine Aktivitäten nicht zu verfolgen">
-<!ENTITY dntTrackingNotOkay4.accesskey "n">
-<!ENTITY doNotTrackInfo.label           "Weitere Informationen">
-<!ENTITY doNotTrackInfo.label2          "Wenn diese Funktion aktiviert ist, teilt CLIQZ Werbenetzwerken, Websites und Anwendungen mit, dass Du nicht zwecks verhaltensbasierter Werbung und Ähnlichem verfolgt werden möchtest.">
-<!ENTITY trackingProtection5.label     "Schutz vor Aktivitätenverfolgung verwenden">
-<!ENTITY trackingProtection5.accesskey "A">
-||||||| merged common ancestors
-<!ENTITY dntTrackingNotOkay4.label     "Websites auffordern, meine Aktivitäten nicht zu verfolgen">
-<!ENTITY dntTrackingNotOkay4.accesskey "n">
-<!ENTITY doNotTrackInfo.label           "Weitere Informationen">
-<!ENTITY trackingProtection5.label     "Schutz vor Aktivitätenverfolgung verwenden">
-<!ENTITY trackingProtection5.accesskey "A">
-=======
 <!ENTITY dntTrackingNotOkay.label2      "Websites mitteilen, meine Aktivitäten nicht zu verfolgen">
 <!ENTITY dntTrackingNotOkay.accesskey   "n">
 <!ENTITY trackingProtection.label       "Verfolgung meiner Aktivitäten durch Websites unterbinden">
 <!ENTITY trackingProtection.accesskey   "u">
->>>>>>> 058d76cf5686dfecaee56241c33d54bf2fb488f5
 <!ENTITY trackingProtectionLearnMore.label "Weitere Informationen">
 <!ENTITY doNotTrackInfo.label           "Weitere Informationen">
+<!ENTITY doNotTrackInfo.label2          "Wenn diese Funktion aktiviert ist, teilt CLIQZ Werbenetzwerken, Websites und Anwendungen mit, dass Du nicht zwecks verhaltensbasierter Werbung und Ähnlichem verfolgt werden möchtest.">
 
 <!ENTITY  history.label                 "Chronik">
 
