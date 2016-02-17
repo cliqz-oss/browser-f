@@ -1609,6 +1609,7 @@ function Update(update) {
     }
   }
 
+#if 0
   // The Update Name is either the string provided by the <update> element, or
   // the string: "<App Name> <Update App Version>"
   var name = "";
@@ -1621,6 +1622,10 @@ function Update(update) {
                                               [appName, this.displayVersion], 2);
   }
   this.name = name;
+#endif
+  // In CLIQZ we always use just the current product name.
+  var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
+  this.name = brandBundle.GetStringFromName("brandShortName");
 }
 Update.prototype = {
   /**
