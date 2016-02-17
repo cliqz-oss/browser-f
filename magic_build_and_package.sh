@@ -55,12 +55,13 @@ else
   echo 'Unknow OS -`$OSTYPE`'
 fi
 
-cd mozilla-release
-
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
+SRC_BASE=mozilla-release
 export MOZ_OBJDIR=../obj
 I386DIR=$MOZ_OBJDIR/i386
 X86_64DIR=$MOZ_OBJDIR/x86_64
+
+cd $SRC_BASE
 
 if $CLOBBER; then
   ./mach clobber
@@ -108,6 +109,7 @@ if [[ $IS_MAC_OS ]]; then
   MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
   unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!
   make -C $I386DIR package
+  # Restore still useful variable we unset before.
   export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
 else
   ./mach package
@@ -128,10 +130,20 @@ else
 fi
 
 if [ $CQZ_CERT_DB_PATH ]; then
+  # TODO: Specify certificate name by env var.
+  if [ -z "$MAR_CERT_NAME" ]; then
+    MAR_CERT_NAME="Cliqz GmbH's DigiCert Inc ID"
+  fi
   echo '***** Signing mar *****'
   MAR_FILE=`ls $I386DIR/dist/update/*.mar | head -n 1`
-  $X86_64DIR/dist/bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE $MAR_FILE.signed
+  # signmar is somehow dependent on its execution path. It refuses to work when
+  # launched using relative paths, and gives unrelated error:
+  # "Could not initialize NSS". BEWARE!
+  SIMGNMAR_ABS_DIR=$(cd $X86_64DIR/dist/bin/; pwd)
+  $SIMGNMAR_ABS_DIR/signmar -d $CQZ_CERT_DB_PATH -n "$MAR_CERT_NAME" \
+    -s $MAR_FILE $MAR_FILE.signed
   mv $MAR_FILE.signed $MAR_FILE
 fi
 
 echo '***** Build & package finished successfully. *****'
+cd $OLDPWD
