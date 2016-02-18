@@ -45,38 +45,44 @@ else
     echo 'Unknow OS -`$OSTYPE`'
 fi
 
+# TODO: Use MOZ_UPDATE_CHANNEL.
+if [ -z $CQZ_RELEASE_CHANNEL ]; then
+  CQZ_RELEASE_CHANNEL=release
+fi
+
 if [ $IS_WIN ]; then
-    echo 'kk'
+  MAKE=mozmake
+else
+  MAKE=make
 fi
 
 echo "Starting build on with language $LANG and VERBOSE=$VERBOSE"
 
-export MOZ_OBJDIR=../obj
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
-export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}' ./repack/distribution/distribution.ini | head -n1)
+export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}'\
+  ./repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
-if [ $CQZ_RELEASE_CHANNEL ]; then
-  export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
-else
-  export S3_UPLOAD_PATH=`echo dist/release/$CQZ_VERSION/${LANG:0:2}`
-fi
+export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 
-cd obj
+if [ $IS_MAC_OS ]; then
+  cd obj/i386
+else
+  cd obj
+fi
 
 echo '***** Uploading MAR and package files *****'
-if [ $IS_WIN ]; then
-    mozmake automation/build
-else
-    make automation/build
-fi
+$MAKE automation/build
 
 echo '***** Genereting build_properties.json *****'
-../mozilla-release/build/gen_build_properties.py
-
+$OLDPWD/mozilla-release/build/gen_build_properties.py
+cd $OLDPWD
 
 echo '***** Submiting to Balrog *****'
-python ../build-tools/scripts/updates/balrog-submitter.py --credentials-file ../mozilla-release/build/creds.txt --username balrogadmin --api-root http://$CQZ_BALROG_DOMAIN/api --build-properties build_properties.json
+python build-tools/scripts/updates/balrog-submitter.py \
+  --credentials-file mozilla-release/build/creds.txt --username balrogadmin \
+  --api-root http://$CQZ_BALROG_DOMAIN/api \
+  --build-properties build_properties.json
