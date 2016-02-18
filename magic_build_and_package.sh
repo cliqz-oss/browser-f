@@ -76,6 +76,7 @@ if [ $IS_WIN ]; then
 fi
 
 # TODO: Use MOZ_UPDATE_CHANNEL directly instead of CQZ_RELEASE_CHANNEL.
+# Don't forget to update magic_upload_files.sh along with this one.
 # --enable-update-channel=...
 if [ -z $CQZ_RELEASE_CHANNEL ]; then
   export MOZ_UPDATE_CHANNEL=release

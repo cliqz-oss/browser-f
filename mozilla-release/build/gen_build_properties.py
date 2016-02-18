@@ -11,6 +11,7 @@ supported_platforms = {
         'window': 'win64',
         'windows': 'win64',
         'mac64': 'macosx64',
+        'mac': 'macosx64',
         'linux-x86_64': 'linux64'
         }
 
@@ -36,9 +37,9 @@ class BuildProperties:
         with open(filename, 'w') as build_prop_file:
             json.dump(self.properties, build_prop_file, indent = 4)
 
-    def load_mach_build_props(self,mash_json):
-        with open(mash_json,'r') as mash_build_props_file:
-            return json.load(mash_build_props_file)
+    def load_mach_build_props(self, mach_json):
+        with open(mach_json,'r') as mach_build_props_file:
+            return json.load(mach_build_props_file)
 
     def load_firefox_build_props(self,ff_json):
         with open(ff_json,'r') as ff_props_file:
@@ -73,23 +74,12 @@ class BuildProperties:
         self.properties['properties']['branch'] = os.environ.get('CQZ_RELEASE_CHANNEL', 'master')
 
 if __name__ == '__main__':
-    script_directory = os.path.dirname(os.path.realpath(__file__))
-    obj_directory = os.environ.get('MOZ_OBJDIR','')
-    if not obj_directory:
-        raise ValueError("Environment variable MOZ_OBJDIR must be set")
-
-    s3_bucket = os.environ.get('S3_BUCKET','')
-    if not s3_bucket:
-        raise ValueError("Environment variable S3_BUCKET must be set")
-
     s3_path = os.environ.get('S3_UPLOAD_PATH','')
     if not s3_path:
         raise ValueError("Environment variable S3_UPLOAD_PATH must be set")
 
     prop = BuildProperties()
-
-    mach_props_file = script_directory + '/../' + obj_directory + '/dist/mach_build_properties.json'
-    mach_props = prop.load_mach_build_props(mach_props_file)
+    mach_props = prop.load_mach_build_props('dist/mach_build_properties.json')
 
     firefox_props = {}
     for file in mach_props['uploadFiles']:
@@ -100,4 +90,4 @@ if __name__ == '__main__':
     all_props.update(firefox_props)
 
     prop.update_properties(all_props)
-    prop.gen_build_prop_file(script_directory + '/../' + obj_directory + '/build_properties.json')
+    prop.gen_build_prop_file('build_properties.json')
