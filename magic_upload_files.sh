@@ -68,11 +68,11 @@ export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 
+OBJ_DIR=obj
 if [ $IS_MAC_OS ]; then
-  cd obj/i386
-else
-  cd obj
+  OBJ_DIR=$OBJ_DIR/i386
 fi
+cd $OBJ_DIR
 
 echo '***** Uploading MAR and package files *****'
 $MAKE automation/build
@@ -85,4 +85,4 @@ echo '***** Submiting to Balrog *****'
 python build-tools/scripts/updates/balrog-submitter.py \
   --credentials-file mozilla-release/build/creds.txt --username balrogadmin \
   --api-root http://$CQZ_BALROG_DOMAIN/api \
-  --build-properties build_properties.json
+  --build-properties $OBJ_DIR/build_properties.json
