@@ -2641,9 +2641,13 @@ var SessionStoreInternal = {
     if (!overwriteTabs) {
       let homePages = aWindow.gHomeButton.getHomePage().split("|");
       winData.tabs = winData.tabs.filter(function (tabData) {
-        if (!tabData.entries || !tabData.entries.length)
+        if (!tabData.entries || !tabData.entries.length) {
           return true;
-        return homePages.indexOf(tabData.entries[0].url) == -1;
+        }
+        let entryIndex = (tabData.index || 1) - 1;  // It's 1-based.
+        let entry = tabData.entries[entryIndex] ||
+          tabData.entries[tabData.entries.length - 1];
+        return homePages.indexOf(entry.url) == -1;
       });
     }
 
