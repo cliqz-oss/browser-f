@@ -1,5 +1,1 @@
-<<<<<<< HEAD
 0.9.3
-=======
-44.0.2
->>>>>>> origin/upstream-releases
