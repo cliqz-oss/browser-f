@@ -63,7 +63,7 @@ function getTryLoads(callback) {
       totalBuildLoad["win32"] = load_try_build["win64"];
       totalBuildLoad["win64"] = totalBuildLoad["win32"];
       totalBuildLoad["android-api-9"] = totalBuildLoad["linux"];
-      totalBuildLoad["android-api-11"] = totalBuildLoad["linux"];
+      totalBuildLoad["android-api-15"] = totalBuildLoad["linux"];
       totalBuildLoad["android-x86"] = totalBuildLoad["linux"];
       totalBuildLoad["emulator"] = totalBuildLoad["linux"];
       totalBuildLoad["emulator-jb"] = totalBuildLoad["linux"];
@@ -95,7 +95,7 @@ function getTryLoads(callback) {
       totalTestLoad["win32-mulet"] = totalTestLoad["win32"];
       totalTestLoad["win64"] = load_test["win8-ix"];
       totalTestLoad["android-api-9"] = load_test["ubuntu64-vm"];
-      totalTestLoad["android-api-11"] = load_test["panda"];
+      totalTestLoad["android-api-15"] = load_test["panda"];
       totalTestLoad["android-x86"] = load_test["ubuntu64-hw"];
       totalTestLoad["emulator"] = load_test["ubuntu64-vm"];
       // emulator-jb: N/A
