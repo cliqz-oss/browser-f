@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -e
+set -x
+
 echo "***** MAC SIGNING *****"
 
 OBJ_DIR=obj
@@ -18,7 +21,7 @@ do
   hdiutil detach /Volumes/CLIQZ
   SIGNED_DMG="${DMG%.dmg}-signed.dmg"
   appdmg CLIQZ-dmg.json $SIGNED_DMG
-  mv $SIGNED_DMG $DMG
+  cp $SIGNED_DMG $DMG
 done
 
 cd $OLDPWD
