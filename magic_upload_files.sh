@@ -75,7 +75,7 @@ fi
 cd $OBJ_DIR
 
 echo '***** Uploading MAR and package files *****'
-$MAKE automation/build
+$MAKE upload
 
 echo '***** Genereting build_properties.json *****'
 $OLDPWD/mozilla-release/build/gen_build_properties.py
