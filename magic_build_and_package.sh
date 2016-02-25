@@ -14,52 +14,7 @@
 set -e
 set -x
 
-VERBOSE=false
-CLOBBER=false
-
-while [[ $# > 0 ]]
-do
-  key="$1"
-
-  case $key in
-    -lang|--language)
-    LANG="$2"
-    shift # Consume additional argument
-    ;;
-
-    -v|--verbose)
-    VERBOSE=true
-    ;;
-
-    --clobber)
-    CLOBBER=true
-    ;;
-
-    *)
-    echo "WARNING: Unknown option $key"
-    ;;
-  esac
-  shift # Consume current argument
-done
-
-if [[ "$OSTYPE" == "linux-gnu" ]]; then
-  IS_LINUX=true
-  echo 'Linux OS detected'
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  IS_MAC_OS=true
-  echo 'Mac OS detected'
-elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then
-  IS_WIN=true
-  echo 'Windows OS detected'
-else
-  echo 'Unknow OS -`$OSTYPE`'
-fi
-
-export MOZCONFIG=browser/config/cliqz-release.mozconfig
-SRC_BASE=mozilla-release
-export MOZ_OBJDIR=../obj
-I386DIR=$MOZ_OBJDIR/i386
-X86_64DIR=$MOZ_OBJDIR/x86_64
+source cliqz_env.sh
 
 cd $SRC_BASE
 
