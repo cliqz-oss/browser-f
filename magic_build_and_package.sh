@@ -72,34 +72,12 @@ else
 fi
 
 if [ $IS_WIN ]; then
-  echo '***** Windows packaging: *****'
+  echo '***** Windows build installer *****'
   ./mach build installer
-  cd $MOZ_OBJDIR
-  mozmake update-packaging
-  cd $OLDPWD
-elif [ $IS_MAC_OS ]; then
-  echo '***** Mac packaging *****'
-  make -C $I386DIR update-packaging
-else
-  echo '***** Linux packaging *****'
-  make -C $MOZ_OBJDIR update-packaging
 fi
 
-if [ $CQZ_CERT_DB_PATH ]; then
-  # TODO: Specify certificate name by env var.
-  if [ -z "$MAR_CERT_NAME" ]; then
-    MAR_CERT_NAME="Cliqz GmbH's DigiCert Inc ID"
-  fi
-  echo '***** Signing mar *****'
-  MAR_FILE=`ls $I386DIR/dist/update/*.mar | head -n 1`
-  # signmar is somehow dependent on its execution path. It refuses to work when
-  # launched using relative paths, and gives unrelated error:
-  # "Could not initialize NSS". BEWARE!
-  SIMGNMAR_ABS_DIR=$(cd $X86_64DIR/dist/bin/; pwd)
-  $SIMGNMAR_ABS_DIR/signmar -d $CQZ_CERT_DB_PATH -n "$MAR_CERT_NAME" \
-    -s $MAR_FILE $MAR_FILE.signed
-  mv $MAR_FILE.signed $MAR_FILE
-fi
+echo '***** Packaging *****'
+$MAKE -C $MOZ_OBJDIR update-packaging
 
 echo '***** Build & package finished successfully. *****'
 cd $OLDPWD
