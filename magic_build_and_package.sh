@@ -60,24 +60,21 @@ fi
 echo '***** Building *****'
 ./mach build
 
-echo '***** Packaging *****'
-if [[ $IS_MAC_OS ]]; then
-  MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
-  unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!
-  make -C $I386DIR package
-  # Restore still useful variable we unset before.
-  export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
-else
-  ./mach package
-fi
-
 if [ $IS_WIN ]; then
   echo '***** Windows build installer *****'
   ./mach build installer
 fi
 
 echo '***** Packaging *****'
-$MAKE -C $MOZ_OBJDIR update-packaging
+if [[ $IS_MAC_OS ]]; then
+  MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
+  unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!
+  make -C $OBJ_DIR package
+  # Restore still useful variable we unset before.
+  export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
+else
+  ./mach package
+fi
 
 echo '***** Build & package finished successfully. *****'
 cd $OLDPWD

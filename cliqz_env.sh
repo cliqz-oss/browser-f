@@ -72,7 +72,9 @@ export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 
-OBJ_DIR=obj
+OBJ_DIR=$MOZ_OBJDIR
 if [ $IS_MAC_OS ]; then
-  OBJ_DIR=$OBJ_DIR/i386
+  OBJ_DIR=$I386DIR
 fi
+
+ROOT_PATH=$PWD
