@@ -1657,8 +1657,11 @@ function verifyZipSignedState(aFile, aAddon) {
       if (aZipReader)
         aZipReader.close();
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING)
-        return resolve(signStatus);
+      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
+
+        // reject Mozilla signed addons
+        return resolve(AddonManager.SIGNEDSTATE_MISSING);
+      }
 
       // Try to check against Cliqz certificate.
       certDB.openSignedAppFileAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aFile,
@@ -1695,8 +1698,11 @@ function verifyDirSignedState(aDir, aAddon) {
   return new Promise(resolve => {
     certDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING)
-        return resolve(signStatus);
+      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
+
+        // reject Mozilla signed addons
+        return resolve(AddonManager.SIGNEDSTATE_MISSING);
+      }
 
       // Try to check against Cliqz certificate.
       certDB.verifySignedDirectoryAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aDir,
