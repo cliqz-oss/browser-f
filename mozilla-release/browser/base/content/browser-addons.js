@@ -357,7 +357,7 @@ const gXPInstallObserver = {
 
         // Add Learn More link when refusing to install an unsigned add-on
         if (install.error == AddonManager.ERROR_SIGNEDSTATE_REQUIRED) {
-          options.learnMoreURL = Services.urlFormatter.formatURLPref("app.support.baseURL") + "unsigned-addons";
+          options.learnMoreURL = "https://cliqz.com/support/wieso-keine-addons";
         }
 
         messageString = gNavigatorBundle.getFormattedString(error, args);
