@@ -26,6 +26,23 @@ from util.file import load_config, get_config
 log = logging.getLogger(__name__)
 
 
+# FIXME: the following function should be removed and we should use
+# next_version provided by ship-it
+def bump_version(version):
+    """Bump last digit"""
+    split_by = "."
+    digit_index = 2
+    if "b" in version:
+        split_by = "b"
+        digit_index = 1
+    v = version.split(split_by)
+    if len(v) < digit_index + 1:
+        # 45.0 is 45.0.0 actually
+        v.append("0")
+    v[-1] = str(int(v[-1]) + 1)
+    return split_by.join(v)
+
+
 class ReleaseRunner(object):
     def __init__(self, api_root=None, username=None, password=None,
                  timeout=60):
@@ -271,6 +288,7 @@ def main(options):
             kwargs = {
                 "public_key": docker_worker_key,
                 "version": release["version"],
+                "next_version": bump_version(release["version"]),
                 "appVersion": getAppVersion(release["version"]),
                 "buildNumber": release["buildNumber"],
                 "source_enabled": True,
@@ -280,7 +298,6 @@ def main(options):
                 "partial_updates": getPartials(release),
                 "branch": branch,
                 "updates_enabled": bool(release["partials"]),
-                "enUS_platforms": branchConfig["release_platforms"],
                 "l10n_config": get_l10n_config(release, branchConfig, branch, l10n_changesets, index),
                 "en_US_config": get_en_US_config(release, branchConfig, branch, index),
                 "verifyConfigs": {},
@@ -294,7 +311,8 @@ def main(options):
                 "bouncer_enabled": branchConfig["bouncer_enabled"],
                 "release_channels": branchConfig["release_channels"],
                 "signing_pvt_key": signing_pvt_key,
-                "push_to_candidates_enabled": branchConfig['push_to_candidates_enabled']
+                "push_to_candidates_enabled": branchConfig['push_to_candidates_enabled'],
+                "postrelease_version_bump_enabled": branchConfig['postrelease_version_bump_enabled'],
             }
 
             validate_graph_kwargs(**kwargs)

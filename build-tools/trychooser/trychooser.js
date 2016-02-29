@@ -149,7 +149,6 @@ function setresult() {
             args.push(arg);
     });
 
-    var have_projects = {};
     $('.option-group[try-section]').each(function() {
         var tryopt = $(this).attr('try-section');
         var arg = '-' + tryopt + ' ';
@@ -168,9 +167,6 @@ function setresult() {
             })
             options.each(function(i,elt){
                 names.push($(elt).attr('value'));
-                var project = $(elt).attr('data-project');
-                if (project)
-                    have_projects[project] = true;
             });
         }
 
