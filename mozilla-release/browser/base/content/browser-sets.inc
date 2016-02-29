@@ -106,7 +106,7 @@
     <command id="Tools:Scratchpad" oncommand="Scratchpad.openScratchpad();"/>
     <command id="Tools:ResponsiveUI" oncommand="ResponsiveUI.toggle();"/>
     <command id="Tools:Eyedropper" oncommand="openEyedropper();"/>
-    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr();"/>
+    <command id="Tools:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/plugin');"/>
     <command id="Tools:ErrorConsole" oncommand="toJavaScriptConsole()" disabled="true" hidden="true"/>
     <command id="Tools:DevToolsConnect" oncommand="gDevToolsBrowser.openConnectScreen(gBrowser)" disabled="true" hidden="true"/>
     <command id="Tools:Sanitize"
@@ -122,7 +122,9 @@
     <command id="Social:SharePage" oncommand="SocialShare.sharePage();"/>
     <command id="Social:ToggleSidebar" oncommand="SocialSidebar.toggleSidebar();" hidden="true"/>
     <command id="Social:ToggleNotifications" oncommand="Social.toggleNotifications();" hidden="true"/>
+#if 0
     <command id="Social:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/service');"/>
+#endif
     <command id="Chat:Focus" oncommand="Cu.import('resource:///modules/Chat.jsm', {}).Chat.focus(window);"/>
   </commandset>
 

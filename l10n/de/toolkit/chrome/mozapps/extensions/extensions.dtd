@@ -236,8 +236,6 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 
 <!ENTITY setting.learnmore "Weitere Informationen…">
 
-<!ENTITY cliqz.firefoxAddons "CLIQZ nutzt Add-ons aus dem offiziellen Mozilla Firefox Verzeichnis">
-
 <!ENTITY disabledUnsigned.heading "Einige Add-ons wurden deaktiviert">
 <!-- LOCALIZATION NOTE (disabledUnsigned.description.start, disabledUnsigned.description.findAddonsLink, disabledUnsigned.description.end):
      These entities form a sentence, with

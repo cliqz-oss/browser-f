@@ -236,8 +236,6 @@
 
 <!ENTITY setting.learnmore "Learn More…">
 
-<!ENTITY cliqz.firefoxAddons "CLIQZ uses add-ons of the official Mozilla Firefox repository">
-
 <!ENTITY disabledUnsigned.heading "Some add-ons have been disabled">
 <!-- LOCALIZATION NOTE (disabledUnsigned.description.start, disabledUnsigned.description.findAddonsLink, disabledUnsigned.description.end):
      These entities form a sentence, with

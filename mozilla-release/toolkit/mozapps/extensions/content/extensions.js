@@ -1746,9 +1746,19 @@ var gCategories = {
     this.node = document.getElementById("categories");
     this._search = this.get("addons://search/");
 
+    // These addon categories are disabled in CLIQZ.
+    const disabledCategories = new Set([
+        'extension',
+        'service',
+        'experiment',
+        'theme'
+        ]);
     var types = AddonManager.addonTypes;
-    for (var type in types)
+    for (var type in types) {
+      if (disabledCategories.has(type))
+        continue;
       this.onTypeAdded(types[type]);
+    }
 
     AddonManager.addTypeListener(this);
 
