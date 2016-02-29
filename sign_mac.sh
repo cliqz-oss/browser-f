@@ -5,11 +5,10 @@ set -x
 
 echo "***** MAC SIGNING *****"
 
-OBJ_DIR=obj
-PKG_DIR=$OBJ_DIR/pkg
+PKG_DIR=obj/pkg
 
 mkdir $PKG_DIR
-for DMG in $OBJ_DIR/i386/dist/*.dmg
+for DMG in obj/i386/dist/*.dmg
 do
   echo "Processing $DMG..."
   hdiutil attach -nobrowse $DMG
@@ -24,4 +23,4 @@ do
   cp $SIGNED_DMG $DMG
 done
 
-cd $OLDPWD
+codesign -s $CQZ_CERT_NAME --force --deep obj/i386/dist/CLIQZ.app
