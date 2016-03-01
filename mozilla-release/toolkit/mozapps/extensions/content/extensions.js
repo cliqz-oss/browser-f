@@ -1753,6 +1753,8 @@ var gCategories = {
         'experiment',
         'theme'
         ]);
+    if (Services.prefs.getBoolPref("extensions.cliqz.listed"))
+      disabledCategories.delete('extension');
     var types = AddonManager.addonTypes;
     for (var type in types) {
       if (disabledCategories.has(type))
@@ -1970,7 +1972,8 @@ var gCategories = {
 
   maybeHideSearch: function gCategories_maybeHideSearch() {
     var view = gViewController.parseViewId(this.node.selectedItem.value);
-    this._search.disabled = view.type != "search";
+    if (this._search)
+      this._search.disabled = view.type != "search";
   }
 };
 
