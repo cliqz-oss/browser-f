@@ -32,7 +32,7 @@ body[globalTpEnabled] .showGlobalTpDisabled {
 #bar {
   align-self: stretch;
   background: url("chrome://browser/skin/privatebrowsing/mask.svg") no-repeat 22px 50%,
-              #8d20ae;
+              #4287dc;
   background-size: 47px 26px;
   padding-inline-start: 87px;
   color: white;
@@ -124,6 +124,7 @@ li:-moz-dir(rtl) {
   text-align: center;
   border: lightgray 2px solid;
   border-radius: 10px;
+  display: none;
 }
 
 #tpEnabled,
