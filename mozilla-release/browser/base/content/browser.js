@@ -232,6 +232,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "ReaderParent",
 XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "AutoPrivateTab",
+  "resource:///modules/AutoPrivateTab.jsm");
+
 var gInitialPages = [
   "about:blank",
   "about:newtab",
@@ -817,10 +820,15 @@ function gKeywordURIFixup({ target: browser, data: fixupInfo }) {
 
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
+// |browser| is the {xul::browser} element (binding id="tabbrowser-browser").
 function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
+  else {
+    AutoPrivateTab.handleTabNavigation(uri, browser);
+  }
+
   let flags = params.flags || 0;
   let referrer = params.referrerURI;
   let referrerPolicy = ('referrerPolicy' in params ? params.referrerPolicy :
@@ -1870,6 +1878,10 @@ function openLocation() {
 function BrowserOpenTab()
 {
   openUILinkIn(BROWSER_NEW_TAB_URL, "tab");
+}
+
+function BrowserOpenPrivateTab() {
+  openUILinkIn("about:privatebrowsing", "tab", {private: true});
 }
 
 /* Called from the openLocation dialog. This allows that dialog to instruct
@@ -5406,7 +5418,9 @@ function contentAreaClick(event, isPanelClick)
   // pages loaded in frames are embed visits and lost with the session, while
   // visits across frames should be preserved.
   try {
-    if (!PrivateBrowsingUtils.isWindowPrivate(window))
+    const doc = event.target.ownerDocument;
+    const privateTab = doc && doc.docShell.usePrivateBrowsing;
+    if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab)
       PlacesUIUtils.markPageAsFollowedLink(href);
   } catch (ex) { /* Skip invalid URIs. */ }
 }
@@ -5425,10 +5439,11 @@ function handleLinkClick(event, href, linkNode) {
     return false;
 
   var doc = event.target.ownerDocument;
+  const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
     saveURL(href, linkNode ? gatherTextUnder(linkNode) : "", null, true,
-            true, doc.documentURIObject, doc);
+            true, doc.documentURIObject, doc, privateTab);
     event.preventDefault();
     return true;
   }
@@ -5467,7 +5482,8 @@ function handleLinkClick(event, href, linkNode) {
                  allowMixedContent: persistAllowMixedContentInChildTab,
                  referrerURI: referrerURI,
                  referrerPolicy: referrerPolicy,
-                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
+                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode),
+                 private: privateTab};
   openLinkIn(href, where, params);
   event.preventDefault();
   return true;
@@ -7779,7 +7795,7 @@ var MousePosTracker = {
 
 function BrowserOpenNewTabOrWindow(event) {
   if (event.shiftKey) {
-    OpenBrowserWindow();
+    BrowserOpenPrivateTab();
   } else {
     BrowserOpenTab();
   }

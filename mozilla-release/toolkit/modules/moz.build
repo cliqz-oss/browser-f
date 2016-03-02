@@ -20,6 +20,7 @@ EXTRA_JS_MODULES += [
     'addons/WebRequestContent.js',
     'Battery.jsm',
     'BinarySearch.jsm',
+    'BloomFilter.jsm',
     'BrowserUtils.jsm',
     'CertUtils.jsm',
     'CharsetMenu.jsm',

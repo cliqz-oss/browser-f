@@ -176,8 +176,10 @@ function whereToOpenLink( e, ignoreButton, ignoreAlt )
  *   allowPinnedTabHostChange (boolean)
  *   allowPopups          (boolean)
  *   userContextId        (unsigned int)
+ *   private              (boolean)
  */
-function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI) {
+function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
+    aReferrerURI, aPrivate) {
   var params;
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {
@@ -188,6 +190,7 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI
       postData: aPostData,
       referrerURI: aReferrerURI,
       referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
+      private: aPrivate
     };
   }
 
@@ -366,7 +369,8 @@ function openLinkIn(url, where, params) {
       skipAnimation: aSkipTabAnimation,
       allowMixedContent: aAllowMixedContent,
       noReferrer: aNoReferrer,
-      userContextId: aUserContextId
+      userContextId: aUserContextId,
+      private: aIsPrivate
     });
     break;
   }

@@ -47,6 +47,10 @@ EXTRA_JS_MODULES += [
     'distribution.js',
 ]
 
+EXTRA_PP_JS_MODULES += [
+    'AutoPrivateTab.jsm',
+]
+
 BROWSER_CHROME_MANIFESTS += [
     'test/browser.ini'
 ]
