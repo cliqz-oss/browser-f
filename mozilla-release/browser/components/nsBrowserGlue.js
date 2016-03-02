@@ -1029,7 +1029,7 @@ BrowserGlue.prototype = {
         label:     win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.label"),
         accessKey: win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.accesskey"),
         callback: function () {
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
+          win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
         }
       },
     ];
