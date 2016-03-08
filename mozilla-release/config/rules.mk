@@ -1232,7 +1232,7 @@ endif # SDK_BINARY
 # TODO: Move to external file.
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/beta/Cliqz.1.2.9.1b0.xpi"
 ifeq (release, $(CQZ_RELEASE_CHANNE))
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.2.9.xpi"
+CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.2.10.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNE))
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/distribution/extensions
