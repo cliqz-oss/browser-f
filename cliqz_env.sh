@@ -51,7 +51,7 @@ fi
 
 # TODO: Use MOZ_UPDATE_CHANNEL.
 if [ -z $CQZ_RELEASE_CHANNEL ]; then
-  CQZ_RELEASE_CHANNEL=release
+  export CQZ_RELEASE_CHANNEL=release
 fi
 
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
