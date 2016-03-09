@@ -2659,23 +2659,6 @@ nsXPCComponents_Utils::UnlinkGhostWindows()
 }
 
 NS_IMETHODIMP
-nsXPCComponents_Utils::NondeterministicGetWeakMapKeys(HandleValue aMap,
-                                                      JSContext* aCx,
-                                                      MutableHandleValue aKeys)
-{
-    if (!aMap.isObject()) {
-        aKeys.setUndefined();
-        return NS_OK;
-    }
-    RootedObject objRet(aCx);
-    RootedObject mapObj(aCx, &aMap.toObject());
-    if (!JS_NondeterministicGetWeakMapKeys(aCx, mapObj, &objRet))
-        return NS_ERROR_OUT_OF_MEMORY;
-     aKeys.set(objRet ? ObjectValue(*objRet) : UndefinedValue());
-    return NS_OK;
-}
-
-NS_IMETHODIMP
 nsXPCComponents_Utils::GetJSTestingFunctions(JSContext* cx,
                                              MutableHandleValue retval)
 {
@@ -2750,9 +2733,8 @@ nsXPCComponents_Utils::GetGlobalForObject(HandleValue object,
     if (!JS_WrapObject(cx, &obj))
         return NS_ERROR_FAILURE;
 
-    // Outerize if necessary.
-    if (js::ObjectOp outerize = js::GetObjectClass(obj)->ext.outerObject)
-      obj = outerize(cx, obj);
+    // Get the WindowProxy if necessary.
+    obj = js::ToWindowProxyIfWindow(obj);
 
     retval.setObject(*obj);
     return NS_OK;
@@ -2767,7 +2749,7 @@ nsXPCComponents_Utils::IsProxy(HandleValue vobj, JSContext* cx, bool* rval)
     }
 
     RootedObject obj(cx, &vobj.toObject());
-    obj = js::CheckedUnwrap(obj, /* stopAtOuter = */ false);
+    obj = js::CheckedUnwrap(obj, /* stopAtWindowProxy = */ false);
     NS_ENSURE_TRUE(obj, NS_ERROR_FAILURE);
 
     *rval = js::IsScriptedProxy(obj);
@@ -3028,6 +3010,7 @@ nsXPCComponents_Utils::SetGCZeal(int32_t aValue, JSContext* cx)
 NS_IMETHODIMP
 nsXPCComponents_Utils::NukeSandbox(HandleValue obj, JSContext* cx)
 {
+    PROFILER_LABEL_FUNC(js::ProfileEntry::Category::JS);
     NS_ENSURE_TRUE(obj.isObject(), NS_ERROR_INVALID_ARG);
     JSObject* wrapper = &obj.toObject();
     NS_ENSURE_TRUE(IsWrapper(wrapper), NS_ERROR_INVALID_ARG);
@@ -3045,7 +3028,7 @@ nsXPCComponents_Utils::BlockScriptForGlobal(HandleValue globalArg,
 {
     NS_ENSURE_TRUE(globalArg.isObject(), NS_ERROR_INVALID_ARG);
     RootedObject global(cx, UncheckedUnwrap(&globalArg.toObject(),
-                                            /* stopAtOuter = */ false));
+                                            /* stopAtWindowProxy = */ false));
     NS_ENSURE_TRUE(JS_IsGlobalObject(global), NS_ERROR_INVALID_ARG);
     if (nsContentUtils::IsSystemPrincipal(xpc::GetObjectPrincipal(global))) {
         JS_ReportError(cx, "Script may not be disabled for system globals");
@@ -3061,7 +3044,7 @@ nsXPCComponents_Utils::UnblockScriptForGlobal(HandleValue globalArg,
 {
     NS_ENSURE_TRUE(globalArg.isObject(), NS_ERROR_INVALID_ARG);
     RootedObject global(cx, UncheckedUnwrap(&globalArg.toObject(),
-                                            /* stopAtOuter = */ false));
+                                            /* stopAtWindowProxy = */ false));
     NS_ENSURE_TRUE(JS_IsGlobalObject(global), NS_ERROR_INVALID_ARG);
     if (nsContentUtils::IsSystemPrincipal(xpc::GetObjectPrincipal(global))) {
         JS_ReportError(cx, "Script may not be disabled for system globals");
@@ -3111,7 +3094,7 @@ nsXPCComponents_Utils::GetClassName(HandleValue aObj, bool aUnwrap, JSContext* a
         return NS_ERROR_INVALID_ARG;
     RootedObject obj(aCx, &aObj.toObject());
     if (aUnwrap)
-        obj = js::UncheckedUnwrap(obj, /* stopAtOuter = */ false);
+        obj = js::UncheckedUnwrap(obj, /* stopAtWindowProxy = */ false);
     *aRv = NS_strdup(js::GetObjectClass(obj)->name);
     NS_ENSURE_TRUE(*aRv, NS_ERROR_OUT_OF_MEMORY);
     return NS_OK;

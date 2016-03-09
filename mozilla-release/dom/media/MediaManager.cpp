@@ -121,12 +121,10 @@ namespace mozilla {
 #undef LOG
 #endif
 
-PRLogModuleInfo*
+LogModule*
 GetMediaManagerLog()
 {
-  static PRLogModuleInfo *sLog;
-  if (!sLog)
-    sLog = PR_NewLogModule("MediaManager");
+  static LazyLogModule sLog("MediaManager");
   return sLog;
 }
 #define LOG(msg) MOZ_LOG(GetMediaManagerLog(), mozilla::LogLevel::Debug, msg)
@@ -1193,7 +1191,7 @@ MediaManager::SelectSettings(
     sources.Clear();
     const char* badConstraint = nullptr;
 
-    if (IsOn(aConstraints.mVideo)) {
+    if (videos.Length() && IsOn(aConstraints.mVideo)) {
       badConstraint = MediaConstraintsHelper::SelectSettings(
           GetInvariant(aConstraints.mVideo), videos);
       for (auto& video : videos) {
@@ -1429,58 +1427,66 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
                                   bool aFake, bool aFakeTracks)
 {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aVideoType != MediaSourceEnum::Other ||
+             aAudioType != MediaSourceEnum::Other);
   RefPtr<PledgeSourceSet> p = new PledgeSourceSet();
   uint32_t id = mOutstandingPledges.Append(*p);
 
-  // Check if the preference for using audio/video loopback devices is
-  // enabled. This is currently used for automated media tests only.
-  //
-  // If present (and we're doing non-exotic cameras and microphones) use them
-  // instead of our built-in fake devices, except if fake tracks are requested
-  // (a feature of the built-in ones only).
-
   nsAdoptingCString audioLoopDev, videoLoopDev;
-  if (!aFakeTracks) {
-    if (aVideoType == dom::MediaSourceEnum::Camera) {
-      audioLoopDev = Preferences::GetCString("media.audio_loopback_dev");
+  if (!aFake) {
+    // Fake stream not requested. The entire device stack is available.
+    // Loop in loopback devices if they are set, and their respective type is
+    // requested. This is currently used for automated media tests only.
+    if (aVideoType == MediaSourceEnum::Camera) {
       videoLoopDev = Preferences::GetCString("media.video_loopback_dev");
-
-      if (aFake && !audioLoopDev.IsEmpty() && !videoLoopDev.IsEmpty()) {
-        aFake = false;
-      }
-    } else {
-      aFake = false;
     }
+    if (aAudioType == MediaSourceEnum::Microphone) {
+      audioLoopDev = Preferences::GetCString("media.audio_loopback_dev");
+    }
+  }
+
+  if (!aFake) {
+    // Fake tracks only make sense when we have a fake stream.
+    aFakeTracks = false;
   }
 
   MediaManager::PostTask(FROM_HERE, NewTaskFrom([id, aWindowId, audioLoopDev,
                                                  videoLoopDev, aVideoType,
                                                  aAudioType, aFake,
                                                  aFakeTracks]() mutable {
-    RefPtr<MediaEngine> backend;
-    if (aFake) {
-      backend = new MediaEngineDefault(aFakeTracks);
-    } else {
+    // Only enumerate what's asked for, and only fake cams and mics.
+    bool hasVideo = aVideoType != MediaSourceEnum::Other;
+    bool hasAudio = aAudioType != MediaSourceEnum::Other;
+    bool fakeCams = aFake && aVideoType == MediaSourceEnum::Camera;
+    bool fakeMics = aFake && aAudioType == MediaSourceEnum::Microphone;
+
+    RefPtr<MediaEngine> fakeBackend, realBackend;
+    if (fakeCams || fakeMics) {
+      fakeBackend = new MediaEngineDefault(aFakeTracks);
+    }
+    if ((!fakeCams && hasVideo) || (!fakeMics && hasAudio)) {
       RefPtr<MediaManager> manager = MediaManager_GetInstance();
-      backend = manager->GetBackend(aWindowId);
+      realBackend = manager->GetBackend(aWindowId);
     }
 
     ScopedDeletePtr<SourceSet> result(new SourceSet);
 
-    nsTArray<RefPtr<VideoDevice>> videos;
-    GetSources(backend, aVideoType, &MediaEngine::EnumerateVideoDevices, videos,
-               videoLoopDev);
-    for (auto& source : videos) {
-      result->AppendElement(source);
+    if (hasVideo) {
+      nsTArray<RefPtr<VideoDevice>> videos;
+      GetSources(fakeCams? fakeBackend : realBackend, aVideoType,
+                 &MediaEngine::EnumerateVideoDevices, videos, videoLoopDev);
+      for (auto& source : videos) {
+        result->AppendElement(source);
+      }
     }
-
-    nsTArray<RefPtr<AudioDevice>> audios;
-    GetSources(backend, aAudioType,
-               &MediaEngine::EnumerateAudioDevices, audios, audioLoopDev);
-    for (auto& source : audios) {
-      result->AppendElement(source);
+    if (hasAudio) {
+      nsTArray<RefPtr<AudioDevice>> audios;
+      GetSources(fakeMics? fakeBackend : realBackend, aAudioType,
+                 &MediaEngine::EnumerateAudioDevices, audios, audioLoopDev);
+      for (auto& source : audios) {
+        result->AppendElement(source);
+      }
     }
-
     SourceSet* handoff = result.forget();
     NS_DispatchToMainThread(do_AddRef(NewRunnableFrom([id, handoff]() mutable {
       ScopedDeletePtr<SourceSet> result(handoff); // grab result
@@ -1493,7 +1499,7 @@ MediaManager::EnumerateRawDevices(uint64_t aWindowId,
         p->Resolve(result.forget());
       }
       return NS_OK;
-          })));
+    })));
   }));
   return p.forget();
 }
@@ -1563,7 +1569,6 @@ MediaManager::Get() {
 
     nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
     if (obs) {
-      obs->AddObserver(sSingleton, "xpcom-will-shutdown", false);
       obs->AddObserver(sSingleton, "last-pb-context-exited", false);
       obs->AddObserver(sSingleton, "getUserMedia:privileged:allow", false);
       obs->AddObserver(sSingleton, "getUserMedia:response:allow", false);
@@ -1701,7 +1706,7 @@ MediaManager::NotifyRecordingStatusChange(nsPIDOMWindow* aWindow,
   // Forward recording events to parent process.
   // The events are gathered in chrome process and used for recording indicator
   if (!XRE_IsParentProcess()) {
-    unused <<
+    Unused <<
       dom::ContentChild::GetSingleton()->SendRecordingDeviceEvents(aMsg,
                                                                    requestURL,
                                                                    aIsAudio,
@@ -1872,8 +1877,8 @@ MediaManager::GetUserMedia(nsPIDOMWindow* aWindow,
     c.mVideo.SetAsBoolean() = false;
   }
 
-  MediaSourceEnum videoType = dom::MediaSourceEnum::Camera;
-  MediaSourceEnum audioType = dom::MediaSourceEnum::Microphone;
+  MediaSourceEnum videoType = dom::MediaSourceEnum::Other; // none
+  MediaSourceEnum audioType = dom::MediaSourceEnum::Other; // none
 
   if (c.mVideo.IsMediaTrackConstraints()) {
     auto& vc = c.mVideo.GetAsMediaTrackConstraints();
@@ -1888,6 +1893,15 @@ MediaManager::GetUserMedia(nsPIDOMWindow* aWindow,
         break;
 
       case dom::MediaSourceEnum::Browser:
+        // If no window id is passed in then default to the caller's window.
+        // Functional defaults are helpful in tests, but also a natural outcome
+        // of the constraints API's limited semantics for requiring input.
+        if (!vc.mBrowserWindow.WasPassed()) {
+          nsPIDOMWindow *outer = aWindow->GetOuterWindow();
+          vc.mBrowserWindow.Construct(outer->WindowID());
+        }
+        // | Fall through
+        // V
       case dom::MediaSourceEnum::Screen:
       case dom::MediaSourceEnum::Application:
       case dom::MediaSourceEnum::Window:
@@ -1967,6 +1981,8 @@ MediaManager::GetUserMedia(nsPIDOMWindow* aWindow,
                  videoType == dom::MediaSourceEnum::Screen)) {
        privileged = false;
     }
+  } else if (IsOn(c.mVideo)) {
+    videoType = dom::MediaSourceEnum::Camera;
   }
 
   if (c.mAudio.IsMediaTrackConstraints()) {
@@ -2021,7 +2037,10 @@ MediaManager::GetUserMedia(nsPIDOMWindow* aWindow,
         }
       }
     }
+  } else if (IsOn(c.mAudio)) {
+   audioType = dom::MediaSourceEnum::Microphone;
   }
+
   StreamListeners* listeners = AddWindowID(windowID);
 
   // Create a disabled listener to act as a placeholder
@@ -2084,8 +2103,8 @@ MediaManager::GetUserMedia(nsPIDOMWindow* aWindow,
       (!fake || Preferences::GetBool("media.navigator.permission.fake"));
 
   RefPtr<PledgeSourceSet> p = EnumerateDevicesImpl(windowID, videoType,
-                                                     audioType, fake,
-                                                     fakeTracks);
+                                                   audioType, fake,
+                                                   fakeTracks);
   p->Then([this, onSuccess, onFailure, windowID, c, listener, askPermission,
            prefs, isHTTPS, callID, origin](SourceSet*& aDevices) mutable {
 
@@ -2305,8 +2324,8 @@ MediaManager::EnumerateDevicesImpl(uint64_t aWindowId,
     RefPtr<MediaManager> mgr = MediaManager_GetInstance();
 
     RefPtr<PledgeSourceSet> p = mgr->EnumerateRawDevices(aWindowId,
-                                                           aVideoType, aAudioType,
-                                                           aFake, aFakeTracks);
+                                                         aVideoType, aAudioType,
+                                                         aFake, aFakeTracks);
     p->Then([id, aWindowId, aOriginKey](SourceSet*& aDevices) mutable {
       ScopedDeletePtr<SourceSet> devices(aDevices); // secondary result
 
@@ -2589,7 +2608,6 @@ MediaManager::Shutdown()
 
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
 
-  obs->RemoveObserver(this, "xpcom-will-shutdown");
   obs->RemoveObserver(this, "last-pb-context-exited");
   obs->RemoveObserver(this, "getUserMedia:privileged:allow");
   obs->RemoveObserver(this, "getUserMedia:response:allow");
@@ -2609,6 +2627,9 @@ MediaManager::Shutdown()
   GetActiveWindows()->Clear();
   mActiveCallbacks.Clear();
   mCallIds.Clear();
+#ifdef MOZ_WEBRTC
+  StopWebRtcLog();
+#endif
 
   // Because mMediaThread is not an nsThread, we must dispatch to it so it can
   // clean up BackgroundChild. Continue stopping thread once this is done.
@@ -2687,9 +2708,6 @@ MediaManager::Observe(nsISupports* aSubject, const char* aTopic,
       LOG(("%s: %dx%d @%dfps (min %d)", __FUNCTION__,
            mPrefs.mWidth, mPrefs.mHeight, mPrefs.mFPS, mPrefs.mMinFPS));
     }
-  } else if (!strcmp(aTopic, "xpcom-will-shutdown")) {
-    Shutdown();
-    return NS_OK;
   } else if (!strcmp(aTopic, "last-pb-context-exited")) {
     // Clear memory of private-browsing-specific deviceIds. Fire and forget.
     media::SanitizeOriginKeys(0, true);

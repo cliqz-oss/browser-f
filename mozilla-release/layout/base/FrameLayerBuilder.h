@@ -12,6 +12,7 @@
 #include "nsRegion.h"
 #include "nsIFrame.h"
 #include "DisplayItemClip.h"
+#include "mozilla/gfx/MatrixFwd.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "LayerState.h"
 #include "LayerUserData.h"
@@ -30,10 +31,6 @@ class BasicLayerManager;
 class PaintedLayer;
 class ImageLayer;
 } // namespace layers
-
-namespace gfx {
-class Matrix4x4;
-} // namespace gfx
 
 class FrameLayerBuilder;
 class LayerManagerData;
@@ -61,6 +58,7 @@ struct ContainerLayerParameters {
     , mInActiveTransformedSubtree(false)
     , mDisableSubpixelAntialiasingInDescendants(false)
     , mInLowPrecisionDisplayPort(false)
+    , mForEventsOnly(false)
   {}
   ContainerLayerParameters(float aXScale, float aYScale)
     : mXScale(aXScale)
@@ -71,6 +69,7 @@ struct ContainerLayerParameters {
     , mInActiveTransformedSubtree(false)
     , mDisableSubpixelAntialiasingInDescendants(false)
     , mInLowPrecisionDisplayPort(false)
+    , mForEventsOnly(false)
   {}
   ContainerLayerParameters(float aXScale, float aYScale,
                            const nsIntPoint& aOffset,
@@ -84,6 +83,7 @@ struct ContainerLayerParameters {
     , mInActiveTransformedSubtree(aParent.mInActiveTransformedSubtree)
     , mDisableSubpixelAntialiasingInDescendants(aParent.mDisableSubpixelAntialiasingInDescendants)
     , mInLowPrecisionDisplayPort(aParent.mInLowPrecisionDisplayPort)
+    , mForEventsOnly(aParent.mForEventsOnly)
   {}
 
   float mXScale, mYScale;
@@ -104,7 +104,7 @@ struct ContainerLayerParameters {
   nsIntPoint mOffset;
 
   LayerIntPoint Offset() const {
-    return LayerIntPoint::FromUntyped(mOffset);
+    return LayerIntPoint::FromUnknownPoint(mOffset);
   }
 
   nscolor mBackgroundColor;
@@ -112,6 +112,7 @@ struct ContainerLayerParameters {
   bool mInActiveTransformedSubtree;
   bool mDisableSubpixelAntialiasingInDescendants;
   bool mInLowPrecisionDisplayPort;
+  bool mForEventsOnly;
   /**
    * When this is false, PaintedLayer coordinates are drawn to with an integer
    * translation and the scale in mXScale/mYScale.

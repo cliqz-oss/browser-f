@@ -148,9 +148,9 @@ class Release(API):
         self.url_template_vars = dict(name=name)
 
 
-    def update_release(self, version, product, hashFunction, releaseData,
+    def update_release(self, product, hashFunction, releaseData,
                        data_version=None, schemaVersion=None):
-        data = dict(name=self.name, version=version, product=product,
+        data = dict(name=self.name, product=product,
                     hashFunction=hashFunction, data=releaseData)
         if data_version:
             data['data_version'] = data_version
@@ -203,10 +203,9 @@ class SingleLocale(API):
             else:
                 raise
 
-    def update_build(self, product, version, hashFunction, buildData,
+    def update_build(self, product, hashFunction, buildData,
                      alias=None, schemaVersion=None, data_version=None):
-        data = dict(product=product, version=version,
-                    data=buildData, hashFunction=hashFunction)
+        data = dict(product=product, data=buildData, hashFunction=hashFunction)
         if alias:
             data['alias'] = alias
         if data_version:

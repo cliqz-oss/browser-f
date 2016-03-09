@@ -37,8 +37,6 @@ namespace mozilla {
 class RestyleTracker;
 struct AnimationCollection;
 
-bool IsGeometricProperty(nsCSSProperty aProperty);
-
 class CommonAnimationManager : public nsIStyleRuleProcessor {
 public:
   explicit CommonAnimationManager(nsPresContext *aPresContext);
@@ -75,11 +73,6 @@ public:
   // elements.
   void AddStyleUpdatesTo(RestyleTracker& aTracker);
 
-  AnimationCollection*
-  GetAnimations(dom::Element *aElement,
-                nsCSSPseudoElements::Type aPseudoType,
-                bool aCreateIfNeeded);
-
   // Returns true if aContent or any of its ancestors has an animation
   // or transition.
   static bool ContentOrAncestorHasAnimation(nsIContent* aContent) {
@@ -105,14 +98,6 @@ public:
                   nsStyleContext* aStyleContext,
                   StyleAnimationValue& aComputedValue);
 
-  // For CSS properties that may be animated on a separate layer, represents
-  // a record of the corresponding layer type and change hint.
-  struct LayerAnimationRecord {
-    nsCSSProperty mProperty;
-    nsDisplayItem::Type mLayerType;
-    nsChangeHint mChangeHint;
-  };
-
   virtual bool IsAnimationManager() {
     return false;
   }
@@ -130,18 +115,14 @@ protected:
   virtual nsIAtom* GetAnimationsAfterAtom() = 0;
 
 public:
-  // Return an AnimationCollection* if we have an animation for
-  // the frame aFrame that can be performed on the compositor thread (as
-  // defined by AnimationCollection::CanPerformOnCompositorThread).
-  //
-  // Note that this does not test whether the frame's layer uses
-  // off-main-thread compositing, although it does check whether
-  // off-main-thread compositing is enabled as a whole.
+  // Get (and optionally create) the collection of animations managed
+  // by this class for the given |aElement| and |aPseudoType|.
   AnimationCollection*
-  GetAnimationsForCompositor(const nsIFrame* aFrame,
-                             nsCSSProperty aProperty);
+  GetAnimationCollection(dom::Element *aElement,
+                         nsCSSPseudoElements::Type aPseudoType,
+                         bool aCreateIfNeeded);
 
-  // Given the frame aFrame with possibly animated content, finds its
+  // Given the frame |aFrame| with possibly animated content, finds its
   // associated collection of animations. If it is a generated content
   // frame, it may examine the parent frame to search for such animations.
   AnimationCollection*
@@ -160,11 +141,15 @@ protected:
 class AnimValuesStyleRule final : public nsIStyleRule
 {
 public:
+  AnimValuesStyleRule()
+    : mStyleBits(0) {}
+
   // nsISupports implementation
   NS_DECL_ISUPPORTS
 
   // nsIStyleRule implementation
   virtual void MapRuleInfoInto(nsRuleData* aRuleData) override;
+  virtual bool MightMapInheritedStyleData() override;
 #ifdef DEBUG
   virtual void List(FILE* out = stdout, int32_t aIndent = 0) const override;
 #endif
@@ -173,6 +158,8 @@ public:
   {
     PropertyValuePair v = { aProperty, aStartValue };
     mPropertyValuePairs.AppendElement(v);
+    mStyleBits |=
+      nsCachedStyleData::GetBitForSID(nsCSSProps::kSIDTable[aProperty]);
   }
 
   // Caller must fill in returned value.
@@ -180,6 +167,8 @@ public:
   {
     PropertyValuePair *p = mPropertyValuePairs.AppendElement();
     p->mProperty = aProperty;
+    mStyleBits |=
+      nsCachedStyleData::GetBitForSID(nsCSSProps::kSIDTable[aProperty]);
     return &p->mValue;
   }
 
@@ -200,6 +189,7 @@ private:
   ~AnimValuesStyleRule() {}
 
   InfallibleTArray<PropertyValuePair> mPropertyValuePairs;
+  uint32_t mStyleBits;
 };
 
 typedef InfallibleTArray<RefPtr<dom::Animation>> AnimationPtrArray;
@@ -242,14 +232,6 @@ struct AnimationCollection : public LinkedListElement<AnimationCollection>
 
   void EnsureStyleRuleFor(TimeStamp aRefreshTime);
 
-  enum CanAnimateFlags {
-    // Testing for width, height, top, right, bottom, or left.
-    CanAnimate_HasGeometricProperty = 1,
-    // Allow the case where OMTA is allowed in general, but not for the
-    // specified property.
-    CanAnimate_AllowPartial = 2
-  };
-
   enum class RestyleType {
     // Animation style has changed but the compositor is applying the same
     // change so we might be able to defer updating the main thread until it
@@ -267,38 +249,19 @@ struct AnimationCollection : public LinkedListElement<AnimationCollection>
     Layer
   };
   void RequestRestyle(RestyleType aRestyleType);
-  void ClearIsRunningOnCompositor(nsCSSProperty aProperty);
-
-private:
-  static bool
-  CanAnimatePropertyOnCompositor(const dom::Element *aElement,
-                                 nsCSSProperty aProperty,
-                                 CanAnimateFlags aFlags);
-
-  bool CanThrottleAnimation(TimeStamp aTime);
-  bool CanThrottleTransformChanges(TimeStamp aTime);
 
 public:
-  static bool IsCompositorAnimationDisabledForFrame(nsIFrame* aFrame);
-
   // True if this animation can be performed on the compositor thread.
   //
-  // If aFlags contains CanAnimate_AllowPartial, returns whether the
-  // state of this element's animations at the current refresh driver
-  // time contains animation data that can be done on the compositor
-  // thread.  (This is useful for determining whether a layer should be
-  // active, or whether to send data to the layer.)
-  //
-  // If aFlags does not contain CanAnimate_AllowPartial, returns whether
-  // the state of this element's animations at the current refresh driver
-  // time can be fully represented by data sent to the compositor.
-  // (This is useful for determining whether throttle the animation
-  // (suppress main-thread style updates).)
+  // Returns whether the state of this element's animations at the current
+  // refresh driver time contains animation data that can be done on the
+  // compositor thread.  (This is used for determining whether a layer
+  // should be active, or whether to send data to the layer.)
   //
   // Note that this does not test whether the element's layer uses
   // off-main-thread compositing, although it does check whether
   // off-main-thread compositing is enabled as a whole.
-  bool CanPerformOnCompositorThread(CanAnimateFlags aFlags) const;
+  bool CanPerformOnCompositorThread(const nsIFrame* aFrame) const;
 
   bool HasCurrentAnimationOfProperty(nsCSSProperty aProperty) const;
 
@@ -355,9 +318,6 @@ public:
     }
   }
 
-  static void LogAsyncAnimationFailure(nsCString& aMessage,
-                                       const nsIContent* aContent = nullptr);
-
   dom::Element *mElement;
 
   // the atom we use in mElement's prop table (must be a static atom,
@@ -396,13 +356,6 @@ public:
   uint64_t mCheckGeneration;
   // Update mAnimationGeneration to nsCSSFrameConstructor's count
   void UpdateCheckGeneration(nsPresContext* aPresContext);
-
-  // Returns true if there is an animation that has yet to finish.
-  bool HasCurrentAnimations() const;
-  // Returns true if there is an animation of any of the specified properties
-  // that has yet to finish.
-  bool HasCurrentAnimationsForProperties(const nsCSSProperty* aProperties,
-                                         size_t aPropertyCount) const;
 
   // The refresh time associated with mStyleRule.
   TimeStamp mStyleRuleRefreshTime;

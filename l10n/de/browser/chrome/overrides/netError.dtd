@@ -7,6 +7,8 @@
 
 <!ENTITY loadError.label "Seiten-Ladefehler">
 <!ENTITY retry.label "Nochmals versuchen">
+<!ENTITY returnToPreviousPage.label "Zurück">
+<!ENTITY advanced.label "Erweitert">
 
 <!-- Specific error messages -->
 
@@ -175,6 +177,10 @@
 <p>Diese Art von Internet-Betrug ist auch bekannt als Phishing. Dabei versuchen Kriminelle in betrügerischer Absicht, Webseiten oder E-Mails nachzuahmen, denen Sie eventuell vertrauen.</p>
 ">
 
+<!ENTITY forbiddenBlocked.title "Verbotene Website">
+<!ENTITY forbiddenBlocked.longDesc "<p>&brandShortName; wurde so konfiguriert, dass das Laden der Seite verhindert wurde.</p>
+">
+
 <!ENTITY cspBlocked.title "Blockiert von der Inhaltsicherheitsrichtlinie (CSP)">
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat diese Webseite daran gehindert, auf diese Weise geladen zu werden, weil die Webseite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, die dies nicht erlaubt.</p>">
 
@@ -198,9 +204,7 @@ functionality specific to firefox. -->
 <button id='exceptionDialogButton'>&securityOverride.exceptionButtonLabel;</button>
 ">
 
-<!ENTITY errorReporting.title "Diesen Fehler melden">
-<!ENTITY errorReporting.longDesc "Das Melden der Adresse und der Zertifikatsinformationen für <span id='hostname'></span> hilft uns, bösartige Seiten zu erkennen und zu blockieren. Vielen Dank für Ihre Unterstützung beim Schaffen eines sicheren Internets!">
-<!ENTITY errorReporting.automatic "Fehler automatisch melden">
+<!ENTITY errorReporting.automatic2 "Fehler an Mozilla melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
 <!ENTITY errorReporting.learnMore "Weitere Informationen…">
 <!ENTITY errorReporting.sending "Bericht wird gesendet…">
 <!ENTITY errorReporting.sent "Bericht gesendet">
@@ -211,16 +215,14 @@ functionality specific to firefox. -->
 <!ENTITY remoteXUL.longDesc "<p><ul><li>Bitte informieren Sie den Website-Inhaber über dieses Problem.</li></ul></p>">
 
 <!ENTITY sslv3Used.title "Keine sichere Verbindung möglich">
-<!-- LOCALIZATION NOTE (sslv3Used.longDesc) - Do not translate
-     "ssl_error_unsupported_version". -->
-<!ENTITY sslv3Used.longDesc "Weitere Informationen: ssl_error_unsupported_version">
-<!ENTITY sslv3Used.learnMore "Mehr erfahren…">
+<!-- LOCALIZATION NOTE (sslv3Used.longDesc2) - Do not translate
+     "SSL_ERROR_UNSUPPORTED_VERSION". -->
+<!ENTITY sslv3Used.longDesc2 "Weitere Informationen: SSL_ERROR_UNSUPPORTED_VERSION">
 
-<!ENTITY weakCryptoUsed.title "Ihre Verbindung ist nicht gesichert">
-<!-- LOCALIZATION NOTE (weakCryptoUsed.longDesc) - Do not translate
-     "ssl_error_no_cypher_overlap". -->
-<!ENTITY weakCryptoUsed.longDesc "Details: ssl_error_no_cypher_overlap">
-<!ENTITY weakCryptoUsed.learnMore "Weitere Informationen…">
+<!ENTITY weakCryptoUsed.title "Diese Verbindung ist nicht sicher">
+<!-- LOCALIZATION NOTE (weakCryptoUsed.longDesc2) - Do not translate
+     "SSL_ERROR_NO_CYPHER_OVERLAP". -->
+<!ENTITY weakCryptoUsed.longDesc2 "Weitere Informationen: SSL_ERROR_NO_CYPHER_OVERLAP">
 <!ENTITY weakCryptoAdvanced.title "Erweitert">
 <!ENTITY weakCryptoAdvanced.longDesc "<span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten.">
 <!ENTITY weakCryptoAdvanced.override "(Nicht sicher) <span class='hostname'></span> mit veralteter Sicherheitstechnologie laden">

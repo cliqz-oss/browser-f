@@ -774,13 +774,25 @@ NS_IMPL_ISUPPORTS(VibrateWindowListener, nsIDOMEventListener)
 
 StaticRefPtr<VibrateWindowListener> gVibrateWindowListener;
 
+static bool
+MayVibrate(nsIDocument* doc) {
+#if MOZ_WIDGET_GONK
+  if (XRE_IsParentProcess()) {
+    return true; // The system app can always vibrate
+  }
+#endif // MOZ_WIDGET_GONK
+
+  // Hidden documents cannot start or stop a vibration.
+  return (doc && !doc->Hidden());
+}
+
 NS_IMETHODIMP
 VibrateWindowListener::HandleEvent(nsIDOMEvent* aEvent)
 {
   nsCOMPtr<nsIDocument> doc =
     do_QueryInterface(aEvent->InternalDOMEvent()->GetTarget());
 
-  if (!doc || doc->Hidden()) {
+  if (!MayVibrate(doc)) {
     // It's important that we call CancelVibrate(), not Vibrate() with an
     // empty list, because Vibrate() will fail if we're no longer focused, but
     // CancelVibrate() will succeed, so long as nobody else has started a new
@@ -853,12 +865,8 @@ Navigator::Vibrate(const nsTArray<uint32_t>& aPattern)
   }
 
   nsCOMPtr<nsIDocument> doc = mWindow->GetExtantDoc();
-  if (!doc) {
-    return false;
-  }
 
-  if (doc->Hidden()) {
-    // Hidden documents cannot start or stop a vibration.
+  if (!MayVibrate(doc)) {
     return false;
   }
 
@@ -1196,7 +1204,8 @@ Navigator::SendBeacon(const nsAString& aUrl,
   rv = NS_NewChannel(getter_AddRefs(channel),
                      uri,
                      doc,
-                     nsILoadInfo::SEC_REQUIRE_CORS_DATA_INHERITS,
+                     nsILoadInfo::SEC_REQUIRE_CORS_DATA_INHERITS |
+                       nsILoadInfo::SEC_COOKIES_INCLUDE,
                      nsIContentPolicy::TYPE_BEACON);
 
   if (NS_FAILED(rv)) {
@@ -1307,41 +1316,6 @@ Navigator::SendBeacon(const nsAString& aUrl,
   channel->SetLoadGroup(loadGroup);
 
   RefPtr<BeaconStreamListener> beaconListener = new BeaconStreamListener();
-
-  // Start a preflight if cross-origin and content type is not whitelisted
-  nsCOMPtr<nsIScriptSecurityManager> secMan = nsContentUtils::GetSecurityManager();
-  rv = secMan->CheckSameOriginURI(documentURI, uri, false);
-  bool crossOrigin = NS_FAILED(rv);
-  nsAutoCString contentType, parsedCharset;
-  rv = NS_ParseRequestContentType(mimeType, contentType, parsedCharset);
-  if (crossOrigin &&
-      mimeType.Length() > 0 &&
-      !contentType.Equals(APPLICATION_WWW_FORM_URLENCODED) &&
-      !contentType.Equals(MULTIPART_FORM_DATA) &&
-      !contentType.Equals(TEXT_PLAIN)) {
-
-    // we need to set the sameOriginChecker as a notificationCallback
-    // so we can tell the channel not to follow redirects
-    nsCOMPtr<nsIInterfaceRequestor> soc = nsContentUtils::SameOriginChecker();
-    channel->SetNotificationCallbacks(soc);
-
-    nsCOMPtr<nsIHttpChannelInternal> internalChannel =
-      do_QueryInterface(channel);
-    if (!internalChannel) {
-      aRv.Throw(NS_ERROR_FAILURE);
-      return false;
-    }
-    nsTArray<nsCString> unsafeHeaders;
-    unsafeHeaders.AppendElement(NS_LITERAL_CSTRING("Content-Type"));
-    rv = internalChannel->SetCorsPreflightParameters(unsafeHeaders,
-                                                     true,
-                                                     doc->NodePrincipal());
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      aRv.Throw(rv);
-      return false;
-    }
-  }
-
   rv = channel->AsyncOpen2(beaconListener);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
@@ -2254,7 +2228,7 @@ Navigator::DoResolve(JSContext* aCx, JS::Handle<JSObject*> aObject,
 
   JS::Rooted<JSObject*> naviObj(aCx,
                                 js::CheckedUnwrap(aObject,
-                                                  /* stopAtOuter = */ false));
+                                                  /* stopAtWindowProxy = */ false));
   if (!naviObj) {
     return Throw(aCx, NS_ERROR_DOM_SECURITY_ERR);
   }
@@ -2507,13 +2481,13 @@ Navigator::HasDataStoreSupport(nsIPrincipal* aPrincipal)
 // A WorkerMainThreadRunnable to synchronously dispatch the call of
 // HasDataStoreSupport() from the worker thread to the main thread.
 class HasDataStoreSupportRunnable final
-  : public workers::WorkerMainThreadRunnable
+  : public workers::WorkerCheckAPIExposureOnMainThreadRunnable
 {
 public:
   bool mResult;
 
   explicit HasDataStoreSupportRunnable(workers::WorkerPrivate* aWorkerPrivate)
-    : workers::WorkerMainThreadRunnable(aWorkerPrivate)
+    : workers::WorkerCheckAPIExposureOnMainThreadRunnable(aWorkerPrivate)
     , mResult(false)
   {
     MOZ_ASSERT(aWorkerPrivate);
@@ -2544,9 +2518,7 @@ Navigator::HasDataStoreSupport(JSContext* aCx, JSObject* aGlobal)
 
     RefPtr<HasDataStoreSupportRunnable> runnable =
       new HasDataStoreSupportRunnable(workerPrivate);
-    runnable->Dispatch(aCx);
-
-    return runnable->mResult;
+    return runnable->Dispatch() && runnable->mResult;
   }
 
   workers::AssertIsOnMainThread();
@@ -2592,37 +2564,6 @@ Navigator::HasMobileIdSupport(JSContext* aCx, JSObject* aGlobal)
          permission == nsIPermissionManager::ALLOW_ACTION;
 }
 #endif
-
-/* static */
-bool
-Navigator::HasTVSupport(JSContext* aCx, JSObject* aGlobal)
-{
-  JS::Rooted<JSObject*> global(aCx, aGlobal);
-
-  nsCOMPtr<nsPIDOMWindow> win = GetWindowFromGlobal(global);
-  if (!win) {
-    return false;
-  }
-
-  // Just for testing, we can enable TV for any kind of app.
-  if (Preferences::GetBool("dom.testing.tv_enabled_for_hosted_apps", false)) {
-    return true;
-  }
-
-  nsIDocument* doc = win->GetExtantDoc();
-  if (!doc || !doc->NodePrincipal()) {
-    return false;
-  }
-
-  nsIPrincipal* principal = doc->NodePrincipal();
-  uint16_t status;
-  if (NS_FAILED(principal->GetAppStatus(&status))) {
-    return false;
-  }
-
-  // Only support TV Manager API for certified apps for now.
-  return status == nsIPrincipal::APP_STATUS_CERTIFIED;
-}
 
 /* static */
 bool

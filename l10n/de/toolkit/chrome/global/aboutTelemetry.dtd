@@ -52,6 +52,10 @@ Datensatz auswählen:
 Älterer Datensatz &gt;&gt;
 ">
 
+<!ENTITY aboutTelemetry.rawPingData "
+Unformatierte Daten des Datensatzes…
+">
+
 <!ENTITY aboutTelemetry.archiveWeekHeader "
 Woche
 ">
@@ -104,8 +108,8 @@ Datensatz
   Späte Schreibvorgänge
 ">
 
-<!ENTITY aboutTelemetry.systemInfoSection "
-  Systeminformationen
+<!ENTITY aboutTelemetry.sessionInfoSection "
+  Sitzungsinformationen
 ">
 
 <!ENTITY aboutTelemetry.addonHistogramsSection "
@@ -134,4 +138,8 @@ Datensatz
 
 <!ENTITY aboutTelemetry.filterText "
   Filter (Zeichenketten oder /Reguläre Ausdrücke/):
+">
+
+<!ENTITY aboutTelemetry.payloadChoiceHeader "
+  Datenpaket
 ">

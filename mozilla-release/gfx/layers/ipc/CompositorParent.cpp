@@ -280,8 +280,8 @@ CompositorVsyncScheduler::CompositorVsyncScheduler(CompositorParent* aCompositor
   : mCompositorParent(aCompositorParent)
   , mLastCompose(TimeStamp::Now())
   , mCurrentCompositeTask(nullptr)
-  , mNeedsComposite(false)
   , mIsObservingVsync(false)
+  , mNeedsComposite(0)
   , mVsyncNotificationsSkipped(0)
   , mCurrentCompositeTaskMonitor("CurrentCompositeTaskMonitor")
   , mSetNeedsCompositeMonitor("SetNeedsCompositeMonitor")
@@ -341,8 +341,18 @@ CompositorVsyncScheduler::ScheduleComposition()
   if (mAsapScheduling) {
     // Used only for performance testing purposes
     PostCompositeTask(TimeStamp::Now());
+#ifdef MOZ_WIDGET_ANDROID
+  } else if (mNeedsComposite >= 2 && mIsObservingVsync) {
+    // uh-oh, we already requested a composite at least twice so far, and a
+    // composite hasn't happened yet. It is possible that the vsync observation
+    // is blocked on the main thread, so let's just composite ASAP and not
+    // wait for the vsync. Note that this should only ever happen on Fennec
+    // because there content runs in the same process as the compositor, and so
+    // content can actually block the main thread in this process.
+    PostCompositeTask(TimeStamp::Now());
+#endif
   } else {
-    SetNeedsComposite(true);
+    SetNeedsComposite();
   }
 }
 
@@ -355,7 +365,7 @@ CompositorVsyncScheduler::CancelCurrentSetNeedsCompositeTask()
     mSetNeedsCompositeTask->Cancel();
     mSetNeedsCompositeTask = nullptr;
   }
-  mNeedsComposite = false;
+  mNeedsComposite = 0;
 }
 
 /**
@@ -366,13 +376,12 @@ CompositorVsyncScheduler::CancelCurrentSetNeedsCompositeTask()
  * How many skipped vsync events until we stop listening to vsync events?
  */
 void
-CompositorVsyncScheduler::SetNeedsComposite(bool aNeedsComposite)
+CompositorVsyncScheduler::SetNeedsComposite()
 {
   if (!CompositorParent::IsInCompositorThread()) {
     MonitorAutoLock lock(mSetNeedsCompositeMonitor);
     mSetNeedsCompositeTask = NewRunnableMethod(this,
-                                              &CompositorVsyncScheduler::SetNeedsComposite,
-                                              aNeedsComposite);
+                                              &CompositorVsyncScheduler::SetNeedsComposite);
     ScheduleTask(mSetNeedsCompositeTask, 0);
     return;
   } else {
@@ -380,7 +389,7 @@ CompositorVsyncScheduler::SetNeedsComposite(bool aNeedsComposite)
     mSetNeedsCompositeTask = nullptr;
   }
 
-  mNeedsComposite = aNeedsComposite;
+  mNeedsComposite++;
   if (!mIsObservingVsync && mNeedsComposite) {
     ObserveVsync();
   }
@@ -416,13 +425,24 @@ CompositorVsyncScheduler::Composite(TimeStamp aVsyncTimestamp)
     mCurrentCompositeTask = nullptr;
   }
 
+  if ((aVsyncTimestamp < mLastCompose) && !mAsapScheduling) {
+    // We can sometimes get vsync timestamps that are in the past
+    // compared to the last compose with force composites.
+    // In those cases, wait until the next vsync;
+    return;
+  }
+
   DispatchTouchEvents(aVsyncTimestamp);
 
   if (mNeedsComposite || mAsapScheduling) {
-    mNeedsComposite = false;
+    mNeedsComposite = 0;
     mLastCompose = aVsyncTimestamp;
     ComposeToTarget(nullptr);
     mVsyncNotificationsSkipped = 0;
+
+    TimeDuration compositeFrameTotal = TimeStamp::Now() - aVsyncTimestamp;
+    mozilla::Telemetry::Accumulate(mozilla::Telemetry::COMPOSITE_FRAME_ROUNDTRIP_TIME,
+                                   compositeFrameTotal.ToMilliseconds());
   } else if (mVsyncNotificationsSkipped++ > gfxPrefs::CompositorUnobserveCount()) {
     UnobserveVsync();
   }
@@ -448,6 +468,7 @@ CompositorVsyncScheduler::OnForceComposeToTarget()
 void
 CompositorVsyncScheduler::ForceComposeToTarget(gfx::DrawTarget* aTarget, const IntRect* aRect)
 {
+  MOZ_ASSERT(CompositorParent::IsInCompositorThread());
   OnForceComposeToTarget();
   mLastCompose = TimeStamp::Now();
   ComposeToTarget(aTarget, aRect);
@@ -525,6 +546,7 @@ CompositorVsyncScheduler::ScheduleTask(CancelableTask* aTask, int aTime)
 void
 CompositorVsyncScheduler::ResumeComposition()
 {
+  MOZ_ASSERT(CompositorParent::IsInCompositorThread());
   mLastCompose = TimeStamp::Now();
   ComposeToTarget(nullptr);
 }
@@ -760,7 +782,7 @@ CompositorParent::Invalidate()
 {
   if (mLayerManager && mLayerManager->GetRoot()) {
     mLayerManager->AddInvalidRegion(
-        mLayerManager->GetRoot()->GetVisibleRegion().GetBounds());
+                                    mLayerManager->GetRoot()->GetVisibleRegion().ToUnknownRegion().GetBounds());
   }
 }
 
@@ -1091,7 +1113,7 @@ CompositorParent::CompositeToTarget(DrawTarget* aTarget, const gfx::IntRect* aRe
   // to local pages, hide every plugin associated with the window.
   if (!hasRemoteContent && BrowserTabsRemoteAutostart() &&
       mCachedPluginData.Length()) {
-    unused << SendHideAllPlugins((uintptr_t)GetWidget());
+    Unused << SendHideAllPlugins((uintptr_t)GetWidget());
     mCachedPluginData.Clear();
 #if defined(XP_WIN)
     // Wait for confirmation the hide operation is complete.
@@ -1353,7 +1375,7 @@ bool
 CompositorParent::RecvRequestOverfill()
 {
   uint32_t overfillRatio = mCompositor->GetFillRatio();
-  unused << SendOverfill(overfillRatio);
+  Unused << SendOverfill(overfillRatio);
   return true;
 }
 
@@ -1650,11 +1672,14 @@ CompositorParent::SetControllerForLayerTree(uint64_t aLayersId,
 /*static*/ APZCTreeManager*
 CompositorParent::GetAPZCTreeManager(uint64_t aLayersId)
 {
-  const CompositorParent::LayerTreeState* state = CompositorParent::GetIndirectShadowTree(aLayersId);
-  if (state && state->mParent) {
-    return state->mParent->mApzcTreeManager;
+  EnsureLayerTreeMapReady();
+  MonitorAutoLock lock(*sIndirectLayerTreesLock);
+  LayerTreeMap::iterator cit = sIndirectLayerTrees.find(aLayersId);
+  if (sIndirectLayerTrees.end() == cit) {
+    return nullptr;
   }
-  return nullptr;
+  LayerTreeState* lts = &cit->second;
+  return (lts->mParent ? lts->mParent->mApzcTreeManager.get() : nullptr);
 }
 
 float
@@ -1834,15 +1859,14 @@ void
 CompositorParent::DidComposite(TimeStamp& aCompositeStart,
                                TimeStamp& aCompositeEnd)
 {
-  if (mPendingTransaction) {
-    unused << SendDidComposite(0, mPendingTransaction, aCompositeStart, aCompositeEnd);
-    mPendingTransaction = 0;
-  }
+  Unused << SendDidComposite(0, mPendingTransaction, aCompositeStart, aCompositeEnd);
+  mPendingTransaction = 0;
+
   if (mLayerManager) {
     nsTArray<ImageCompositeNotification> notifications;
     mLayerManager->ExtractImageCompositeNotifications(&notifications);
     if (!notifications.IsEmpty()) {
-      unused << ImageBridgeParent::NotifyImageComposites(notifications);
+      Unused << ImageBridgeParent::NotifyImageComposites(notifications);
     }
   }
 
@@ -2035,7 +2059,7 @@ CrossProcessCompositorParent::ShadowLayersUpdated(
 
   // Send the 'remote paint ready' message to the content thread if it has already asked.
   if(mNotifyAfterRemotePaint)  {
-    unused << SendRemotePaintIsReady();
+    Unused << SendRemotePaintIsReady();
     mNotifyAfterRemotePaint = false;
   }
 
@@ -2108,7 +2132,7 @@ CompositorParent::UpdatePluginWindowState(uint64_t aId)
     mPluginsLayerOffset = nsIntPoint(0,0);
     mPluginsLayerVisibleRegion.SetEmpty();
     uintptr_t parentWidget = (uintptr_t)lts.mParent->GetWidget();
-    unused << lts.mParent->SendHideAllPlugins(parentWidget);
+    Unused << lts.mParent->SendHideAllPlugins(parentWidget);
     lts.mUpdatedPluginDataAvailable = false;
     PLUGINS_LOG("[%" PRIu64 "] hide all", aId);
   } else {
@@ -2132,9 +2156,10 @@ CompositorParent::UpdatePluginWindowState(uint64_t aId)
         }
         mPluginsLayerOffset = offset;
         mPluginsLayerVisibleRegion = visibleRegion;
-        unused <<
-          lts.mParent->SendUpdatePluginConfigurations(offset, visibleRegion,
-                                                      lts.mPluginData);
+        Unused << lts.mParent->SendUpdatePluginConfigurations(
+          LayoutDeviceIntPoint::FromUnknownPoint(offset),
+          LayoutDeviceIntRegion::FromUnknownRegion(visibleRegion),
+          lts.mPluginData);
         lts.mUpdatedPluginDataAvailable = false;
         PLUGINS_LOG("[%" PRIu64 "] updated", aId);
       } else {
@@ -2159,9 +2184,8 @@ CrossProcessCompositorParent::DidComposite(uint64_t aId,
                                            TimeStamp& aCompositeEnd)
 {
   sIndirectLayerTreesLock->AssertCurrentThreadOwns();
-  LayerTransactionParent *layerTree = sIndirectLayerTrees[aId].mLayerTree;
-  if (layerTree && layerTree->GetPendingTransactionId()) {
-    unused << SendDidComposite(aId, layerTree->GetPendingTransactionId(), aCompositeStart, aCompositeEnd);
+  if (LayerTransactionParent *layerTree = sIndirectLayerTrees[aId].mLayerTree) {
+    Unused << SendDidComposite(aId, layerTree->GetPendingTransactionId(), aCompositeStart, aCompositeEnd);
     layerTree->SetPendingTransactionId(0);
   }
 }

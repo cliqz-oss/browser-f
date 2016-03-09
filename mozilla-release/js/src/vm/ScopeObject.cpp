@@ -14,6 +14,8 @@
 
 #include "builtin/ModuleObject.h"
 
+#include "frontend/ParseNode.h"
+
 #include "vm/ArgumentsObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/ProxyObject.h"
@@ -344,7 +346,7 @@ const Class ModuleEnvironmentObject::class_ = {
         nullptr, nullptr,                                    /* watch/unwatch */
         nullptr,                                             /* getElements */
         ModuleEnvironmentObject::enumerate,
-        ModuleEnvironmentObject::thisValue
+        nullptr
     }
 };
 
@@ -382,6 +384,15 @@ ModuleEnvironmentObject::create(ExclusiveContext* cx, HandleModuleObject module)
     RootedObject globalLexical(cx, &cx->global()->lexicalScope());
     scope->setEnclosingScope(globalLexical);
 
+    // It is not be possible to add or remove bindings from a module environment
+    // after this point as module code is always strict.
+#ifdef DEBUG
+    for (Shape::Range<NoGC> r(scope->lastProperty()); !r.empty(); r.popFront())
+        MOZ_ASSERT(!r.front().configurable());
+    MOZ_ASSERT(scope->lastProperty()->getObjectFlags() & BaseShape::NOT_EXTENSIBLE);
+    MOZ_ASSERT(!scope->inDictionaryMode());
+#endif
+
     return scope;
 }
 
@@ -398,22 +409,13 @@ ModuleEnvironmentObject::importBindings()
 }
 
 bool
-ModuleEnvironmentObject::createImportBinding(JSContext*cx, HandleAtom importName,
-                                             HandleModuleObject module, HandleAtom exportName)
+ModuleEnvironmentObject::createImportBinding(JSContext* cx, HandleAtom importName,
+                                             HandleModuleObject module, HandleAtom localName)
 {
     RootedId importNameId(cx, AtomToId(importName));
-    RootedId exportNameId(cx, AtomToId(exportName));
-    Rooted<ModuleEnvironmentObject*> env(cx, module->environment());
-
-#ifdef DEBUG
-    bool found = false;
-    if (!HasProperty(cx, env, exportNameId, &found))
-        return false;
-    MOZ_ASSERT(found);
-#endif
-
-    IndirectBinding binding(env, exportNameId);
-    if (!importBindings().putNew(importNameId, binding)) {
+    RootedId localNameId(cx, AtomToId(localName));
+    RootedModuleEnvironmentObject env(cx, module->environment());
+    if (!importBindings().putNew(cx, importNameId, env, localNameId)) {
         ReportOutOfMemory(cx);
         return false;
     }
@@ -421,16 +423,29 @@ ModuleEnvironmentObject::createImportBinding(JSContext*cx, HandleAtom importName
     return true;
 }
 
+bool
+ModuleEnvironmentObject::hasImportBinding(HandlePropertyName name)
+{
+    return importBindings().has(NameToId(name));
+}
+
+bool
+ModuleEnvironmentObject::lookupImport(jsid name, ModuleEnvironmentObject** envOut, Shape** shapeOut)
+{
+    return importBindings().lookup(name, envOut, shapeOut);
+}
+
 /* static */ bool
 ModuleEnvironmentObject::lookupProperty(JSContext* cx, HandleObject obj, HandleId id,
                                         MutableHandleObject objp, MutableHandleShape propp)
 {
-    if (IndirectBindingMap::Ptr p =
-        obj->as<ModuleEnvironmentObject>().importBindings().lookup(id))
-    {
-        RootedObject target(cx, p->value().environment);
-        RootedId name(cx, p->value().localName);
-        return LookupProperty(cx, target, name, objp, propp);
+    const IndirectBindingMap& bindings = obj->as<ModuleEnvironmentObject>().importBindings();
+    Shape* shape;
+    ModuleEnvironmentObject* env;
+    if (bindings.lookup(id, &env, &shape)) {
+        objp.set(env);
+        propp.set(shape);
+        return true;
     }
 
     RootedNativeObject target(cx, &obj->as<NativeObject>());
@@ -457,12 +472,12 @@ ModuleEnvironmentObject::hasProperty(JSContext* cx, HandleObject obj, HandleId i
 ModuleEnvironmentObject::getProperty(JSContext* cx, HandleObject obj, HandleValue receiver,
                                      HandleId id, MutableHandleValue vp)
 {
-    if (IndirectBindingMap::Ptr p =
-        obj->as<ModuleEnvironmentObject>().importBindings().lookup(id))
-    {
-        RootedObject target(cx, p->value().environment);
-        RootedId name(cx, p->value().localName);
-        return GetProperty(cx, target, target, name, vp);
+    const IndirectBindingMap& bindings = obj->as<ModuleEnvironmentObject>().importBindings();
+    Shape* shape;
+    ModuleEnvironmentObject* env;
+    if (bindings.lookup(id, &env, &shape)) {
+        vp.set(env->getSlot(shape->slot()));
+        return true;
     }
 
     RootedNativeObject self(cx, &obj->as<NativeObject>());
@@ -509,20 +524,14 @@ ModuleEnvironmentObject::enumerate(JSContext* cx, HandleObject obj, AutoIdVector
         return false;
     }
 
-    for (auto r = bs.all(); !r.empty(); r.popFront())
-        properties.infallibleAppend(r.front().key());
+    bs.forEachExportedName([&] (jsid name) {
+        properties.infallibleAppend(name);
+    });
 
     for (Shape::Range<NoGC> r(self->lastProperty()); !r.empty(); r.popFront())
         properties.infallibleAppend(r.front().propid());
 
     MOZ_ASSERT(properties.length() == count);
-    return true;
-}
-
-/* static */ bool
-ModuleEnvironmentObject::thisValue(JSContext* cx, HandleObject obj, MutableHandleValue vp)
-{
-    vp.setUndefined();
     return true;
 }
 
@@ -633,9 +642,7 @@ DynamicWithObject::create(JSContext* cx, HandleObject object, HandleObject enclo
     if (!obj)
         return nullptr;
 
-    RootedValue thisv(cx);
-    if (!GetThisValue(cx, object, &thisv))
-        return nullptr;
+    Value thisv = GetThisValue(object);
 
     obj->setEnclosingScope(enclosing);
     obj->setFixedSlot(OBJECT_SLOT, ObjectValue(*object));
@@ -649,6 +656,11 @@ static bool
 with_LookupProperty(JSContext* cx, HandleObject obj, HandleId id,
                     MutableHandleObject objp, MutableHandleShape propp)
 {
+    if (JSID_IS_ATOM(id, cx->names().dotThis)) {
+        objp.set(nullptr);
+        propp.set(nullptr);
+        return true;
+    }
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     return LookupProperty(cx, actual, id, objp, propp);
 }
@@ -657,6 +669,7 @@ static bool
 with_DefineProperty(JSContext* cx, HandleObject obj, HandleId id, Handle<PropertyDescriptor> desc,
                     ObjectOpResult& result)
 {
+    MOZ_ASSERT(!JSID_IS_ATOM(id, cx->names().dotThis));
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     return DefineProperty(cx, actual, id, desc, result);
 }
@@ -664,6 +677,7 @@ with_DefineProperty(JSContext* cx, HandleObject obj, HandleId id, Handle<Propert
 static bool
 with_HasProperty(JSContext* cx, HandleObject obj, HandleId id, bool* foundp)
 {
+    MOZ_ASSERT(!JSID_IS_ATOM(id, cx->names().dotThis));
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     return HasProperty(cx, actual, id, foundp);
 }
@@ -672,6 +686,7 @@ static bool
 with_GetProperty(JSContext* cx, HandleObject obj, HandleValue receiver, HandleId id,
                  MutableHandleValue vp)
 {
+    MOZ_ASSERT(!JSID_IS_ATOM(id, cx->names().dotThis));
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     RootedValue actualReceiver(cx, receiver);
     if (receiver.isObject() && &receiver.toObject() == obj)
@@ -683,6 +698,7 @@ static bool
 with_SetProperty(JSContext* cx, HandleObject obj, HandleId id, HandleValue v,
                  HandleValue receiver, ObjectOpResult& result)
 {
+    MOZ_ASSERT(!JSID_IS_ATOM(id, cx->names().dotThis));
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     RootedValue actualReceiver(cx, receiver);
     if (receiver.isObject() && &receiver.toObject() == obj)
@@ -694,6 +710,7 @@ static bool
 with_GetOwnPropertyDescriptor(JSContext* cx, HandleObject obj, HandleId id,
                               MutableHandle<JSPropertyDescriptor> desc)
 {
+    MOZ_ASSERT(!JSID_IS_ATOM(id, cx->names().dotThis));
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     return GetOwnPropertyDescriptor(cx, actual, id, desc);
 }
@@ -701,15 +718,9 @@ with_GetOwnPropertyDescriptor(JSContext* cx, HandleObject obj, HandleId id,
 static bool
 with_DeleteProperty(JSContext* cx, HandleObject obj, HandleId id, ObjectOpResult& result)
 {
+    MOZ_ASSERT(!JSID_IS_ATOM(id, cx->names().dotThis));
     RootedObject actual(cx, &obj->as<DynamicWithObject>().object());
     return DeleteProperty(cx, actual, id, result);
-}
-
-static bool
-with_ThisValue(JSContext* cx, HandleObject obj, MutableHandleValue vp)
-{
-    vp.set(obj->as<DynamicWithObject>().withThis());
-    return true;
 }
 
 const Class StaticWithObject::class_ = {
@@ -747,7 +758,7 @@ const Class DynamicWithObject::class_ = {
         nullptr, nullptr,    /* watch/unwatch */
         nullptr,             /* getElements */
         nullptr,             /* enumerate (native enumeration of target doesn't work) */
-        with_ThisValue,
+        nullptr,
     }
 };
 
@@ -849,7 +860,12 @@ ClonedBlockObject::create(JSContext* cx, Handle<StaticBlockObject*> block, Handl
 
     MOZ_ASSERT(obj->isDelegate());
 
-    return &obj->as<ClonedBlockObject>();
+    ClonedBlockObject* res = &obj->as<ClonedBlockObject>();
+
+    if (res->isGlobal() || !res->isSyntactic())
+        res->setReservedSlot(THIS_VALUE_SLOT, GetThisValue(enclosing));
+
+    return res;
 }
 
 /* static */ ClonedBlockObject*
@@ -1013,17 +1029,19 @@ StaticBlockObject::addVar(ExclusiveContext* cx, Handle<StaticBlockObject*> block
                                              /* allowDictionary = */ false);
 }
 
-static bool
-block_ThisValue(JSContext* cx, HandleObject obj, MutableHandleValue vp)
+Value
+ClonedBlockObject::thisValue() const
 {
-    // No other block objects should ever get passed to the 'this' object
-    // hook except the global lexical scope and non-syntactic ones.
-    MOZ_ASSERT(obj->as<ClonedBlockObject>().isGlobal() ||
-               !obj->as<ClonedBlockObject>().isSyntactic());
-    MOZ_ASSERT_IF(obj->as<ClonedBlockObject>().isGlobal(),
-                  obj->enclosingScope() == cx->global());
-    RootedObject enclosing(cx, obj->enclosingScope());
-    return GetThisValue(cx, enclosing, vp);
+    MOZ_ASSERT(isGlobal() || !isSyntactic());
+    Value v = getReservedSlot(THIS_VALUE_SLOT);
+    if (v.isObject()) {
+        // If `v` is a Window, return the WindowProxy instead. We called
+        // GetThisValue (which also does ToWindowProxyIfWindow) when storing
+        // the value in THIS_VALUE_SLOT, but it's possible the WindowProxy was
+        // attached to the global *after* we set THIS_VALUE_SLOT.
+        return ObjectValue(*ToWindowProxyIfWindow(&v.toObject()));
+    }
+    return v;
 }
 
 const Class BlockObject::class_ = {
@@ -1055,7 +1073,7 @@ const Class BlockObject::class_ = {
         nullptr, nullptr, /* watch/unwatch */
         nullptr,          /* getElements */
         nullptr,          /* enumerate (native enumeration of target doesn't work) */
-        block_ThisValue,
+        nullptr,
     }
 };
 
@@ -1529,11 +1547,12 @@ MissingScopeKey::match(MissingScopeKey sk1, MissingScopeKey sk2)
     return sk1.frame_ == sk2.frame_ && sk1.staticScope_ == sk2.staticScope_;
 }
 
-void
-LiveScopeVal::sweep()
+bool
+LiveScopeVal::needsSweep()
 {
     if (staticScope_)
         MOZ_ALWAYS_FALSE(IsAboutToBeFinalized(&staticScope_));
+    return false;
 }
 
 // Live ScopeIter values may be added to DebugScopes::liveScopes, as
@@ -1752,6 +1771,10 @@ class DebugScopeProxy : public BaseProxyHandler
     {
         return id == NameToId(cx->names().arguments);
     }
+    static bool isThis(JSContext* cx, jsid id)
+    {
+        return id == NameToId(cx->names().dotThis);
+    }
 
     static bool isFunctionScope(const JSObject& scope)
     {
@@ -1771,6 +1794,16 @@ class DebugScopeProxy : public BaseProxyHandler
     }
 
     /*
+     * Similar to 'arguments' above, we don't add a 'this' binding to functions
+     * if it's not used.
+     */
+    static bool isMissingThisBinding(ScopeObject& scope)
+    {
+        return isFunctionScopeWithThis(scope) &&
+               !scope.as<CallObject>().callee().nonLazyScript()->functionHasThisBinding();
+    }
+
+    /*
      * This function checks if an arguments object needs to be created when
      * the debugger requests 'arguments' for a function scope where the
      * arguments object has been optimized away (either because the binding is
@@ -1780,6 +1813,10 @@ class DebugScopeProxy : public BaseProxyHandler
     {
         return isArguments(cx, id) && isFunctionScope(scope) &&
                !scope.as<CallObject>().callee().nonLazyScript()->needsArgsObj();
+    }
+    static bool isMissingThis(JSContext* cx, jsid id, ScopeObject& scope)
+    {
+        return isThis(cx, id) && isMissingThisBinding(scope);
     }
 
     /*
@@ -1821,11 +1858,38 @@ class DebugScopeProxy : public BaseProxyHandler
         return !!argsObj;
     }
 
+    /*
+     * Create a missing this Value. If the function returns true but
+     * *success is false, it means the scope is dead.
+     */
+    static bool createMissingThis(JSContext* cx, ScopeObject& scope,
+                                  MutableHandleValue thisv, bool* success)
+    {
+        *success = false;
+
+        LiveScopeVal* maybeScope = DebugScopes::hasLiveScope(scope);
+        if (!maybeScope)
+            return true;
+
+        if (!GetFunctionThis(cx, maybeScope->frame(), thisv))
+            return false;
+
+        *success = true;
+        return true;
+    }
+
   public:
     static const char family;
     static const DebugScopeProxy singleton;
 
     MOZ_CONSTEXPR DebugScopeProxy() : BaseProxyHandler(&family) {}
+
+    static bool isFunctionScopeWithThis(const JSObject& scope)
+    {
+        // All functions except arrows and generator expression lambdas should
+        // have their own this binding.
+        return isFunctionScope(scope) && !scope.as<CallObject>().callee().hasLexicalThis();
+    }
 
     bool preventExtensions(JSContext* cx, HandleObject proxy,
                            ObjectOpResult& result) const override
@@ -1870,6 +1934,29 @@ class DebugScopeProxy : public BaseProxyHandler
         desc.setSetter(nullptr);
         return true;
     }
+    bool getMissingThisPropertyDescriptor(JSContext* cx,
+                                          Handle<DebugScopeObject*> debugScope,
+                                          ScopeObject& scope,
+                                          MutableHandle<PropertyDescriptor> desc) const
+    {
+        RootedValue thisv(cx);
+        bool success;
+        if (!createMissingThis(cx, scope, &thisv, &success))
+            return false;
+
+        if (!success) {
+            JS_ReportErrorNumber(cx, GetErrorMessage, nullptr, JSMSG_DEBUG_NOT_LIVE,
+                                 "Debugger scope");
+            return false;
+        }
+
+        desc.object().set(debugScope);
+        desc.setAttributes(JSPROP_READONLY | JSPROP_ENUMERATE | JSPROP_PERMANENT);
+        desc.value().set(thisv);
+        desc.setGetter(nullptr);
+        desc.setSetter(nullptr);
+        return true;
+    }
 
     bool getOwnPropertyDescriptor(JSContext* cx, HandleObject proxy, HandleId id,
                                   MutableHandle<PropertyDescriptor> desc) const override
@@ -1879,6 +1966,9 @@ class DebugScopeProxy : public BaseProxyHandler
 
         if (isMissingArguments(cx, id, *scope))
             return getMissingArgumentsPropertyDescriptor(cx, debugScope, *scope, desc);
+
+        if (isMissingThis(cx, id, *scope))
+            return getMissingThisPropertyDescriptor(cx, debugScope, *scope, desc);
 
         RootedValue v(cx);
         AccessResult access;
@@ -1921,6 +2011,23 @@ class DebugScopeProxy : public BaseProxyHandler
         return true;
     }
 
+    bool getMissingThis(JSContext* cx, ScopeObject& scope, MutableHandleValue vp) const
+    {
+        RootedValue thisv(cx);
+        bool success;
+        if (!createMissingThis(cx, scope, &thisv, &success))
+            return false;
+
+        if (!success) {
+            JS_ReportErrorNumber(cx, GetErrorMessage, nullptr, JSMSG_DEBUG_NOT_LIVE,
+                                 "Debugger scope");
+            return false;
+        }
+
+        vp.set(thisv);
+        return true;
+    }
+
     bool get(JSContext* cx, HandleObject proxy, HandleValue receiver, HandleId id,
              MutableHandleValue vp) const override
     {
@@ -1929,6 +2036,9 @@ class DebugScopeProxy : public BaseProxyHandler
 
         if (isMissingArguments(cx, id, *scope))
             return getMissingArguments(cx, *scope, vp);
+
+        if (isMissingThis(cx, id, *scope))
+            return getMissingThis(cx, *scope, vp);
 
         AccessResult access;
         if (!handleUnaliasedAccess(cx, debugScope, scope, id, GET, vp, &access))
@@ -1959,6 +2069,17 @@ class DebugScopeProxy : public BaseProxyHandler
         return true;
     }
 
+    bool getMissingThisMaybeSentinelValue(JSContext* cx, ScopeObject& scope,
+                                          MutableHandleValue vp) const
+    {
+        RootedValue thisv(cx);
+        bool success;
+        if (!createMissingThis(cx, scope, &thisv, &success))
+            return false;
+        vp.set(success ? thisv : MagicValue(JS_OPTIMIZED_OUT));
+        return true;
+    }
+
     /*
      * Like 'get', but returns sentinel values instead of throwing on
      * exceptional cases.
@@ -1970,6 +2091,8 @@ class DebugScopeProxy : public BaseProxyHandler
 
         if (isMissingArguments(cx, id, *scope))
             return getMissingArgumentsMaybeSentinelValue(cx, *scope, vp);
+        if (isMissingThis(cx, id, *scope))
+            return getMissingThisMaybeSentinelValue(cx, *scope, vp);
 
         AccessResult access;
         if (!handleUnaliasedAccess(cx, debugScope, scope, id, GET, vp, &access))
@@ -2040,6 +2163,10 @@ class DebugScopeProxy : public BaseProxyHandler
             if (!props.append(NameToId(cx->names().arguments)))
                 return false;
         }
+        if (isMissingThisBinding(*scope)) {
+            if (!props.append(NameToId(cx->names().dotThis)))
+                return false;
+        }
 
         // DynamicWithObject isn't a very good proxy.  It doesn't have a
         // JSNewEnumerateOp implementation, because if it just delegated to the
@@ -2081,6 +2208,10 @@ class DebugScopeProxy : public BaseProxyHandler
             *bp = true;
             return true;
         }
+        if (isThis(cx, id) && isFunctionScopeWithThis(scopeObj)) {
+            *bp = true;
+            return true;
+        }
 
         bool found;
         RootedObject scope(cx, &scopeObj);
@@ -2113,6 +2244,13 @@ class DebugScopeProxy : public BaseProxyHandler
 };
 
 } /* anonymous namespace */
+
+template<>
+bool
+JSObject::is<js::DebugScopeObject>() const
+{
+    return IsDerivedProxyObject(this, &DebugScopeProxy::singleton);
+}
 
 const char DebugScopeProxy::family = 0;
 const DebugScopeProxy DebugScopeProxy::singleton;
@@ -2178,6 +2316,12 @@ DebugScopeObject::getMaybeSentinelValue(JSContext* cx, HandleId id, MutableHandl
 }
 
 bool
+DebugScopeObject::isFunctionScopeWithThis()
+{
+    return DebugScopeProxy::isFunctionScopeWithThis(scope());
+}
+
+bool
 DebugScopeObject::isOptimizedOut() const
 {
     ScopeObject& s = scope();
@@ -2197,21 +2341,7 @@ DebugScopeObject::isOptimizedOut() const
     return false;
 }
 
-bool
-js::IsDebugScopeSlow(ProxyObject* proxy)
-{
-    MOZ_ASSERT(proxy->hasClass(&ProxyObject::class_));
-    return proxy->handler() == &DebugScopeProxy::singleton;
-}
-
 /*****************************************************************************/
-
-/* static */ MOZ_ALWAYS_INLINE void
-DebugScopes::liveScopesPostWriteBarrier(JSRuntime* rt, LiveScopeMap* map, ScopeObject* key)
-{
-    if (key && IsInsideNursery(key))
-        rt->gc.storeBuffer.putGeneric(gc::HashKeyRef<LiveScopeMap, ScopeObject*>(map, key));
-}
 
 DebugScopes::DebugScopes(JSContext* cx)
  : proxiedScopes(cx),
@@ -2273,20 +2403,11 @@ DebugScopes::sweep(JSRuntime* rt)
         }
     }
 
-    for (LiveScopeMap::Enum e(liveScopes); !e.empty(); e.popFront()) {
-        ScopeObject* scope = e.front().key();
-
-        e.front().value().sweep();
-
-        /*
-         * Scopes can be finalized when a debugger-synthesized ScopeObject is
-         * no longer reachable via its DebugScopeObject.
-         */
-        if (IsAboutToBeFinalizedUnbarriered(&scope))
-            e.removeFront();
-        else if (scope != e.front().key())
-            e.rekeyFront(scope);
-    }
+    /*
+     * Scopes can be finalized when a debugger-synthesized ScopeObject is
+     * no longer reachable via its DebugScopeObject.
+     */
+    liveScopes.sweep();
 }
 
 #ifdef JSGC_HASH_TABLE_CHECKS
@@ -2418,7 +2539,6 @@ DebugScopes::addDebugScope(JSContext* cx, const ScopeIter& si, DebugScopeObject&
             ReportOutOfMemory(cx);
             return false;
         }
-        liveScopesPostWriteBarrier(cx->runtime(), &scopes->liveScopes, &debugScope.scope());
     }
 
     return true;
@@ -2614,7 +2734,6 @@ DebugScopes::updateLiveScopes(JSContext* cx)
                     return false;
                 if (!scopes->liveScopes.put(&si.scope(), LiveScopeVal(si)))
                     return false;
-                liveScopesPostWriteBarrier(cx->runtime(), &scopes->liveScopes, &si.scope());
             }
         }
 
@@ -2953,6 +3072,210 @@ js::StaticScopeChainLength(JSObject* staticScope)
     for (StaticScopeIter<NoGC> ssi(staticScope); !ssi.done(); ssi++)
         length++;
     return length;
+}
+
+ModuleEnvironmentObject*
+js::GetModuleEnvironmentForScript(JSScript* script)
+{
+    StaticScopeIter<NoGC> ssi(script->enclosingStaticScope());
+    while (!ssi.done() && ssi.type() != StaticScopeIter<NoGC>::Module)
+        ssi++;
+    if (ssi.done())
+        return nullptr;
+
+    return ssi.module().environment();
+}
+
+bool
+js::GetThisValueForDebuggerMaybeOptimizedOut(JSContext* cx, AbstractFramePtr frame, jsbytecode* pc,
+                                             MutableHandleValue res)
+{
+    for (ScopeIter si(cx, frame, pc); !si.done(); ++si) {
+        if (si.type() == ScopeIter::Module) {
+            res.setUndefined();
+            return true;
+        }
+
+        if (si.type() != ScopeIter::Call || si.fun().hasLexicalThis())
+            continue;
+
+        RootedScript script(cx, si.fun().nonLazyScript());
+
+        if (!script->functionHasThisBinding()) {
+            MOZ_ASSERT(!script->isDerivedClassConstructor(),
+                       "Derived class constructors always have a this-binding");
+
+            // If we're still inside `frame`, we can use the this-value passed
+            // to it, if it does not require boxing.
+            if (si.withinInitialFrame() && (frame.thisArgument().isObject() || script->strict()))
+                res.set(frame.thisArgument());
+            else
+                res.setMagic(JS_OPTIMIZED_OUT);
+            return true;
+        }
+
+        BindingIter bi = Bindings::thisBinding(cx, script);
+
+        if (script->bindingIsAliased(bi)) {
+            RootedObject callObj(cx, &si.scope().as<CallObject>());
+            return GetProperty(cx, callObj, callObj, cx->names().dotThis, res);
+        }
+
+        if (si.withinInitialFrame())
+            res.set(frame.unaliasedLocal(bi.frameIndex()));
+        else
+            res.setMagic(JS_OPTIMIZED_OUT);
+        return true;
+    }
+
+    RootedObject scopeChain(cx, frame.scopeChain());
+    return GetNonSyntacticGlobalThis(cx, scopeChain, res);
+}
+
+bool
+js::CheckLexicalNameConflict(JSContext* cx, Handle<ClonedBlockObject*> lexicalScope,
+                             HandleObject varObj, HandlePropertyName name)
+{
+    mozilla::Maybe<frontend::Definition::Kind> redeclKind;
+    RootedId id(cx, NameToId(name));
+    RootedShape shape(cx);
+    if ((shape = lexicalScope->lookup(cx, name))) {
+        redeclKind = mozilla::Some(shape->writable() ? frontend::Definition::LET
+                                                     : frontend::Definition::CONSTANT);
+    } else if (varObj->isNative() && (shape = varObj->as<NativeObject>().lookup(cx, name))) {
+        if (!shape->configurable())
+            redeclKind = mozilla::Some(frontend::Definition::VAR);
+    } else {
+        Rooted<PropertyDescriptor> desc(cx);
+        if (!GetOwnPropertyDescriptor(cx, varObj, id, &desc))
+            return false;
+        if (desc.object() && desc.hasConfigurable() && !desc.configurable())
+            redeclKind = mozilla::Some(frontend::Definition::VAR);
+    }
+
+    if (redeclKind.isSome()) {
+        ReportRuntimeRedeclaration(cx, name, *redeclKind);
+        return false;
+    }
+
+    return true;
+}
+
+bool
+js::CheckVarNameConflict(JSContext* cx, Handle<ClonedBlockObject*> lexicalScope,
+                         HandlePropertyName name)
+{
+    if (Shape* shape = lexicalScope->lookup(cx, name)) {
+        ReportRuntimeRedeclaration(cx, name, shape->writable() ? frontend::Definition::LET
+                                                               : frontend::Definition::CONSTANT);
+        return false;
+    }
+    return true;
+}
+
+static bool
+CheckVarNameConflict(JSContext* cx, Handle<CallObject*> callObj, HandlePropertyName name)
+{
+    RootedFunction fun(cx, &callObj->callee());
+    RootedScript script(cx, fun->nonLazyScript());
+    uint32_t bodyLevelLexicalsStart = script->bindings.numVars();
+
+    for (BindingIter bi(script); !bi.done(); bi++) {
+        if (name == bi->name() &&
+            bi.isBodyLevelLexical() &&
+            bi.localIndex() >= bodyLevelLexicalsStart)
+        {
+            ReportRuntimeRedeclaration(cx, name,
+                                       bi->kind() == Binding::CONSTANT
+                                       ? frontend::Definition::CONSTANT
+                                       : frontend::Definition::LET);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool
+js::CheckGlobalDeclarationConflicts(JSContext* cx, HandleScript script,
+                                    Handle<ClonedBlockObject*> lexicalScope,
+                                    HandleObject varObj)
+{
+    // Due to the extensibility of the global lexical scope, we must check for
+    // redeclaring a binding.
+    //
+    // In the case of non-syntactic scope chains, we are checking
+    // redeclarations against the non-syntactic lexical scope and the
+    // variables object that the lexical scope corresponds to.
+    RootedPropertyName name(cx);
+    BindingIter bi(script);
+
+    for (uint32_t i = 0; i < script->bindings.numVars(); i++, bi++) {
+        name = bi->name();
+        if (!CheckVarNameConflict(cx, lexicalScope, name))
+            return false;
+    }
+
+    for (uint32_t i = 0; i < script->bindings.numBodyLevelLexicals(); i++, bi++) {
+        name = bi->name();
+        if (!CheckLexicalNameConflict(cx, lexicalScope, varObj, name))
+            return false;
+    }
+
+    return true;
+}
+
+template <class ScopeT>
+static bool
+CheckVarNameConflictsInScope(JSContext* cx, HandleScript script, HandleObject obj)
+{
+    Rooted<ScopeT*> scope(cx);
+
+    // We return true when the scope object is not ScopeT below, because
+    // ScopeT is either ClonedBlockObject or CallObject. No other scope
+    // objects can contain lexical bindings, and there are no other overloads
+    // for CheckVarNameConflict.
+
+    if (obj->is<ScopeT>())
+        scope = &obj->as<ScopeT>();
+    else if (obj->is<DebugScopeObject>() && obj->as<DebugScopeObject>().scope().is<ScopeT>())
+        scope = &obj->as<DebugScopeObject>().scope().as<ScopeT>();
+    else
+        return true;
+
+    RootedPropertyName name(cx);
+
+    for (BindingIter bi(script); !bi.done(); bi++) {
+        name = bi->name();
+        if (!CheckVarNameConflict(cx, scope, name))
+            return false;
+    }
+
+    return true;
+}
+
+bool
+js::CheckEvalDeclarationConflicts(JSContext* cx, HandleScript script,
+                                  HandleObject scopeChain, HandleObject varObj)
+{
+    // We don't need to check body-level lexical bindings for conflict. Eval
+    // scripts always execute under their own lexical scope.
+    if (script->bindings.numVars() == 0)
+        return true;
+
+    RootedObject obj(cx, scopeChain);
+
+    // ES6 18.2.1.2 step d
+    //
+    // Check that a direct eval will not hoist 'var' bindings over lexical
+    // bindings with the same name.
+    while (obj != varObj) {
+        if (!CheckVarNameConflictsInScope<ClonedBlockObject>(cx, script, obj))
+            return false;
+        obj = obj->enclosingScope();
+    }
+
+    return CheckVarNameConflictsInScope<CallObject>(cx, script, varObj);
 }
 
 #ifdef DEBUG

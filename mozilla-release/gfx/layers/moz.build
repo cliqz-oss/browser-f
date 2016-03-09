@@ -116,6 +116,7 @@ EXPORTS.mozilla.layers += [
     'basic/BasicCompositor.h',
     'basic/MacIOSurfaceTextureHostBasic.h',
     'basic/TextureHostBasic.h',
+    'BufferTexture.h',
     'client/CanvasClient.h',
     'client/CompositableClient.h',
     'client/ContentClient.h',
@@ -176,6 +177,7 @@ EXPORTS.mozilla.layers += [
     'opengl/TextureHostOGL.h',
     'PersistentBufferProvider.h',
     'RenderTrace.h',
+    'TextureWrapperImage.h',
     'TransactionIdAllocator.h',
     'YCbCrImageDataSerializer.h',
 ]
@@ -202,6 +204,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
         'opengl/GLManager.h',
     ]
     EXPORTS += [
+        'MacIOSurfaceHelpers.h',
         'MacIOSurfaceImage.h',
     ]
     UNIFIED_SOURCES += [
@@ -209,6 +212,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     ]
     SOURCES += [
         'ipc/ShadowLayerUtilsMac.cpp',
+        'MacIOSurfaceHelpers.cpp',
         'MacIOSurfaceImage.cpp',
     ]
 
@@ -228,11 +232,12 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
         'opengl/GrallocTextureHost.cpp',
     ]
     LOCAL_INCLUDES += ['/widget/gonk']
-    CXXFLAGS += [
-         '-I%s/%s' % (CONFIG['ANDROID_SOURCE'], d) for d in [
-             'system/core/libsync/include'
-         ]
-    ]
+    if CONFIG['ANDROID_VERSION'] >= '21':
+        LOCAL_INCLUDES += [
+             '%' + '%s/%s' % (CONFIG['ANDROID_SOURCE'], d) for d in [
+                 'system/core/libsync/include'
+             ]
+        ]
     SOURCES += [
         'ipc/ShadowLayerUtilsGralloc.cpp',
     ]
@@ -269,6 +274,7 @@ UNIFIED_SOURCES += [
     'basic/BasicLayersImpl.cpp',
     'basic/BasicPaintedLayer.cpp',
     'basic/TextureHostBasic.cpp',
+    'BufferTexture.cpp',
     'BufferUnrotate.cpp',
     'client/CanvasClient.cpp',
     'client/ClientCanvasLayer.cpp',
@@ -345,6 +351,7 @@ UNIFIED_SOURCES += [
     'ReadbackProcessor.cpp',
     'RenderTrace.cpp',
     'RotatedBuffer.cpp',
+    'TextureWrapperImage.cpp',
     'YCbCrImageDataSerializer.cpp',
 ]
 
@@ -403,14 +410,21 @@ if CONFIG['MOZ_DEBUG']:
 if CONFIG['MOZ_ENABLE_D3D10_LAYER']:
     DEFINES['MOZ_ENABLE_D3D10_LAYER'] = True
 
-CXXFLAGS += [
-    '-I%s/%s' % (CONFIG['ANDROID_SOURCE'], d) for d in [
-        'frameworks/base/include/media/stagefright',
-        'frameworks/base/include/media/stagefright/openmax',
-        'frameworks/av/include/media/stagefright',
-        'frameworks/native/include/media/openmax',
+if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'gonk':
+    if CONFIG['ANDROID_VERSION'] >= '17':
+        includes = [
+            'frameworks/av/include/media/stagefright',
+            'frameworks/native/include/media/openmax',
+        ]
+    else:
+        includes = [
+            'frameworks/base/include/media/stagefright',
+            'frameworks/base/include/media/stagefright/openmax',
+        ]
+
+    LOCAL_INCLUDES += [
+        '%' + '%s/%s' % (CONFIG['ANDROID_SOURCE'], d) for d in includes
     ]
-]
 
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['apz/test/gtest']

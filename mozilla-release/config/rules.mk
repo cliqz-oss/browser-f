@@ -504,10 +504,8 @@ endif
 
 ifeq (_WINNT,$(GNU_CC)_$(OS_ARCH))
 OUTOPTION = -Fo# eol
-PREPROCESS_OPTION = -P -Fi# eol
 else
 OUTOPTION = -o # eol
-PREPROCESS_OPTION = -E -o #eol
 endif # WINNT && !GNU_CC
 
 ifneq (,$(filter ml%,$(AS)))
@@ -1140,9 +1138,8 @@ export:: $(FINAL_TARGET)
 endif
 
 ################################################################################
-# Copy each element of PREF_JS_EXPORTS
-
-# The default location for PREF_JS_EXPORTS is the gre prefs directory.
+# The default location for prefs is the gre prefs directory.
+# PREF_DIR is used for L10N_PREF_JS_EXPORTS in various locales/ directories.
 PREF_DIR = defaults/pref
 
 # If DIST_SUBDIR is defined it indicates that app and gre dirs are
@@ -1150,16 +1147,6 @@ PREF_DIR = defaults/pref
 # PREF_DIR should point to the app prefs location.
 ifneq (,$(DIST_SUBDIR)$(XPI_NAME))
 PREF_DIR = defaults/preferences
-endif
-
-ifneq ($(PREF_JS_EXPORTS),)
-ifndef NO_DIST_INSTALL
-PREF_JS_EXPORTS_PATH := $(FINAL_TARGET)/$(PREF_DIR)
-# We preprocess these, but they don't necessarily have preprocessor directives,
-# so tell them preprocessor to not complain about that.
-PREF_JS_EXPORTS_FLAGS := $(PREF_PPFLAGS) --silence-missing-directive-warnings
-PP_TARGETS += PREF_JS_EXPORTS
-endif
 endif
 
 ################################################################################
@@ -1172,33 +1159,6 @@ AUTOCFG_JS_EXPORTS_DEST := $(FINAL_TARGET)/defaults/autoconfig
 AUTOCFG_JS_EXPORTS_TARGET := export
 INSTALL_TARGETS += AUTOCFG_JS_EXPORTS
 endif
-endif
-
-################################################################################
-# Copy each element of EXTRA_COMPONENTS to $(FINAL_TARGET)/components
-ifdef EXTRA_COMPONENTS
-misc:: $(EXTRA_COMPONENTS)
-ifndef NO_DIST_INSTALL
-EXTRA_COMPONENTS_FILES := $(EXTRA_COMPONENTS)
-EXTRA_COMPONENTS_DEST := $(FINAL_TARGET)/components
-EXTRA_COMPONENTS_TARGET := misc
-INSTALL_TARGETS += EXTRA_COMPONENTS
-endif
-
-endif
-
-ifdef EXTRA_PP_COMPONENTS
-ifndef NO_DIST_INSTALL
-EXTRA_PP_COMPONENTS_PATH := $(FINAL_TARGET)/components
-EXTRA_PP_COMPONENTS_TARGET := misc
-PP_TARGETS += EXTRA_PP_COMPONENTS
-endif
-endif
-
-EXTRA_MANIFESTS = $(filter %.manifest,$(EXTRA_COMPONENTS) $(EXTRA_PP_COMPONENTS))
-ifneq (,$(EXTRA_MANIFESTS))
-misc:: $(call mkdir_deps,$(FINAL_TARGET))
-	$(call py_action,buildlist,$(FINAL_TARGET)/chrome.manifest $(patsubst %,'manifest components/%',$(notdir $(EXTRA_MANIFESTS))))
 endif
 
 ################################################################################
@@ -1270,14 +1230,6 @@ $(error $(srcdir) contains a jar.mn file but this file is not declared in a JAR_
 endif
 endif
 
-ifneq ($(DIST_FILES),)
-DIST_FILES_PATH := $(FINAL_TARGET)
-# We preprocess these, but they don't necessarily have preprocessor directives,
-# so tell them preprocessor to not complain about that.
-DIST_FILES_FLAGS := --silence-missing-directive-warnings
-PP_TARGETS += DIST_FILES
-endif
-
 # When you move this out of the tools tier, please remove the corresponding
 # hacks in recursivemake.py that check if Makefile.in sets the variable.
 ifneq ($(XPI_PKGNAME),)
@@ -1341,22 +1293,18 @@ endif
 #   it.
 
 ifneq (,$(filter-out all chrome default export realchrome clean clobber clobber_all distclean realclean,$(MAKECMDGOALS)))
-MDDEPEND_FILES		:= $(strip $(wildcard $(addprefix $(MDDEPDIR)/,$(EXTRA_MDDEPEND_FILES) $(addsuffix .pp,$(notdir $(sort $(OBJS) $(PROGOBJS) $(HOST_OBJS) $(HOST_PROGOBJS)))))))
+MDDEPEND_FILES		:= $(strip $(wildcard $(addprefix $(MDDEPDIR)/,$(addsuffix .pp,$(notdir $(sort $(OBJS) $(PROGOBJS) $(HOST_OBJS) $(HOST_PROGOBJS)))))))
 
 ifneq (,$(MDDEPEND_FILES))
-$(call include_deps,$(MDDEPEND_FILES))
+-include $(MDDEPEND_FILES)
 endif
 
 endif
 
-
-ifneq (,$(filter export,$(MAKECMDGOALS)))
-MDDEPEND_FILES		:= $(strip $(wildcard $(addprefix $(MDDEPDIR)/,$(EXTRA_EXPORT_MDDEPEND_FILES))))
+MDDEPEND_FILES		:= $(strip $(wildcard $(addprefix $(MDDEPDIR)/,$(EXTRA_MDDEPEND_FILES))))
 
 ifneq (,$(MDDEPEND_FILES))
-$(call include_deps,$(MDDEPEND_FILES))
-endif
-
+-include $(MDDEPEND_FILES)
 endif
 
 #############################################################################
@@ -1535,7 +1483,7 @@ $(foreach file,$(PP_TARGETS_ALL_RESULTS), \
 MDDEPEND_FILES := $(strip $(wildcard $(addprefix $(MDDEPDIR)/,$(addsuffix .pp,$(notdir $(PP_TARGETS_ALL_RESULTS))))))
 
 ifneq (,$(MDDEPEND_FILES))
-$(call include_deps,$(MDDEPEND_FILES))
+-include $(MDDEPEND_FILES)
 endif
 
 endif
@@ -1598,8 +1546,6 @@ FREEZE_VARIABLES = \
   DIRS \
   LIBRARY \
   MODULE \
-  EXTRA_COMPONENTS \
-  EXTRA_PP_COMPONENTS \
   $(NULL)
 
 $(foreach var,$(FREEZE_VARIABLES),$(eval $(var)_FROZEN := '$($(var))'))

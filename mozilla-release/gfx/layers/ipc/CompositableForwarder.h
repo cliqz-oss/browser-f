@@ -10,6 +10,7 @@
 #include <stdint.h>                     // for int32_t, uint64_t
 #include "gfxTypes.h"
 #include "mozilla/Attributes.h"         // for override
+#include "mozilla/layers/CompositableClient.h"  // for CompositableClient
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/layers/ISurfaceAllocator.h"  // for ISurfaceAllocator
 #include "mozilla/layers/LayersTypes.h"  // for LayersBackend
@@ -108,12 +109,6 @@ public:
                                                   TextureClient* aTexture) {}
 
   /**
-   * Tell the compositor side to delete the TextureHost corresponding to the
-   * TextureClient passed in parameter.
-   */
-  virtual void RemoveTexture(TextureClient* aTexture) = 0;
-
-  /**
    * Holds a reference to a TextureClient until after the next
    * compositor transaction, and then drops it.
    */
@@ -131,6 +126,20 @@ public:
   virtual void RemoveTexturesIfNecessary()
   {
     mTexturesToRemove.Clear();
+  }
+
+  /**
+   * The same as above, but for CompositableClients.
+   */
+  void HoldUntilTransaction(CompositableClient* aClient)
+  {
+    if (aClient) {
+      mCompositableClientsToRemove.AppendElement(aClient);
+    }
+  }
+  void RemoveCompositablesIfNecessary()
+  {
+    mCompositableClientsToRemove.Clear();
   }
 
   struct TimedTextureClient {
@@ -196,6 +205,7 @@ public:
 protected:
   TextureFactoryIdentifier mTextureFactoryIdentifier;
   nsTArray<RefPtr<TextureClient> > mTexturesToRemove;
+  nsTArray<RefPtr<CompositableClient>> mCompositableClientsToRemove;
   RefPtr<SyncObject> mSyncObject;
   const int32_t mSerial;
   static mozilla::Atomic<int32_t> sSerialCounter;

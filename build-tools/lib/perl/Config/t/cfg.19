@@ -1,0 +1,16 @@
+#
+# these options must all in
+# msg[\d] keys.
+#
+msg1 = "Das ist ein Test"
+msg2 = "Das = ein Test"
+msg3   "Das ist ein Test"
+msg4   "Das = ein Test"
+
+msg6 = <<EOF
+  Das = ein Test
+EOF
+
+msg7 <<EOF
+  Das = ein Test
+msg7

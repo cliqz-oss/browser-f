@@ -559,7 +559,6 @@ AudioDestinationNode::WindowAudioCaptureChanged()
       mCaptureStreamPort =
         mStream->Graph()->ConnectToCaptureStream(id, mStream);
     } else {
-      mCaptureStreamPort->Disconnect();
       mCaptureStreamPort->Destroy();
     }
     mCaptured = captured;

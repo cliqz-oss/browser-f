@@ -24,6 +24,8 @@
 # python/mozbuild/mozbuild/backend/fastermake.py is the following:
 # - TOPSRCDIR/TOPOBJDIR, respectively the top source directory and the top
 #   object directory
+# - BACKEND, the path to the file the backend will always update when running
+#   mach build-backend
 # - PYTHON, the path to the python executable
 # - ACDEFINES, which contains a set of -Dvar=name to be used during
 #   preprocessing
@@ -41,15 +43,20 @@ default: $(addprefix install-,$(INSTALL_MANIFESTS))
 
 # Explicit files to be built for a default build
 default: $(addprefix $(TOPOBJDIR)/,$(MANIFEST_TARGETS))
-default: $(TOPOBJDIR)/dist/bin/greprefs.js
+ifndef TEST_MOZBUILD
 default: $(TOPOBJDIR)/dist/bin/platform.ini
-default: $(TOPOBJDIR)/dist/bin/webapprt/webapprt.ini
+endif
 
+ifndef NO_XPIDL
 # Targets from the recursive make backend to be built for a default build
 default: $(TOPOBJDIR)/config/makefiles/xpidl/xpidl
+endif
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 # Mac builds require to copy things in dist/bin/*.app
+# TODO: remove the MOZ_WIDGET_TOOLKIT and MOZ_BUILD_APP variables from
+# faster/Makefile and python/mozbuild/mozbuild/test/backend/test_build.py
+# when this is not required anymore.
 default:
 	$(MAKE) -C $(TOPOBJDIR)/$(MOZ_BUILD_APP)/app repackage
 endif
@@ -69,11 +76,22 @@ $(TOPOBJDIR)/%: FORCE
 # fallback
 $(TOPOBJDIR)/faster/%: ;
 
+# Files under the python virtualenv, which are dependencies of the BACKEND
+# file, are not meant to use the fallback either.
+$(TOPOBJDIR)/_virtualenv/%: ;
+
 # And files under dist/ are meant to be copied from their first dependency
 # if there is no other rule.
 $(TOPOBJDIR)/dist/%:
 	rm -f $@
+	mkdir -p $(@D)
 	cp $< $@
+
+# Refresh backend
+$(BACKEND):
+	cd $(TOPOBJDIR) && $(PYTHON) config.status --backend FasterMake
+
+$(MAKEFILE_LIST): $(BACKEND)
 
 # Install files using install manifests
 #
@@ -87,8 +105,7 @@ $(addprefix install-,$(INSTALL_MANIFESTS)): install-%: $(TOPOBJDIR)/config/build
 	@# support for defines tracking in process_install_manifest.
 	@touch install_$(subst /,_,$*)
 	$(PYTHON) -m mozbuild.action.process_install_manifest \
-		--no-remove \
-		--no-remove-empty-directories \
+		--track install_$(subst /,_,$*).track \
 		$(TOPOBJDIR)/$* \
 		-DAB_CD=en-US \
 		-DMOZ_APP_BUILDID=$(shell cat $(TOPOBJDIR)/config/buildid) \
@@ -115,9 +132,9 @@ $(addprefix $(TOPOBJDIR)/,$(MANIFEST_TARGETS)): FORCE
 # that are not supported by data in moz.build.
 
 # Files to build with the recursive backend and simply copy
-$(TOPOBJDIR)/dist/bin/greprefs.js: $(TOPOBJDIR)/modules/libpref/greprefs.js
 $(TOPOBJDIR)/dist/bin/platform.ini: $(TOPOBJDIR)/toolkit/xre/platform.ini
-$(TOPOBJDIR)/dist/bin/webapprt/webapprt.ini: $(TOPOBJDIR)/webapprt/webapprt.ini
+
+$(TOPOBJDIR)/toolkit/xre/platform.ini: $(TOPOBJDIR)/config/buildid
 
 # The xpidl target in config/makefiles/xpidl requires the install manifest for
 # dist/idl to have been processed.

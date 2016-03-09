@@ -54,6 +54,7 @@
 #include "mozilla/AnimationComparator.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/ContentEvents.h"
+#include "mozilla/EffectSet.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
 #include "mozilla/EventStateManager.h"
@@ -543,6 +544,16 @@ void
 Element::GetClassList(nsISupports** aClassList)
 {
   NS_ADDREF(*aClassList = ClassList());
+}
+
+void
+Element::GetAttributeNames(nsTArray<nsString>& aResult)
+{
+  uint32_t count = mAttrsAndChildren.AttrCount();
+  for (uint32_t i = 0; i < count; ++i) {
+    const nsAttrName* name = mAttrsAndChildren.AttrNameAt(i);
+    name->GetQualifiedName(*aResult.AppendElement());
+  }
 }
 
 already_AddRefed<nsIHTMLCollection>
@@ -1222,9 +1233,11 @@ Element::GetAttributeNode(const nsAString& aName)
 already_AddRefed<Attr>
 Element::SetAttributeNode(Attr& aNewAttr, ErrorResult& aError)
 {
+  // XXXbz can we just remove this warning and the one in setAttributeNodeNS and
+  // alias setAttributeNode to setAttributeNodeNS?
   OwnerDoc()->WarnOnceAbout(nsIDocument::eSetAttributeNode);
 
-  return Attributes()->SetNamedItem(aNewAttr, aError);
+  return Attributes()->SetNamedItemNS(aNewAttr, aError);
 }
 
 already_AddRefed<Attr>
@@ -1880,20 +1893,20 @@ Element::GetSMILOverrideStyle()
   return slots->mSMILOverrideStyle;
 }
 
-css::StyleRule*
-Element::GetSMILOverrideStyleRule()
+css::Declaration*
+Element::GetSMILOverrideStyleDeclaration()
 {
   Element::nsDOMSlots *slots = GetExistingDOMSlots();
-  return slots ? slots->mSMILOverrideStyleRule.get() : nullptr;
+  return slots ? slots->mSMILOverrideStyleDeclaration.get() : nullptr;
 }
 
 nsresult
-Element::SetSMILOverrideStyleRule(css::StyleRule* aStyleRule,
-                                           bool aNotify)
+Element::SetSMILOverrideStyleDeclaration(css::Declaration* aDeclaration,
+                                         bool aNotify)
 {
   Element::nsDOMSlots *slots = DOMSlots();
 
-  slots->mSMILOverrideStyleRule = aStyleRule;
+  slots->mSMILOverrideStyleDeclaration = aDeclaration;
 
   if (aNotify) {
     nsIDocument* doc = GetComposedDoc();
@@ -1928,18 +1941,18 @@ Element::IsInteractiveHTMLContent(bool aIgnoreTabindex) const
   return false;
 }
 
-css::StyleRule*
-Element::GetInlineStyleRule()
+css::Declaration*
+Element::GetInlineStyleDeclaration()
 {
   return nullptr;
 }
 
 nsresult
-Element::SetInlineStyleRule(css::StyleRule* aStyleRule,
-                            const nsAString* aSerialized,
-                            bool aNotify)
+Element::SetInlineStyleDeclaration(css::Declaration* aDeclaration,
+                                   const nsAString* aSerialized,
+                                   bool aNotify)
 {
-  NS_NOTYETIMPLEMENTED("Element::SetInlineStyleRule");
+  NS_NOTYETIMPLEMENTED("Element::SetInlineStyleDeclaration");
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -3305,24 +3318,22 @@ Element::GetAnimations(nsTArray<RefPtr<Animation>>& aAnimations)
     doc->FlushPendingNotifications(Flush_Style);
   }
 
-  nsIAtom* properties[] = { nsGkAtoms::transitionsProperty,
-                            nsGkAtoms::animationsProperty };
-  for (size_t propIdx = 0; propIdx < MOZ_ARRAY_LENGTH(properties);
-       propIdx++) {
-    AnimationCollection* collection =
-      static_cast<AnimationCollection*>(
-        GetProperty(properties[propIdx]));
-    if (!collection) {
-      continue;
-    }
-    for (size_t animIdx = 0;
-         animIdx < collection->mAnimations.Length();
-         animIdx++) {
-      Animation* anim = collection->mAnimations[animIdx];
-      if (anim->IsRelevant()) {
-        aAnimations.AppendElement(anim);
-      }
-    }
+  EffectSet* effects = EffectSet::GetEffectSet(this,
+                         nsCSSPseudoElements::ePseudo_NotPseudoElement);
+  if (!effects) {
+    return;
+  }
+
+  for (KeyframeEffectReadOnly* effect : *effects) {
+    MOZ_ASSERT(effect && effect->GetAnimation(),
+               "Only effects associated with an animation should be "
+               "added to an element's effect set");
+    Animation* animation = effect->GetAnimation();
+
+    MOZ_ASSERT(animation->IsRelevant(),
+               "Only relevant animations should be added to an element's "
+               "effect set");
+    aAnimations.AppendElement(animation);
   }
 
   aAnimations.Sort(AnimationPtrComparator<RefPtr<Animation>>());
@@ -3607,11 +3618,11 @@ Element::FontSizeInflation()
 }
 
 net::ReferrerPolicy
-Element::GetReferrerPolicy()
+Element::GetReferrerPolicyAsEnum()
 {
   if (Preferences::GetBool("network.http.enablePerElementReferrer", false) &&
       IsHTMLElement()) {
-    const nsAttrValue* referrerValue = GetParsedAttr(nsGkAtoms::referrer);
+    const nsAttrValue* referrerValue = GetParsedAttr(nsGkAtoms::referrerpolicy);
     if (referrerValue && referrerValue->Type() == nsAttrValue::eEnum) {
       return net::ReferrerPolicy(referrerValue->GetEnumValue());
     }

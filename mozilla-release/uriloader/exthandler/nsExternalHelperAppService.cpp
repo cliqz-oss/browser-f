@@ -623,6 +623,7 @@ static nsExtraMimeTypeEntry extraMimeEntries [] =
   // app on Firefox OS depends on the "3gp" extension mapping to the
   // "video/3gpp" MIME type.
   { AUDIO_3GPP, "3gpp,3gp", "3GPP Audio" },
+  { AUDIO_3GPP2, "3g2", "3GPP2 Audio" },
 #endif
   { AUDIO_MIDI, "mid", "Standard MIDI Audio" }
 };
@@ -1016,7 +1017,9 @@ nsExternalHelperAppService::LoadURI(nsIURI *aURI,
     URIParams uri;
     SerializeURI(aURI, uri);
 
-    mozilla::dom::ContentChild::GetSingleton()->SendLoadURIExternal(uri);
+    nsCOMPtr<nsITabChild> tabChild(do_GetInterface(aWindowContext));
+    mozilla::dom::ContentChild::GetSingleton()->
+      SendLoadURIExternal(uri, static_cast<dom::TabChild*>(tabChild.get()));
     return NS_OK;
   }
 

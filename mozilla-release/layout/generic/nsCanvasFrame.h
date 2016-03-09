@@ -126,7 +126,7 @@ public:
                                 const nsRect&           aDirtyRect,
                                 const nsDisplayListSet& aLists) override;
 
-  void PaintFocus(nsRenderingContext& aRenderingContext, nsPoint aPt);
+  void PaintFocus(mozilla::gfx::DrawTarget* aRenderingContext, nsPoint aPt);
 
   // nsIScrollPositionListener
   virtual void ScrollPositionWillChange(nscoord aX, nscoord aY) override;
@@ -239,7 +239,11 @@ public:
   nsDisplayCanvasBackgroundImage(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
                                  uint32_t aLayer, const nsStyleBackground* aBg)
     : nsDisplayBackgroundImage(aBuilder, aFrame, aLayer, aBg)
-  {}
+  {
+    if (ShouldFixToViewport(aBuilder)) {
+      mAnimatedGeometryRoot = aBuilder->FindAnimatedGeometryRootFor(this);
+    }
+  }
 
   virtual void Paint(nsDisplayListBuilder* aBuilder, nsRenderingContext* aCtx) override;
 

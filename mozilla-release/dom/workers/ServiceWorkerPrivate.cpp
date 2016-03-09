@@ -61,6 +61,7 @@ NS_IMPL_ISUPPORTS0(KeepAliveToken)
 ServiceWorkerPrivate::ServiceWorkerPrivate(ServiceWorkerInfo* aInfo)
   : mInfo(aInfo)
   , mIsPushWorker(false)
+  , mDebuggerCount(0)
   , mTokenCount(0)
 {
   AssertIsOnMainThread();
@@ -211,46 +212,26 @@ public:
 
 NS_IMPL_ISUPPORTS0(KeepAliveHandler)
 
-class SoftUpdateRequest : public nsRunnable
+class RegistrationUpdateRunnable : public nsRunnable
 {
-protected:
   nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo> mRegistration;
+  const bool mNeedTimeCheck;
+
 public:
-  explicit SoftUpdateRequest(nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo>& aRegistration)
+  RegistrationUpdateRunnable(nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo>& aRegistration,
+                             bool aNeedTimeCheck)
     : mRegistration(aRegistration)
+    , mNeedTimeCheck(aNeedTimeCheck)
   {
-    MOZ_ASSERT(aRegistration);
   }
 
-  NS_IMETHOD Run()
+  NS_IMETHOD
+  Run() override
   {
-    AssertIsOnMainThread();
-
-    RefPtr<ServiceWorkerManager> swm = ServiceWorkerManager::GetInstance();
-    MOZ_ASSERT(swm);
-
-    OriginAttributes attrs =
-      mozilla::BasePrincipal::Cast(mRegistration->mPrincipal)->OriginAttributesRef();
-
-    swm->PropagateSoftUpdate(attrs,
-                             NS_ConvertUTF8toUTF16(mRegistration->mScope));
-    return NS_OK;
-  }
-};
-
-class CheckLastUpdateTimeRequest final : public SoftUpdateRequest
-{
-public:
-  explicit CheckLastUpdateTimeRequest(
-    nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo>& aRegistration)
-    : SoftUpdateRequest(aRegistration)
-  {}
-
-  NS_IMETHOD Run()
-  {
-    AssertIsOnMainThread();
-    if (mRegistration->IsLastUpdateCheckTimeOverOneDay()) {
-      SoftUpdateRequest::Run();
+    if (mNeedTimeCheck) {
+      mRegistration->MaybeScheduleTimeCheckAndUpdate();
+    } else {
+      mRegistration->MaybeScheduleUpdate();
     }
     return NS_OK;
   }
@@ -334,9 +315,9 @@ public:
   void
   PostRun(JSContext* aCx, WorkerPrivate* aWorkerPrivate, bool aRunResult)
   {
-    nsCOMPtr<nsIRunnable> runnable = new CheckLastUpdateTimeRequest(mRegistration);
-
-    MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable.forget())));
+    nsCOMPtr<nsIRunnable> runnable =
+      new RegistrationUpdateRunnable(mRegistration, true /* time check */);
+    NS_DispatchToMainThread(runnable.forget());
   }
 };
 
@@ -1015,6 +996,7 @@ class FetchEventRunnable : public ExtendableFunctionalEventWorkerRunnable
   nsTArray<nsCString> mHeaderValues;
   nsCString mSpec;
   nsCString mMethod;
+  nsString mClientId;
   bool mIsReload;
   DebugOnly<bool> mIsHttpChannel;
   RequestMode mRequestMode;
@@ -1031,12 +1013,13 @@ public:
                      // later on.
                      const nsACString& aScriptSpec,
                      nsMainThreadPtrHandle<ServiceWorkerRegistrationInfo>& aRegistration,
-                     UniquePtr<ServiceWorkerClientInfo>&& aClientInfo,
+                     const nsAString& aDocumentId,
                      bool aIsReload)
     : ExtendableFunctionalEventWorkerRunnable(
         aWorkerPrivate, aKeepAliveToken, aRegistration)
     , mInterceptedChannel(aChannel)
     , mScriptSpec(aScriptSpec)
+    , mClientId(aDocumentId)
     , mIsReload(aIsReload)
     , mIsHttpChannel(false)
     , mRequestMode(RequestMode::No_cors)
@@ -1111,15 +1094,7 @@ public:
       internalChannel->GetRedirectMode(&redirectMode);
       mRequestRedirect = static_cast<RequestRedirect>(redirectMode);
 
-      if (loadFlags & nsIRequest::LOAD_ANONYMOUS) {
-        mRequestCredentials = RequestCredentials::Omit;
-      } else {
-        bool includeCrossOrigin;
-        internalChannel->GetCorsIncludeCredentials(&includeCrossOrigin);
-        if (includeCrossOrigin) {
-          mRequestCredentials = RequestCredentials::Include;
-        }
-      }
+      mRequestCredentials = InternalRequest::MapChannelToRequestCredentials(channel);
 
       rv = httpChannel->VisitNonDefaultRequestHeaders(this);
       NS_ENSURE_SUCCESS(rv, rv);
@@ -1260,6 +1235,7 @@ private:
     init.mRequest.Value() = request;
     init.mBubbles = false;
     init.mCancelable = true;
+    init.mClientId = mClientId;
     init.mIsReload = mIsReload;
     RefPtr<FetchEvent> event =
       FetchEvent::Constructor(globalObj, NS_LITERAL_STRING("fetch"), init, result);
@@ -1277,14 +1253,19 @@ private:
       nsCOMPtr<nsIRunnable> runnable;
       if (event->DefaultPrevented(aCx)) {
         event->ReportCanceled();
-        runnable = new CancelChannelRunnable(mInterceptedChannel,
-                                             NS_ERROR_INTERCEPTION_FAILED);
       } else if (event->GetInternalNSEvent()->mFlags.mExceptionHasBeenRisen) {
         // Exception logged via the WorkerPrivate ErrorReporter
-        runnable = new CancelChannelRunnable(mInterceptedChannel,
-                                             NS_ERROR_INTERCEPTION_FAILED);
       } else {
         runnable = new ResumeRequest(mInterceptedChannel);
+      }
+
+      if (!runnable) {
+        nsCOMPtr<nsIRunnable> updateRunnable =
+          new RegistrationUpdateRunnable(mRegistration, false /* time check */);
+        NS_DispatchToMainThread(runnable.forget());
+
+        runnable = new CancelChannelRunnable(mInterceptedChannel,
+                                             NS_ERROR_INTERCEPTION_FAILED);
       }
 
       MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable)));
@@ -1297,12 +1278,6 @@ private:
       waitUntilPromise->AppendNativeHandler(keepAliveHandler);
     }
 
-    // 9.8.22 If request is a non-subresource request, then: Invoke Soft Update algorithm
-    if (internalReq->IsNavigationRequest()) {
-      nsCOMPtr<nsIRunnable> runnable= new SoftUpdateRequest(mRegistration);
-
-      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(runnable.forget())));
-    }
     return true;
   }
 
@@ -1360,7 +1335,7 @@ NS_IMPL_ISUPPORTS_INHERITED(FetchEventRunnable, WorkerRunnable, nsIHttpHeaderVis
 nsresult
 ServiceWorkerPrivate::SendFetchEvent(nsIInterceptedChannel* aChannel,
                                      nsILoadGroup* aLoadGroup,
-                                     UniquePtr<ServiceWorkerClientInfo>&& aClientInfo,
+                                     const nsAString& aDocumentId,
                                      bool aIsReload)
 {
   AssertIsOnMainThread();
@@ -1392,7 +1367,7 @@ ServiceWorkerPrivate::SendFetchEvent(nsIInterceptedChannel* aChannel,
   RefPtr<FetchEventRunnable> r =
     new FetchEventRunnable(mWorkerPrivate, mKeepAliveToken, handle,
                            mInfo->ScriptSpec(), regInfo,
-                           Move(aClientInfo), aIsReload);
+                           aDocumentId, aIsReload);
   rv = r->Init();
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
@@ -1429,7 +1404,7 @@ ServiceWorkerPrivate::SpawnWorkerIfNeeded(WakeUpReason aWhy,
 
   if (mWorkerPrivate) {
     mWorkerPrivate->UpdateOverridenLoadGroup(aLoadGroup);
-    ResetIdleTimeout(aWhy);
+    RenewKeepAliveToken(aWhy);
 
     return NS_OK;
   }
@@ -1509,7 +1484,7 @@ ServiceWorkerPrivate::SpawnWorkerIfNeeded(WakeUpReason aWhy,
   }
 
   mIsPushWorker = false;
-  ResetIdleTimeout(aWhy);
+  RenewKeepAliveToken(aWhy);
 
   return NS_OK;
 }
@@ -1575,7 +1550,7 @@ void
 ServiceWorkerPrivate::NoteStoppedControllingDocuments()
 {
   AssertIsOnMainThread();
-  if (mIsPushWorker) {
+  if (mIsPushWorker || mDebuggerCount) {
     return;
   }
 
@@ -1603,6 +1578,68 @@ ServiceWorkerPrivate::Activated()
       NS_WARNING("Failed to dispatch pending functional event!");
     }
   }
+}
+
+nsresult
+ServiceWorkerPrivate::GetDebugger(nsIWorkerDebugger** aResult)
+{
+  AssertIsOnMainThread();
+  MOZ_ASSERT(aResult);
+
+  if (!mDebuggerCount) {
+    return NS_OK;
+  }
+
+  MOZ_ASSERT(mWorkerPrivate);
+
+  nsCOMPtr<nsIWorkerDebugger> debugger = do_QueryInterface(mWorkerPrivate->Debugger());
+  debugger.forget(aResult);
+
+  return NS_OK;
+}
+
+nsresult
+ServiceWorkerPrivate::AttachDebugger()
+{
+  AssertIsOnMainThread();
+
+  // When the first debugger attaches to a worker, we spawn a worker if needed,
+  // and cancel the idle timeout. The idle timeout should not be reset until
+  // the last debugger detached from the worker.
+  if (!mDebuggerCount) {
+    nsresult rv = SpawnWorkerIfNeeded(AttachEvent, nullptr);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    mIdleWorkerTimer->Cancel();
+  }
+
+  ++mDebuggerCount;
+
+  return NS_OK;
+}
+
+nsresult
+ServiceWorkerPrivate::DetachDebugger()
+{
+  AssertIsOnMainThread();
+
+  if (!mDebuggerCount) {
+    return NS_ERROR_UNEXPECTED;
+  }
+
+  --mDebuggerCount;
+
+  // When the last debugger detaches from a worker, we either reset the idle
+  // timeout, or terminate the worker if there are no more active tokens.
+  if (!mDebuggerCount) {
+    if (mTokenCount) {
+      ResetIdleTimeout();
+    } else {
+      TerminateWorker();
+    }
+  }
+
+  return NS_OK;
 }
 
 /* static */ void
@@ -1648,24 +1685,36 @@ ServiceWorkerPrivate::TerminateWorkerCallback(nsITimer* aTimer, void *aPrivate)
 }
 
 void
-ServiceWorkerPrivate::ResetIdleTimeout(WakeUpReason aWhy)
+ServiceWorkerPrivate::RenewKeepAliveToken(WakeUpReason aWhy)
 {
-  // We should have an active worker if we're reseting the idle timeout
+  // We should have an active worker if we're renewing the keep alive token.
   MOZ_ASSERT(mWorkerPrivate);
 
   if (aWhy == PushEvent || aWhy == PushSubscriptionChangeEvent) {
     mIsPushWorker = true;
   }
 
+  // If there is at least one debugger attached to the worker, the idle worker
+  // timeout was canceled when the first debugger attached to the worker. It
+  // should not be reset until the last debugger detaches from the worker.
+  if (!mDebuggerCount) {
+    ResetIdleTimeout();
+  }
+
+  if (!mKeepAliveToken) {
+    mKeepAliveToken = new KeepAliveToken(this);
+  }
+}
+
+void
+ServiceWorkerPrivate::ResetIdleTimeout()
+{
   uint32_t timeout = Preferences::GetInt("dom.serviceWorkers.idle_timeout");
   DebugOnly<nsresult> rv =
     mIdleWorkerTimer->InitWithFuncCallback(ServiceWorkerPrivate::NoteIdleWorkerCallback,
                                            this, timeout,
                                            nsITimer::TYPE_ONE_SHOT);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
-  if (!mKeepAliveToken) {
-    mKeepAliveToken = new KeepAliveToken(this);
-  }
 }
 
 void

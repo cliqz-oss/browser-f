@@ -36,8 +36,9 @@ public:
   DecoderNeedsConversion(const TrackInfo& aConfig) const override;
 
   bool
-  SupportsMimeType(const nsACString& aMimeType) override;
+  SupportsMimeType(const nsACString& aMimeType) const override;
 
+  // Main thread only.
   static void Init();
 
   static const Maybe<nsCString> PreferredGMP(const nsACString& aMimeType);
@@ -45,6 +46,8 @@ public:
   static bool SupportsMimeType(const nsACString& aMimeType,
                                const Maybe<nsCString>& aGMP);
 
+  // Main thread only.
+  static void UpdateUsableCodecs();
 };
 
 } // namespace mozilla

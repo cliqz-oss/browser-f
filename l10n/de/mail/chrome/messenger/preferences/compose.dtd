@@ -26,6 +26,8 @@
 <!ENTITY bgColor.accesskey                    "H">
 <!ENTITY restoreHTMLDefaults.label            "Standard wiederherstellen">
 <!ENTITY restoreHTMLDefaults.accesskey        "w">
+<!ENTITY enterKeyCreatesNewParagraph.label    "Eingabetaste erzeugt neuen Absatz, falls Formatierung &quot;Absatz&quot; verwendet wird">
+<!ENTITY enterKeyCreatesNewParagraph.accesskey "E">
 
 <!ENTITY spellCheck.label                     "Rechtschreibprüfung vor dem Senden">
 <!ENTITY spellCheck.accesskey                 "R">

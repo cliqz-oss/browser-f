@@ -25,7 +25,7 @@ function run_test() {
 }
 
 add_task(function* async_init() {
-  let commitPromise = promiseAfterCommit()
+  let commitPromise = promiseAfterCache()
   yield asyncInit();
 
   let engines = Services.search.getEngines();
@@ -67,6 +67,7 @@ add_task(function* sync_init() {
   do_check_neq(engine, null);
 
   yield reInitPromise;
+  yield promiseAfterCache();
 });
 
 add_task(function* invalid_engine() {
@@ -79,7 +80,6 @@ add_task(function* invalid_engine() {
   let url = "data:application/json,{\"interval\": 31536000, \"settings\": {\"searchDefault\": \"hidden\", \"visibleDefaultEngines\": [\"hidden\", \"bogus\"]}}";
   Services.prefs.getDefaultBranch(BROWSER_SEARCH_PREF).setCharPref(kUrlPref, url);
 
-  let commitPromise = promiseAfterCommit();
   yield asyncReInit();
 
   let engines = Services.search.getEngines();

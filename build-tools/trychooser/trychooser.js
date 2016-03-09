@@ -98,6 +98,15 @@ $(document).ready(function() {
         }
     });
 
+    //
+    $.getJSON('https://hg.mozilla.org/mozilla-central/raw-file/tip/testing/talos/talos.json',
+              function(data) {
+                  Object.keys(data.suites).forEach(function(suiteName) {
+                      var suite = data.suites[suiteName];
+                      $('input[value=' + suiteName + ']').parent().attr(
+                          'title', suite.tests.join(' '));
+                  });
+              });
     // Force initial update
     $('.all-selector:checked').change();
     $('.none-selector:checked').change();
@@ -153,6 +162,10 @@ function setresult() {
         var tryopt = $(this).attr('try-section');
         var arg = '-' + tryopt + ' ';
         var names = [];
+        if ($(this).find(':checked').length == 0) {
+          // If nothing checked, ensure none-selector is checked.
+          $(this).find('.none-selector').prop('checked', true);
+        }
         if ($(this).find('.none-selector:checked').length > 0) {
             names = ['none'];
         } else if ($(this).find('.all-selector:checked').length > 0) {
@@ -201,12 +214,17 @@ function setresult() {
         args.push('--rebuild-talos 5');
     }
 
-    var tag = $('.tags').val();
+    var tag = $('#tags').val();
     if (tag) {
         args.push('--tag ' + tag);
     }
 
-    var rebuilds = parseInt($('.rebuilds').val(), 10);
+    var setenv = $('#setenv').val();
+    if (setenv) {
+        args.push('--setenv ' + setenv);
+    }
+
+    var rebuilds = parseInt($('#rebuilds').val(), 10);
     if (rebuilds) {
         args.push('--rebuild ' + rebuilds);
     }
@@ -226,6 +244,13 @@ function setresult() {
         incomplete = true;
     } else {
         $('#platforms-none').removeClass('attention');
+    }
+
+    if (value.match(/mochitest-browser-screenshots/) && !value.match(/MOZSCREENSHOTS_SETS=./)) {
+        $('#setenv').addClass('attention');
+        incomplete = true;
+    } else {
+        $('#setenv').removeClass('attention');
     }
 
     if (incomplete) {

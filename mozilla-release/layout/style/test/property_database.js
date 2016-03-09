@@ -627,6 +627,74 @@ var unbalancedGradientAndElementValues = [
 if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
   // Extend gradient lists with valid/invalid webkit-prefixed expressions:
   validGradientAndElementValues.push(
+    // 2008 GRADIENTS: -webkit-gradient()
+    // ----------------------------------
+    // linear w/ no color stops (valid) and a variety of position values:
+    "-webkit-gradient(linear, 1 2, 3 4)",
+    "-webkit-gradient(linear,1 2,3 4)", // (no extra space)
+    "-webkit-gradient(linear  ,  1   2  ,  3   4  )", // (lots of extra space)
+    "-webkit-gradient(linear, 1 10% , 0% 4)", // percentages
+    "-webkit-gradient(linear, +1.0 -2%, +5.3% -0)", // (+/- & decimals are valid)
+    "-webkit-gradient(linear, left top, right bottom)", // keywords
+    "-webkit-gradient(linear, right center, center top)",
+    "-webkit-gradient(linear, center center, center center)",
+    "-webkit-gradient(linear, center 5%, 30 top)", // keywords mixed w/ nums
+
+    // linear w/ just 1 color stop:
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, to(lime))",
+    // * testing the various allowable stop values (<number> & <percent>):
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(-0, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(-30, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(+9999, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(-.1, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0%, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(100%, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(9999%, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(-.5%, lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(+0%, lime))",
+    // * testing the various color values:
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, transparent))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, rgb(1,2,3)))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, #00ff00))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, #00f))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, hsla(240, 30%, 50%, 0.9)))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, rgba(255, 230, 10, 0.5)))",
+
+    // linear w/ multiple color stops:
+    // * using from()/to() -- note that out-of-order is OK:
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime), from(blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, to(lime),   to(blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime), to(blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, to(lime),   from(blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime), to(blue), from(purple))",
+    // * using color-stop():
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, lime), color-stop(30%, blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0, lime), color-stop(30%, blue), color-stop(100%, purple))",
+    // * using color-stop() intermixed with from()/to() functions:
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime), color-stop(30%, blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(30%, blue), to(lime))",
+    // * overshooting endpoints (0 & 1.0)
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(-30%, lime), color-stop(.4, blue), color-stop(1.5, purple))",
+    // * repeating a stop position (valid)
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(30%, lime), color-stop(30%, blue))",
+    // * stops out of order (valid)
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(70%, lime), color-stop(20%, blue), color-stop(40%, purple))",
+
+    // radial w/ no color stops (valid) and a several different radius values:
+    "-webkit-gradient(radial, 1 2, 8, 3 4, 9)",
+    "-webkit-gradient(radial, 1 2, -1.5, center center, +99999.9999)",
+
+    // radial w/ color stops
+    // (mostly leaning on more-robust 'linear' tests above; just testing a few
+    // examples w/ radial as a sanity-check):
+    "-webkit-gradient(radial, 1 2, 8, 3 4, 9, from(lime))",
+    "-webkit-gradient(radial, 1 2, 8, 3 4, 9, to(blue))",
+    "-webkit-gradient(radial, 1 2, 8, 3 4, 9, color-stop(0.5, #00f), color-stop(0.8, rgba(100, 200, 0, 0.5)))",
+
+    // 2011 GRADIENTS: -webkit-linear-gradient(), -webkit-radial -gradient()
+    // ---------------------------------------------------------------------
     // Basic linear-gradient syntax (valid when prefixed or unprefixed):
     "-webkit-linear-gradient(red, green, blue)",
 
@@ -677,6 +745,99 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
   );
 
   invalidGradientAndElementValues.push(
+    // 2008 GRADIENTS: -webkit-gradient()
+    // https://www.webkit.org/blog/175/introducing-css-gradients/
+    // ----------------------------------
+    // Mostly-empty expressions (missing most required pieces):
+    "-webkit-gradient()",
+    "-webkit-gradient( )",
+    "-webkit-gradient(,)",
+    "-webkit-gradient(bogus)",
+    "-webkit-gradient(linear)",
+    "-webkit-gradient(linear,)",
+    "-webkit-gradient(,linear)",
+    "-webkit-gradient(radial)",
+    "-webkit-gradient(radial,)",
+
+    // linear w/ partial/missing <point> expression(s)
+    "-webkit-gradient(linear, 1)", // Incomplete <point>
+    "-webkit-gradient(linear, left)", // Incomplete <point>
+    "-webkit-gradient(linear, center)", // Incomplete <point>
+    "-webkit-gradient(linear, top)", // Incomplete <point>
+    "-webkit-gradient(linear, 5%)", // Incomplete <point>
+    "-webkit-gradient(linear, 1 2)", // Missing 2nd <point>
+    "-webkit-gradient(linear, 1, 3)", // 2 incomplete <point>s
+    "-webkit-gradient(linear, 1, 3 4)", // Incomplete 1st <point>
+    "-webkit-gradient(linear, 1 2, 3)", // Incomplete 2nd <point>
+    "-webkit-gradient(linear, 1 2, 3, 4)", // Comma inside <point>
+    "-webkit-gradient(linear, 1, 2, 3 4)", // Comma inside <point>
+    "-webkit-gradient(linear, 1, 2, 3, 4)", // Comma inside <point>
+
+    // linear w/ invalid units in <point> expression
+    "-webkit-gradient(linear, 1px 2, 3 4)",
+    "-webkit-gradient(linear, 1 2, 3 4px)",
+    "-webkit-gradient(linear, 1px 2px, 3px 4px)",
+    "-webkit-gradient(linear, calc(1) 2, 3 4)",
+    "-webkit-gradient(linear, 1 2em, 3 4)",
+
+    // linear w/ <radius> (only valid for radial)
+    "-webkit-gradient(linear, 1 2, 8, 3 4, 9)",
+
+    // linear w/ out-of-order position keywords in <point> expression
+    // (horizontal keyword is supposed to come first, for "x" coord)
+    "-webkit-gradient(linear, 0 0, top right)",
+    "-webkit-gradient(linear, bottom center, 0 0)",
+    "-webkit-gradient(linear, top bottom, 0 0)",
+    "-webkit-gradient(linear, bottom top, 0 0)",
+    "-webkit-gradient(linear, bottom top, 0 0)",
+
+    // linear w/ trailing comma (which implies missing color-stops):
+    "-webkit-gradient(linear, 1 2, 3 4,)",
+
+    // linear w/ invalid color values:
+    "-webkit-gradient(linear, 1 2, 3 4, from(invalidcolorname))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(inherit))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(initial))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(currentColor))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(00ff00))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(##00ff00))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(#00fff))", // wrong num hex digits
+    "-webkit-gradient(linear, 1 2, 3 4, from(xyz(0,0,0)))", // bogus color func
+    "-webkit-gradient(linear, 1 2, 3 4, from(rgb(100, 100.5, 30)))", // fraction
+
+    // linear w/ color stops that have comma issues
+    "-webkit-gradient(linear, 1 2, 3 4 from(lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime,))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime),)",
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime) to(blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(lime),, to(blue))",
+    "-webkit-gradient(linear, 1 2, 3 4, from(rbg(0, 0, 0,)))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0 lime))",
+    "-webkit-gradient(linear, 1 2, 3 4, color-stop(0,, lime))",
+
+    // radial w/ broken <point>/radius expression(s)
+    "-webkit-gradient(radial, 1)", // Incomplete <point>
+    "-webkit-gradient(radial, 1 2)", // Missing radius + 2nd <point>
+    "-webkit-gradient(radial, 1 2, 8)", // Missing 2nd <point>
+    "-webkit-gradient(radial, 1 2, 8, 3)", // Incomplete 2nd <point>
+    "-webkit-gradient(radial, 1 2, 8, 3 4)", // Missing 2nd radius
+    "-webkit-gradient(radial, 1 2, 3 4, 9)", // Missing 1st radius
+
+    // radial w/ incorrect units on radius (invalid; expecting <number>)
+    "-webkit-gradient(radial, 1 2, 8%,      3 4, 9)",
+    "-webkit-gradient(radial, 1 2, 8px,     3 4, 9)",
+    "-webkit-gradient(radial, 1 2, calc(8), 3 4, 9)",
+    "-webkit-gradient(radial, 1 2, 8em,     3 4, 9)",
+    "-webkit-gradient(radial, 1 2, top,     3 4, 9)",
+
+    // radial w/ trailing comma (which implies missing color-stops):
+    "-webkit-gradient(linear, 1 2, 8, 3 4, 9,)",
+
+    // radial w/ invalid color value (mostly leaning on 'linear' test above):
+    "-webkit-gradient(radial, 1 2, 8, 3 4, 9, from(invalidcolorname))",
+
+    // 2011 GRADIENTS: -webkit-linear-gradient(), -webkit-radial -gradient()
+    // ---------------------------------------------------------------------
     // Syntax that's invalid for all types of gradients:
     // * empty gradient expressions:
     "-webkit-linear-gradient()",
@@ -2568,7 +2729,7 @@ var gCSSProperties = {
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "inline" ],
     /* XXX none will really mess with other properties */
-    prerequisites: { "float": "none", "position": "static" },
+    prerequisites: { "float": "none", "position": "static", "contain": "none" },
     other_values: [
       "block",
       "flex",
@@ -2585,6 +2746,11 @@ var gCSSProperties = {
       "table-column",
       "table-cell",
       "table-caption",
+      "ruby",
+      "ruby-base",
+      "ruby-base-container",
+      "ruby-text",
+      "ruby-text-container",
       "none"
     ],
     invalid_values: []
@@ -3226,7 +3392,7 @@ var gCSSProperties = {
     domProp: "overflow",
     inherited: false,
     type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
-    prerequisites: { "display": "block" },
+    prerequisites: { "display": "block", "contain": "none" },
     subproperties: [ "overflow-x", "overflow-y" ],
     initial_values: [ "visible" ],
     other_values: [ "auto", "scroll", "hidden", "-moz-hidden-unscrollable", "-moz-scrollbars-none" ],
@@ -3236,7 +3402,7 @@ var gCSSProperties = {
     domProp: "overflowX",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    prerequisites: { "display": "block", "overflow-y": "visible" },
+    prerequisites: { "display": "block", "overflow-y": "visible", "contain": "none" },
     initial_values: [ "visible" ],
     other_values: [ "auto", "scroll", "hidden", "-moz-hidden-unscrollable" ],
     invalid_values: []
@@ -3245,7 +3411,7 @@ var gCSSProperties = {
     domProp: "overflowY",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    prerequisites: { "display": "block", "overflow-x": "visible" },
+    prerequisites: { "display": "block", "overflow-x": "visible", "contain": "none" },
     initial_values: [ "visible" ],
     other_values: [ "auto", "scroll", "hidden", "-moz-hidden-unscrollable" ],
     invalid_values: []
@@ -3390,6 +3556,27 @@ var gCSSProperties = {
     invalid_values: [],
     quirks_values: { "5": "5px" },
   },
+  "ruby-align": {
+    domProp: "rubyAlign",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "space-around" ],
+    other_values: [ "start", "center", "space-between" ],
+    invalid_values: [
+      "end", "1", "10px", "50%", "start center"
+    ]
+  },
+  "ruby-position": {
+    domProp: "rubyPosition",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "over" ],
+    other_values: [ "under" ],
+    invalid_values: [
+      "left", "right", "auto", "none", "not_a_position",
+      "over left", "right under", "0", "100px", "50%"
+    ]
+  },
   "table-layout": {
     domProp: "tableLayout",
     inherited: false,
@@ -3530,7 +3717,7 @@ var gCSSProperties = {
     type: CSS_TYPE_TRUE_SHORTHAND,
     subproperties: [ "transition-property", "transition-duration", "transition-timing-function", "transition-delay" ],
     initial_values: [ "all 0s ease 0s", "all", "0s", "0s 0s", "ease" ],
-    other_values: [ "all 0s cubic-bezier(0.25, 0.1, 0.25, 1.0) 0s", "width 1s linear 2s", "width 1s 2s linear", "width linear 1s 2s", "linear width 1s 2s", "linear 1s width 2s", "linear 1s 2s width", "1s width linear 2s", "1s width 2s linear", "1s 2s width linear", "1s linear width 2s", "1s linear 2s width", "1s 2s linear width", "width linear 1s", "width 1s linear", "linear width 1s", "linear 1s width", "1s width linear", "1s linear width", "1s 2s width", "1s width 2s", "width 1s 2s", "1s 2s linear", "1s linear 2s", "linear 1s 2s", "width 1s", "1s width", "linear 1s", "1s linear", "1s 2s", "2s 1s", "width", "linear", "1s", "height", "2s", "ease-in-out", "2s ease-in", "opacity linear", "ease-out 2s", "2s color, 1s width, 500ms height linear, 1s opacity 4s cubic-bezier(0.0, 0.1, 1.0, 1.0)", "1s \\32width linear 2s", "1s -width linear 2s", "1s -\\32width linear 2s", "1s \\32 0width linear 2s", "1s -\\32 0width linear 2s", "1s \\2width linear 2s", "1s -\\2width linear 2s", "2s, 1s width", "1s width, 2s", "2s all, 1s width", "1s width, 2s all", "2s all, 1s width", "2s width, 1s all" ],
+    other_values: [ "all 0s cubic-bezier(0.25, 0.1, 0.25, 1.0) 0s", "width 1s linear 2s", "width 1s 2s linear", "width linear 1s 2s", "linear width 1s 2s", "linear 1s width 2s", "linear 1s 2s width", "1s width linear 2s", "1s width 2s linear", "1s 2s width linear", "1s linear width 2s", "1s linear 2s width", "1s 2s linear width", "width linear 1s", "width 1s linear", "linear width 1s", "linear 1s width", "1s width linear", "1s linear width", "1s 2s width", "1s width 2s", "width 1s 2s", "1s 2s linear", "1s linear 2s", "linear 1s 2s", "width 1s", "1s width", "linear 1s", "1s linear", "1s 2s", "2s 1s", "width", "linear", "1s", "height", "2s", "ease-in-out", "2s ease-in", "opacity linear", "ease-out 2s", "2s color, 1s width, 500ms height linear, 1s opacity 4s cubic-bezier(0.0, 0.1, 1.0, 1.0)", "1s \\32width linear 2s", "1s -width linear 2s", "1s -\\32width linear 2s", "1s \\32 0width linear 2s", "1s -\\32 0width linear 2s", "1s \\2width linear 2s", "1s -\\2width linear 2s", "2s, 1s width", "1s width, 2s", "2s all, 1s width", "1s width, 2s all", "2s all, 1s width", "2s width, 1s all", "3s --my-color" ],
     invalid_values: [ "1s width, 2s none", "2s none, 1s width", "2s inherit", "inherit 2s", "2s width, 1s inherit", "2s inherit, 1s width", "2s initial", "1s width,,2s color", "1s width, ,2s color", "bounce 1s cubic-bezier(0, rubbish) 2s", "bounce 1s steps(rubbish) 2s" ]
   },
   "transition-delay": {
@@ -3554,7 +3741,7 @@ var gCSSProperties = {
     inherited: false,
     type: CSS_TYPE_LONGHAND,
     initial_values: [ "all" ],
-    other_values: [ "none", "left", "top", "color", "width, height, opacity", "foobar", "auto", "\\32width", "-width", "-\\32width", "\\32 0width", "-\\32 0width", "\\2width", "-\\2width", "all, all", "all, color", "color, all" ],
+    other_values: [ "none", "left", "top", "color", "width, height, opacity", "foobar", "auto", "\\32width", "-width", "-\\32width", "\\32 0width", "-\\32 0width", "\\2width", "-\\2width", "all, all", "all, color", "color, all", "--my-color" ],
     invalid_values: [ "none, none", "color, none", "none, color", "inherit, color", "color, inherit", "initial, color", "color, initial", "none, color", "color, none" ]
   },
   "transition-timing-function": {
@@ -3737,10 +3924,11 @@ var gCSSProperties = {
     initial_values: [ "normal", "0", "0px", "-0em",
       "calc(-0px)", "calc(0em)"
     ],
-    other_values: [ "1em", "2px", "-3px",
+    other_values: [ "1em", "2px", "-3px", "0%", "50%", "-120%",
       "calc(1em)", "calc(1em + 3px)",
       "calc(15px / 2)", "calc(15px/2)",
-      "calc(-2em)"
+      "calc(-2em)", "calc(0% + 0px)",
+      "calc(-10%/2 - 1em)"
     ],
     invalid_values: [],
     quirks_values: { "5": "5px" },
@@ -4044,32 +4232,82 @@ var gCSSProperties = {
     domProp: "alignContent",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    initial_values: [ "stretch" ],
-    other_values: [
-      "flex-start",
-      "flex-end",
-      "center",
-      "space-between",
-      "space-around"
-    ],
-    invalid_values: [ "abc", "30px", "0", "auto" ]
+    initial_values: [ "auto" ],
+    other_values: [ "start", "end", "flex-start", "flex-end", "center", "left",
+                    "right", "space-between", "space-around", "space-evenly",
+                    "baseline", "last-baseline", "stretch", "start safe",
+                    "true end", "true end stretch", "end safe space-evenly" ],
+    invalid_values: [ "none", "5", "self-end", "safe", "auto true", "true safe",
+                      "safe baseline", "baseline true", "baseline end", "end auto",
+                      "safe end true start", "safe end true", "auto safe start",
+                      "true end start", "end start safe", "space-between true",
+                      "stretch safe" ]
   },
   "align-items": {
     domProp: "alignItems",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    initial_values: [ "stretch" ],
-    other_values: [ "flex-start", "flex-end", "center", "baseline" ],
-    invalid_values: [ "space-between", "abc", "30px" ]
+    initial_values: [ "auto", "start" ],
+    // Can't test 'left'/'right' here since that computes to 'start' for blocks.
+    other_values: [ "end", "flex-start", "flex-end", "self-start", "self-end",
+                    "center", "stretch", "baseline", "true left",
+                    "center true", "safe right", "center safe" ],
+    invalid_values: [ "space-between", "abc", "5%", "legacy", "legacy end",
+                      "end legacy", "true", "true baseline", "auto true",
+                      "safe left true", "safe stretch", "end end" ]
   },
   "align-self": {
     domProp: "alignSelf",
     inherited: false,
     type: CSS_TYPE_LONGHAND,
-    // (Assuming defaults on the parent, 'auto' will compute to 'stretch'.)
-    initial_values: [ "auto", "stretch" ],
-    other_values: [ "flex-start", "flex-end", "center", "baseline" ],
-    invalid_values: [ "space-between", "abc", "30px" ]
+    // (Assuming defaults on the parent, 'auto' will compute to 'start'.)
+    initial_values: [ "auto", "start" ],
+    other_values: [ "flex-start", "flex-end", "center", "stretch",
+                    "baseline", "last-baseline", "right safe", "true center",
+                    "self-start", "self-end safe" ],
+    invalid_values: [ "space-between", "abc", "30px", "stretch safe", "safe" ]
+  },
+  "justify-content": {
+    domProp: "justifyContent",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto" ],
+    other_values: [ "start", "end", "flex-start", "flex-end", "center", "left",
+                    "right", "space-between", "space-around", "space-evenly",
+                    "baseline", "last-baseline", "stretch", "start safe",
+                    "true end", "true end stretch", "end safe space-evenly" ],
+    invalid_values: [ "30px", "5%", "self-end", "safe", "auto true", "true safe",
+                      "safe baseline", "baseline true", "baseline end", "auto end",
+                      "safe end true start", "safe end true", "auto safe start",
+                      "true end start", "end start safe", "space-around true",
+                      "safe stretch"]
+  },
+  "justify-items": {
+    domProp: "justifyItems",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto", "start" ],
+    other_values: [ "end", "flex-start", "flex-end", "self-start", "self-end",
+                    "center", "left", "right", "baseline", "stretch",
+                    "legacy left", "right legacy", "legacy center",
+                    "true right", "left true", "safe right", "center safe" ],
+    invalid_values: [ "space-between", "abc", "30px", "legacy", "legacy start",
+                      "end legacy", "legacy baseline", "legacy legacy", "true",
+                      "safe legacy left", "legacy left safe", "legacy safe left",
+                      "safe left legacy", "legacy left legacy", "baseline true",
+                      "safe true", "safe left true", "safe stretch" ]
+  },
+  "justify-self": {
+    domProp: "justifySelf",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "auto", "start" ],
+    other_values: [ "end", "flex-start", "flex-end", "self-start",
+                    "self-end", "center", "left", "right", "baseline",
+                    "last-baseline", "stretch", "left true", "true right",
+                    "safe right", "center safe" ],
+    invalid_values: [ "space-between", "abc", "30px", "none",
+                      "legacy left", "right legacy" ]
   },
   "flex": {
     domProp: "flex",
@@ -4258,14 +4496,6 @@ var gCSSProperties = {
     initial_values: [ "0" ],
     other_values: [ "1", "99999", "-1", "-50" ],
     invalid_values: [ "0px", "1.0", "1.", "1%", "0.2", "3em", "stretch" ]
-  },
-  "justify-content": {
-    domProp: "justifyContent",
-    inherited: false,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "flex-start" ],
-    other_values: [ "flex-end", "center", "space-between", "space-around" ],
-    invalid_values: [ "baseline", "stretch", "30px", "5%" ]
   },
 
   // Aliases
@@ -5627,39 +5857,10 @@ if (IsCSSPropertyPrefEnabled("layout.css.filters.enabled")) {
   };
 }
 
-if (IsCSSPropertyPrefEnabled("layout.css.ruby.enabled")) {
-  // Using unshift to add these values at the beginning.
-  // Adding them to the end would trigger bug 1038905. The "unshift" should be
-  // changed to a "push" when this bug is resolved.
-  gCSSProperties["display"].other_values.unshift("ruby",
-                                                 "ruby-base",
-                                                 "ruby-base-container",
-                                                 "ruby-text",
-                                                 "ruby-text-container");
-  gCSSProperties["ruby-align"] = {
-    domProp: "rubyAlign",
-    inherited: true,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "space-around" ],
-    other_values: [ "start", "center", "space-between" ],
-    invalid_values: [
-      "end", "1", "10px", "50%", "start center"
-    ]
-  };
-  gCSSProperties["ruby-position"] = {
-    domProp: "rubyPosition",
-    inherited: true,
-    type: CSS_TYPE_LONGHAND,
-    initial_values: [ "over" ],
-    other_values: [ "under" ],
-    invalid_values: [
-      "left", "right", "auto", "none", "not_a_position",
-      "over left", "right under", "0", "100px", "50%"
-    ]
-  };
-}
-
 if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
+  var isGridTemplateSubgridValueEnabled =
+    IsCSSPropertyPrefEnabled("layout.css.grid-template-subgrid-value.enabled");
+
   gCSSProperties["display"].other_values.push("grid", "inline-grid");
   gCSSProperties["grid-auto-flow"] = {
     domProp: "gridAutoFlow",
@@ -5754,15 +5955,7 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
       "[a] 2.5fr [z] Repeat(4, [a] 20px [] auto [b c]) [d]",
       "[a] 2.5fr [z] Repeat(4, [a] 20px [] auto) [d]",
       "[a] 2.5fr [z] Repeat(4, 20px [b c] auto [b c]) [d]",
-      "[a] 2.5fr [z] Repeat(4, 20px auto) [d]",
-
-      // See https://bugzilla.mozilla.org/show_bug.cgi?id=981300
-      "[none auto subgrid min-content max-content foo] 40px",
-
-      "subgrid",
-      "subgrid [] [foo bar]",
-      "subgrid repeat(1, [])",
-      "subgrid Repeat(4, [a] [b c] [] [d])",
+      "[a] 2.5fr [z] Repeat(4, 20px auto) [d]"
     ],
     invalid_values: [
       "",
@@ -5799,6 +5992,23 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
       "repeat(2.5, 20px)",
       "repeat(2, (foo))",
       "repeat(2, foo)",
+      "40px calc(0px + rubbish)"
+    ],
+    unbalanced_values: [
+      "(foo] 40px",
+    ]
+  };
+  if (isGridTemplateSubgridValueEnabled) {
+    gCSSProperties["grid-template-columns"].other_values.push(
+      // See https://bugzilla.mozilla.org/show_bug.cgi?id=981300
+      "[none auto subgrid min-content max-content foo] 40px",
+
+      "subgrid",
+      "subgrid [] [foo bar]",
+      "subgrid repeat(1, [])",
+      "subgrid Repeat(4, [a] [b c] [] [d])"
+    );
+    gCSSProperties["grid-template-columns"].invalid_values.push(
       "subgrid (foo) 40px",
       "subgrid (foo 40px)",
       "(foo) subgrid",
@@ -5811,13 +6021,9 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
       "subgrid repeat(1)",
       "subgrid repeat(1, )",
       "subgrid repeat(2, (40px))",
-      "subgrid repeat(2, foo)",
-      "40px calc(0px + rubbish)",
-    ],
-    unbalanced_values: [
-      "(foo] 40px",
-    ]
-  };
+      "subgrid repeat(2, foo)"
+    );
+  }
   gCSSProperties["grid-template-rows"] = {
     domProp: "gridTemplateRows",
     inherited: false,
@@ -5867,18 +6073,11 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
       "none / none",
     ],
     other_values: [
-      "subgrid",
       // <'grid-template-columns'> / <'grid-template-rows'>
       "40px / 100px",
       "[foo] 40px [bar] / [baz] 100px [fizz]",
       " none/100px",
       "40px/none",
-      "subgrid/40px 20px",
-      "subgrid [foo] [] [bar baz] / 40px 20px",
-      "40px 20px/subgrid",
-      "40px 20px/subgrid  [foo] [] repeat(3, [a] [b]) [bar baz]",
-      "subgrid/subgrid",
-      "subgrid [foo] [] [bar baz]/subgrid [foo] [] [bar baz]",
       // [ <track-list> / ]? [ <line-names>? <string> <track-size>? <line-names>? ]+
       "'fizz'",
       "[bar] 'fizz'",
@@ -5890,15 +6089,28 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
       "[foo] 40px / [bar] 'fizz' 100px [buzz] \n [a] '.' 200px [b]",
     ],
     invalid_values: [
-      "subgrid []",
-      "subgrid [] / 'fizz'",
-      "subgrid / 'fizz'",
       "[foo] [bar] 40px / 100px",
       "40px / [fizz] [buzz] 100px",
       "40px / [fizz] [buzz] 'foo'",
       "none / 'foo'"
     ]
   };
+  if (isGridTemplateSubgridValueEnabled) {
+    gCSSProperties["grid-template"].other_values.push(
+      "subgrid",
+      "subgrid/40px 20px",
+      "subgrid [foo] [] [bar baz] / 40px 20px",
+      "40px 20px/subgrid",
+      "40px 20px/subgrid  [foo] [] repeat(3, [a] [b]) [bar baz]",
+      "subgrid/subgrid",
+      "subgrid [foo] [] [bar baz]/subgrid [foo] [] [bar baz]"
+    );
+    gCSSProperties["grid-template"].invalid_values.push(
+      "subgrid []",
+      "subgrid [] / 'fizz'",
+      "subgrid / 'fizz'"
+    );
+  }
 
   gCSSProperties["grid"] = {
     domProp: "grid",
@@ -5911,6 +6123,8 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
       "grid-auto-flow",
       "grid-auto-columns",
       "grid-auto-rows",
+      "grid-column-gap",
+      "grid-row-gap",
     ],
     initial_values: [
       "none",
@@ -6089,6 +6303,33 @@ if (IsCSSPropertyPrefEnabled("layout.css.grid.enabled")) {
     ],
     other_values: gridAreaOtherValues,
     invalid_values: gridAreaInvalidValues
+  };
+
+  gCSSProperties["grid-column-gap"] = {
+    domProp: "gridColumnGap",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "0" ],
+    other_values: [ "2px", "1em", "calc(1px + 1em)" ],
+    invalid_values: [ "-1px", "2%", "auto", "none", "1px 1px", "calc(1%)" ],
+  };
+  gCSSProperties["grid-row-gap"] = {
+    domProp: "gridRowGap",
+    inherited: false,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "0" ],
+    other_values: [ "2px", "1em", "calc(1px + 1em)" ],
+    invalid_values: [ "-1px", "2%", "auto", "none", "1px 1px", "calc(1%)" ],
+  };
+  gCSSProperties["grid-gap"] = {
+    domProp: "gridGap",
+    inherited: false,
+    type: CSS_TYPE_TRUE_SHORTHAND,
+    subproperties: [ "grid-column-gap", "grid-row-gap" ],
+    initial_values: [ "0", "0 0" ],
+    other_values: [ "1ch 0", "1em 1px", "calc(1px + 1ch)" ],
+    invalid_values: [ "-1px", "1px -1px", "1px 1px 1px", "inherit 1px",
+                      "1px 1%", "1px auto" ]
   };
 }
 
@@ -6517,6 +6758,27 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
     alias_for: "transform-style",
     subproperties: [ "transform-style" ],
   };
+  gCSSProperties["-webkit-backface-visibility"] = {
+    domProp: "webkitBackfaceVisibility",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "backface-visibility",
+    subproperties: [ "backface-visibility" ],
+  };
+  gCSSProperties["-webkit-perspective"] = {
+    domProp: "webkitPerspective",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "perspective",
+    subproperties: [ "perspective" ],
+  };
+  gCSSProperties["-webkit-perspective-origin"] = {
+    domProp: "webkitPerspectiveOrigin",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "perspective-origin",
+    subproperties: [ "perspective-origin" ],
+  };
   gCSSProperties["-webkit-transition"] = {
     domProp: "webkitTransition",
     inherited: false,
@@ -6636,6 +6898,34 @@ if (IsCSSPropertyPrefEnabled("layout.css.prefixes.webkit")) {
     alias_for: "box-sizing",
     subproperties: [ "box-sizing" ],
   };
+  gCSSProperties["-webkit-box-flex"] = {
+    domProp: "webkitBoxFlex",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "flex-grow",
+    subproperties: [ "flex-grow" ],
+  };
+  gCSSProperties["-webkit-box-ordinal-group"] = {
+    domProp: "webkitBoxOrdinalGroup",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "order",
+    subproperties: [ "order" ],
+  };
+  gCSSProperties["-webkit-box-align"] = {
+    domProp: "webkitBoxAlign",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "align-items",
+    subproperties: [ "align-items" ],
+  };
+  gCSSProperties["-webkit-box-pack"] = {
+    domProp: "webkitBoxPack",
+    inherited: false,
+    type: CSS_TYPE_SHORTHAND_AND_LONGHAND,
+    alias_for: "justify-content",
+    subproperties: [ "justify-content" ],
+  };
   gCSSProperties["-webkit-user-select"] = {
     domProp: "webkitUserSelect",
     inherited: false,
@@ -6677,6 +6967,59 @@ if (IsCSSPropertyPrefEnabled("layout.css.unset-value.enabled")) {
   } else {
     gCSSProperties["text-align"].invalid_values.push("true left");
   }
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.float-logical-values.enabled")) {
+  gCSSProperties["float"].other_values.push("inline-start");
+  gCSSProperties["float"].other_values.push("inline-end");
+  gCSSProperties["clear"].other_values.push("inline-start");
+  gCSSProperties["clear"].other_values.push("inline-end");
+} else {
+  gCSSProperties["float"].invalid_values.push("inline-start");
+  gCSSProperties["float"].invalid_values.push("inline-end");
+  gCSSProperties["clear"].invalid_values.push("inline-start");
+  gCSSProperties["clear"].invalid_values.push("inline-end");
+}
+
+if (IsCSSPropertyPrefEnabled("layout.css.text-emphasis.enabled")) {
+  gCSSProperties["text-emphasis"] = {
+    domProp: "textEmphasis",
+    inherited: true,
+    type: CSS_TYPE_TRUE_SHORTHAND,
+    subproperties: [ "text-emphasis-style", "text-emphasis-color" ],
+    initial_values: [ "none currentColor", "currentColor none", "none", "currentColor" ],
+    other_values: [ "filled dot black", "#f00 circle open", "sesame filled rgba(0,0,255,0.5)", "red", "none black", "green none", "currentColor filled", "currentColor open" ],
+    invalid_values: [ "filled black dot", "filled filled red", "open open circle #000", "circle dot #f00", "rubbish" ]
+  };
+  gCSSProperties["text-emphasis-color"] = {
+    domProp: "textEmphasisColor",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    prerequisites: { "color": "black" },
+    initial_values: [ "currentColor", "-moz-use-text-color" ],
+    other_values: [ "red", "rgba(255,255,255,0.5)", "transparent" ],
+    invalid_values: [ "#0", "#00", "#0000", "#00000", "#0000000", "#00000000", "#000000000", "000000", "ff00ff", "rgb(255,xxx,255)" ]
+  };
+  gCSSProperties["text-emphasis-position"] = {
+    domProp: "textEmphasisPosition",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "over right", "right over" ],
+    other_values: [ "over left", "left over", "under left", "left under", "under right", "right under" ],
+    invalid_values: [ "over over", "left left", "over right left", "rubbish left", "over rubbish" ]
+  };
+  gCSSProperties["text-emphasis-style"] = {
+    domProp: "textEmphasisStyle",
+    inherited: true,
+    type: CSS_TYPE_LONGHAND,
+    initial_values: [ "none" ],
+    other_values: [ "filled", "open", "dot", "circle", "double-circle", "triangle", "sesame", "'#'",
+                    "filled dot", "filled circle", "filled double-circle", "filled triangle", "filled sesame",
+                    "dot filled", "circle filled", "double-circle filled", "triangle filled", "sesame filled",
+                    "dot open", "circle open", "double-circle open", "triangle open", "sesame open" ],
+    invalid_values: [ "rubbish", "dot rubbish", "rubbish dot", "open rubbish", "rubbish open", "open filled", "dot circle",
+                      "open '#'", "'#' filled", "dot '#'", "'#' circle", "1", "1 open", "open 1" ]
+  };
 }
 
 // Copy aliased properties' fields from their alias targets.

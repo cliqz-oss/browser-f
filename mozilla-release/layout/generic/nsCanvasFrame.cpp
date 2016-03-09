@@ -7,6 +7,7 @@
 
 #include "nsCanvasFrame.h"
 
+#include "AccessibleCaretEventHub.h"
 #include "gfxUtils.h"
 #include "nsContainerFrame.h"
 #include "nsCSSRendering.h"
@@ -172,6 +173,13 @@ nsCanvasFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
   // Only create a frame for mCustomContentContainer if it has some children.
   if (len == 0) {
     HideCustomContentContainer();
+  }
+
+  RefPtr<AccessibleCaretEventHub> eventHub =
+    PresContext()->GetPresShell()->GetAccessibleCaretEventHub();
+  if (eventHub) {
+    // AccessibleCaret will insert anonymous caret elements.
+    eventHub->Init();
   }
 
   return NS_OK;
@@ -455,7 +463,7 @@ public:
                      nsRenderingContext* aCtx) override
   {
     nsCanvasFrame* frame = static_cast<nsCanvasFrame*>(mFrame);
-    frame->PaintFocus(*aCtx, ToReferenceFrame());
+    frame->PaintFocus(aCtx->GetDrawTarget(), ToReferenceFrame());
   }
 
   NS_DISPLAY_DECL_NAME("CanvasFocus", TYPE_CANVAS_FOCUS)
@@ -562,7 +570,7 @@ nsCanvasFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 }
 
 void
-nsCanvasFrame::PaintFocus(nsRenderingContext& aRenderingContext, nsPoint aPt)
+nsCanvasFrame::PaintFocus(DrawTarget* aDrawTarget, nsPoint aPt)
 {
   nsRect focusRect(aPt, GetSize());
 
@@ -583,7 +591,7 @@ nsCanvasFrame::PaintFocus(nsRenderingContext& aRenderingContext, nsPoint aPt)
     return;
   }
 
-  nsCSSRendering::PaintFocus(PresContext(), aRenderingContext,
+  nsCSSRendering::PaintFocus(PresContext(), aDrawTarget,
                              focusRect, color->mColor);
 }
 

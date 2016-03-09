@@ -7,8 +7,10 @@
 #ifndef jscompartment_h
 #define jscompartment_h
 
+#include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Variant.h"
+#include "mozilla/XorShift128PlusRNG.h"
 
 #include "builtin/RegExp.h"
 #include "gc/Barrier.h"
@@ -149,10 +151,10 @@ typedef HashMap<CrossCompartmentKey, ReadBarrieredValue,
 //                  set.
 //
 // * PendingMetadata: This object has been allocated and is still pending its
-//                    metadata. This should never be the case in an allocation
-//                    path, as a constructor function was supposed to have set
-//                    the metadata of the previous object *before* allocating
-//                    another object.
+//                    metadata. This should never be the case when we begin an
+//                    allocation, as a constructor function was supposed to have
+//                    set the metadata of the previous object *before*
+//                    allocating another object.
 //
 // The js::AutoSetNewObjectMetadata RAII class provides an ergonomic way for
 // constructor functions to navigate state transitions, and its instances
@@ -274,8 +276,8 @@ struct JSCompartment
   public:
     bool                         isSelfHosting;
     bool                         marked;
-    bool                         warnedAboutNoSuchMethod;
     bool                         warnedAboutFlagsArgument;
+    bool                         warnedAboutExprClosure;
 
     // A null add-on ID means that the compartment is not associated with an
     // add-on.
@@ -592,12 +594,11 @@ struct JSCompartment
 
     js::DtoaCache dtoaCache;
 
-    /* Random number generator state, used by jsmath.cpp. */
-    uint64_t rngState;
+    // Random number generator for Math.random().
+    mozilla::Maybe<mozilla::non_crypto::XorShift128PlusRNG> randomNumberGenerator;
 
-    static size_t offsetOfRngState() {
-        return offsetof(JSCompartment, rngState);
-    }
+    // Initialize randomNumberGenerator if needed.
+    void ensureRandomNumberGenerator();
 
   private:
     JSCompartment* thisForCtor() { return this; }
@@ -680,11 +681,7 @@ struct JSCompartment
 
     // The code coverage can be enabled either for each compartment, with the
     // Debugger API, or for the entire runtime.
-    bool collectCoverage() const {
-        return debuggerObservesCoverage() ||
-               runtimeFromAnyThread()->profilingScripts ||
-               runtimeFromAnyThread()->lcovOutput.isEnabled();
-    }
+    bool collectCoverage() const;
     void clearScriptCounts();
 
     bool needsDelazificationForDebugger() const {
@@ -751,10 +748,10 @@ struct JSCompartment
         DeprecatedExpressionClosure = 3,    // Added in JS 1.8
         // NO LONGER USING 4
         // NO LONGER USING 5
-        DeprecatedNoSuchMethod = 6,         // JS 1.7+
+        // NO LONGER USING 6
         DeprecatedFlagsArgument = 7,        // JS 1.3 or older
         // NO LONGER USING 8
-        DeprecatedRestoredRegExpStatics = 9,// Unknown
+        // NO LONGER USING 9
         DeprecatedLanguageExtensionCount
     };
 

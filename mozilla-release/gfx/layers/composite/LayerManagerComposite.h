@@ -169,11 +169,20 @@ public:
   virtual const char* Name() const override { return ""; }
 
   /**
-   * Restricts the shadow visible region of layers that are covered with
-   * opaque content. aOpaqueRegion is the region already known to be covered
-   * with opaque content, in the post-transform coordinate space of aLayer.
+   * Post-processes layers before composition. This performs the following:
+   *
+   *   - Applies occlusion culling. This restricts the shadow visible region
+   *     of layers that are covered with opaque content.
+   *     |aOpaqueRegion| is the region already known to be covered with opaque
+   *     content, in the post-transform coordinate space of aLayer.
+   *
+   *   - Recomputes visible regions to account for async transforms.
+   *     Each layer accumulates into |aVisibleRegion| its post-transform
+   *     (including async transforms) visible region.
    */
-  void ApplyOcclusionCulling(Layer* aLayer, nsIntRegion& aOpaqueRegion);
+  void PostProcessLayers(Layer* aLayer,
+                         nsIntRegion& aOpaqueRegion,
+                         LayerIntRegion& aVisibleRegion);
 
   /**
    * RAII helper class to add a mask effect with the compositable from aMaskLayer
@@ -192,14 +201,6 @@ public:
     CompositableHost* mCompositable;
     bool mFailed;
   };
-
-  /**
-   * Creates a DrawTarget which is optimized for inter-operating with this
-   * layermanager.
-   */
-  virtual already_AddRefed<mozilla::gfx::DrawTarget>
-    CreateDrawTarget(const mozilla::gfx::IntSize& aSize,
-                     mozilla::gfx::SurfaceFormat aFormat) override;
 
   /**
    * Calculates the 'completeness' of the rendering that intersected with the
@@ -277,6 +278,11 @@ public:
   {
     aNotifications->AppendElements(Move(mImageCompositeNotifications));
   }
+
+  // Indicate that we need to composite even if nothing in our layers has
+  // changed, so that the widget can draw something different in its window
+  // overlay.
+  void SetWindowOverlayChanged() { mWindowOverlayChanged = true; }
 
 private:
   /** Region we're clipping our current drawing to. */
@@ -356,6 +362,8 @@ private:
   // Testing property. If hardware composer is supported, this will return
   // true if the last frame was deemed 'too complicated' to be rendered.
   bool mLastFrameMissedHWC;
+
+  bool mWindowOverlayChanged;
 };
 
 /**
@@ -433,7 +441,7 @@ public:
    *
    * They are analogous to the Layer interface.
    */
-  void SetShadowVisibleRegion(const nsIntRegion& aRegion)
+  void SetShadowVisibleRegion(const LayerIntRegion& aRegion)
   {
     mShadowVisibleRegion = aRegion;
   }
@@ -470,7 +478,7 @@ public:
   // These getters can be used anytime.
   float GetShadowOpacity() { return mShadowOpacity; }
   const Maybe<ParentLayerIntRect>& GetShadowClipRect() { return mShadowClipRect; }
-  const nsIntRegion& GetShadowVisibleRegion() { return mShadowVisibleRegion; }
+  const LayerIntRegion& GetShadowVisibleRegion() { return mShadowVisibleRegion; }
   const gfx::Matrix4x4& GetShadowTransform() { return mShadowTransform; }
   bool GetShadowTransformSetByAnimation() { return mShadowTransformSetByAnimation; }
   bool HasLayerBeenComposited() { return mLayerComposited; }
@@ -485,7 +493,7 @@ public:
 
 protected:
   gfx::Matrix4x4 mShadowTransform;
-  nsIntRegion mShadowVisibleRegion;
+  LayerIntRegion mShadowVisibleRegion;
   Maybe<ParentLayerIntRect> mShadowClipRect;
   LayerManagerComposite* mCompositeManager;
   RefPtr<Compositor> mCompositor;
@@ -560,9 +568,9 @@ RenderWithAllMasks(Layer* aLayer, Compositor* aCompositor,
   // into. The final mask gets rendered into the original render target.
 
   // Calculate the size of the intermediate surfaces.
-  gfx::Rect visibleRect(aLayer->GetEffectiveVisibleRegion().GetBounds());
+  gfx::Rect visibleRect(aLayer->GetEffectiveVisibleRegion().ToUnknownRegion().GetBounds());
   gfx::Matrix4x4 transform = aLayer->GetEffectiveTransform();
-  // TODO: Use RenderTargetIntRect and TransformTo<...> here
+  // TODO: Use RenderTargetIntRect and TransformBy here
   gfx::IntRect surfaceRect =
     RoundedOut(transform.TransformAndClipBounds(visibleRect, gfx::Rect(aClipRect)));
   if (surfaceRect.IsEmpty()) {

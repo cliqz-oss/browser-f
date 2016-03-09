@@ -7,7 +7,9 @@
 #ifndef mozilla_dom_bluetooth_BluetoothCommon_h
 #define mozilla_dom_bluetooth_BluetoothCommon_h
 
+#include <algorithm>
 #include "mozilla/Compiler.h"
+#include "mozilla/Endian.h"
 #include "mozilla/Observer.h"
 #include "nsAutoPtr.h"
 #include "nsPrintfCString.h"
@@ -242,6 +244,12 @@ extern bool gBluetoothDebugFlag;
 #define REQUEST_MEDIA_PLAYSTATUS_ID          "requestmediaplaystatus"
 
 /**
+ * When receiving an OBEX authenticate challenge request from a remote device,
+ * we'll dispatch an event.
+ */
+#define OBEX_PASSWORD_REQ_ID                 "obexpasswordreq"
+
+/**
  * When receiving a PBAP request from a remote device, we'll dispatch an event.
  */
 #define PULL_PHONEBOOK_REQ_ID                "pullphonebookreq"
@@ -255,7 +263,7 @@ extern bool gBluetoothDebugFlag;
 #define MAP_MESSAGES_LISTING_REQ_ID          "mapmessageslistingreq"
 #define MAP_GET_MESSAGE_REQ_ID               "mapgetmessagereq"
 #define MAP_SET_MESSAGE_STATUS_REQ_ID        "mapsetmessagestatusreq"
-#define MAP_PUSH_MESSAGE_REQ_ID              "mappushmessagereq"
+#define MAP_SEND_MESSAGE_REQ_ID              "mapsendmessagereq"
 #define MAP_FOLDER_LISTING_REQ_ID            "mapfolderlistingreq"
 #define MAP_MESSAGE_UPDATE_REQ_ID            "mapmessageupdatereq"
 
@@ -312,6 +320,7 @@ enum BluetoothStatus {
   STATUS_UNHANDLED,
   STATUS_AUTH_FAILURE,
   STATUS_RMT_DEV_DOWN,
+  STATUS_AUTH_REJECTED,
   NUM_STATUS
 };
 
@@ -448,6 +457,15 @@ struct BluetoothAddress {
     operator=(ANY);
   }
 
+  /**
+   * |IsCleared| returns true if the address doesn not contain a
+   * specific value (i.e., it contains ANY).
+   */
+  bool IsCleared() const
+  {
+    return operator==(ANY);
+  }
+
   /*
    * Getter and setter methods for the address parts. The figure
    * below illustrates the mapping to bytes; from LSB to MSB.
@@ -486,14 +504,12 @@ struct BluetoothAddress {
 
   uint16_t GetNAP() const
   {
-    return (static_cast<uint16_t>(mAddr[4])) |
-           (static_cast<uint16_t>(mAddr[5]) << 8);
+    return LittleEndian::readUint16(&mAddr[4]);
   }
 
   void SetNAP(uint16_t aNAP)
   {
-    mAddr[4] = aNAP;
-    mAddr[5] = aNAP >> 8;
+    LittleEndian::writeUint16(&mAddr[4], aNAP);
   }
 
 };
@@ -504,28 +520,179 @@ struct BluetoothConfigurationParameter {
   nsAutoArrayPtr<uint8_t> mValue;
 };
 
+/*
+ * Service classes and Profile Identifiers
+ *
+ * Supported Bluetooth services for v1 are listed as below.
+ *
+ * The value of each service class is defined in "AssignedNumbers/Service
+ * Discovery Protocol (SDP)/Service classes and Profile Identifiers" in the
+ * Bluetooth Core Specification.
+ */
+enum BluetoothServiceClass {
+  UNKNOWN          = 0x0000,
+  OBJECT_PUSH      = 0x1105,
+  HEADSET          = 0x1108,
+  A2DP_SINK        = 0x110b,
+  AVRCP_TARGET     = 0x110c,
+  A2DP             = 0x110d,
+  AVRCP            = 0x110e,
+  AVRCP_CONTROLLER = 0x110f,
+  HEADSET_AG       = 0x1112,
+  HANDSFREE        = 0x111e,
+  HANDSFREE_AG     = 0x111f,
+  HID              = 0x1124,
+  PBAP_PCE         = 0x112e,
+  PBAP_PSE         = 0x112f,
+  MAP_MAS          = 0x1132,
+  MAP_MNS          = 0x1133
+};
+
 struct BluetoothUuid {
+
   uint8_t mUuid[16];
 
-  bool operator==(const BluetoothUuid& aOther) const
+  BluetoothUuid()
+    : BluetoothUuid(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
+  { }
+
+  MOZ_IMPLICIT BluetoothUuid(const BluetoothUuid&) = default;
+
+  BluetoothUuid(uint8_t aUuid0, uint8_t aUuid1,
+                uint8_t aUuid2, uint8_t aUuid3,
+                uint8_t aUuid4, uint8_t aUuid5,
+                uint8_t aUuid6, uint8_t aUuid7,
+                uint8_t aUuid8, uint8_t aUuid9,
+                uint8_t aUuid10, uint8_t aUuid11,
+                uint8_t aUuid12, uint8_t aUuid13,
+                uint8_t aUuid14, uint8_t aUuid15)
   {
-    for (uint8_t i = 0; i < sizeof(mUuid); i++) {
-      if (mUuid[i] != aOther.mUuid[i]) {
-        return false;
-      }
-    }
-    return true;
+    mUuid[0] = aUuid0;
+    mUuid[1] = aUuid1;
+    mUuid[2] = aUuid2;
+    mUuid[3] = aUuid3;
+    mUuid[4] = aUuid4;
+    mUuid[5] = aUuid5;
+    mUuid[6] = aUuid6;
+    mUuid[7] = aUuid7;
+    mUuid[8] = aUuid8;
+    mUuid[9] = aUuid9;
+    mUuid[10] = aUuid10;
+    mUuid[11] = aUuid11;
+    mUuid[12] = aUuid12;
+    mUuid[13] = aUuid13;
+    mUuid[14] = aUuid14;
+    mUuid[15] = aUuid15;
   }
 
-  bool operator!=(const BluetoothUuid& aOther) const
+  explicit BluetoothUuid(uint32_t aUuid32)
   {
-    return !(*this == aOther);
+    SetUuid32(aUuid32);
+  }
+
+  explicit BluetoothUuid(uint16_t aUuid16)
+  {
+    SetUuid16(aUuid16);
+  }
+
+  explicit BluetoothUuid(BluetoothServiceClass aServiceClass)
+  {
+    SetUuid16(static_cast<uint16_t>(aServiceClass));
+  }
+
+  BluetoothUuid& operator=(const BluetoothUuid& aRhs) = default;
+
+  /**
+   * |Clear| assigns an invalid value (i.e., zero) to the UUID.
+   */
+  void Clear()
+  {
+    operator=(BluetoothUuid());
+  }
+
+  /**
+   * |IsCleared| returns true if the UUID contains a value of
+   * zero.
+   */
+  bool IsCleared() const
+  {
+    return operator==(BluetoothUuid());
+  }
+
+  bool operator==(const BluetoothUuid& aRhs) const
+  {
+    return std::equal(aRhs.mUuid,
+                      aRhs.mUuid + MOZ_ARRAY_LENGTH(aRhs.mUuid), mUuid);
+  }
+
+  bool operator!=(const BluetoothUuid& aRhs) const
+  {
+    return !operator==(aRhs);
+  }
+
+  /*
+   * Getter-setter methods for short UUIDS. The first 4 bytes in the
+   * UUID are represented by the short notation UUID32, and bytes 3
+   * and 4 (indices 2 and 3) are represented by UUID16. The rest of
+   * the UUID is filled with the SDP base UUID.
+   *
+   * Below are helpers for accessing these values.
+   */
+
+  void SetUuid32(uint32_t aUuid32)
+  {
+    BigEndian::writeUint32(&mUuid[0], aUuid32);
+    mUuid[4] = 0x00;
+    mUuid[5] = 0x00;
+    mUuid[6] = 0x10;
+    mUuid[7] = 0x00;
+    mUuid[8] = 0x80;
+    mUuid[9] = 0x00;
+    mUuid[10] = 0x00;
+    mUuid[11] = 0x80;
+    mUuid[12] = 0x5f;
+    mUuid[13] = 0x9b;
+    mUuid[14] = 0x34;
+    mUuid[15] = 0xfb;
+  }
+
+  uint32_t GetUuid32() const
+  {
+    return BigEndian::readUint32(&mUuid[0]);
+  }
+
+  void SetUuid16(uint16_t aUuid16)
+  {
+    SetUuid32(aUuid16); // MSB is 0x0000
+  }
+
+  uint16_t GetUuid16() const
+  {
+    return BigEndian::readUint16(&mUuid[2]);
   }
 };
 
 struct BluetoothPinCode {
   uint8_t mPinCode[16]; /* not \0-terminated */
   uint8_t mLength;
+
+  BluetoothPinCode()
+    : mLength(0)
+  {
+    std::fill(mPinCode, mPinCode + MOZ_ARRAY_LENGTH(mPinCode), 0);
+  }
+
+  bool operator==(const BluetoothPinCode& aRhs) const
+  {
+    MOZ_ASSERT(mLength <= MOZ_ARRAY_LENGTH(mPinCode));
+    return (mLength == aRhs.mLength) &&
+            std::equal(aRhs.mPinCode, aRhs.mPinCode + aRhs.mLength, mPinCode);
+  }
+
+  bool operator!=(const BluetoothPinCode& aRhs) const
+  {
+    return !operator==(aRhs);
+  }
 };
 
 struct BluetoothServiceName {

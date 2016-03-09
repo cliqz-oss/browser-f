@@ -677,6 +677,12 @@ def apply_and_push(localrepo, remote, changer, max_attempts=10,
 def share(source, dest, branch=None, revision=None):
     """Creates a new working directory in "dest" that shares history with
        "source" using Mercurial's share extension"""
+    if not os.path.exists(dest):
+        log.info("mkdir: %s" % str(dest))
+        try:
+            os.makedirs(dest)
+        except OSError:
+            log.error("Can't create directory %s!" % dest)
     run_cmd(['hg', 'share', '-U', source, dest])
     return update(dest, branch=branch, revision=revision)
 

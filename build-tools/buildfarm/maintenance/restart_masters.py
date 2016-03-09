@@ -19,6 +19,7 @@
 #    from that same bucket, and begin the restart process for that master
 
 import getpass
+import operator
 import os
 import requests
 import simplejson as json
@@ -35,12 +36,16 @@ log = logging.getLogger(__name__)
 buckets = {}
 running_buckets = {}
 completed_masters = {}
+problem_masters = {}
 master_ids = {}
 SLEEP_INTERVAL = 60
 username = "cltbld"
 slavealloc_api_url = "https://secure.pub.build.mozilla.org/slavealloc/api/masters"
-ldap_username = ""
-ldap_password = ""
+credentials = {
+    "ldap_username": "",
+    "ldap_password": "",
+    "cltbld_password": "",
+}
 
 def IgnorePolicy():
     def missing_host_key(self, *args):
@@ -78,7 +83,10 @@ class MasterConsole(ssh.SSHConsole):
         try:
             log.debug("Attempting to connect to %s as %s" % (self.fqdn, username))
             self.client.load_system_host_keys()
-            self.client.connect(hostname=self.fqdn, username=username, allow_agent=True)
+            if credentials["cltbld_password"] != "":
+                self.client.connect(hostname=self.fqdn, username=username, password=credentials["cltbld_password"], allow_agent=True)
+            else:
+                self.client.connect(hostname=self.fqdn, username=username, allow_agent=True)
             log.info("Connection as %s succeeded!", username)
             self.connected = True
         except AuthenticationException, e:
@@ -91,6 +99,9 @@ class MasterConsole(ssh.SSHConsole):
             from errno import errorcode
             log.debug("Socket Error (%s) - %s", errorcode[e[0]], e[1])
             raise e
+        if not self.connected:
+            log.info("Couldn't connect with any credentials.")
+            raise Exception
 
 def get_console(hostname):
     console = MasterConsole(hostname, None)
@@ -108,11 +119,17 @@ def stop_master(master):
     log.info("Stopping %s" % master['hostname'])
     cmd = "cd %s; source bin/activate; touch reconfig.lock; make stop" % master['basedir']
     console = get_console(master['hostname'])
-    rc, output = console.run_cmd(cmd)
-    if rc == 0:
-        log.info("%s stopped successfully." % master['hostname'])
-        return True
-    log.warning("Failed to stop %s, or never saw stop finish." % master['hostname'])
+    if console:
+        try:
+            rc, output = console.run_cmd(cmd)
+            if rc == 0:
+                log.info("%s stopped successfully." % master['hostname'])
+                return True
+            log.warning("Failed to stop %s, or never saw stop finish." % master['hostname'])
+        except ssh.RemoteCommandError:
+            log.warning("Caught exception while attempting stop_master.")
+    else:
+        log.error("Couldn't get console to %s" % master['hostname'])
     return False
 
 def parse_bash_env_var_from_string(match_string, line):
@@ -120,32 +137,40 @@ def parse_bash_env_var_from_string(match_string, line):
     key,value = line.split("=", 2)
     return value.strip(' \'\"')
 
-def get_ldap_creds(config_file=None):
-    ldap_username = ""
-    ldap_password = ""
+def get_credentials_from_config_file(config_file):
+    # LDAP username and LDAP password are required. If ssh keys are available
+    # (either locally or via agent), we can use them for cltbld access.
     if config_file and os.path.exists(config_file):
         with open(config_file, 'r') as f:
             for line in f:
                 if 'LDAP_USERNAME' in line:
-                    ldap_username = parse_bash_env_var_from_string('LDAP_USERNAME', line)
+                    credentials["ldap_username"] = parse_bash_env_var_from_string('LDAP_USERNAME', line)
                 elif 'LDAP_PASSWORD' in line:
-                    ldap_password = parse_bash_env_var_from_string('LDAP_PASSWORD', line)
+                    credentials["ldap_password"] = parse_bash_env_var_from_string('LDAP_PASSWORD', line)
+                elif 'CLTBLD_PASSWORD' in line:
+                    credentials["cltbld_password"] = parse_bash_env_var_from_string('CLTBLD_PASSWORD', line)
         f.closed
-        if not ldap_username or not ldap_password:
-            log.warn("Unable to parse LDAP credentials from config file: %s" % config_file)
-    if not ldap_username or not ldap_password:
-        ldap_username = raw_input("Enter LDAP username: ")
-        ldap_password = getpass.getpass(prompt='Enter LDAP password: ')
-    if not ldap_username:
-        log.error("ldap_username not set.")
-        return None
-    if not ldap_password:
-        log.error("ldap_password not set.")
-        return None
-    return ldap_username, ldap_password
+        if not credentials["ldap_username"] or not credentials["ldap_password"]:
+            log.error("Unable to parse LDAP credentials from config file: %s" % config_file)
+            return None
+    return True
 
-def get_master_ids(ldap_username, ldap_password):
-    r = requests.get(slavealloc_api_url, auth=(ldap_username,ldap_password))
+def get_credentials_from_user():
+    credentials["ldap_username"] = raw_input("Enter LDAP username: ")
+    credentials["ldap_password"] = getpass.getpass(prompt='Enter LDAP password: ')
+    credentials["cltbld_password"] = getpass.getpass(prompt='Enter cltbld password: ')
+
+def get_credentials(config_file=None):
+    if config_file:
+	get_credentials_from_config_file(config_file)
+    if credentials["ldap_username"] == '' or credentials["ldap_password"] == '':
+        get_credentials_from_user()
+    if credentials["ldap_username"] == '' or credentials["ldap_password"] == '':
+        return None
+    return True
+
+def get_master_ids():
+    r = requests.get(slavealloc_api_url, auth=(credentials["ldap_username"], credentials["ldap_password"]))
     if r.status_code != 200:
         log.error("Unable to retrieve masters from slavealloc. Check LDAP credentials.")
         return False
@@ -165,7 +190,7 @@ def http_post(post_url, error_msg):
 
 def http_put(put_url, put_data, error_msg):
     try:
-        r = requests.put(put_url, data=json.dumps(put_data), allow_redirects=False, auth=(ldap_username, ldap_password))
+        r = requests.put(put_url, data=json.dumps(put_data), allow_redirects=False, auth=(credentials["ldap_username"], credentials["ldap_password"]))
         if r.status_code == 200:
             return True
     except requests.RequestException:
@@ -202,14 +227,19 @@ def graceful_shutdown(master):
         log.info("Creating reconfig lockfile for master: %s" % master['hostname'])
         cmd = "cd %s; touch reconfig.lock" % master['basedir']
         console = get_console(master['hostname'])
-        rc, output = console.run_cmd(cmd)
-        if rc == 0:
-            log.info("Created lockfile on master: %s." % master['hostname'])
-            return True
-        log.warning("Error creating lockfile on master: %s" % master['hostname'])
-        return False
-    else:
-        return False
+        if console:
+            try:
+                rc, output = console.run_cmd(cmd)
+                if rc == 0:
+                    log.info("Created lockfile on master: %s." % master['hostname'])
+                    return True
+                log.warning("Error creating lockfile on master: %s" % master['hostname'])
+            except ssh.RemoteCommandError:
+                log.warning("Caught exception while attempting graceful_shutdown.")
+        else:
+            log.error("Couldn't get console to %s" % master['hostname'])
+
+    return False
 
 def check_shutdown_status(master):
     # Returns true when there is no matching master process.
@@ -218,14 +248,17 @@ def check_shutdown_status(master):
     log.info("Checking shutdown status of master: %s" % master['hostname'])
     cmd="ps auxww | grep python | grep start | grep %s" % master['master_dir']
     console = get_console(master['hostname'])
-    try:
-        rc, output = console.run_cmd(cmd)
-        if rc != 0:
-            log.info("No master process found on %s." % master['hostname'])
-            return True
-        log.info("Master process still exists on %s." % master['hostname'])
-    except ssh.RemoteCommandError:
-        log.warning("Caught exception while checking shutdown status. Will retry on next pass.")
+    if console:
+        try:
+            rc, output = console.run_cmd(cmd)
+            if rc != 0:
+                log.info("No master process found on %s." % master['hostname'])
+                return True
+            log.info("Master process still exists on %s." % master['hostname'])
+        except ssh.RemoteCommandError:
+            log.warning("Caught exception while checking shutdown status. Will retry on next pass.")
+    else:
+        log.error("Couldn't get console to %s" % master['hostname'])
     return False
 
 def restart_master(master):
@@ -233,36 +266,73 @@ def restart_master(master):
     log.info("Attempting to restart master: %s" % master['hostname'])
     cmd = "cd %s; source bin/activate; make start; rm -f reconfig.lock" % master['basedir']
     console = get_console(master['hostname'])
-    rc, output = console.run_cmd(cmd)
-    if rc == 0:
-        log.info("Master %s restarted successfully." % master['hostname'])
-        return True
-    log.warning("Restart of master %s failed, or never saw restart finish." % master['hostname'])
+    if console:
+        try:
+            rc, output = console.run_cmd(cmd)
+            if rc == 0:
+                log.info("Master %s restarted successfully." % master['hostname'])
+                return True
+            log.warning("Restart of master %s failed, or never saw restart finish." % master['hostname'])
+        except ssh.RemoteCommandError:
+            log.warning("Caught exception while attempting to restart_master.")
+    else:
+        log.error("Couldn't get console to %s" % master['hostname'])
     return False
 
+def display_remaining():
+    if not buckets:
+        return
+    log.info("")
+    log.info("Masters not processed yet")
+    log.info("{:<30} {}".format("bucket","master URL"))
+    log.info("{:<30} {}".format("======","=========="))
+    for bucket in sorted(buckets.iterkeys()):
+        for master in sorted(buckets[bucket], key=operator.itemgetter('hostname')):
+            if master['role'] == 'scheduler':
+	        log.info("{:<30} {}".format(bucket, master['hostname']))
+            else:
+	        log.info("{:<30} http://{}:{}".format(bucket, master['hostname'], master['http_port']))
+
 def display_running():
+    if not running_buckets:
+        return
     log.info("")
     log.info("Masters still being processed")
     log.info("{:<30} {}".format("bucket","master URL"))
     log.info("{:<30} {}".format("======","=========="))
-    for key in sorted(running_buckets.iterkeys()):
-        if running_buckets[key]['role'] == 'scheduler':
-            log.info("{:<30} {}".format(key, running_buckets[key]['hostname']))
+    for bucket in sorted(running_buckets.iterkeys()):
+        if running_buckets[bucket]['role'] == 'scheduler':
+            log.info("{:<30} {}".format(bucket, running_buckets[bucket]['hostname']))
         else:
-            log.info("{:<30} http://{}:{}".format(key, running_buckets[key]['hostname'], running_buckets[key]['http_port']))
+            log.info("{:<30} http://{}:{}".format(bucket, running_buckets[bucket]['hostname'], running_buckets[bucket]['http_port']))
 
 def display_completed():
+    if not completed_masters:
+        return
     log.info("")
     log.info("Masters restarted (or at least attempted)")
     log.info("{:<30} {}".format("bucket","master URL"))
     log.info("{:<30} {}".format("======","=========="))
-    for key in sorted(completed_masters.iterkeys()):
-        for master in completed_masters[key]:
+    for bucket in sorted(completed_masters.iterkeys()):
+        for master in sorted(completed_masters[bucket], key=operator.itemgetter('hostname')):
             if master['role'] == 'scheduler':
-                log.info("{:<30} {}".format(key, master['hostname']))
+                log.info("{:<30} {}".format(bucket, master['hostname']))
             else:
-                log.info("{:<30} http://{}:{}".format(key, master['hostname'], master['http_port']))
+                log.info("{:<30} http://{}:{}".format(bucket, master['hostname'], master['http_port']))
 
+def display_problems():
+    if not problem_masters:
+        return
+    log.info("")
+    log.info("Masters that hit problems")
+    log.info("{:<30} {} {}".format("bucket","master URL","issue"))
+    log.info("{:<30} {} {}".format("======","==========","====="))
+    for bucket in sorted(problem_masters.iterkeys()):
+        for master in sorted(problem_masters[bucket], key=operator.itemgetter('hostname')):
+	    if master['role'] == 'scheduler':
+	        log.info("{:<30} {} {}".format(bucket, master['hostname'], master['issue']))
+	    else:
+	        log.info("{:<30} http://{}:{} {}".format(bucket, master['hostname'], master['http_port'], master['issue']))
 
 if __name__ == '__main__':
     import argparse
@@ -299,13 +369,12 @@ if __name__ == '__main__':
         log.error("Masters JSON file ('%s') does not exist. Exiting..." % args.masters_json)
         sys.exit(1)
 
-    ldap_username, ldap_password = get_ldap_creds(args.config_file)
-    if not ldap_username or not ldap_password:
+    if not get_credentials(config_file=args.config_file):
         sys.exit(2)
 
     # Getting the master IDs allown us to valid the LDAP credentials while also
     # getting a list of master IDS we can use when disabling masters in slavealloc.
-    if not get_master_ids(ldap_username, ldap_password):
+    if not get_master_ids():
         sys.exit(3)
 
     master_list = []
@@ -328,6 +397,7 @@ if __name__ == '__main__':
     while masters_remain():
         # Refill our running buckets.
         # If we add a new master, we need to kick off the graceful shutdown too.
+        keys_processed = []
         for key in buckets:
             if key in running_buckets:
                 continue
@@ -339,10 +409,21 @@ if __name__ == '__main__':
                     else:
                         if disable_master(running_buckets[key]):
                             log.info("Disabled %s in slavealloc." % running_buckets[key]['hostname'])
+                        else:
+                            running_buckets[key]['issue'] = "Unable to disable in slavealloc"
+                            if key not in problem_masters:
+                                problem_masters[key] = []
+                            problem_masters[key].append(running_buckets[key].copy())
+                            del running_buckets[key]
                         if graceful_shutdown(running_buckets[key]):
                             log.info("Initiated graceful_shutdown of %s." % running_buckets[key]['hostname'])
+                        else:
+                            running_buckets[key]['issue'] = "Unable to initiate graceful_shutdown"
+                            if key not in problem_masters:
+                                problem_masters[key] = []
+                            problem_masters[key].append(running_buckets[key].copy())
+                            del running_buckets[key]
 
-        keys_processed = []
         for key in running_buckets:
             if check_shutdown_status(running_buckets[key]):
                 if not restart_master(running_buckets[key]):
@@ -351,6 +432,13 @@ if __name__ == '__main__':
                 if running_buckets[key]['role'] != "scheduler":
                     if enable_master(running_buckets[key]):
                         log.info("Re-enabled %s in slavealloc" % running_buckets[key]['hostname'])
+                    else:
+                        running_buckets[key]['issue'] = "Unable to re-enable in slavealloc"
+                        if key not in problem_masters:
+                            problem_masters[key] = []
+                        problem_masters[key].append(running_buckets[key].copy())
+                        del running_buckets[key]
+                        continue
                 if key not in completed_masters:
                     completed_masters[key] = []
                 completed_masters[key].append(running_buckets[key].copy())
@@ -361,9 +449,12 @@ if __name__ == '__main__':
 
         if masters_remain():
             display_completed()
+            display_problems()
             display_running()
+            display_remaining()
             log.info("Sleeping for %ds" % SLEEP_INTERVAL)
             time.sleep(SLEEP_INTERVAL)
 
     log.info("All masters processed. Exiting")
     display_completed()
+    display_problems()

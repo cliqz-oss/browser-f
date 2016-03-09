@@ -104,6 +104,14 @@ GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp)
     if (!JS_SetProperty(cx, info, "debug", value))
         return false;
 
+#ifdef RELEASE_BUILD
+    value = BooleanValue(true);
+#else
+    value = BooleanValue(false);
+#endif
+    if (!JS_SetProperty(cx, info, "release", value))
+        return false;
+
 #ifdef JS_HAS_CTYPES
     value = BooleanValue(true);
 #else
@@ -887,7 +895,9 @@ SetSavedStacksRNGState(JSContext* cx, unsigned argc, Value* vp)
     if (!ToInt32(cx, args[0], &seed))
         return false;
 
-    cx->compartment()->savedStacks().setRNGState(seed, seed * 33);
+    // Either one or the other of the seed arguments must be non-zero;
+    // make this true no matter what value 'seed' has.
+    cx->compartment()->savedStacks().setRNGState(seed, (seed + 1) * 33);
     return true;
 }
 
@@ -1158,7 +1168,6 @@ OOMTest(JSContext* cx, unsigned argc, Value* vp)
             OOM_maxAllocations = UINT32_MAX;
 
             MOZ_ASSERT_IF(ok, !cx->isExceptionPending());
-            MOZ_ASSERT_IF(!ok, cx->isExceptionPending());
 
             // Note that it is possible that the function throws an exception
             // unconnected to OOM, in which case we ignore it. More correct
@@ -1481,7 +1490,7 @@ EnableOsiPointRegisterChecks(JSContext*, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 #ifdef CHECK_OSIPOINT_REGISTERS
-    jit::js_JitOptions.checkOsiPointRegisters = true;
+    jit::JitOptions.checkOsiPointRegisters = true;
 #endif
     args.rval().setUndefined();
     return true;
@@ -1775,7 +1784,7 @@ static bool
 SetIonCheckGraphCoherency(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    jit::js_JitOptions.checkGraphConsistency = ToBoolean(args.get(0));
+    jit::JitOptions.checkGraphConsistency = ToBoolean(args.get(0));
     args.rval().setUndefined();
     return true;
 }
@@ -2123,6 +2132,48 @@ ObjectAddress(JSContext* cx, unsigned argc, Value* vp)
     JS_snprintf(buffer, sizeof(buffer), "%p", ptr);
 
     JSString* str = JS_NewStringCopyZ(cx, buffer);
+    if (!str)
+        return false;
+
+    args.rval().setString(str);
+#endif
+
+    return true;
+}
+
+static bool
+SharedAddress(JSContext* cx, unsigned argc, Value* vp)
+{
+    CallArgs args = CallArgsFromVp(argc, vp);
+    if (args.length() != 1) {
+        RootedObject callee(cx, &args.callee());
+        ReportUsageError(cx, callee, "Wrong number of arguments");
+        return false;
+    }
+    if (!args[0].isObject()) {
+        RootedObject callee(cx, &args.callee());
+        ReportUsageError(cx, callee, "Expected object");
+        return false;
+    }
+
+#ifdef JS_MORE_DETERMINISTIC
+    args.rval().setString(cx->staticStrings().getUint(0));
+#else
+    RootedObject obj(cx, CheckedUnwrap(&args[0].toObject()));
+    if (!obj) {
+        JS_ReportError(cx, "Permission denied to access object");
+        return false;
+    }
+    if (!obj->is<SharedArrayBufferObject>()) {
+        JS_ReportError(cx, "Argument must be a SharedArrayBuffer");
+        return false;
+    }
+    char buffer[64];
+    uint32_t nchar =
+        JS_snprintf(buffer, sizeof(buffer), "%p",
+                    obj->as<SharedArrayBufferObject>().dataPointerShared().unwrap(/*safeish*/));
+
+    JSString* str = JS_NewStringCopyN(cx, buffer, nchar);
     if (!str)
         return false;
 
@@ -2979,28 +3030,34 @@ GetLcovInfo(JSContext* cx, unsigned argc, Value* vp)
     return true;
 }
 
-static bool
-EnableNoSuchMethod(JSContext* cx, unsigned argc, Value* vp)
-{
-    CallArgs args = CallArgsFromVp(argc, vp);
-    cx->runtime()->options().setNoSuchMethod(true);
-    args.rval().setUndefined();
-    return true;
-}
-
 #ifdef DEBUG
 static bool
 SetRNGState(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    if (!args.requireAtLeast(cx, "SetRNGState", 1))
+    if (!args.requireAtLeast(cx, "SetRNGState", 2))
         return false;
 
-    double seed;
-    if (!ToNumber(cx, args[0], &seed))
+    double d0;
+    if (!ToNumber(cx, args[0], &d0))
         return false;
 
-    cx->compartment()->rngState = static_cast<uint64_t>(seed) & RNG_MASK;
+    double d1;
+    if (!ToNumber(cx, args[1], &d1))
+        return false;
+
+    uint64_t seed0 = static_cast<uint64_t>(d0);
+    uint64_t seed1 = static_cast<uint64_t>(d1);
+
+    if (seed0 == 0 && seed1 == 0) {
+        JS_ReportError(cx, "RNG requires non-zero seed");
+        return false;
+    }
+
+    cx->compartment()->ensureRandomNumberGenerator();
+    cx->compartment()->randomNumberGenerator.ref().setState(seed0, seed1);
+
+    args.rval().setUndefined();
     return true;
 }
 #endif
@@ -3456,6 +3513,10 @@ gc::ZealModeHelpText),
 "objectAddress(obj)",
 "  Return the current address of the object. For debugging only--this\n"
 "  address may change during a moving GC."),
+
+    JS_FN_HELP("sharedAddress", SharedAddress, 1, 0,
+"sharedAddress(obj)",
+"  Return the address of the shared storage of a SharedArrayBuffer."),
 #endif
 
     JS_FN_HELP("evalReturningScope", EvalReturningScope, 1, 0,
@@ -3548,13 +3609,9 @@ gc::ZealModeHelpText),
 "  Generate LCOV tracefile for the given compartment.  If no global are provided then\n"
 "  the current global is used as the default one.\n"),
 
-    JS_FN_HELP("enableNoSuchMethod", EnableNoSuchMethod, 0, 0,
-"enableNoSuchMethod()",
-"  Enables the deprecated, non-standard __noSuchMethod__ feature.\n"),
-
 #ifdef DEBUG
-    JS_FN_HELP("setRNGState", SetRNGState, 1, 0,
-"setRNGState(seed)",
+    JS_FN_HELP("setRNGState", SetRNGState, 2, 0,
+"setRNGState(seed0, seed1)",
 "  Set this compartment's RNG state.\n"),
 #endif
 

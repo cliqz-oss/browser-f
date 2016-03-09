@@ -79,15 +79,6 @@ var ecmaGlobals =
     "RegExp",
     "Set",
     {name: "SharedArrayBuffer", nightly: true},
-    {name: "SharedInt8Array", nightly: true},
-    {name: "SharedUint8Array", nightly: true},
-    {name: "SharedUint8ClampedArray", nightly: true},
-    {name: "SharedInt16Array", nightly: true},
-    {name: "SharedUint16Array", nightly: true},
-    {name: "SharedInt32Array", nightly: true},
-    {name: "SharedUint32Array", nightly: true},
-    {name: "SharedFloat32Array", nightly: true},
-    {name: "SharedFloat64Array", nightly: true},
     {name: "SIMD", nightly: true},
     {name: "Atomics", nightly: true},
     "StopIteration",
@@ -234,6 +225,10 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "BluetoothMapSetMessageStatusEvent", b2g: true, permission: ["bluetooth"]},
 // IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "BluetoothObexAuthEvent", b2g: true, permission: ["bluetooth"]},
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "BluetoothObexAuthHandle", b2g: true, permission: ["bluetooth"]},
+// IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "BluetoothPbapRequestHandle", b2g: true, permission: ["bluetooth"]},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "BluetoothPairingEvent", b2g: true, permission: ["bluetooth"]},
@@ -306,6 +301,8 @@ var interfaceNamesInGlobalScope =
     "ChannelSplitterNode",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "CharacterData",
+// IMPORTANT: Do not change this list without review from a DOM peer!
+    {name: "ChromeNodeList", xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "ChromeWindow", xbl: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -807,8 +804,6 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozInputMethodManager", b2g: true, permission: ["input"]},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    "MozMmsMessage",
-// IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozMobileCellInfo", b2g: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozMobileConnection", b2g: true},
@@ -818,8 +813,6 @@ var interfaceNamesInGlobalScope =
     {name: "MozMobileConnectionInfo", b2g: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozMobileNetworkInfo", b2g: true},
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    "MozMobileMessageThread",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozNDEFRecord", b2g: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -836,8 +829,6 @@ var interfaceNamesInGlobalScope =
     "MozSettingsEvent",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozSettingsTransactionEvent", permission: ["settings-api-read"]},
-// IMPORTANT: Do not change this list without review from a DOM peer!
-    "MozSmsMessage",
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "MozSpeakerManager", b2g: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
@@ -1039,15 +1030,15 @@ var interfaceNamesInGlobalScope =
 // IMPORTANT: Do not change this list without review from a DOM peer!
     "SourceBufferList",
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "SpeechSynthesisErrorEvent", b2g: true},
+    {name: "SpeechSynthesisErrorEvent", android: false, nightly: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "SpeechSynthesisEvent", b2g: true},
+    {name: "SpeechSynthesisEvent", android: false, nightly: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "SpeechSynthesis", b2g: true},
+    {name: "SpeechSynthesis", android: false, nightly: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "SpeechSynthesisUtterance", b2g: true},
+    {name: "SpeechSynthesisUtterance", android: false, nightly: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
-    {name: "SpeechSynthesisVoice", b2g: true},
+    {name: "SpeechSynthesisVoice", android: false, nightly: true},
 // IMPORTANT: Do not change this list without review from a DOM peer!
     {name: "SpecialPowers", xbl: false},
 // IMPORTANT: Do not change this list without review from a DOM peer!

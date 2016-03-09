@@ -21,6 +21,10 @@
 <!ENTITY showAlertSubject.accesskey       "n">
 <!ENTITY showAlertSender.label            "Absender anzeigen">
 <!ENTITY showAlertSender.accesskey        "A">
+<!ENTITY useSystemAlert.label             "Betriebssystem-Desktop-Benachrichtigungen verwenden">
+<!ENTITY useSystemAlert.accesskey         "m">
+<!ENTITY useBuiltInAlert.label            "&brandShortName;s eigene Benachrichtigungsfenster verwenden">
+<!ENTITY useBuiltInAlert.accesskey        "c">
 
 <!ENTITY showTrayIcon.label               "Ein Tray-Symbol anzeigen">
 <!ENTITY showTrayIcon.accesskey           "T">

@@ -33,11 +33,6 @@
 #include "sslt.h"
 #include "TunnelUtils.h"
 
-#ifdef DEBUG
-// defined by the socket transport service while active
-extern PRThread *gSocketThread;
-#endif
-
 namespace mozilla {
 namespace net {
 
@@ -1599,8 +1594,8 @@ nsHttpConnection::OnSocketWritable()
 
             LOG(("  writing transaction request stream\n"));
             mProxyConnectInProgress = false;
-            rv = mTransaction->ReadSegments(this, nsIOService::gDefaultSegmentSize,
-                                            &transactionBytes);
+            rv = mTransaction->ReadSegmentsAgain(this, nsIOService::gDefaultSegmentSize,
+                                                 &transactionBytes, &again);
             mContentBytesWritten += transactionBytes;
         }
 
@@ -1651,7 +1646,7 @@ nsHttpConnection::OnSocketWritable()
             again = false;
         }
         // write more to the socket until error or end-of-request...
-    } while (again);
+    } while (again && gHttpHandler->Active());
 
     return rv;
 }
@@ -1769,7 +1764,8 @@ nsHttpConnection::OnSocketReadable()
             break;
         }
 
-        rv = mTransaction->WriteSegments(this, nsIOService::gDefaultSegmentSize, &n);
+        rv = mTransaction->
+            WriteSegmentsAgain(this, nsIOService::gDefaultSegmentSize, &n, &again);
         if (NS_FAILED(rv)) {
             // if the transaction didn't want to take any more data, then
             // wait for the transaction to call ResumeRecv.
@@ -1790,7 +1786,7 @@ nsHttpConnection::OnSocketReadable()
             }
         }
         // read more from the socket until error...
-    } while (again);
+    } while (again && gHttpHandler->Active());
 
     return rv;
 }

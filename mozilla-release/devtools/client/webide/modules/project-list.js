@@ -4,8 +4,8 @@
 
 const {Cu} = require("chrome");
 
-const {Services} = Cu.import("resource://gre/modules/Services.jsm");
-const {AppProjects} = require("devtools/client/app-manager/app-projects");
+const Services = require("Services");
+const {AppProjects} = require("devtools/client/webide/modules/app-projects");
 const {AppManager} = require("devtools/client/webide/modules/app-manager");
 const promise = require("promise");
 const EventEmitter = require("devtools/shared/event-emitter");
@@ -13,7 +13,7 @@ const {Task} = Cu.import("resource://gre/modules/Task.jsm", {});
 const utils = require("devtools/client/webide/modules/utils");
 const Telemetry = require("devtools/client/shared/telemetry");
 
-const Strings = Services.strings.createBundle("chrome://browser/locale/devtools/webide.properties");
+const Strings = Services.strings.createBundle("chrome://devtools/locale/webide.properties");
 
 var ProjectList;
 
@@ -158,11 +158,7 @@ ProjectList.prototype = {
 
     let tabs = AppManager.tabStore.tabs;
 
-    if (tabs.length > 0) {
-      tabsHeaderNode.removeAttribute("hidden");
-    } else {
-      tabsHeaderNode.setAttribute("hidden", "true");
-    }
+    tabsHeaderNode.removeAttribute("hidden");
 
     for (let i = 0; i < tabs.length; i++) {
       let tab = tabs[i];

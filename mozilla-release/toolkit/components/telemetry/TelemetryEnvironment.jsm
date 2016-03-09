@@ -166,7 +166,6 @@ const PREF_DISTRIBUTOR_CHANNEL = "app.distributor.channel";
 const PREF_HOTFIX_LASTVERSION = "extensions.hotfix.lastVersion";
 const PREF_APP_PARTNER_BRANCH = "app.partner.";
 const PREF_PARTNER_ID = "mozilla.partner.id";
-const PREF_TELEMETRY_ENABLED = "toolkit.telemetry.enabled";
 const PREF_UPDATE_ENABLED = "app.update.enabled";
 const PREF_UPDATE_AUTODOWNLOAD = "app.update.auto";
 const PREF_SEARCH_COHORT = "browser.search.cohort";
@@ -262,7 +261,7 @@ function getGfxField(aPropertyName, aDefault) {
  * @return {String} The substring or null if the input string is null.
  */
 function limitStringToLength(aString, aMaxLength) {
-  if (aString === null || aString === undefined) {
+  if (typeof(aString) !== "string") {
     return null;
   }
   return aString.substring(0, aMaxLength);
@@ -513,28 +512,36 @@ EnvironmentAddonBuilder.prototype = {
         continue;
       }
 
-      // Make sure to have valid dates.
-      let installDate = new Date(Math.max(0, addon.installDate));
-      let updateDate = new Date(Math.max(0, addon.updateDate));
+      // Weird addon data in the wild can lead to exceptions while collecting
+      // the data.
+      try {
+        // Make sure to have valid dates.
+        let installDate = new Date(Math.max(0, addon.installDate));
+        let updateDate = new Date(Math.max(0, addon.updateDate));
 
-      activeAddons[addon.id] = {
-        blocklisted: (addon.blocklistState !== Ci.nsIBlocklistService.STATE_NOT_BLOCKED),
-        description: limitStringToLength(addon.description, MAX_ADDON_STRING_LENGTH),
-        name: limitStringToLength(addon.name, MAX_ADDON_STRING_LENGTH),
-        userDisabled: addon.userDisabled,
-        appDisabled: addon.appDisabled,
-        version: limitStringToLength(addon.version, MAX_ADDON_STRING_LENGTH),
-        scope: addon.scope,
-        type: addon.type,
-        foreignInstall: addon.foreignInstall,
-        hasBinaryComponents: addon.hasBinaryComponents,
-        installDay: Utils.millisecondsToDays(installDate.getTime()),
-        updateDay: Utils.millisecondsToDays(updateDate.getTime()),
-        signedState: addon.signedState,
-      };
+        activeAddons[addon.id] = {
+          blocklisted: (addon.blocklistState !== Ci.nsIBlocklistService.STATE_NOT_BLOCKED),
+          description: limitStringToLength(addon.description, MAX_ADDON_STRING_LENGTH),
+          name: limitStringToLength(addon.name, MAX_ADDON_STRING_LENGTH),
+          userDisabled: addon.userDisabled,
+          appDisabled: addon.appDisabled,
+          version: limitStringToLength(addon.version, MAX_ADDON_STRING_LENGTH),
+          scope: addon.scope,
+          type: addon.type,
+          foreignInstall: addon.foreignInstall,
+          hasBinaryComponents: addon.hasBinaryComponents,
+          installDay: Utils.millisecondsToDays(installDate.getTime()),
+          updateDay: Utils.millisecondsToDays(updateDate.getTime()),
+          signedState: addon.signedState,
+        };
 
-      if (addon.signedState !== undefined)
-        activeAddons[addon.id].signedState = addon.signedState;
+        if (addon.signedState !== undefined)
+          activeAddons[addon.id].signedState = addon.signedState;
+
+      } catch (ex) {
+        this._environment._log.error("_getActiveAddons - An addon was discarded due to an error", ex);
+        continue;
+      }
     }
 
     return activeAddons;
@@ -590,19 +597,24 @@ EnvironmentAddonBuilder.prototype = {
         continue;
       }
 
-      // Make sure to have a valid date.
-      let updateDate = new Date(Math.max(0, tag.lastModifiedTime));
+      try {
+        // Make sure to have a valid date.
+        let updateDate = new Date(Math.max(0, tag.lastModifiedTime));
 
-      activePlugins.push({
-        name: limitStringToLength(tag.name, MAX_ADDON_STRING_LENGTH),
-        version: limitStringToLength(tag.version, MAX_ADDON_STRING_LENGTH),
-        description: limitStringToLength(tag.description, MAX_ADDON_STRING_LENGTH),
-        blocklisted: tag.blocklisted,
-        disabled: tag.disabled,
-        clicktoplay: tag.clicktoplay,
-        mimeTypes: tag.getMimeTypes({}),
-        updateDay: Utils.millisecondsToDays(updateDate.getTime()),
-      });
+        activePlugins.push({
+          name: limitStringToLength(tag.name, MAX_ADDON_STRING_LENGTH),
+          version: limitStringToLength(tag.version, MAX_ADDON_STRING_LENGTH),
+          description: limitStringToLength(tag.description, MAX_ADDON_STRING_LENGTH),
+          blocklisted: tag.blocklisted,
+          disabled: tag.disabled,
+          clicktoplay: tag.clicktoplay,
+          mimeTypes: tag.getMimeTypes({}),
+          updateDay: Utils.millisecondsToDays(updateDate.getTime()),
+        });
+      } catch (ex) {
+        this._environment._log.error("_getActivePlugins - A plugin was discarded due to an error", ex);
+        continue;
+      }
     }
 
     return activePlugins;
@@ -621,16 +633,21 @@ EnvironmentAddonBuilder.prototype = {
 
     let activeGMPlugins = {};
     for (let plugin of allPlugins) {
-      // Only get GM Plugin info.
-      if (!plugin.isGMPlugin) {
+      // Only get info for active GMplugins.
+      if (!plugin.isGMPlugin || !plugin.isActive) {
         continue;
       }
 
-      activeGMPlugins[plugin.id] = {
-        version: plugin.version,
-        userDisabled: plugin.userDisabled,
-        applyBackgroundUpdates: plugin.applyBackgroundUpdates,
-      };
+      try {
+        activeGMPlugins[plugin.id] = {
+          version: plugin.version,
+          userDisabled: plugin.userDisabled,
+          applyBackgroundUpdates: plugin.applyBackgroundUpdates,
+        };
+      } catch (ex) {
+        this._environment._log.error("_getActiveGMPlugins - A GMPlugin was discarded due to an error", ex);
+        continue;
+      }
     }
 
     return activeGMPlugins;
@@ -700,10 +717,8 @@ function EnvironmentCache() {
     p = [ this._addonBuilder.init() ];
   }
 
-  if (AppConstants.platform !== "android") {
-    this._currentEnvironment.profile = {};
-    p.push(this._updateProfile());
-  }
+  this._currentEnvironment.profile = {};
+  p.push(this._updateProfile());
 
   let setup = () => {
     this._initTask = null;
@@ -1050,7 +1065,7 @@ EnvironmentCache.prototype = {
     this._currentEnvironment.settings = {
       blocklistEnabled: Preferences.get(PREF_BLOCKLIST_ENABLED, true),
       e10sEnabled: Services.appinfo.browserTabsRemoteAutostart,
-      telemetryEnabled: Preferences.get(PREF_TELEMETRY_ENABLED, false),
+      telemetryEnabled: Utils.isTelemetryEnabled,
       isInOptoutSample: TelemetryController.isInOptoutSample,
       locale: getBrowserLocale(),
       update: {

@@ -55,7 +55,7 @@ sub GetReleaseBlock {
     $releaseBlock->{'extension-version'} = $appVersion;
     $releaseBlock->{'prettyVersion'} = $prettyVersion;
 
-    my $candidateDir = '/pub/mozilla.org/' . $product . '/candidates/' .
+    my $candidateDir = '/pub/' . $product . '/candidates/' .
       $version . '-candidates/' . $buildStr;
 
     $releaseBlock->{'platforms'} = {};

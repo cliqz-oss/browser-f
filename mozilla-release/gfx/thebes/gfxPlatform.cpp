@@ -17,6 +17,7 @@
 
 #include "gfxPlatform.h"
 #include "gfxPrefs.h"
+#include "gfxEnv.h"
 #include "gfxTextRun.h"
 #include "gfxVR.h"
 
@@ -42,6 +43,10 @@
 #include "gfxQtPlatform.h"
 #elif defined(ANDROID)
 #include "gfxAndroidPlatform.h"
+#endif
+
+#ifdef XP_WIN
+#include "mozilla/WindowsVersion.h"
 #endif
 
 #include "nsGkAtoms.h"
@@ -119,6 +124,7 @@ class mozilla::gl::SkiaGLGlue : public GenericAtomicRefCounted {
 #include "mozilla/Attributes.h"
 #include "mozilla/Mutex.h"
 
+#include "nsAlgorithm.h"
 #include "nsIGfxInfo.h"
 #include "nsIXULRuntime.h"
 #include "VsyncSource.h"
@@ -310,12 +316,11 @@ CrashStatsLogForwarder::CrashAction(LogReason aReason)
 #ifndef RELEASE_BUILD
   // Non-release builds crash by default, but will use telemetry
   // if this environment variable is present.
-  static bool useTelemetry = getenv("MOZ_GFX_CRASH_TELEMETRY") != 0;
+  static bool useTelemetry = gfxEnv::GfxDevCrashTelemetry();
 #else
-  // Release builds use telemetry bu default, but will crash
-  // if this environment variable is present.  Double negative
-  // to make the intent clear.
-  static bool useTelemetry = !(getenv("MOZ_GFX_CRASH_MOZ_CRASH") != 0);
+  // Release builds use telemetry by default, but will crash instead
+  // if this environment variable is present.
+  static bool useTelemetry = !gfxEnv::GfxDevCrashMozCrash();
 #endif
 
   if (useTelemetry) {
@@ -813,7 +818,7 @@ gfxPlatform::CreateDrawTargetForUpdateSurface(gfxASurface *aSurface, const IntSi
     return Factory::CreateDrawTargetForCairoCGContext(static_cast<gfxQuartzSurface*>(aSurface)->GetCGContext(), aSize);
   }
 #endif
-  MOZ_CRASH("unused function");
+  MOZ_CRASH("GFX: unused function");
   return nullptr;
 }
 
@@ -1067,11 +1072,10 @@ gfxPlatform::ComputeTileSize()
   if (gfxPrefs::LayersTilesAdjust()) {
     gfx::IntSize screenSize = GetScreenSize();
     if (screenSize.width > 0) {
-      // For the time being tiles larger than 512 probably do not make much
-      // sense. This is due to e.g. increased rasterisation time outweighing
-      // the decreased composition time, or large increases in memory usage
-      // for screens slightly wider than a higher power of two.
-      w = h = screenSize.width >= 512 ? 512 : 256;
+      // Choose a size so that there are between 2 and 4 tiles per screen width.
+      // FIXME: we should probably make sure this is within the max texture size,
+      // but I think everything should at least support 1024
+      w = h = clamped(NextPowerOfTwo(screenSize.width) / 4, 256, 1024);
     }
 
 #ifdef MOZ_WIDGET_GONK
@@ -1115,6 +1119,16 @@ gfxPlatform::SupportsAzureContentForDrawTarget(DrawTarget* aTarget)
   if (!aTarget) {
     return false;
   }
+
+#ifdef USE_SKIA_GPU
+ // Skia content rendering doesn't support GPU acceleration, so we can't
+ // use the same backend if the current backend is accelerated.
+ if ((aTarget->GetType() == DrawTargetType::HARDWARE_RASTER)
+     && (aTarget->GetBackendType() ==  BackendType::SKIA))
+ {
+  return false;
+ }
+#endif
 
   return SupportsAzureContentForType(aTarget->GetBackendType());
 }
@@ -1813,26 +1827,16 @@ gfxPlatform::FontsPrefsChanged(const char *aPref)
 }
 
 
-PRLogModuleInfo*
+mozilla::LogModule*
 gfxPlatform::GetLog(eGfxLog aWhichLog)
 {
     // logs shared across gfx
-    static PRLogModuleInfo *sFontlistLog = nullptr;
-    static PRLogModuleInfo *sFontInitLog = nullptr;
-    static PRLogModuleInfo *sTextrunLog = nullptr;
-    static PRLogModuleInfo *sTextrunuiLog = nullptr;
-    static PRLogModuleInfo *sCmapDataLog = nullptr;
-    static PRLogModuleInfo *sTextPerfLog = nullptr;
-
-    // Assume that if one is initialized, all are initialized
-    if (!sFontlistLog) {
-        sFontlistLog = PR_NewLogModule("fontlist");
-        sFontInitLog = PR_NewLogModule("fontinit");
-        sTextrunLog = PR_NewLogModule("textrun");
-        sTextrunuiLog = PR_NewLogModule("textrunui");
-        sCmapDataLog = PR_NewLogModule("cmapdata");
-        sTextPerfLog = PR_NewLogModule("textperf");
-    }
+    static LazyLogModule sFontlistLog("fontlist");
+    static LazyLogModule sFontInitLog("fontinit");
+    static LazyLogModule sTextrunLog("textrun");
+    static LazyLogModule sTextrunuiLog("textrunui");
+    static LazyLogModule sCmapDataLog("cmapdata");
+    static LazyLogModule sTextPerfLog("textperf");
 
     switch (aWhichLog) {
     case eGfxLog_fontlist:
@@ -1935,7 +1939,11 @@ InitLayersAccelerationPrefs()
     } else if (gfxInfo) {
       if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT3D_9_LAYERS, &status))) {
         if (status == nsIGfxInfo::FEATURE_STATUS_OK) {
-          sLayersSupportsD3D9 = true;
+          if (sPrefBrowserTabsRemoteAutostart && !IsVistaOrLater()) {
+            gfxWarning() << "Disallowing D3D9 on Windows XP with E10S - see bug 1237770";
+          } else {
+            sLayersSupportsD3D9 = true;
+          }
         }
       }
       if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_DIRECT3D_11_LAYERS, &status))) {
@@ -2142,34 +2150,6 @@ gfxPlatform::GetDefaultFrameRate()
   return 60;
 }
 
-static nsString
-DetectBadApzWheelInputPrefs()
-{
-  static const char *sBadMultiplierPrefs[] = {
-    "mousewheel.default.delta_multiplier_x",
-    "mousewheel.with_alt.delta_multiplier_x",
-    "mousewheel.with_control.delta_multiplier_x",
-    "mousewheel.with_meta.delta_multiplier_x",
-    "mousewheel.with_shift.delta_multiplier_x",
-    "mousewheel.with_win.delta_multiplier_x",
-    "mousewheel.with_alt.delta_multiplier_y",
-    "mousewheel.with_control.delta_multiplier_y",
-    "mousewheel.with_meta.delta_multiplier_y",
-    "mousewheel.with_shift.delta_multiplier_y",
-    "mousewheel.with_win.delta_multiplier_y",
-  };
-
-  nsString badPref;
-  for (size_t i = 0; i < MOZ_ARRAY_LENGTH(sBadMultiplierPrefs); i++) {
-    if (Preferences::GetInt(sBadMultiplierPrefs[i], 100) != 100) {
-      badPref.AssignASCII(sBadMultiplierPrefs[i]);
-      break;
-    }
-  }
-
-  return badPref;
-}
-
 void
 gfxPlatform::GetApzSupportInfo(mozilla::widget::InfoObject& aObj)
 {
@@ -2178,12 +2158,7 @@ gfxPlatform::GetApzSupportInfo(mozilla::widget::InfoObject& aObj)
   }
 
   if (SupportsApzWheelInput()) {
-    nsString badPref = DetectBadApzWheelInputPrefs();
-
     aObj.DefineProperty("ApzWheelInput", 1);
-    if (badPref.Length()) {
-      aObj.DefineProperty("ApzWheelInputWarning", badPref);
-    }
   }
 
   if (SupportsApzTouchInput()) {
@@ -2275,9 +2250,7 @@ gfxPlatform::GetCompositorBackends(bool useAcceleration, nsTArray<mozilla::layer
   if (useAcceleration) {
     GetAcceleratedCompositorBackends(aBackends);
   }
-  if (SupportsBasicCompositor()) {
-    aBackends.AppendElement(LayersBackend::LAYERS_BASIC);
-  }
+  aBackends.AppendElement(LayersBackend::LAYERS_BASIC);
 }
 
 void

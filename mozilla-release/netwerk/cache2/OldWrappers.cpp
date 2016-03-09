@@ -268,7 +268,7 @@ NS_IMETHODIMP _OldVisitCallbackWrapper::VisitEntry(const char * deviceID,
 
   // Send them to the consumer.
   rv = mCB->OnCacheEntryInfo(
-    uri, enhanceId, (int64_t)dataSize, fetchCount, lastModified, expirationTime);
+    uri, enhanceId, (int64_t)dataSize, fetchCount, lastModified, expirationTime, false);
 
   *_retval = NS_SUCCEEDED(rv);
   return NS_OK;
@@ -528,7 +528,7 @@ GetCacheSessionNameForStoragePolicy(
         nsCSubstring const &scheme,
         nsCacheStoragePolicy storagePolicy,
         bool isPrivate,
-        OriginAttributes const *originAttribs,
+        NeckoOriginAttributes const *originAttribs,
         nsACString& sessionName)
 {
   MOZ_ASSERT(!isPrivate || storagePolicy == nsICache::STORE_IN_MEMORY);

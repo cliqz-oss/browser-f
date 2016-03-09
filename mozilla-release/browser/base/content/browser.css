@@ -620,18 +620,6 @@ window[chromehidden~="toolbar"] toolbar:not(#nav-bar):not(#TabsToolbar):not(#pri
   min-width: 1px;
 }
 
-%ifdef MOZ_SERVICES_SYNC
-/* Sync notification UI */
-#sync-notifications {
-  -moz-binding: url("chrome://browser/content/sync/notification.xml#notificationbox");
-  overflow-y: visible !important;
-}
-
-#sync-notifications notification {
-  -moz-binding: url("chrome://browser/content/sync/notification.xml#notification");
-}
-%endif
-
 /* History Swipe Animation */
 
 #historySwipeAnimationContainer {
@@ -848,11 +836,6 @@ statuspanel[inactive][previoustype=overLink] {
   -moz-binding: url("chrome://browser/content/urlbarBindings.xml#promobox");
 }
 
-/* tabview menus */
-.tabview-menuitem {
-  max-width: 32em;
-}
-
 /* gcli */
 
 html|*#gcli-tooltip-frame,
@@ -912,11 +895,6 @@ panelview > .social-panel-frame {
 /* Translation */
 notification[value="translation"] {
   -moz-binding: url("chrome://browser/content/translation-infobar.xml#translationbar");
-}
-
-/* Loop/ Hello */
-notification[value="loop-sharing-notification"] .close-icon {
-  display: none;
 }
 
 /* Social */
@@ -1158,6 +1136,7 @@ chatbox:-moz-full-screen-ancestor > .chat-titlebar {
 
 /* Apply crisp rendering for favicons at exactly 2dppx resolution */
 @media (resolution: 2dppx) {
+  #PanelUI-remotetabs-tabslist > toolbarbutton > .toolbarbutton-icon,
   #PanelUI-recentlyClosedWindows > toolbarbutton > .toolbarbutton-icon,
   #PanelUI-recentlyClosedTabs > toolbarbutton > .toolbarbutton-icon,
   #PanelUI-historyItems > toolbarbutton > .toolbarbutton-icon {
@@ -1319,20 +1298,6 @@ toolbarpaletteitem[place="palette"][hidden] {
 #UITourHighlight[active="color"] {
   animation-name: uitour-color;
   animation-duration: 2s;
-}
-
-#abouthome-search-panel > .panel-arrowcontainer > .panel-arrowcontent {
-  padding: 0;
-  font-size: 110%;
-}
-
-#abouthome-search-panel-manage {
-  padding: 4px 24px;
-}
-
-#abouthome-search-panel-manage > label {
-  padding: 0;
-  margin: 0;
 }
 
 /* Combined context-menu items */

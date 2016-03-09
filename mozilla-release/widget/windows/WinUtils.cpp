@@ -1021,7 +1021,8 @@ WINAPI EnumFirstChild(HWND hwnd, LPARAM lParam)
 
 /* static */
 void
-WinUtils::InvalidatePluginAsWorkaround(nsIWidget *aWidget, const nsIntRect &aRect)
+WinUtils::InvalidatePluginAsWorkaround(nsIWidget* aWidget,
+                                       const LayoutDeviceIntRect& aRect)
 {
   aWidget->Invalidate(aRect);
 
@@ -1217,11 +1218,9 @@ AsyncFaviconDataReady::OnComplete(nsIURI *aFaviconURI,
     return NS_ERROR_OUT_OF_MEMORY;
   }
   int32_t stride = 4 * size.width;
-  int32_t dataLength = stride * size.height;
 
   // AsyncEncodeAndWriteIcon takes ownership of the heap allocated buffer
   nsCOMPtr<nsIRunnable> event = new AsyncEncodeAndWriteIcon(path, Move(data),
-                                                            dataLength,
                                                             stride,
                                                             size.width,
                                                             size.height,
@@ -1235,7 +1234,6 @@ AsyncFaviconDataReady::OnComplete(nsIURI *aFaviconURI,
 // Warning: AsyncEncodeAndWriteIcon assumes ownership of the aData buffer passed in
 AsyncEncodeAndWriteIcon::AsyncEncodeAndWriteIcon(const nsAString &aIconPath,
                                                  UniquePtr<uint8_t[]> aBuffer,
-                                                 uint32_t aBufferLength,
                                                  uint32_t aStride,
                                                  uint32_t aWidth,
                                                  uint32_t aHeight,
@@ -1243,7 +1241,6 @@ AsyncEncodeAndWriteIcon::AsyncEncodeAndWriteIcon(const nsAString &aIconPath,
   mURLShortcut(aURLShortcut),
   mIconPath(aIconPath),
   mBuffer(Move(aBuffer)),
-  mBufferLength(aBufferLength),
   mStride(aStride),
   mWidth(aWidth),
   mHeight(aHeight)

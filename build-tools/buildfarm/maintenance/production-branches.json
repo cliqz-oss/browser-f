@@ -27,10 +27,24 @@
     ],
     "repo_type": "hg"
   },
+  "mozilla-esr45": {
+    "repo": "https://hg.mozilla.org/releases/mozilla-esr45",
+    "graph_branches": [
+      "Mozilla-Esr45"
+    ],
+    "repo_type": "hg"
+  },
   "comm-esr38": {
     "repo": "https://hg.mozilla.org/releases/comm-esr38",
     "graph_branches": [
       "Thunderbird-Esr38"
+    ],
+    "repo_type": "hg"
+  },
+  "comm-esr45": {
+    "repo": "https://hg.mozilla.org/releases/comm-esr45",
+    "graph_branches": [
+      "Thunderbird-Esr45"
     ],
     "repo_type": "hg"
   },
@@ -206,11 +220,6 @@
     "graph_branches": [
       "Fx-Team"
     ],
-    "repo_type": "hg"
-  },
-  "addon-sdk": {
-    "repo": "https://hg.mozilla.org/projects/addon-sdk",
-    "graph_branches": [],
     "repo_type": "hg"
   },
   "date": {

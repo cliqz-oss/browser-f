@@ -10,8 +10,6 @@
 <!ENTITY usingSubscription.accesskey "N">
 <!ENTITY dualUseFolders.label "Der Server unterstützt Ordner, die Unterordner und Nachrichten enthalten">
 <!ENTITY dualUseFolders.accesskey "D">
-<!ENTITY useIdle.label "IDLE-Kommando verwenden, wenn der Server es unterstützt">
-<!ENTITY useIdle.accesskey "I">
 <!ENTITY maximumConnectionsNumber.label "Maximale Anzahl der aufrecht erhaltenen Server-Verbindungen">
 <!ENTITY maximumConnectionsNumber.accesskey "M">
 <!-- LOCALIZATION NOTE (namespaceDesc.label): DONT_TRANSLATE "IMAP" -->
@@ -24,9 +22,9 @@
 <!ENTITY otherUsersNamespace.accesskey "A">
 <!ENTITY overrideNamespaces.label "Server erlauben, diese Namespaces zu übergehen">
 <!ENTITY overrideNamespaces.accesskey "S">
-<!ENTITY pop3Desc.label "Beim Herunterladen von POP3-Mail von diesem Server folgenden Ordner für neue Mails verwenden:" >
-<!ENTITY accountDirectory.label "Posteingang für den Account dieses Servers">
-<!ENTITY accountDirectory.accesskey "P">
+<!ENTITY pop3DeferringDesc.label "Beim Herunterladen von Mails vom Server dieses Accounts, folgende Ordner verwenden, um neue Nachrichten zu speichern:" >
+<!ENTITY accountInbox.label "Posteingang für diesen Account">
+<!ENTITY accountInbox.accesskey "o">
 <!ENTITY deferToServer.label "Posteingang eines anderen Accounts">
 <!ENTITY deferToServer.accesskey "P">
 <!ENTITY deferGetNewMail.label "Diesen Server beim Abfragen neuer Mails einbeziehen">

@@ -23,8 +23,7 @@ namespace mozilla {
 namespace net {
 
 static PackagedAppService *gPackagedAppService = nullptr;
-
-static PRLogModuleInfo *gPASLog = nullptr;
+static LazyLogModule gPASLog("PackagedAppService");
 #undef LOG
 #define LOG(args) MOZ_LOG(gPASLog, mozilla::LogLevel::Debug, args)
 
@@ -748,7 +747,7 @@ PackagedAppService::PackagedAppDownloader::AddCallback(nsIURI *aURI,
 {
   MOZ_RELEASE_ASSERT(NS_IsMainThread(), "mCallbacks hashtable is not thread safe");
   nsAutoCString spec;
-  aURI->GetAsciiSpec(spec);
+  aURI->GetSpecIgnoringRef(spec);
 
   LogURI("PackagedAppDownloader::AddCallback", this, aURI);
   LOG(("[%p]    > callback: %p\n", this, aCallback));
@@ -907,7 +906,7 @@ static bool
 AddPackageIdToOrigin(nsACString& aOrigin, const nsACString& aPackageId)
 {
   nsAutoCString originNoSuffix;
-  mozilla::OriginAttributes attrs;
+  mozilla::NeckoOriginAttributes attrs;
   if (!attrs.PopulateFromOrigin(aOrigin, originNoSuffix)) {
     return false;
   }
@@ -1043,7 +1042,6 @@ PackagedAppService::PackagedAppDownloader::OnResourceVerified(const ResourceCach
 PackagedAppService::PackagedAppService()
 {
   gPackagedAppService = this;
-  gPASLog = PR_NewLogModule("PackagedAppService");
   LOG(("[%p] Created PackagedAppService\n", this));
 }
 
@@ -1131,7 +1129,7 @@ PackagedAppService::GetResource(nsIChannel *aChannel,
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->GetLoadInfo();
 
   nsCOMPtr<nsIURI> uri;
-  rv = principal->GetURI(getter_AddRefs(uri));
+  rv = aChannel->GetURI(getter_AddRefs(uri));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     LOG(("[%p]    > Error calling GetURI rv=%X\n", this, rv));
     return rv;

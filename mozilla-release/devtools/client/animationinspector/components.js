@@ -29,14 +29,17 @@ const {
   TargetNodeHighlighter
 } = require("devtools/client/animationinspector/utils");
 
-const STRINGS_URI = "chrome://browser/locale/devtools/animationinspector.properties";
+const STRINGS_URI = "chrome://devtools/locale/animationinspector.properties";
 const L10N = new ViewHelpers.L10N(STRINGS_URI);
 const MILLIS_TIME_FORMAT_MAX_DURATION = 4000;
 // The minimum spacing between 2 time graduation headers in the timeline (px).
 const TIME_GRADUATION_MIN_SPACING = 40;
-// The size of the fast-track icon (for compositor-running animations), this is
-// used to position the icon correctly.
-const FAST_TRACK_ICON_SIZE = 20;
+// List of playback rate presets displayed in the timeline toolbar.
+const PLAYBACK_RATES = [.1, .25, .5, 1, 2, 5, 10];
+// When the container window is resized, the timeline background gets refreshed,
+// but only after a timer, and the timer is reset if the window is continuously
+// resized.
+const TIMELINE_BACKGROUND_RESIZE_DEBOUNCE_TIMER = 50;
 
 /**
  * UI component responsible for displaying a preview of the target dom node of
@@ -187,6 +190,10 @@ AnimationTargetNode.prototype = {
       this.previewEl.appendChild(document.createTextNode(">"));
     }
 
+    this.startListeners();
+  },
+
+  startListeners: function() {
     // Init events for highlighting and selecting the node.
     this.previewEl.addEventListener("mouseover", this.onPreviewMouseOver);
     this.previewEl.addEventListener("mouseout", this.onPreviewMouseOut);
@@ -200,15 +207,19 @@ AnimationTargetNode.prototype = {
     TargetNodeHighlighter.on("highlighted", this.onTargetHighlighterLocked);
   },
 
-  destroy: function() {
-    TargetNodeHighlighter.unhighlight().catch(e => console.error(e));
-
+  stopListeners: function() {
     TargetNodeHighlighter.off("highlighted", this.onTargetHighlighterLocked);
     this.inspector.off("markupmutation", this.onMarkupMutations);
     this.previewEl.removeEventListener("mouseover", this.onPreviewMouseOver);
     this.previewEl.removeEventListener("mouseout", this.onPreviewMouseOut);
     this.previewEl.removeEventListener("click", this.onSelectNodeClick);
     this.highlightNodeEl.removeEventListener("click", this.onHighlightNodeClick);
+  },
+
+  destroy: function() {
+    TargetNodeHighlighter.unhighlight().catch(e => console.error(e));
+
+    this.stopListeners();
 
     this.el.remove();
     this.el = this.tagNameEl = this.idEl = this.classEl = null;
@@ -217,21 +228,26 @@ AnimationTargetNode.prototype = {
   },
 
   get highlighterUtils() {
-    return this.inspector.toolbox.highlighterUtils;
+    if (this.inspector && this.inspector.toolbox) {
+      return this.inspector.toolbox.highlighterUtils;
+    }
+    return null;
   },
 
   onPreviewMouseOver: function() {
-    if (!this.nodeFront) {
+    if (!this.nodeFront || !this.highlighterUtils) {
       return;
     }
-    this.highlighterUtils.highlightNodeFront(this.nodeFront);
+    this.highlighterUtils.highlightNodeFront(this.nodeFront)
+                         .catch(e => console.error(e));
   },
 
   onPreviewMouseOut: function() {
-    if (!this.nodeFront) {
+    if (!this.nodeFront || !this.highlighterUtils) {
       return;
     }
-    this.highlighterUtils.unhighlight();
+    this.highlighterUtils.unhighlight()
+                         .catch(e => console.error(e));
   },
 
   onSelectNodeClick: function() {
@@ -241,7 +257,9 @@ AnimationTargetNode.prototype = {
     this.inspector.selection.setNodeFront(this.nodeFront, "animationinspector");
   },
 
-  onHighlightNodeClick: function() {
+  onHighlightNodeClick: function(e) {
+    e.stopPropagation();
+
     let classList = this.highlightNodeEl.classList;
 
     let isHighlighted = classList.contains("selected");
@@ -332,6 +350,90 @@ AnimationTargetNode.prototype = {
 };
 
 /**
+ * UI component responsible for displaying a playback rate selector UI.
+ * The rendering logic is such that a predefined list of rates is generated.
+ * If *all* animations passed to render share the same rate, then that rate is
+ * selected in the <select> element, otherwise, the empty value is selected.
+ * If the rate that all animations share isn't part of the list of predefined
+ * rates, than that rate is added to the list.
+ */
+function RateSelector() {
+  this.onRateChanged = this.onRateChanged.bind(this);
+  EventEmitter.decorate(this);
+}
+
+exports.RateSelector = RateSelector;
+
+RateSelector.prototype = {
+  init: function(containerEl) {
+    this.selectEl = createNode({
+      parent: containerEl,
+      nodeType: "select",
+      attributes: {"class": "devtools-button"}
+    });
+
+    this.selectEl.addEventListener("change", this.onRateChanged);
+  },
+
+  destroy: function() {
+    this.selectEl.removeEventListener("change", this.onRateChanged);
+    this.selectEl.remove();
+    this.selectEl = null;
+  },
+
+  getAnimationsRates: function(animations) {
+    return sortedUnique(animations.map(a => a.state.playbackRate));
+  },
+
+  getAllRates: function(animations) {
+    let animationsRates = this.getAnimationsRates(animations);
+    if (animationsRates.length > 1) {
+      return PLAYBACK_RATES;
+    }
+
+    return sortedUnique(PLAYBACK_RATES.concat(animationsRates));
+  },
+
+  render: function(animations) {
+    let allRates = this.getAnimationsRates(animations);
+    let hasOneRate = allRates.length === 1;
+
+    this.selectEl.innerHTML = "";
+
+    if (!hasOneRate) {
+      // When the animations displayed have mixed playback rates, we can't
+      // select any of the predefined ones, instead, insert an empty rate.
+      createNode({
+        parent: this.selectEl,
+        nodeType: "option",
+        attributes: {value: "", selector: "true"},
+        textContent: "-"
+      });
+    }
+    for (let rate of this.getAllRates(animations)) {
+      let option = createNode({
+        parent: this.selectEl,
+        nodeType: "option",
+        attributes: {value: rate},
+        textContent: L10N.getFormatStr("player.playbackRateLabel", rate)
+      });
+
+      // If there's only one rate and this is the option for it, select it.
+      if (hasOneRate && rate === allRates[0]) {
+        option.setAttribute("selected", "true");
+      }
+    }
+  },
+
+  onRateChanged: function() {
+    let rate = parseFloat(this.selectEl.value);
+    if (!isNaN(rate)) {
+      this.emit("rate-changed", rate);
+    }
+  }
+};
+
+/**
  * The TimeScale helper object is used to know which size should something be
  * displayed with in the animation panel, depending on the animations that are
  * currently displayed.
@@ -366,7 +468,8 @@ var TimeScale = {
     let length = (delay / playbackRate) +
                  ((duration / playbackRate) *
                   (!iterationCount ? 1 : iterationCount));
-    this.maxEndTime = Math.max(this.maxEndTime, previousStartTime + length);
+    let endTime = previousStartTime + length;
+    this.maxEndTime = Math.max(this.maxEndTime, endTime);
   },
 
   /**
@@ -378,46 +481,41 @@ var TimeScale = {
   },
 
   /**
-   * Convert a startTime to a distance in pixels, in the current time scale.
+   * Convert a startTime to a distance in %, in the current time scale.
    * @param {Number} time
-   * @param {Number} containerWidth The width of the container element.
    * @return {Number}
    */
-  startTimeToDistance: function(time, containerWidth) {
+  startTimeToDistance: function(time) {
     time -= this.minStartTime;
-    return this.durationToDistance(time, containerWidth);
+    return this.durationToDistance(time);
   },
 
   /**
-   * Convert a duration to a distance in pixels, in the current time scale.
+   * Convert a duration to a distance in %, in the current time scale.
    * @param {Number} time
-   * @param {Number} containerWidth The width of the container element.
    * @return {Number}
    */
-  durationToDistance: function(duration, containerWidth) {
-    return containerWidth * duration / (this.maxEndTime - this.minStartTime);
+  durationToDistance: function(duration) {
+    return duration * 100 / this.getDuration();
   },
 
   /**
-   * Convert a distance in pixels to a time, in the current time scale.
+   * Convert a distance in % to a time, in the current time scale.
    * @param {Number} distance
-   * @param {Number} containerWidth The width of the container element.
    * @return {Number}
    */
-  distanceToTime: function(distance, containerWidth) {
-    return this.minStartTime +
-      ((this.maxEndTime - this.minStartTime) * distance / containerWidth);
+  distanceToTime: function(distance) {
+    return this.minStartTime + (this.getDuration() * distance / 100);
   },
 
   /**
-   * Convert a distance in pixels to a time, in the current time scale.
+   * Convert a distance in % to a time, in the current time scale.
    * The time will be relative to the current minimum start time.
    * @param {Number} distance
-   * @param {Number} containerWidth The width of the container element.
    * @return {Number}
    */
-  distanceToRelativeTime: function(distance, containerWidth) {
-    let time = this.distanceToTime(distance, containerWidth);
+  distanceToRelativeTime: function(distance) {
+    let time = this.distanceToTime(distance);
     return time - this.minStartTime;
   },
 
@@ -428,15 +526,44 @@ var TimeScale = {
    * @return {String} The formatted time string.
    */
   formatTime: function(time) {
-    let duration = this.maxEndTime - this.minStartTime;
-
     // Format in milliseconds if the total duration is short enough.
-    if (duration <= MILLIS_TIME_FORMAT_MAX_DURATION) {
+    if (this.getDuration() <= MILLIS_TIME_FORMAT_MAX_DURATION) {
       return L10N.getFormatStr("timeline.timeGraduationLabel", time.toFixed(0));
     }
 
     // Otherwise format in seconds.
     return L10N.getFormatStr("player.timeLabel", (time / 1000).toFixed(1));
+  },
+
+  getDuration: function() {
+    return this.maxEndTime - this.minStartTime;
+  },
+
+  /**
+   * Given an animation, get the various dimensions (in %) useful to draw the
+   * animation in the timeline.
+   */
+  getAnimationDimensions: function({state}) {
+    let start = state.previousStartTime || 0;
+    let duration = state.duration;
+    let rate = state.playbackRate;
+    let count = state.iterationCount;
+    let delay = state.delay || 0;
+
+    // The start position.
+    let x = this.startTimeToDistance(start + (delay / rate));
+    // The width for a single iteration.
+    let w = this.durationToDistance(duration / rate);
+    // The width for all iterations.
+    let iterationW = w * (count || 1);
+    // The start position of the delay.
+    let delayX = this.durationToDistance((delay < 0 ? 0 : delay) / rate);
+    // The width of the delay.
+    let delayW = this.durationToDistance(Math.abs(delay) / rate);
+    // The width of the delay if it is positive, 0 otherwise.
+    let negativeDelayW = delay < 0 ? delayW : 0;
+
+    return {x, w, iterationW, delayX, delayW, negativeDelayW};
   }
 };
 
@@ -460,12 +587,18 @@ function AnimationsTimeline(inspector) {
   this.animations = [];
   this.targetNodes = [];
   this.timeBlocks = [];
+  this.details = [];
   this.inspector = inspector;
+
   this.onAnimationStateChanged = this.onAnimationStateChanged.bind(this);
   this.onScrubberMouseDown = this.onScrubberMouseDown.bind(this);
   this.onScrubberMouseUp = this.onScrubberMouseUp.bind(this);
   this.onScrubberMouseOut = this.onScrubberMouseOut.bind(this);
   this.onScrubberMouseMove = this.onScrubberMouseMove.bind(this);
+  this.onAnimationSelected = this.onAnimationSelected.bind(this);
+  this.onWindowResize = this.onWindowResize.bind(this);
+  this.onFrameSelected = this.onFrameSelected.bind(this);
+
   EventEmitter.decorate(this);
 }
 
@@ -482,8 +615,13 @@ AnimationsTimeline.prototype = {
       }
     });
 
-    this.scrubberEl = createNode({
+    let scrubberContainer = createNode({
       parent: this.rootWrapperEl,
+      attributes: {"class": "scrubber-wrapper track-container"}
+    });
+
+    this.scrubberEl = createNode({
+      parent: scrubberContainer,
       attributes: {
         "class": "scrubber"
       }
@@ -500,7 +638,7 @@ AnimationsTimeline.prototype = {
     this.timeHeaderEl = createNode({
       parent: this.rootWrapperEl,
       attributes: {
-        "class": "time-header"
+        "class": "time-header track-container"
       }
     });
     this.timeHeaderEl.addEventListener("mousedown", this.onScrubberMouseDown);
@@ -512,12 +650,15 @@ AnimationsTimeline.prototype = {
         "class": "animations"
       }
     });
+
+    this.win.addEventListener("resize", this.onWindowResize);
   },
 
   destroy: function() {
     this.stopAnimatingScrubber();
     this.unrender();
 
+    this.win.removeEventListener("resize", this.onWindowResize);
     this.timeHeaderEl.removeEventListener("mousedown",
       this.onScrubberMouseDown);
     this.scrubberHandleEl.removeEventListener("mousedown",
@@ -534,17 +675,21 @@ AnimationsTimeline.prototype = {
     this.win = null;
     this.inspector = null;
   },
-  destroyTargetNodes: function() {
-    for (let targetNode of this.targetNodes) {
-      targetNode.destroy();
+
+  /**
+   * Destroy sub-components that have been created and stored on this instance.
+   * @param {String} name An array of components will be expected in this[name]
+   * @param {Array} handlers An option list of event handlers information that
+   * should be used to remove these handlers.
+   */
+  destroySubComponents: function(name, handlers = []) {
+    for (let component of this[name]) {
+      for (let {event, fn} of handlers) {
+        component.off(event, fn);
+      }
+      component.destroy();
     }
-    this.targetNodes = [];
-  },
-  destroyTimeBlocks: function() {
-    for (let timeBlock of this.timeBlocks) {
-      timeBlock.destroy();
-    }
-    this.timeBlocks = [];
+    this[name] = [];
   },
 
   unrender: function() {
@@ -552,9 +697,53 @@ AnimationsTimeline.prototype = {
       animation.off("changed", this.onAnimationStateChanged);
     }
     TimeScale.reset();
-    this.destroyTargetNodes();
-    this.destroyTimeBlocks();
+    this.destroySubComponents("targetNodes");
+    this.destroySubComponents("timeBlocks");
+    this.destroySubComponents("details", [{
+      event: "frame-selected",
+      fn: this.onFrameSelected
+    }]);
     this.animationsEl.innerHTML = "";
+  },
+
+  onWindowResize: function() {
+    if (this.windowResizeTimer) {
+      this.win.clearTimeout(this.windowResizeTimer);
+    }
+
+    this.windowResizeTimer = this.win.setTimeout(() => {
+      this.drawHeaderAndBackground();
+    }, TIMELINE_BACKGROUND_RESIZE_DEBOUNCE_TIMER);
+  },
+
+  onAnimationSelected: function(e, animation) {
+    let index = this.animations.indexOf(animation);
+    if (index === -1) {
+      return;
+    }
+
+    let el = this.rootWrapperEl;
+    let animationEl = el.querySelectorAll(".animation")[index];
+    let propsEl = el.querySelectorAll(".animated-properties")[index];
+
+    // Toggle the selected state on this animation.
+    animationEl.classList.toggle("selected");
+    propsEl.classList.toggle("selected");
+
+    // Render the details component for this animation if it was shown.
+    if (animationEl.classList.contains("selected")) {
+      this.details[index].render(animation);
+      this.emit("animation-selected", animation);
+    } else {
+      this.emit("animation-unselected", animation);
+    }
+  },
+
+  /**
+   * When a frame gets selected, move the scrubber to the corresponding position
+   */
+  onFrameSelected: function(e, {x}) {
+    this.moveScrubberTo(x, true);
   },
 
   onScrubberMouseDown: function(e) {
@@ -589,18 +778,24 @@ AnimationsTimeline.prototype = {
     this.moveScrubberTo(e.pageX);
   },
 
-  moveScrubberTo: function(pageX) {
+  moveScrubberTo: function(pageX, noOffset) {
     this.stopAnimatingScrubber();
 
-    let offset = pageX - this.scrubberEl.offsetWidth;
+    // The offset needs to be in % and relative to the timeline's area (so we
+    // subtract the scrubber's left offset, which is equal to the sidebar's
+    // width).
+    let offset = pageX;
+    if (!noOffset) {
+      offset -= this.timeHeaderEl.offsetLeft;
+    }
+    offset = offset * 100 / this.timeHeaderEl.offsetWidth;
     if (offset < 0) {
       offset = 0;
     }
 
-    this.scrubberEl.style.left = offset + "px";
+    this.scrubberEl.style.left = offset + "%";
 
-    let time = TimeScale.distanceToRelativeTime(offset,
-      this.timeHeaderEl.offsetWidth);
+    let time = TimeScale.distanceToRelativeTime(offset);
 
     this.emit("timeline-data-changed", {
       isPaused: true,
@@ -640,6 +835,21 @@ AnimationsTimeline.prototype = {
         }
       });
 
+      // Right below the line is a hidden-by-default line for displaying the
+      // inline keyframes.
+      let detailsEl = createNode({
+        parent: this.animationsEl,
+        nodeType: "li",
+        attributes: {
+          "class": "animated-properties"
+        }
+      });
+
+      let details = new AnimationDetails();
+      details.init(detailsEl);
+      details.on("frame-selected", this.onFrameSelected);
+      this.details.push(details);
+
       // Left sidebar for the animated node.
       let animatedNodeEl = createNode({
         parent: animationEl,
@@ -647,6 +857,7 @@ AnimationsTimeline.prototype = {
           "class": "target"
         }
       });
+
       // Draw the animated node target.
       let targetNode = new AnimationTargetNode(this.inspector, {compact: true});
       targetNode.init(animatedNodeEl);
@@ -657,15 +868,19 @@ AnimationsTimeline.prototype = {
       let timeBlockEl = createNode({
         parent: animationEl,
         attributes: {
-          "class": "time-block"
+          "class": "time-block track-container"
         }
       });
+
       // Draw the animation time block.
       let timeBlock = new AnimationTimeBlock();
       timeBlock.init(timeBlockEl);
       timeBlock.render(animation);
       this.timeBlocks.push(timeBlock);
+
+      timeBlock.on("selected", this.onAnimationSelected);
     }
+
     // Use the document's current time to position the scrubber (if the server
     // doesn't provide it, hide the scrubber entirely).
     // Note that because the currentTime was sent via the protocol, some time
@@ -694,8 +909,8 @@ AnimationsTimeline.prototype = {
   },
 
   startAnimatingScrubber: function(time) {
-    let x = TimeScale.startTimeToDistance(time, this.timeHeaderEl.offsetWidth);
-    this.scrubberEl.style.left = x + "px";
+    let x = TimeScale.startTimeToDistance(time);
+    this.scrubberEl.style.left = x + "%";
 
     // Only stop the scrubber if it's out of bounds or all animations have been
     // paused, but not if at least an animation is infinite.
@@ -710,7 +925,7 @@ AnimationsTimeline.prototype = {
         isPaused: !this.isAtLeastOneAnimationPlaying(),
         isMoving: false,
         isUserDrag: false,
-        time: TimeScale.distanceToRelativeTime(x, this.timeHeaderEl.offsetWidth)
+        time: TimeScale.distanceToRelativeTime(x)
       });
       return;
     }
@@ -719,7 +934,7 @@ AnimationsTimeline.prototype = {
       isPaused: false,
       isMoving: true,
       isUserDrag: false,
-      time: TimeScale.distanceToRelativeTime(x, this.timeHeaderEl.offsetWidth)
+      time: TimeScale.distanceToRelativeTime(x)
     });
 
     let now = this.win.performance.now();
@@ -755,15 +970,15 @@ AnimationsTimeline.prototype = {
     this.timeHeaderEl.innerHTML = "";
     let interval = findOptimalTimeInterval(scale, TIME_GRADUATION_MIN_SPACING);
     for (let i = 0; i < width; i += interval) {
+      let pos = 100 * i / width;
       createNode({
         parent: this.timeHeaderEl,
         nodeType: "span",
         attributes: {
           "class": "time-tick",
-          "style": `left:${i}px`
+          "style": `left:${pos}%`
         },
-        textContent: TimeScale.formatTime(
-          TimeScale.distanceToRelativeTime(i, width))
+        textContent: TimeScale.formatTime(TimeScale.distanceToRelativeTime(pos))
       });
     }
   }
@@ -773,83 +988,80 @@ AnimationsTimeline.prototype = {
  * UI component responsible for displaying a single animation timeline, which
  * basically looks like a rectangle that shows the delay and iterations.
  */
-function AnimationTimeBlock() {}
+function AnimationTimeBlock() {
+  EventEmitter.decorate(this);
+  this.onClick = this.onClick.bind(this);
+}
 
 exports.AnimationTimeBlock = AnimationTimeBlock;
 
 AnimationTimeBlock.prototype = {
   init: function(containerEl) {
     this.containerEl = containerEl;
+    this.containerEl.addEventListener("click", this.onClick);
   },
+
   destroy: function() {
-    while (this.containerEl.firstChild) {
-      this.containerEl.firstChild.remove();
-    }
+    this.containerEl.removeEventListener("click", this.onClick);
+    this.unrender();
     this.containerEl = null;
     this.animation = null;
   },
 
+  unrender: function() {
+    while (this.containerEl.firstChild) {
+      this.containerEl.firstChild.remove();
+    }
+  },
+
   render: function(animation) {
+    this.unrender();
+
     this.animation = animation;
     let {state} = this.animation;
-
-    let width = this.containerEl.offsetWidth;
 
     // Create a container element to hold the delay and iterations.
     // It is positioned according to its delay (divided by the playbackrate),
     // and its width is according to its duration (divided by the playbackrate).
-    let start = state.previousStartTime || 0;
-    let duration = state.duration;
-    let rate = state.playbackRate;
-    let count = state.iterationCount;
-    let delay = state.delay || 0;
-
-    let x = TimeScale.startTimeToDistance(start + (delay / rate), width);
-    let w = TimeScale.durationToDistance(duration / rate, width);
-    let iterationW = w * (count || 1);
-    let delayW = TimeScale.durationToDistance(Math.abs(delay) / rate, width);
+    let {x, iterationW, delayX, delayW, negativeDelayW} =
+      TimeScale.getAnimationDimensions(animation);
 
     let iterations = createNode({
       parent: this.containerEl,
       attributes: {
-        "class": state.type + " iterations" + (count ? "" : " infinite"),
+        "class": state.type + " iterations" +
+                 (state.iterationCount ? "" : " infinite"),
         // Individual iterations are represented by setting the size of the
         // repeating linear-gradient.
-        "style": `left:${x}px;
-                  width:${iterationW}px;
-                  background-size:${Math.max(w, 2)}px 100%;`
+        "style": `left:${x}%;
+                  width:${iterationW}%;
+                  background-size:${100 / (state.iterationCount || 1)}% 100%;`
       }
     });
 
     // The animation name is displayed over the iterations.
     // Note that in case of negative delay, we push the name towards the right
     // so the delay can be shown.
-    let negativeDelayW = delay < 0 ? delayW : 0;
     createNode({
       parent: iterations,
       attributes: {
         "class": "name",
         "title": this.getTooltipText(state),
-        // Position the fast-track icon with background-position, and make space
-        // for the negative delay with a margin-left.
-        "style": "background-position:" +
-                 (iterationW - FAST_TRACK_ICON_SIZE - negativeDelayW) +
-                 "px center;margin-left:" + negativeDelayW + "px"
+        // Make space for the negative delay with a margin-left.
+        "style": `margin-left:${negativeDelayW}%`
       },
       textContent: state.name
     });
 
     // Delay.
-    if (delay) {
+    if (state.delay) {
       // Negative delays need to start at 0.
-      let delayX = TimeScale.durationToDistance(
-        (delay < 0 ? 0 : delay) / rate, width);
       createNode({
         parent: iterations,
         attributes: {
-          "class": "delay" + (delay < 0 ? " negative" : ""),
-          "style": `left:-${delayX}px;
-                    width:${delayW}px;`
+          "class": "delay" + (state.delay < 0 ? " negative" : ""),
+          "style": `left:-${delayX}%;
+                    width:${delayW}%;`
         }
       });
     }
@@ -858,21 +1070,280 @@ AnimationTimeBlock.prototype = {
   getTooltipText: function(state) {
     let getTime = time => L10N.getFormatStr("player.timeLabel",
                             L10N.numberWithDecimals(time / 1000, 2));
-    // The type isn't always available, older servers don't send it.
-    let title =
-      state.type
-      ? L10N.getFormatStr("timeline." + state.type + ".nameLabel", state.name)
-      : state.name;
-    let delay = L10N.getStr("player.animationDelayLabel") + " " +
-                getTime(state.delay);
-    let duration = L10N.getStr("player.animationDurationLabel") + " " +
-                   getTime(state.duration);
-    let iterations = L10N.getStr("player.animationIterationCountLabel") + " " +
-                     (state.iterationCount ||
-                      L10N.getStr("player.infiniteIterationCountText"));
-    let compositor = state.isRunningOnCompositor
-                     ? L10N.getStr("player.runningOnCompositorTooltip")
-                     : "";
-    return [title, duration, iterations, delay, compositor].join("\n");
+
+    let text = "";
+
+    // Adding the name.
+    text += getFormattedAnimationTitle({state});
+    text += "\n";
+
+    // Adding the delay.
+    text += L10N.getStr("player.animationDelayLabel") + " ";
+    text += getTime(state.delay);
+    text += "\n";
+
+    // Adding the duration.
+    text += L10N.getStr("player.animationDurationLabel") + " ";
+    text += getTime(state.duration);
+    text += "\n";
+
+    // Adding the iteration count (the infinite symbol, or an integer).
+    // XXX: see bug 1219608 to remove this if the count is 1.
+    text += L10N.getStr("player.animationIterationCountLabel") + " ";
+    text += state.iterationCount ||
+            L10N.getStr("player.infiniteIterationCountText");
+    text += "\n";
+
+    // Adding the playback rate if it's different than 1.
+    if (state.playbackRate !== 1) {
+      text += L10N.getStr("player.animationRateLabel") + " ";
+      text += state.playbackRate;
+      text += "\n";
+    }
+
+    // Adding a note that the animation is running on the compositor thread if
+    // needed.
+    if (state.isRunningOnCompositor) {
+      text += L10N.getStr("player.runningOnCompositorTooltip");
+    }
+
+    return text;
+  },
+
+  onClick: function(e) {
+    e.stopPropagation();
+    this.emit("selected", this.animation);
   }
 };
+
+/**
+ * UI component responsible for displaying detailed information for a given
+ * animation.
+ * This includes information about timing, easing, keyframes, animated
+ * properties.
+ */
+function AnimationDetails() {
+  EventEmitter.decorate(this);
+
+  this.onFrameSelected = this.onFrameSelected.bind(this);
+
+  this.keyframeComponents = [];
+}
+
+exports.AnimationDetails = AnimationDetails;
+
+AnimationDetails.prototype = {
+  // These are part of frame objects but are not animated properties. This
+  // array is used to skip them.
+  NON_PROPERTIES: ["easing", "composite", "computedOffset", "offset"],
+
+  init: function(containerEl) {
+    this.containerEl = containerEl;
+  },
+
+  destroy: function() {
+    this.unrender();
+    this.containerEl = null;
+  },
+
+  unrender: function() {
+    for (let component of this.keyframeComponents) {
+      component.off("frame-selected", this.onFrameSelected);
+      component.destroy();
+    }
+    this.keyframeComponents = [];
+
+    while (this.containerEl.firstChild) {
+      this.containerEl.firstChild.remove();
+    }
+  },
+
+  /**
+   * Convert a list of frames into a list of tracks, one per animated property,
+   * each with a list of frames.
+   */
+  getTracksFromFrames: function(frames) {
+    let tracks = {};
+
+    for (let frame of frames) {
+      for (let name in frame) {
+        if (this.NON_PROPERTIES.indexOf(name) != -1) {
+          continue;
+        }
+
+        if (!tracks[name]) {
+          tracks[name] = [];
+        }
+
+        tracks[name].push({
+          value: frame[name],
+          offset: frame.computedOffset
+        });
+      }
+    }
+
+    return tracks;
+  },
+
+  render: Task.async(function*(animation) {
+    this.unrender();
+
+    if (!animation) {
+      return;
+    }
+    this.animation = animation;
+
+    let frames = yield animation.getFrames();
+
+    // We might have been destroyed in the meantime, or the component might
+    // have been re-rendered.
+    if (!this.containerEl || this.animation !== animation) {
+      return;
+    }
+    // Useful for tests to know when the keyframes have been retrieved.
+    this.emit("keyframes-retrieved");
+
+    // Build an element for each animated property track.
+    this.tracks = this.getTracksFromFrames(frames);
+    for (let propertyName in this.tracks) {
+      let line = createNode({
+        parent: this.containerEl,
+        attributes: {"class": "property"}
+      });
+
+      createNode({
+        // text-overflow doesn't work in flex items, so we need a second level
+        // of container to actually have an ellipsis on the name.
+        // See bug 972664.
+        parent: createNode({
+          parent: line,
+          attributes: {"class": "name"},
+        }),
+        textContent: getCssPropertyName(propertyName)
+      });
+
+      // Add the keyframes diagram for this property.
+      let framesWrapperEl = createNode({
+        parent: line,
+        attributes: {"class": "track-container"}
+      });
+
+      let framesEl = createNode({
+        parent: framesWrapperEl,
+        attributes: {"class": "frames"}
+      });
+
+      // Scale the list of keyframes according to the current time scale.
+      let {x, w} = TimeScale.getAnimationDimensions(animation);
+      framesEl.style.left = `${x}%`;
+      framesEl.style.width = `${w}%`;
+
+      let keyframesComponent = new Keyframes();
+      keyframesComponent.init(framesEl);
+      keyframesComponent.render({
+        keyframes: this.tracks[propertyName],
+        propertyName: propertyName,
+        animation: animation
+      });
+      keyframesComponent.on("frame-selected", this.onFrameSelected);
+
+      this.keyframeComponents.push(keyframesComponent);
+    }
+  }),
+
+  onFrameSelected: function(e, args) {
+    // Relay the event up, it's needed in parents too.
+    this.emit(e, args);
+  }
+};
+
+/**
+ * UI component responsible for displaying a list of keyframes.
+ */
+function Keyframes() {
+  EventEmitter.decorate(this);
+  this.onClick = this.onClick.bind(this);
+}
+
+exports.Keyframes = Keyframes;
+
+Keyframes.prototype = {
+  init: function(containerEl) {
+    this.containerEl = containerEl;
+
+    this.keyframesEl = createNode({
+      parent: this.containerEl,
+      attributes: {"class": "keyframes"}
+    });
+
+    this.containerEl.addEventListener("click", this.onClick);
+  },
+
+  destroy: function() {
+    this.containerEl.removeEventListener("click", this.onClick);
+    this.keyframesEl.remove();
+    this.containerEl = this.keyframesEl = this.animation = null;
+  },
+
+  render: function({keyframes, propertyName, animation}) {
+    this.keyframes = keyframes;
+    this.propertyName = propertyName;
+    this.animation = animation;
+
+    this.keyframesEl.classList.add(animation.state.type);
+    for (let frame of this.keyframes) {
+      createNode({
+        parent: this.keyframesEl,
+        attributes: {
+          "class": "frame",
+          "style": `left:${frame.offset * 100}%;`,
+          "data-offset": frame.offset,
+          "data-property": propertyName,
+          "title": frame.value
+        }
+      });
+    }
+  },
+
+  onClick: function(e) {
+    // If the click happened on a frame, tell our parent about it.
+    if (!e.target.classList.contains("frame")) {
+      return;
+    }
+
+    e.stopPropagation();
+    this.emit("frame-selected", {
+      animation: this.animation,
+      propertyName: this.propertyName,
+      offset: parseFloat(e.target.dataset.offset),
+      value: e.target.getAttribute("title"),
+      x: e.target.offsetLeft + e.target.closest(".frames").offsetLeft
+    });
+  }
+};
+
+let sortedUnique = arr => [...new Set(arr)].sort((a, b) => a > b);
+
+/**
+ * Get a formatted title for this animation. This will be either:
+ * "some-name", "some-name : CSS Transition", or "some-name : CSS Animation",
+ * depending if the server provides the type, and what type it is.
+ * @param {AnimationPlayerFront} animation
+ */
+function getFormattedAnimationTitle({state}) {
+  // Older servers don't send the type.
+  return state.type
+    ? L10N.getFormatStr("timeline." + state.type + ".nameLabel", state.name)
+    : state.name;
+}
+
+/**
+ * Turn propertyName into property-name.
+ * @param {String} jsPropertyName A camelcased CSS property name. Typically
+ * something that comes out of computed styles. E.g. borderBottomColor
+ * @return {String} The corresponding CSS property name: border-bottom-color
+ */
+function getCssPropertyName(jsPropertyName) {
+  return jsPropertyName.replace(/[A-Z]/g, "-$&").toLowerCase();
+}
+exports.getCssPropertyName = getCssPropertyName;

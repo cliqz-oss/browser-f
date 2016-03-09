@@ -92,9 +92,6 @@ ThrowInvalidThis(JSContext* aCx, const JS::CallArgs& aArgs,
                  const ErrNum aErrorNumber,
                  prototypes::ID aProtoId);
 
-bool
-ThrowMethodFailed(JSContext* cx, ErrorResult& rv);
-
 // Returns true if the JSClass is used for DOM objects.
 inline bool
 IsDOMClass(const JSClass* clasp)
@@ -222,7 +219,7 @@ UnwrapObject(JSObject* obj, U& value, prototypes::ID protoID,
       return NS_ERROR_XPC_BAD_CONVERT_JS;
     }
 
-    obj = js::CheckedUnwrap(obj, /* stopAtOuter = */ false);
+    obj = js::CheckedUnwrap(obj, /* stopAtWindowProxy = */ false);
     if (!obj) {
       return NS_ERROR_XPC_SECURITY_MANAGER_VETO;
     }
@@ -702,7 +699,6 @@ struct NativeHasMember
   HAS_MEMBER_TYPEDEFS;
 
   HAS_MEMBER(GetParentObject, GetParentObject);
-  HAS_MEMBER(JSBindingFinalized, JSBindingFinalized);
   HAS_MEMBER(WrapObject, WrapObject);
 };
 
@@ -776,21 +772,14 @@ CouldBeDOMBinding(nsWrapperCache* aCache)
 inline bool
 TryToOuterize(JSContext* cx, JS::MutableHandle<JS::Value> rval)
 {
-  if (js::IsInnerObject(&rval.toObject())) {
-    JS::Rooted<JSObject*> obj(cx, &rval.toObject());
-    obj = JS_ObjectToOuterObject(cx, obj);
-    if (!obj) {
-      return false;
-    }
-
+  if (js::IsWindow(&rval.toObject())) {
+    JSObject* obj = js::ToWindowProxyIfWindow(&rval.toObject());
+    MOZ_ASSERT(obj);
     rval.set(JS::ObjectValue(*obj));
   }
 
   return true;
 }
-
-bool
-ObjectToOuterObjectValue(JSContext* cx, JS::Handle<JSObject*> obj, JS::MutableHandle<JS::Value> vp);
 
 // Make sure to wrap the given string value into the right compartment, as
 // needed.
@@ -1093,7 +1082,7 @@ WrapNewBindingNonWrapperCachedObject(JSContext* cx,
     JS::Rooted<JSObject*> scope(cx, scopeArg);
     JS::Rooted<JSObject*> proto(cx, givenProto);
     if (js::IsWrapper(scope)) {
-      scope = js::CheckedUnwrap(scope, /* stopAtOuter = */ false);
+      scope = js::CheckedUnwrap(scope, /* stopAtWindowProxy = */ false);
       if (!scope)
         return false;
       ac.emplace(cx, scope);
@@ -1144,7 +1133,7 @@ WrapNewBindingNonWrapperCachedObject(JSContext* cx,
     JS::Rooted<JSObject*> scope(cx, scopeArg);
     JS::Rooted<JSObject*> proto(cx, givenProto);
     if (js::IsWrapper(scope)) {
-      scope = js::CheckedUnwrap(scope, /* stopAtOuter = */ false);
+      scope = js::CheckedUnwrap(scope, /* stopAtWindowProxy = */ false);
       if (!scope)
         return false;
       ac.emplace(cx, scope);
@@ -2562,23 +2551,6 @@ HasConstructor(JSObject* obj)
          js::GetObjectClass(obj)->construct;
 }
  #endif
- 
-template<class T, bool hasCallback=NativeHasMember<T>::JSBindingFinalized>
-struct JSBindingFinalized
-{
-  static void Finalized(T* self)
-  {
-  }
-};
-
-template<class T>
-struct JSBindingFinalized<T, true>
-{
-  static void Finalized(T* self)
-  {
-    self->JSBindingFinalized();
-  }
-};
 
 // Helpers for creating a const version of a type.
 template<typename T>
@@ -3182,30 +3154,11 @@ ConvertExceptionToPromise(JSContext* cx,
                           JSObject* promiseScope,
                           JS::MutableHandle<JS::Value> rval);
 
-// While we wait for the outcome of spec discussions on whether properties for
-// DOM global objects live on the object or the prototype, we supply this one
-// place to switch the behaviour, so we can easily turn this off on branches.
-inline bool
-GlobalPropertiesAreOwn()
-{
-  return true;
-}
-
 #ifdef DEBUG
 void
 AssertReturnTypeMatchesJitinfo(const JSJitInfo* aJitinfo,
                                JS::Handle<JS::Value> aValue);
 #endif
-
-// Returns true if aObj's global has any of the permissions named in aPermissions
-// set to nsIPermissionManager::ALLOW_ACTION. aPermissions must be null-terminated.
-bool
-CheckAnyPermissions(JSContext* aCx, JSObject* aObj, const char* const aPermissions[]);
-
-// Returns true if aObj's global has all of the permissions named in aPermissions
-// set to nsIPermissionManager::ALLOW_ACTION. aPermissions must be null-terminated.
-bool
-CheckAllPermissions(JSContext* aCx, JSObject* aObj, const char* const aPermissions[]);
 
 // This function is called by the bindings layer for methods/getters/setters
 // that are not safe to be called in prerendering mode.  It checks to make sure

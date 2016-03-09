@@ -18,7 +18,7 @@
 #endif
 
 #undef LOG
-extern PRLogModuleInfo* GetSpeechSynthLog();
+extern mozilla::LogModule* GetSpeechSynthLog();
 #define LOG(type, msg) MOZ_LOG(GetSpeechSynthLog(), type, msg)
 
 #define AUDIO_TRACK 1
@@ -100,6 +100,7 @@ NS_IMPL_CYCLE_COLLECTION(nsSpeechTask, mSpeechSynthesis, mUtterance, mCallback);
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsSpeechTask)
   NS_INTERFACE_MAP_ENTRY(nsISpeechTask)
   NS_INTERFACE_MAP_ENTRY(nsIAudioChannelAgentCallback)
+  NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsISpeechTask)
 NS_INTERFACE_MAP_END
 
@@ -274,7 +275,13 @@ nsSpeechTask::SendAudio(JS::Handle<JS::Value> aData, JS::Handle<JS::Value> aLand
   RefPtr<mozilla::SharedBuffer> samples;
   {
     JS::AutoCheckCannotGC nogc;
-    samples = makeSamples(JS_GetInt16ArrayData(tsrc, nogc), dataLen);
+    bool isShared;
+    int16_t* data = JS_GetInt16ArrayData(tsrc, &isShared, nogc);
+    if (isShared) {
+      // Must opt in to using shared data.
+      return NS_ERROR_DOM_TYPE_MISMATCH_ERR;
+    }
+    samples = makeSamples(data, dataLen);
   }
   SendAudioImpl(samples, dataLen);
 

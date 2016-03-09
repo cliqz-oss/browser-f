@@ -46,10 +46,10 @@ public:
     static nsEventStatus DispatchKeyInput(mozilla::WidgetKeyboardEvent& aEvent);
     static void DispatchTouchInput(mozilla::MultiTouchInput& aInput);
 
-    NS_IMETHOD Create(nsIWidget *aParent,
-                      void *aNativeParent,
-                      const nsIntRect &aRect,
-                      nsWidgetInitData *aInitData);
+    NS_IMETHOD Create(nsIWidget* aParent,
+                      void* aNativeParent,
+                      const LayoutDeviceIntRect& aRect,
+                      nsWidgetInitData* aInitData);
     NS_IMETHOD Destroy(void);
 
     NS_IMETHOD Show(bool aState);
@@ -71,14 +71,14 @@ public:
     virtual bool IsEnabled() const;
     NS_IMETHOD SetFocus(bool aRaise = false);
     NS_IMETHOD ConfigureChildren(const nsTArray<nsIWidget::Configuration>&);
-    NS_IMETHOD Invalidate(const nsIntRect &aRect);
+    NS_IMETHOD Invalidate(const LayoutDeviceIntRect& aRect);
     virtual void* GetNativeData(uint32_t aDataType);
     virtual void SetNativeData(uint32_t aDataType, uintptr_t aVal);
     NS_IMETHOD SetTitle(const nsAString& aTitle)
     {
         return NS_OK;
     }
-    virtual mozilla::LayoutDeviceIntPoint WidgetToScreenOffset();
+    virtual LayoutDeviceIntPoint WidgetToScreenOffset();
     void DispatchTouchInputViaAPZ(mozilla::MultiTouchInput& aInput);
     void DispatchTouchEventForAPZ(const mozilla::MultiTouchInput& aInput,
                                   const ScrollableLayerGuid& aGuid,
@@ -88,7 +88,7 @@ public:
                              nsEventStatus& aStatus);
     virtual nsresult SynthesizeNativeTouchPoint(uint32_t aPointerId,
                                                 TouchPointerState aPointerState,
-                                                nsIntPoint aPointerScreenPoint,
+                                                ScreenIntPoint aPointerScreenPoint,
                                                 double aPointerPressure,
                                                 uint32_t aPointerOrientation,
                                                 nsIObserver* aObserver) override;
@@ -123,7 +123,7 @@ public:
 
     virtual uint32_t GetGLFrameBufferFormat() override;
 
-    virtual nsIntRect GetNaturalBounds() override;
+    virtual LayoutDeviceIntRect GetNaturalBounds() override;
     virtual bool NeedsPaint();
 
     virtual Composer2D* GetComposer2D() override;

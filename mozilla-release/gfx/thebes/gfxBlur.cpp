@@ -449,18 +449,15 @@ CacheBlur(DrawTarget& aDT,
 
 // Blurs a small surface and creates the mask.
 static already_AddRefed<SourceSurface>
-CreateBlurMask(const IntSize& aRectSize,
+CreateBlurMask(const IntSize& aMinSize,
                RectCornerRadii* aCornerRadii,
                IntSize aBlurRadius,
                IntMargin& aExtendDestBy,
                IntMargin& aSliceBorder,
                DrawTarget& aDestDrawTarget)
 {
-  IntMargin slice;
   gfxAlphaBoxBlur blur;
-  IntSize minSize =
-    ComputeMinSizeForShadowShape(aCornerRadii, aBlurRadius, slice, aRectSize);
-  IntRect minRect(IntPoint(), minSize);
+  IntRect minRect(IntPoint(), aMinSize);
 
   gfxContext* blurCtx = blur.Init(ThebesRect(Rect(minRect)), IntSize(),
                                   aBlurRadius, nullptr, nullptr);
@@ -488,7 +485,7 @@ CreateBlurMask(const IntSize& aRectSize,
 
   IntRect expandedMinRect(topLeft, result->GetSize());
   aExtendDestBy = expandedMinRect - minRect;
-  aSliceBorder = slice + aExtendDestBy;
+  aSliceBorder += aExtendDestBy;
 
   MOZ_ASSERT(aSliceBorder.LeftRight() <= expandedMinRect.width);
   MOZ_ASSERT(aSliceBorder.TopBottom() <= expandedMinRect.height);
@@ -513,14 +510,15 @@ CreateBoxShadow(SourceSurface* aBlurMask, const Color& aShadowColor)
   return boxShadowDT->Snapshot();
 }
 
-static SourceSurface*
+static already_AddRefed<SourceSurface>
 GetBlur(DrawTarget& aDT,
         const IntSize& aRectSize,
         const IntSize& aBlurRadius,
         RectCornerRadii* aCornerRadii,
         const Color& aShadowColor,
         IntMargin& aExtendDestBy,
-        IntMargin& aSlice)
+        IntMargin& aSlice,
+        gfxContext* aDestinationCtx)
 {
   if (!gBlurCache) {
     gBlurCache = new BlurCache();
@@ -529,18 +527,28 @@ GetBlur(DrawTarget& aDT,
   IntSize minSize =
     ComputeMinSizeForShadowShape(aCornerRadii, aBlurRadius, aSlice, aRectSize);
 
+  // We can get seams using the min size rect when drawing to the destination rect
+  // if we have a non-pixel aligned destination transformation. In those cases,
+  // fallback to just rendering the destination rect.
+  Matrix destMatrix = ToMatrix(aDestinationCtx->CurrentMatrix());
+  bool useDestRect = !destMatrix.IsRectilinear() || destMatrix.HasNonIntegerTranslation();
+  if (useDestRect) {
+    minSize = aRectSize;
+  }
+
   BlurCacheData* cached = gBlurCache->Lookup(minSize, aBlurRadius,
                                              aCornerRadii, aShadowColor,
                                              aDT.GetBackendType());
-  if (cached) {
+  if (cached && !useDestRect) {
     // See CreateBlurMask() for these values
     aExtendDestBy = cached->mExtendDest;
     aSlice = aSlice + aExtendDestBy;
-    return cached->mBlur;
+    RefPtr<SourceSurface> blur = cached->mBlur;
+    return blur.forget();
   }
 
   RefPtr<SourceSurface> blurMask =
-    CreateBlurMask(aRectSize, aCornerRadii, aBlurRadius, aExtendDestBy, aSlice, aDT);
+    CreateBlurMask(minSize, aCornerRadii, aBlurRadius, aExtendDestBy, aSlice, aDT);
 
   if (!blurMask) {
     return nullptr;
@@ -551,8 +559,13 @@ GetBlur(DrawTarget& aDT,
     return nullptr;
   }
 
-  CacheBlur(aDT, minSize, aBlurRadius, aCornerRadii, aShadowColor, aExtendDestBy, boxShadow);
-  return boxShadow;
+  if (useDestRect) {
+    // Since we're just going to paint the actual rect to the destination
+    aSlice.SizeTo(0, 0, 0, 0);
+  } else {
+    CacheBlur(aDT, minSize, aBlurRadius, aCornerRadii, aShadowColor, aExtendDestBy, boxShadow);
+  }
+  return boxShadow.forget();
 }
 
 void
@@ -698,7 +711,8 @@ gfxAlphaBoxBlur::BlurRectangle(gfxContext* aDestinationCtx,
   RefPtr<SourceSurface> boxShadow = GetBlur(destDrawTarget,
                                             rect.Size(), blurRadius,
                                             aCornerRadii, aShadowColor,
-                                            extendDestBy, slice);
+                                            extendDestBy, slice,
+                                            aDestinationCtx);
   if (!boxShadow) {
     return;
   }
@@ -905,6 +919,8 @@ gfxAlphaBoxBlur::GetInsetBlur(IntMargin& aExtendDestBy,
                               const RectCornerRadii& aInnerClipRadii,
                               const Color& aShadowColor,
                               const bool& aHasBorderRadius,
+                              const Point aShadowOffset,
+                              bool& aMovedOffset,
                               gfxContext* aDestinationCtx)
 {
   if (!gBlurCache) {
@@ -919,6 +935,19 @@ gfxAlphaBoxBlur::GetInsetBlur(IntMargin& aExtendDestBy,
                                 aShadowClipRect, aHasBorderRadius,
                                 aInnerClipRadii);
 
+  // If we have a shadow offset larger than the min rect,
+  // there's no clean way we can properly create a min rect with the offset
+  // in the correct place and still render correctly.  In those cases,
+  // fallback to just rendering the dest rect as is.
+  bool useDestRect = (std::abs(aShadowOffset.x) > aSlice.left) ||
+                     (std::abs(aShadowOffset.y) > aSlice.top);
+  aMovedOffset = false;
+  if (useDestRect) {
+    aDestinationRect.ToIntRect(&outerRect);
+    aShadowClipRect.ToIntRect(&innerRect);
+    aMovedOffset = true;
+  }
+
   DrawTarget* destDrawTarget = aDestinationCtx->GetDrawTarget();
   BlurCacheData* cached =
       gBlurCache->LookupInsetBoxShadow(outerRect.Size(), innerRect.Size(),
@@ -926,7 +955,7 @@ gfxAlphaBoxBlur::GetInsetBlur(IntMargin& aExtendDestBy,
                                        &aInnerClipRadii, aShadowColor,
                                        aHasBorderRadius,
                                        destDrawTarget->GetBackendType());
-  if (cached) {
+  if (cached && !useDestRect) {
     aExtendDestBy = cached->mExtendDest;
     // Need to extend it twice: once for the outer rect and once for the inner rect.
     aSlice += aExtendDestBy;
@@ -941,16 +970,17 @@ gfxAlphaBoxBlur::GetInsetBlur(IntMargin& aExtendDestBy,
   // When rendering inset box shadows, we respect the spread radius by changing
   //  the shape of the unblurred shadow, and can pass a spread radius of zero here.
   IntSize zeroSpread(0, 0);
-  gfxContext* minGfxContext = Init(ThebesRect(ToRect(outerRect)),
+  gfxContext* minGfxContext = Init(ThebesRect(outerRect),
                                    zeroSpread, aBlurRadius, nullptr, nullptr);
   if (!minGfxContext) {
     return nullptr;
   }
 
   DrawTarget* minDrawTarget = minGfxContext->GetDrawTarget();
-  RefPtr<Path> maskPath = GetBoxShadowInsetPath(minDrawTarget, ToRect(outerRect),
-                                                ToRect(innerRect), aHasBorderRadius,
-                                                aInnerClipRadii);
+  RefPtr<Path> maskPath =
+    GetBoxShadowInsetPath(minDrawTarget, IntRectToRect(outerRect),
+                          IntRectToRect(innerRect), aHasBorderRadius,
+                          aInnerClipRadii);
 
   Color black(0.f, 0.f, 0.f, 1.f);
   minGfxContext->SetColor(black);
@@ -970,14 +1000,22 @@ gfxAlphaBoxBlur::GetInsetBlur(IntMargin& aExtendDestBy,
 
   IntRect blurRect(topLeft, minInsetBlur->GetSize());
   aExtendDestBy = blurRect - outerRect;
-  aSlice += aExtendDestBy;
-  aSlice += aExtendDestBy;
 
-  CacheInsetBlur(outerRect.Size(), innerRect.Size(),
+  if (useDestRect) {
+    // Since we're just going to paint the actual rect to the destination
+    aSlice.SizeTo(0, 0, 0, 0);
+  } else {
+    aSlice += aExtendDestBy;
+    aSlice += aExtendDestBy;
+
+    CacheInsetBlur(outerRect.Size(), innerRect.Size(),
                  aBlurRadius, aSpreadRadius,
                  &aInnerClipRadii, aShadowColor,
                  aHasBorderRadius, destDrawTarget->GetBackendType(),
                  aExtendDestBy, minInsetBlur);
+
+  }
+
   return minInsetBlur.forget();
 }
 
@@ -1012,11 +1050,13 @@ gfxAlphaBoxBlur::BlurInsetBox(gfxContext* aDestinationCtx,
 
   IntMargin extendDest;
   IntMargin slice;
+  bool didMoveOffset;
   RefPtr<SourceSurface> minInsetBlur = GetInsetBlur(extendDest, slice,
                                                     aDestinationRect, aShadowClipRect,
                                                     aBlurRadius, aSpreadRadius,
                                                     aInnerClipRadii, aShadowColor,
-                                                    aHasBorderRadius, aDestinationCtx);
+                                                    aHasBorderRadius, aShadowOffset,
+                                                    didMoveOffset, aDestinationCtx);
   if (!minInsetBlur) {
     return;
   }
@@ -1026,13 +1066,15 @@ gfxAlphaBoxBlur::BlurInsetBox(gfxContext* aDestinationCtx,
   srcInner.Deflate(Margin(slice));
 
   Rect dstOuter(aDestinationRect);
-  dstOuter.MoveBy(aShadowOffset);
+  if (!didMoveOffset) {
+    dstOuter.MoveBy(aShadowOffset);
+  }
   dstOuter.Inflate(Margin(extendDest));
   Rect dstInner = dstOuter;
   dstInner.Deflate(Margin(slice));
 
   DrawTarget* destDrawTarget = aDestinationCtx->GetDrawTarget();
-  if (srcOuter.IsEqualInterior(srcInner)) {
+  if (dstOuter.Size() == srcOuter.Size()) {
     destDrawTarget->DrawSurface(minInsetBlur, dstOuter, srcOuter);
   } else {
     DrawBoxShadows(*destDrawTarget, minInsetBlur,

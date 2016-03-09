@@ -34,7 +34,9 @@ using struct mozilla::layers::TextureInfo from "mozilla/layers/CompositorTypes.h
 using mozilla::LayerMargin from "Units.h";
 using mozilla::LayerPoint from "Units.h";
 using mozilla::LayerRect from "Units.h";
+using mozilla::LayerIntRegion from "Units.h";
 using mozilla::ParentLayerIntRect from "Units.h";
+using mozilla::LayoutDeviceIntRect from "Units.h";
 using mozilla::layers::ScaleMode from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::EventRegions from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::EventRegionsOverride from "mozilla/layers/LayersTypes.h";
@@ -205,7 +207,7 @@ struct Animation {
 // Change a layer's attributes
 struct CommonLayerAttributes {
   IntRect layerBounds;
-  nsIntRegion visibleRegion;
+  LayerIntRegion visibleRegion;
   EventRegions eventRegions;
   TransformMatrix transform;
   float postXScale;
@@ -281,8 +283,8 @@ struct LayerAttributes {
 // See nsIWidget Configurations
 struct PluginWindowData {
   uintptr_t windowId;
-  IntRect[] clip;
-  IntRect bounds;
+  LayoutDeviceIntRect[] clip;
+  LayoutDeviceIntRect bounds;
   bool visible;
 };
 
@@ -300,6 +302,7 @@ struct OpRepositionChild  { PLayer container; PLayer childLayer; PLayer after; }
 struct OpRaiseToTopChild  { PLayer container; PLayer childLayer; };
 
 struct OpSetDiagnosticTypes { DiagnosticTypes diagnostics; };
+struct OpWindowOverlayChanged { };
 
 struct ShmemSection {
   Shmem shmem;
@@ -458,6 +461,7 @@ union Edit {
 
   OpSetLayerAttributes;
   OpSetDiagnosticTypes;
+  OpWindowOverlayChanged;
 
   OpSetRoot;
   OpInsertAfter;

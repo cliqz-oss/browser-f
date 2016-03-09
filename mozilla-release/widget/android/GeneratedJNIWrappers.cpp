@@ -761,14 +761,8 @@ constexpr char GeckoEditable::OnImeAcknowledgeFocus_t::signature[];
 constexpr char GeckoEditable::OnImeAddCompositionRange_t::name[];
 constexpr char GeckoEditable::OnImeAddCompositionRange_t::signature[];
 
-constexpr char GeckoEditable::OnImeRemoveComposition_t::name[];
-constexpr char GeckoEditable::OnImeRemoveComposition_t::signature[];
-
 constexpr char GeckoEditable::OnImeReplaceText_t::name[];
 constexpr char GeckoEditable::OnImeReplaceText_t::signature[];
-
-constexpr char GeckoEditable::OnImeSetSelection_t::name[];
-constexpr char GeckoEditable::OnImeSetSelection_t::signature[];
 
 constexpr char GeckoEditable::OnImeSynchronize_t::name[];
 constexpr char GeckoEditable::OnImeSynchronize_t::signature[];
@@ -1114,20 +1108,20 @@ constexpr char PrefsHelper::GetPrefsById_t::signature[];
 constexpr char PrefsHelper::RemovePrefsObserver_t::name[];
 constexpr char PrefsHelper::RemovePrefsObserver_t::signature[];
 
-constexpr char RestrictedProfiles::name[];
+constexpr char Restrictions::name[];
 
-constexpr char RestrictedProfiles::IsAllowed_t::name[];
-constexpr char RestrictedProfiles::IsAllowed_t::signature[];
+constexpr char Restrictions::IsAllowed_t::name[];
+constexpr char Restrictions::IsAllowed_t::signature[];
 
-auto RestrictedProfiles::IsAllowed(int32_t a0, mozilla::jni::String::Param a1) -> bool
+auto Restrictions::IsAllowed(int32_t a0, mozilla::jni::String::Param a1) -> bool
 {
     return mozilla::jni::Method<IsAllowed_t>::Call(nullptr, nullptr, a0, a1);
 }
 
-constexpr char RestrictedProfiles::IsUserRestricted_t::name[];
-constexpr char RestrictedProfiles::IsUserRestricted_t::signature[];
+constexpr char Restrictions::IsUserRestricted_t::name[];
+constexpr char Restrictions::IsUserRestricted_t::signature[];
 
-auto RestrictedProfiles::IsUserRestricted() -> bool
+auto Restrictions::IsUserRestricted() -> bool
 {
     return mozilla::jni::Method<IsUserRestricted_t>::Call(nullptr, nullptr);
 }
@@ -1657,6 +1651,16 @@ constexpr char Clipboard::SetClipboardText_t::signature[];
 auto Clipboard::SetClipboardText(mozilla::jni::String::Param a0) -> void
 {
     return mozilla::jni::Method<SetClipboardText_t>::Call(nullptr, nullptr, a0);
+}
+
+constexpr char HardwareCodecCapabilityUtils::name[];
+
+constexpr char HardwareCodecCapabilityUtils::FindDecoderCodecInfoForMimeType_t::name[];
+constexpr char HardwareCodecCapabilityUtils::FindDecoderCodecInfoForMimeType_t::signature[];
+
+auto HardwareCodecCapabilityUtils::FindDecoderCodecInfoForMimeType(mozilla::jni::String::Param a0) -> bool
+{
+    return mozilla::jni::Method<FindDecoderCodecInfoForMimeType_t>::Call(nullptr, nullptr, a0);
 }
 
 constexpr char NativeJSContainer::name[];

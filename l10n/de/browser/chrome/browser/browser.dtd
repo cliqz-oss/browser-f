@@ -40,9 +40,6 @@ can reach it easily. -->
 <!ENTITY  pinTab.accesskey                  "h">
 <!ENTITY  unpinTab.label                    "Tab ablösen">
 <!ENTITY  unpinTab.accesskey                "b">
-<!ENTITY  moveToGroup.label                 "In Gruppe verschieben">
-<!ENTITY  moveToGroup.accesskey             "v">
-<!ENTITY  moveToNewGroup.label              "Neue Gruppe">
 <!ENTITY  moveToNewWindow.label             "In neues Fenster verschieben">
 <!ENTITY  moveToNewWindow.accesskey         "n">
 <!ENTITY  bookmarkAllTabs.label       		"Lesezeichen für alle Tabs hinzufügen…">
@@ -201,7 +198,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.passwordNotificationAnchor.label        "Überprüfen, ob Ihr Passwort gespeichert werden soll">
 <!ENTITY urlbar.webappsNotificationAnchor.label         "Nachricht über die Installation einer App anzeigen">
 <!ENTITY urlbar.pluginsNotificationAnchor.label         "Plugin-Verwendung durch die Website festlegen">
-<!ENTITY urlbar.webNotsNotificationAnchor.label         "Festlegen, ob die Website Benachrichtigungen anzeigen darf">
+<!ENTITY urlbar.webNotsNotificationAnchor3.label        "Ändern der Berechtigung der Website zum Anzeigen von Benachrichtigungen">
 
 <!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.label      "Zugriff auf Kamera und/oder Mikrofon durch die Website verwalten">
 <!ENTITY urlbar.webRTCSharingDevicesNotificationAnchor.label    "Sie erlauben der Website den Zugriff auf Kamera und/oder Mikrofon.">
@@ -222,8 +219,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!-- Toolbar items --> 
 <!ENTITY homeButton.label             "Startseite">
-
-<!ENTITY tabGroupsButton.label         "Tab-Gruppen">
 
 <!ENTITY bookmarksButton.label          "Lesezeichen">
 <!ENTITY bookmarksCmd.commandkey "B">
@@ -387,8 +382,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY viewMenu.label         "Ansicht"> 
 <!ENTITY viewMenu.accesskey       "A"> 
-<!ENTITY viewTabGroups.label     "Tabs gruppieren…">
-<!ENTITY viewTabGroups.accesskey     "g">
 <!ENTITY viewToolbarsMenu.label       "Symbolleisten"> 
 <!ENTITY viewToolbarsMenu.accesskey     "y"> 
 <!ENTITY viewSidebarMenu.label "Sidebar">
@@ -416,6 +409,22 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuHistory.restoreSession.label "Vorherige Sitzung wiederherstellen">
 <!ENTITY appMenuHistory.viewSidebar.label "Chronik-Sidebar öffnen">
 <!ENTITY appMenuHelp.tooltip "Menü &quot;Hilfe&quot; öffnen">
+
+<!ENTITY appMenuRemoteTabs.label "Synchronisierte Tabs">
+<!ENTITY appMenuRemoteTabs.fetching.label "Synchronisierte Tabs abrufen…">
+<!-- LOCALIZATION NOTE (appMenuRemoteTabs.notabs.label): This is shown beneath
+     the name of a device when that device has no open tabs -->
+<!ENTITY appMenuRemoteTabs.notabs.label "Keine offenen Tabs">
+<!-- LOCALIZATION NOTE (appMenuRemoteTabs.tabsnotsyncing.label): This is shown
+     when Sync is configured but syncing tabs is disabled. -->
+<!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktivieren Sie das Synchronisieren von Tabs, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+<!-- LOCALIZATION NOTE (appMenuRemoteTabs.noclients.label): This is shown
+     when Sync is configured but this appears to be the only device attached to
+     the account. We also show links to download Firefox for android/ios. -->
+<!ENTITY appMenuRemoteTabs.noclients.label "Melden Sie sich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
+<!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+<!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 
 <!ENTITY customizeMenu.addToToolbar.label "Zu Symbolleiste hinzufügen">
 <!ENTITY customizeMenu.addToToolbar.accesskey "S">
@@ -509,8 +518,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY searchInNewTab.accesskey     "T">
 <!ENTITY searchSetAsDefault.label     "Als Standardsuchmaschine festlegen">
 <!ENTITY searchSetAsDefault.accesskey "S">
-
-<!ENTITY tabView.commandkey           "e">
 
 <!ENTITY openLinkCmdInTab.label       "Link in neuem Tab öffnen">
 <!ENTITY openLinkCmdInTab.accesskey   "T">
@@ -780,8 +787,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The word "toolbar" is appended automatically and should not be contained below! -->
 <!ENTITY tabsToolbar.label "Browser-Tabs">
 
-<!-- LOCALIZATION NOTE (syncTabsMenu2.label): This appears in the history menu -->
-<!ENTITY syncTabsMenu2.label     "Tabs von anderen Geräten">
+<!-- LOCALIZATION NOTE (syncTabsMenu3.label): This appears in the history menu and history panel -->
+<!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
 
 <!ENTITY syncBrand.shortName.label    "Sync">
 
@@ -922,15 +929,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY panicButton.thankyou.msg1                "Die kürzlich angelegte Browser-Chronik wurde gelöscht.">
 <!ENTITY panicButton.thankyou.msg2                "Sicheres Surfen!">
 <!ENTITY panicButton.thankyou.buttonlabel         "Danke">
-
-<!ENTITY processHang.terminateScript.label        "Skript stoppen">
-<!ENTITY processHang.terminateScript.accessKey    "S">
-<!ENTITY processHang.debugScript.label            "Skript debuggen">
-<!ENTITY processHang.debugScript.accessKey        "d">
-<!ENTITY processHang.terminatePlugin.label        "Plugin beenden">
-<!ENTITY processHang.terminatePlugin.accessKey    "P">
-<!ENTITY processHang.terminateProcess.label       "Webprozess beenden">
-<!ENTITY processHang.terminateProcess.accessKey   "W">
 
 <!ENTITY emeLearnMoreContextMenu.label            "Mehr über DRM-Kopierschutz erfahren…">
 <!ENTITY emeLearnMoreContextMenu.accesskey        "D">

@@ -11,7 +11,7 @@
 #include "MediaTrackConstraints.h"
 #include "CamerasChild.h"
 
-extern PRLogModuleInfo* GetMediaManagerLog();
+extern mozilla::LogModule* GetMediaManagerLog();
 #define LOG(msg) MOZ_LOG(GetMediaManagerLog(), mozilla::LogLevel::Debug, msg)
 #define LOGFRAME(msg) MOZ_LOG(GetMediaManagerLog(), mozilla::LogLevel::Verbose, msg)
 
@@ -276,7 +276,7 @@ MediaEngineRemoteVideoSource::FrameSizeChange(unsigned int w, unsigned int h,
 
 int
 MediaEngineRemoteVideoSource::DeliverFrame(unsigned char* buffer,
-                                           int size,
+                                           size_t size,
                                            uint32_t time_stamp,
                                            int64_t ntp_time,
                                            int64_t render_time,
@@ -288,14 +288,13 @@ MediaEngineRemoteVideoSource::DeliverFrame(unsigned char* buffer,
     return 0;
   }
 
-  if (mWidth*mHeight + 2*(((mWidth+1)/2)*((mHeight+1)/2)) != size) {
+  if ((size_t) (mWidth*mHeight + 2*(((mWidth+1)/2)*((mHeight+1)/2))) != size) {
     MOZ_ASSERT(false, "Wrong size frame in DeliverFrame!");
     return 0;
   }
 
   // Create a video frame and append it to the track.
-  RefPtr<layers::Image> image = mImageContainer->CreateImage(ImageFormat::PLANAR_YCBCR);
-  layers::PlanarYCbCrImage* videoImage = static_cast<layers::PlanarYCbCrImage*>(image.get());
+  RefPtr<layers::PlanarYCbCrImage> image = mImageContainer->CreatePlanarYCbCrImage();
 
   uint8_t* frame = static_cast<uint8_t*> (buffer);
   const uint8_t lumaBpp = 8;
@@ -315,7 +314,7 @@ MediaEngineRemoteVideoSource::DeliverFrame(unsigned char* buffer,
   data.mPicSize = IntSize(mWidth, mHeight);
   data.mStereoMode = StereoMode::MONO;
 
-  if (!videoImage->SetData(data)) {
+  if (!image->SetData(data)) {
     MOZ_ASSERT(false);
     return 0;
   }
@@ -413,10 +412,10 @@ MediaEngineRemoteVideoSource::ChooseCapability(const MediaTrackConstraints &aCon
     case dom::MediaSourceEnum::Window:
     case dom::MediaSourceEnum::Application: {
       FlattenedConstraints c(aConstraints);
-      mCapability.width = c.mWidth.Clamp(c.mWidth.mIdeal.WasPassed() ?
-        c.mWidth.mIdeal.Value() : aPrefs.mWidth);
-      mCapability.height = c.mHeight.Clamp(c.mHeight.mIdeal.WasPassed() ?
-        c.mHeight.mIdeal.Value() : aPrefs.mHeight);
+      mCapability.width = ((c.mWidth.mIdeal.WasPassed() ?
+        c.mWidth.mIdeal.Value() : 0) & 0xffff) << 16 | (c.mWidth.mMax & 0xffff);
+      mCapability.height = ((c.mHeight.mIdeal.WasPassed() ?
+        c.mHeight.mIdeal.Value() : 0) & 0xffff) << 16 | (c.mHeight.mMax & 0xffff);
       mCapability.maxFPS = c.mFrameRate.Clamp(c.mFrameRate.mIdeal.WasPassed() ?
         c.mFrameRate.mIdeal.Value() : aPrefs.mFPS);
       return true;

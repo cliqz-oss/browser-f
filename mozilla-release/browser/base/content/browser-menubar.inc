@@ -365,13 +365,11 @@
                           key="key_sanitize"
                           command="Tools:Sanitize"/>
                 <menuseparator id="sanitizeSeparator"/>
-#ifdef MOZ_SERVICES_SYNC
                 <menuitem id="sync-tabs-menuitem"
                           class="syncTabsMenuItem"
-                          label="&syncTabsMenu2.label;"
+                          label="&syncTabsMenu3.label;"
                           oncommand="BrowserOpenSyncTabs();"
-                          disabled="true"/>
-#endif
+                          hidden="true"/>
                 <menuitem id="historyRestoreLastSession"
                           label="&historyRestoreLastSession.label;"
                           command="Browser:RestoreLastSession"/>
@@ -486,12 +484,10 @@
                   accesskey="&toolsMenu.accesskey;"
                   onpopupshowing="mirrorShow(this)">
               <menupopup id="menu_ToolsPopup"
-#ifdef MOZ_SERVICES_SYNC
 # We have to use setTimeout() here to avoid a flickering menu bar when opening
 # the Tools menu, see bug 970769. This can be removed once we got rid of the
 # event loop spinning in Weave.Status._authManager.
                          onpopupshowing="setTimeout(() => gSyncUI.updateUI());"
-#endif
                          >
               <menuitem id="menu_openDownloads"
                         label="&downloads.label;"
@@ -509,7 +505,6 @@
                         accesskey = "&loopMenuItem.accesskey;"
                         oncommand="LoopUI.togglePanel();"/>
 
-#ifdef MOZ_SERVICES_SYNC
               <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
                         label="&syncSignIn.label;"
@@ -526,7 +521,6 @@
                         accesskey="&syncReAuthItem.accesskey;"
                         observes="sync-reauth-state"
                         oncommand="gSyncUI.openSignInAgainPage('menubar');"/>
-#endif
               <menuseparator id="devToolsSeparator"/>
               <menu id="webDeveloperMenu"
                     label="&webDeveloperMenu.label;"

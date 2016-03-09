@@ -31,7 +31,11 @@ from mozharness.mozilla.tooltool import TooltoolMixin
 
 from mozharness.lib.python.authentication import get_credentials
 
-INSTALLER_SUFFIXES = ('.tar.bz2', '.zip', '.dmg', '.exe', '.apk', '.tar.gz')
+INSTALLER_SUFFIXES = ('.apk',  # Android
+                      '.tar.bz2', '.tar.gz',  # Linux
+                      '.dmg',  # Mac
+                      '.installer-stub.exe', '.installer.exe', '.exe', '.zip',  # Windows
+                      )
 
 testing_config_options = [
     [["--installer-url"],
@@ -155,14 +159,27 @@ class TestingMixin(VirtualenvMixin, BuildbotMixin, ResourceMonitoringMixin,
     def query_symbols_url(self):
         if self.symbols_url:
             return self.symbols_url
-        if not self.installer_url:
-            self.fatal("Can't figure out symbols_url without an installer_url!")
-        for suffix in INSTALLER_SUFFIXES:
-            if self.installer_url.endswith(suffix):
-                self.symbols_url = self.installer_url[:-len(suffix)] + '.crashreporter-symbols.zip'
-                return self.symbols_url
+
+        elif self.installer_url:
+            symbols_url = None
+            for suffix in INSTALLER_SUFFIXES:
+                if self.installer_url.endswith(suffix):
+                    symbols_url = self.installer_url[:-len(suffix)] + '.crashreporter-symbols.zip'
+                    break
+
+            # Check if the URL exists. If not, use none to allow mozcrash to auto-check for symbols
+            try:
+                if symbols_url:
+                    self._urlopen(symbols_url)
+                    self.symbols_url = symbols_url
+            except urllib2.URLError:
+                self.warning("Can't figure out symbols_url from installer_url: %s!" %
+                             self.installer_url)
+
         else:
-            self.fatal("Can't figure out symbols_url from installer_url %s!" % self.installer_url)
+            self.fatal("Can't figure out symbols_url without an installer_url!")
+
+        return self.symbols_url
 
     def _pre_config_lock(self, rw_config):
         for i, (target_file, target_dict) in enumerate(rw_config.all_cfg_files_and_dicts):
@@ -305,8 +322,17 @@ class TestingMixin(VirtualenvMixin, BuildbotMixin, ResourceMonitoringMixin,
             if c.get("test_packages_url"):
                 self.test_packages_url = c['test_packages_url']
 
+            # This supports original Buildbot to Buildbot mode
             if self.buildbot_config['sourcestamp']['changes']:
                 self.find_artifacts_from_buildbot_changes()
+
+            # This supports TaskCluster/BBB task to Buildbot job
+            elif 'testPackagesUrl' in self.buildbot_config['properties'] and \
+                 'packageUrl' in self.buildbot_config['properties']:
+                self.installer_url = self.buildbot_config['properties']['packageUrl']
+                self.test_packages_url = self.buildbot_config['properties']['testPackagesUrl']
+
+            # This supports TaskCluster/BBB task to TaskCluster/BBB task
             elif 'taskId' in self.buildbot_config['properties']:
                 self.find_artifacts_from_taskcluster()
 
@@ -534,7 +560,7 @@ You can set this by:
             if self.test_packages_url:
                 self.error('Test data will be downloaded from "%s", the specified test '
                            ' package data at "%s" will be ignored.' %
-                           (self.config('test_url'), self.test_packages_url))
+                           (self.config.get('test_url'), self.test_packages_url))
 
             self._download_test_zip()
             self._extract_test_zip(target_unzip_dirs=target_unzip_dirs)
@@ -599,6 +625,25 @@ Did you run with --create-virtualenv? Is mozinstall in virtualenv_modules?""")
 
     def install(self):
         self.binary_path = self.install_app(app=self.config.get('application'))
+
+    def uninstall_app(self, install_dir=None):
+        """ Dependent on mozinstall """
+        # uninstall the application
+        cmd = self.query_exe("mozuninstall",
+                             default=self.query_python_path("mozuninstall"),
+                             return_type="list")
+        dirs = self.query_abs_dirs()
+        if not install_dir:
+            install_dir = dirs.get('abs_app_install_dir',
+                                   os.path.join(dirs['abs_work_dir'],
+                                                'application'))
+        cmd.append(install_dir)
+        # TODO we'll need some error checking here
+        self.get_output_from_command(cmd, halt_on_failure=True,
+                                     fatal_exit_code=3)
+
+    def uninstall(self):
+        self.uninstall_app()
 
     def query_minidump_tooltool_manifest(self):
         if self.config.get('minidump_tooltool_manifest_path'):

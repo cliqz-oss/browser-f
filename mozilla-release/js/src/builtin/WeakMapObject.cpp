@@ -148,13 +148,6 @@ TryPreserveReflector(JSContext* cx, HandleObject obj)
     return true;
 }
 
-static inline void
-WeakMapPostWriteBarrier(JSRuntime* rt, ObjectValueMap* weakMap, JSObject* key)
-{
-    if (key && IsInsideNursery(key))
-        rt->gc.storeBuffer.putGeneric(gc::HashKeyRef<ObjectValueMap, JSObject*>(weakMap, key));
-}
-
 static MOZ_ALWAYS_INLINE bool
 SetWeakMapEntryInternal(JSContext* cx, Handle<WeakMapObject*> mapObj,
                         HandleObject key, HandleValue value)
@@ -189,7 +182,6 @@ SetWeakMapEntryInternal(JSContext* cx, Handle<WeakMapObject*> mapObj,
         JS_ReportOutOfMemory(cx);
         return false;
     }
-    WeakMapPostWriteBarrier(cx->runtime(), map, key.get());
     return true;
 }
 
@@ -324,7 +316,8 @@ WeakMap_construct(JSContext* cx, unsigned argc, Value* vp)
     if (!ThrowIfNotConstructing(cx, args, "WeakMap"))
         return false;
 
-    RootedObject obj(cx, NewBuiltinClassInstance(cx, &WeakMapObject::class_));
+    RootedObject newTarget(cx, &args.newTarget().toObject());
+    RootedObject obj(cx, CreateThis(cx, &WeakMapObject::class_, newTarget));
     if (!obj)
         return false;
 

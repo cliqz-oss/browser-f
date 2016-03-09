@@ -39,7 +39,7 @@ sub ProcessArgs {
         print <<__USAGE__;
 Usage: patcher-config-bump.pl [options]
 This script depends on the MozBuild::Util and Bootstrap::Util modules.
-Options: 
+Options:
   -p The product name (eg. firefox, thunderbird, seamonkey, etc.)
   -r The brand name (eg. Firefox, Thunderbird, SeaMonkey, etc.)
      If not specified, a first-letter-uppercased product name is assumed.
@@ -125,7 +125,7 @@ __USAGE__
     if (! defined $config{'schema'}) {
         $config{'schema'} = 2;
     }
-}    
+}
 
 sub BumpPatcherConfig {
     my $product = $config{'product'};
@@ -304,7 +304,7 @@ sub BumpPatcherConfig {
           oldVersion => $partialVersion
         );
         $partialUpdate->{'betatest-url'} =
-        'http://' . $ftpServer. '/pub/mozilla.org/' . $product .
+        'http://' . $ftpServer. '/pub/' . $product .
         '/nightly/' .  $version . '-candidates/' . $buildStr . '/' .
         $pBetatestPath;
         $partialUpdate->{'esrtest-url'} = $partialUpdate->{'betatest-url'};
@@ -332,7 +332,7 @@ sub BumpPatcherConfig {
             );
         }
         $partialUpdate->{'beta-url'} =
-        'http://' . $ftpServer . '/pub/mozilla.org/' . $product. '/nightly/' .
+        'http://' . $ftpServer . '/pub/' . $product. '/nightly/' .
             $version . '-candidates/' . $buildStr . '/' . 
             $pBetaPath;
         }
@@ -365,7 +365,7 @@ sub BumpPatcherConfig {
       oldVersion => $oldVersion
     );
     $completeUpdate->{'betatest-url'} = 
-     'http://' . $ftpServer . '/pub/mozilla.org/' . $product .
+     'http://' . $ftpServer . '/pub/' . $product .
      '/nightly/' .  $version . '-candidates/' . $buildStr . '/' .
      $cBetatestPath;
     $completeUpdate->{'esrtest-url'} = $completeUpdate->{'betatest-url'};
@@ -393,7 +393,7 @@ sub BumpPatcherConfig {
          );
        }
        $completeUpdate->{'beta-url'} = 
-        'http://' . $ftpServer . '/pub/mozilla.org/' . $product. '/nightly/' .
+        'http://' . $ftpServer . '/pub/' . $product. '/nightly/' .
         $version . '-candidates/' . $buildStr .  '/' . $cBetaPath;
     }
     $currentUpdateObj->{'complete'} = $completeUpdate;

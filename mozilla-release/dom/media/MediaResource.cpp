@@ -36,7 +36,7 @@
 
 using mozilla::media::TimeUnit;
 
-PRLogModuleInfo* gMediaResourceLog;
+mozilla::LazyLogModule gMediaResourceLog("MediaResource");
 #define RESOURCE_LOG(msg, ...) MOZ_LOG(gMediaResourceLog, mozilla::LogLevel::Debug, \
                                       (msg, ##__VA_ARGS__))
 // Debug logging macro with object pointer and class name.
@@ -79,9 +79,6 @@ ChannelMediaResource::ChannelMediaResource(MediaResourceCallback* aCallback,
     mIsTransportSeekable(true),
     mSuspendAgent(mChannel)
 {
-  if (!gMediaResourceLog) {
-    gMediaResourceLog = PR_NewLogModule("MediaResource");
-  }
 }
 
 ChannelMediaResource::~ChannelMediaResource()
@@ -239,7 +236,7 @@ ChannelMediaResource::OnStartRequest(nsIRequest* aRequest)
     // Content-Range header tells us otherwise.
     bool boundedSeekLimit = true;
     // Check response code for byte-range requests (seeking, chunk requests).
-    if (!mByteRange.IsNull() && (responseStatus == HTTP_PARTIAL_RESPONSE_CODE)) {
+    if (!mByteRange.IsEmpty() && (responseStatus == HTTP_PARTIAL_RESPONSE_CODE)) {
       // Parse Content-Range header.
       int64_t rangeStart = 0;
       int64_t rangeEnd = 0;
@@ -249,7 +246,7 @@ ChannelMediaResource::OnStartRequest(nsIRequest* aRequest)
         // Content-Range header text should be parse-able.
         CMLOG("Error processing \'Content-Range' for "
               "HTTP_PARTIAL_RESPONSE_CODE: rv[%x] channel[%p] decoder[%p]",
-              rv, hc.get(), mCallback);
+              rv, hc.get(), mCallback.get());
         mCallback->NotifyNetworkError();
         CloseChannel();
         return NS_OK;
@@ -276,7 +273,7 @@ ChannelMediaResource::OnStartRequest(nsIRequest* aRequest)
       mOffset = rangeStart;
       // We received 'Content-Range', so the server accepts range requests.
       acceptsRanges = true;
-    } else if (((mOffset > 0) || !mByteRange.IsNull())
+    } else if (((mOffset > 0) || !mByteRange.IsEmpty())
                && (responseStatus == HTTP_OK_CODE)) {
       // If we get an OK response but we were seeking, or requesting a byte
       // range, then we have to assume that seeking doesn't work. We also need
@@ -377,7 +374,7 @@ ChannelMediaResource::ParseContentRangeHeader(nsIHttpChannel * aHttpChan,
   }
 
   CMLOG("Received bytes [%lld] to [%lld] of [%lld] for decoder[%p]",
-        aRangeStart, aRangeEnd, aRangeTotal, mCallback);
+        aRangeStart, aRangeEnd, aRangeTotal, mCallback.get());
 
   return NS_OK;
 }
@@ -455,14 +452,13 @@ ChannelMediaResource::CopySegmentToCache(nsIInputStream *aInStream,
 {
   CopySegmentClosure* closure = static_cast<CopySegmentClosure*>(aClosure);
 
-  closure->mResource->mCallback->NotifyDataArrived(aCount, closure->mResource->mOffset,
-                                                  /* aThrottleUpdates = */ true);
+  closure->mResource->mCallback->NotifyDataArrived();
 
   // Keep track of where we're up to.
   RESOURCE_LOG("%p [ChannelMediaResource]: CopySegmentToCache at mOffset [%lld] add "
                "[%d] bytes for decoder[%p]",
                closure->mResource, closure->mResource->mOffset, aCount,
-               closure->mResource->mCallback);
+               closure->mResource->mCallback.get());
   closure->mResource->mOffset += aCount;
 
   closure->mResource->mCacheStream.NotifyDataReceived(aCount, aFromSegment,
@@ -538,7 +534,7 @@ nsresult ChannelMediaResource::OpenChannel(nsIStreamListener** aStreamListener)
     *aStreamListener = nullptr;
   }
 
-  if (mByteRange.IsNull()) {
+  if (mByteRange.IsEmpty()) {
     // We're not making a byte range request, so set the content length,
     // if it's available as an HTTP header. This ensures that MediaResource
     // wrapping objects for platform libraries that expect to know
@@ -553,8 +549,6 @@ nsresult ChannelMediaResource::OpenChannel(nsIStreamListener** aStreamListener)
   }
 
   mListener = new Listener(this);
-  NS_ENSURE_TRUE(mListener, NS_ERROR_OUT_OF_MEMORY);
-
   if (aStreamListener) {
     *aStreamListener = mListener;
     NS_ADDREF(*aStreamListener);
@@ -589,14 +583,14 @@ nsresult ChannelMediaResource::SetupChannelHeaders()
     // Use |mByteRange| for a specific chunk, or |mOffset| if seeking in a
     // complete file download.
     nsAutoCString rangeString("bytes=");
-    if (!mByteRange.IsNull()) {
+    if (!mByteRange.IsEmpty()) {
       rangeString.AppendInt(mByteRange.mStart);
       mOffset = mByteRange.mStart;
     } else {
       rangeString.AppendInt(mOffset);
     }
     rangeString.Append('-');
-    if (!mByteRange.IsNull()) {
+    if (!mByteRange.IsEmpty()) {
       rangeString.AppendInt(mByteRange.mEnd);
     }
     nsresult rv = hc->SetRequestHeader(NS_LITERAL_CSTRING("Range"), rangeString, false);
@@ -744,7 +738,7 @@ int64_t ChannelMediaResource::Tell()
   return mCacheStream.Tell();
 }
 
-nsresult ChannelMediaResource::GetCachedRanges(nsTArray<MediaByteRange>& aRanges)
+nsresult ChannelMediaResource::GetCachedRanges(MediaByteRangeSet& aRanges)
 {
   return mCacheStream.GetCachedRanges(aRanges);
 }
@@ -931,7 +925,7 @@ ChannelMediaResource::CacheClientSeek(int64_t aOffset, bool aResume)
   NS_ASSERTION(NS_IsMainThread(), "Don't call on non-main thread");
 
   CMLOG("CacheClientSeek requested for aOffset [%lld] for decoder [%p]",
-        aOffset, mCallback);
+        aOffset, mCallback.get());
 
   CloseChannel();
 
@@ -1208,7 +1202,7 @@ public:
   virtual bool    IsSuspended() override { return true; }
   virtual bool    IsTransportSeekable() override { return true; }
 
-  nsresult GetCachedRanges(nsTArray<MediaByteRange>& aRanges) override;
+  nsresult GetCachedRanges(MediaByteRangeSet& aRanges) override;
 
   virtual size_t SizeOfExcludingThis(
                         MallocSizeOf aMallocSizeOf) const override
@@ -1280,7 +1274,7 @@ void FileMediaResource::EnsureSizeInitialized()
   }
 }
 
-nsresult FileMediaResource::GetCachedRanges(nsTArray<MediaByteRange>& aRanges)
+nsresult FileMediaResource::GetCachedRanges(MediaByteRangeSet& aRanges)
 {
   MutexAutoLock lock(mLock);
 
@@ -1288,7 +1282,7 @@ nsresult FileMediaResource::GetCachedRanges(nsTArray<MediaByteRange>& aRanges)
   if (mSize == -1) {
     return NS_ERROR_FAILURE;
   }
-  aRanges.AppendElement(MediaByteRange(0, mSize));
+  aRanges += MediaByteRange(0, mSize);
   return NS_OK;
 }
 

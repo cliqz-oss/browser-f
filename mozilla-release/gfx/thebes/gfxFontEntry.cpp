@@ -211,7 +211,7 @@ nsresult gfxFontEntry::InitializeUVSMap()
             return NS_ERROR_FAILURE;
         }
 
-        uint8_t* uvsData;
+        UniquePtr<uint8_t[]> uvsData;
         unsigned int cmapLen;
         const char* cmapData = hb_blob_get_data(cmapTable, &cmapLen);
         nsresult rv = gfxFontUtils::ReadCMAPTableFormat14(
@@ -223,7 +223,7 @@ nsresult gfxFontEntry::InitializeUVSMap()
             return rv;
         }
 
-        mUVSData = uvsData;
+        mUVSData = Move(uvsData);
     }
 
     return NS_OK;
@@ -234,7 +234,7 @@ uint16_t gfxFontEntry::GetUVSGlyph(uint32_t aCh, uint32_t aVS)
     InitializeUVSMap();
 
     if (mUVSData) {
-        return gfxFontUtils::MapUVSToGlyphFormat14(mUVSData, aCh, aVS);
+        return gfxFontUtils::MapUVSToGlyphFormat14(mUVSData.get(), aCh, aVS);
     }
 
     return 0;
@@ -341,11 +341,12 @@ gfxFontEntry::GetSVGGlyphExtents(gfxContext *aContext, uint32_t aGlyphId,
     MOZ_ASSERT(mUnitsPerEm >= kMinUPEM && mUnitsPerEm <= kMaxUPEM,
                "font has invalid unitsPerEm");
 
-    gfxContextAutoSaveRestore matrixRestore(aContext);
     cairo_matrix_t fontMatrix;
     cairo_get_font_matrix(aContext->GetCairo(), &fontMatrix);
 
-    gfxMatrix svgToAppSpace = *reinterpret_cast<gfxMatrix*>(&fontMatrix);
+    gfxMatrix svgToAppSpace(fontMatrix.xx, fontMatrix.yx,
+                            fontMatrix.xy, fontMatrix.yy,
+                            fontMatrix.x0, fontMatrix.y0);
     svgToAppSpace.Scale(1.0f / mUnitsPerEm, 1.0f / mUnitsPerEm);
 
     return mSVGGlyphs->GetGlyphExtents(aGlyphId, svgToAppSpace, aResult);
@@ -1522,7 +1523,7 @@ gfxFontFamily::FindFontForChar(GlobalFontMatch *aMatchData)
             rank += RANK_MATCHED_CMAP;
             aMatchData->mCount++;
 
-            PRLogModuleInfo *log = gfxPlatform::GetLog(eGfxLog_textrun);
+            LogModule* log = gfxPlatform::GetLog(eGfxLog_textrun);
 
             if (MOZ_UNLIKELY(MOZ_LOG_TEST(log, LogLevel::Debug))) {
                 uint32_t unicodeRange = FindCharUnicodeRange(aMatchData->mCh);

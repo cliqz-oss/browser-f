@@ -1009,6 +1009,33 @@ nsCSSValue::AppendInsetToString(nsCSSProperty aProperty, nsAString& aResult,
   }
 }
 
+/* static */ void
+nsCSSValue::AppendAlignJustifyValueToString(int32_t aValue, nsAString& aResult)
+{
+  auto legacy = aValue & NS_STYLE_ALIGN_LEGACY;
+  if (legacy) {
+    aValue &= ~legacy;
+    aResult.AppendLiteral("legacy ");
+  }
+  auto overflowPos = aValue & (NS_STYLE_ALIGN_SAFE | NS_STYLE_ALIGN_TRUE);
+  aValue &= ~overflowPos;
+  MOZ_ASSERT(!(aValue & NS_STYLE_ALIGN_FLAG_BITS),
+             "unknown bits in align/justify value");
+  MOZ_ASSERT((aValue != NS_STYLE_ALIGN_AUTO &&
+              aValue != NS_STYLE_ALIGN_BASELINE &&
+              aValue != NS_STYLE_ALIGN_LAST_BASELINE) ||
+             (!legacy && !overflowPos),
+             "auto/baseline/last-baseline never have any flags");
+  const auto& kwtable(nsCSSProps::kAlignAllKeywords);
+  AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(aValue, kwtable), aResult);
+  if (MOZ_UNLIKELY(overflowPos != 0)) {
+    MOZ_ASSERT(legacy == 0, "'legacy' together with <overflow-position>");
+    aResult.Append(' ');
+    AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(overflowPos, kwtable),
+                       aResult);
+  }
+}
+
 void
 nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult,
                            Serialization aSerialization) const
@@ -1294,6 +1321,46 @@ nsCSSValue::AppendToString(nsCSSProperty aProperty, nsAString& aResult,
                                          NS_STYLE_CONTAIN_PAINT,
                                          aResult);
       break;
+
+    case eCSSProperty_align_content:
+    case eCSSProperty_justify_content: {
+      AppendAlignJustifyValueToString(intValue & NS_STYLE_ALIGN_ALL_BITS, aResult);
+      auto fallback = intValue >> NS_STYLE_ALIGN_ALL_SHIFT;
+      if (fallback) {
+        MOZ_ASSERT(nsCSSProps::ValueToKeywordEnum(fallback & ~NS_STYLE_ALIGN_FLAG_BITS,
+                                                  nsCSSProps::kAlignSelfPosition)
+                   != eCSSKeyword_UNKNOWN, "unknown fallback value");
+        aResult.Append(' ');
+        AppendAlignJustifyValueToString(fallback, aResult);
+      }
+      break;
+    }
+
+    case eCSSProperty_align_items:
+    case eCSSProperty_align_self:
+    case eCSSProperty_justify_items:
+    case eCSSProperty_justify_self:
+      AppendAlignJustifyValueToString(intValue, aResult);
+      break;
+
+    case eCSSProperty_text_emphasis_position: {
+      nsStyleUtil::AppendBitmaskCSSValue(aProperty, intValue,
+                                         NS_STYLE_TEXT_EMPHASIS_POSITION_OVER,
+                                         NS_STYLE_TEXT_EMPHASIS_POSITION_RIGHT,
+                                         aResult);
+      break;
+    }
+
+    case eCSSProperty_text_emphasis_style: {
+      auto fill = intValue & NS_STYLE_TEXT_EMPHASIS_STYLE_FILL_MASK;
+      AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(
+        fill, nsCSSProps::kTextEmphasisStyleFillKTable), aResult);
+      aResult.Append(' ');
+      auto shape = intValue & NS_STYLE_TEXT_EMPHASIS_STYLE_SHAPE_MASK;
+      AppendASCIItoUTF16(nsCSSProps::ValueToKeyword(
+        shape, nsCSSProps::kTextEmphasisStyleShapeKTable), aResult);
+      break;
+    }
 
     default:
       const nsAFlatCString& name = nsCSSProps::LookupPropertyValue(aProperty, intValue);
@@ -2395,8 +2462,7 @@ css::URLValue::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const
 {
   size_t n = aMallocSizeOf(this);
 
-  // This string is unshared.
-  n += mString->SizeOfIncludingThisMustBeUnshared(aMallocSizeOf);
+  n += mString->SizeOfIncludingThisIfUnshared(aMallocSizeOf);
 
   // Measurement of the following members may be added later if DMD finds it is
   // worthwhile:
@@ -2429,35 +2495,22 @@ css::ImageValue::ImageValue(nsIURI* aURI, nsStringBuffer* aString,
   }
 }
 
-static PLDHashOperator
-ClearRequestHashtable(nsISupports* aKey, RefPtr<imgRequestProxy>& aValue,
-                      void* aClosure)
-{
-  mozilla::css::ImageValue* image =
-    static_cast<mozilla::css::ImageValue*>(aClosure);
-  nsIDocument* doc = static_cast<nsIDocument*>(aKey);
-
-#ifdef DEBUG
-  {
-    nsCOMPtr<nsIDocument> slowDoc = do_QueryInterface(aKey);
-    MOZ_ASSERT(slowDoc == doc);
-  }
-#endif
-
-  if (doc) {
-    doc->StyleImageLoader()->DeregisterCSSImage(image);
-  }
-
-  if (aValue) {
-    aValue->CancelAndForgetObserver(NS_BINDING_ABORTED);
-  }
-
-  return PL_DHASH_REMOVE;
-}
-
 css::ImageValue::~ImageValue()
 {
-  mRequests.Enumerate(&ClearRequestHashtable, this);
+  for (auto iter = mRequests.Iter(); !iter.Done(); iter.Next()) {
+    nsIDocument* doc = iter.Key();
+    RefPtr<imgRequestProxy>& proxy = iter.Data();
+
+    if (doc) {
+      doc->StyleImageLoader()->DeregisterCSSImage(this);
+    }
+
+    if (proxy) {
+      proxy->CancelAndForgetObserver(NS_BINDING_ABORTED);
+    }
+
+    iter.Remove();
+  }
 }
 
 NS_IMPL_ADDREF(css::ImageValue)

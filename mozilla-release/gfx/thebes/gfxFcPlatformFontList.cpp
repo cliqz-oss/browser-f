@@ -1310,7 +1310,8 @@ gfxFcPlatformFontList::MakePlatformFont(const nsAString& aFontName,
 }
 
 gfxFontFamily*
-gfxFcPlatformFontList::FindFamily(const nsAString& aFamily, gfxFontStyle* aStyle)
+gfxFcPlatformFontList::FindFamily(const nsAString& aFamily, gfxFontStyle* aStyle,
+                                  gfxFloat aDevToCssSize)
 {
     nsAutoString familyName(aFamily);
     ToLowerCase(familyName);
@@ -1678,10 +1679,8 @@ gfxFcPlatformFontList::FindGenericFamilies(const nsAString& aGeneric,
                 bool foundLang = !fcLang.IsEmpty() &&
                                  PatternHasLang(font, ToFcChar8Ptr(fcLang.get()));
                 foundFontWithLang = foundFontWithLang || foundLang;
-                // stop at the first family for which the lang matches (or
-                // when there is no lang)
-                if (fcLang.IsEmpty() ||
-                    prefFonts->Length() >= limit || foundLang) {
+                // check to see if the list is full
+                if (prefFonts->Length() >= limit) {
                     break;
                 }
             }

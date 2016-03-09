@@ -1,9 +1,15 @@
 var { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 const loaders = Cu.import("resource://gre/modules/commonjs/toolkit/loader.js", {});
-const devtools = Cu.import("resource://devtools/shared/Loader.jsm", {}).devtools;
+const { devtools, DevToolsLoader } = Cu.import("resource://devtools/shared/Loader.jsm", {});
 const { joinURI } = devtools.require("devtools/shared/path");
-const VENDOR_CONTENT_URL = "resource://devtools/client/shared/vendor";
+Cu.import("resource://gre/modules/AppConstants.jsm");
+
+const BROWSER_BASED_DIRS = [
+  "resource://devtools/client/shared/vendor",
+  "resource://devtools/client/shared/components",
+  "resource://devtools/client/shared/redux"
+];
 
 /*
  * Create a loader to be used in a browser environment. This evaluates
@@ -18,8 +24,8 @@ const VENDOR_CONTENT_URL = "resource://devtools/client/shared/vendor";
  * outside of that path will still be loaded from the devtools loader,
  * so all system modules are still shared and cached across instances.
  * An exception to this is anything under
- * `devtools/client/shared/content`, which is where shared libraries
- * live that should be evaluated in a browser environment.
+ * `devtools/client/shared/{vendor/components}`, which is where shared libraries
+ * and React components live that should be evaluated in a browser environment.
  *
  * @param string baseURI
  *        Base path to load modules from.
@@ -32,26 +38,33 @@ const VENDOR_CONTENT_URL = "resource://devtools/client/shared/vendor";
  */
 function BrowserLoader(baseURI, window) {
   const loaderOptions = devtools.require("@loader/options");
+  const dynamicPaths = {};
+
+  if(AppConstants.DEBUG || AppConstants.DEBUG_JS_MODULES) {
+    dynamicPaths["devtools/client/shared/vendor/react"] =
+      "resource://devtools/client/shared/vendor/react-dev";
+  };
+
   const opts = {
     id: "browser-loader",
     sharedGlobal: true,
     sandboxPrototype: window,
-    paths: Object.assign({}, loaderOptions.paths),
+    paths: Object.assign({}, dynamicPaths, loaderOptions.paths),
     invisibleToDebugger: loaderOptions.invisibleToDebugger,
     require: (id, require) => {
-      let uri = require.resolve(id);
+      const uri = require.resolve(id);
+      const isBrowserDir = BROWSER_BASED_DIRS.filter(dir => {
+        return uri.startsWith(dir);
+      }).length > 0;
 
-      if (!uri.startsWith(baseURI) &&
-          !uri.startsWith(VENDOR_CONTENT_URL)) {
+      if (!uri.startsWith(baseURI) && !isBrowserDir) {
         return devtools.require(uri);
       }
+
       return require(uri);
     }
   };
 
-  // The main.js file does not have to actually exist. It just
-  // represents the base environment, so requires will be relative to
-  // that path when used outside of modules.
   const mainModule = loaders.Module(baseURI, joinURI(baseURI, "main.js"));
   const mainLoader = loaders.Loader(opts);
 
@@ -61,4 +74,6 @@ function BrowserLoader(baseURI, window) {
   };
 }
 
-EXPORTED_SYMBOLS = ["BrowserLoader"];
+this.BrowserLoader = BrowserLoader;
+
+this.EXPORTED_SYMBOLS = ["BrowserLoader"];

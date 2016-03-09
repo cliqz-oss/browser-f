@@ -244,6 +244,8 @@
             </intent-filter>
         </activity-alias>
 
+        <service android:name="org.mozilla.gecko.GeckoService" />
+
         <activity android:name="org.mozilla.gecko.trackingprotection.TrackingProtectionPrompt"
                   android:launchMode="singleTop"
                   android:theme="@style/OverlayActivity" />
@@ -419,7 +421,6 @@
                   android:authorities="@ANDROID_PACKAGE_NAME@.db.browser"
                   android:permission="@ANDROID_PACKAGE_NAME@.permissions.BROWSER_PROVIDER"/>
 
-#ifdef MOZ_ANDROID_SHARE_OVERLAY
         <!-- Share overlay activity
 
              Setting launchMode="singleTop" ensures onNewIntent is called when the Activity is
@@ -441,7 +442,7 @@
 
         <!-- Service to handle requests from overlays. -->
         <service android:name="org.mozilla.gecko.overlays.service.OverlayActionService" />
-#endif
+
         <!--
           Ensure that passwords provider runs in its own process. (Bug 718760.)
           Process name is per-application to avoid loading CPs from multiple
@@ -493,12 +494,22 @@
             android:name="org.mozilla.gecko.NotificationService">
         </service>
 
+        <service
+            android:exported="false"
+            android:name="org.mozilla.gecko.dlc.DownloadContentService">
+        </service>
+
+        <service
+          android:name="org.mozilla.gecko.telemetry.TelemetryUploadService"
+          android:exported="false"/>
 
 #include ../services/manifests/FxAccountAndroidManifest_services.xml.in
 #include ../services/manifests/SyncAndroidManifest_services.xml.in
 
-        <service android:name="org.mozilla.gecko.sync.TabReceivedService"
-                  android:exported="false"/>
+        <service
+            android:name="org.mozilla.gecko.tabqueue.TabReceivedService"
+            android:exported="false" />
+
 
 #ifdef MOZ_ANDROID_SEARCH_ACTIVITY
 #include ../search/manifests/SearchAndroidManifest_services.xml.in

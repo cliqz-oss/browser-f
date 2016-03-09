@@ -164,6 +164,7 @@
 @BINPATH@/components/dom_storage.xpt
 @BINPATH@/components/dom_stylesheets.xpt
 @BINPATH@/components/dom_system.xpt
+@BINPATH@/components/dom_workers.xpt
 @BINPATH@/components/dom_threads.xpt
 @BINPATH@/components/dom_traversal.xpt
 @BINPATH@/components/dom_tv.xpt
@@ -476,11 +477,6 @@
 @BINPATH@/components/url-classifier.xpt
 #endif
 
-; GNOME hooks
-#ifdef MOZ_ENABLE_GNOME_COMPONENT
-@BINPATH@/components/@DLL_PREFIX@mozgnome@DLL_SUFFIX@
-#endif
-
 ; [Browser Chrome Files]
 @BINPATH@/chrome/browser@JAREXT@
 @BINPATH@/chrome/browser.manifest
@@ -563,6 +559,8 @@
 
 #ifndef MOZ_ANDROID_EXCLUDE_FONTS
 @BINPATH@/res/fonts/*
+#else
+@BINPATH@/res/fonts/*.properties
 #endif
 
 ; svg
@@ -622,8 +620,6 @@ bin/libfreebl_32int64_3.so
 @BINPATH@/components/ContentDispatchChooser.js
 @BINPATH@/components/ContentPermissionPrompt.js
 @BINPATH@/components/DirectoryProvider.js
-@BINPATH@/components/FilePicker.js
-@BINPATH@/components/HelperAppDialog.js
 @BINPATH@/components/LoginManagerPrompter.js
 @BINPATH@/components/MobileComponents.manifest
 @BINPATH@/components/MobileComponents.xpt

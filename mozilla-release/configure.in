@@ -51,9 +51,9 @@ _SUBDIR_CONFIG_ARGS="$ac_configure_args"
 dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZJPEG=62
-MOZPNG=10617
+MOZPNG=10619
 NSPR_VERSION=4
-NSPR_MINVER=4.10.10
+NSPR_MINVER=4.12
 NSS_VERSION=3
 
 dnl Set the minimum version of toolkit libs used by mozilla
@@ -92,7 +92,7 @@ _PTHREAD_LDFLAGS=""
 
 dnl Do not allow objdir == srcdir builds.
 dnl ==============================================================
-_topsrcdir=`cd \`dirname $0\`; pwd`
+_topsrcdir=`cd \`dirname $0\`; pwd -W 2>/dev/null || pwd`
 _objdir=`pwd`
 
 dnl TODO Don't exempt L10N builds once bug 842760 is resolved.
@@ -135,6 +135,7 @@ EOF
   break
 fi
 MOZ_BUILD_ROOT=`pwd -W 2>/dev/null || pwd`
+DIST="$MOZ_BUILD_ROOT/dist"
 
 MOZ_PYTHON
 
@@ -277,7 +278,7 @@ if test -n "$gonkdir" ; then
         AC_DEFINE(MOZ_OMX_ENCODER)
         AC_SUBST(MOZ_AUDIO_OFFLOAD)
         AC_DEFINE(MOZ_AUDIO_OFFLOAD)
-        MOZ_FMP4=
+        MOZ_FMP4=1
         MOZ_B2G_CAMERA=1
         if test -d "$gonkdir/system/bluetoothd"; then
             MOZ_B2G_BT=1
@@ -321,7 +322,9 @@ if test -n "$gonkdir" ; then
     direct_nspr_config=1
     android_cxx_stl=mozstlport
 else
-    MOZ_ANDROID_NDK
+    if test "$COMPILE_ENVIRONMENT"; then
+        MOZ_ANDROID_NDK
+    fi # COMPILE_ENVIRONMENT
 
     case "$target" in
     *-android*|*-linuxandroid*)
@@ -330,6 +333,7 @@ else
         fi
         MOZ_CHROME_FILE_FORMAT=omni
         ZLIB_DIR=yes
+        AC_DEFINE(ANDROID)
         ;;
     *-linux*)
         AC_PATH_PROG(OBJCOPY,objcopy)
@@ -442,44 +446,6 @@ esac
 
 AC_SUBST(MACOSX_DEPLOYMENT_TARGET)
 
-dnl ========================================================
-dnl Special MacOS X checks
-dnl ========================================================
-
-if test -n "$MACOSX_DEPLOYMENT_TARGET" -a -n "$MOZ_RUST"; then
-  AC_MSG_CHECKING([rustc compatibility with MacOS X])
-  # Stock rustc doesn't support MacOS X 10.6 or earlier.
-  # https://github.com/rust-lang/rust/issues/25342
-  _MACOSX_TARGET_MINOR=`echo "$MACOSX_DEPLOYMENT_TARGET" | cut -d. -f2`
-  if test "$_MACOSX_TARGET_MINOR" -lt 7; then
-    dnl Test C linkage against rust code to see if the rust
-    dnl toolchain output is compatible.
-    cat > conftest.rs <<EOF
-      [#[no_mangle]]
-      pub extern fn rusty_answer() -> u8 { 42 }
-EOF
-    ac_try="$RUSTC --crate-type staticlib -o conftest.a conftest.rs >/dev/null"
-    AC_TRY_EVAL(ac_try)
-    save_LDFLAGS=$LDFLAGS
-    LDFLAGS="$LDFLAGS conftest.a -lpthread -lm"
-    AC_TRY_LINK_FUNC([rusty_answer], [
-      AC_MSG_RESULT([$MACOSX_DEPLOYMENT_TARGET is ok with this rustc])
-    ], [
-      AC_MSG_RESULT([cannot link on $MACOSX_DEPLOYMENT_TARGET])
-      MOZ_RUST=
-    ])
-    LDFLAGS=$save_LDFLAGS
-    rm -rf conftest*
-  else
-    AC_MSG_RESULT([$MACOSX_DEPLOYMENT_TARGET is ok])
-  fi
-  if test -z "$MOZ_RUST"; then
-    AC_MSG_ERROR([rustc does not support MacOS X $MACOSX_DEPLOYMENT_TARGET
-      Add 'ac_add_options --enable-macos-target=10.7' (or later)
-      to mozconfig, disable Rust support, or use an alternate toolchain.])
-  fi
-fi
-
 AC_PROG_CPP
 AC_PROG_CXXCPP
 
@@ -548,6 +514,7 @@ case "$target" in
 
         AC_DEFINE(_CRT_SECURE_NO_WARNINGS)
         AC_DEFINE(_CRT_NONSTDC_NO_WARNINGS)
+        AC_DEFINE(_USE_MATH_DEFINES) # Otherwise MSVC's math.h doesn't #define M_PI.
 
         if test "$_CC_MAJOR_VERSION" = "18" -a "$_CC_BUILD_VERSION" -ge "30723"; then
             _CC_SUITE=12
@@ -668,7 +635,7 @@ See https://developer.mozilla.org/en/Windows_Build_Prerequisites.])
         fi
 
         if test "$WRAP_STL_INCLUDES" = "1"; then
-            STL_FLAGS='-I$(DIST)/stl_wrappers'
+            STL_FLAGS="-I${DIST}/stl_wrappers"
         fi
         CFLAGS="$CFLAGS -D_HAS_EXCEPTIONS=0"
         CXXFLAGS="$CXXFLAGS -D_HAS_EXCEPTIONS=0"
@@ -968,7 +935,7 @@ TARGET_MD_ARCH=unix
 DIRENT_INO=d_ino
 MOZ_USER_DIR=".mozilla"
 
-MOZ_FIX_LINK_PATHS='-Wl,-rpath-link,$(LIBXUL_DIST)/bin -Wl,-rpath-link,$(prefix)/lib'
+MOZ_FIX_LINK_PATHS="-Wl,-rpath-link,${DIST}/bin -Wl,-rpath-link,${prefix}/lib"
 
 MOZ_FS_LAYOUT=unix
 
@@ -1197,7 +1164,14 @@ esac
 
 dnl Configure platform-specific CPU architecture compiler options.
 dnl ==============================================================
-MOZ_ARCH_OPTS
+if test "$COMPILE_ENVIRONMENT"; then
+    MOZ_ARCH_OPTS
+else
+    if test "$OS_TARGET" = Android -a x"$MOZ_WIDGET_TOOLKIT" != x"gonk"; then
+        dnl Default Android builds to ARMv7.
+        MOZ_ARCH=armv7-a
+    fi
+fi # COMPILE_ENVIRONMENT
 
 dnl =================================================================
 dnl Set up and test static assertion macros used to avoid AC_TRY_RUN,
@@ -1246,7 +1220,10 @@ dnl Android libstdc++, placed here so it can use MOZ_ARCH
 dnl computed above.
 dnl ========================================================
 
-MOZ_ANDROID_STLPORT
+MOZ_ANDROID_CPU_ARCH
+if test "$COMPILE_ENVIRONMENT"; then
+    MOZ_ANDROID_STLPORT
+fi # COMPILE_ENVIRONMENT
 
 dnl ========================================================
 dnl Suppress Clang Argument Warnings
@@ -1667,6 +1644,51 @@ AC_LANG_RESTORE
 fi # COMPILE_ENVIRONMENT
 
 dnl ========================================================
+dnl Special rust checks
+dnl ========================================================
+
+if test -n "$MACOSX_DEPLOYMENT_TARGET" -a -n "$MOZ_RUST"; then
+  AC_MSG_CHECKING([if we're targeting 32-bit])
+  if test -z "$HAVE_64BIT_BUILD"; then
+    RUSTC="$RUSTC --target=i686-apple-darwin"
+    AC_MSG_RESULT([using $RUSTC])
+  else
+    AC_MSG_RESULT([no])
+  fi
+  AC_MSG_CHECKING([rustc compatibility with MacOS X])
+  # Stock rustc doesn't support MacOS X 10.6 or earlier.
+  # https://github.com/rust-lang/rust/issues/25342
+  _MACOSX_TARGET_MINOR=`echo "$MACOSX_DEPLOYMENT_TARGET" | cut -d. -f2`
+  if test "$_MACOSX_TARGET_MINOR" -lt 7; then
+    dnl Test C linkage against rust code to see if the rust
+    dnl toolchain output is compatible.
+    cat > conftest.rs <<EOF
+      [#[no_mangle]]
+      pub extern fn rusty_answer() -> u8 { 42 }
+EOF
+    ac_try="$RUSTC --crate-type staticlib -o conftest.a conftest.rs >/dev/null"
+    AC_TRY_EVAL(ac_try)
+    save_LDFLAGS=$LDFLAGS
+    LDFLAGS="$LDFLAGS conftest.a -lpthread -lm"
+    AC_TRY_LINK_FUNC([rusty_answer], [
+      AC_MSG_RESULT([$MACOSX_DEPLOYMENT_TARGET is ok with this rustc])
+    ], [
+      AC_MSG_RESULT([cannot link for $MACOSX_DEPLOYMENT_TARGET])
+      MOZ_RUST=
+    ])
+    LDFLAGS=$save_LDFLAGS
+    rm -rf conftest*
+  else
+    AC_MSG_RESULT([$MACOSX_DEPLOYMENT_TARGET is ok])
+  fi
+  if test -z "$MOZ_RUST"; then
+    AC_MSG_ERROR([rustc does not support MacOS X $MACOSX_DEPLOYMENT_TARGET
+      Add 'ac_add_options --enable-macos-target=10.7' (or later)
+      to mozconfig, disable Rust support, or use an alternate toolchain.])
+  fi
+fi
+
+dnl ========================================================
 dnl = Use profiling compile flags
 dnl ========================================================
 MOZ_ARG_ENABLE_BOOL(profiling,
@@ -2021,7 +2043,7 @@ case "$target" in
     fi
     LDFLAGS=$_SAVE_LDFLAGS
 
-    MOZ_FIX_LINK_PATHS='-Wl,-executable_path,$(LIBXUL_DIST)/bin'
+    MOZ_FIX_LINK_PATHS="-Wl,-executable_path,${DIST}/bin"
     ;;
 
 ia64*-hpux*)
@@ -2049,13 +2071,13 @@ ia64*-hpux*)
         DSO_LDOPTS='-b -Wl,+s'
         DSO_CFLAGS=""
         DSO_PIC_CFLAGS="+Z"
-        MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_LDOPTS) -L$(LIBXUL_DIST)/bin -o $@'
-        MKCSHLIB='$(LD) -b +s -L$(LIBXUL_DIST)/bin -o $@'
+        MKSHLIB='$(CXX) $(CXXFLAGS) $(DSO_LDOPTS) -L$(DIST)/bin -o $@'
+        MKCSHLIB='$(LD) -b +s -L$(DIST)/bin -o $@'
         CXXFLAGS="$CXXFLAGS -Wc,-ansi_for_scope,on"
     else
         DSO_LDOPTS='-b -E +s'
-        MKSHLIB='$(LD) $(DSO_LDOPTS) -L$(LIBXUL_DIST)/bin -L$(LIBXUL_DIST)/lib -o $@'
-        MKCSHLIB='$(LD) $(DSO_LDOPTS) -L$(LIBXUL_DIST)/bin -L$(LIBXUL_DIST)/lib -o $@'
+        MKSHLIB='$(LD) $(DSO_LDOPTS) -L$(DIST)/bin -L$(DIST)/lib -o $@'
+        MKCSHLIB='$(LD) $(DSO_LDOPTS) -L$(DIST)/bin -L$(DIST)/lib -o $@'
     fi
     MOZ_POST_PROGRAM_COMMAND='chatr +s enable'
     AC_DEFINE(NSCAP_DISABLE_DEBUG_PTR_TYPES)
@@ -2375,7 +2397,10 @@ ia64*-hpux*)
     else
         DLL_SUFFIX=".so.1.0"
     fi
-    MOZ_FIX_LINK_PATHS='-Wl,-rpath-link,$(LIBXUL_DIST)/bin -Wl,-rpath-link,$(prefix)/lib -Wl,-rpath-link,$(if $(X11BASE),$(X11BASE),/usr/X11R6)/lib'
+    if test -z "$X11BASE"; then
+        X11BASE=/usr/X11R6
+    fi
+    MOZ_FIX_LINK_PATHS="$MOZ_FIX_LINK_PATHS -Wl,-rpath-link,${X11BASE}/lib"
     DSO_CFLAGS=''
     DSO_PIC_CFLAGS='-fPIC'
     DSO_LDOPTS='-shared -fPIC'
@@ -2532,6 +2557,7 @@ esac
 if test -z "$COMPILE_ENVIRONMENT"; then
     SKIP_COMPILER_CHECKS=1
     SKIP_LIBRARY_CHECKS=1
+    PKG_SKIP_STRIP=1
 else
     MOZ_COMPILER_OPTS
 fi # COMPILE_ENVIRONMENT
@@ -2565,7 +2591,7 @@ if test "$GNU_CC" -a "$OS_TARGET" != WINNT; then
     VISIBILITY_FLAGS='-fvisibility=hidden -fvisibility-inlines-hidden'
     ;;
   *)
-    VISIBILITY_FLAGS='-I$(DIST)/system_wrappers -include $(MOZILLA_DIR)/config/gcc_hidden.h'
+    VISIBILITY_FLAGS="-I${DIST}/system_wrappers -include ${_topsrcdir}/config/gcc_hidden.h"
     WRAP_SYSTEM_INCLUDES=1
     ;;
   esac
@@ -2580,13 +2606,13 @@ case "${OS_TARGET}" in
 WINNT|Darwin|Android)
   ;;
 *)
-  STL_FLAGS='-I$(DIST)/stl_wrappers'
+  STL_FLAGS="-I${DIST}/stl_wrappers"
   WRAP_STL_INCLUDES=1
   ;;
 esac
 
 AC_SUBST(WRAP_SYSTEM_INCLUDES)
-AC_SUBST(VISIBILITY_FLAGS)
+AC_SUBST_LIST(VISIBILITY_FLAGS)
 
 dnl Checks for header files.
 dnl ========================================================
@@ -3339,9 +3365,6 @@ MOZ_ARG_WITH_STRING(libxul-sdk,
 [  --with-libxul-sdk=PFX   Use the libXUL SDK at <PFX>],
   AC_MSG_ERROR([--with-libxul-sdk is not supported anymore.]))
 
-LIBXUL_DIST="$MOZ_BUILD_ROOT/dist"
-AC_SUBST(LIBXUL_DIST)
-
 MOZ_CONFIG_NSPR()
 
 dnl set GRE_MILESTONE
@@ -3428,24 +3451,13 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.21, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.21.1, [MOZ_NATIVE_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_NATIVE_NSS"; then
    NSS_LIBS="$NSS_LIBS -lcrmf"
 else
-   NSS_CFLAGS='-I$(LIBXUL_DIST)/include/nss'
-
-   if test -z "$GNU_CC" -a "$OS_ARCH" = "WINNT"; then
-       NSS_LIBS="\
-        \$(LIBXUL_DIST)/lib/\$(LIB_PREFIX)crmf.\$(LIB_SUFFIX) \
-        \$(LIBXUL_DIST)/lib/\$(LIB_PREFIX)smime$NSS_VERSION.\$(LIB_SUFFIX) \
-        \$(LIBXUL_DIST)/lib/\$(LIB_PREFIX)ssl$NSS_VERSION.\$(LIB_SUFFIX) \
-        \$(LIBXUL_DIST)/lib/\$(LIB_PREFIX)nss$NSS_VERSION.\$(LIB_SUFFIX) \
-        \$(LIBXUL_DIST)/lib/\$(LIB_PREFIX)nssutil$NSS_VERSION.\$(LIB_SUFFIX)"
-   else
-       NSS_LIBS='-L$(LIBXUL_DIST)/lib'" -lcrmf -lsmime$NSS_VERSION -lssl$NSS_VERSION -lnss$NSS_VERSION -lnssutil$NSS_VERSION"
-   fi
+   NSS_CFLAGS="-I${DIST}/include/nss"
 fi
 
 dnl ======================
@@ -3757,7 +3769,6 @@ MOZ_ANDROID_SEARCH_ACTIVITY=
 MOZ_ANDROID_DOWNLOADS_INTEGRATION=
 MOZ_ANDROID_GCM=
 MOZ_ANDROID_MLS_STUMBLER=
-MOZ_ANDROID_SHARE_OVERLAY=
 MOZ_EXCLUDE_HYPHENATION_DICTIONARIES=
 MOZ_INSTALL_TRACKING=
 MOZ_SWITCHBOARD=
@@ -3944,6 +3955,22 @@ if test -n "$MOZ_ANDROID_RESOURCE_CONSTRAINED"; then
 fi
 AC_SUBST(MOZ_ANDROID_RESOURCE_CONSTRAINED)
 
+# Optional Firefox for Android partner distribution directory.
+MOZ_ARG_WITH_STRING(android-distribution-directory,
+[  --with-android-distribution-directory=dir
+                          Optional Firefox for Android partner distribution directory.],
+  MOZ_ANDROID_DISTRIBUTION_DIRECTORY=$withval)
+
+if test -n "$MOZ_ANDROID_DISTRIBUTION_DIRECTORY"; then
+  # A distribution directory must have an assets/distribution directory.
+  # See https://wiki.mozilla.org/Mobile/Distribution_Files.
+  if test ! -d "$MOZ_ANDROID_DISTRIBUTION_DIRECTORY/assets/distribution" ; then
+    AC_MSG_ERROR([--with-android-distribution-directory does not contain assets/distribution;
+                  (looked for ${MOZ_ANDROID_DISTRIBUTION_DIRECTORY}/assets/distribution).])
+  fi
+fi
+AC_SUBST(MOZ_ANDROID_DISTRIBUTION_DIRECTORY)
+
 dnl ========================================================
 dnl = Trademarked Branding
 dnl ========================================================
@@ -4004,14 +4031,14 @@ fi
 case "$MOZ_BUILD_APP" in
 browser)
   AC_DEFINE(MOZ_PHOENIX)
-
-  BUILD_BACKENDS="$BUILD_BACKENDS FasterMake"
   ;;
 
 xulrunner)
   AC_DEFINE(MOZ_XULRUNNER)
   ;;
 esac
+
+BUILD_BACKENDS="$BUILD_BACKENDS FasterMake"
 
 if test -n "$MOZ_B2G"; then
     AC_DEFINE(MOZ_B2G)
@@ -4028,6 +4055,13 @@ fi
 
 if test -n "$MOZ_B2GDROID"; then
     AC_DEFINE(MOZ_B2GDROID)
+fi
+
+# Propagate feature switches for code written in rust from confvars.sh
+if test -n "$MOZ_RUST"; then
+    if test -n "$MOZ_RUST_MP4PARSE"; then
+        AC_DEFINE(MOZ_RUST_MP4PARSE)
+    fi
 fi
 
 AC_SUBST(MOZ_BUILD_APP)
@@ -4140,7 +4174,6 @@ cairo-gtk3)
     MOZ_X11=1
     USE_FC_FREETYPE=1
 
-    TK_CFLAGS='$(MOZ_GTK3_CFLAGS)'
     MOZ_WIDGET_GTK=3
     AC_DEFINE_UNQUOTED(MOZ_WIDGET_GTK,$MOZ_WIDGET_GTK)
     MOZ_PDF_PRINTING=1
@@ -4158,8 +4191,6 @@ cairo-gtk2|cairo-gtk2-x11)
     MOZ_X11=1
     USE_FC_FREETYPE=1
 
-    TK_CFLAGS='$(MOZ_GTK2_CFLAGS)'
-    TK_LIBS='$(MOZ_GTK2_LIBS)'
     AC_DEFINE(MOZ_WIDGET_GTK2)
     MOZ_WIDGET_GTK=2
     AC_DEFINE_UNQUOTED(MOZ_WIDGET_GTK,$MOZ_WIDGET_GTK)
@@ -4179,8 +4210,6 @@ cairo-qt)
     fi
 
     USE_FC_FREETYPE=1
-    TK_CFLAGS='$(MOZ_QT_CFLAGS)'
-    TK_LIBS='$(MOZ_QT_LIBS)'
     AC_DEFINE(MOZ_WIDGET_QT)
     MOZ_PDF_PRINTING=1
     AC_DEFINE(QT_NO_KEYWORDS)
@@ -4216,8 +4245,6 @@ cairo-uikit)
 cairo-android)
     AC_DEFINE(MOZ_WIDGET_ANDROID)
     MOZ_WIDGET_TOOLKIT=android
-    TK_CFLAGS='$(MOZ_CAIRO_CFLAGS) $(MOZ_PIXMAN_CFLAGS)'
-    TK_LIBS='$(MOZ_CAIRO_LIBS) $(MOZ_PIXMAN_LIBS)'
     MOZ_PDF_PRINTING=1
     MOZ_INSTRUMENT_EVENT_LOOP=1
     ;;
@@ -4226,8 +4253,6 @@ cairo-gonk)
     AC_DEFINE(MOZ_WIDGET_GONK)
     AC_DEFINE(MOZ_TOUCH)
     MOZ_WIDGET_TOOLKIT=gonk
-    TK_CFLAGS='$(MOZ_CAIRO_CFLAGS) $(MOZ_PIXMAN_CFLAGS)'
-    TK_LIBS='$(MOZ_CAIRO_LIBS) $(MOZ_PIXMAN_LIBS)'
     MOZ_PDF_PRINTING=1
     MOZ_TOUCH=1
     MOZ_INSTRUMENT_EVENT_LOOP=1
@@ -4253,9 +4278,7 @@ if test "$COMPILE_ENVIRONMENT"; then
   if test "$MOZ_ENABLE_GTK3"; then
     PKG_CHECK_MODULES(MOZ_GTK3, gtk+-3.0 >= $GTK3_VERSION gtk+-unix-print-3.0 glib-2.0 gobject-2.0 $GDK_PACKAGES)
     MOZ_GTK3_CFLAGS="-I${_topsrcdir}/widget/gtk/compat-gtk3 $MOZ_GTK3_CFLAGS"
-    dnl Contrary to MOZ_GTK2_LIBS, MOZ_GTK3_LIBS needs to be literally added to TK_LIBS instead
-    dnl of a make reference because of how TK_LIBS is mangled in toolkit/library/moz.build
-    dnl for GTK+3 builds.
+    TK_CFLAGS=$MOZ_GTK3_CFLAGS
     TK_LIBS=$MOZ_GTK3_LIBS
     AC_DEFINE_UNQUOTED(GDK_VERSION_MIN_REQUIRED,$GDK_VERSION_MIN_REQUIRED)
     AC_DEFINE_UNQUOTED(GDK_VERSION_MAX_ALLOWED,$GDK_VERSION_MIN_REQUIRED)
@@ -4274,7 +4297,10 @@ if test "$COMPILE_ENVIRONMENT"; then
     PKG_CHECK_MODULES(MOZ_GTK2, gtk+-2.0 >= $GTK2_VERSION gtk+-unix-print-2.0 glib-2.0 >= $GLIB_VERSION gobject-2.0 $GDK_PACKAGES)
     MOZ_GTK2_CFLAGS="-I${_topsrcdir}/widget/gtk/compat $MOZ_GTK2_CFLAGS"
   fi
-
+  if test "$MOZ_ENABLE_GTK2"; then
+    TK_CFLAGS=$MOZ_GTK2_CFLAGS
+    TK_LIBS=$MOZ_GTK2_LIBS
+  fi
 fi # COMPILE_ENVIRONMENT
 
 AC_SUBST(MOZ_FS_LAYOUT)
@@ -4500,6 +4526,8 @@ then
        AC_DEFINE(MOZ_ENABLE_CONTENTACTION)
        AC_SUBST(MOZ_ENABLE_CONTENTACTION)
     fi
+    TK_CFLAGS=$MOZ_QT_CFLAGS
+    TK_LIBS=$MOZ_QT_LIBS
 fi
 
 AC_SUBST(GTK_CONFIG)
@@ -4699,16 +4727,6 @@ fi
 AC_SUBST(MOZ_ENABLE_LIBPROXY)
 
 dnl ========================================================
-dnl = GNOME component (mozgnome)
-dnl ========================================================
-
-if test "$MOZ_ENABLE_GTK"
-then
-    MOZ_ENABLE_GNOME_COMPONENT=1
-fi
-AC_SUBST(MOZ_ENABLE_GNOME_COMPONENT)
-
-dnl ========================================================
 dnl = libgnomeui support module
 dnl ========================================================
 
@@ -4855,20 +4873,6 @@ if test -n "$MOZ_ANDROID_MLS_STUMBLER"; then
     AC_DEFINE(MOZ_ANDROID_MLS_STUMBLER)
 fi
 
-dnl ========================================================
-dnl = Include share overlay on Android
-dnl ========================================================
-if test -n "$MOZ_ANDROID_SHARE_OVERLAY"; then
-    AC_DEFINE(MOZ_ANDROID_SHARE_OVERLAY)
-fi
-
-dnl ========================================================
-dnl = Show Firefox Account profile details on Android
-dnl ========================================================
-if test -n "$MOZ_ANDROID_FIREFOX_ACCOUNT_PROFILES"; then
-    AC_DEFINE(MOZ_ANDROID_FIREFOX_ACCOUNT_PROFILES)
-fi
-
 dnl = Include Tab Queue on Android
 dnl = Temporary build flag to allow development in Nightly
 dnl ========================================================
@@ -4881,6 +4885,13 @@ dnl = Whether to exclude hyphenations files in the build
 dnl =========================================================
 if test -n "$MOZ_EXCLUDE_HYPHENATION_DICTIONARIES"; then
     AC_DEFINE(MOZ_EXCLUDE_HYPHENATION_DICTIONARIES)
+fi
+
+dnl =========================================================
+dnl = Background service for downloading additional content at runtime.
+dnl =========================================================
+if test -n "$MOZ_ANDROID_DOWNLOAD_CONTENT_SERVICE"; then
+    AC_DEFINE(MOZ_ANDROID_DOWNLOAD_CONTENT_SERVICE)
 fi
 
 dnl ========================================================
@@ -4980,7 +4991,7 @@ AC_SUBST(MOZ_WEBRTC_HAVE_ETHTOOL_SPEED_HI)
 
 # target_arch is from {ia32|x64|arm|ppc}
 case "$CPU_ARCH" in
-x86_64 | arm | x86 | ppc* | ia64)
+x86_64 | arm | aarch64 | x86 | ppc* | ia64)
     :
     ;;
 *)
@@ -6327,8 +6338,8 @@ if test -n "$MOZ_TREE_FREETYPE"; then
    AC_SUBST(MOZ_TREE_FREETYPE)
    MOZ_ENABLE_CAIRO_FT=1
    FT_FONT_FEATURE="#define CAIRO_HAS_FT_FONT 1"
-   FT2_CFLAGS='-I$(topsrcdir)/modules/freetype2/include'
-   CAIRO_FT_CFLAGS='-I$(topsrcdir)/modules/freetype2/include'
+   FT2_CFLAGS="-I$_topsrcdir/modules/freetype2/include"
+   CAIRO_FT_CFLAGS="-I$_topsrcdir/modules/freetype2/include"
    CAIRO_FT_OSLIBS=''
    AC_DEFINE(HAVE_FT_BITMAP_SIZE_Y_PPEM)
    AC_DEFINE(HAVE_FT_GLYPHSLOT_EMBOLDEN)
@@ -6344,41 +6355,49 @@ dnl minimum minor version of Unicode NSIS isn't in the path
 dnl (unless in case of cross compiling, for which Unicode
 dnl is not yet sufficient).
 if test "$OS_ARCH" = "WINNT"; then
-    MIN_NSIS_MAJOR_VER=2
-    MIN_NSIS_MINOR_VER=46
-    MOZ_PATH_PROGS(MAKENSISU, $MAKENSISU makensis-3.0b1.exe makensisu-3.0a2.exe makensisu-2.46.exe makensis)
+    MIN_NSIS_MAJOR_VER=3
+    MIN_NSIS_MINOR_VER=0
+    MIN_NSIS_PRERELEASE_TYPE=b
+    MIN_NSIS_PRERELEASE_VER=1
+    MOZ_PATH_PROGS(MAKENSISU, $MAKENSISU makensis-3.0b3.exe makensis-3.0b1.exe makensis)
     if test -n "$MAKENSISU" -a "$MAKENSISU" != ":"; then
       AC_MSG_RESULT([yes])
       MAKENSISU_VER=`"$MAKENSISU" -version 2>/dev/null`
       changequote(,)
-      MAKENSISU_PARSED_VER=`echo "$MAKENSISU_VER" | sed -e '/-Unicode/!s/.*//g' -e 's/^v\([0-9]\+\.[0-9]\+\).*\-Unicode$/\1/g'`
+      MAKENSISU_PARSED_VER=`echo "$MAKENSISU_VER" | sed -e 's/^v\([0-9]\+\.[0-9]\+\).*$/\1/g'`
       changequote([,])
-      if test "$MAKENSISU_PARSED_VER" = ""; then
-          changequote(,)
-          MAKENSISU_PARSED_VER=`echo "$MAKENSISU_VER" | sed -e 's/^v\([0-9]\+\.[0-9]\+\).*$/\1/g'`
-          changequote([,])
-      fi
       MAKENSISU_MAJOR_VER=0
       MAKENSISU_MINOR_VER=0
+      MAKENSISU_PRERELEASE_TYPE=$MIN_NSIS_PRERELEASE_TYPE
+      MAKENSISU_PRERELEASE_VER=$MIN_NSIS_PRERELEASE_VER
       if test ! "$MAKENSISU_PARSED_VER" = ""; then
           MAKENSISU_MAJOR_VER=`echo $MAKENSISU_PARSED_VER | $AWK -F\. '{ print $1 }'`
           MAKENSISU_MINOR_VER=`echo $MAKENSISU_PARSED_VER | $AWK -F\. '{ print $2 }'`
+          changequote(,)
+          MAKENSISU_PARSED_PRERELEASE=`echo "$MAKENSISU_VER" | sed -e 's/^v[0-9]\+\.[0-9]\+\([^0-9]\+\)\([0-9]\+\).*$/\1.\2/g'`
+          changequote([,])
+          if test ! "$MAKENSISU_PARSED_PRERELEASE" = "$MAKENSISU_VER"; then
+              MAKENSISU_PRERELEASE_TYPE=`echo $MAKENSISU_PARSED_PRERELEASE | $AWK -F\. '{ print $1 }'`
+              MAKENSISU_PRERELEASE_VER=`echo $MAKENSISU_PARSED_PRERELEASE | $AWK -F\. '{ print $2 }'`
+          fi
       fi
-      AC_MSG_CHECKING([for Unicode NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater])
+      AC_MSG_CHECKING([for NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER$MIN_NSIS_PRERELEASE_TYPE$MIN_NSIS_PRERELEASE_VER or greater])
       if test "$MAKENSISU_MAJOR_VER" -eq $MIN_NSIS_MAJOR_VER -a \
-              "$MAKENSISU_MINOR_VER" -ge $MIN_NSIS_MINOR_VER ||
-         test "$MAKENSISU_MAJOR_VER" -gt $MIN_NSIS_MAJOR_VER; then
+              "$MAKENSISU_MINOR_VER" -ge $MIN_NSIS_MINOR_VER -a \
+              "$MAKENSISU_PRERELEASE_TYPE" = "$MIN_NSIS_PRERELEASE_TYPE" -a \
+              "$MAKENSISU_PRERELEASE_VER" -ge $MIN_NSIS_PRERELEASE_VER; then
           AC_MSG_RESULT([yes])
+          AC_MSG_RESULT([Found NSIS Version: $MAKENSISU_VER])
       else
           AC_MSG_RESULT([no])
           if test -z "$CROSS_COMPILE"; then
-            AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or Unicode NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater in your path.])
+            AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER$MIN_NSIS_PRERELEASE_TYPE$MIN_NSIS_PRERELEASE_VER or greater in your path.])
           else
             MAKENSISU=
           fi
       fi
     elif test -z "$CROSS_COMPILE"; then
-      AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or Unicode NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER or greater in your path.])
+      AC_MSG_ERROR([To build the installer you must have the latest MozillaBuild or NSIS version $MIN_NSIS_MAJOR_VER.$MIN_NSIS_MINOR_VER$MIN_NSIS_PRERELEASE_TYPE$MIN_NSIS_PRERELEASE_VER or greater in your path.])
     else
       MAKENSISU=
     fi
@@ -6989,7 +7008,7 @@ AC_SUBST(MOZ_FRAMEPTR_FLAGS)
 AC_SUBST(MOZ_OPTIMIZE_FLAGS)
 AC_SUBST(MOZ_OPTIMIZE_RUSTFLAGS)
 AC_SUBST(MOZ_OPTIMIZE_LDFLAGS)
-AC_SUBST(MOZ_ALLOW_HEAP_EXECUTE_FLAGS)
+AC_SUBST_LIST(MOZ_ALLOW_HEAP_EXECUTE_FLAGS)
 AC_SUBST(MOZ_PGO)
 AC_SUBST(MOZ_PGO_OPTIMIZE_FLAGS)
 
@@ -7048,18 +7067,10 @@ elif test "$GNU_CC"; then
 fi
 
 dnl ========================================================
-dnl = Disable runtime logging checks
+dnl = Enable runtime logging
 dnl ========================================================
-MOZ_ARG_DISABLE_BOOL(logging,
-[  --disable-logging       Disable logging facilities],
-    NS_DISABLE_LOGGING=1,
-    NS_DISABLE_LOGGING= )
-if test "$NS_DISABLE_LOGGING"; then
-    AC_DEFINE(NS_DISABLE_LOGGING)
-else
-    AC_DEFINE(MOZ_LOGGING)
-    AC_DEFINE(FORCE_PR_LOG)
-fi
+AC_DEFINE(MOZ_LOGGING)
+AC_DEFINE(FORCE_PR_LOG)
 
 dnl ========================================================
 dnl = This will enable logging of addref, release, ctor, dtor.
@@ -7256,9 +7267,6 @@ if test -z "$MOZ_MEMORY"; then
   esac
 else
   AC_DEFINE(MOZ_MEMORY)
-  if test -n "$NIGHTLY_BUILD"; then
-    MOZ_JEMALLOC4=1
-  fi
   if test -n "$MOZ_JEMALLOC4"; then
     AC_DEFINE(MOZ_JEMALLOC4)
   fi
@@ -7349,24 +7357,6 @@ fi
 
 AC_SUBST_LIST(MOZ_GLUE_WRAP_LDFLAGS)
 export MOZ_GLUE_WRAP_LDFLAGS
-
-dnl ========================================================
-dnl = Enable static checking using gcc-dehydra
-dnl ========================================================
-
-MOZ_ARG_WITH_STRING(static-checking,
-[  --with-static-checking=path/to/gcc_dehydra.so
-                          Enable static checking of code using GCC-dehydra],
-    DEHYDRA_PATH=$withval,
-    DEHYDRA_PATH= )
-
-if test -n "$DEHYDRA_PATH"; then
-    if test ! -f "$DEHYDRA_PATH"; then
-        AC_MSG_ERROR([The dehydra plugin is not at the specified path.])
-    fi
-    AC_DEFINE(NS_STATIC_CHECKING)
-fi
-AC_SUBST(DEHYDRA_PATH)
 
 dnl ========================================================
 dnl = Enable using the clang plugin to build
@@ -8179,12 +8169,8 @@ fi
 if test "$MOZ_TREE_PIXMAN"; then
     AC_DEFINE(MOZ_TREE_PIXMAN)
 else
-    PKG_CHECK_MODULES(PIXMAN, pixman-1 >= 0.19.2)
-    MOZ_PIXMAN_CFLAGS="$PIXMAN_CFLAGS"
-    MOZ_PIXMAN_LIBS="$PIXMAN_LIBS"
+    PKG_CHECK_MODULES(MOZ_PIXMAN, pixman-1 >= 0.19.2)
 fi
-AC_SUBST(MOZ_PIXMAN_CFLAGS)
-AC_SUBST_LIST(MOZ_PIXMAN_LIBS)
 
 # Check for headers defining standard int types.
 if test -n "$COMPILE_ENVIRONMENT"; then
@@ -8198,7 +8184,7 @@ fi
 AC_SUBST(HAVE_INTTYPES_H)
 
 if test "$MOZ_TREE_CAIRO"; then
-    MOZ_CAIRO_CFLAGS='-I$(LIBXUL_DIST)/include/cairo'
+    MOZ_CAIRO_CFLAGS="-I${DIST}/include/cairo"
     AC_DEFINE(MOZ_TREE_CAIRO)
 
     if test "$OS_ARCH" = "WINNT"; then
@@ -8293,6 +8279,13 @@ else
         MOZ_CAIRO_CFLAGS="$MOZ_CAIRO_CFLAGS $CAIRO_XRENDER_CFLAGS"
     fi
 fi
+
+case "$MOZ_WIDGET_TOOLKIT" in
+android|gonk)
+    TK_CFLAGS="$MOZ_CAIRO_CFLAGS $MOZ_PIXMAN_CFLAGS"
+    TK_LIBS="$MOZ_CAIRO_LIBS $MOZ_PIXMAN_LIBS"
+    ;;
+esac
 
 AC_SUBST(MOZ_TREE_CAIRO)
 AC_SUBST_LIST(MOZ_CAIRO_CFLAGS)
@@ -8514,13 +8507,6 @@ if test -n "$MOZ_DEVICES"; then
   AC_DEFINE(MOZ_DEVICES)
 fi
 
-dnl Build Fennec Android native UI to manage accounts.  This will go away as
-dnl Fennec transitions to web UI to manage accounts.
-AC_SUBST(MOZ_ANDROID_NATIVE_ACCOUNT_UI)
-if test -n "$MOZ_ANDROID_NATIVE_ACCOUNT_UI"; then
-  AC_DEFINE(MOZ_ANDROID_NATIVE_ACCOUNT_UI)
-fi
-
 dnl ========================================================
 if test "$MOZ_DEBUG" -o "$MOZ_DMD"; then
     MOZ_COMPONENTS_VERSION_SCRIPT_LDFLAGS=
@@ -8614,14 +8600,13 @@ AC_SUBST(MOZ_ANDROID_GCM)
 AC_SUBST(MOZ_ANDROID_GECKOLIBS_AAR)
 AC_SUBST(MOZ_ANDROID_READING_LIST_SERVICE)
 AC_SUBST(MOZ_ANDROID_SEARCH_ACTIVITY)
-AC_SUBST(MOZ_ANDROID_SHARE_OVERLAY)
-AC_SUBST(MOZ_ANDROID_FIREFOX_ACCOUNT_PROFILES)
 AC_SUBST(MOZ_ANDROID_TAB_QUEUE)
 AC_SUBST(MOZ_ANDROID_MLS_STUMBLER)
 AC_SUBST(MOZ_ANDROID_DOWNLOADS_INTEGRATION)
 AC_SUBST(MOZ_ANDROID_APPLICATION_CLASS)
 AC_SUBST(MOZ_ANDROID_BROWSER_INTENT_CLASS)
 AC_SUBST(MOZ_ANDROID_SEARCH_INTENT_CLASS)
+AC_SUBST(MOZ_ANDROID_DOWNLOAD_CONTENT_SERVICE)
 AC_SUBST(MOZ_EXCLUDE_HYPHENATION_DICTIONARIES)
 AC_SUBST(MOZ_INSTALL_TRACKING)
 AC_SUBST(MOZ_SWITCHBOARD)
@@ -8804,15 +8789,14 @@ if test "$MOZILLA_OFFICIAL"; then
     MOZ_INCLUDE_SOURCE_INFO=1
 fi
 
-# On official builds, we need to know in Telemetry what revision this is built from.
-# This is e.g. needed to match incoming data to a specific revision of the Histograms.json
-# file.
-if test "$MOZILLA_OFFICIAL" && test -d ${_topsrcdir}/.hg; then
-  SOURCE_REV=`cd $_topsrcdir && hg parent --template='{node|short}'`
-  SOURCE_REPO=`cd $_topsrcdir && hg showconfig paths.default | sed -e 's|^ssh://|http://|' -e 's|/$||'`
-  SOURCE_REV_URL=$SOURCE_REPO/rev/$SOURCE_REV
-else
-  SOURCE_REV_URL=
+# External builds (specifically Ubuntu) may drop the hg repo information, so we allow to
+# explicitly set the repository and changeset information in.
+if test "$MOZILLA_OFFICIAL"; then
+    if test -z "$MOZ_SOURCE_REPO" && test -z "$MOZ_SOURCE_CHANGESET" && test -d ${_topsrcdir}/.hg; then
+        MOZ_SOURCE_CHANGESET=`cd $_topsrcdir && hg parent --template='{node}'`
+        MOZ_SOURCE_REPO=`cd $_topsrcdir && hg showconfig paths.default | sed -e 's|^ssh://|http://|' -e 's|/$||'`
+    fi
+    SOURCE_REV_URL=$MOZ_SOURCE_REPO/rev/$MOZ_SOURCE_CHANGESET
 fi
 AC_SUBST(SOURCE_REV_URL)
 
@@ -8875,11 +8859,11 @@ AC_SUBST(MOZ_NATIVE_JPEG)
 AC_SUBST(MOZ_NATIVE_PNG)
 AC_SUBST(MOZ_NATIVE_BZ2)
 
-AC_SUBST(MOZ_JPEG_CFLAGS)
+AC_SUBST_LIST(MOZ_JPEG_CFLAGS)
 AC_SUBST_LIST(MOZ_JPEG_LIBS)
 AC_SUBST_LIST(MOZ_BZ2_CFLAGS)
 AC_SUBST_LIST(MOZ_BZ2_LIBS)
-AC_SUBST(MOZ_PNG_CFLAGS)
+AC_SUBST_LIST(MOZ_PNG_CFLAGS)
 AC_SUBST_LIST(MOZ_PNG_LIBS)
 
 if test "$MOZ_WIDGET_TOOLKIT" = gonk -a -n "$MOZ_NUWA_PROCESS"; then
@@ -8896,10 +8880,8 @@ if test "$MOZ_WIDGET_TOOLKIT" = gonk -a -n "$MOZ_B2G_LOADER"; then
 fi
 AC_SUBST(MOZ_B2G_LOADER)
 
-AC_SUBST(NSPR_CFLAGS)
 AC_SUBST(MOZ_NATIVE_NSPR)
 
-AC_SUBST(NSS_CFLAGS)
 AC_SUBST(MOZ_NATIVE_NSS)
 AC_SUBST(NSS_DISABLE_DBM)
 
@@ -9019,11 +9001,6 @@ AC_SUBST(DMG_TOOL)
 dnl Host JavaScript runtime, if any, to use during cross compiles.
 AC_SUBST(JS_BINARY)
 
-if test "$MOZ_DEBUG"; then
-    MOZ_EM_DEBUG=1
-fi
-AC_SUBST(MOZ_EM_DEBUG)
-
 AC_SUBST(NSS_EXTRA_SYMBOLS_FILE)
 
 if test -n "$COMPILE_ENVIRONMENT"; then
@@ -9135,6 +9112,18 @@ HAVE_SYS_MOUNT_H
 "
 
 dnl ========================================================
+dnl Determine options to use for running the preprocessor.
+dnl ========================================================
+
+if test -z "$GNU_CC" -a "$OS_ARCH" = "WINNT"; then
+    PREPROCESS_OPTION="-P -Fi"
+else
+    PREPROCESS_OPTION="-E -o "
+fi
+
+AC_SUBST(PREPROCESS_OPTION)
+
+dnl ========================================================
 dnl ICU Support
 dnl ========================================================
 
@@ -9157,6 +9146,9 @@ if test -z "$JS_SHARED_LIBRARY"; then
   AC_DEFINE(MOZ_STATIC_JS)
 fi
 AC_SUBST(JS_SHARED_LIBRARY)
+
+# Avoid using obsolete NSPR features
+AC_DEFINE(NO_NSPR_10_SUPPORT)
 
 MOZ_CREATE_CONFIG_STATUS()
 
@@ -9296,6 +9288,7 @@ export MOZILLA_CENTRAL_PATH=$_topsrcdir
 export STLPORT_CPPFLAGS
 export STLPORT_LIBS
 export JS_STANDALONE=no
+export DIST
 export MOZ_LINKER
 export ZLIB_IN_MOZGLUE
 export MOZ_MEMORY

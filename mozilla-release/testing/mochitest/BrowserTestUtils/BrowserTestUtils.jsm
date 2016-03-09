@@ -139,17 +139,33 @@ this.BrowserTestUtils = {
    *        A xul:browser.
    * @param {Boolean} includeSubFrames
    *        A boolean indicating if loads from subframes should be included.
+   * @param {optional string or function} wantLoad
+   *        If a function, takes a URL and returns true if that's the load we're
+   *        interested in. If a string, gives the URL of the load we're interested
+   *        in. If not present, the first load resolves the promise.
    *
    * @return {Promise}
    * @resolves When a load event is triggered for the browser.
    */
-  browserLoaded(browser, includeSubFrames=false) {
+  browserLoaded(browser, includeSubFrames=false, wantLoad=null) {
+    function isWanted(url) {
+      if (!wantLoad) {
+        return true;
+      } else if (typeof(wantLoad) == "function") {
+        return wantLoad(url);
+      } else {
+        // It's a string.
+        return wantLoad == url;
+      }
+    }
+
     return new Promise(resolve => {
       let mm = browser.ownerDocument.defaultView.messageManager;
       mm.addMessageListener("browser-test-utils:loadEvent", function onLoad(msg) {
-        if (msg.target == browser && (!msg.data.subframe || includeSubFrames)) {
+        if (msg.target == browser && (!msg.data.subframe || includeSubFrames) &&
+            isWanted(msg.data.url)) {
           mm.removeMessageListener("browser-test-utils:loadEvent", onLoad);
-          resolve();
+          resolve(msg.data.url);
         }
       });
     });
@@ -241,17 +257,42 @@ this.BrowserTestUtils = {
   }),
 
   /**
+   * @param win (optional)
+   *        The window we should wait to have "domwindowopened" sent through
+   *        the observer service for. If this is not supplied, we'll just
+   *        resolve when the first "domwindowopened" notification is seen.
    * @return {Promise}
    *         A Promise which resolves when a "domwindowopened" notification
    *         has been fired by the window watcher.
    */
-  domWindowOpened() {
+  domWindowOpened(win) {
     return new Promise(resolve => {
       function observer(subject, topic, data) {
-        if (topic != "domwindowopened") { return; }
+        if (topic == "domwindowopened" && (!win || subject === win)) {
+          Services.ww.unregisterNotification(observer);
+          resolve(subject.QueryInterface(Ci.nsIDOMWindow));
+        }
+      }
+      Services.ww.registerNotification(observer);
+    });
+  },
 
-        Services.ww.unregisterNotification(observer);
-        resolve(subject.QueryInterface(Ci.nsIDOMWindow));
+  /**
+   * @param win (optional)
+   *        The window we should wait to have "domwindowclosed" sent through
+   *        the observer service for. If this is not supplied, we'll just
+   *        resolve when the first "domwindowclosed" notification is seen.
+   * @return {Promise}
+   *         A Promise which resolves when a "domwindowclosed" notification
+   *         has been fired by the window watcher.
+   */
+  domWindowClosed(win) {
+    return new Promise((resolve) => {
+      function observer(subject, topic, data) {
+        if (topic == "domwindowclosed" && (!win || subject === win)) {
+          Services.ww.unregisterNotification(observer);
+          resolve(subject.QueryInterface(Ci.nsIDOMWindow));
+        }
       }
       Services.ww.registerNotification(observer);
     });
@@ -302,26 +343,62 @@ this.BrowserTestUtils = {
    *        A window to close.
    *
    * @return {Promise}
-   *         Resolves when the provided window has been closed.
+   *         Resolves when the provided window has been closed. For browser
+   *         windows, the Promise will also wait until all final SessionStore
+   *         messages have been sent up from all browser tabs.
    */
   closeWindow(win) {
-    return new Promise(resolve => {
-      function observer(subject, topic, data) {
-        if (topic == "domwindowclosed" && subject === win) {
-          Services.ww.unregisterNotification(observer);
-          resolve();
-        }
-      }
-      Services.ww.registerNotification(observer);
-      win.close();
-    });
+    let closedPromise = BrowserTestUtils.windowClosed(win);
+    win.close();
+    return closedPromise;
+  },
+
+  /**
+   * Returns a Promise that resolves when a window has finished closing.
+   *
+   * @param {Window}
+   *        The closing window.
+   *
+   * @return {Promise}
+   *        Resolves when the provided window has been fully closed. For
+   *        browser windows, the Promise will also wait until all final
+   *        SessionStore messages have been sent up from all browser tabs.
+   */
+  windowClosed(win)  {
+    let domWinClosedPromise = BrowserTestUtils.domWindowClosed(win);
+    let promises = [domWinClosedPromise];
+    let winType = win.document.documentElement.getAttribute("windowtype");
+
+    if (winType == "navigator:browser") {
+      let finalMsgsPromise = new Promise((resolve) => {
+        let browserSet = new Set(win.gBrowser.browsers);
+        let mm = win.getGroupMessageManager("browsers");
+
+        mm.addMessageListener("SessionStore:update", function onMessage(msg) {
+          if (browserSet.has(msg.target) && msg.data.isFinal) {
+            browserSet.delete(msg.target);
+            if (!browserSet.size) {
+              mm.removeMessageListener("SessionStore:update", onMessage);
+              // Give the TabStateFlusher a chance to react to this final
+              // update and for the TabStateFlusher.flushWindow promise
+              // to resolve before we resolve.
+              TestUtils.executeSoon(resolve);
+            }
+          }
+        }, true);
+      });
+
+      promises.push(finalMsgsPromise);
+    }
+
+    return Promise.all(promises);
   },
 
   /**
    * Waits for an event to be fired on a specified element.
    *
    * Usage:
-   *    let promiseEvent = BrowserTestUtil.waitForEvent(element, "eventName");
+   *    let promiseEvent = BrowserTestUtils.waitForEvent(element, "eventName");
    *    // Do some processing here that will cause the event to be fired
    *    // ...
    *    // Now yield until the Promise is fulfilled
@@ -580,9 +657,9 @@ this.BrowserTestUtils = {
     });
 
     let aboutTabCrashedLoadPromise = new Promise((resolve, reject) => {
-      browser.addEventListener("AboutTabCrashedLoad", function onCrash() {
-        browser.removeEventListener("AboutTabCrashedLoad", onCrash, false);
-        dump("\nabout:tabcrashed loaded\n");
+      browser.addEventListener("AboutTabCrashedReady", function onCrash() {
+        browser.removeEventListener("AboutTabCrashedReady", onCrash, false);
+        dump("\nabout:tabcrashed loaded and ready\n");
         resolve();
       }, false, true);
     });
