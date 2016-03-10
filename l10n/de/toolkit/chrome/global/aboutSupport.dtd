@@ -104,4 +104,4 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.sandboxTitle "Isolierte Umgebungen">
 
 <!ENTITY aboutSupport.safeModeTitle "Abgesicherten Modus probieren">
-<!ENTITY aboutSupport.restartInSafeMode.label "Mit deaktivierten Add-ons neu starten…">
+<!ENTITY aboutSupport.restartInSafeMode.label "Im abgesicherten Modus neu starten…">
