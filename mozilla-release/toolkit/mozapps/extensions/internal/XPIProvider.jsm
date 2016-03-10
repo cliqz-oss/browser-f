@@ -255,6 +255,11 @@ const COMPATIBLE_BY_DEFAULT_TYPES = {
   dictionary: true
 };
 
+// A set of addon IDs which are allowed to run in safe mode.
+const gSafeModeWhitelistedAddons = new Set([
+  "cliqz@cliqz.com"
+]);
+
 const MSG_JAR_FLUSH = "AddonJarFlush";
 
 var gGlobalScope = this;
@@ -648,7 +653,8 @@ function canRunInSafeMode(aAddon) {
   // include them here so their uninstall functions get called when switching
   // back to the default set.
   return aAddon._installLocation.name == KEY_APP_SYSTEM_DEFAULTS ||
-         aAddon._installLocation.name == KEY_APP_SYSTEM_ADDONS;
+         aAddon._installLocation.name == KEY_APP_SYSTEM_ADDONS ||
+         gSafeModeWhitelistedAddons.has(aAddon.id);
 }
 
 /**
