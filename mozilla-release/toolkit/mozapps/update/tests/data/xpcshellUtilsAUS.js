@@ -1288,14 +1288,14 @@ function getMaintSvcDir() {
   // This will return an empty string on our Win XP build systems.
   let maintSvcDir = getSpecialFolderDir(CSIDL_PROGRAM_FILESX86);
   if (maintSvcDir) {
-    maintSvcDir.append("Mozilla Maintenance Service");
+    maintSvcDir.append("Cliqz Maintenance Service");
     debugDump("using CSIDL_PROGRAM_FILESX86 - maintenance service install " +
               "directory path: " + maintSvcDir.path);
   }
   if (!maintSvcDir || !maintSvcDir.exists()) {
     maintSvcDir = getSpecialFolderDir(CSIDL_PROGRAM_FILES);
     if (maintSvcDir) {
-      maintSvcDir.append("Mozilla Maintenance Service");
+      maintSvcDir.append("Cliqz Maintenance Service");
       debugDump("using CSIDL_PROGRAM_FILES - maintenance service install " +
                 "directory path: " + maintSvcDir.path);
     }
@@ -1697,7 +1697,7 @@ function shouldRunServiceTest(aFirstTest) {
 
   let isBinSigned = isBinarySigned(updaterBinPath);
 
-  const REG_PATH = "SOFTWARE\\Mozilla\\MaintenanceService\\" +
+  const REG_PATH = "SOFTWARE\\CLIQZ\\MaintenanceService\\" +
                    "3932ecacee736d366d6436db0f55bce4";
   let key = Cc["@mozilla.org/windows-registry-key;1"].
             createInstance(Ci.nsIWindowsRegKey);
@@ -1722,7 +1722,7 @@ function shouldRunServiceTest(aFirstTest) {
 
   // Check to make sure the service is installed
   let helperBin = getTestDirFile(FILE_HELPER_BIN);
-  let args = ["wait-for-service-stop", "MozillaMaintenance", "10"];
+  let args = ["wait-for-service-stop", "CliqzMaintenance", "10"];
   let process = Cc["@mozilla.org/process/util;1"].
                 createInstance(Ci.nsIProcess);
   process.init(helperBin);
@@ -2049,7 +2049,7 @@ function runUpdateUsingService(aInitialStatus, aExpectedStatus, aCheckSvcLog) {
     // stopped then wait for the service to be stopped (at most 120 seconds)
     let helperBin = getTestDirFile(FILE_HELPER_BIN);
     let helperBinArgs = ["wait-for-service-stop",
-                         "MozillaMaintenance",
+                         "CliqzMaintenance",
                          "120"];
     let helperBinProcess = Cc["@mozilla.org/process/util;1"].
                            createInstance(Ci.nsIProcess);

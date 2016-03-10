@@ -10,7 +10,7 @@ whitelist = {
     }
 
 all_desktop_platforms = ['win32', 'linux', 'linux64', 'macosx64', 'win64']
-all_mobile_platforms = ['android', 'android-api-9', 'android-api-11', 'android-x86']
+all_mobile_platforms = ['android', 'android-api-9', 'android-api-11', 'android-api-15', 'android-x86']
 all_platforms = all_desktop_platforms + all_mobile_platforms
 
 for platform in all_platforms:
@@ -85,7 +85,8 @@ whitelist['nightly']['win64'] += [
     '. "$topsrcdir/build/mozconfig.cache"',
 ]
 
-for p in ('android', 'android-api-9', 'android-api-11'):
+# TODO - remove 'android-api-11' once gecko 46 is on aurora
+for p in ('android', 'android-api-9', 'android-api-11', 'android-api-15'):
     whitelist['nightly'][p] += [
         'ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}',
         'ac_add_options --enable-warnings-as-errors',
@@ -96,7 +97,9 @@ for p in ('android', 'android-api-9', 'android-api-11'):
         'ac_add_options --with-branding=mobile/android/branding/nightly',
     ]
 
+# TODO - remove 'android-api-11' once gecko 46 is on aurora
 whitelist['nightly']['android-api-11'] += ['MOZ_ANDROID_GECKOLIBS_AAR=1']
+whitelist['nightly']['android-api-15'] += ['MOZ_ANDROID_GECKOLIBS_AAR=1']
 
 whitelist['nightly']['android-x86'] += [
     'ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}',
@@ -136,10 +139,14 @@ for branch in ('mozilla-beta', 'comm-beta'):
     whitelist[branch]['win64'] += ['mk_add_options MOZ_PGO=1']
     whitelist[branch]['android'] += ['ac_add_options --enable-updater']
     whitelist[branch]['android-api-9'] += ['ac_add_options --enable-updater']
+    # TODO - remove api-11 once gecko 46 is on beta
     whitelist[branch]['android-api-11'] += ['ac_add_options --enable-updater']
+    whitelist[branch]['android-api-15'] += ['ac_add_options --enable-updater']
     whitelist[branch]['android-x86'] += ['ac_add_options --enable-updater']
     whitelist[branch]['android-api-9'] += ['ac_add_options --with-branding=mobile/android/branding/beta']
+    # TODO - remove api-11 once gecko 46 is on beta
     whitelist[branch]['android-api-11'] += ['ac_add_options --with-branding=mobile/android/branding/beta']
+    whitelist[branch]['android-api-15'] += ['ac_add_options --with-branding=mobile/android/branding/beta']
 
 
 for branch in ('mozilla-release', 'comm-esr38'):
@@ -172,7 +179,9 @@ for branch in ('mozilla-release', 'comm-esr38'):
     ]
     whitelist[branch]['android'] += ['ac_add_options --enable-updater']
     whitelist[branch]['android-api-9'] += ['ac_add_options --enable-updater']
+    # TODO - remove 'android-api-11' once gecko 46 is on release
     whitelist[branch]['android-api-11'] += ['ac_add_options --enable-updater']
+    whitelist[branch]['android-api-15'] += ['ac_add_options --enable-updater']
     whitelist[branch]['android-x86'] += ['ac_add_options --enable-updater']
 
 

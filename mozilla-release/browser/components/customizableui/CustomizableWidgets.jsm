@@ -452,7 +452,7 @@ const CustomizableWidgets = [
                 aEvent.target.ownerDocument &&
                 aEvent.target.ownerDocument.defaultView;
       if (win && typeof win.BrowserOpenAddonsMgr == "function") {
-        win.BrowserOpenAddonsMgr();
+        win.BrowserOpenAddonsMgr("addons://list/plugin");
       }
     }
   }, {

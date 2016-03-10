@@ -571,18 +571,14 @@ nsBrowserContentHandler.prototype = {
       }
     }
 
-    var startPage = this.startPage;
-// Disabled in Cliqz.
-#if 0
     var startPage = "";
     try {
-      var choice = prefb.getIntPref("browser.startup.page");
-      if (choice == 1 || choice == 3)
+      var addFreshTab = prefb.getBoolPref("browser.startup.addFreshTab");
+      if (addFreshTab)
         startPage = this.startPage;
     } catch (e) {
       Components.utils.reportError(e);
     }
-#endif
 
     if (startPage == "about:blank")
       startPage = "";

@@ -499,11 +499,10 @@
                         key="key_openDownloads"
                         command="Tools:Downloads"/>
               <menuitem id="menu_openAddons"
-                        label="&addons.label;"
+                        label="&plugins.label;"
                         accesskey="&addons.accesskey;"
                         key="key_openAddons"
                         command="Tools:Addons"/>
-
               <menuitem id="menu_openLoop"
                         label="&loopMenuItem.label;"
                         accesskey = "&loopMenuItem.accesskey;"

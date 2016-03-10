@@ -1746,9 +1746,21 @@ var gCategories = {
     this.node = document.getElementById("categories");
     this._search = this.get("addons://search/");
 
+    // These addon categories are disabled in CLIQZ.
+    const disabledCategories = new Set([
+        'extension',
+        'service',
+        'experiment',
+        'theme'
+        ]);
+    if (Services.prefs.getBoolPref("extensions.cliqz.listed"))
+      disabledCategories.delete('extension');
     var types = AddonManager.addonTypes;
-    for (var type in types)
+    for (var type in types) {
+      if (disabledCategories.has(type))
+        continue;
       this.onTypeAdded(types[type]);
+    }
 
     AddonManager.addTypeListener(this);
 
@@ -1960,7 +1972,8 @@ var gCategories = {
 
   maybeHideSearch: function gCategories_maybeHideSearch() {
     var view = gViewController.parseViewId(this.node.selectedItem.value);
-    this._search.disabled = view.type != "search";
+    if (this._search)
+      this._search.disabled = view.type != "search";
   }
 };
 

@@ -14,53 +14,9 @@
 set -e
 set -x
 
-VERBOSE=false
-CLOBBER=false
+source cliqz_env.sh
 
-while [[ $# > 0 ]]
-do
-  key="$1"
-
-  case $key in
-    -lang|--language)
-    LANG="$2"
-    shift # Consume additional argument
-    ;;
-
-    -v|--verbose)
-    VERBOSE=true
-    ;;
-
-    --clobber)
-    CLOBBER=true
-    ;;
-
-    *)
-    echo "WARNING: Unknown option $key"
-    ;;
-  esac
-  shift # Consume current argument
-done
-
-if [[ "$OSTYPE" == "linux-gnu" ]]; then
-  IS_LINUX=true
-  echo 'Linux OS detected'
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  IS_MAC_OS=true
-  echo 'Mac OS detected'
-elif [[ "$OSTYPE" == "cygwin" || "$OSTYPE" == "msys" ]]; then
-  IS_WIN=true
-  echo 'Windows OS detected'
-else
-  echo 'Unknow OS -`$OSTYPE`'
-fi
-
-cd mozilla-release
-
-export MOZCONFIG=browser/config/cliqz-release.mozconfig
-export MOZ_OBJDIR=../obj
-I386DIR=$MOZ_OBJDIR/i386
-X86_64DIR=$MOZ_OBJDIR/x86_64
+cd $SRC_BASE
 
 if $CLOBBER; then
   ./mach clobber
@@ -76,6 +32,7 @@ if [ $IS_WIN ]; then
 fi
 
 # TODO: Use MOZ_UPDATE_CHANNEL directly instead of CQZ_RELEASE_CHANNEL.
+# Don't forget to update magic_upload_files.sh along with this one.
 # --enable-update-channel=...
 if [ -z $CQZ_RELEASE_CHANNEL ]; then
   export MOZ_UPDATE_CHANNEL=release
@@ -103,37 +60,21 @@ fi
 echo '***** Building *****'
 ./mach build
 
+if [ $IS_WIN ]; then
+  echo '***** Windows build installer *****'
+  ./mach build installer
+fi
+
 echo '***** Packaging *****'
 if [[ $IS_MAC_OS ]]; then
   MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
   unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!
-  make -C $I386DIR package
+  make -C $OBJ_DIR package
+  # Restore still useful variable we unset before.
   export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
 else
   ./mach package
 fi
 
-if [ $IS_WIN ]; then
-  echo '***** Windows packaging: *****'
-  ./mach build installer
-  cd $MOZ_OBJDIR
-  mozmake update-packaging
-  cd $OLDPWD
-elif [ $IS_MAC_OS ]; then
-  echo '***** Mac packaging *****'
-  make -C $I386DIR update-packaging
-else
-  echo '***** Linux packaging *****'
-  make -C $MOZ_OBJDIR update-packaging
-fi
-
-if [ $CQZ_CERT_DB_PATH ]; then
-  echo '***** Signing mar *****'
-  cd $I386DIR/dist/update
-  MAR_FILE=`ls *.mar | head -n 1`
-  $X86_64DIR/dist/bin/signmar -d $CQZ_CERT_DB_PATH -n "Cliqz GmbH's DigiCert Inc ID" -s $MAR_FILE out.mar
-  mv out.mar $MAR_FILE
-  cd $OLDPWD
-fi
-
 echo '***** Build & package finished successfully. *****'
+cd $OLDPWD

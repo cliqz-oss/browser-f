@@ -48,7 +48,7 @@
 // Maximum size of the pages cache per connection.
 #define MAX_CACHE_SIZE_KIBIBYTES 2048 // 2 MiB
 
-PRLogModuleInfo* gStorageLog = nullptr;
+extern PRLogModuleInfo* gStorageLog;
 
 // Checks that the protected code is running on the main-thread only if the
 // connection was also opened on it.
@@ -732,9 +732,6 @@ Connection::initializeInternal()
 
   // Properly wrap the database handle's mutex.
   sharedDBMutex.initWithMutex(sqlite3_db_mutex(mDBConn));
-
-  if (!gStorageLog)
-    gStorageLog = ::PR_NewLogModule("mozStorage");
 
   // SQLite tracing can slow down queries (especially long queries)
   // significantly. Don't trace unless the user is actively monitoring SQLite.

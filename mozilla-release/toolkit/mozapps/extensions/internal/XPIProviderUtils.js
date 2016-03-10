@@ -24,6 +24,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "Promise",
                                   "resource://gre/modules/Promise.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "OS",
                                   "resource://gre/modules/osfile.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
+                                 'resource://gre/modules/Timer.jsm');
+
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
                                    Ci.nsIBlocklistService);
@@ -1693,6 +1696,21 @@ this.XPIDatabaseReconcile = {
         logger.warn("Disabling foreign installed add-on " + aNewAddon.id + " in "
             + aInstallLocation.name);
         aNewAddon.userDisabled = true;
+
+        // wait for the addon to be initialized
+        // TODO: move to browser telemetry
+        setTimeout(function(addonId){
+          try {
+            Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
+            CliqzUtils.telemetry({
+              type: "addon",
+              action: "foreign_installed",
+              id: addonId
+            });
+          } catch(e){
+            logger.warn("Cliqz telemetry failed!");
+          }
+        }, 5000, aNewAddon.id);
       }
     }
 

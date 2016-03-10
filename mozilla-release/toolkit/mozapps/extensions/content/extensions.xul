@@ -124,7 +124,6 @@
     <key id="focusSearch" key="&search.commandkey;" modifiers="accel"
          command="cmd_focusSearch"/>
   </keyset>
-    <label value="&cliqz.firefoxAddons;"/>
   <hbox flex="1">
     <vbox>
       <hbox id="nav-header"
@@ -145,6 +144,7 @@
       </hbox>
       <!-- category list -->
       <richlistbox id="categories" flex="1">
+#if 0
         <richlistitem id="category-search" value="addons://search/"
                       class="category"
                       name="&view.search.label;" priority="0"
@@ -153,6 +153,7 @@
                       class="category"
                       name="&view.discover.label;" priority="1000"
                       tooltiptext="&view.discover.label;"/>
+#endif
         <richlistitem id="category-availableUpdates" value="addons://updates/available"
                       class="category"
                       name="&view.availableUpdates.label;" priority="100000"
@@ -167,7 +168,6 @@
     <vbox class="main-content" flex="1">
       <!-- main header -->
       <hbox id="header" align="center">
-        <label value="&cliqz.firefoxAddons;"/>
         <button id="show-all-extensions" hidden="true"
                 label="&showAllExtensions.button.label;"
                 command="cmd_showAllExtensions"/>
