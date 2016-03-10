@@ -568,9 +568,12 @@
                   <menuitem id="menu_devtools_connect"
                             observes="devtoolsMenuBroadcaster_connect"/>
                   <menuseparator id="devToolsEndSeparator"/>
+#if 0
+# Addons are disabled in CLIQZ
                   <menuitem id="getMoreDevtools"
                             observes="devtoolsMenuBroadcaster_GetMoreTools"
                             accesskey="&getMoreDevtoolsCmd.accesskey;"/>
+#endif
                 </menupopup>
               </menu>
               <menuitem id="menu_pageInfo"
