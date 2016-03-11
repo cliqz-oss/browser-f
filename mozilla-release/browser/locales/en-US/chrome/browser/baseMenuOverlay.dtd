@@ -23,7 +23,7 @@
 <!ENTITY helpKeyboardShortcuts.label     "Keyboard Shortcuts">
 <!ENTITY helpKeyboardShortcuts.accesskey "K">
 
-<!ENTITY helpSafeMode.label       "Restart with Add-ons Disabled…">
+<!ENTITY helpSafeMode.label       "Restart in safe mode…">
 <!ENTITY helpSafeMode.accesskey   "R">
 <!ENTITY helpSafeMode.stop.label       "Restart with Add-ons Enabled">
 <!ENTITY helpSafeMode.stop.accesskey   "R">
