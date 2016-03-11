@@ -15,6 +15,9 @@
     <DT><H3 PERSONAL_TOOLBAR_FOLDER="true" ID="rdf:#$FvPhC3">@bookmarks_toolbarfolder@</H3>
 <DD>@bookmarks_toolbarfolder_description@
     <DL><p>
+    </DL><p>
+    <DT><H3 ID="rdf:#$ZvPhC3">@firefox_heading@</H3>
+    <DL><p>
         <DT><A HREF="https://www.cliqz.com/team"  ID="rdf:#$42iCK1">Team</A>
         <DT><A HREF="https://www.cliqz.com/aboutus"  ID="rdf:#$52iCK1">@firefox_about@</A>
         <DT><A HREF="@cliqz_triqz_url@"  ID="rdf:#$52iCK1">@cliqz_triqz@</A>
