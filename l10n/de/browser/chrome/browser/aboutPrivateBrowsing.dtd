@@ -15,7 +15,7 @@
      30em to prevent the sections from wrapping on smaller window sizes.
      -->
 <!ENTITY aboutPrivateBrowsing.width1           "30em">
-<!ENTITY aboutPrivateBrowsing.title            "Sie surfen privat">
+<!ENTITY aboutPrivateBrowsing.title            "Du surfst privat">
 
 <!ENTITY aboutPrivateBrowsing.info.notsaved    "Werden nicht gespeichert">
 <!ENTITY aboutPrivateBrowsing.info.history     "Chronik">
