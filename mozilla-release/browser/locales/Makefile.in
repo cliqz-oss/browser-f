@@ -127,12 +127,8 @@ libs:: $(call MERGE_FILES,$(addprefix profile/chrome/,$(PROFILE_CHROME)))
 
 libs-%:
 	$(NSINSTALL) -D $(DIST)/install
-<<<<<<< HEAD
-	@$(MAKE) -C ../../toolkit/locales libs-$*
-ifdef MOZ_SERVICES_SYNC
-=======
 	@$(MAKE) -C ../../toolkit/locales libs-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
->>>>>>> origin/upstream-releases
+ifdef MOZ_SERVICES_SYNC
 	@$(MAKE) -C ../../services/sync/locales AB_CD=$* XPI_NAME=locale-$*
 endif
 ifdef MOZ_WEBAPP_RUNTIME

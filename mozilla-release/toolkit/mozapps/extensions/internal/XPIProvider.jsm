@@ -52,13 +52,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "ProductAddonChecker",
                                   "resource://gre/modules/addons/ProductAddonChecker.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
                                   "resource://gre/modules/UpdateUtils.jsm");
-<<<<<<< HEAD
-XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
-                                 'resource://gre/modules/Timer.jsm');
-=======
 XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
                                   "resource://gre/modules/AppConstants.jsm");
->>>>>>> origin/upstream-releases
+XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
+                                 'resource://gre/modules/Timer.jsm');
 
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
@@ -1740,7 +1737,7 @@ function verifyZipSignedState(aFile, aAddon) {
       }
 
       // Try to check against Cliqz certificate.
-      certDB.openSignedAppFileAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aFile,
+      gCertDB.openSignedAppFileAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aFile,
                                     (aRv, aZipReader, aCert) => {
         if (aZipReader)
           aZipReader.close();
@@ -1769,8 +1766,7 @@ function verifyDirSignedState(aDir, aAddon) {
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
   return new Promise(resolve => {
-<<<<<<< HEAD
-    certDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
+    gCertDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
       if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
         logger.warn("Mozilla signed addons are currrently not supported");
@@ -1795,14 +1791,10 @@ function verifyDirSignedState(aDir, aAddon) {
       }
 
       // Try to check against Cliqz certificate.
-      certDB.verifySignedDirectoryAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aDir,
+      gCertDB.verifySignedDirectoryAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aDir,
                                     (aRv, aCert) => {
         resolve(getSignedStatus(aRv, aCert, aAddon.id));
       });
-=======
-    gCertDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
-      resolve(getSignedStatus(aRv, aCert, aAddon.id));
->>>>>>> origin/upstream-releases
     });
   });
 }

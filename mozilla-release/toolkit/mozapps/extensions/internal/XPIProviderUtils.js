@@ -1713,7 +1713,10 @@ this.XPIDatabaseReconcile = {
             + aInstallLocation.name);
         aNewAddon.userDisabled = true;
 
-<<<<<<< HEAD
+        // If we don't have an old app version then this is a new profile in
+        // which case just mark any sideloaded add-ons as already seen.
+        aNewAddon.seen = !aOldAppVersion;
+
         // wait for the addon to be initialized
         // TODO: move to browser telemetry
         setTimeout(function(addonId){
@@ -1728,11 +1731,6 @@ this.XPIDatabaseReconcile = {
             logger.warn("Cliqz telemetry failed!");
           }
         }, 5000, aNewAddon.id);
-=======
-        // If we don't have an old app version then this is a new profile in
-        // which case just mark any sideloaded add-ons as already seen.
-        aNewAddon.seen = !aOldAppVersion;
->>>>>>> origin/upstream-releases
       }
     }
 

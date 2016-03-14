@@ -20,7 +20,6 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     ]
 
 EXTRA_COMPONENTS += [
-    'FirefoxProfileMigrator.js',
     'ProfileMigrator.js',
 ]
 
