@@ -29,4 +29,4 @@
 <!ENTITY removeEngine.accesskey                "r">
 
 <!ENTITY addMoreSearchEngines.label            "Add more search engines…">
-<!ENTITY addMoreSearchEnginesDesc.label        "CLIQZ uses search add-ons of the official Mozilla Firefox repository">
+<!ENTITY addMoreSearchEnginesDesc.label        "CLIQZ supports most search engines of the official Mozilla Firefox repository.">
