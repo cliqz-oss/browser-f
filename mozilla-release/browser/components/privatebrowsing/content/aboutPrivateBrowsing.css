@@ -124,7 +124,6 @@ li:-moz-dir(rtl) {
   text-align: center;
   border: lightgray 2px solid;
   border-radius: 10px;
-  display: none;
 }
 
 #tpEnabled,
