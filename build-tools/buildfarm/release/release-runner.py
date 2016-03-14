@@ -5,62 +5,25 @@ import time
 import logging
 import sys
 import os
-import re
-import subprocess
-import hashlib
-import functools
-import shutil
-import tempfile
-import requests
 from os import path
 from optparse import OptionParser
 from twisted.python.lockfile import FilesystemLock
 
 site.addsitedir(path.join(path.dirname(__file__), "../../lib/python"))
 
+import requests
 from kickoff.api import Releases, Release, ReleaseL10n
 from release.info import readBranchConfig
 from release.l10n import parsePlainL10nChangesets
 from release.versions import getAppVersion
 from releasetasks import make_task_graph
-from taskcluster import Scheduler, Index, Queue
+from taskcluster import Scheduler, Index
 from taskcluster.utils import slugId
 from util.hg import mercurial
 from util.retry import retry
 from util.file import load_config, get_config
 
 log = logging.getLogger(__name__)
-
-
-# both CHECKSUMS and ALL_FILES have been defined to improve the release sanity
-# en-US binaries timing by whitelisting artifacts of interest - bug 1251761
-CHECKSUMS = set([
-    '.checksums',
-    '.checksums.asc',
-])
-
-
-ALL_FILES = set([
-    '.checksums',
-    '.checksums.asc',
-    '.complete.mar',
-    '.exe',
-    '.dmg',
-    'i686.tar.bz2',
-    'x86_64.tar.bz2',
-])
-
-
-# temporary regex to filter out anything but firefox beta releases within
-# release promotion. Once migration from buildbot to promotion is completed
-# for all types of releases, we will backout this filtering  - bug 1252333
-RELEASE_PATTERNS = [
-    r"Firefox-\d+\.0b\d+-build\d+"
-]
-
-
-class SanityException(Exception):
-    pass
 
 
 # FIXME: the following function should be removed and we should use
@@ -80,10 +43,6 @@ def bump_version(version):
     return split_by.join(v)
 
 
-def matches(name, patterns):
-    return any([re.search(p, name) for p in patterns])
-
-
 class ReleaseRunner(object):
     def __init__(self, api_root=None, username=None, password=None,
                  timeout=60):
@@ -98,17 +57,9 @@ class ReleaseRunner(object):
     def get_release_requests(self):
         new_releases = self.releases_api.getReleases()
         if new_releases['releases']:
-            new_releases = [self.release_api.getRelease(name) for name in
-                            new_releases['releases']]
-            our_releases = [r for r in new_releases if
-                            matches(r['name'], RELEASE_PATTERNS)]
-            if our_releases:
-                self.new_releases = our_releases
-                log.info("Releases to handle are %s", our_releases)
-                return True
-            else:
-                log.info("No releases to handle in %s", new_releases)
-                return False
+            self.new_releases = [self.release_api.getRelease(name) for name in
+                                 new_releases['releases']]
+            return True
         else:
             log.info("No new releases: %s" % new_releases)
             return False
@@ -194,13 +145,7 @@ def getPartials(release):
 
 # TODO: deal with platform-specific locales
 def get_platform_locales(l10n_changesets, platform):
-    # hardcode ja/ja-JP-mac exceptions
-    if platform == "macosx64":
-        ignore = "ja"
-    else:
-        ignore = "ja-JP-mac"
-
-    return [l for l in l10n_changesets.keys() if l != ignore]
+    return l10n_changesets.keys()
 
 
 def get_l10n_config(release, branchConfig, branch, l10n_changesets, index):
@@ -217,7 +162,7 @@ def get_l10n_config(release, branchConfig, branch, l10n_changesets, index):
         l10n_platforms[platform] = {
             "locales": get_platform_locales(l10n_changesets, platform),
             "en_us_binary_url": url,
-            "chunks": branchConfig["platforms"][platform].get("l10n_chunks", 10),
+            "chunks": branchConfig["platforms"][platform].get("l10n_chunks", 6),
         }
 
     return {
@@ -243,150 +188,14 @@ def get_en_US_config(release, branchConfig, branch, index):
     }
 
 
-def validate_signatures(checksums, signature, dir_path, gpg_key_path):
-    try:
-        cmd = ['gpg', '--batch', '--homedir', dir_path, '--import',
-               gpg_key_path]
-        subprocess.check_call(cmd)
-        cmd = ['gpg', '--homedir', dir_path, '--verify', signature, checksums]
-        subprocess.check_call(cmd)
-    except subprocess.CalledProcessError:
-        log.exception("GPG signature check failed")
-        raise SanityException("GPG signature check failed")
-
-
-def parse_sha512(checksums, files):
-    # parse the checksums file and store all sha512 digests
-    _dict = dict()
-    with open(checksums, 'rb') as fd:
-        lines = fd.readlines()
-        for line in lines:
-            digest, alg, _, name = line.split()
-            if alg != 'sha512':
-                continue
-            _dict[os.path.basename(name)] = digest
-    wdict = {k: _dict[k] for k in _dict.keys() if file_in_whitelist(k, files)}
-    return wdict
-
-
-def download_all_artifacts(queue, artifacts, task_id, dir_path):
-    failed_downloads = False
-
-    for artifact in artifacts:
-        name = os.path.basename(artifact)
-        build_url = queue.buildSignedUrl(
-            'getLatestArtifact',
-            task_id,
-            artifact
-        )
-        log.debug('Downloading %s', name)
-        try:
-            r = requests.get(build_url, timeout=60)
-            r.raise_for_status()
-        except requests.HTTPError:
-            log.exception("Failed to download %s", name)
-            failed_downloads = True
-        else:
-            filepath = os.path.join(dir_path, name)
-            with open(filepath, 'wb') as fd:
-                for chunk in r.iter_content(1024):
-                    fd.write(chunk)
-
-    if failed_downloads:
-        raise SanityException('Downloading artifacts failed')
-
-
-def validate_checksums(_dict, dir_path):
-    for name in _dict.keys():
-        filepath = os.path.join(dir_path, name)
-        computed_hash = get_hash(filepath)
-        correct_hash = _dict[name]
-        if computed_hash != correct_hash:
-            log.error("failed to validate checksum for %s", name, exc_info=True)
-            raise SanityException("Failed to check digest for %s" % name)
-
-
-def file_in_whitelist(artifact, whitelist):
-    return any([artifact.endswith(x) for x in whitelist])
-
-
-def sanitize_en_US_binary(queue, task_id, gpg_key_path):
-    # each platform en-US gets its own tempdir workground
-    tempdir = tempfile.mkdtemp()
-    log.debug('Temporary playground is %s', tempdir)
-
-    # get all artifacts and trim but 'name' field from the json entries
-    all_artifacts = [k['name'] for k in queue.listLatestArtifacts(task_id)['artifacts']]
-    # filter files to hold the whitelist-related only
-    artifacts = filter(lambda k: file_in_whitelist(k, ALL_FILES), all_artifacts)
-    # filter out everything but the checkums artifacts
-    checksums_artifacts = filter(lambda k: file_in_whitelist(k, CHECKSUMS), all_artifacts)
-    other_artifacts = list(set(artifacts) - set(checksums_artifacts))
-    # iterate in artifacts and grab checksums and its signature only
-    log.info("Retrieve the checksums file and its signature ...")
-    for artifact in checksums_artifacts:
-        name = os.path.basename(artifact)
-        build_url = queue.buildSignedUrl(
-            'getLatestArtifact',
-            task_id,
-            artifact
-        )
-        log.debug('Downloading %s', name)
-        try:
-            r = requests.get(build_url, timeout=60)
-            r.raise_for_status()
-        except requests.HTTPError:
-            log.exception("Failed to download %s file", name)
-            raise SanityException("Failed to download %s file" % name)
-        filepath = os.path.join(tempdir, name)
-        with open(filepath, 'wb') as fd:
-            for chunk in r.iter_content(1024):
-                fd.write(chunk)
-        if name.endswith(".checksums.asc"):
-            signature = filepath
-        else:
-            checksums = filepath
-
-    # perform the signatures validation test
-    log.info("Attempt to validate signatures ...")
-    validate_signatures(checksums, signature, tempdir, gpg_key_path)
-    log.info("Signatures validated correctly!")
-
-    log.info("Download all artifacts ...")
-    download_all_artifacts(queue, other_artifacts, task_id, tempdir)
-    log.info("All downloads completed!")
-
-    log.info("Retrieve all sha512 from checksums file...")
-    sha512_dict = parse_sha512(checksums, ALL_FILES - CHECKSUMS)
-    log.info("All sha512 digests retrieved")
-
-    log.info("Validating checksums for each artifact ...")
-    validate_checksums(sha512_dict, tempdir)
-    log.info("All checksums validated!")
-
-    # remove entire playground before moving forward
-    log.debug("Deleting the temporary playground ...")
-    shutil.rmtree(tempdir)
-
-
-def get_hash(path, hash_type="sha512"):
-    h = hashlib.new(hash_type)
-    with open(path, "rb") as f:
-        for chunk in iter(functools.partial(f.read, 4096), ''):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def validate_graph_kwargs(queue, gpg_key_path, **kwargs):
+def validate_graph_kwargs(**kwargs):
     # TODO: validate partials
     # TODO: validate l10n changesets
-    platforms = kwargs.get('en_US_config', {}).get('platforms', {})
-    for platform in platforms.keys():
-        task_id = platforms.get(platform).get('task_id', {})
-        log.info('Performing release sanity for %s en-US binary', platform)
-        sanitize_en_US_binary(queue, task_id, gpg_key_path)
-
-    log.info("Release sanity for all en-US is now completed!")
+    # TODO: go through release sanity for other validations to do
+    for url in kwargs.get("l10n_platforms", {}).values():
+        ret = requests.head(url, allow_redirects=True)
+        if not ret.ok():
+            log.error("en_us_binary url (%s) not accessible (got http %s)", url, ret.status_code)
 
 
 def main(options):
@@ -428,17 +237,14 @@ def main(options):
     configs_workdir = 'buildbot-configs'
     balrog_username = get_config(config, "balrog", "username", None)
     balrog_password = get_config(config, "balrog", "password", None)
-    extra_balrog_submitter_params = get_config(config, "balrog", "extra_balrog_submitter_params", None)
     beetmover_aws_access_key_id = get_config(config, "beetmover", "aws_access_key_id", None)
     beetmover_aws_secret_access_key = get_config(config, "beetmover", "aws_secret_access_key", None)
-    gpg_key_path = get_config(config, "signing", "gpg_key_path", None)
 
     # TODO: replace release sanity with direct checks of en-US and l10n revisions (and other things if needed)
 
     rr = ReleaseRunner(api_root=api_root, username=username, password=password)
     scheduler = Scheduler(tc_config)
     index = Index(tc_config)
-    queue = Queue(tc_config)
 
     # Main loop waits for new releases, processes them and exits.
     while True:
@@ -486,12 +292,9 @@ def main(options):
                 "appVersion": getAppVersion(release["version"]),
                 "buildNumber": release["buildNumber"],
                 "source_enabled": True,
-                "checksums_enabled": True,
                 "repo_path": release["branch"],
                 "revision": release["mozillaRevision"],
                 "product": release["product"],
-                # if mozharness_revision is not passed, use 'revision'
-                "mozharness_changeset": release.get('mh_changeset', release['mozillaRevision']),
                 "partial_updates": getPartials(release),
                 "branch": branch,
                 "updates_enabled": bool(release["partials"]),
@@ -504,21 +307,15 @@ def main(options):
                 "beetmover_aws_access_key_id": beetmover_aws_access_key_id,
                 "beetmover_aws_secret_access_key": beetmover_aws_secret_access_key,
                 # TODO: stagin specific, make them configurable
-                "signing_class": "release-signing",
+                "signing_class": "dep-signing",
                 "bouncer_enabled": branchConfig["bouncer_enabled"],
                 "release_channels": branchConfig["release_channels"],
                 "signing_pvt_key": signing_pvt_key,
-                "build_tools_repo_path": branchConfig['build_tools_repo_path'],
                 "push_to_candidates_enabled": branchConfig['push_to_candidates_enabled'],
                 "postrelease_version_bump_enabled": branchConfig['postrelease_version_bump_enabled'],
-                "push_to_releases_enabled": True,
-                "push_to_releases_automatic": branchConfig['push_to_releases_automatic'],
-                "beetmover_candidates_bucket": branchConfig["beetmover_buckets"][release["product"]],
             }
-            if extra_balrog_submitter_params:
-                kwargs["extra_balrog_submitter_params"] = extra_balrog_submitter_params
 
-            validate_graph_kwargs(queue, gpg_key_path, **kwargs)
+            validate_graph_kwargs(**kwargs)
 
             graph_id = slugId()
             graph = make_task_graph(**kwargs)

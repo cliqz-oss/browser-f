@@ -19,33 +19,21 @@ configDict=$2
 chunks=$3
 thisChunk=$4
 channel=$5
-
+if [ -z "$NO_BBCONFIG" -a -z "$BUILDBOT_CONFIGS" ]; then
+    export BUILDBOT_CONFIGS="https://hg.mozilla.org/build/buildbot-configs"
+fi
 if [ -n "$PROPERTIES_FILE" -a -f "$PROPERTIES_FILE" ]; then
-    # Buildbot only
-    if $JSONTOOL -k properties.NO_BBCONFIG $PROPERTIES_FILE; then
-       NO_BBCONFIG=$($JSONTOOL -k properties.NO_BBCONFIG $PROPERTIES_FILE);
-    fi
-    if $JSONTOOL -k properties.VERIFY_CONFIG $PROPERTIES_FILE; then
-       VERIFY_CONFIG=$($JSONTOOL -k properties.VERIFY_CONFIG $PROPERTIES_FILE);
-    fi
-    if [ -z "$NO_BBCONFIG" -a -z "$BUILDBOT_CONFIGS" ]; then
-        export BUILDBOT_CONFIGS="https://hg.mozilla.org/build/buildbot-configs"
-    fi
-    # Get the assumed slavebuilddir, and read in from buildbot if this is not
-    # Release promotion
-    SLAVEBUILDDIR=$(basename $(cd "$SCRIPTS_DIR/.."; pwd))
     if [ -z "$NO_BBCONFIG" ]; then
         RELEASE_CONFIG=$($JSONTOOL -k properties.release_config $PROPERTIES_FILE)
-        TAG=$($JSONTOOL -k properties.release_tag $PROPERTIES_FILE)
-        SLAVEBUILDDIR=$($JSONTOOL -k properties.slavebuilddir $PROPERTIES_FILE)
     fi
+    TAG=$($JSONTOOL -k properties.release_tag $PROPERTIES_FILE)
+    SLAVEBUILDDIR=$($JSONTOOL -k properties.slavebuilddir $PROPERTIES_FILE)
 
     $PYTHON -u $SCRIPTS_DIR/buildfarm/maintenance/purge_builds.py \
         -s 16 -n info -n 'rel-*' -n 'tb-rel-*' -n $SLAVEBUILDDIR
 fi
-
 if [ -z "$VERIFY_CONFIG" -a -n "$NO_BBCONFIG" ]; then
-    echo "Unable to run without VERIFY_CONFIG specified when using NO_BBCONFIG"
+    echo "Unable to run without VERIFY_CONFIG specified when using NO_BB_CONFIG"
     exit 1
 fi
 

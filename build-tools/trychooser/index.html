@@ -335,8 +335,6 @@
                 <li><label><input type="checkbox" value="mozmill">mozmill <span class="info">(thunderbird only)</span></label></li>
                 <li><label><input type="checkbox" value="cppunit">cppunit</label></li>
                 <li><label><input type="checkbox" value="gtest">gtest</label></li>
-                <li><label><input type="checkbox" value="firefox-ui-functional">firefox-ui-functional <span class="info">(taskcluster only)</span></label></li>
-                <li><label><input type="checkbox" value="firefox-ui-functional-e10s">firefox-ui-functional-e10s <span class="info">(taskcluster only)</span></label></li>
                 <li><label><input type="checkbox" value="jittests">jittests</label></li>
                 <li><label><input type="checkbox" value="jittest-1">jittest-1 <span class="info">(linux only)</span></label></li>
                 <li><label><input type="checkbox" value="jittest-2">jittest-2 <span class="info">(linux only)</span></label></li>
@@ -351,7 +349,6 @@
                     <li><label><input type="checkbox" value="mochitest-5">mochitest-5</label></li>
                     <li><label><input type="checkbox" value="mochitest-gl">mochitest-gl (webgl)</label></li>
                     <li><label><input type="checkbox" value="mochitest-bc">mochitest-bc (browser chrome)</label></li>
-                    <li><label><input type="checkbox" value="mochitest-browser-screenshots">mochitest-browser-screenshots</label></li>
                     <li><label><input type="checkbox" value="mochitest-dt">mochitest-dt (devtools)</label></li>
                     <li><label><input type="checkbox" value="mochitest-o">mochitest-o (other)</label></li>
                     <li><label><input type="checkbox" value="mochitest-jetpack">mochitest-jetpack</label></li>
@@ -496,15 +493,10 @@
             <h4>Additional test options</h4>
             <li><label><input type="checkbox" class="no-retry">Do not retrigger failed tests</label></li>
             <li><label><input type="checkbox" class="rebuild-talos">To compare talos numbers we need 5 retriggers. Do you want to retrigger talos jobs 5 times?</label></li>
-            <p><label for="rebuilds">Retrigger all test jobs (up to 20 times):</label></p>
-            <input type="text" id="rebuilds">
-            <p><label for="tags">Restrict tests to tag:</label></p>
-            <label><input type="text" id="tags">
-            <p><label for="setenv">Set environment variables:</label></p>
-            <input id="setenv" type="text" placeholder="e.g. FOO=bar" size="40" pattern=".*\w=.*" list="setenv_suggestions">
-            <datalist id="setenv_suggestions">
-              <option>MOZSCREENSHOTS_SETS=</option>
-            </datalist>
+            <p>Retrigger all test jobs (up to 20 times):</p>
+            <label><input type="text" class="rebuilds"></label>
+            <p>Restrict tests to tag:</p>
+            <label><input type="text" class="tags"></label>
             <h4>Talos Suites</h4>
             <div class='option-group' try-section='t'>
             <label><input type="checkbox" class="group-selector all-selector">All</label>
@@ -520,6 +512,7 @@
                 <li><label><input type="checkbox" name="talos_suite" value="xperf">xperf <span class="info">(win7 only)</span></label></li>
 
             </ul>
+            <label><input type="checkbox" class="group-selector none-selector" CHECKED>None</label>
             <ul>
                 <li><label><input type="checkbox" name="talos_suite" value="chromez-e10s">chromez (e10s)</label></li>
                 <li><label><input type="checkbox" name="talos_suite" value="dromaeojs-e10s">dromaeojs (e10s)</label></li>
@@ -537,7 +530,7 @@
             </ul>
             </div>
 
-            <p class="indent1"><strong>Want to match Talos suite names up to what they run?</strong> Hover over each suite or check <a href="https://hg.mozilla.org/build/buildbot-configs/file/tip/mozilla-tests/config.py#l179">the current configs</a><br>
+            <p class="indent1"><strong>Want to match Talos suite names up to what they run?</strong>  Check <a href="https://hg.mozilla.org/build/buildbot-configs/file/tip/mozilla-tests/config.py#l179">the current configs</a><br>
             (contents may shift over time, <br/>
             you want SUITES = { ... })</p>
         </div> <!-- col3 div -->

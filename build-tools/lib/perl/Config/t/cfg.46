@@ -1,3 +1,0 @@
-foo  = bar
-blah = blubber
-test = $foo 'variable $blah should be kept' and '$foo too'

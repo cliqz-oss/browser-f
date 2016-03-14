@@ -1,5 +1,0 @@
-# should generate an error about invalid structure
-val = 1
-<val>
- x = 2
-</val>

@@ -13,7 +13,6 @@ from balrog.submitter.updates import merge_partial_updates
 from util.algorithms import recursive_update
 from util.retry import retry
 import logging
-from requests.exceptions import HTTPError
 
 log = logging.getLogger(__name__)
 
@@ -95,20 +94,12 @@ class ReleaseCreatorBase(object):
         name = get_release_blob_name(productName, version, buildNumber,
                                      self.dummy)
         api = Release(name=name, auth=self.auth, api_root=self.api_root)
-        try:
-            current_data, data_version = api.get_data()
-        except HTTPError, e:
-            if e.response.status_code == 404:
-                log.warning("Release blob doesn't exist, using empty data...")
-                current_data, data_version = {}, None
-            else:
-                raise
-
+        current_data, data_version = api.get_data()
         data = recursive_update(current_data, data)
-        api.update_release(product=productName,
+        api.update_release(version=appVersion,
+                           product=productName,
                            hashFunction=hashFunction,
                            releaseData=json.dumps(data),
-                           schemaVersion=schemaVersion,
                            data_version=data_version)
 
 
@@ -305,7 +296,7 @@ class NightlySubmitterBase(object):
                 return
             # explicitly pass data version
             api.update_build(
-                product=productName,
+                product=productName, version=appVersion,
                 hashFunction=hashFunction,
                 buildData=json.dumps(merge_partial_updates(current_data,
                                                            data)),
@@ -328,7 +319,7 @@ class NightlySubmitterBase(object):
                 log.warn("Latest data didn't change, skipping update")
                 return
             latest.update_build(
-                product=productName,
+                product=productName, version=appVersion,
                 hashFunction=hashFunction, buildData=json.dumps(source_data),
                 alias=json.dumps(alias), schemaVersion=schemaVersion,
                 data_version=latest_data_version)
@@ -415,7 +406,7 @@ class ReleaseSubmitterBase(object):
                            auth=self.auth, api_root=self.api_root)
         schemaVersion = json.dumps(schemaVersion)
         api.update_build(
-            product=productName, hashFunction=hashFunction,
+            product=productName, version=appVersion, hashFunction=hashFunction,
             buildData=data, schemaVersion=schemaVersion)
 
 
@@ -486,7 +477,7 @@ class BlobTweaker(object):
         current_data, data_version = api.get_data()
         data = recursive_update(current_data, data)
         api.update_release(
-            product=name.split('-')[0],
+            version=data['appVersion'], product=name.split('-')[0],
             hashFunction=data['hashFunction'], releaseData=json.dumps(data),
             data_version=data_version,
             schemaVersion=current_data['schema_version'])

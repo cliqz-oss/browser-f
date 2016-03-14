@@ -3,11 +3,9 @@
 whitelist = {
     'mozilla-release': {},
     'mozilla-esr38': {},
-    'mozilla-esr45': {},
     'mozilla-beta': {},
     'comm-beta': {},
     'comm-esr38': {},
-    'comm-esr45': {},
     'nightly': {},
     }
 
@@ -151,7 +149,7 @@ for branch in ('mozilla-beta', 'comm-beta'):
     whitelist[branch]['android-api-15'] += ['ac_add_options --with-branding=mobile/android/branding/beta']
 
 
-for branch in ('mozilla-release', 'comm-esr38', 'comm-esr45'):
+for branch in ('mozilla-release', 'comm-esr38'):
     for platform in all_platforms:
         whitelist[branch][platform] = [
             'ac_add_options --enable-update-channel=release',
@@ -187,23 +185,13 @@ for branch in ('mozilla-release', 'comm-esr38', 'comm-esr45'):
     whitelist[branch]['android-x86'] += ['ac_add_options --enable-updater']
 
 
-for branch in ('mozilla-esr38', 'mozilla-esr45'):
+for branch in ('mozilla-esr38', ):
     for platform in all_platforms:
         whitelist[branch][platform] = [
             'ac_add_options --enable-official-branding',
             'mk_add_options MOZ_PGO=1',
             'export BUILDING_RELEASE=1',
         ]
-    if branch == 'mozilla-esr45':
-        for platform in all_desktop_platforms:
-            whitelist[branch][platform] += [
-                'if [ -n "$ENABLE_RELEASE_PROMOTION" ]; then',
-                'MOZ_AUTOMATION_UPLOAD_SYMBOLS=1',
-                'MOZ_AUTOMATION_UPDATE_PACKAGING=1',
-                'fi',
-            ]
-            whitelist[branch][platform] += ['MOZ_AUTOMATION_SDK=${MOZ_AUTOMATION_SDK-1}']
-
 
 if __name__ == '__main__':
     import pprint
