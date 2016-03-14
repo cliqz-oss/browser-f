@@ -13,12 +13,10 @@
 
 #include "mozilla/Logging.h"
 
-static PRLogModuleInfo*
+static mozilla::LogModule*
 GetUserMediaLog()
 {
-  static PRLogModuleInfo *sLog;
-  if (!sLog)
-    sLog = PR_NewLogModule("GetUserMedia");
+  static mozilla::LazyLogModule sLog("GetUserMedia");
   return sLog;
 }
 
@@ -253,7 +251,7 @@ MediaEngineWebRTC::EnumerateAudioDevices(dom::MediaSourceEnum aMediaSource,
   JNIEnv* const env = jni::GetEnvForThread();
   MOZ_ALWAYS_TRUE(!env->GetJavaVM(&jvm));
 
-  if (webrtc::VoiceEngine::SetAndroidObjects(jvm, env, (void*)context) != 0) {
+  if (webrtc::VoiceEngine::SetAndroidObjects(jvm, (void*)context) != 0) {
     LOG(("VoiceEngine:SetAndroidObjects Failed"));
     return;
   }

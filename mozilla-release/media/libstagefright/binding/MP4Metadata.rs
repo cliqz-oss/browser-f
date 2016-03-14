@@ -1,31 +1,75 @@
-// Module for parsing ISO Base Media Format aka video/mp4 streams.
+//! Module for parsing ISO Base Media Format aka video/mp4 streams.
 
 // This Source Code Form is subject to the terms of the Mozilla Public
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
+mod byteorder; // 'extern crate' upstream.
+use byteorder::ReadBytesExt;
+use std::error::Error as ErrorTrait; // For Err(e) => e.description().
+use std::io::{Read, BufRead, Take};
+use std::cmp;
 use std::fmt;
 
-/// Expose C api wrapper.
+// Expose C api wrapper.
 pub mod capi;
 // FIXME: We can 'pub use capi::*' in rustc 1.5 and later.
 pub use capi::{mp4parse_new, mp4parse_free, mp4parse_read};
 
+/// Describes parser failures.
+///
+/// This enum wraps athe standard `io::Error` type, unified with
+/// our own parser error states and those of crates we use.
+#[derive(Debug)]
+pub enum Error {
+    /// Parse error caused by corrupt or malformed data.
+    InvalidData,
+    /// Parse error caused by limited parser support rather than invalid data.
+    Unsupported,
+    /// Reflect `byteorder::Error::UnexpectedEOF` for short data.
+    UnexpectedEOF,
+    /// Propagate underlying errors from `std::io`.
+    Io(std::io::Error),
+}
+
+impl From<std::io::Error> for Error {
+    fn from(err: std::io::Error) -> Error { Error::Io(err) }
+}
+
+impl From<byteorder::Error> for Error {
+    fn from(err: byteorder::Error) -> Error {
+        match err {
+            byteorder::Error::UnexpectedEOF => Error::UnexpectedEOF,
+            byteorder::Error::Io(e) => Error::Io(e),
+        }
+    }
+}
+
+/// Result shorthand using our Error enum.
+pub type Result<T> = std::result::Result<T, Error>;
+
+/// Four-byte 'character code' describing the type of a piece of data.
 #[derive(Clone, Copy, Eq, PartialEq)]
-pub struct FourCC(pub u32);
+pub struct FourCC([u8; 4]);
 
 impl fmt::Debug for FourCC {
-  fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-    write!(f, "'{}'", fourcc_to_string(*self))
-  }
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "'{}'", String::from_utf8_lossy(&self.0))
+    }
 }
 
 /// Basic ISO box structure.
+///
+/// mp4 files are a sequence of possibly-nested 'box' structures.
+/// Each box begins with a header describing the length of the
+/// box's data and a four-byte 'character code' or `FourCC` which
+/// identifies the type of the box. Together these are enough to
+/// interpret the contents of that section of the file.
 #[derive(Debug)]
 pub struct BoxHeader {
-    /// Four character box type
+    /// Four character box type.
     pub name: FourCC,
-    /// Size of the box in bytes
+    /// Size of the box in bytes.
     pub size: u64,
     /// Offset to the start of the contained data (or header size).
     pub offset: u64,
@@ -33,7 +77,7 @@ pub struct BoxHeader {
 
 /// File type box 'ftyp'.
 #[derive(Debug)]
-pub struct FileTypeBox {
+struct FileTypeBox {
     name: FourCC,
     size: u64,
     major_brand: FourCC,
@@ -43,36 +87,36 @@ pub struct FileTypeBox {
 
 /// Movie header box 'mvhd'.
 #[derive(Debug)]
-pub struct MovieHeaderBox {
-    pub name: FourCC,
-    pub size: u64,
-    pub timescale: u32,
-    pub duration: u64,
+struct MovieHeaderBox {
+    name: FourCC,
+    size: u64,
+    timescale: u32,
+    duration: u64,
     // Ignore other fields.
 }
 
 /// Track header box 'tkhd'
-#[derive(Debug)]
-pub struct TrackHeaderBox {
-    pub name: FourCC,
-    pub size: u64,
-    pub track_id: u32,
-    pub enabled: bool,
-    pub duration: u64,
-    pub width: u32,
-    pub height: u32,
+#[derive(Debug, Clone)]
+struct TrackHeaderBox {
+    name: FourCC,
+    size: u64,
+    track_id: u32,
+    enabled: bool,
+    duration: u64,
+    width: u32,
+    height: u32,
 }
 
 /// Edit list box 'elst'
 #[derive(Debug)]
-pub struct EditListBox {
+struct EditListBox {
     name: FourCC,
     size: u64,
     edits: Vec<Edit>,
 }
 
 #[derive(Debug)]
-pub struct Edit {
+struct Edit {
     segment_duration: u64,
     media_time: i64,
     media_rate_integer: i16,
@@ -81,7 +125,7 @@ pub struct Edit {
 
 /// Media header box 'mdhd'
 #[derive(Debug)]
-pub struct MediaHeaderBox {
+struct MediaHeaderBox {
     name: FourCC,
     size: u64,
     timescale: u32,
@@ -90,7 +134,7 @@ pub struct MediaHeaderBox {
 
 // Chunk offset box 'stco' or 'co64'
 #[derive(Debug)]
-pub struct ChunkOffsetBox {
+struct ChunkOffsetBox {
     name: FourCC,
     size: u64,
     offsets: Vec<u64>,
@@ -98,7 +142,7 @@ pub struct ChunkOffsetBox {
 
 // Sync sample box 'stss'
 #[derive(Debug)]
-pub struct SyncSampleBox {
+struct SyncSampleBox {
     name: FourCC,
     size: u64,
     samples: Vec<u32>,
@@ -106,14 +150,14 @@ pub struct SyncSampleBox {
 
 // Sample to chunk box 'stsc'
 #[derive(Debug)]
-pub struct SampleToChunkBox {
+struct SampleToChunkBox {
     name: FourCC,
     size: u64,
     samples: Vec<SampleToChunk>,
 }
 
 #[derive(Debug)]
-pub struct SampleToChunk {
+struct SampleToChunk {
     first_chunk: u32,
     samples_per_chunk: u32,
     sample_description_index: u32,
@@ -121,7 +165,7 @@ pub struct SampleToChunk {
 
 // Sample size box 'stsz'
 #[derive(Debug)]
-pub struct SampleSizeBox {
+struct SampleSizeBox {
     name: FourCC,
     size: u64,
     sample_size: u32,
@@ -130,21 +174,21 @@ pub struct SampleSizeBox {
 
 // Time to sample box 'stts'
 #[derive(Debug)]
-pub struct TimeToSampleBox {
+struct TimeToSampleBox {
     name: FourCC,
     size: u64,
     samples: Vec<Sample>,
 }
 
 #[derive(Debug)]
-pub struct Sample {
+struct Sample {
     sample_count: u32,
     sample_delta: u32,
 }
 
 // Handler reference box 'hdlr'
 #[derive(Debug)]
-pub struct HandlerBox {
+struct HandlerBox {
     name: FourCC,
     size: u64,
     handler_type: FourCC,
@@ -152,86 +196,149 @@ pub struct HandlerBox {
 
 // Sample description box 'stsd'
 #[derive(Debug)]
-pub struct SampleDescriptionBox {
+struct SampleDescriptionBox {
     name: FourCC,
     size: u64,
     descriptions: Vec<SampleEntry>,
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 enum SampleEntry {
-    Audio {
-        data_reference_index: u16,
-        channelcount: u16,
-        samplesize: u16,
-        samplerate: u32,
-        esds: ES_Descriptor,
-    },
-    Video {
-        data_reference_index: u16,
-        width: u16,
-        height: u16,
-        avcc: AVCDecoderConfigurationRecord,
-    },
+    Audio(AudioSampleEntry),
+    Video(VideoSampleEntry),
+    Unknown,
+}
+
+#[derive(Debug, Clone)]
+struct AudioSampleEntry {
+    data_reference_index: u16,
+    channelcount: u16,
+    samplesize: u16,
+    samplerate: u32,
+    esds: ES_Descriptor,
+}
+
+#[derive(Debug, Clone)]
+struct VideoSampleEntry {
+    data_reference_index: u16,
+    width: u16,
+    height: u16,
+    avcc: AVCDecoderConfigurationRecord,
 }
 
 #[allow(dead_code)]
-#[derive(Debug)]
-pub struct AVCDecoderConfigurationRecord {
+#[derive(Debug, Clone)]
+struct AVCDecoderConfigurationRecord {
     data: Vec<u8>,
 }
 
 #[allow(non_camel_case_types)]
 #[allow(dead_code)]
-#[derive(Debug)]
-pub struct ES_Descriptor {
+#[derive(Debug, Clone)]
+struct ES_Descriptor {
     data: Vec<u8>,
 }
 
 /// Internal data structures.
 #[derive(Debug)]
 pub struct MediaContext {
+    timescale: Option<MediaTimeScale>,
+    /// Tracks found in the file.
     tracks: Vec<Track>,
+    /// Print boxes and other info as parsing proceeds. For debugging.
+    trace: bool,
 }
 
 impl MediaContext {
     pub fn new() -> MediaContext {
         MediaContext {
+            timescale: None,
             tracks: Vec::new(),
+            trace: false,
+        }
+    }
+
+    pub fn trace(&mut self, on: bool) {
+        self.trace = on;
+    }
+}
+
+macro_rules! log {
+    ( $ctx:expr, $( $args:expr),* ) => {
+        if $ctx.trace {
+            println!( $( $args, )* );
         }
     }
 }
 
 #[derive(Debug)]
 enum TrackType {
+    Audio,
     Video,
-    Audio
+    Unknown,
 }
+
+#[derive(Debug, Copy, Clone)]
+struct MediaTimeScale(u64); /// The media's global (mvhd) timescale.
+
+#[derive(Debug, Copy, Clone)]
+struct MediaScaledTime(u64); /// A time scaled by the media's global (mvhd) timescale.
+
+#[derive(Debug, Copy, Clone)]
+struct TrackTimeScale(u64, usize); /// The track's local (mdhd) timescale.
+
+#[derive(Debug, Copy, Clone)]
+struct TrackScaledTime(u64, usize); /// A time scaled by the track's local (mdhd) timescale.
 
 #[derive(Debug)]
-pub struct Track {
+struct Track {
     track_type: TrackType,
+    empty_duration: Option<MediaScaledTime>,
+    media_time: Option<TrackScaledTime>,
+    timescale: Option<TrackTimeScale>,
+    duration: Option<TrackScaledTime>,
+    track_id: Option<u32>,
+    mime_type: String,
+    data: Option<SampleEntry>,
+    tkhd: Option<TrackHeaderBox>, // TODO(kinetik): find a nicer way to export this.
 }
 
-mod byteorder; // 'extern crate' upstream.
-use byteorder::{BigEndian, ReadBytesExt};
-use std::io::{Read, BufRead, Take};
-use std::io::Cursor;
-use std::cmp;
+impl Track {
+    fn new() -> Track {
+        Track {
+            track_type: TrackType::Unknown,
+            empty_duration: None,
+            media_time: None,
+            timescale: None,
+            duration: None,
+            track_id: None,
+            mime_type: String::new(),
+            data: None,
+            tkhd: None,
+        }
+    }
+}
 
-/// Parse a box out of a data buffer.
-pub fn read_box_header<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<BoxHeader> {
+/// Read and parse a box header.
+///
+/// Call this first to determine the type of a particular mp4 box
+/// and its length. Used internally for dispatching to specific
+/// parsers for the internal content, or to get the length to
+/// skip unknown or uninteresting boxes.
+pub fn read_box_header<T: ReadBytesExt>(src: &mut T) -> Result<BoxHeader> {
     let size32 = try!(be_u32(src));
-    let name = FourCC(try!(be_u32(src)));
+    let name = try!(be_fourcc(src));
     let size = match size32 {
-        0 => panic!("unknown box size not implemented"),
+        0 => return Err(Error::Unsupported),
         1 => {
             let size64 = try!(be_u64(src));
-            assert!(size64 >= 16);
+            if size64 < 16 {
+                return Err(Error::InvalidData);
+            }
             size64
         },
-        2 ... 7 => panic!("invalid box size"),
+        2 ... 7 => return Err(Error::InvalidData),
         _ => size32 as u64,
     };
     let offset = match size32 {
@@ -247,7 +354,7 @@ pub fn read_box_header<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<BoxHea
 }
 
 /// Parse the extra header fields for a full box.
-fn read_fullbox_extra<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<(u8, u32)> {
+fn read_fullbox_extra<T: ReadBytesExt>(src: &mut T) -> Result<(u8, u32)> {
     let version = try!(src.read_u8());
     let flags_a = try!(src.read_u8());
     let flags_b = try!(src.read_u8());
@@ -258,155 +365,280 @@ fn read_fullbox_extra<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<(u8, u3
 }
 
 /// Skip over the entire contents of a box.
-pub fn skip_box_content<T: BufRead> (src: &mut T, header: &BoxHeader) -> byteorder::Result<usize> {
+fn skip_box_content<T: BufRead> (src: &mut T, header: &BoxHeader) -> Result<usize> {
     skip(src, (header.size - header.offset) as usize)
 }
 
 /// Skip over the remaining contents of a box.
-pub fn skip_remaining_box_content<T: BufRead> (src: &mut T, header: &BoxHeader) -> byteorder::Result<()> {
+fn skip_remaining_box_content<T: BufRead> (src: &mut T, header: &BoxHeader) -> Result<()> {
     match skip(src, (header.size - header.offset) as usize) {
-        Ok(_) | Err(byteorder::Error::UnexpectedEOF) => Ok(()),
+        Ok(_) | Err(Error::UnexpectedEOF) => Ok(()),
         e @ _ => Err(e.err().unwrap())
     }
 }
 
 /// Helper to construct a Take over the contents of a box.
-fn limit<'a, T: Read>(f: &'a mut T, h: &BoxHeader) -> Take<&'a mut T> {
+fn limit<'a, T: BufRead>(f: &'a mut T, h: &BoxHeader) -> Take<&'a mut T> {
     f.take(h.size - h.offset)
 }
 
-/// Helper to construct a Cursor over the contents of a box.
-fn recurse<T: Read>(f: &mut T, h: &BoxHeader, context: &mut MediaContext) -> byteorder::Result<()> {
-    use std::error::Error;
-    println!("{:?} -- recursing", h);
-    // FIXME: I couldn't figure out how to do this without copying.
-    // We use Seek on the Read we return in skip_box_content, but
-    // that trait isn't implemented for a Take like our limit()
-    // returns. Slurping the buffer and wrapping it in a Cursor
-    // functions as a work around.
-    let buf: Vec<u8> = f
-        .bytes()
-        .map(|u| u.unwrap())
-        .collect();
-    let mut content = Cursor::new(buf);
+fn driver<F, T: BufRead>(f: &mut T, context: &mut MediaContext, action: F) -> Result<()>
+    where F: Fn(&mut MediaContext, BoxHeader, &mut Take<&mut T>) -> Result<()> {
     loop {
-        match read_box(&mut content, context) {
-            Ok(_) => {},
-            Err(byteorder::Error::UnexpectedEOF) => {
+        let r = read_box_header(f).and_then(|h| {
+            let mut content = limit(f, &h);
+            let r = action(context, h, &mut content);
+            if let Ok(_) = r {
+                // TODO(kinetik): can check this for "non-fatal" errors (e.g. EOF) too.
+                log!(context, "{} content bytes left", content.limit());
+                assert!(content.limit() == 0);
+                log!(context, "read_box context: {:?}", context);
+            }
+            r
+        });
+        match r {
+            Ok(_) => { },
+            Err(Error::UnexpectedEOF) => {
                 // byteorder returns EOF at the end of the buffer.
                 // This isn't an error for us, just an signal to
                 // stop recursion.
-                println!("Caught byteorder::Error::UnexpectedEOF");
+                log!(context, "Caught Error::UnexpectedEOF");
                 break;
             },
-            Err(byteorder::Error::Io(e)) => {
-                println!("I/O Error '{:?}' reading box: {:?}",
-                         e.kind(), e.description());
-                return Err(byteorder::Error::Io(e));
+            Err(Error::InvalidData) => {
+                log!(context, "Invalid data");
+                return Err(Error::InvalidData);
+            },
+            Err(Error::Unsupported) => {
+                log!(context, "Unsupported BMFF construct");
+                return Err(Error::Unsupported);
+            },
+            Err(Error::Io(e)) => {
+                log!(context, "I/O Error '{:?}' reading box: {:?}",
+                     e.kind(), e.description());
+                return Err(Error::Io(e));
             },
         }
     }
-    assert!(content.position() == h.size - h.offset);
-    println!("{:?} -- end", h);
     Ok(())
 }
 
 /// Read the contents of a box, including sub boxes.
-/// Metadata is accumulated in the passed-through MediaContext struct.
-pub fn read_box<T: BufRead>(f: &mut T, context: &mut MediaContext) -> byteorder::Result<()> {
-    read_box_header(f).and_then(|h| {
-        let mut content = limit(f, &h);
-        match &fourcc_to_string(h.name)[..] {
-            "ftyp" => {
+///
+/// Metadata is accumulated in the passed-through MediaContext struct,
+/// which can be examined later.
+pub fn read_mp4<T: BufRead>(f: &mut T, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"ftyp" => {
                 let ftyp = try!(read_ftyp(&mut content, &h));
-                println!("{:?}", ftyp);
+                log!(context, "{:?}", ftyp);
             },
-            "moov" => try!(recurse(&mut content, &h, context)),
-            "mvhd" => {
-                let mvhd = try!(read_mvhd(&mut content, &h));
-                println!("  {:?}", mvhd);
-            },
-            "trak" => try!(recurse(&mut content, &h, context)),
-            "tkhd" => {
-                let tkhd = try!(read_tkhd(&mut content, &h));
-                println!("  {:?}", tkhd);
-            },
-            "edts" => try!(recurse(&mut content, &h, context)),
-            "elst" => {
-                let elst = try!(read_elst(&mut content, &h));
-                println!("  {:?}", elst);
-            },
-            "mdia" => try!(recurse(&mut content, &h, context)),
-            "mdhd" => {
-                let mdhd = try!(read_mdhd(&mut content, &h));
-                println!("  {:?}", mdhd);
-            },
-            "minf" => try!(recurse(&mut content, &h, context)),
-            "stbl" => try!(recurse(&mut content, &h, context)),
-            "stco" => {
-                let stco = try!(read_stco(&mut content, &h));
-                println!("  {:?}", stco);
-            },
-            "co64" => {
-                let co64 = try!(read_co64(&mut content, &h));
-                println!("  {:?}", co64);
-            },
-            "stss" => {
-                let stss = try!(read_stss(&mut content, &h));
-                println!("  {:?}", stss);
-            },
-            "stsc" => {
-                let stsc = try!(read_stsc(&mut content, &h));
-                println!("  {:?}", stsc);
-            },
-            "stsz" => {
-                let stsz = try!(read_stsz(&mut content, &h));
-                println!("  {:?}", stsz);
-            },
-            "stts" => {
-                let stts = try!(read_stts(&mut content, &h));
-                println!("  {:?}", stts);
-            },
-            "hdlr" => {
-                let hdlr = try!(read_hdlr(&mut content, &h));
-                let track_type = match &fourcc_to_string(hdlr.handler_type)[..] {
-                    "vide" => Some(TrackType::Video),
-                    "soun" => Some(TrackType::Audio),
-                    _ => None
-                };
-                // Save track types with recognized types.
-                match track_type {
-                    Some(track_type) =>
-                         context.tracks.push(Track { track_type: track_type }),
-                    None => println!("unknown track type!"),
-                };
-                println!("  {:?}", hdlr);
-            },
-            "stsd" => {
-                let track = &context.tracks[context.tracks.len() - 1];
-                let stsd = try!(read_stsd(&mut content, &h, &track));
-                println!("  {:?}", stsd);
-            },
+            b"moov" => try!(read_moov(&mut content, &h, context)),
             _ => {
                 // Skip the contents of unknown chunks.
-                println!("{:?} (skipped)", h);
                 try!(skip_box_content(&mut content, &h));
             },
         };
-        assert!(content.limit() == 0);
-        println!("read_box context: {:?}", context);
+        Ok(())
+    })
+}
+
+fn read_moov<T: BufRead>(f: &mut T, _: &BoxHeader, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"mvhd" => {
+                let mvhd = try!(read_mvhd(&mut content, &h));
+                context.timescale = Some(MediaTimeScale(mvhd.timescale as u64));
+                log!(context, "  {:?}", mvhd);
+            },
+            b"trak" => {
+                context.tracks.push(Track::new());
+                try!(read_trak(&mut content, &h, context));
+            },
+            _ => {
+                // Skip the contents of unknown chunks.
+                log!(context, "{:?} (skipped)", h);
+                try!(skip_box_content(&mut content, &h));
+            },
+        };
+        Ok(())
+    })
+}
+
+fn read_trak<T: BufRead>(f: &mut T, _: &BoxHeader, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"tkhd" => {
+                let tkhd = try!(read_tkhd(&mut content, &h));
+                if let Some(track) = context.tracks.last_mut() {
+                    track.track_id = Some(tkhd.track_id);
+                    track.tkhd = Some(tkhd.clone())
+                } else {
+                    return Err(Error::InvalidData);
+                }
+                log!(context, "  {:?}", tkhd);
+            },
+            b"edts" => try!(read_edts(&mut content, &h, context)),
+            b"mdia" => try!(read_mdia(&mut content, &h, context)),
+            _ => {
+                // Skip the contents of unknown chunks.
+                log!(context, "{:?} (skipped)", h);
+                try!(skip_box_content(&mut content, &h));
+            },
+        };
         Ok(()) // and_then needs a Result to return.
     })
 }
 
+fn read_edts<T: BufRead>(f: &mut T, _: &BoxHeader, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"elst" => {
+                let elst = try!(read_elst(&mut content, &h));
+                let mut empty_duration = 0;
+                let track_idx = context.tracks.len() - 1;
+                if let Some(track) = context.tracks.last_mut() {
+                    let mut idx = 0;
+                    if elst.edits.len() > 2 {
+                        return Err(Error::Unsupported);
+                    }
+                    if elst.edits[idx].media_time == -1 {
+                        empty_duration = elst.edits[0].segment_duration;
+                        idx += 1;
+                    }
+                    track.empty_duration = Some(MediaScaledTime(empty_duration));
+                    if elst.edits[idx].media_time < 0 {
+                        return Err(Error::InvalidData);
+                    }
+                    track.media_time = Some(TrackScaledTime(elst.edits[idx].media_time as u64,
+                                                            track_idx));
+                } else {
+                    return Err(Error::InvalidData);
+                }
+                log!(context, "  {:?}", elst);
+            },
+            _ => {
+                // Skip the contents of unknown chunks.
+                log!(context, "{:?} (skipped)", h);
+                try!(skip_box_content(&mut content, &h));
+            },
+        };
+        Ok(())
+    })
+}
+
+fn read_mdia<T: BufRead>(f: &mut T, _: &BoxHeader, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"mdhd" => {
+                let mdhd = try!(read_mdhd(&mut content, &h));
+                let track_idx = context.tracks.len() - 1;
+                if let Some(track) = context.tracks.last_mut() {
+                    track.duration = Some(TrackScaledTime(mdhd.duration, track_idx));
+                    track.timescale = Some(TrackTimeScale(mdhd.timescale as u64,
+                                                          track_idx));
+                } else {
+                    return Err(Error::InvalidData);
+                }
+                log!(context, "  {:?}", mdhd);
+            },
+            b"hdlr" => {
+                let hdlr = try!(read_hdlr(&mut content, &h));
+                if let Some(track) = context.tracks.last_mut() {
+                    match &hdlr.handler_type.0 {
+                        b"vide" => track.track_type = TrackType::Video,
+                        b"soun" => track.track_type = TrackType::Audio,
+                        _ => ()
+                    }
+                } else {
+                    return Err(Error::InvalidData);
+                }
+                log!(context, "  {:?}", hdlr);
+            },
+            b"minf" => try!(read_minf(&mut content, &h, context)),
+            _ => {
+                // Skip the contents of unknown chunks.
+                log!(context, "{:?} (skipped)", h);
+                try!(skip_box_content(&mut content, &h));
+            },
+        };
+        Ok(())
+    })
+}
+
+fn read_minf<T: BufRead>(f: &mut T, _: &BoxHeader, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"stbl" => try!(read_stbl(&mut content, &h, context)),
+            _ => {
+                // Skip the contents of unknown chunks.
+                log!(context, "{:?} (skipped)", h);
+                try!(skip_box_content(&mut content, &h));
+            },
+        };
+        Ok(())
+    })
+}
+
+fn read_stbl<T: BufRead>(f: &mut T, _: &BoxHeader, context: &mut MediaContext) -> Result<()> {
+    driver(f, context, |context, h, mut content| {
+        match &h.name.0 {
+            b"stsd" => {
+                if let Some(track) = context.tracks.last_mut() {
+                    let stsd = try!(read_stsd(&mut content, &h, track));
+                    log!(context, "  {:?}", stsd);
+                } else {
+                    return Err(Error::InvalidData);
+                }
+            },
+            b"stts" => {
+                let stts = try!(read_stts(&mut content, &h));
+                log!(context, "  {:?}", stts);
+            },
+            b"stsc" => {
+                let stsc = try!(read_stsc(&mut content, &h));
+                log!(context, "  {:?}", stsc);
+            },
+            b"stsz" => {
+                let stsz = try!(read_stsz(&mut content, &h));
+                log!(context, "  {:?}", stsz);
+            },
+            b"stco" => {
+                let stco = try!(read_stco(&mut content, &h));
+                log!(context, "  {:?}", stco);
+            },
+            b"co64" => {
+                let co64 = try!(read_co64(&mut content, &h));
+                log!(context, "  {:?}", co64);
+            },
+            b"stss" => {
+                let stss = try!(read_stss(&mut content, &h));
+                log!(context, "  {:?}", stss);
+            },
+            _ => {
+                // Skip the contents of unknown chunks.
+                log!(context, "{:?} (skipped)", h);
+                try!(skip_box_content(&mut content, &h));
+            },
+        };
+        Ok(())
+    })
+}
+
 /// Parse an ftyp box.
-pub fn read_ftyp<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<FileTypeBox> {
-    let major = FourCC(try!(be_u32(src)));
+fn read_ftyp<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<FileTypeBox> {
+    let major = try!(be_fourcc(src));
     let minor = try!(be_u32(src));
-    let brand_count = (head.size - 8 - 8) / 4;
+    let bytes_left = head.size - head.offset - 8;
+    if bytes_left % 4 != 0 {
+        return Err(Error::InvalidData);
+    }
+    // Is a brand_count of zero valid?
+    let brand_count = bytes_left / 4;
     let mut brands = Vec::new();
     for _ in 0..brand_count {
-        brands.push(FourCC(try!(be_u32(src))));
+        brands.push(try!(be_fourcc(src)));
     }
     Ok(FileTypeBox{
         name: head.name,
@@ -418,20 +650,20 @@ pub fn read_ftyp<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse an mvhd box.
-pub fn read_mvhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> byteorder::Result<MovieHeaderBox> {
+fn read_mvhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> Result<MovieHeaderBox> {
     let (version, _) = try!(read_fullbox_extra(src));
     match version {
         // 64 bit creation and modification times.
         1 => { try!(skip(src, 16)); },
         // 32 bit creation and modification times.
         0 => { try!(skip(src, 8)); },
-        _ => panic!("invalid mhdr version"),
+        _ => return Err(Error::InvalidData),
     }
     let timescale = try!(be_u32(src));
     let duration = match version {
         1 => try!(be_u64(src)),
         0 => try!(be_u32(src)) as u64,
-        _ => panic!("invalid mhdr version"),
+        _ => return Err(Error::InvalidData),
     };
     // Skip remaining fields.
     try!(skip(src, 80));
@@ -444,7 +676,7 @@ pub fn read_mvhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> by
 }
 
 /// Parse a tkhd box.
-pub fn read_tkhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> byteorder::Result<TrackHeaderBox> {
+fn read_tkhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> Result<TrackHeaderBox> {
     let (version, flags) = try!(read_fullbox_extra(src));
     let disabled = flags & 0x1u32 == 0 || flags & 0x2u32 == 0;
     match version {
@@ -452,14 +684,14 @@ pub fn read_tkhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> by
         1 => { try!(skip(src, 16)); },
         // 32 bit creation and modification times.
         0 => { try!(skip(src, 8)); },
-        _ => panic!("invalid tkhd version"),
+        _ => return Err(Error::InvalidData),
     }
     let track_id = try!(be_u32(src));
     try!(skip(src, 4));
     let duration = match version {
         1 => try!(be_u64(src)),
         0 => try!(be_u32(src)) as u64,
-        _ => panic!("invalid tkhd version"),
+        _ => return Err(Error::InvalidData),
     };
     // Skip uninteresting fields.
     try!(skip(src, 52));
@@ -477,7 +709,7 @@ pub fn read_tkhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> by
 }
 
 /// Parse a elst box.
-pub fn read_elst<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<EditListBox> {
+fn read_elst<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<EditListBox> {
     let (version, _) = try!(read_fullbox_extra(src));
     let edit_count = try!(be_u32(src));
     let mut edits = Vec::new();
@@ -493,7 +725,7 @@ pub fn read_elst<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
                 (try!(be_u32(src)) as u64,
                  try!(be_i32(src)) as i64)
             },
-            _ => panic!("invalid elst version"),
+            _ => return Err(Error::InvalidData),
         };
         let media_rate_integer = try!(be_i16(src));
         let media_rate_fraction = try!(be_i16(src));
@@ -513,7 +745,7 @@ pub fn read_elst<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a mdhd box.
-pub fn read_mdhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> byteorder::Result<MediaHeaderBox> {
+fn read_mdhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> Result<MediaHeaderBox> {
     let (version, _) = try!(read_fullbox_extra(src));
     let (timescale, duration) = match version {
         1 => {
@@ -532,7 +764,7 @@ pub fn read_mdhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> by
             (try!(be_u32(src)),
              try!(be_u32(src)) as u64)
         },
-        _ => panic!("invalid mdhd version"),
+        _ => return Err(Error::InvalidData),
     };
 
     // Skip uninteresting fields.
@@ -547,7 +779,7 @@ pub fn read_mdhd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> by
 }
 
 /// Parse a stco box.
-pub fn read_stco<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<ChunkOffsetBox> {
+fn read_stco<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<ChunkOffsetBox> {
     let (_, _) = try!(read_fullbox_extra(src));
     let offset_count = try!(be_u32(src));
     let mut offsets = Vec::new();
@@ -563,7 +795,7 @@ pub fn read_stco<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a stco box.
-pub fn read_co64<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<ChunkOffsetBox> {
+fn read_co64<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<ChunkOffsetBox> {
     let (_, _) = try!(read_fullbox_extra(src));
     let offset_count = try!(be_u32(src));
     let mut offsets = Vec::new();
@@ -579,7 +811,7 @@ pub fn read_co64<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a stss box.
-pub fn read_stss<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<SyncSampleBox> {
+fn read_stss<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<SyncSampleBox> {
     let (_, _) = try!(read_fullbox_extra(src));
     let sample_count = try!(be_u32(src));
     let mut samples = Vec::new();
@@ -595,7 +827,7 @@ pub fn read_stss<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a stsc box.
-pub fn read_stsc<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<SampleToChunkBox> {
+fn read_stsc<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<SampleToChunkBox> {
     let (_, _) = try!(read_fullbox_extra(src));
     let sample_count = try!(be_u32(src));
     let mut samples = Vec::new();
@@ -618,7 +850,7 @@ pub fn read_stsc<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a stsz box.
-pub fn read_stsz<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<SampleSizeBox> {
+fn read_stsz<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<SampleSizeBox> {
     let (_, _) = try!(read_fullbox_extra(src));
     let sample_size = try!(be_u32(src));
     let sample_count = try!(be_u32(src));
@@ -638,7 +870,7 @@ pub fn read_stsz<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a stts box.
-pub fn read_stts<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::Result<TimeToSampleBox> {
+fn read_stts<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> Result<TimeToSampleBox> {
     let (_, _) = try!(read_fullbox_extra(src));
     let sample_count = try!(be_u32(src));
     let mut samples = Vec::new();
@@ -659,13 +891,13 @@ pub fn read_stts<T: ReadBytesExt>(src: &mut T, head: &BoxHeader) -> byteorder::R
 }
 
 /// Parse a hdlr box.
-pub fn read_hdlr<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> byteorder::Result<HandlerBox> {
+fn read_hdlr<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> Result<HandlerBox> {
     let (_, _) = try!(read_fullbox_extra(src));
 
     // Skip uninteresting fields.
     try!(skip(src, 4));
 
-    let handler_type = FourCC(try!(be_u32(src)));
+    let handler_type = try!(be_fourcc(src));
 
     // Skip uninteresting fields.
     try!(skip(src, 12));
@@ -682,19 +914,20 @@ pub fn read_hdlr<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader) -> by
 }
 
 /// Parse a stsd box.
-pub fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track: &Track) -> byteorder::Result<SampleDescriptionBox> {
+fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track: &mut Track) -> Result<SampleDescriptionBox> {
     let (_, _) = try!(read_fullbox_extra(src));
 
     let description_count = try!(be_u32(src));
     let mut descriptions = Vec::new();
 
+    // TODO(kinetik): check if/when more than one desc per track? do we need to support?
     for _ in 0..description_count {
         let description = match track.track_type {
             TrackType::Video => {
                 let h = try!(read_box_header(src));
-                // TODO(kinetik): avc3 and encv here also?
-                if fourcc_to_string(h.name) != "avc1" {
-                    panic!("unsupported SampleEntry::Video subtype");
+                // TODO(kinetik): encv here also?
+                if &h.name.0 != b"avc1" && &h.name.0 != b"avc3" {
+                    return Err(Error::Unsupported);
                 }
 
                 // Skip uninteresting fields.
@@ -713,8 +946,8 @@ pub fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track
 
                 // TODO(kinetik): Parse avcC atom?  For now we just stash the data.
                 let h = try!(read_box_header(src));
-                if fourcc_to_string(h.name) != "avcC" {
-                    panic!("expected avcC atom inside avc1");
+                if &h.name.0 != b"avcC" {
+                    return Err(Error::InvalidData);
                 }
                 let mut data: Vec<u8> = vec![0; (h.size - h.offset) as usize];
                 let r = try!(src.read(&mut data));
@@ -723,18 +956,20 @@ pub fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track
 
                 try!(skip_remaining_box_content(src, head));
 
-                SampleEntry::Video {
+                track.mime_type = String::from("video/avc");
+
+                SampleEntry::Video(VideoSampleEntry {
                     data_reference_index: data_reference_index,
                     width: width,
                     height: height,
                     avcc: avcc,
-                }
+                })
             },
             TrackType::Audio => {
                 let h = try!(read_box_header(src));
                 // TODO(kinetik): enca here also?
-                if fourcc_to_string(h.name) != "mp4a" {
-                    panic!("unsupported SampleEntry::Audio subtype");
+                if &h.name.0 != b"mp4a" {
+                    return Err(Error::Unsupported);
                 }
 
                 // Skip uninteresting fields.
@@ -755,8 +990,8 @@ pub fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track
 
                 // TODO(kinetik): Parse esds atom?  For now we just stash the data.
                 let h = try!(read_box_header(src));
-                if fourcc_to_string(h.name) != "esds" {
-                    panic!("expected esds atom inside mp4a");
+                if &h.name.0 != b"esds" {
+                    return Err(Error::InvalidData);
                 }
                 let (_, _) = try!(read_fullbox_extra(src));
                 let mut data: Vec<u8> = vec![0; (h.size - h.offset - 4) as usize];
@@ -764,15 +999,26 @@ pub fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track
                 assert!(r == data.len());
                 let esds = ES_Descriptor { data: data };
 
-                SampleEntry::Audio {
+                // TODO(kinetik): stagefright inspects ESDS to detect MP3 (audio/mpeg).
+                track.mime_type = String::from("audio/mp4a-latm");
+
+                SampleEntry::Audio(AudioSampleEntry {
                     data_reference_index: data_reference_index,
                     channelcount: channelcount,
                     samplesize: samplesize,
                     samplerate: samplerate,
                     esds: esds,
-                }
+                })
             },
+            TrackType::Unknown => {
+                SampleEntry::Unknown
+            }
         };
+        if track.data.is_none() {
+            track.data = Some(description.clone());
+        } else {
+            return Err(Error::InvalidData);
+        }
         descriptions.push(description);
     }
 
@@ -783,28 +1029,13 @@ pub fn read_stsd<T: ReadBytesExt + BufRead>(src: &mut T, head: &BoxHeader, track
     })
 }
 
-/// Convert the iso box type or other 4-character value to a string.
-fn fourcc_to_string(name: FourCC) -> String {
-    let u32_to_vec = |u| {
-        vec!((u >> 24 & 0xffu32) as u8,
-             (u >> 16 & 0xffu32) as u8,
-             (u >>  8 & 0xffu32) as u8,
-             (u & 0xffu32) as u8)
-    };
-    let name_bytes = u32_to_vec(name.0);
-    String::from_utf8_lossy(&name_bytes).into_owned()
-}
-
 /// Skip a number of bytes that we don't care to parse.
-fn skip<T: BufRead>(src: &mut T, bytes: usize) -> byteorder::Result<usize> {
+fn skip<T: BufRead>(src: &mut T, bytes: usize) -> Result<usize> {
     let mut bytes_to_skip = bytes;
     while bytes_to_skip > 0 {
-        let len = {
-            let buf = src.fill_buf().unwrap();
-            buf.len()
-        };
+        let len = try!(src.fill_buf()).len();
         if len == 0 {
-            return Err(byteorder::Error::UnexpectedEOF)
+            return Err(Error::UnexpectedEOF);
         }
         let discard = cmp::min(len, bytes_to_skip);
         src.consume(discard);
@@ -814,39 +1045,61 @@ fn skip<T: BufRead>(src: &mut T, bytes: usize) -> byteorder::Result<usize> {
     Ok(bytes)
 }
 
+fn media_time_to_ms(time: MediaScaledTime, scale: MediaTimeScale) -> u64 {
+    assert!(scale.0 != 0);
+    time.0 * 1000000 / scale.0
+}
+
+fn track_time_to_ms(time: TrackScaledTime, scale: TrackTimeScale) -> u64 {
+    assert!(time.1 == scale.1);
+    assert!(scale.0 != 0);
+    time.0 * 1000000 / scale.0
+}
+
 fn be_i16<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<i16> {
-    src.read_i16::<BigEndian>()
+    src.read_i16::<byteorder::BigEndian>()
 }
 
 fn be_i32<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<i32> {
-    src.read_i32::<BigEndian>()
+    src.read_i32::<byteorder::BigEndian>()
 }
 
 fn be_i64<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<i64> {
-    src.read_i64::<BigEndian>()
+    src.read_i64::<byteorder::BigEndian>()
 }
 
 fn be_u16<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<u16> {
-    src.read_u16::<BigEndian>()
+    src.read_u16::<byteorder::BigEndian>()
 }
 
 fn be_u32<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<u32> {
-    src.read_u32::<BigEndian>()
+    src.read_u32::<byteorder::BigEndian>()
 }
 
 fn be_u64<T: ReadBytesExt>(src: &mut T) -> byteorder::Result<u64> {
-    src.read_u64::<BigEndian>()
+    src.read_u64::<byteorder::BigEndian>()
+}
+
+fn be_fourcc<T: Read>(src: &mut T) -> Result<FourCC> {
+    let mut fourcc = [0; 4];
+    match src.read(&mut fourcc) {
+        // Expect all 4 bytes read.
+        Ok(4) => Ok(FourCC(fourcc)),
+        // Short read means EOF.
+        Ok(_) => Err(Error::UnexpectedEOF),
+        // Propagate std::io errors.
+        Err(e) => Err(Error::Io(e)),
+    }
 }
 
 #[test]
 fn test_read_box_header() {
-    use std::io::Cursor;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     let mut test: Vec<u8> = vec![0, 0, 0, 8]; // minimal box length
     write!(&mut test, "test").unwrap(); // box type
     let mut stream = Cursor::new(test);
     let parsed = read_box_header(&mut stream).unwrap();
-    assert_eq!(parsed.name, FourCC(1952805748));
+    assert_eq!(parsed.name, FourCC(*b"test"));
     assert_eq!(parsed.size, 8);
     println!("box {:?}", parsed);
 }
@@ -860,15 +1113,14 @@ fn test_read_box_header_long() {
     // Skip generating box content.
     let mut stream = Cursor::new(test);
     let parsed = read_box_header(&mut stream).unwrap();
-    assert_eq!(parsed.name, FourCC(1819242087));
+    assert_eq!(parsed.name, FourCC(*b"long"));
     assert_eq!(parsed.size, 4096);
     println!("box {:?}", parsed);
 }
 
 #[test]
 fn test_read_ftyp() {
-    use std::io::Cursor;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     let mut test: Vec<u8> = vec![0, 0, 0, 24]; // size
     write!(&mut test, "ftyp").unwrap(); // type
     write!(&mut test, "mp42").unwrap(); // major brand
@@ -880,20 +1132,19 @@ fn test_read_ftyp() {
     let mut stream = Cursor::new(test);
     let header = read_box_header(&mut stream).unwrap();
     let parsed = read_ftyp(&mut stream, &header).unwrap();
-    assert_eq!(parsed.name, FourCC(1718909296));
+    assert_eq!(parsed.name, FourCC(*b"ftyp"));
     assert_eq!(parsed.size, 24);
-    assert_eq!(parsed.major_brand, FourCC(1836069938));
+    assert_eq!(parsed.major_brand, FourCC(*b"mp42"));
     assert_eq!(parsed.minor_version, 0);
     assert_eq!(parsed.compatible_brands.len(), 2);
-    assert_eq!(parsed.compatible_brands[0], FourCC(1769172845));
-    assert_eq!(fourcc_to_string(parsed.compatible_brands[1]), "mp42");
+    assert_eq!(parsed.compatible_brands[0], FourCC(*b"isom"));
+    assert_eq!(parsed.compatible_brands[1], FourCC(*b"mp42"));
     println!("box {:?}", parsed);
 }
 
 #[test]
 fn test_read_elst_v0() {
-    use std::io::Cursor;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     let mut test: Vec<u8> = vec![0, 0, 0, 28]; // size
     write!(&mut test, "elst").unwrap(); // type
     test.extend(vec![0, 0, 0, 0]); // fullbox
@@ -907,7 +1158,7 @@ fn test_read_elst_v0() {
     let mut stream = Cursor::new(test);
     let header = read_box_header(&mut stream).unwrap();
     let parsed = read_elst(&mut stream, &header).unwrap();
-    assert_eq!(parsed.name, FourCC(1701606260));
+    assert_eq!(parsed.name, FourCC(*b"elst"));
     assert_eq!(parsed.size, 28);
     assert_eq!(parsed.edits.len(), 1);
     assert_eq!(parsed.edits[0].segment_duration, 16909060);
@@ -919,8 +1170,7 @@ fn test_read_elst_v0() {
 
 #[test]
 fn test_read_elst_v1() {
-    use std::io::Cursor;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     let mut test: Vec<u8> = vec![0, 0, 0, 56]; // size
     write!(&mut test, "elst").unwrap(); // type
     test.extend(vec![1, 0, 0, 0]); // fullbox
@@ -938,7 +1188,7 @@ fn test_read_elst_v1() {
     let mut stream = Cursor::new(test);
     let header = read_box_header(&mut stream).unwrap();
     let parsed = read_elst(&mut stream, &header).unwrap();
-    assert_eq!(parsed.name, FourCC(1701606260));
+    assert_eq!(parsed.name, FourCC(*b"elst"));
     assert_eq!(parsed.size, 56);
     assert_eq!(parsed.edits.len(), 2);
     assert_eq!(parsed.edits[1].segment_duration, 72623859723010820);
@@ -950,8 +1200,7 @@ fn test_read_elst_v1() {
 
 #[test]
 fn test_read_mdhd_v0() {
-    use std::io::Cursor;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     let mut test: Vec<u8> = vec![0, 0, 0, 32]; // size
     write!(&mut test, "mdhd").unwrap(); // type
     test.extend(vec![0, 0, 0, 0]); // fullbox
@@ -965,7 +1214,7 @@ fn test_read_mdhd_v0() {
     let mut stream = Cursor::new(test);
     let header = read_box_header(&mut stream).unwrap();
     let parsed = read_mdhd(&mut stream, &header).unwrap();
-    assert_eq!(parsed.name, FourCC(1835296868));
+    assert_eq!(parsed.name, FourCC(*b"mdhd"));
     assert_eq!(parsed.size, 32);
     assert_eq!(parsed.timescale, 16909060);
     assert_eq!(parsed.duration, 84281096);
@@ -974,8 +1223,7 @@ fn test_read_mdhd_v0() {
 
 #[test]
 fn test_read_mdhd_v1() {
-    use std::io::Cursor;
-    use std::io::Write;
+    use std::io::{Cursor, Write};
     let mut test: Vec<u8> = vec![0, 0, 0, 44]; // size
     write!(&mut test, "mdhd").unwrap(); // type
     test.extend(vec![1, 0, 0, 0]); // fullbox
@@ -989,7 +1237,7 @@ fn test_read_mdhd_v1() {
     let mut stream = Cursor::new(test);
     let header = read_box_header(&mut stream).unwrap();
     let parsed = read_mdhd(&mut stream, &header).unwrap();
-    assert_eq!(parsed.name, FourCC(1835296868));
+    assert_eq!(parsed.name, FourCC(*b"mdhd"));
     assert_eq!(parsed.size, 44);
     assert_eq!(parsed.timescale, 16909060);
     assert_eq!(parsed.duration, 361984551075317512);

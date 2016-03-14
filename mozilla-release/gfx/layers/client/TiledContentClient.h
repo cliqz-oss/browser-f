@@ -118,6 +118,7 @@ public:
   static already_AddRefed<gfxShmSharedReadLock>
   Open(mozilla::layers::ISurfaceAllocator* aAllocator, const mozilla::layers::ShmemSection& aShmemSection)
   {
+    MOZ_RELEASE_ASSERT(aShmemSection.shmem().IsReadable());
     RefPtr<gfxShmSharedReadLock> readLock = new gfxShmSharedReadLock(aAllocator, aShmemSection);
     return readLock.forget();
   }
@@ -313,7 +314,7 @@ struct BasicTiledLayerPaintData {
    * the closest ancestor layer which scrolls, and is used to obtain
    * the composition bounds that are relevant for this layer.
    */
-  gfx::Matrix4x4 mTransformToCompBounds;
+  LayerToParentLayerMatrix4x4 mTransformToCompBounds;
 
   /*
    * The critical displayport of the content from the nearest ancestor layer
@@ -648,9 +649,8 @@ protected:
   ~MultiTiledContentClient()
   {
     MOZ_COUNT_DTOR(MultiTiledContentClient);
- 
-    mDestroyed = true;
-    mTiledBuffer.DiscardBuffers();
+
+      mTiledBuffer.DiscardBuffers();
     mLowPrecisionTiledBuffer.DiscardBuffers();
   }
 

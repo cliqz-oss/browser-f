@@ -761,7 +761,9 @@
                 }
 
                 // If the browser was playing audio, we should remove the playing state.
-                if (this.mTab.hasAttribute("soundplaying")) {
+                if (this.mTab.hasAttribute("soundplaying") &&
+                    (!this.mBrowser.lastURI ||
+                     this.mBrowser.lastURI.spec != aLocation.spec)) {
                   this.mTab.removeAttribute("soundplaying");
                   this.mTabBrowser._tabAttrModified(this.mTab, ["soundplaying"]);
                 }
@@ -856,19 +858,28 @@
       <method name="setIcon">
         <parameter name="aTab"/>
         <parameter name="aURI"/>
+        <parameter name="aLoadingPrincipal"/>
         <body>
           <![CDATA[
-            var browser = this.getBrowserForTab(aTab);
+            let browser = this.getBrowserForTab(aTab);
             browser.mIconURL = aURI instanceof Ci.nsIURI ? aURI.spec : aURI;
 
             if (aURI && this.mFaviconService) {
-              if (!(aURI instanceof Ci.nsIURI))
+              if (!(aURI instanceof Ci.nsIURI)) {
                 aURI = makeURI(aURI);
-              this.mFaviconService.setAndFetchFaviconForPage(browser.currentURI,
-                                                             aURI, false,
-                                                             PrivateBrowsingUtils.isWindowPrivate(window) ?
-                                                               this.mFaviconService.FAVICON_LOAD_PRIVATE :
-                                                               this.mFaviconService.FAVICON_LOAD_NON_PRIVATE);
+              }
+              // We do not serialize the principal from within SessionStore.jsm,
+              // hence if aLoadingPrincipal is null we default to the
+              // systemPrincipal which will allow the favicon to load.
+              let loadingPrincipal = aLoadingPrincipal
+                ? aLoadingPrincipal
+                : Services.scriptSecurityManager.getSystemPrincipal();
+              let loadType = PrivateBrowsingUtils.isWindowPrivate(window)
+                ? this.mFaviconService.FAVICON_LOAD_PRIVATE
+                : this.mFaviconService.FAVICON_LOAD_NON_PRIVATE;
+
+              this.mFaviconService.setAndFetchFaviconForPage(
+                browser.currentURI, aURI, false, loadType, null, loadingPrincipal);
             }
 
             let sizedIconUrl = browser.mIconURL || "";
@@ -932,7 +943,7 @@
               if (!this.isFailedIcon(url))
                 icon = url;
             }
-            this.setIcon(aTab, icon);
+            this.setIcon(aTab, icon, browser.contentPrincipal);
           ]]>
         </body>
       </method>
@@ -998,14 +1009,7 @@
       <method name="updateTitlebar">
         <body>
           <![CDATA[
-            if ("TabView" in window && TabView.isVisible()) {
-              // ToDo: this will be removed when we gain ability to draw to the menu bar.
-              // Bug 586175
-              this.ownerDocument.title = TabView.windowTitle;
-            }
-            else {
-              this.ownerDocument.title = this.getWindowTitleForBrowser(this.mCurrentBrowser);
-            }
+            this.ownerDocument.title = this.getWindowTitleForBrowser(this.mCurrentBrowser);
           ]]>
         </body>
       </method>
@@ -1159,25 +1163,29 @@
               this._tabAttrModified(this.mCurrentTab, ["selected"]);
 
               if (oldBrowser != newBrowser &&
-                  oldBrowser.docShell &&
-                  oldBrowser.docShell.contentViewer.inPermitUnload) {
-                // Since the user is switching away from a tab that has
-                // a beforeunload prompt active, we remove the prompt.
-                // This prevents confusing user flows like the following:
-                //   1. User attempts to close Firefox
-                //   2. User switches tabs (ingoring a beforeunload prompt)
-                //   3. User returns to tab, presses "Leave page"
-                let promptBox = this.getTabModalPromptBox(oldBrowser);
-                let prompts = promptBox.listPrompts();
-                // There might not be any prompts here if the tab was closed
-                // while in an onbeforeunload prompt, which will have
-                // destroyed aforementioned prompt already, so check there's
-                // something to remove, first:
-                if (prompts.length) {
-                  // NB: This code assumes that the beforeunload prompt
-                  //     is the top-most prompt on the tab.
-                  prompts[prompts.length - 1].abortPrompt();
-                }
+                  oldBrowser.getInPermitUnload) {
+                oldBrowser.getInPermitUnload(inPermitUnload => {
+                  if (!inPermitUnload) {
+                    return;
+                  }
+                  // Since the user is switching away from a tab that has
+                  // a beforeunload prompt active, we remove the prompt.
+                  // This prevents confusing user flows like the following:
+                  //   1. User attempts to close Firefox
+                  //   2. User switches tabs (ingoring a beforeunload prompt)
+                  //   3. User returns to tab, presses "Leave page"
+                  let promptBox = this.getTabModalPromptBox(oldBrowser);
+                  let prompts = promptBox.listPrompts();
+                  // There might not be any prompts here if the tab was closed
+                  // while in an onbeforeunload prompt, which will have
+                  // destroyed aforementioned prompt already, so check there's
+                  // something to remove, first:
+                  if (prompts.length) {
+                    // NB: This code assumes that the beforeunload prompt
+                    //     is the top-most prompt on the tab.
+                    prompts[prompts.length - 1].abortPrompt();
+                  }
+                });
               }
 
               oldBrowser._urlbarFocused = (gURLBar && gURLBar.focused);
@@ -2052,12 +2060,13 @@
 
       <method name="removeTabsToTheEndFrom">
         <parameter name="aTab"/>
+        <parameter name="aParams"/>
         <body>
           <![CDATA[
             if (this.warnAboutClosingTabs(this.closingTabsEnum.TO_END, aTab)) {
               let tabs = this.getTabsToTheEndFrom(aTab);
               for (let i = tabs.length - 1; i >= 0; --i) {
-                this.removeTab(tabs[i], {animate: true});
+                this.removeTab(tabs[i], aParams);
               }
             }
           ]]>
@@ -2105,6 +2114,7 @@
             if (aParams) {
               var animate = aParams.animate;
               var byMouse = aParams.byMouse;
+              var skipPermitUnload = aParams.skipPermitUnload;
             }
 
             // Handle requests for synchronously removing an already
@@ -2117,7 +2127,7 @@
 
             var isLastTab = (this.tabs.length - this._removingTabs.length == 1);
 
-            if (!this._beginRemoveTab(aTab, false, null, true))
+            if (!this._beginRemoveTab(aTab, false, null, true, skipPermitUnload))
               return;
 
             if (!aTab.pinned && !aTab.hidden && aTab._fullyOpen && byMouse)
@@ -2165,6 +2175,7 @@
         <parameter name="aTabWillBeMoved"/>
         <parameter name="aCloseWindowWithLastTab"/>
         <parameter name="aCloseWindowFastpath"/>
+        <parameter name="aSkipPermitUnload"/>
         <body>
           <![CDATA[
             if (aTab.closing ||
@@ -2195,23 +2206,20 @@
               newTab = true;
             }
 
-            if (!aTab._pendingPermitUnload && !aTabWillBeMoved) {
-              let ds = browser.docShell;
-              if (ds && ds.contentViewer) {
-                // We need to block while calling permitUnload() because it
-                // processes the event queue and may lead to another removeTab()
-                // call before permitUnload() returns.
-                aTab._pendingPermitUnload = true;
-                let permitUnload = ds.contentViewer.permitUnload();
-                delete aTab._pendingPermitUnload;
-                // If we were closed during onbeforeunload, we return false now
-                // so we don't (try to) close the same tab again. Of course, we
-                // also stop if the unload was cancelled by the user:
-                if (aTab.closing || !permitUnload) {
-                  // NB: deliberately keep the _closedDuringPermitUnload set to
-                  // true so we keep exiting early in case of multiple calls.
-                  return false;
-                }
+            if (!aTab._pendingPermitUnload && !aTabWillBeMoved && !aSkipPermitUnload) {
+              // We need to block while calling permitUnload() because it
+              // processes the event queue and may lead to another removeTab()
+              // call before permitUnload() returns.
+              aTab._pendingPermitUnload = true;
+              let {permitUnload} = browser.permitUnload();
+              delete aTab._pendingPermitUnload;
+              // If we were closed during onbeforeunload, we return false now
+              // so we don't (try to) close the same tab again. Of course, we
+              // also stop if the unload was cancelled by the user:
+              if (aTab.closing || !permitUnload) {
+                // NB: deliberately keep the _closedDuringPermitUnload set to
+                // true so we keep exiting early in case of multiple calls.
+                return false;
               }
             }
 
@@ -2518,7 +2526,7 @@
               // Workarounds for bug 458697
               // Icon might have been set on DOMLinkAdded, don't override that.
               if (!ourBrowser.mIconURL && otherBrowser.mIconURL)
-                this.setIcon(aOurTab, otherBrowser.mIconURL);
+                this.setIcon(aOurTab, otherBrowser.mIconURL, otherBrowser.contentPrincipal);
               var isBusy = aOtherTab.hasAttribute("busy");
               if (isBusy) {
                 aOurTab.setAttribute("busy", "true");
@@ -4003,8 +4011,8 @@
               break;
             case "sizemodechange":
               if (aEvent.target == window) {
-                this.mCurrentBrowser.docShellIsActive =
-                  (window.windowState != window.STATE_MINIMIZED);
+                this.mCurrentBrowser.setDocShellIsActiveAndForeground(
+                  window.windowState != window.STATE_MINIMIZED);
               }
               break;
           }
@@ -4029,13 +4037,19 @@
             }
             case "DOMWindowClose": {
               if (this.tabs.length == 1) {
+                // We already did PermitUnload in the content process
+                // for this tab (the only one in the window). So we don't
+                // need to do it again for any tabs.
+                window.skipNextCanClose = true;
                 window.close();
                 return;
               }
 
               let tab = this.getTabForBrowser(browser);
               if (tab) {
-                this.removeTab(tab);
+                // Skip running PermitUnload since it already happened in
+                // the content process.
+                this.removeTab(tab, {skipPermitUnload: true});
               }
               break;
             }
@@ -4319,12 +4333,18 @@
           if (!event.isTrusted)
             return;
 
-          if (this.tabs.length == 1)
+          if (this.tabs.length == 1) {
+            // We already did PermitUnload in nsGlobalWindow::Close
+            // for this tab. There are no other tabs we need to do
+            // PermitUnload for.
+            window.skipNextCanClose = true;
             return;
+          }
 
           var tab = this._getTabForContentWindow(event.target);
           if (tab) {
-            this.removeTab(tab);
+            // Skip running PermitUnload since it already happened.
+            this.removeTab(tab, {skipPermitUnload: true});
             event.preventDefault();
           }
         ]]>
@@ -4414,15 +4434,21 @@
           let uri = browser.currentURI;
           let icon = browser.mIconURL;
 
-          this.updateBrowserRemotenessByURL(browser, "about:tabcrashed");
-
-          browser.setAttribute("crashedPageTitle", title);
-          browser.docShell.displayLoadError(Cr.NS_ERROR_CONTENT_CRASHED, uri, null);
-          browser.removeAttribute("crashedPageTitle");
           let tab = this.getTabForBrowser(browser);
-          tab.setAttribute("crashed", true);
+
+          if (this.selectedBrowser == browser) {
+            this.updateBrowserRemotenessByURL(browser, "about:tabcrashed");
+            browser.setAttribute("crashedPageTitle", title);
+            browser.docShell.displayLoadError(Cr.NS_ERROR_CONTENT_CRASHED, uri, null);
+            browser.removeAttribute("crashedPageTitle");
+            tab.setAttribute("crashed", true);
+          } else {
+            this.updateBrowserRemoteness(browser, false);
+            SessionStore.reviveCrashedTab(tab);
+          }
+
           tab.removeAttribute("soundplaying");
-          this.setIcon(tab, icon);
+          this.setIcon(tab, icon, browser.contentPrincipal);
         ]]>
       </handler>
       <handler event="DOMAudioPlaybackStarted">
@@ -5511,6 +5537,7 @@
         canvas.width = 160 * scale;
         canvas.height = 90 * scale;
         let toDrag;
+        let dragImageOffset = -16;
         if (gMultiProcessBrowser) {
           var context = canvas.getContext('2d');
           context.fillStyle = "white";
@@ -5522,7 +5549,13 @@
             this._dndCanvas = canvas;
             this._dndPanel = document.createElement("panel");
             this._dndPanel.setAttribute("type", "drag");
-            this._dndPanel.appendChild(canvas);
+            let wrapper = document.createElementNS("http://www.w3.org/1999/xhtml", "div");
+            wrapper.style.width = "160px";
+            wrapper.style.height = "90px";
+            wrapper.appendChild(canvas);
+            canvas.style.width = "100%";
+            canvas.style.height = "100%";
+            this._dndPanel.appendChild(wrapper);
             document.documentElement.appendChild(this._dndPanel);
           }
           // PageThumb is async with e10s but that's fine
@@ -5535,8 +5568,9 @@
           // be fine, so let's use the canvas for setDragImage.
           PageThumbs.captureToCanvas(browser, canvas);
           toDrag = canvas;
+          dragImageOffset = dragImageOffset * scale;
         }
-        dt.setDragImage(toDrag, -16 * scale, -16 * scale);
+        dt.setDragImage(toDrag, dragImageOffset, dragImageOffset);
 
         // _dragData.offsetX/Y give the coordinates that the mouse should be
         // positioned relative to the corner of the new window created upon
@@ -5734,7 +5768,7 @@
             bgLoad = !bgLoad;
 
           let tab = this._getDragTargetTab(event, true);
-          if (!tab || dropEffect == "copy") {
+          if (!tab) {
             // We're adding a new tab.
             let newIndex = this._getDropIndex(event, true);
             let newTab = this.tabbrowser.loadOneTab(url, {inBackground: bgLoad, allowThirdPartyFixup: true});
@@ -6193,7 +6227,7 @@
           var tabstripBO = tabContainer.mTabstrip.scrollBoxObject;
           for (var i = 0; i < this.childNodes.length; i++) {
             let curTab = this.childNodes[i].tab;
-            if (!curTab) // "Tab Groups" menuitem and its menuseparator
+            if (!curTab) // "Undo close tab", menuseparator, or entries put here by addons.
               continue;
             let curTabBO = curTab.boxObject;
             if (curTabBO.screenX >= tabstripBO.screenX &&

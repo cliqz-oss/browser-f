@@ -39,6 +39,9 @@ const kPrefCustomizationDebug        = "browser.uiCustomization.debug";
 const kPrefDrawInTitlebar            = "browser.tabs.drawInTitlebar";
 const kPrefWebIDEInNavbar            = "devtools.webide.widget.inNavbarByDefault";
 
+const kExpectedWindowURL = "chrome://browser/content/browser.xul";
+
+
 /**
  * The keys are the handlers that are fired when the event type (the value)
  * is fired on the subview. A widget that provides a subview has the option
@@ -53,7 +56,16 @@ const kSubviewEvents = [
  * The current version. We can use this to auto-add new default widgets as necessary.
  * (would be const but isn't because of testing purposes)
  */
-var kVersion = 4;
+var kVersion = 5;
+
+/**
+ * Buttons removed from built-ins by version they were removed. kVersion must be
+ * bumped any time a new id is added to this. Use the button id as key, and
+ * version the button is removed in as the value.  e.g. "pocket-button": 5
+ */
+var ObsoleteBuiltinButtons = {
+  "loop-button": 5
+};
 
 /**
  * gPalette is a map of every widget that CustomizableUI.jsm knows about, keyed
@@ -154,6 +166,7 @@ var CustomizableUIInternal = {
     this._defineBuiltInWidgets();
     this.loadSavedState();
     this._introduceNewBuiltinWidgets();
+    this._markObsoleteBuiltinButtonsSeen();
 
     let panelPlacements = [
       "edit-controls",
@@ -170,6 +183,7 @@ var CustomizableUIInternal = {
 #ifndef MOZ_DEV_EDITION
       "developer-button",
 #endif
+      "sync-button",
     ];
 
 #ifdef E10S_TESTING_ONLY
@@ -349,6 +363,26 @@ var CustomizableUIInternal = {
 
     if (currentVersion < 4) {
       CustomizableUI.removeWidgetFromArea("loop-button-throttled");
+    }
+  },
+
+  /**
+   * _markObsoleteBuiltinButtonsSeen
+   * when upgrading, ensure obsoleted buttons are in seen state.
+   */
+  _markObsoleteBuiltinButtonsSeen: function() {
+    if (!gSavedState)
+      return;
+    let currentVersion = gSavedState.currentVersion;
+    if (currentVersion >= kVersion)
+      return;
+    // we're upgrading, update state if necessary
+    for (let id in ObsoleteBuiltinButtons) {
+      let version = ObsoleteBuiltinButtons[id]
+      if (version == kVersion) {
+        gSeenWidgets.add(id);
+        gDirty = true;
+      }
     }
   },
 
@@ -589,7 +623,7 @@ var CustomizableUIInternal = {
           legacyState = legacyState.split(",").filter(s => s);
         }
 
-        // Manually restore the state here, so the legacy state can be converted. 
+        // Manually restore the state here, so the legacy state can be converted.
         this.restoreStateForArea(area, legacyState);
         placements = gPlacements.get(area);
       }
@@ -1269,6 +1303,9 @@ var CustomizableUIInternal = {
   },
 
   buildWidget: function(aDocument, aWidget) {
+    if (aDocument.documentURI != kExpectedWindowURL) {
+      throw new Error("buildWidget was called for a non-browser window!");
+    }
     if (typeof aWidget == "string") {
       aWidget = gPalette.get(aWidget);
     }
@@ -1620,7 +1657,7 @@ var CustomizableUIInternal = {
     // We can't use event.target because we might have passed a panelview
     // anonymous content boundary as well, and so target points to the
     // panelmultiview in that case. Unfortunately, this means we get
-    // anonymous child nodes instead of the real ones, so looking for the 
+    // anonymous child nodes instead of the real ones, so looking for the
     // 'stoooop, don't close me' attributes is more involved.
     let target = aEvent.originalTarget;
     let closemenu = "auto";
@@ -1863,7 +1900,7 @@ var CustomizableUIInternal = {
   // Note that this does not populate gPlacements, which is done lazily so that
   // the legacy state can be migrated, which is only available once a browser
   // window is openned.
-  // The panel area is an exception here, since it has no legacy state and is 
+  // The panel area is an exception here, since it has no legacy state and is
   // built lazily - and therefore wouldn't otherwise result in restoring its
   // state immediately when a browser window opens, which is important for
   // other consumers of this API.
@@ -3843,7 +3880,7 @@ function XULWidgetGroupWrapper(aWidgetId) {
 }
 
 /**
- * A XULWidgetSingleWrapper is a wrapper around a single instance of a XUL 
+ * A XULWidgetSingleWrapper is a wrapper around a single instance of a XUL
  * widget in a particular window.
  */
 function XULWidgetSingleWrapper(aWidgetId, aNode, aDocument) {

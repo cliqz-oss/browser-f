@@ -6,8 +6,9 @@
  */
 "use strict";
 
-var escope = require("eslint/node_modules/escope");
-var espree = require("eslint/node_modules/espree");
+var escope = require("escope");
+var espree = require("espree");
+var path = require("path");
 
 var regexes = [
   /^(?:Cu|Components\.utils)\.import\(".*\/(.*?)\.jsm?"\);?$/,
@@ -16,7 +17,8 @@ var regexes = [
   /^loader\.lazyServiceGetter\(\w+, "(\w+)"/,
   /^XPCOMUtils\.defineLazyModuleGetter\(\w+, "(\w+)"/,
   /^loader\.lazyGetter\(\w+, "(\w+)"/,
-  /^XPCOMUtils\.defineLazyGetter\(\w+, "(\w+)"/
+  /^XPCOMUtils\.defineLazyGetter\(\w+, "(\w+)"/,
+  /^XPCOMUtils\.defineLazyServiceGetter\(\w+, "(\w+)"/
 ];
 
 module.exports = {
@@ -129,6 +131,13 @@ module.exports = {
     variable.eslintExplicitGlobal = false;
     variable.writeable = true;
     variables.push(variable);
+
+    // Since eslint 1.10.3, scope variables are now duplicated in the scope.set
+    // map, so we need to store them there too if it exists.
+    // See https://groups.google.com/forum/#!msg/eslint/Y4_oHMWwP-o/5S57U8jXd8kJ
+    if (scope.set) {
+      scope.set.set(name, variable);
+    }
   },
 
   /**
@@ -166,28 +175,92 @@ module.exports = {
       tolerant: true,
       ecmaFeatures: {
         arrowFunctions: true,
-        blockBindings: true,
-        destructuring: true,
-        regexYFlag: true,
-        regexUFlag: true,
-        templateStrings: true,
         binaryLiterals: true,
-        octalLiterals: true,
-        unicodeCodePointEscapes: true,
+        blockBindings: true,
+        classes: true,
         defaultParams: true,
-        restParams: true,
+        destructuring: true,
         forOf: true,
+        generators: true,
+        globalReturn: true,
+        modules: true,
         objectLiteralComputedProperties: true,
+        objectLiteralDuplicateProperties: true,
         objectLiteralShorthandMethods: true,
         objectLiteralShorthandProperties: true,
-        objectLiteralDuplicateProperties: true,
-        generators: true,
+        octalLiterals: true,
+        regexUFlag: true,
+        regexYFlag: true,
+        restParams: true,
         spread: true,
         superInFunctions: true,
-        classes: true,
-        modules: true,
-        globalReturn: true
+        templateStrings: true,
+        unicodeCodePointEscapes: true,
       }
     };
+  },
+
+  /**
+   * Check whether the context is the global scope.
+   *
+   * @param {ASTContext} context
+   *        The current context.
+   *
+   * @return {Boolean}
+   *         True or false
+   */
+  getIsGlobalScope: function(context) {
+    var ancestors = context.getAncestors();
+    var parent = ancestors.pop();
+
+    if (parent.type == "ExpressionStatement") {
+      parent = ancestors.pop();
+    }
+
+    return parent.type == "Program";
+  },
+
+  /**
+   * Check whether we are in a browser mochitest.
+   *
+   * @param  {RuleContext} scope
+   *         You should pass this from within a rule
+   *         e.g. helpers.getIsBrowserMochitest(this)
+   *
+   * @return {Boolean}
+   *         True or false
+   */
+  getIsBrowserMochitest: function(scope) {
+    var pathAndFilename = scope.getFilename();
+
+    return /.*[\\/]browser_.+\.js$/.test(pathAndFilename);
+  },
+
+  /**
+   * ESLint may be executed from various places: from mach, at the root of the
+   * repository, or from a directory in the repository when, for instance,
+   * executed by a text editor's plugin.
+   * The value returned by context.getFileName() varies because of this.
+   * This helper function makes sure to return an absolute file path for the
+   * current context, by looking at process.cwd().
+   * @param {Context} context
+   * @return {String} The absolute path
+   */
+  getAbsoluteFilePath: function(context) {
+    var fileName = context.getFilename();
+    var cwd = process.cwd();
+
+    if (path.isAbsolute(fileName)) {
+      // Case 2: executed from the repo's root with mach:
+      //   fileName: /path/to/mozilla/repo/a/b/c/d.js
+      //   cwd: /path/to/mozilla/repo
+      return fileName;
+    } else {
+      // Case 1: executed form in a nested directory, e.g. from a text editor:
+      //   fileName: a/b/c/d.js
+      //   cwd: /path/to/mozilla/repo/a/b/c
+      var dirName = path.dirname(fileName);
+      return cwd.slice(0, cwd.length - dirName.length) + fileName;
+    }
   }
 };

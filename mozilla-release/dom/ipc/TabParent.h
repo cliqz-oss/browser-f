@@ -187,17 +187,16 @@ public:
     virtual bool RecvNotifyIMEPositionChange(const ContentCache& aContentCache,
                                              const widget::IMENotification& aEventMessage) override;
     virtual bool RecvOnEventNeedingAckHandled(const EventMessage& aMessage) override;
-    virtual bool RecvEndIMEComposition(const bool& aCancel,
-                                       bool* aNoCompositionEvent,
-                                       nsString* aComposition) override;
+    virtual bool RecvRequestIMEToCommitComposition(const bool& aCancel,
+                                                   bool* aIsCommitted,
+                                                   nsString* aCommittedString) override;
     virtual bool RecvStartPluginIME(const WidgetKeyboardEvent& aKeyboardEvent,
                                     const int32_t& aPanelX,
                                     const int32_t& aPanelY,
                                     nsString* aCommitted) override;
     virtual bool RecvSetPluginFocused(const bool& aFocused) override;
     virtual bool RecvGetInputContext(int32_t* aIMEEnabled,
-                                     int32_t* aIMEOpen,
-                                     intptr_t* aNativeIMEContext) override;
+                                     int32_t* aIMEOpen) override;
     virtual bool RecvSetInputContext(const int32_t& aIMEEnabled,
                                      const int32_t& aIMEOpen,
                                      const nsString& aType,
@@ -328,11 +327,11 @@ public:
                                                       const uint64_t& aObserverId) override;
     virtual bool RecvSynthesizeNativeTouchPoint(const uint32_t& aPointerId,
                                                 const TouchPointerState& aPointerState,
-                                                const nsIntPoint& aPointerScreenPoint,
+                                                const ScreenIntPoint& aPointerScreenPoint,
                                                 const double& aPointerPressure,
                                                 const uint32_t& aPointerOrientation,
                                                 const uint64_t& aObserverId) override;
-    virtual bool RecvSynthesizeNativeTouchTap(const nsIntPoint& aPointerScreenPoint,
+    virtual bool RecvSynthesizeNativeTouchTap(const ScreenIntPoint& aPointerScreenPoint,
                                               const bool& aLongTap,
                                               const uint64_t& aObserverId) override;
     virtual bool RecvClearNativeTouchSequence(const uint64_t& aObserverId) override;
@@ -634,6 +633,8 @@ private:
     bool mHasContentOpener;
 
     DebugOnly<int32_t> mActiveSupressDisplayportCount;
+
+    ShowInfo GetShowInfo();
 private:
     // This is used when APZ needs to find the TabParent associated with a layer
     // to dispatch events.

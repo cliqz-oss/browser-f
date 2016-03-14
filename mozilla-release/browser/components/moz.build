@@ -6,12 +6,12 @@
 
 DIRS += [
     'about',
+    'contextualidentity',
     'customizableui',
     'dirprovider',
     'downloads',
     'extensions',
     'feeds',
-    'loop',
     'migration',
     'newtab',
     'places',
@@ -22,7 +22,6 @@ DIRS += [
     'sessionstore',
     'shell',
     'selfsupport',
-    'tabview',
     'uitour',
     'translation',
 ]

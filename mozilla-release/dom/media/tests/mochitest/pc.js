@@ -62,6 +62,7 @@ function PeerConnectionTest(options) {
   options.h264 = "h264" in options ? options.h264 : false;
   options.bundle = "bundle" in options ? options.bundle : true;
   options.rtcpmux = "rtcpmux" in options ? options.rtcpmux : true;
+  options.opus = "opus" in options ? options.opus : true;
 
   if (typeof turnServers !== "undefined") {
     if ((!options.turn_disabled_local) && (turnServers.local)) {
@@ -1276,6 +1277,13 @@ PeerConnectionWrapper.prototype = {
       ok(anEvent.candidate.candidate.length > 0, "ICE candidate contains candidate");
       ok(anEvent.candidate.sdpMid.length > 0, "SDP mid not empty");
 
+      // only check the m-section for the updated default addr that corresponds
+      // with this candidate.
+      var mSections = this.localDescription.sdp.split("\r\nm=");
+      sdputils.checkSdpCLineNotDefault(
+        mSections[anEvent.candidate.sdpMLineIndex+1], this.label
+      );
+
       ok(typeof anEvent.candidate.sdpMLineIndex === 'number', "SDP MLine Index needs to exist");
       this._local_ice_candidates.push(anEvent.candidate);
       candidateHandler(this.label, anEvent.candidate);
@@ -1510,14 +1518,21 @@ PeerConnectionWrapper.prototype = {
         if (isWinXP) {
           todo(false, "Can't reliably test rtcp timestamps on WinXP (Bug 979649)");
         } else if (!twoMachines) {
-          ok(res.timestamp >= minimum,
-             "Valid " + (res.isRemote? "rtcp" : "rtp") + " timestamp " +
-                 res.timestamp + " >= " + minimum + " (" +
-                 (res.timestamp - minimum) + " ms)");
-          ok(res.timestamp <= nowish,
-             "Valid " + (res.isRemote? "rtcp" : "rtp") + " timestamp " +
-                 res.timestamp + " <= " + nowish + " (" +
-                 (res.timestamp - nowish) + " ms)");
+          // Bug 1225729: On android, sometimes the first RTCP of the first
+          // test run gets this value, likely because no RTP has been sent yet.
+          if (res.timestamp != 2085978496000) {
+            ok(res.timestamp >= minimum,
+               "Valid " + (res.isRemote? "rtcp" : "rtp") + " timestamp " +
+                   res.timestamp + " >= " + minimum + " (" +
+                   (res.timestamp - minimum) + " ms)");
+            ok(res.timestamp <= nowish,
+               "Valid " + (res.isRemote? "rtcp" : "rtp") + " timestamp " +
+                   res.timestamp + " <= " + nowish + " (" +
+                   (res.timestamp - nowish) + " ms)");
+          } else {
+            info("Bug 1225729: Uninitialized timestamp (" + res.timestamp +
+                 "), should be >=" + minimum + " and <= " + nowish);
+          }
         }
         if (!res.isRemote) {
           counters[res.type] = toNum(counters[res.type]) + 1;

@@ -42,6 +42,7 @@
 #include "nsThreadUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "nsComponentManagerUtils.h"
+#include "nsContentUtils.h"
 #include "nsXULAppAPI.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/SettingChangeNotificationBinding.h"
@@ -551,9 +552,7 @@ AudioManager::HandleAudioChannelProcessChanged()
   }
 
   RefPtr<AudioChannelService> service = AudioChannelService::GetOrCreate();
-  MOZ_ASSERT(service);
-
-  bool telephonyChannelIsActive = service->TelephonyChannelIsActive();
+  bool telephonyChannelIsActive = service && service->TelephonyChannelIsActive();
   telephonyChannelIsActive ? SetPhoneState(PHONE_STATE_IN_COMMUNICATION) :
                              SetPhoneState(PHONE_STATE_NORMAL);
 }
@@ -1037,6 +1036,7 @@ AudioManager::SetStreamVolumeIndex(int32_t aStream, uint32_t aIndex)
   }
 #endif
 
+  MaybeUpdateVolumeSettingToDatabase();
   return NS_OK;
 }
 
@@ -1152,16 +1152,6 @@ AudioManager::MaybeUpdateVolumeSettingToDatabase(bool aForce)
     lock->Set(gVolumeData[idx].mChannelName, value, nullptr, nullptr);
   }
 
-  // Clear device changed flags
-  for (uint32_t idx = 0; idx < MOZ_ARRAY_LENGTH(gVolumeData); ++idx) {
-    int32_t  streamType = gVolumeData[idx].mStreamType;
-    mStreamStates[streamType]->ClearDevicesChanged();
-  }
-
-  if (!mAudioOutProfileUpdated) {
-    return;
-  }
-
   // For reducing the code dependency, Gaia doesn't need to know the
   // profile volume, it only need to care about different volume categories.
   // However, we need to send the setting volume to the permanent database,
@@ -1170,6 +1160,10 @@ AudioManager::MaybeUpdateVolumeSettingToDatabase(bool aForce)
   for (uint32_t idx = 0; idx < MOZ_ARRAY_LENGTH(gVolumeData); ++idx) {
     int32_t  streamType = gVolumeData[idx].mStreamType;
     VolumeStreamState* streamState = mStreamStates[streamType].get();
+
+    if(!streamState->IsVolumeIndexesChanged()) {
+        continue;
+    }
 
     if (mAudioOutProfileUpdated & (1 << DEVICE_PRIMARY)) {
       volume = streamState->GetVolumeIndex(AUDIO_DEVICE_OUT_SPEAKER);
@@ -1197,6 +1191,12 @@ AudioManager::MaybeUpdateVolumeSettingToDatabase(bool aForce)
     }
   }
 
+  // Clear changed flags
+  for (uint32_t idx = 0; idx < MOZ_ARRAY_LENGTH(gVolumeData); ++idx) {
+    int32_t  streamType = gVolumeData[idx].mStreamType;
+    mStreamStates[streamType]->ClearDevicesChanged();
+    mStreamStates[streamType]->ClearVolumeIndexesChanged();
+  }
   // Clear mAudioOutProfileUpdated
   mAudioOutProfileUpdated = 0;
 }
@@ -1287,6 +1287,7 @@ AudioManager::SelectDeviceFromDevices(uint32_t aOutDevices)
        device &= AUDIO_DEVICE_OUT_ALL_A2DP;
     }
   }
+  MOZ_ASSERT(audio_is_output_device(device));
   return device;
 }
 AudioManager::VolumeStreamState::VolumeStreamState(AudioManager& aManager,
@@ -1295,6 +1296,7 @@ AudioManager::VolumeStreamState::VolumeStreamState(AudioManager& aManager,
   , mStreamType(aStreamType)
   , mLastDevices(0)
   , mIsDevicesChanged(true)
+  , mIsVolumeIndexesChanged(true)
 {
   InitStreamVolume();
 }
@@ -1314,6 +1316,18 @@ void
 AudioManager::VolumeStreamState::ClearDevicesChanged()
 {
   mIsDevicesChanged = false;
+}
+
+bool
+AudioManager::VolumeStreamState::IsVolumeIndexesChanged()
+{
+  return mIsVolumeIndexesChanged;
+}
+
+void
+AudioManager::VolumeStreamState::ClearVolumeIndexesChanged()
+{
+  mIsVolumeIndexesChanged = false;
 }
 
 void
@@ -1487,6 +1501,7 @@ AudioManager::VolumeStreamState::SetVolumeIndex(uint32_t aIndex,
 #if ANDROID_VERSION >= 17
   if (aUpdateCache) {
     mVolumeIndexes.Put(aDevice, aIndex);
+    mIsVolumeIndexesChanged = true;
   }
 
   rv = AudioSystem::setStreamVolumeIndex(
@@ -1497,6 +1512,7 @@ AudioManager::VolumeStreamState::SetVolumeIndex(uint32_t aIndex,
 #else
   if (aUpdateCache) {
     mVolumeIndexes.Put(AUDIO_DEVICE_OUT_DEFAULT, aIndex);
+    mIsVolumeIndexesChanged = true;
   }
   rv = AudioSystem::setStreamVolumeIndex(
          static_cast<audio_stream_type_t>(mStreamType),

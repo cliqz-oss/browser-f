@@ -1,4 +1,5 @@
-/* -*- Mode: C++; tab-width: 20; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 4 -*-
+ * vim: set ts=4 et sw=4 tw=80:
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -128,6 +129,10 @@ public:
         NS_ASSERTION(aPos < GetLength(), "aPos out of range");
         return mCharacterGlyphs[aPos].CharIsNewline();
     }
+    bool CharMayHaveEmphasisMark(uint32_t aPos) const {
+        NS_ASSERTION(aPos < GetLength(), "aPos out of range");
+        return mCharacterGlyphs[aPos].CharMayHaveEmphasisMark();
+    }
 
     // All uint32_t aStart, uint32_t aLength ranges below are restricted to
     // grapheme cluster boundaries! All offsets are in terms of the string
@@ -245,6 +250,16 @@ public:
               PropertyProvider *aProvider,
               gfxFloat *aAdvanceWidth, gfxTextContextPaint *aContextPaint,
               gfxTextRunDrawCallbacks *aCallbacks = nullptr);
+
+    /**
+     * Draws the emphasis marks for this text run. Uses only GetSpacing
+     * from aProvider. The provided point is the baseline origin of the
+     * line of emphasis marks.
+     */
+    void DrawEmphasisMarks(gfxContext* aContext, gfxTextRun* aMark,
+                           gfxFloat aMarkAdvance, gfxPoint aPt,
+                           uint32_t aStart, uint32_t aLength,
+                           PropertyProvider* aProvider);
 
     /**
      * Computes the ReflowMetrics for a substring.
@@ -475,7 +490,7 @@ public:
     void SortGlyphRuns();
     void SanitizeGlyphRuns();
 
-    CompressedGlyph* GetCharacterGlyphs() {
+    CompressedGlyph* GetCharacterGlyphs() final {
         NS_ASSERTION(mCharacterGlyphs, "failed to initialize mCharacterGlyphs");
         return mCharacterGlyphs;
     }
@@ -499,9 +514,8 @@ public:
     // Returns true if it was able to set simple glyph data for the space;
     // if it returns false, the caller needs to fall back to some other
     // means to create the necessary (detailed) glyph data.
-    bool SetSpaceGlyphIfSimple(gfxFont *aFont, gfxContext *aContext,
-                               uint32_t aCharIndex, char16_t aSpaceChar,
-                               uint16_t aOrientation);
+    bool SetSpaceGlyphIfSimple(gfxFont *aFont, uint32_t aCharIndex,
+                               char16_t aSpaceChar, uint16_t aOrientation);
 
     // Record the positions of specific characters that layout may need to
     // detect in the textrun, even though it doesn't have an explicit copy
@@ -510,26 +524,13 @@ public:
     // to "complex" ones as the Tab and Newline flags are not present in
     // simple CompressedGlyph records.
     void SetIsTab(uint32_t aIndex) {
-        CompressedGlyph *g = &mCharacterGlyphs[aIndex];
-        if (g->IsSimpleGlyph()) {
-            DetailedGlyph *details = AllocateDetailedGlyphs(aIndex, 1);
-            details->mGlyphID = g->GetSimpleGlyph();
-            details->mAdvance = g->GetSimpleAdvance();
-            details->mXOffset = details->mYOffset = 0;
-            SetGlyphs(aIndex, CompressedGlyph().SetComplex(true, true, 1), details);
-        }
-        g->SetIsTab();
+        EnsureComplexGlyph(aIndex).SetIsTab();
     }
     void SetIsNewline(uint32_t aIndex) {
-        CompressedGlyph *g = &mCharacterGlyphs[aIndex];
-        if (g->IsSimpleGlyph()) {
-            DetailedGlyph *details = AllocateDetailedGlyphs(aIndex, 1);
-            details->mGlyphID = g->GetSimpleGlyph();
-            details->mAdvance = g->GetSimpleAdvance();
-            details->mXOffset = details->mYOffset = 0;
-            SetGlyphs(aIndex, CompressedGlyph().SetComplex(true, true, 1), details);
-        }
-        g->SetIsNewline();
+        EnsureComplexGlyph(aIndex).SetIsNewline();
+    }
+    void SetNoEmphasisMark(uint32_t aIndex) {
+        EnsureComplexGlyph(aIndex).SetNoEmphasisMark();
     }
 
     /**
@@ -619,6 +620,24 @@ public:
         mShapingState = aShapingState;
     }
 
+    int32_t GetAdvanceForGlyph(uint32_t aIndex)
+    {
+        const CompressedGlyph& glyphData = mCharacterGlyphs[aIndex];
+        if (glyphData.IsSimpleGlyph()) {
+            return glyphData.GetSimpleAdvance();
+        }
+        uint32_t glyphCount = glyphData.GetGlyphCount();
+        if (!glyphCount) {
+            return 0;
+        }
+        const DetailedGlyph* details = GetDetailedGlyphs(aIndex);
+        int32_t advance = 0;
+        for (uint32_t j = 0; j < glyphCount; ++j, ++details) {
+            advance += details->mAdvance;
+        }
+        return advance;
+    }
+
 #ifdef DEBUG
     void Dump(FILE* aOutput);
 #endif
@@ -658,6 +677,12 @@ private:
                                    PropertyProvider *aProvider,
                                    uint32_t aSpacingStart, uint32_t aSpacingEnd,
                                    nsTArray<PropertyProvider::Spacing> *aSpacing);
+
+    CompressedGlyph& EnsureComplexGlyph(uint32_t aIndex)
+    {
+        gfxShapedText::EnsureComplexGlyph(aIndex, mCharacterGlyphs[aIndex]);
+        return mCharacterGlyphs[aIndex];
+    }
 
     //  **** ligature helpers ****
     // (Platforms do the actual ligaturization, but we need to do a bunch of stuff
@@ -727,7 +752,8 @@ public:
     gfxFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
                  const gfxFontStyle* aStyle,
                  gfxTextPerfMetrics* aTextPerf,
-                 gfxUserFontSet* aUserFontSet = nullptr);
+                 gfxUserFontSet* aUserFontSet,
+                 gfxFloat aDevToCssSize);
 
     virtual ~gfxFontGroup();
 
@@ -1027,6 +1053,7 @@ protected:
 
     gfxFloat mUnderlineOffset;
     gfxFloat mHyphenWidth;
+    gfxFloat mDevToCssSize;
 
     RefPtr<gfxUserFontSet> mUserFontSet;
     uint64_t mCurrGeneration;  // track the current user font set generation, rebuild font list if needed

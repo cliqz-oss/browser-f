@@ -83,6 +83,7 @@ public:
                               bool aMerge) override;
   NS_IMETHOD SetEmptyRequestHeader(const nsACString& aHeader) override;
   NS_IMETHOD RedirectTo(nsIURI *newURI) override;
+  NS_IMETHOD GetProtocolVersion(nsACString& aProtocolVersion) override;
   // nsIHttpChannelInternal
   NS_IMETHOD SetupFallbackChannel(const char *aFallbackKey) override;
   NS_IMETHOD GetLocalAddress(nsACString& addr) override;
@@ -169,7 +170,7 @@ private:
   void DoOnDataAvailable(nsIRequest* aRequest, nsISupports* aContext, nsIInputStream* aStream,
                          uint64_t offset, uint32_t count);
   void DoPreOnStopRequest(nsresult aStatus);
-  void DoOnStopRequest(nsIRequest* aRequest, nsISupports* aContext);
+  void DoOnStopRequest(nsIRequest* aRequest, nsresult aChannelStatus, nsISupports* aContext);
 
   // Discard the prior interception and continue with the original network request.
   void ResetInterception();
@@ -195,6 +196,8 @@ private:
   uint32_t     mCacheExpirationTime;
   nsCString    mCachedCharset;
   nsCOMPtr<nsISupports> mCacheKey;
+
+  nsCString mProtocolVersion;
 
   // If ResumeAt is called before AsyncOpen, we need to send extra data upstream
   bool mSendResumeAt;
@@ -232,6 +235,10 @@ private:
   // Set if the corresponding parent channel should force an interception to occur
   // before the network transaction is initiated.
   bool mShouldParentIntercept;
+
+  // Set if the corresponding parent channel should suspend after a response
+  // is synthesized.
+  bool mSuspendParentAfterSynthesizeResponse;
 
   // true after successful AsyncOpen until OnStopRequest completes.
   bool RemoteChannelExists() { return mIPCOpen && !mKeptAlive; }
@@ -278,6 +285,7 @@ private:
   // response headers.
   nsresult SetupRedirect(nsIURI* uri,
                          const nsHttpResponseHead* responseHead,
+                         const uint32_t& redirectFlags,
                          nsIChannel** outChannel);
 
   // Perform a redirection without communicating with the parent process at all.

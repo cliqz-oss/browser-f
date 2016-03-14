@@ -243,6 +243,17 @@ public:
   Matrix4x4 GetTransformToLastDispatchedPaint() const;
 
   /**
+   * Returns the number of CSS pixels of checkerboard according to the metrics
+   * in this APZC.
+   */
+  uint32_t GetCheckerboardMagnitude() const;
+
+  /**
+   * Report the number of CSSPixel-milliseconds of checkerboard to telemetry.
+   */
+  void ReportCheckerboard(const TimeStamp& aSampleTime);
+
+  /**
    * Returns whether or not the APZC is currently in a state of checkerboarding.
    * This is a simple computation based on the last-painted content and whether
    * the async transform has pushed it so far that it doesn't fully contain the
@@ -261,12 +272,6 @@ public:
     const ParentLayerPoint& aVelocity,
     double aEstimatedPaintDuration);
 
-  /**
-   * Send an mozbrowserasyncscroll event.
-   * *** The monitor must be held while calling this.
-   */
-  void SendAsyncScrollEvent();
-
   nsEventStatus HandleDragEvent(const MouseInput& aEvent,
                                 const AsyncDragMetrics& aDragMetrics);
 
@@ -274,7 +279,7 @@ public:
    * Handler for events which should not be intercepted by the touch listener.
    */
   nsEventStatus HandleInputEvent(const InputData& aEvent,
-                                 const Matrix4x4& aTransformToApzc);
+                                 const ScreenToParentLayerMatrix4x4& aTransformToApzc);
 
   /**
    * Handler for gesture events.
@@ -350,7 +355,7 @@ public:
    * To respect the lock ordering, mMonitor must NOT be held when calling
    * this function (since this function acquires the tree lock).
    */
-  Matrix4x4 GetTransformToThis() const;
+  ScreenToParentLayerMatrix4x4 GetTransformToThis() const;
 
   /**
    * Convert the vector |aVector|, rooted at the point |aAnchor|, from
@@ -618,14 +623,6 @@ protected:
   const RefPtr<InputQueue>& GetInputQueue() const;
 
   /**
-   * Timeout function for mozbrowserasyncscroll event. Because we throttle
-   * mozbrowserasyncscroll events in some conditions, this function ensures
-   * that the last mozbrowserasyncscroll event will be fired after a period of
-   * time.
-   */
-  void FireAsyncScrollOnTimeout();
-
-  /**
    * Convert ScreenPoint relative to the screen to CSSPoint relative
    * to the parent document. This excludes the transient compositor transform.
    * NOTE: This must be converted to CSSPoint relative to the child
@@ -728,22 +725,12 @@ private:
   // frame.
   TimeStamp mLastSampleTime;
 
+  // The last sample time at which we submitted a checkerboarding report.
+  TimeStamp mLastCheckerboardReport;
+
   // Stores the previous focus point if there is a pinch gesture happening. Used
   // to allow panning by moving multiple fingers (thus moving the focus point).
   ParentLayerPoint mLastZoomFocus;
-
-  // The last time and offset we fire the mozbrowserasyncscroll event when
-  // compositor has sampled the content transform for this frame.
-  TimeStamp mLastAsyncScrollTime;
-  CSSPoint mLastAsyncScrollOffset;
-
-  // The current offset drawn on the screen, it may not be sent since we have
-  // throttling policy for mozbrowserasyncscroll event.
-  CSSPoint mCurrentAsyncScrollOffset;
-
-  // The delay task triggered by the throttling mozbrowserasyncscroll event
-  // ensures the last mozbrowserasyncscroll event is always been fired.
-  CancelableTask* mAsyncScrollTimeoutTask;
 
   RefPtr<AsyncPanZoomAnimation> mAnimation;
 
@@ -766,11 +753,6 @@ protected:
     PANNING_LOCKED_Y,         /* as above for Y axis */
 
     PAN_MOMENTUM,             /* like PANNING, but controlled by momentum PanGestureInput events */
-
-    CROSS_SLIDING_X,          /* Panning disabled while user does a horizontal gesture
-                                 on a vertically-scrollable view. This used for the
-                                 Windows Metro "cross-slide" gesture. */
-    CROSS_SLIDING_Y,          /* as above for Y axis */
 
     PINCHING,                 /* nth touch-start, where n > 1. this mode allows pan and zoom */
     ANIMATING_ZOOM,           /* animated zoom to a new rect */
@@ -834,9 +816,9 @@ public:
   bool ArePointerEventsConsumable(TouchBlockState* aBlock, uint32_t aTouchPoints);
 
   /**
-   * Clear internal state relating to input handling.
+   * Clear internal state relating to touch input handling.
    */
-  void ResetInputState();
+  void ResetTouchInputState();
 
 private:
   void CancelAnimationAndGestureState();
@@ -846,11 +828,6 @@ private:
   bool HasReadyTouchBlock();
 
   PanGestureBlockState* CurrentPanGestureBlock();
-
-  /* ===================================================================
-   * The functions and members in this section are used to manage
-   * pan gestures.
-   */
 
 private:
   /* ===================================================================
@@ -906,6 +883,8 @@ private:
 
   // Returns whether overscroll is allowed during an event.
   bool AllowScrollHandoffInCurrentBlock() const;
+
+  void AcknowledgeScrollUpdate() const;
 
   /* ===================================================================
    * The functions and members in this section are used to make ancestor chains

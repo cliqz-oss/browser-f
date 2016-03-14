@@ -7,6 +7,7 @@
 #include "MediaDecoderStateMachine.h"
 #include "AbstractMediaDecoder.h"
 #include "SoftwareWebMVideoDecoder.h"
+#include "nsContentUtils.h"
 #include "WebMReader.h"
 #include "WebMBufferedParser.h"
 #include "gfx2DGlue.h"
@@ -39,8 +40,8 @@ using namespace gfx;
 using namespace layers;
 using namespace media;
 
-extern PRLogModuleInfo* gMediaDecoderLog;
-PRLogModuleInfo* gNesteggLog;
+extern LazyLogModule gMediaDecoderLog;
+LazyLogModule gNesteggLog("Nestegg");
 
 // Functions for reading and seeking using MediaResource required for
 // nestegg_io. The 'user data' passed to these functions is the
@@ -137,9 +138,6 @@ WebMReader::WebMReader(AbstractMediaDecoder* aDecoder)
   , mResource(aDecoder->GetResource())
 {
   MOZ_COUNT_CTOR(WebMReader);
-  if (!gNesteggLog) {
-    gNesteggLog = PR_NewLogModule("Nestegg");
-  }
 }
 
 WebMReader::~WebMReader()
@@ -405,15 +403,11 @@ WebMReader::RetrieveWebMMetadata(MediaInfo* aInfo)
     }
   }
 
+  mInfo.mMediaSeekable = nestegg_has_cues(mContext);
+
   *aInfo = mInfo;
 
   return NS_OK;
-}
-
-bool
-WebMReader::IsMediaSeekable()
-{
-  return mContext && nestegg_has_cues(mContext);
 }
 
 bool WebMReader::DecodeAudioPacket(NesteggPacketHolder* aHolder)
@@ -752,7 +746,7 @@ media::TimeIntervals WebMReader::GetBuffered()
 
   // Either we the file is not fully cached, or we couldn't find a duration in
   // the WebM bitstream.
-  nsTArray<MediaByteRange> ranges;
+  MediaByteRangeSet ranges;
   nsresult res = resource->GetCachedRanges(ranges);
   NS_ENSURE_SUCCESS(res, media::TimeIntervals::Invalid());
 
@@ -787,11 +781,11 @@ media::TimeIntervals WebMReader::GetBuffered()
   return buffered;
 }
 
-void WebMReader::NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset)
+void WebMReader::NotifyDataArrivedInternal()
 {
   MOZ_ASSERT(OnTaskQueue());
   AutoPinned<MediaResource> resource(mDecoder->GetResource());
-  nsTArray<MediaByteRange> byteRanges;
+  MediaByteRangeSet byteRanges;
   nsresult rv = resource->GetCachedRanges(byteRanges);
 
   if (NS_FAILED(rv)) {

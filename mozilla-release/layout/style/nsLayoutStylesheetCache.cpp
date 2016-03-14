@@ -141,12 +141,6 @@ CSSStyleSheet*
 nsLayoutStylesheetCache::HTMLSheet()
 {
   EnsureGlobal();
-
-  if (!gStyleCache->mHTMLSheet) {
-    LoadSheetURL("resource://gre-resources/html.css",
-                 gStyleCache->mHTMLSheet, eAgentSheetFeatures);
-  }
-
   return gStyleCache->mHTMLSheet;
 }
 
@@ -363,6 +357,8 @@ nsLayoutStylesheetCache::nsLayoutStylesheetCache()
   // per-profile, since they're profile-invariant.
   LoadSheetURL("resource://gre-resources/counterstyles.css",
                mCounterStylesSheet, eAgentSheetFeatures);
+  LoadSheetURL("resource://gre-resources/html.css",
+               mHTMLSheet, eAgentSheetFeatures);
   LoadSheetURL("chrome://global/content/minimal-xul.css",
                mMinimalXULSheet, eAgentSheetFeatures);
   LoadSheetURL("resource://gre-resources/quirk.css",
@@ -407,8 +403,10 @@ nsLayoutStylesheetCache::EnsureGlobal()
   // on (such as a pref that enables a property that a UA style sheet uses),
   // register DependentPrefChanged as a callback to ensure that the relevant
   // style sheets will be re-parsed.
+  // Preferences::RegisterCallback(&DependentPrefChanged,
+  //                               "layout.css.example-pref.enabled");
   Preferences::RegisterCallback(&DependentPrefChanged,
-                                "layout.css.ruby.enabled");
+                                "layout.css.grid.enabled");
 }
 
 void
@@ -811,10 +809,7 @@ nsLayoutStylesheetCache::DependentPrefChanged(const char* aPref, void* aData)
   // to be re-parsed by dropping the sheet from gCSSLoader's cache then
   // setting our cached sheet pointer to null.  This will only work for sheets
   // that are loaded lazily.
-
-  // for layout.css.ruby.enabled
-  InvalidateSheet(gStyleCache->mUASheet);
-  InvalidateSheet(gStyleCache->mHTMLSheet);
+  InvalidateSheet(gStyleCache->mUASheet); // for layout.css.grid.enabled
 }
 
 /* static */ void

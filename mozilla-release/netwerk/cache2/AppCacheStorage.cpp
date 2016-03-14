@@ -25,7 +25,7 @@ NS_IMPL_ISUPPORTS_INHERITED0(AppCacheStorage, CacheStorage)
 
 AppCacheStorage::AppCacheStorage(nsILoadContextInfo* aInfo,
                                  nsIApplicationCache* aAppCache)
-: CacheStorage(aInfo, true /* disk */, false /* lookup app cache */, false /* skip size check */)
+: CacheStorage(aInfo, true /* disk */, false /* lookup app cache */, false /* skip size check */, false /* pin */)
 , mAppCache(aAppCache)
 {
   MOZ_COUNT_CTOR(AppCacheStorage);
@@ -126,7 +126,7 @@ NS_IMETHODIMP AppCacheStorage::AsyncEvictStorage(nsICacheEntryDoomCallback* aCal
   if (!mAppCache) {
     // TODO - bug 1165256, have an API on nsIApplicationCacheService that takes
     // optional OAs and decides internally what to do.
-    const OriginAttributes* oa = LoadInfo()->OriginAttributesPtr();
+    const NeckoOriginAttributes* oa = LoadInfo()->OriginAttributesPtr();
     if (oa->mAppId == nsILoadContextInfo::NO_APP_ID && !oa->mInBrowser) {
       // Clear everything.
       nsCOMPtr<nsICacheService> serv =

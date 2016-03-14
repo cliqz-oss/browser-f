@@ -74,6 +74,7 @@
     _(CallGeneric)                  \
     _(CallNative)                   \
     _(ApplyArgsGeneric)             \
+    _(ApplyArrayGeneric)            \
     _(Bail)                         \
     _(Unreachable)                  \
     _(EncodeSnapshot)               \
@@ -89,7 +90,6 @@
     _(SetArgumentsObjectArg)        \
     _(ReturnFromCtor)               \
     _(ComputeThis)                  \
-    _(LoadArrowThis)                \
     _(BitNotI)                      \
     _(BitNotV)                      \
     _(BitOpI)                       \
@@ -257,6 +257,7 @@
     _(StoreTypedArrayElementHole)   \
     _(StoreTypedArrayElementStatic) \
     _(AtomicIsLockFree)             \
+    _(GuardSharedTypedArray)        \
     _(CompareExchangeTypedArrayElement) \
     _(AtomicExchangeTypedArrayElement) \
     _(AtomicTypedArrayElementBinop) \
@@ -267,6 +268,7 @@
     _(ClampVToUint8)                \
     _(LoadFixedSlotV)               \
     _(LoadFixedSlotT)               \
+    _(LoadFixedSlotAndUnbox)        \
     _(StoreFixedSlotV)              \
     _(StoreFixedSlotT)              \
     _(FunctionEnvironment)          \
@@ -364,6 +366,7 @@
     _(Debugger)                     \
     _(NewTarget)                    \
     _(ArrowNewTarget)               \
-    _(CheckReturn)
+    _(CheckReturn)                  \
+    _(CheckObjCoercible)
 
 #endif /* jit_shared_LOpcodes_shared_h */

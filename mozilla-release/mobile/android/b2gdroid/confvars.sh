@@ -13,7 +13,7 @@ MOZ_APP_UA_NAME=Firefox
 
 MOZ_UA_OS_AGNOSTIC=1
 
-MOZ_B2G_VERSION=2.5.0.0-prerelease
+MOZ_B2G_VERSION=2.6.0.0-prerelease
 MOZ_B2G_OS_NAME=Boot2Gecko
 
 MOZ_BRANDING_DIRECTORY=mobile/android/b2gdroid/branding/unofficial
@@ -48,6 +48,7 @@ MOZ_PLACES=
 MOZ_SOCIAL=
 MOZ_ANDROID_HISTORY=1
 MOZ_DISABLE_EXPORT_JS=1
+MOZ_ANDROID_APZ=1
 
 # use custom widget for html:select
 MOZ_USE_NATIVE_POPUP_WINDOWS=1
@@ -91,9 +92,6 @@ fi
 # Mark as WebGL conformant
 MOZ_WEBGL_CONFORMANT=1
 
-# Enable the share handler.
-MOZ_ANDROID_SHARE_OVERLAY=1
-
 # Enable Tab Queue
 if test "$NIGHTLY_BUILD"; then
   MOZ_ANDROID_TAB_QUEUE=1
@@ -101,11 +99,6 @@ fi
 
 # Use the low-memory GC tuning.
 export JS_GC_SMALL_CHUNK_SIZE=1
-
-# Enable FxAccount Avatar
-if test "$NIGHTLY_BUILD"; then
-  MOZ_ANDROID_FIREFOX_ACCOUNT_PROFILES=1
-fi
 
 # Enable checking that add-ons are signed by the trusted root
 MOZ_ADDON_SIGNING=1

@@ -139,6 +139,8 @@
 <!ENTITY newmsgButton.accesskey                         "V">
 <!ENTITY newIM.label                                    "Messenger">
 <!ENTITY newIM.accesskey                                "M">
+<!ENTITY printButton.label                              "Drucken…">
+<!ENTITY printButton.accesskey                          "D">
 <!ENTITY deleteButton2.label                            "Löschen">
 <!ENTITY deleteButton2.accesskey                        "ö">
 

@@ -16,14 +16,10 @@
 #include "nsIDocument.h"
 
 #undef LOG
-PRLogModuleInfo*
+mozilla::LogModule*
 GetSpeechSynthLog()
 {
-  static PRLogModuleInfo* sLog = nullptr;
-
-  if (!sLog) {
-    sLog = PR_NewLogModule("SpeechSynthesis");
-  }
+  static mozilla::LazyLogModule sLog("SpeechSynthesis");
 
   return sLog;
 }
@@ -196,7 +192,7 @@ SpeechSynthesis::Pause()
     return;
   }
 
-  if (mCurrentTask &&
+  if (mCurrentTask && !mSpeechQueue.IsEmpty() &&
       mSpeechQueue.ElementAt(0)->GetState() != SpeechSynthesisUtterance::STATE_ENDED) {
     mCurrentTask->Pause();
   } else {

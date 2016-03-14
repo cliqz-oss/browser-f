@@ -22,8 +22,8 @@
 #include "nsIPrintSettings.h"
 
 #include "mozilla/Logging.h"
-extern PRLogModuleInfo *GetLayoutPrintingLog();
-#define PR_PL(_p1)  MOZ_LOG(GetLayoutPrintingLog(), mozilla::LogLevel::Debug, _p1)
+extern mozilla::LazyLogModule gLayoutPrintingLog;
+#define PR_PL(_p1)  MOZ_LOG(gLayoutPrintingLog, mozilla::LogLevel::Debug, _p1)
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -626,7 +626,8 @@ nsPageFrame::PaintHeaderFooter(nsRenderingContext& aRenderingContext,
   nsRect rect(aPt, mRect.Size());
   aRenderingContext.ThebesContext()->SetColor(Color(0.f, 0.f, 0.f));
 
-  gfxContextAutoDisableSubpixelAntialiasing disable(aRenderingContext.ThebesContext(), aDisableSubpixelAA);
+  DrawTargetAutoDisableSubpixelAntialiasing
+    disable(aRenderingContext.GetDrawTarget(), aDisableSubpixelAA);
 
   // Get the FontMetrics to determine width.height of strings
   RefPtr<nsFontMetrics> fontMet;

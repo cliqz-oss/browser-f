@@ -126,32 +126,6 @@ ThrowInvalidThis(JSContext* aCx, const JS::CallArgs& aArgs,
 }
 
 bool
-ThrowMethodFailed(JSContext* cx, ErrorResult& rv)
-{
-  if (rv.IsUncatchableException()) {
-    // Nuke any existing exception on aCx, to make sure we're uncatchable.
-    JS_ClearPendingException(cx);
-    // Don't do any reporting.  Just return false, to create an
-    // uncatchable exception.
-    return false;
-  }
-  if (rv.IsErrorWithMessage()) {
-    rv.ReportErrorWithMessage(cx);
-    return false;
-  }
-  if (rv.IsJSException()) {
-    rv.ReportJSException(cx);
-    return false;
-  }
-  if (rv.IsDOMException()) {
-    rv.ReportDOMException(cx);
-    return false;
-  }
-  rv.ReportGenericError(cx);
-  return false;
-}
-
-bool
 ThrowNoSetterArg(JSContext* aCx, prototypes::ID aProtoId)
 {
   nsPrintfCString errorMessage("%s attribute setter",
@@ -216,9 +190,9 @@ ErrorResult::DeserializeMessage(const IPC::Message* aMsg, void** aIter)
 }
 
 void
-ErrorResult::ReportErrorWithMessage(JSContext* aCx)
+ErrorResult::SetPendingExceptionWithMessage(JSContext* aCx)
 {
-  MOZ_ASSERT(mMessage, "ReportErrorWithMessage() can be called only once");
+  MOZ_ASSERT(mMessage, "SetPendingExceptionWithMessage() can be called only once");
   MOZ_ASSERT(mUnionState == HasMessage);
 
   Message* message = mMessage;
@@ -235,6 +209,7 @@ ErrorResult::ReportErrorWithMessage(JSContext* aCx)
                               argCount > 0 ? args : nullptr);
 
   ClearMessage();
+  mResult = NS_OK;
 }
 
 void
@@ -274,7 +249,7 @@ ErrorResult::ThrowJSException(JSContext* cx, JS::Handle<JS::Value> exn)
 }
 
 void
-ErrorResult::ReportJSException(JSContext* cx)
+ErrorResult::SetPendingJSException(JSContext* cx)
 {
   MOZ_ASSERT(!mMightHaveUnreportedJSException,
              "Why didn't you tell us you planned to handle JS exceptions?");
@@ -289,25 +264,6 @@ ErrorResult::ReportJSException(JSContext* cx)
   // what, go ahead and unroot mJSException.
   js::RemoveRawValueRoot(cx, &mJSException);
 
-  // We no longer have a useful exception but we do want to signal that an error
-  // occured.
-  mResult = NS_ERROR_FAILURE;
-#ifdef DEBUG
-  mUnionState = HasNothing;
-#endif // DEBUG
-}
-
-void
-ErrorResult::StealJSException(JSContext* cx,
-                              JS::MutableHandle<JS::Value> value)
-{
-  MOZ_ASSERT(!mMightHaveUnreportedJSException,
-             "Must call WouldReportJSException unconditionally in all codepaths that might call StealJSException");
-  MOZ_ASSERT(IsJSException(), "No exception to steal");
-  MOZ_ASSERT(mUnionState == HasJSException);
-
-  value.set(mJSException);
-  js::RemoveRawValueRoot(cx, &mJSException);
   mResult = NS_OK;
 #ifdef DEBUG
   mUnionState = HasNothing;
@@ -367,14 +323,16 @@ ErrorResult::ThrowDOMException(nsresult rv, const nsACString& message)
 }
 
 void
-ErrorResult::ReportDOMException(JSContext* cx)
+ErrorResult::SetPendingDOMException(JSContext* cx)
 {
-  MOZ_ASSERT(mDOMExceptionInfo, "ReportDOMException() can be called only once");
+  MOZ_ASSERT(mDOMExceptionInfo,
+             "SetPendingDOMException() can be called only once");
   MOZ_ASSERT(mUnionState == HasDOMExceptionInfo);
 
   dom::Throw(cx, mDOMExceptionInfo->mRv, mDOMExceptionInfo->mMessage);
 
   ClearDOMExceptionInfo();
+  mResult = NS_OK;
 }
 
 void
@@ -408,12 +366,13 @@ ErrorResult::ClearUnionData()
 }
 
 void
-ErrorResult::ReportGenericError(JSContext* cx)
+ErrorResult::SetPendingGenericErrorException(JSContext* cx)
 {
   MOZ_ASSERT(!IsErrorWithMessage());
   MOZ_ASSERT(!IsJSException());
   MOZ_ASSERT(!IsDOMException());
   dom::Throw(cx, ErrorCode());
+  mResult = NS_OK;
 }
 
 ErrorResult&
@@ -500,6 +459,39 @@ ErrorResult::SuppressException()
   // We don't use AssignErrorCode, because we want to override existing error
   // states, which AssignErrorCode is not allowed to do.
   mResult = NS_OK;
+}
+
+void
+ErrorResult::SetPendingException(JSContext* cx)
+{
+  if (IsUncatchableException()) {
+    // Nuke any existing exception on cx, to make sure we're uncatchable.
+    JS_ClearPendingException(cx);
+    // Don't do any reporting.  Just return, to create an
+    // uncatchable exception.
+    mResult = NS_OK;
+    return;
+  }
+  if (IsJSContextException()) {
+    // Whatever we need to throw is on the JSContext already.  We
+    // can't assert that there is a pending exception on it, though,
+    // because in the uncatchable exception case there won't be one.
+    mResult = NS_OK;
+    return;
+  }
+  if (IsErrorWithMessage()) {
+    SetPendingExceptionWithMessage(cx);
+    return;
+  }
+  if (IsJSException()) {
+    SetPendingJSException(cx);
+    return;
+  }
+  if (IsDOMException()) {
+    SetPendingDOMException(cx);
+    return;
+  }
+  SetPendingGenericErrorException(cx);
 }
 
 namespace dom {
@@ -1029,7 +1021,7 @@ QueryInterface(JSContext* cx, unsigned argc, JS::Value* vp)
   // unwrap.
   JS::Rooted<JSObject*> origObj(cx, &thisv.toObject());
   JS::Rooted<JSObject*> obj(cx, js::CheckedUnwrap(origObj,
-                                                  /* stopAtOuter = */ false));
+                                                  /* stopAtWindowProxy = */ false));
   if (!obj) {
       JS_ReportError(cx, "Permission denied to access object");
       return false;
@@ -1557,7 +1549,7 @@ XrayResolveOwnProperty(JSContext* cx, JS::Handle<JSObject*> wrapper,
 
     // For non-global instance Xrays there are no other properties, so return
     // here for them.
-    if (type != eGlobalInstance || !GlobalPropertiesAreOwn()) {
+    if (type != eGlobalInstance) {
       return true;
     }
   } else if (type == eInterface) {
@@ -1580,7 +1572,7 @@ XrayResolveOwnProperty(JSContext* cx, JS::Handle<JSObject*> wrapper,
 
     // The properties for globals live on the instance, so return here as there
     // are no properties on their interface prototype object.
-    if (type == eGlobalInterfacePrototype && GlobalPropertiesAreOwn()) {
+    if (type == eGlobalInterfacePrototype) {
       return true;
     }
   }
@@ -1667,14 +1659,14 @@ XrayOwnPropertyKeys(JSContext* cx, JS::Handle<JSObject*> wrapper,
   if (IsInstance(type)) {
     ADD_KEYS_IF_DEFINED(unforgeableMethod);
     ADD_KEYS_IF_DEFINED(unforgeableAttribute);
-    if (type == eGlobalInstance && GlobalPropertiesAreOwn()) {
+    if (type == eGlobalInstance) {
       ADD_KEYS_IF_DEFINED(method);
       ADD_KEYS_IF_DEFINED(attribute);
     }
   } else if (type == eInterface) {
     ADD_KEYS_IF_DEFINED(staticMethod);
     ADD_KEYS_IF_DEFINED(staticAttribute);
-  } else if (type != eGlobalInterfacePrototype || !GlobalPropertiesAreOwn()) {
+  } else if (type != eGlobalInterfacePrototype) {
     MOZ_ASSERT(IsInterfacePrototype(type));
     ADD_KEYS_IF_DEFINED(method);
     ADD_KEYS_IF_DEFINED(attribute);
@@ -1765,7 +1757,7 @@ XrayOwnPropertyKeys(JSContext* cx, JS::Handle<JSObject*> wrapper,
     }
   }
 
-  return (type == eGlobalInterfacePrototype && GlobalPropertiesAreOwn()) ||
+  return type == eGlobalInterfacePrototype ||
          XrayOwnNativePropertyKeys(cx, wrapper, nativePropertyHooks, type,
                                    obj, flags, props);
 }
@@ -2039,7 +2031,7 @@ GlobalObject::GlobalObject(JSContext* aCx, JSObject* aObject)
   MOZ_ASSERT(mCx);
   JS::Rooted<JSObject*> obj(aCx, aObject);
   if (js::IsWrapper(obj)) {
-    obj = js::CheckedUnwrap(obj, /* stopAtOuter = */ false);
+    obj = js::CheckedUnwrap(obj, /* stopAtWindowProxy = */ false);
     if (!obj) {
       // We should never end up here on a worker thread, since there shouldn't
       // be any security wrappers to worry about.
@@ -2110,7 +2102,8 @@ InterfaceHasInstance(JSContext* cx, JS::Handle<JSObject*> obj,
   const DOMIfaceAndProtoJSClass* clasp =
     DOMIfaceAndProtoJSClass::FromJSClass(js::GetObjectClass(obj));
 
-  const DOMJSClass* domClass = GetDOMClass(js::UncheckedUnwrap(instance, /* stopAtOuter = */ false));
+  const DOMJSClass* domClass =
+    GetDOMClass(js::UncheckedUnwrap(instance, /* stopAtWindowProxy = */ false));
 
   MOZ_ASSERT(!domClass || clasp->mPrototypeID != prototypes::id::_ID_Count,
              "Why do we have a hasInstance hook if we don't have a prototype "
@@ -2541,6 +2534,55 @@ CheckAllPermissions(JSContext* aCx, JSObject* aObj, const char* const aPermissio
   return true;
 }
 
+bool
+IsNonExposedGlobal(JSContext* aCx, JSObject* aGlobal,
+                   uint32_t aNonExposedGlobals)
+{
+  MOZ_ASSERT(aNonExposedGlobals, "Why did we get called?");
+  MOZ_ASSERT((aNonExposedGlobals &
+              ~(GlobalNames::Window |
+                GlobalNames::BackstagePass |
+                GlobalNames::DedicatedWorkerGlobalScope |
+                GlobalNames::SharedWorkerGlobalScope |
+                GlobalNames::ServiceWorkerGlobalScope |
+                GlobalNames::WorkerDebuggerGlobalScope)) == 0,
+             "Unknown non-exposed global type");
+
+  const char* name = js::GetObjectClass(aGlobal)->name;
+
+  if ((aNonExposedGlobals & GlobalNames::Window) &&
+      !strcmp(name, "Window")) {
+    return true;
+  }
+
+  if ((aNonExposedGlobals & GlobalNames::BackstagePass) &&
+      !strcmp(name, "BackstagePass")) {
+    return true;
+  }
+
+  if ((aNonExposedGlobals & GlobalNames::DedicatedWorkerGlobalScope) &&
+      !strcmp(name, "DedicatedWorkerGlobalScope")) {
+    return true;
+  }
+
+  if ((aNonExposedGlobals & GlobalNames::SharedWorkerGlobalScope) &&
+      !strcmp(name, "SharedWorkerGlobalScope")) {
+    return true;
+  }
+
+  if ((aNonExposedGlobals & GlobalNames::ServiceWorkerGlobalScope) &&
+      !strcmp(name, "ServiceWorkerGlobalScope")) {
+    return true;
+  }
+
+  if ((aNonExposedGlobals & GlobalNames::WorkerDebuggerGlobalScope) &&
+      !strcmp(name, "WorkerDebuggerGlobalScopex")) {
+    return true;
+  }
+
+  return false;
+}
+
 void
 HandlePrerenderingViolation(nsPIDOMWindow* aWindow)
 {
@@ -2768,12 +2810,21 @@ ConvertExceptionToPromise(JSContext* cx,
   }
 
   JS_ClearPendingException(cx);
+
+  nsCOMPtr<nsIGlobalObject> globalObj =
+    do_QueryInterface(global.GetAsSupports());
+  if (!globalObj) {
+    ErrorResult rv;
+    rv.Throw(NS_ERROR_UNEXPECTED);
+    return !rv.MaybeSetPendingException(cx);
+  }
+
   ErrorResult rv;
-  RefPtr<Promise> promise = Promise::Reject(global, exn, rv);
-  if (rv.Failed()) {
-    // We just give up.  Make sure to not leak memory on the
-    // ErrorResult, but then just put the original exception back.
-    ThrowMethodFailed(cx, rv);
+  RefPtr<Promise> promise = Promise::Reject(globalObj, cx, exn, rv);
+  if (rv.MaybeSetPendingException(cx)) {
+    // We just give up.  We put the exception from the ErrorResult on
+    // the JSContext just to make sure to not leak memory on the
+    // ErrorResult, but now just put the original exception back.
     JS_SetPendingException(cx, exn);
     return false;
   }
@@ -2941,7 +2992,7 @@ GetMaplikeSetlikeBackingObject(JSContext* aCx, JS::Handle<JSObject*> aObj,
 {
   JS::Rooted<JSObject*> reflector(aCx);
   reflector = IsDOMObject(aObj) ? aObj : js::UncheckedUnwrap(aObj,
-                                                             /* stopAtOuter = */ false);
+                                                             /* stopAtWindowProxy = */ false);
 
   // Retrieve the backing object from the reserved slot on the maplike/setlike
   // object. If it doesn't exist yet, create it.
@@ -3151,14 +3202,6 @@ DeprecationWarning(JSContext* aCx, JSObject* aObject,
   if (window && window->GetExtantDoc()) {
     window->GetExtantDoc()->WarnOnceAbout(aOperation);
   }
-}
-
-bool
-ObjectToOuterObjectValue(JSContext* cx, JS::Handle<JSObject*> obj, JS::MutableHandle<JS::Value> vp)
-{
-  JSObject* outer = JS_ObjectToOuterObject(cx, obj);
-  vp.setObject(*outer);
-  return true;
 }
 
 } // namespace dom

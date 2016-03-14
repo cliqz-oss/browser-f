@@ -319,7 +319,9 @@ class ScriptMixin(PlatformMixin):
         .. _urllib2.urlopen:
         https://docs.python.org/2/library/urllib2.html#urllib2.urlopen
         """
-        return urllib2.urlopen(url, **kwargs)
+        # http://bugs.python.org/issue13359 - urllib2 does not automatically quote the URL
+        url_quoted = urllib2.quote(url, safe='%/:=&?~#+!$,;\'@()*[]|')
+        return urllib2.urlopen(url_quoted, **kwargs)
 
     def _download_file(self, url, file_name):
         """ Helper script for download_file()
@@ -1107,6 +1109,7 @@ class ScriptMixin(PlatformMixin):
                     self.info("Automation Error: mozprocess timed out after %s seconds running %s" % (str(output_timeout), str(command)))
 
                 p = ProcessHandler(command,
+                                   shell=shell,
                                    env=env,
                                    cwd=cwd,
                                    storeOutput=False,

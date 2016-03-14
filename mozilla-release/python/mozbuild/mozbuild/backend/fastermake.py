@@ -6,15 +6,13 @@ from __future__ import absolute_import, unicode_literals, print_function
 
 from mozbuild.backend.common import CommonBackend
 from mozbuild.frontend.data import (
+    ChromeManifestEntry,
     ContextDerived,
     Defines,
-    DistFiles,
+    FinalTargetPreprocessedFiles,
     FinalTargetFiles,
     JARManifest,
-    JavaScriptModules,
-    JsPreferenceFile,
-    Resources,
-    VariablePassthru,
+    XPIDLFile,
 )
 from mozbuild.jar import JarManifestParser
 from mozbuild.makeutil import Makefile
@@ -28,19 +26,6 @@ import os
 import sys
 
 
-class OverwriteInstallManifest(InstallManifest):
-    def _add_entry(self, dest, entry):
-        # Because of bug 1210703, we can't let the default behavior of
-        # InstallManifest._add_entry, which is to error out.
-        # To match the current behavior of the recursive make libs tier, we
-        # keep the last one given, but still warn about it.
-        if dest in self._dests:
-            print('Warning: Item already in manifest: %s' % dest,
-                  file=sys.stderr)
-
-        self._dests[dest] = entry
-
-
 class FasterMakeBackend(CommonBackend):
     def _init(self):
         super(FasterMakeBackend, self)._init()
@@ -50,9 +35,11 @@ class FasterMakeBackend(CommonBackend):
 
         self._manifest_entries = OrderedDefaultDict(list)
 
-        self._install_manifests = OrderedDefaultDict(OverwriteInstallManifest)
+        self._install_manifests = OrderedDefaultDict(InstallManifest)
 
         self._dependencies = OrderedDefaultDict(list)
+
+        self._has_xpidl = False
 
     def _add_preprocess(self, obj, path, dest, target=None, **kwargs):
         if target is None:
@@ -87,98 +74,37 @@ class FasterMakeBackend(CommonBackend):
                 obj.install_target.startswith('dist/bin'):
             self._consume_jar_manifest(obj, defines)
 
-        elif isinstance(obj, VariablePassthru) and \
+        elif isinstance(obj, (FinalTargetFiles,
+                              FinalTargetPreprocessedFiles)) and \
                 obj.install_target.startswith('dist/bin'):
-            for f in obj.variables.get('EXTRA_COMPONENTS', {}):
-                path = mozpath.join(obj.install_target, 'components',
-                                    mozpath.basename(f))
-                self._install_manifests[obj.install_target].add_symlink(
-                    mozpath.join(obj.srcdir, f),
-                    mozpath.join('components', mozpath.basename(f))
-                )
-                if f.endswith('.manifest'):
-                    manifest = mozpath.join(obj.install_target,
-                                            'chrome.manifest')
-                    self._manifest_entries[manifest].append(
-                        'manifest components/%s' % mozpath.basename(f))
-
-            for f in obj.variables.get('EXTRA_PP_COMPONENTS', {}):
-                self._add_preprocess(obj, f, 'components', defines=defines)
-
-                if f.endswith('.manifest'):
-                    manifest = mozpath.join(obj.install_target,
-                                            'chrome.manifest')
-                    self._manifest_entries[manifest].append(
-                        'manifest components/%s' % mozpath.basename(f))
-
-        elif isinstance(obj, JavaScriptModules) and \
-                obj.install_target.startswith('dist/bin'):
-            for path, strings in obj.modules.walk():
-                base = mozpath.join('modules', path)
-                for f in strings:
-                    if obj.flavor == 'extra':
-                        self._install_manifests[obj.install_target].add_symlink(
-                            mozpath.join(obj.srcdir, f),
-                            mozpath.join(base, mozpath.basename(f))
-                        )
-                    elif obj.flavor == 'extra_pp':
-                        self._add_preprocess(obj, f, base, defines=defines)
-
-        elif isinstance(obj, JsPreferenceFile) and \
-                obj.install_target.startswith('dist/bin'):
-            # The condition for the directory value in config/rules.mk is:
-            # ifneq (,$(DIST_SUBDIR)$(XPI_NAME))
-            # - when XPI_NAME is set, obj.install_target will start with
-            # dist/xpi-stage
-            # - when DIST_SUBDIR is set, obj.install_target will start with
-            # dist/bin/$(DIST_SUBDIR)
-            # So an equivalent condition that is not cumbersome for us and that
-            # is enough at least for now is checking if obj.install_target is
-            # different from dist/bin.
-            if obj.install_target == 'dist/bin':
-                pref_dir = 'defaults/pref'
-            else:
-                pref_dir = 'defaults/preferences'
-
-            dest = mozpath.join(obj.install_target, pref_dir,
-                                mozpath.basename(obj.path))
-            # We preprocess these, but they don't necessarily have preprocessor
-            # directives, so tell the preprocessor to not complain about that.
-            self._add_preprocess(obj, obj.path, pref_dir, defines=defines,
-                                 silence_missing_directive_warnings=True)
-
-        elif isinstance(obj, Resources) and \
-                obj.install_target.startswith('dist/bin'):
-            for path, strings in obj.resources.walk():
-                base = mozpath.join('res', path)
-                for f in strings:
-                    flags = strings.flags_for(f)
-                    if flags and flags.preprocess:
-                        self._add_preprocess(obj, f, base, marker='%',
-                                             defines=obj.defines)
+            for path, files in obj.files.walk():
+                for f in files:
+                    if isinstance(obj, FinalTargetPreprocessedFiles):
+                        self._add_preprocess(obj, f.full_path, path,
+                                             defines=defines)
                     else:
                         self._install_manifests[obj.install_target].add_symlink(
-                            mozpath.join(obj.srcdir, f),
-                            mozpath.join(base, mozpath.basename(f))
+                            f.full_path,
+                            mozpath.join(path, mozpath.basename(f))
                         )
 
-        elif isinstance(obj, FinalTargetFiles) and \
+        elif isinstance(obj, ChromeManifestEntry) and \
                 obj.install_target.startswith('dist/bin'):
-            for path, strings in obj.files.walk():
-                base = mozpath.join(obj.install_target, path)
-                for f in strings:
-                    self._install_manifests[obj.install_target].add_symlink(
-                        mozpath.join(obj.srcdir, f),
-                        mozpath.join(path, mozpath.basename(f))
-                    )
+            top_level = mozpath.join(obj.install_target, 'chrome.manifest')
+            if obj.path != top_level:
+                entry = 'manifest %s' % mozpath.relpath(obj.path,
+                                                        obj.install_target)
+                if entry not in self._manifest_entries[top_level]:
+                    self._manifest_entries[top_level].append(entry)
+            self._manifest_entries[obj.path].append(str(obj.entry))
 
-        elif isinstance(obj, DistFiles) and \
-                obj.install_target.startswith('dist/bin'):
-            # We preprocess these, but they don't necessarily have preprocessor
-            # directives, so tell the preprocessor to not complain about that.
-            for f in obj.files:
-                self._add_preprocess(obj, f, '', defines=defines,
-                                     silence_missing_directive_warnings=True)
+        elif isinstance(obj, XPIDLFile):
+            self._has_xpidl = True
+            # XPIDL are emitted before Defines, which breaks the assert in the
+            # branch for Defines. OTOH, we don't actually care about the
+            # XPIDLFile objects just yet, so we can just pretend we didn't see
+            # an object in the directory yet.
+            return True
 
         else:
             # We currently ignore a lot of object types, so just acknowledge
@@ -207,17 +133,21 @@ class FasterMakeBackend(CommonBackend):
         )
         pp.out = JarManifestParser()
         pp.do_include(obj.path)
+        self.backend_input_files |= pp.includes
 
         for jarinfo in pp.out:
             install_target = obj.install_target
             if jarinfo.base:
-                install_target = mozpath.join(install_target, jarinfo.base)
+                install_target = mozpath.normpath(
+                    mozpath.join(install_target, jarinfo.base))
             for e in jarinfo.entries:
                 if e.is_locale:
-                    src = mozpath.join(
-                        jarinfo.relativesrcdir or mozpath.dirname(obj.path),
-                        'en-US',
-                        e.source)
+                    if jarinfo.relativesrcdir:
+                        path = mozpath.join(self.environment.topsrcdir,
+                                            jarinfo.relativesrcdir)
+                    else:
+                        path = mozpath.dirname(obj.path)
+                    src = mozpath.join( path, 'en-US', e.source)
                 elif e.source.startswith('/'):
                     src = mozpath.join(self.environment.topsrcdir,
                                        e.source[1:])
@@ -294,6 +224,9 @@ class FasterMakeBackend(CommonBackend):
         mk.create_rule(['default'])
         mk.add_statement('TOPSRCDIR = %s' % self.environment.topsrcdir)
         mk.add_statement('TOPOBJDIR = %s' % self.environment.topobjdir)
+        mk.add_statement('BACKEND = %s' % self._backend_output_list_file)
+        if not self._has_xpidl:
+            mk.add_statement('NO_XPIDL = 1')
 
         # Add a few necessary variables inherited from configure
         for var in (
@@ -323,6 +256,10 @@ class FasterMakeBackend(CommonBackend):
         for target, deps in self._dependencies.iteritems():
             mk.create_rule([target]).add_dependencies(
                 '$(TOPOBJDIR)/%s' % d for d in deps)
+
+        # Add backend dependencies:
+        mk.create_rule([self._backend_output_list_file]).add_dependencies(
+            self.backend_input_files)
 
         mk.add_statement('include $(TOPSRCDIR)/config/faster/rules.mk')
 

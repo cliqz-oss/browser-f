@@ -7,6 +7,8 @@ android {
     defaultConfig {
         targetSdkVersion 22
         minSdkVersion 9
+        // Used by Robolectric based tests; see TestRunner.
+        buildConfigField 'String', 'BUILD_DIR', "\"${project.buildDir}\""
     }
 
     compileOptions {
@@ -28,6 +30,8 @@ android {
     sourceSets {
         main {
             java {
+                srcDir 'src/services/java'
+
                 exclude 'org/mozilla/gecko/resources/**'
 
                 if (!mozconfig.substs.MOZ_CRASHREPORTER) {
@@ -56,7 +60,8 @@ android {
             }
 
             res {
-                srcDir "src/branding/res"
+                srcDir 'src/branding/res'
+                srcDir 'src/services/res'
                 srcDir "${project.buildDir}/generated/source/preprocessed_resources" // See syncPreprocessedResources.
                 if (mozconfig.substs.MOZ_CRASHREPORTER) {
                     srcDir "src/crashreporter/res"

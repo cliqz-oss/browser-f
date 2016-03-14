@@ -549,7 +549,7 @@ public:
     return mCreationTimeStamp;
   }
 
-  DOMHighResTimeStamp CreationTimeHighRes() const
+  DOMHighResTimeStamp CreationTime() const
   {
     return mCreationTimeHighRes;
   }
@@ -559,7 +559,7 @@ public:
     return mNowBaseTimeStamp;
   }
 
-  DOMHighResTimeStamp NowBaseTimeHighRes() const
+  DOMHighResTimeStamp NowBaseTime() const
   {
     return mNowBaseTimeHighRes;
   }
@@ -926,6 +926,7 @@ class WorkerPrivate : public WorkerPrivateParent<WorkerPrivate>
   nsTArray<nsAutoPtr<SyncLoopInfo>> mSyncLoopStack;
 
   nsCOMPtr<nsITimer> mTimer;
+  nsCOMPtr<nsITimerCallback> mTimerRunnable;
 
   nsCOMPtr<nsITimer> mGCTimer;
   nsCOMPtr<nsIEventTarget> mPeriodicGCTimerTarget;

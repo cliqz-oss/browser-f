@@ -54,7 +54,7 @@ def executor_kwargs(test_type, server_config, cache_manager, run_info_data,
                                            cache_manager, **kwargs)
     executor_kwargs["close_after_done"] = True
     if kwargs["timeout_multiplier"] is None:
-        if kwargs["gecko_e10s"] and test_type == "reftest":
+        if test_type == "reftest":
             if run_info_data["debug"]:
                 executor_kwargs["timeout_multiplier"] = 4
             else:

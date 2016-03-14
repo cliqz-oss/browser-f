@@ -44,13 +44,6 @@
 
 //-----------------------------------------------------------------------------
 
-#ifdef DEBUG
-// defined by the socket transport service while active
-extern PRThread *gSocketThread;
-#endif
-
-//-----------------------------------------------------------------------------
-
 static NS_DEFINE_CID(kMultiplexInputStream, NS_MULTIPLEXINPUTSTREAM_CID);
 
 // Place a limit on how much non-compliant HTTP can be skipped while
@@ -94,8 +87,11 @@ nsHttpTransaction::nsHttpTransaction()
     , mConnection(nullptr)
     , mRequestHead(nullptr)
     , mResponseHead(nullptr)
+    , mReader(nullptr)
+    , mWriter(nullptr)
     , mContentLength(-1)
     , mContentRead(0)
+    , mTransferSize(0)
     , mInvalidResponseBytesRead(0)
     , mPushedStream(nullptr)
     , mInitialRwin(0)
@@ -773,6 +769,7 @@ nsHttpTransaction::WritePipeSegment(nsIOutputStream *stream,
     MOZ_ASSERT(*countWritten > 0, "bad writer");
     trans->CountRecvBytes(*countWritten);
     trans->mReceivedData = true;
+    trans->mTransferSize += *countWritten;
 
     // Let the transaction "play" with the buffer.  It is free to modify
     // the contents of the buffer and/or modify countWritten.

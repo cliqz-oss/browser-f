@@ -15,6 +15,7 @@ EXPORTS += [
     'gfxColor.h',
     'gfxContext.h',
     'gfxDrawable.h',
+    'gfxEnv.h',
     'gfxFailure.h',
     'gfxFont.h',
     'gfxFontConstants.h',
@@ -255,6 +256,7 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
 if CONFIG['ENABLE_INTL_API']:
     CXXFLAGS += CONFIG['MOZ_ICU_CFLAGS']
     CFLAGS += CONFIG['MOZ_ICU_CFLAGS']
+    LOCAL_INCLUDES += CONFIG['MOZ_ICU_INCLUDES']
     USE_LIBS += [
         'icu',
     ]

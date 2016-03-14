@@ -102,14 +102,9 @@ TouchEvent::InitTouchEvent(const nsAString& aType,
                            bool aMetaKey,
                            TouchList* aTouches,
                            TouchList* aTargetTouches,
-                           TouchList* aChangedTouches,
-                           ErrorResult& aRv)
+                           TouchList* aChangedTouches)
 {
-  aRv = UIEvent::InitUIEvent(aType, aCanBubble, aCancelable, aView, aDetail);
-  if (aRv.Failed()) {
-    return;
-  }
-
+  UIEvent::InitUIEvent(aType, aCanBubble, aCancelable, aView, aDetail);
   mEvent->AsInputEvent()->InitBasicModifiers(aCtrlKey, aAltKey,
                                              aShiftKey, aMetaKey);
   mTouches = aTouches;
@@ -186,7 +181,10 @@ TouchEvent::PrefEnabled(JSContext* aCx, JSObject* aGlobal)
   int32_t flag = 0;
   if (NS_SUCCEEDED(Preferences::GetInt("dom.w3c_touch_events.enabled", &flag))) {
     if (flag == 2) {
-#if defined(XP_WIN) || MOZ_WIDGET_GTK == 3
+#if defined(MOZ_B2G) || defined(MOZ_WIDGET_ANDROID)
+      // Touch support is always enabled on B2G and android.
+      prefValue = true;
+#elif defined(XP_WIN) || MOZ_WIDGET_GTK == 3
       static bool sDidCheckTouchDeviceSupport = false;
       static bool sIsTouchDeviceSupportPresent = false;
       // On Windows and GTK3 we auto-detect based on device support.

@@ -99,7 +99,7 @@ var handleContentContextMenu = function (event) {
   Services.obs.notifyObservers(subject, "content-contextmenu", null);
 
   let doc = event.target.ownerDocument;
-  let docLocation = doc.location.href;
+  let docLocation = doc.location ? doc.location.href : undefined;
   let charSet = doc.characterSet;
   let baseURI = doc.baseURI;
   let referrer = doc.referrer;
@@ -114,7 +114,7 @@ var handleContentContextMenu = function (event) {
   // the document wide referrer
   if (Services.prefs.getBoolPref("network.http.enablePerElementReferrer")) {
     let referrerAttrValue = Services.netUtils.parseAttributePolicyString(event.target.
-                            getAttribute("referrer"));
+                            getAttribute("referrerpolicy"));
     if (referrerAttrValue !== Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT) {
       referrerPolicy = referrerAttrValue;
     }
@@ -316,7 +316,6 @@ var AboutNetErrorListener = {
       }
     });
 
-    let failedChannel = docShell.failedChannel;
     let location = contentDoc.location.href;
 
     let serhelper = Cc["@mozilla.org/network/serialization-helper;1"]
@@ -389,7 +388,7 @@ var ClickEventHandler = {
     if (Services.prefs.getBoolPref("network.http.enablePerElementReferrer") &&
         node) {
       let referrerAttrValue = Services.netUtils.parseAttributePolicyString(node.
-                              getAttribute("referrer"));
+                              getAttribute("referrerpolicy"));
       if (referrerAttrValue !== Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT) {
         referrerPolicy = referrerAttrValue;
       }
@@ -436,21 +435,21 @@ var ClickEventHandler = {
                                        .QueryInterface(Ci.nsIDocShell);
     let serhelper = Cc["@mozilla.org/network/serialization-helper;1"]
                      .getService(Ci.nsISerializationHelper);
-    let serializedSSLStatus = "";
+    let serializedSecurityInfo = "";
 
     try {
       let serializable =  docShell.failedChannel.securityInfo
-                                  .QueryInterface(Ci.nsISSLStatusProvider)
-                                  .SSLStatus
+                                  .QueryInterface(Ci.nsITransportSecurityInfo)
                                   .QueryInterface(Ci.nsISerializable);
-      serializedSSLStatus = serhelper.serializeToString(serializable);
+
+      serializedSecurityInfo = serhelper.serializeToString(serializable);
     } catch (e) { }
 
     sendAsyncMessage("Browser:CertExceptionError", {
       location: ownerDoc.location.href,
       elementId: targetElement.getAttribute("id"),
       isTopFrame: (ownerDoc.defaultView.parent === ownerDoc.defaultView),
-      sslStatusAsString: serializedSSLStatus
+      securityInfoAsString: serializedSecurityInfo
     });
   },
 
@@ -460,6 +459,8 @@ var ClickEventHandler = {
       reason = 'malware';
     } else if (/e=unwantedBlocked/.test(ownerDoc.documentURI)) {
       reason = 'unwanted';
+    } else if (/e=forbiddenBlocked/.test(ownerDoc.documentURI)) {
+      reason = 'forbidden';
     }
     sendAsyncMessage("Browser:SiteBlockedError", {
       location: ownerDoc.location.href,
@@ -471,6 +472,10 @@ var ClickEventHandler = {
 
   onAboutNetError: function (event, documentURI) {
     let elmId = event.originalTarget.getAttribute("id");
+    if (elmId == "returnButton") {
+      sendAsyncMessage("Browser:SSLErrorGoBack", {});
+      return;
+    }
     if (elmId != "errorTryAgain" || !/e=netOffline/.test(documentURI)) {
       return;
     }
@@ -514,7 +519,9 @@ var ClickEventHandler = {
     let href, baseURI;
     node = event.target;
     while (node && !href) {
-      if (node.nodeType == content.Node.ELEMENT_NODE) {
+      if (node.nodeType == content.Node.ELEMENT_NODE &&
+          (node.localName == "a" ||
+           node.namespaceURI == "http://www.w3.org/1998/Math/MathML")) {
         href = node.getAttributeNS("http://www.w3.org/1999/xlink", "href");
         if (href) {
           baseURI = node.ownerDocument.baseURIObject;
@@ -545,6 +552,17 @@ addEventListener("DOMWebNotificationClicked", function(event) {
 addEventListener("DOMServiceWorkerFocusClient", function(event) {
   sendAsyncMessage("DOMServiceWorkerFocusClient", {});
 }, false);
+
+addEventListener("AboutCertErrorLoad", function(event) {
+  let originalTarget = event.originalTarget;
+  let ownerDoc = originalTarget.ownerDocument;
+  ClickEventHandler.onAboutCertError(originalTarget, ownerDoc);
+}, false, true);
+
+addMessageListener("AboutCertErrorDetails", function(message) {
+  let div = content.document.getElementById("certificateErrorText");
+  div.textContent = message.data.info;
+});
 
 ContentWebRTC.init();
 addMessageListener("rtcpeer:Allow", ContentWebRTC);
@@ -902,14 +920,31 @@ var PageInfoListener = {
       document = content.document;
     }
 
+    let imageElement = message.objects.imageElement;
+
     let pageInfoData = {metaViewRows: this.getMetaInfo(document),
                         docInfo: this.getDocumentInfo(document),
                         feeds: this.getFeedsInfo(document, strings),
-                        windowInfo: this.getWindowInfo(window)};
+                        windowInfo: this.getWindowInfo(window),
+                        imageInfo: this.getImageInfo(imageElement)};
+
     sendAsyncMessage("PageInfo:data", pageInfoData);
 
     // Separate step so page info dialog isn't blank while waiting for this to finish.
     this.getMediaInfo(document, window, strings);
+  },
+
+  getImageInfo: function(imageElement) {
+    let imageInfo = null;
+    if (imageElement) {
+      imageInfo = {
+        currentSrc: imageElement.currentSrc,
+        width: imageElement.width,
+        height: imageElement.height,
+        imageText: imageElement.title || imageElement.alt
+      };
+    }
+    return imageInfo;
   },
 
   getMetaInfo: function(document) {

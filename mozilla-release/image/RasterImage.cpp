@@ -319,6 +319,9 @@ RasterImage::LookupFrame(uint32_t aFrameNum,
 
   IntSize requestedSize = CanDownscaleDuringDecode(aSize, aFlags)
                         ? aSize : mSize;
+  if (requestedSize.IsEmpty()) {
+    return DrawableFrameRef();  // Can't decode to a surface of zero size.
+  }
 
   LookupResult result = LookupFrameInternal(aFrameNum, requestedSize, aFlags);
 
@@ -625,17 +628,11 @@ RasterImage::GetCurrentImage(ImageContainer* aContainer, uint32_t aFlags)
     return MakePair(drawResult, RefPtr<layers::Image>());
   }
 
-  CairoImage::Data cairoData;
-  GetWidth(&cairoData.mSize.width);
-  GetHeight(&cairoData.mSize.height);
-  cairoData.mSourceSurface = surface;
+  IntSize size;
+  GetWidth(&size.width);
+  GetHeight(&size.height);
 
-  RefPtr<layers::Image> image =
-    aContainer->CreateImage(ImageFormat::CAIRO_SURFACE);
-  MOZ_ASSERT(image);
-
-  static_cast<CairoImage*>(image.get())->SetData(cairoData);
-
+  RefPtr<layers::Image> image = new layers::CairoImage(size, surface);
   return MakePair(drawResult, Move(image));
 }
 
@@ -1163,18 +1160,18 @@ RasterImage::CanDiscard() {
          !mAnim;                 // Can never discard animated images
 }
 
-//******************************************************************************
-
-NS_IMETHODIMP
-RasterImage::RequestDecode()
-{
-  return RequestDecodeForSize(mSize, DECODE_FLAGS_DEFAULT);
-}
-
-
 NS_IMETHODIMP
 RasterImage::StartDecoding()
 {
+  if (mError) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (!mHasSize) {
+    mWantFullDecode = true;
+    return NS_OK;
+  }
+
   return RequestDecodeForSize(mSize, FLAG_SYNC_DECODE_IF_FAST);
 }
 
@@ -1188,7 +1185,6 @@ RasterImage::RequestDecodeForSize(const IntSize& aSize, uint32_t aFlags)
   }
 
   if (!mHasSize) {
-    mWantFullDecode = true;
     return NS_OK;
   }
 
@@ -1638,7 +1634,7 @@ RasterImage::DoError()
   // Invalidate to get rid of any partially-drawn image content.
   NotifyProgress(NoProgress, IntRect(0, 0, mSize.width, mSize.height));
 
-  MOZ_LOG(GetImgLog(), LogLevel::Error,
+  MOZ_LOG(gImgLog, LogLevel::Error,
           ("RasterImage: [this=%p] Error detected for image\n", this));
 }
 
@@ -1788,7 +1784,7 @@ RasterImage::FinalizeDecoder(Decoder* aDecoder)
   // If we were a metadata decode and a full decode was requested, do it.
   if (done && wasMetadata && mWantFullDecode) {
     mWantFullDecode = false;
-    RequestDecode();
+    RequestDecodeForSize(mSize, DECODE_FLAGS_DEFAULT);
   }
 }
 

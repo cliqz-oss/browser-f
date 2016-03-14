@@ -1,23 +1,14 @@
 // |reftest| skip-if(!xulRuntime.shell)
 // Classes
-function classesEnabled() {
-    try {
-        Reflect.parse("class foo { constructor() { } }");
-        return true;
-    } catch (e) {
-        assertEq(e instanceof SyntaxError, true);
-        return false;
-    }
-}
-
 function testClasses() {
     function methodFun(id, kind, generator, args, body = []) {
         assertEq(generator && kind === "method", generator);
         assertEq(typeof id === 'string' || id === null, true);
-        let idN = typeof id === 'string' ? ident(id): null;
-        let methodMaker = generator ? genFunExpr : funExpr;
+        let idN = typeof id === 'string' ? ident(id) : null;
         let methodName = kind !== "method" ? null : idN;
-        return methodMaker(methodName, args.map(ident), blockStmt(body));
+        return generator
+               ? genFunExpr("es6", methodName, args.map(ident), blockStmt(body))
+               : funExpr(methodName, args.map(ident), blockStmt(body));
     }
 
     function simpleMethod(id, kind, generator, args=[], isStatic=false) {
@@ -130,9 +121,6 @@ function testClasses() {
     // Allow default constructors
     assertClass("class NAME { }", []);
     assertClass("class NAME extends null { }", [], lit(null));
-
-    // For now, disallow arrow functions in derived class constructors
-    assertClassError("class NAME extends null { constructor() { (() => 0); }", InternalError);
 
     // Derived class constructor must have curly brackets
     assertClassError("class NAME extends null {  constructor() 1 }", SyntaxError);
@@ -511,7 +499,4 @@ function testClasses() {
 
 }
 
-if (classesEnabled())
-    runtest(testClasses);
-else if (typeof reportCompare === 'function')
-    reportCompare(true, true);
+runtest(testClasses);

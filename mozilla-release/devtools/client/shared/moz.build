@@ -8,6 +8,7 @@ BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
 DIRS += [
+    'components',
     'redux',
     'vendor',
     'widgets',
@@ -30,6 +31,7 @@ DevToolsModules(
     'node-attribute-parser.js',
     'observable-object.js',
     'options-view.js',
+    'output-parser.js',
     'poller.js',
     'source-utils.js',
     'SplitView.jsm',

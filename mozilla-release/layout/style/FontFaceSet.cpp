@@ -18,6 +18,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Snprintf.h"
+#include "mozilla/Telemetry.h"
 #include "nsCORSListenerProxy.h"
 #include "nsCSSParser.h"
 #include "nsDeviceContext.h"
@@ -39,6 +40,7 @@
 #include "nsPrintfCString.h"
 #include "nsStyleSet.h"
 #include "nsUTF8Utils.h"
+#include "nsDOMNavigationTiming.h"
 
 using namespace mozilla;
 using namespace mozilla::css;
@@ -173,8 +175,8 @@ FontFaceSet::ParseFontShorthandForMatching(
                             ErrorResult& aRv)
 {
   // Parse aFont as a 'font' property value.
-  Declaration declaration;
-  declaration.InitializeEmpty();
+  RefPtr<Declaration> declaration = new Declaration;
+  declaration->InitializeEmpty();
 
   bool changed = false;
   nsCSSParser parser;
@@ -183,23 +185,23 @@ FontFaceSet::ParseFontShorthandForMatching(
                        mDocument->GetDocumentURI(),
                        mDocument->GetDocumentURI(),
                        mDocument->NodePrincipal(),
-                       &declaration,
+                       declaration,
                        &changed,
                        /* aIsImportant */ false);
 
   // All of the properties we are interested in should have been set at once.
-  MOZ_ASSERT(changed == (declaration.HasProperty(eCSSProperty_font_family) &&
-                         declaration.HasProperty(eCSSProperty_font_style) &&
-                         declaration.HasProperty(eCSSProperty_font_weight) &&
-                         declaration.HasProperty(eCSSProperty_font_stretch)));
+  MOZ_ASSERT(changed == (declaration->HasProperty(eCSSProperty_font_family) &&
+                         declaration->HasProperty(eCSSProperty_font_style) &&
+                         declaration->HasProperty(eCSSProperty_font_weight) &&
+                         declaration->HasProperty(eCSSProperty_font_stretch)));
 
   if (!changed) {
     aRv.Throw(NS_ERROR_DOM_SYNTAX_ERR);
     return;
   }
 
-  nsCSSCompressedDataBlock* data = declaration.GetNormalBlock();
-  MOZ_ASSERT(!declaration.GetImportantBlock());
+  nsCSSCompressedDataBlock* data = declaration->GetNormalBlock();
+  MOZ_ASSERT(!declaration->GetImportantBlock());
 
   const nsCSSValue* family = data->ValueFor(eCSSProperty_font_family);
   if (family->GetUnit() != eCSSUnit_FontFamilyList) {
@@ -303,6 +305,17 @@ FontFaceSet::FindMatchingFontFaces(const nsAString& aFont,
       }
     }
   }
+}
+
+TimeStamp
+FontFaceSet::GetNavigationStartTimeStamp()
+{
+  TimeStamp navStart;
+  RefPtr<nsDOMNavigationTiming> timing(mDocument->GetNavigationTiming());
+  if (timing) {
+    navStart = timing->GetNavigationStartTimeStamp();
+  }
+  return navStart;
 }
 
 already_AddRefed<Promise>
@@ -663,21 +676,6 @@ FontFaceSet::StartLoad(gfxUserFontEntry* aUserFontEntry,
   return rv;
 }
 
-static PLDHashOperator DetachFontEntries(const nsAString& aKey,
-                                         RefPtr<gfxUserFontFamily>& aFamily,
-                                         void* aUserArg)
-{
-  aFamily->DetachFontEntries();
-  return PL_DHASH_NEXT;
-}
-
-static PLDHashOperator RemoveIfEmpty(const nsAString& aKey,
-                                     RefPtr<gfxUserFontFamily>& aFamily,
-                                     void* aUserArg)
-{
-  return aFamily->GetFontList().Length() ? PL_DHASH_NEXT : PL_DHASH_REMOVE;
-}
-
 bool
 FontFaceSet::UpdateRules(const nsTArray<nsFontFaceRuleContainer>& aRules)
 {
@@ -712,7 +710,9 @@ FontFaceSet::UpdateRules(const nsTArray<nsFontFaceRuleContainer>& aRules)
   // the same font entries as before. (The order can affect font selection
   // where multiple faces match the requested style, perhaps with overlapping
   // unicode-range coverage.)
-  mUserFontSet->mFontFamilies.Enumerate(DetachFontEntries, nullptr);
+  for (auto it = mUserFontSet->mFontFamilies.Iter(); !it.Done(); it.Next()) {
+    it.Data()->DetachFontEntries();
+  }
 
   // Sometimes aRules has duplicate @font-face rules in it; we should make
   // that not happen, but in the meantime, don't try to insert the same
@@ -744,7 +744,11 @@ FontFaceSet::UpdateRules(const nsTArray<nsFontFaceRuleContainer>& aRules)
 
   // Remove any residual families that have no font entries (i.e., they were
   // not defined at all by the updated set of @font-face rules).
-  mUserFontSet->mFontFamilies.Enumerate(RemoveIfEmpty, nullptr);
+  for (auto it = mUserFontSet->mFontFamilies.Iter(); !it.Done(); it.Next()) {
+    if (it.Data()->GetFontList().IsEmpty()) {
+      it.Remove();
+    }
+  }
 
   // If any FontFace objects for rules are left in the old list, note that the
   // set has changed (even if the new set was built entirely by migrating old
@@ -1730,6 +1734,26 @@ FontFaceSet::UserFontSet::StartLoad(gfxUserFontEntry* aUserFontEntry,
     return NS_ERROR_FAILURE;
   }
   return mFontFaceSet->StartLoad(aUserFontEntry, aFontFaceSrc);
+}
+
+void
+FontFaceSet::UserFontSet::RecordFontLoadDone(uint32_t aFontSize,
+                                             TimeStamp aDoneTime)
+{
+  mDownloadCount++;
+  mDownloadSize += aFontSize;
+  Telemetry::Accumulate(Telemetry::WEBFONT_SIZE, aFontSize / 1024);
+
+  if (!mFontFaceSet) {
+    return;
+  }
+
+  TimeStamp navStart = mFontFaceSet->GetNavigationStartTimeStamp();
+  TimeStamp zero;
+  if (navStart != zero) {
+    Telemetry::AccumulateTimeDelta(Telemetry::WEBFONT_DOWNLOAD_TIME_AFTER_START,
+                                   navStart, aDoneTime);
+  }
 }
 
 /* virtual */ nsresult

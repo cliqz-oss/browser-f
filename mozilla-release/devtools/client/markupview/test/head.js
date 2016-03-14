@@ -23,6 +23,10 @@ SimpleTest.requestCompleteLog();
 // Uncomment this pref to dump all devtools emitted events to the console.
 // Services.prefs.setBoolPref("devtools.dump.emit", true);
 
+// Import helpers registering the test-actor in remote targets
+var testDir = gTestPath.substr(0, gTestPath.lastIndexOf("/"));
+Services.scriptloader.loadSubScript(testDir + "../../../shared/test/test-actor-registry.js", this);
+
 // Set the testing flag on DevToolsUtils and reset it when the test ends
 DevToolsUtils.testing = true;
 registerCleanupFunction(() => DevToolsUtils.testing = false);
@@ -51,7 +55,6 @@ registerCleanupFunction(function*() {
 const TEST_URL_ROOT = "http://mochi.test:8888/browser/devtools/client/markupview/test/";
 const CHROME_BASE = "chrome://mochitests/content/browser/devtools/client/markupview/test/";
 const COMMON_FRAME_SCRIPT_URL = "chrome://devtools/content/shared/frame-script-utils.js";
-const MARKUPVIEW_FRAME_SCRIPT_URL = CHROME_BASE + "frame-script-utils.js";
 
 /**
  * Add a new test tab in the browser and load the given url.
@@ -72,7 +75,6 @@ function addTab(url) {
 
   info("Loading the helper frame script " + COMMON_FRAME_SCRIPT_URL);
   linkedBrowser.messageManager.loadFrameScript(COMMON_FRAME_SCRIPT_URL, false);
-  linkedBrowser.messageManager.loadFrameScript(MARKUPVIEW_FRAME_SCRIPT_URL, false);
 
   linkedBrowser.addEventListener("load", function onload() {
     linkedBrowser.removeEventListener("load", onload, true);
@@ -139,7 +141,11 @@ function openInspector() {
     let eventId = "inspector-updated";
     return inspector.once("inspector-updated").then(() => {
       info("The inspector panel is active and ready");
-      return {toolbox: toolbox, inspector: inspector};
+      return registerTestActor(toolbox.target.client);
+    }).then(() => {
+      return getTestActor(toolbox);
+    }).then((testActor) => {
+      return {toolbox, inspector, testActor};
     });
   });
 }
@@ -657,6 +663,22 @@ function checkFocusedAttribute(attrName, editMode) {
     editMode ? "input": "span",
     editMode ? attrName + " is in edit mode" : attrName + " is not in edit mode");
 }
+
+/**
+ * Get attributes for node as how they are represented in editor.
+ *
+ * @param  {String} selector
+ * @param  {InspectorPanel} inspector
+ * @return {Promise}
+ *         A promise that resolves with an array of attribute names
+ *         (e.g. ["id", "class", "href"])
+ */
+var getAttributesFromEditor = Task.async(function*(selector, inspector) {
+  let nodeList = (yield getContainerForSelector(selector, inspector))
+    .tagLine.querySelectorAll("[data-attr]");
+
+  return [...nodeList].map(node => node.getAttribute("data-attr"));
+});
 
 // The expand all operation of the markup-view calls itself recursively and
 // there's not one event we can wait for to know when it's done

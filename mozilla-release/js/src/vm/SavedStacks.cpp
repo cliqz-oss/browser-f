@@ -989,8 +989,8 @@ SavedFrame::toStringMethod(JSContext* cx, unsigned argc, Value* vp)
 bool
 SavedStacks::init()
 {
-    uint64_t seed[2];
-    random_generateSeed(seed, mozilla::ArrayLength(seed));
+    mozilla::Array<uint64_t, 2> seed;
+    GenerateXorShift128PlusSeed(seed);
     bernoulli.setRandomState(seed[0], seed[1]);
 
     if (!pcLocationMap.init())
@@ -1017,34 +1017,25 @@ SavedStacks::saveCurrentStack(JSContext* cx, MutableHandleSavedFrame frame, unsi
     return insertFrames(cx, iter, frame, maxFrameCount);
 }
 
+bool
+SavedStacks::copyAsyncStack(JSContext* cx, HandleObject asyncStack, HandleString asyncCause,
+                            MutableHandleSavedFrame adoptedStack, unsigned maxFrameCount)
+{
+    MOZ_ASSERT(initialized());
+    assertSameCompartment(cx, this);
+
+    RootedObject asyncStackObj(cx, CheckedUnwrap(asyncStack));
+    MOZ_ASSERT(asyncStackObj);
+    MOZ_ASSERT(js::SavedFrame::isSavedFrameAndNotProto(*asyncStackObj));
+    RootedSavedFrame frame(cx, &asyncStackObj->as<js::SavedFrame>());
+
+    return adoptAsyncStack(cx, frame, asyncCause, adoptedStack, maxFrameCount);
+}
+
 void
 SavedStacks::sweep(JSRuntime* rt)
 {
-    if (frames.initialized()) {
-        for (SavedFrame::Set::Enum e(frames); !e.empty(); e.popFront()) {
-            JSObject* obj = e.front().unbarrieredGet();
-            JSObject* temp = obj;
-
-            if (IsAboutToBeFinalizedUnbarriered(&obj)) {
-                e.removeFront();
-            } else {
-                SavedFrame* frame = &obj->as<SavedFrame>();
-
-                SavedFrame* parent = frame->getParent();
-                bool parentMoved = parent && IsForwarded(parent);
-                if (parentMoved)
-                    parent = Forwarded(parent);
-
-                if (obj != temp || parentMoved) {
-                    MOZ_ASSERT(!IsForwarded(frame));
-                    SavedFrame::Lookup newLocation(*frame);
-                    newLocation.parent = parent;
-                    e.rekeyFront(newLocation, ReadBarriered<SavedFrame*>(frame));
-                }
-            }
-        }
-    }
-
+    frames.sweep();
     sweepPCLocationMap();
 }
 

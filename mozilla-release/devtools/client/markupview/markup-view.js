@@ -10,7 +10,6 @@ const {Cc, Cu, Ci} = require("chrome");
 // Page size for pageup/pagedown
 const PAGE_SIZE = 10;
 const DEFAULT_MAX_CHILDREN = 100;
-const COLLAPSE_ATTRIBUTE_LENGTH = 120;
 const COLLAPSE_DATA_URL_REGEX = /^data.+base64/;
 const COLLAPSE_DATA_URL_LENGTH = 60;
 const NEW_SELECTION_HIGHLIGHTER_TIMER = 1000;
@@ -79,6 +78,9 @@ function MarkupView(aInspector, aFrame, aControllerWindow) {
   } catch (ex) {
     this.maxChildren = DEFAULT_MAX_CHILDREN;
   }
+
+  this.collapseAttributeLength =
+    Services.prefs.getIntPref("devtools.markup.collapseAttributeLength");
 
   // Creating the popup to be used to show CSS suggestions.
   let options = {
@@ -406,6 +408,10 @@ MarkupView.prototype = {
   _isImagePreviewTarget: function(target) {
     // From the target passed here, let's find the parent MarkupContainer
     // and ask it if the tooltip should be shown
+    if (this.isDragging) {
+      return promise.reject(false);
+    }
+
     let parent = target, container;
     while (parent !== this.doc.body) {
       if (parent.container) {
@@ -815,8 +821,6 @@ MarkupView.prototype = {
    * Mutation observer used for included nodes.
    */
   _mutationObserver: function(aMutations) {
-    let requiresLayoutChange = false;
-
     for (let mutation of aMutations) {
       let type = mutation.type;
       let target = mutation.target;
@@ -839,11 +843,6 @@ MarkupView.prototype = {
       }
       if (type === "attributes" || type === "characterData") {
         container.update();
-
-        // Auto refresh style properties on selected node when they change.
-        if (type === "attributes" && container.selected) {
-          requiresLayoutChange = true;
-        }
       } else if (type === "childList" || type === "nativeAnonymousChildList") {
         container.childrenDirty = true;
         // Update the children to take care of changes in the markup view DOM.
@@ -853,10 +852,7 @@ MarkupView.prototype = {
       }
     }
 
-    if (requiresLayoutChange) {
-      this._inspector.immediateLayoutChange();
-    }
-    this._waitForChildren().then((nodes) => {
+    this._waitForChildren().then(() => {
       if (this._destroyer) {
         console.warn("Could not fully update after markup mutations, " +
           "the markup-view was destroyed while waiting for children.");
@@ -2635,7 +2631,7 @@ ElementEditor.prototype = {
       } else {
         // Create a new editor, because the value of an existing attribute
         // has changed.
-        let attribute = this._createAttribute(attr);
+        let attribute = this._createAttribute(attr, el);
         attribute.style.removeProperty("display");
 
         // Temporarily flash the attribute to highlight the change.
@@ -2802,7 +2798,9 @@ ElementEditor.prototype = {
       if (value && value.match(COLLAPSE_DATA_URL_REGEX)) {
         return truncateString(value, COLLAPSE_DATA_URL_LENGTH);
       }
-      return truncateString(value, COLLAPSE_ATTRIBUTE_LENGTH);
+      return this.markup.collapseAttributeLength < 0
+        ? value :
+        truncateString(value, this.markup.collapseAttributeLength);
     };
 
     val.innerHTML = "";
@@ -3093,7 +3091,7 @@ function map(value, oldMin, oldMax, newMin, newMax) {
 }
 
 loader.lazyGetter(MarkupView.prototype, "strings", () => Services.strings.createBundle(
-  "chrome://browser/locale/devtools/inspector.properties"
+  "chrome://devtools/locale/inspector.properties"
 ));
 
 XPCOMUtils.defineLazyGetter(this, "clipboardHelper", function() {

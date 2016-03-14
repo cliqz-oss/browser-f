@@ -645,18 +645,6 @@ gfxMacPlatformFontList::gfxMacPlatformFontList() :
     // cache this in a static variable so that MacOSFontFamily objects
     // don't have to repeatedly look it up
     sFontManager = [NSFontManager sharedFontManager];
-
-#ifdef DEBUG
-    // different system font API's always map to the same family under OSX, so
-    // just assume that and emit a warning if that ever changes
-    NSString *sysFamily = [[NSFont systemFontOfSize:0.0] familyName];
-    if ([sysFamily compare:[[NSFont boldSystemFontOfSize:0.0] familyName]] != NSOrderedSame ||
-        [sysFamily compare:[[NSFont controlContentFontOfSize:0.0] familyName]] != NSOrderedSame ||
-        [sysFamily compare:[[NSFont menuBarFontOfSize:0.0] familyName]] != NSOrderedSame ||
-        [sysFamily compare:[[NSFont toolTipsFontOfSize:0.0] familyName]] != NSOrderedSame) {
-        NS_WARNING("system font types map to different font families -- please log a bug!!");
-    }
-#endif
 }
 
 gfxMacPlatformFontList::~gfxMacPlatformFontList()
@@ -832,6 +820,18 @@ gfxMacPlatformFontList::InitSystemFonts()
 #endif
     }
 
+#ifdef DEBUG
+    // different system font API's always map to the same family under OSX, so
+    // just assume that and emit a warning if that ever changes
+    NSString *sysFamily = GetRealFamilyName([NSFont systemFontOfSize:0.0]);
+    if ([sysFamily compare:GetRealFamilyName([NSFont boldSystemFontOfSize:0.0])] != NSOrderedSame ||
+        [sysFamily compare:GetRealFamilyName([NSFont controlContentFontOfSize:0.0])] != NSOrderedSame ||
+        [sysFamily compare:GetRealFamilyName([NSFont menuBarFontOfSize:0.0])] != NSOrderedSame ||
+        [sysFamily compare:GetRealFamilyName([NSFont toolTipsFontOfSize:0.0])] != NSOrderedSame) {
+        NS_WARNING("system font types map to different font families"
+                   " -- please log a bug!!");
+    }
+#endif
 }
 
 gfxFontFamily*
@@ -1092,18 +1092,19 @@ gfxMacPlatformFontList::MakePlatformFont(const nsAString& aFontName,
 static const char kSystemFont_system[] = "-apple-system";
 
 gfxFontFamily*
-gfxMacPlatformFontList::FindFamily(const nsAString& aFamily, gfxFontStyle* aStyle)
+gfxMacPlatformFontList::FindFamily(const nsAString& aFamily, gfxFontStyle* aStyle,
+                                   gfxFloat aDevToCssSize)
 {
     // search for special system font name, -apple-system
     if (aFamily.EqualsLiteral(kSystemFont_system)) {
         if (mUseSizeSensitiveSystemFont &&
-            aStyle && aStyle->size >= kTextDisplayCrossover) {
+            aStyle && (aStyle->size * aDevToCssSize) >= kTextDisplayCrossover) {
             return mSystemDisplayFontFamily;
         }
         return mSystemTextFontFamily;
     }
 
-    return gfxPlatformFontList::FindFamily(aFamily, aStyle);
+    return gfxPlatformFontList::FindFamily(aFamily, aStyle, aDevToCssSize);
 }
 
 void

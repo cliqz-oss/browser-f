@@ -109,7 +109,7 @@ GMPInstallManager.prototype = {
         this._deferred.resolve([]);
       }
       else {
-        this._deferred.resolve([for (a of addons) new GMPAddon(a)]);
+        this._deferred.resolve(addons.map(a => new GMPAddon(a)));
       }
       delete this._deferred;
     }, (ex) => {
@@ -430,6 +430,9 @@ GMPExtractor.prototype = {
         }
         zipReader.extract(entry, outFile);
         extractedPaths.push(outFile.path);
+        // Ensure files are writable and executable. Otherwise we may be unable to
+        // execute or uninstall them.
+        outFile.permissions |= parseInt("0700", 8);
         log.info(entry + " was successfully extracted to: " +
             outFile.path);
       });

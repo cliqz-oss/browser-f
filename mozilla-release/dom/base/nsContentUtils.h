@@ -106,7 +106,6 @@ class nsIWindowProvider;
 
 struct JSPropertyDescriptor;
 struct JSRuntime;
-struct nsIntMargin;
 
 template<class E> class nsCOMArray;
 template<class K, class V> class nsDataHashtable;
@@ -521,11 +520,6 @@ public:
     return sSecurityManager;
   }
 
-  /**
-   * Get the ContentSecurityPolicy for a JS context.
-   **/
-  static bool GetContentSecurityPolicy(nsIContentSecurityPolicy** aCSP);
-
   // Returns the subject principal. Guaranteed to return non-null. May only
   // be called when nsContentUtils is initialized.
   static nsIPrincipal* SubjectPrincipal();
@@ -899,8 +893,8 @@ public:
                                   uint32_t aLineNumber = 0,
                                   uint32_t aColumnNumber = 0);
 
-  static void LogMessageToConsole(const char* aMsg, ...);
-  
+  static void LogMessageToConsole(const char* aMsg);
+
   /**
    * Get the localized string named |aKey| in properties file |aFile|.
    */
@@ -991,16 +985,18 @@ public:
   static nsContentPolicyType InternalContentPolicyTypeToExternal(nsContentPolicyType aType);
 
   /**
-   * Map internal content policy types to external ones or script types:
+   * Map internal content policy types to external ones or script types or preload types:
    *   * TYPE_INTERNAL_SCRIPT
    *   * TYPE_INTERNAL_WORKER
    *   * TYPE_INTERNAL_SHARED_WORKER
    *   * TYPE_INTERNAL_SERVICE_WORKER
-   *
+   *   * TYPE_INTERNAL_SCRIPT_PRELOAD
+   *   * TYPE_INTERNAL_IMAGE_PRELOAD
+   *   * TYPE_INTERNAL_STYLESHEET_PRELOAD
    *
    * Note: DO NOT call this function unless you know what you're doing!
    */
-  static nsContentPolicyType InternalContentPolicyTypeToExternalOrScript(nsContentPolicyType aType);
+  static nsContentPolicyType InternalContentPolicyTypeToExternalOrMCBInternal(nsContentPolicyType aType);
 
   /**
    * Map internal content policy types to external ones or preload types:
@@ -1011,6 +1007,37 @@ public:
    * Note: DO NOT call this function unless you know what you're doing!
    */
   static nsContentPolicyType InternalContentPolicyTypeToExternalOrPreload(nsContentPolicyType aType);
+
+  /**
+   * Map internal content policy types to external ones, worker, or preload types:
+   *   * TYPE_INTERNAL_WORKER
+   *   * TYPE_INTERNAL_SHARED_WORKER
+   *   * TYPE_INTERNAL_SERVICE_WORKER
+   *   * TYPE_INTERNAL_SCRIPT_PRELOAD
+   *   * TYPE_INTERNAL_IMAGE_PRELOAD
+   *   * TYPE_INTERNAL_STYLESHEET_PRELOAD
+   *
+   * Note: DO NOT call this function unless you know what you're doing!
+   */
+  static nsContentPolicyType InternalContentPolicyTypeToExternalOrCSPInternal(nsContentPolicyType aType);
+
+  /**
+   * Map internal content policy types to external ones, worker, or preload types:
+   *   * TYPE_INTERNAL_WORKER
+   *   * TYPE_INTERNAL_SHARED_WORKER
+   *   * TYPE_INTERNAL_SERVICE_WORKER
+   *
+   * Note: DO NOT call this function unless you know what you're doing!
+   */
+  static nsContentPolicyType InternalContentPolicyTypeToExternalOrWorker(nsContentPolicyType aType);
+
+  /**
+   * Returns true if the content policy type is any of:
+   *   * TYPE_INTERNAL_SCRIPT_PRELOAD
+   *   * TYPE_INTERNAL_IMAGE_PRELOAD
+   *   * TYPE_INTERNAL_STYLESHEET_PRELOAD
+   */
+  static bool IsPreloadType(nsContentPolicyType aType);
 
   /**
    * Quick helper to determine whether there are any mutation listeners
@@ -1640,6 +1667,11 @@ public:
   // ipdl types in WindowWatcher.
   static nsIWindowProvider*
   GetWindowProviderForContentProcess();
+
+  // Returns the browser window with the most recent time stamp that is
+  // not in private browsing mode.
+  static already_AddRefed<nsPIDOMWindow>
+  GetMostRecentNonPBWindow();
 
   /**
    * Call this function if !IsSafeToRunScript() and we fail to run the script

@@ -669,7 +669,7 @@ struct IonBlockCounts
     }
 
     void setCode(const char* code) {
-        char* ncode = (char*) js_malloc(strlen(code) + 1);
+        char* ncode = js_pod_malloc<char>(strlen(code) + 1);
         if (ncode) {
             strcpy(ncode, code);
             code_ = ncode;
@@ -715,9 +715,12 @@ struct IonScriptCounts
     }
 
     bool init(size_t numBlocks) {
-        numBlocks_ = numBlocks;
         blocks_ = js_pod_calloc<IonBlockCounts>(numBlocks);
-        return blocks_ != nullptr;
+        if (!blocks_)
+            return false;
+
+        numBlocks_ = numBlocks;
+        return true;
     }
 
     size_t numBlocks() const {
@@ -743,7 +746,7 @@ struct VMFunction;
 struct AutoFlushICache
 {
   private:
-#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS32)
+#if defined(JS_CODEGEN_ARM) || defined(JS_CODEGEN_MIPS32) || defined(JS_CODEGEN_MIPS64)
     uintptr_t start_;
     uintptr_t stop_;
     const char* name_;
@@ -782,6 +785,7 @@ namespace ubi {
 template<>
 struct Concrete<js::jit::JitCode> : TracerConcrete<js::jit::JitCode> {
     CoarseType coarseType() const final { return CoarseType::Script; }
+
     Size size(mozilla::MallocSizeOf mallocSizeOf) const override {
         Size size = js::gc::Arena::thingSize(get().asTenured().getAllocKind());
         size += get().bufferSize();

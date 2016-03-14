@@ -150,6 +150,11 @@ public:
     void UpdateRenderMode();
 
     /**
+     * Forces all GPU resources to be recreated on the next frame.
+     */
+    void ForceDeviceReset(ForcedDeviceResetReason aReason);
+
+    /**
      * Verifies a D2D device is present and working, will attempt to create one
      * it is non-functional or non-existant.
      *
@@ -185,7 +190,8 @@ public:
     CreateFontGroup(const mozilla::FontFamilyList& aFontFamilyList,
                     const gfxFontStyle *aStyle,
                     gfxTextPerfMetrics* aTextPerf,
-                    gfxUserFontSet *aUserFontSet) override;
+                    gfxUserFontSet *aUserFontSet,
+                    gfxFloat aDevToCssSize) override;
 
     /**
      * Look up a local platform font using the full font face name (needed to support @font-face src local() )
@@ -293,6 +299,11 @@ public:
     static mozilla::Atomic<size_t> sD3D9SharedTextureUsed;
 
     void GetDeviceInitData(mozilla::gfx::DeviceInitData* aOut) override;
+
+    bool SupportsPluginDirectBitmapDrawing() override {
+      return true;
+    }
+    bool SupportsPluginDirectDXGIDrawing();
 
 protected:
     bool AccelerateLayersByDefault() override {

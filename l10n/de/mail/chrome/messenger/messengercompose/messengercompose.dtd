@@ -306,3 +306,6 @@
 <!-- Title for the address picker panel -->
 <!ENTITY addressesSidebarTitle.label "Kontakte">
 
+<!-- Identity popup customize menuitem -->
+<!ENTITY customizeFromAddress.label "Benutzerdefinierte Absenderadresse…">
+<!ENTITY customizeFromAddress.accesskey "A">

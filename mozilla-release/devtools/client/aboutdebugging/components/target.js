@@ -8,7 +8,7 @@
 "use strict";
 
 loader.lazyRequireGetter(this, "React",
-  "resource://devtools/client/shared/vendor/react.js");
+  "devtools/client/shared/vendor/react");
 loader.lazyRequireGetter(this, "TargetFactory",
   "devtools/client/framework/target", true);
 loader.lazyRequireGetter(this, "Toolbox",
@@ -21,7 +21,7 @@ loader.lazyImporter(this, "gDevTools",
   "resource://devtools/client/framework/gDevTools.jsm");
 
 const Strings = Services.strings.createBundle(
-  "chrome://browser/locale/devtools/aboutdebugging.properties");
+  "chrome://devtools/locale/aboutdebugging.properties");
 
 exports.TargetComponent = React.createClass({
   displayName: "TargetComponent",
@@ -53,7 +53,7 @@ exports.TargetComponent = React.createClass({
     let target = this.props.target;
     return React.createElement("div", { className: "target" },
       React.createElement("img", {
-        className: "target-logo",
+        className: "target-icon",
         src: target.icon }),
       React.createElement("div", { className: "target-details" },
         React.createElement("div", { className: "target-name" }, target.name),

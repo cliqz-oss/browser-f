@@ -5,15 +5,6 @@
 
 "use strict";
 
-// Don't modify this, instead set dom.push.debug.
-var gDebuggingEnabled = false;
-
-function debug(s) {
-  if (gDebuggingEnabled) {
-    dump("-*- PushService.jsm: " + s + "\n");
-  }
-}
-
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cu = Components.utils;
@@ -36,11 +27,21 @@ const CONNECTION_PROTOCOLS = [PushServiceWebSocket, PushServiceHttp2];
 XPCOMUtils.defineLazyModuleGetter(this, "AlarmService",
                                   "resource://gre/modules/AlarmService.jsm");
 
+XPCOMUtils.defineLazyServiceGetter(this, "gContentSecurityManager",
+                                   "@mozilla.org/contentsecuritymanager;1",
+                                   "nsIContentSecurityManager");
+
 this.EXPORTED_SYMBOLS = ["PushService"];
 
+XPCOMUtils.defineLazyGetter(this, "console", () => {
+  let {ConsoleAPI} = Cu.import("resource://gre/modules/Console.jsm", {});
+  return new ConsoleAPI({
+    maxLogLevelPref: "dom.push.loglevel",
+    prefix: "PushService",
+  });
+});
+
 const prefs = new Preferences("dom.push.");
-// Set debug first so that all debugging actually works.
-gDebuggingEnabled = prefs.get("debug");
 
 const kCHILD_PROCESS_MESSAGES = ["Push:Register", "Push:Unregister",
                                  "Push:Registration", "Push:RegisterEventNotificationListener",
@@ -127,7 +128,7 @@ this.PushService = {
   _activated: null,
   _checkActivated: function() {
     if (this._state < PUSH_SERVICE_ACTIVATING) {
-      return Promise.reject({state: 0, error: "Service not active"});
+      return Promise.reject(new Error("Push service not active"));
     } else if (this._state > PUSH_SERVICE_ACTIVATING) {
       return Promise.resolve();
     } else {
@@ -159,7 +160,7 @@ this.PushService = {
   },
 
   _setState: function(aNewState) {
-    debug("new state: " + aNewState + " old state: " + this._state);
+    console.debug("setState()", "new state", aNewState, "old state", this._state);
 
     if (this._state == aNewState) {
       return;
@@ -171,7 +172,7 @@ this.PushService = {
       this._state = aNewState;
       if (this._notifyActivated) {
         if (aNewState < PUSH_SERVICE_ACTIVATING) {
-          this._notifyActivated.reject({state: 0, error: "Service not active"});
+          this._notifyActivated.reject(new Error("Push service not active"));
         } else {
           this._notifyActivated.resolve();
         }
@@ -183,7 +184,7 @@ this.PushService = {
   },
 
   _changeStateOfflineEvent: function(offline, calledFromConnEnabledEvent) {
-    debug("changeStateOfflineEvent: " + offline);
+    console.debug("changeStateOfflineEvent()", offline);
 
     if (this._state < PUSH_SERVICE_ACTIVE_OFFLINE &&
         this._state != PUSH_SERVICE_ACTIVATING &&
@@ -215,7 +216,7 @@ this.PushService = {
   },
 
   _changeStateConnectionEnabledEvent: function(enabled) {
-    debug("changeStateConnectionEnabledEvent: " + enabled);
+    console.debug("changeStateConnectionEnabledEvent()", enabled);
 
     if (this._state < PUSH_SERVICE_CONNECTION_DISABLE &&
         this._state != PUSH_SERVICE_ACTIVATING) {
@@ -251,7 +252,7 @@ this.PushService = {
 
       case "nsPref:changed":
         if (aData == "dom.push.serverURL") {
-          debug("dom.push.serverURL changed! websocket. new value " +
+          console.debug("observe: dom.push.serverURL changed for websocket",
                 prefs.get("serverURL"));
           this._stateChangeProcessEnqueue(_ =>
             this._changeServerURL(prefs.get("serverURL"),
@@ -262,9 +263,6 @@ this.PushService = {
           this._stateChangeProcessEnqueue(_ =>
             this._changeStateConnectionEnabledEvent(prefs.get("connection.enabled"))
           );
-
-        } else if (aData == "dom.push.debug") {
-          gDebuggingEnabled = prefs.get("debug");
         }
         break;
 
@@ -274,40 +272,34 @@ this.PushService = {
 
       case "perm-changed":
         this._onPermissionChange(aSubject, aData).catch(error => {
-          debug("onPermissionChange: Error updating registrations: " +
+          console.error("onPermissionChange: Error updating registrations:",
             error);
         })
         break;
 
-      case "webapps-clear-data":
-        debug("webapps-clear-data");
-
-        let data = aSubject
-                     .QueryInterface(Ci.mozIApplicationClearPrivateDataParams);
-        if (!data) {
-          debug("webapps-clear-data: Failed to get information about " +
-                "application");
-          return;
-        }
-
-        var originAttributes =
-          ChromeUtils.originAttributesToSuffix({ appId: data.appId,
-                                                 inBrowser: data.browserOnly });
-        this._db.getAllByOriginAttributes(originAttributes)
-          .then(records => Promise.all(records.map(record =>
-            this._db.delete(record.keyID)
-              .catch(err => {
-                debug("webapps-clear-data: " + record.scope +
-                      " Could not delete entry " + record.keyID);
-                // This is the record we were unable to delete.
-                return record;
-              })
-              .then(maybeDeleted => this._backgroundUnregister(maybeDeleted))
-            )
-          ));
-
+      case "clear-origin-data":
+        this._clearOriginData(aData).catch(error => {
+          console.error("clearOriginData: Error clearing origin data:", error);
+        });
         break;
     }
+  },
+
+  _clearOriginData: function(data) {
+    console.log("clearOriginData()");
+
+    if (!data) {
+      return Promise.resolve();
+    }
+
+    let pattern = JSON.parse(data);
+    return this._db.clearIf(record => {
+      if (!record.matchesOriginAttributes(pattern)) {
+        return false;
+      }
+      this._backgroundUnregister(record);
+      return true;
+    });
   },
 
   /**
@@ -317,15 +309,15 @@ this.PushService = {
    * @param {PushRecord} record The record to unregister.
    */
   _backgroundUnregister: function(record) {
-    debug("backgroundUnregister()");
+    console.debug("backgroundUnregister()");
 
     if (!this._service.isConnected() || !record) {
       return;
     }
 
-    debug("Had a connection, so telling the server");
+    console.debug("backgroundUnregister: Notifying server", record);
     this._sendUnregister(record).catch(e => {
-      debug("Unregister errored " + e);
+      console.error("backgroundUnregister: Error notifying server", e);
     });
   },
 
@@ -340,23 +332,41 @@ this.PushService = {
     }
   },
 
-  _findService: function(serverURI) {
-    var uri;
-    var service;
-    if (serverURI) {
-      for (let connProtocol of CONNECTION_PROTOCOLS) {
-        uri = connProtocol.checkServerURI(serverURI);
-        if (uri) {
-          service = connProtocol;
-          break;
-        }
+  _findService: function(serverURL) {
+    console.debug("findService()");
+
+    let uri;
+    let service;
+
+    if (!serverURL) {
+      console.warn("findService: No dom.push.serverURL found");
+      return [];
+    }
+
+    try {
+      uri = Services.io.newURI(serverURL, null, null);
+    } catch (e) {
+      console.warn("findService: Error creating valid URI from",
+        "dom.push.serverURL", serverURL);
+      return [];
+    }
+
+    if (!gContentSecurityManager.isURIPotentiallyTrustworthy(uri)) {
+      console.warn("findService: Untrusted server URI", uri.spec);
+      return [];
+    }
+
+    for (let connProtocol of CONNECTION_PROTOCOLS) {
+      if (connProtocol.validServerURI(uri)) {
+        service = connProtocol;
+        break;
       }
     }
     return [service, uri];
   },
 
   _changeServerURL: function(serverURI, event) {
-    debug("changeServerURL");
+    console.debug("changeServerURL()");
 
     switch(event) {
       case UNINIT_EVENT:
@@ -428,7 +438,7 @@ this.PushService = {
    *                                        PUSH_SERVICE_CONNECTION_DISABLE.
    */
   init: function(options = {}) {
-    debug("init()");
+    console.debug("init()");
 
     if (this._state > PUSH_SERVICE_UNINIT) {
       return;
@@ -436,30 +446,12 @@ this.PushService = {
 
     this._setState(PUSH_SERVICE_ACTIVATING);
 
-    // Debugging
-    prefs.observe("debug", this);
-
     Services.obs.addObserver(this, "xpcom-shutdown", false);
 
     if (options.serverURI) {
       // this is use for xpcshell test.
 
-      var uri;
-      var service;
-      if (!options.service) {
-        for (let connProtocol of CONNECTION_PROTOCOLS) {
-          uri = connProtocol.checkServerURI(options.serverURI);
-          if (uri) {
-            service = connProtocol;
-            break;
-          }
-        }
-      } else {
-        try {
-          uri  = Services.io.newURI(options.serverURI, null, null);
-          service = options.service;
-        } catch(e) {}
-      }
+      let [service, uri] = this._findService(options.serverURI);
       if (!service) {
         this._setState(PUSH_SERVICE_INIT);
         return;
@@ -483,13 +475,13 @@ this.PushService = {
   },
 
   _startObservers: function() {
-    debug("startObservers");
+    console.debug("startObservers()");
 
     if (this._state != PUSH_SERVICE_ACTIVATING) {
       return;
     }
 
-    Services.obs.addObserver(this, "webapps-clear-data", false);
+    Services.obs.addObserver(this, "clear-origin-data", false);
 
     // On B2G the NetworkManager interface fires a network-active-changed
     // event.
@@ -524,7 +516,7 @@ this.PushService = {
   },
 
   _startService: function(service, serverURI, event, options = {}) {
-    debug("startService");
+    console.debug("startService()");
 
     if (this._state != PUSH_SERVICE_ACTIVATING) {
       return;
@@ -563,7 +555,7 @@ this.PushService = {
    *            state is change to PUSH_SERVICE_UNINIT
    */
   _stopService: function(event) {
-    debug("stopService");
+    console.debug("stopService()");
 
     if (this._state < PUSH_SERVICE_ACTIVATING) {
       return;
@@ -607,23 +599,22 @@ this.PushService = {
   },
 
   _stopObservers: function() {
-    debug("stopObservers()");
+    console.debug("stopObservers()");
 
     if (this._state < PUSH_SERVICE_ACTIVATING) {
       return;
     }
 
-    prefs.ignore("debug", this);
     prefs.ignore("connection.enabled", this);
 
     Services.obs.removeObserver(this, this._networkStateChangeEventName);
-    Services.obs.removeObserver(this, "webapps-clear-data");
+    Services.obs.removeObserver(this, "clear-origin-data");
     Services.obs.removeObserver(this, "idle-daily");
     Services.obs.removeObserver(this, "perm-changed");
   },
 
   uninit: function() {
-    debug("uninit()");
+    console.debug("uninit()");
 
     this._childListeners = [];
 
@@ -638,7 +629,7 @@ this.PushService = {
 
     this._stateChangeProcessEnqueue(_ =>
             this._changeServerURL("", UNINIT_EVENT));
-    debug("shutdown complete!");
+    console.debug("uninit: shutdown complete!");
   },
 
   /** |delay| should be in milliseconds. */
@@ -668,7 +659,8 @@ this.PushService = {
         }
       }, (alarmID) => {
         this._alarmID = alarmID;
-        debug("Set alarm " + delay + " in the future " + this._alarmID);
+        console.debug("setAlarm: Set alarm", delay, "in the future",
+          this._alarmID);
         this._settingAlarm = false;
 
         if (this._waitingForAlarmSet) {
@@ -681,7 +673,7 @@ this.PushService = {
 
   stopAlarm: function() {
     if (this._alarmID !== null) {
-      debug("Stopped existing alarm " + this._alarmID);
+      console.debug("stopAlarm: Stopped existing alarm", this._alarmID);
       AlarmService.remove(this._alarmID);
       this._alarmID = null;
     }
@@ -795,17 +787,29 @@ this.PushService = {
     });
   },
 
-  ensureP256dhKey: function(record) {
-    if (record.p256dhPublicKey && record.p256dhPrivateKey) {
+  ensureCrypto: function(record) {
+    if (record.authenticationSecret &&
+        record.p256dhPublicKey &&
+        record.p256dhPrivateKey) {
       return Promise.resolve(record);
+    }
+
+    let keygen = Promise.resolve([]);
+    if (!record.p256dhPublicKey || !record.p256dhPrivateKey) {
+      keygen = PushCrypto.generateKeys();
     }
     // We do not have a encryption key. so we need to generate it. This
     // is only going to happen on db upgrade from version 4 to higher.
-    return PushCrypto.generateKeys()
-      .then(exportedKeys => {
+    return keygen
+      .then(([pubKey, privKey]) => {
         return this.updateRecordAndNotifyApp(record.keyID, record => {
-          record.p256dhPublicKey = exportedKeys[0];
-          record.p256dhPrivateKey = exportedKeys[1];
+          if (!record.p256dhPublicKey || !record.p256dhPrivateKey) {
+            record.p256dhPublicKey = pubKey;
+            record.p256dhPrivateKey = privKey;
+          }
+          if (!record.authenticationSecret) {
+            record.authenticationSecret = PushCrypto.generateAuthenticationSecret();
+          }
           return record;
         });
       }, error => {
@@ -836,7 +840,7 @@ this.PushService = {
    *  versions.
    */
   receivedPushMessage: function(keyID, message, cryptoParams, updateFunc) {
-    debug("receivedPushMessage()");
+    console.debug("receivedPushMessage()");
     Services.telemetry.getHistogramById("PUSH_API_NOTIFICATION_RECEIVED").add();
 
     let shouldNotify = false;
@@ -864,7 +868,8 @@ this.PushService = {
         // this, we check if the record has expired before *and* after updating
         // the quota.
         if (newRecord.isExpired()) {
-          debug("receivedPushMessage: Ignoring update for expired key ID " + keyID);
+          console.error("receivedPushMessage: Ignoring update for expired key ID",
+            keyID);
           return null;
         }
         newRecord.receivedPush(lastVisit);
@@ -880,9 +885,11 @@ this.PushService = {
         decodedPromise = PushCrypto.decodeMsg(
           message,
           record.p256dhPrivateKey,
+          record.p256dhPublicKey,
           cryptoParams.dh,
           cryptoParams.salt,
-          cryptoParams.rs
+          cryptoParams.rs,
+          cryptoParams.auth ? record.authenticationSecret : null
         );
       } else {
         decodedPromise = Promise.resolve(null);
@@ -896,20 +903,22 @@ this.PushService = {
         setTimeout(() => this._updateQuota(keyID),
           prefs.get("quotaUpdateDelay"));
         return notified;
+      }, error => {
+        console.error("receivedPushMessage: Error decrypting message", error);
       });
     }).catch(error => {
-      debug("receivedPushMessage: Error notifying app: " + error);
+      console.error("receivedPushMessage: Error notifying app", error);
     });
   },
 
   _updateQuota: function(keyID) {
-    debug("updateQuota()");
+    console.debug("updateQuota()");
 
     this._db.update(keyID, record => {
       // Record may have expired from an earlier quota update.
       if (record.isExpired()) {
-        debug("updateQuota: Trying to update quota for expired record " +
-          JSON.stringify(record));
+        console.debug(
+          "updateQuota: Trying to update quota for expired record", record);
         return null;
       }
       // If there are visible notifications, don't apply the quota penalty
@@ -924,21 +933,19 @@ this.PushService = {
         // Drop the registration in the background. If the user returns to the
         // site, the service worker will be notified on the next `idle-daily`
         // event.
-        this._sendUnregister(record).catch(error => {
-          debug("updateQuota: Unregister error: " + error);
-        });
+        this._backgroundUnregister(record);
       }
       if (this._updateQuotaTestCallback) {
         // Callback so that test may be notified when the quota update is complete.
         this._updateQuotaTestCallback();
       }
     }).catch(error => {
-      debug("updateQuota: Error while trying to update quota " + error);
+      console.debug("updateQuota: Error while trying to update quota", error);
     });
   },
 
   _notificationForOriginShown(origin) {
-    debug("notificationForOriginShown() " + origin);
+    console.debug("notificationForOriginShown()", origin);
     let count;
     if (this._visibleNotifications.has(origin)) {
       count = this._visibleNotifications.get(origin);
@@ -949,12 +956,12 @@ this.PushService = {
   },
 
   _notificationForOriginClosed(origin) {
-    debug("notificationForOriginClosed() " + origin);
+    console.debug("notificationForOriginClosed()", origin);
     let count;
     if (this._visibleNotifications.has(origin)) {
       count = this._visibleNotifications.get(origin);
     } else {
-      debug("notificationForOriginClosed: closing notification that has not been shown?");
+      console.debug("notificationForOriginClosed: closing notification that has not been shown?");
       return;
     }
     if (count > 1) {
@@ -967,12 +974,11 @@ this.PushService = {
   _notifyApp: function(aPushRecord, message) {
     if (!aPushRecord || !aPushRecord.scope ||
         aPushRecord.originAttributes === undefined) {
-      debug("notifyApp() something is undefined.  Dropping notification: " +
-        JSON.stringify(aPushRecord) );
+      console.error("notifyApp: Invalid record", aPushRecord);
       return false;
     }
 
-    debug("notifyApp() " + aPushRecord.scope);
+    console.debug("notifyApp()", aPushRecord.scope);
     // Notify XPCOM observers.
     let notification = Cc["@mozilla.org/push/ObserverNotification;1"]
                          .createInstance(Ci.nsIPushObserverNotification);
@@ -999,7 +1005,7 @@ this.PushService = {
 
     // If permission has been revoked, trash the message.
     if (!aPushRecord.hasPermission()) {
-      debug("Does not have permission for push.");
+      console.warn("notifyApp: Missing push permission", aPushRecord);
       return false;
     }
 
@@ -1024,12 +1030,12 @@ this.PushService = {
 
   _sendRequest: function(action, aRecord) {
     if (this._state == PUSH_SERVICE_CONNECTION_DISABLE) {
-      return Promise.reject({state: 0, error: "Service not active"});
+      return Promise.reject(new Error("Push service disabled"));
     } else if (this._state == PUSH_SERVICE_ACTIVE_OFFLINE) {
       if (this._service.serviceType() == "WebSocket" && action == "unregister") {
         return Promise.resolve();
       }
-      return Promise.reject({state: 0, error: "NetworkError"});
+      return Promise.reject(new Error("Push service offline"));
     }
     return this._service.request(action, aRecord);
   },
@@ -1039,7 +1045,7 @@ this.PushService = {
    * navigator.push, identifying the sending page and other fields.
    */
   _registerWithServer: function(aPageRecord) {
-    debug("registerWithServer()" + JSON.stringify(aPageRecord));
+    console.debug("registerWithServer()", aPageRecord);
 
     Services.telemetry.getHistogramById("PUSH_API_SUBSCRIBE_ATTEMPT").add();
     return this._sendRequest("register", aPageRecord)
@@ -1047,40 +1053,11 @@ this.PushService = {
             err => this._onRegisterError(err))
       .then(record => {
         this._deletePendingRequest(aPageRecord);
-        return record;
+        return record.toSubscription();
       }, err => {
         this._deletePendingRequest(aPageRecord);
         throw err;
      });
-  },
-
-  _register: function(aPageRecord) {
-    debug("_register()");
-    if (!aPageRecord.scope || aPageRecord.originAttributes === undefined) {
-      return Promise.reject({state: 0, error: "NotFoundError"});
-    }
-
-    return this._checkActivated()
-      .then(_ => this._db.getByIdentifiers(aPageRecord))
-      .then(record => {
-        if (!record) {
-          return this._lookupOrPutPendingRequest(aPageRecord);
-        }
-        if (record.isExpired()) {
-          return record.quotaChanged().then(isChanged => {
-            if (isChanged) {
-              // If the user revisited the site, drop the expired push
-              // registration and re-register.
-              return this.dropRegistrationAndNotifyApp(record.keyID);
-            }
-            throw {state: 0, error: "NotFoundError"};
-          }).then(_ => this._lookupOrPutPendingRequest(aPageRecord));
-        }
-        return record;
-      }, error => {
-        debug("getByIdentifiers failed");
-        throw error;
-      });
   },
 
   _sendUnregister: function(aRecord) {
@@ -1099,7 +1076,7 @@ this.PushService = {
    * from _service.request, causing the promise to be rejected instead.
    */
   _onRegisterSuccess: function(aRecord) {
-    debug("_onRegisterSuccess()");
+    console.debug("_onRegisterSuccess()");
 
     return this._db.put(aRecord)
       .then(record => {
@@ -1109,10 +1086,7 @@ this.PushService = {
       .catch(error => {
         Services.telemetry.getHistogramById("PUSH_API_SUBSCRIBE_FAILED").add()
         // Unable to save. Destroy the subscription in the background.
-        this._sendUnregister(aRecord).catch(err => {
-          debug("_onRegisterSuccess: Error unregistering stale subscription" +
-            err);
-        });
+        this._backgroundUnregister(aRecord);
         throw error;
       });
   },
@@ -1122,103 +1096,124 @@ this.PushService = {
    * from _service.request, causing the promise to be rejected instead.
    */
   _onRegisterError: function(reply) {
-    debug("_onRegisterError()");
+    console.debug("_onRegisterError()");
     Services.telemetry.getHistogramById("PUSH_API_SUBSCRIBE_FAILED").add()
     if (!reply.error) {
-      debug("Called without valid error message!");
-      throw "Registration error";
+      console.warn("onRegisterError: Called without valid error message!",
+        reply.error);
+      throw new Error("Registration error");
     }
     throw reply.error;
   },
 
   receiveMessage: function(aMessage) {
-    debug("receiveMessage(): " + aMessage.name);
+    console.debug("receiveMessage()", aMessage.name);
 
     if (kCHILD_PROCESS_MESSAGES.indexOf(aMessage.name) == -1) {
-      debug("Invalid message from child " + aMessage.name);
+      console.debug("receiveMessage: Invalid message from child",
+        aMessage.name);
       return;
     }
 
     if (aMessage.name === "Push:RegisterEventNotificationListener") {
-      debug("Adding child listener");
+      console.debug("receiveMessage: Adding child listener");
       this._childListeners.push(aMessage.target);
       return;
     }
 
     if (aMessage.name === "child-process-shutdown") {
-      debug("Possibly removing child listener");
+      console.debug("receiveMessage: Possibly removing child listener");
       for (var i = this._childListeners.length - 1; i >= 0; --i) {
         if (this._childListeners[i] == aMessage.target) {
-          debug("Removed child listener");
+          console.debug("receiveMessage: Removed child listener");
           this._childListeners.splice(i, 1);
         }
       }
-      debug("Clearing notifications from child");
+      console.debug("receiveMessage: Clearing notifications from child");
       this._visibleNotifications.clear();
       return;
     }
 
     if (aMessage.name === "Push:NotificationForOriginShown") {
-      debug("Notification shown from child");
+      console.debug("receiveMessage: Notification shown from child");
       this._notificationForOriginShown(aMessage.data);
       return;
     }
 
     if (aMessage.name === "Push:NotificationForOriginClosed") {
-      debug("Notification closed from child");
+      console.debug("receiveMessage: Notification closed from child");
       this._notificationForOriginClosed(aMessage.data);
       return;
     }
 
     if (!aMessage.target.assertPermission("push")) {
-      debug("Got message from a child process that does not have 'push' permission.");
+      console.debug("receiveMessage: Got message from a child process that",
+        "does not have 'push' permission");
       return null;
     }
 
     let mm = aMessage.target.QueryInterface(Ci.nsIMessageSender);
-    let pageRecord = aMessage.data;
 
+    let name = aMessage.name.slice("Push:".length);
+    Promise.resolve().then(_ => {
+      let pageRecord = this._validatePageRecord(aMessage);
+      return this[name.toLowerCase()](pageRecord);
+    }).then(result => {
+      mm.sendAsyncMessage("PushService:" + name + ":OK", {
+        requestID: aMessage.data.requestID,
+        result: result,
+      });
+    }, error => {
+      console.error("receiveMessage: Error handling message", aMessage, error);
+      mm.sendAsyncMessage("PushService:" + name + ":KO", {
+        requestID: aMessage.data.requestID,
+      });
+    }).catch(error => {
+      console.error("receiveMessage: Error sending reply", error);
+    });
+  },
+
+  _validatePageRecord: function(aMessage) {
     let principal = aMessage.principal;
     if (!principal) {
-      debug("No principal passed!");
-      let message = {
-        requestID: pageRecord.requestID,
-        error: "SecurityError"
-      };
-      mm.sendAsyncMessage("PushService:Register:KO", message);
-      return;
+      throw new Error("Missing message principal");
+    }
+
+    let pageRecord = aMessage.data;
+    if (!pageRecord.scope) {
+      throw new Error("Missing page record scope");
     }
 
     pageRecord.originAttributes =
       ChromeUtils.originAttributesToSuffix(principal.originAttributes);
 
-    if (!pageRecord.scope || pageRecord.originAttributes === undefined) {
-      debug("Incorrect identifier values set! " + JSON.stringify(pageRecord));
-      let message = {
-        requestID: pageRecord.requestID,
-        error: "SecurityError"
-      };
-      mm.sendAsyncMessage("PushService:Register:KO", message);
-      return;
-    }
-
-    this[aMessage.name.slice("Push:".length).toLowerCase()](pageRecord, mm);
+    return pageRecord;
   },
 
-  register: function(aPageRecord, aMessageManager) {
-    debug("register(): " + JSON.stringify(aPageRecord));
+  register: function(aPageRecord) {
+    console.debug("register()", aPageRecord);
 
-    this._register(aPageRecord)
+    if (!aPageRecord.scope || aPageRecord.originAttributes === undefined) {
+      return Promise.reject(new Error("Invalid page record"));
+    }
+
+    return this._checkActivated()
+      .then(_ => this._db.getByIdentifiers(aPageRecord))
       .then(record => {
-        let message = record.toSubscription();
-        message.requestID = aPageRecord.requestID;
-        aMessageManager.sendAsyncMessage("PushService:Register:OK", message);
-      }, error => {
-        let message = {
-          requestID: aPageRecord.requestID,
-          error
-        };
-        aMessageManager.sendAsyncMessage("PushService:Register:KO", message);
+        if (!record) {
+          return this._lookupOrPutPendingRequest(aPageRecord);
+        }
+        if (record.isExpired()) {
+          return record.quotaChanged().then(isChanged => {
+            if (isChanged) {
+              // If the user revisited the site, drop the expired push
+              // registration and re-register.
+              return this.dropRegistrationAndNotifyApp(record.keyID);
+            }
+            throw new Error("Push subscription expired");
+          }).then(_ => this._lookupOrPutPendingRequest(aPageRecord));
+        }
+        return record.toSubscription();
       });
   },
 
@@ -1247,10 +1242,11 @@ this.PushService = {
    * client acknowledge. On a server, data is cheap, reliable notification is
    * not.
    */
-  _unregister: function(aPageRecord) {
-    debug("_unregister()");
+  unregister: function(aPageRecord) {
+    console.debug("unregister()", aPageRecord);
+
     if (!aPageRecord.scope || aPageRecord.originAttributes === undefined) {
-      return Promise.reject({state: 0, error: "NotFoundError"});
+      return Promise.reject(new Error("Invalid page record"));
     }
 
     return this._checkActivated()
@@ -1267,27 +1263,9 @@ this.PushService = {
       });
   },
 
-  unregister: function(aPageRecord, aMessageManager) {
-    debug("unregister() " + JSON.stringify(aPageRecord));
-
-    this._unregister(aPageRecord)
-      .then(result => {
-          aMessageManager.sendAsyncMessage("PushService:Unregister:OK", {
-            requestID: aPageRecord.requestID,
-            result: result,
-          })
-        }, error => {
-          debug("unregister(): Actual error " + error);
-          aMessageManager.sendAsyncMessage("PushService:Unregister:KO", {
-            requestID: aPageRecord.requestID,
-          })
-        }
-      );
-  },
-
   _clearAll: function _clearAll() {
     return this._checkActivated()
-      .then(_ => this._db.clearAll())
+      .then(_ => this._db.drop())
       .catch(_ => Promise.resolve());
   },
 
@@ -1328,18 +1306,15 @@ this.PushService = {
     return this._checkActivated()
       .then(_ => clear(this._db, domain))
       .catch(e => {
-        debug("Error forgetting about domain! " + e);
+        console.warn("clearForDomain: Error forgetting about domain", e);
         return Promise.resolve();
       });
   },
 
-  /**
-   * Called on message from the child process
-   */
-  _registration: function(aPageRecord) {
-    debug("_registration()");
+  registration: function(aPageRecord) {
+    console.debug("registration()");
     if (!aPageRecord.scope || aPageRecord.originAttributes === undefined) {
-      return Promise.reject({state: 0, error: "NotFoundError"});
+      return Promise.reject(new Error("Invalid page record"));
     }
 
     return this._checkActivated()
@@ -1360,24 +1335,8 @@ this.PushService = {
       });
   },
 
-  registration: function(aPageRecord, aMessageManager) {
-    debug("registration()");
-
-    return this._registration(aPageRecord)
-      .then(registration =>
-        aMessageManager.sendAsyncMessage("PushService:Registration:OK", {
-          requestID: aPageRecord.requestID,
-          registration
-        }), error =>
-        aMessageManager.sendAsyncMessage("PushService:Registration:KO", {
-          requestID: aPageRecord.requestID,
-          error
-        })
-      );
-  },
-
   _dropExpiredRegistrations: function() {
-    debug("dropExpiredRegistrations()");
+    console.debug("dropExpiredRegistrations()");
 
     return this._db.getAllExpired().then(records => {
       return Promise.all(records.map(record =>
@@ -1388,15 +1347,15 @@ this.PushService = {
             return this.dropRegistrationAndNotifyApp(record.keyID);
           }
         }).catch(error => {
-          debug("dropExpiredRegistrations: Error dropping registration " +
-            record.keyID + ": " + error);
+          console.error("dropExpiredRegistrations: Error dropping registration",
+            record.keyID, error);
         })
       ));
     });
   },
 
   _onPermissionChange: function(subject, data) {
-    debug("onPermissionChange()");
+    console.debug("onPermissionChange()");
 
     if (data == "cleared") {
       // If the permission list was cleared, drop all registrations
@@ -1422,7 +1381,7 @@ this.PushService = {
   },
 
   _updatePermission: function(permission, type) {
-    debug("updatePermission()");
+    console.debug("updatePermission()");
 
     let isAllow = permission.capability ==
                   Ci.nsIPermissionManager.ALLOW_ACTION;
@@ -1474,7 +1433,7 @@ this.PushService = {
    * @param {IDBCursor} cursor The IndexedDB cursor.
    */
   _permissionDenied: function(record, cursor) {
-    debug("permissionDenied()");
+    console.debug("permissionDenied()");
 
     if (!record.quotaApplies() || record.isExpired()) {
       // Ignore already-expired records.
@@ -1497,7 +1456,7 @@ this.PushService = {
    * @param {IDBCursor} cursor The IndexedDB cursor.
    */
   _permissionAllowed: function(subscriptionChanges, record, cursor) {
-    debug("permissionAllowed()");
+    console.debug("permissionAllowed()");
 
     if (!record.quotaApplies()) {
       return;

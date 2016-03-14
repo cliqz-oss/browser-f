@@ -639,6 +639,12 @@ class Base {
         return true;
     }
 
+    // Methods for CoarseType::Script referents
+
+    // Return the script's source's filename if available. If unavailable,
+    // return nullptr.
+    virtual const char* scriptFilename() const { return nullptr; }
+
   private:
     Base(const Base& rhs) = delete;
     Base& operator=(const Base& rhs) = delete;
@@ -779,9 +785,15 @@ class Node {
         return base()->jsObjectConstructorName(cx, outName);
     }
 
+    const char* scriptFilename() const { return base()->scriptFilename(); }
+
     using Size = Base::Size;
     Size size(mozilla::MallocSizeOf mallocSizeof) const {
-        return base()->size(mallocSizeof);
+        auto size =  base()->size(mallocSizeof);
+        MOZ_ASSERT(size > 0,
+                   "C++ does not have zero-sized types! Choose 1 if you just need a "
+                   "conservative default.");
+        return size;
     }
 
     UniquePtr<EdgeRange> edges(JSRuntime* rt, bool wantNames = true) const {
@@ -1052,6 +1064,7 @@ struct Concrete<JS::Symbol> : TracerConcrete<JS::Symbol> {
 template<> struct Concrete<JSScript> : TracerConcreteWithCompartment<JSScript> {
     CoarseType coarseType() const final { return CoarseType::Script; }
     Size size(mozilla::MallocSizeOf mallocSizeOf) const override;
+    const char* scriptFilename() const final;
 
   protected:
     explicit Concrete(JSScript *ptr) : TracerConcreteWithCompartment<JSScript>(ptr) { }

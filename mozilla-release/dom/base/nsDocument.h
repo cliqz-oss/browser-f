@@ -661,29 +661,6 @@ protected:
   bool mHaveShutDown;
 };
 
-class CSPErrorQueue
-{
-  public:
-    /**
-     * Note this was designed to be passed string literals. If you give it
-     * a dynamically allocated string, it is your responsibility to make sure
-     * it never dies and is properly freed!
-     */
-    void Add(const char* aMessageName);
-    void Flush(nsIDocument* aDocument);
-
-    CSPErrorQueue()
-    {
-    }
-
-    ~CSPErrorQueue()
-    {
-    }
-
-  private:
-    nsAutoTArray<const char*,5> mErrors;
-};
-
 // Base class for our document implementations.
 //
 // Note that this class *implements* nsIDOMXMLDocument, but it's not
@@ -739,6 +716,8 @@ public:
   virtual void SetChromeXHRDocURI(nsIURI* aURI) override;
 
   virtual void SetChromeXHRDocBaseURI(nsIURI* aURI) override;
+
+  virtual void ApplySettingsFromCSP(bool aSpeculative) override;
 
   /**
    * Set the principal responsible for this document.
@@ -822,24 +801,29 @@ public:
    * These are ordered, highest priority last
    */
   virtual int32_t GetNumberOfStyleSheets() const override;
-  virtual nsIStyleSheet* GetStyleSheetAt(int32_t aIndex) const override;
-  virtual int32_t GetIndexOfStyleSheet(nsIStyleSheet* aSheet) const override;
-  virtual void AddStyleSheet(nsIStyleSheet* aSheet) override;
-  virtual void RemoveStyleSheet(nsIStyleSheet* aSheet) override;
+  virtual mozilla::CSSStyleSheet* GetStyleSheetAt(int32_t aIndex) const override;
+  virtual int32_t GetIndexOfStyleSheet(mozilla::CSSStyleSheet* aSheet) const override;
+  virtual void AddStyleSheet(mozilla::CSSStyleSheet* aSheet) override;
+  virtual void RemoveStyleSheet(mozilla::CSSStyleSheet* aSheet) override;
 
-  virtual void UpdateStyleSheets(nsCOMArray<nsIStyleSheet>& aOldSheets,
-                                 nsCOMArray<nsIStyleSheet>& aNewSheets) override;
-  virtual void AddStyleSheetToStyleSets(nsIStyleSheet* aSheet);
-  virtual void RemoveStyleSheetFromStyleSets(nsIStyleSheet* aSheet);
+  virtual void UpdateStyleSheets(
+      nsTArray<RefPtr<mozilla::CSSStyleSheet>>& aOldSheets,
+      nsTArray<RefPtr<mozilla::CSSStyleSheet>>& aNewSheets) override;
+  virtual void AddStyleSheetToStyleSets(mozilla::CSSStyleSheet* aSheet);
+  virtual void RemoveStyleSheetFromStyleSets(mozilla::CSSStyleSheet* aSheet);
 
-  virtual void InsertStyleSheetAt(nsIStyleSheet* aSheet, int32_t aIndex) override;
-  virtual void SetStyleSheetApplicableState(nsIStyleSheet* aSheet,
+  virtual void InsertStyleSheetAt(mozilla::CSSStyleSheet* aSheet,
+                                  int32_t aIndex) override;
+  virtual void SetStyleSheetApplicableState(mozilla::CSSStyleSheet* aSheet,
                                             bool aApplicable) override;
 
-  virtual nsresult LoadAdditionalStyleSheet(additionalSheetType aType, nsIURI* aSheetURI) override;
-  virtual nsresult AddAdditionalStyleSheet(additionalSheetType aType, nsIStyleSheet* aSheet) override;
-  virtual void RemoveAdditionalStyleSheet(additionalSheetType aType, nsIURI* sheetURI) override;
-  virtual nsIStyleSheet* FirstAdditionalAuthorSheet() override;
+  virtual nsresult LoadAdditionalStyleSheet(additionalSheetType aType,
+                                            nsIURI* aSheetURI) override;
+  virtual nsresult AddAdditionalStyleSheet(additionalSheetType aType,
+                                           mozilla::CSSStyleSheet* aSheet) override;
+  virtual void RemoveAdditionalStyleSheet(additionalSheetType aType,
+                                          nsIURI* sheetURI) override;
+  virtual mozilla::CSSStyleSheet* FirstAdditionalAuthorSheet() override;
 
   virtual nsIChannel* GetChannel() const override {
     return mChannel;
@@ -899,13 +883,12 @@ public:
   virtual void DocumentStatesChanged(
                  mozilla::EventStates aStateMask) override;
 
-  virtual void StyleRuleChanged(nsIStyleSheet* aStyleSheet,
-                                nsIStyleRule* aOldStyleRule,
-                                nsIStyleRule* aNewStyleRule) override;
-  virtual void StyleRuleAdded(nsIStyleSheet* aStyleSheet,
-                              nsIStyleRule* aStyleRule) override;
-  virtual void StyleRuleRemoved(nsIStyleSheet* aStyleSheet,
-                                nsIStyleRule* aStyleRule) override;
+  virtual void StyleRuleChanged(mozilla::CSSStyleSheet* aStyleSheet,
+                                mozilla::css::Rule* aStyleRule) override;
+  virtual void StyleRuleAdded(mozilla::CSSStyleSheet* aStyleSheet,
+                              mozilla::css::Rule* aStyleRule) override;
+  virtual void StyleRuleRemoved(mozilla::CSSStyleSheet* aStyleSheet,
+                                mozilla::css::Rule* aStyleRule) override;
 
   virtual void FlushPendingNotifications(mozFlushType aType) override;
   virtual void FlushExternalResources(mozFlushType aType) override;
@@ -1515,8 +1498,9 @@ protected:
                                                nsCompatibility aCompatMode);
 
   void RemoveDocStyleSheetsFromStyleSets();
-  void RemoveStyleSheetsFromStyleSets(nsCOMArray<nsIStyleSheet>& aSheets, 
-                                      mozilla::SheetType aType);
+  void RemoveStyleSheetsFromStyleSets(
+      nsTArray<RefPtr<mozilla::CSSStyleSheet>>& aSheets,
+      mozilla::SheetType aType);
   void ResetStylesheetsToURI(nsIURI* aURI);
   void FillStyleSet(nsStyleSet* aStyleSet);
 
@@ -1569,9 +1553,9 @@ protected:
   // EndLoad() has already happened.
   nsWeakPtr mWeakSink;
 
-  nsCOMArray<nsIStyleSheet> mStyleSheets;
-  nsCOMArray<nsIStyleSheet> mOnDemandBuiltInUASheets;
-  nsCOMArray<nsIStyleSheet> mAdditionalSheets[AdditionalSheetTypeCount];
+  nsTArray<RefPtr<mozilla::CSSStyleSheet>> mStyleSheets;
+  nsTArray<RefPtr<mozilla::CSSStyleSheet>> mOnDemandBuiltInUASheets;
+  nsTArray<RefPtr<mozilla::CSSStyleSheet>> mAdditionalSheets[AdditionalSheetTypeCount];
 
   // Array of observers
   nsTObserverArray<nsIDocumentObserver*> mObservers;
@@ -1730,8 +1714,8 @@ private:
   friend class nsUnblockOnloadEvent;
   // Recomputes the visibility state but doesn't set the new value.
   mozilla::dom::VisibilityState GetVisibilityState() const;
-  void NotifyStyleSheetAdded(nsIStyleSheet* aSheet, bool aDocumentSheet);
-  void NotifyStyleSheetRemoved(nsIStyleSheet* aSheet, bool aDocumentSheet);
+  void NotifyStyleSheetAdded(mozilla::CSSStyleSheet* aSheet, bool aDocumentSheet);
+  void NotifyStyleSheetRemoved(mozilla::CSSStyleSheet* aSheet, bool aDocumentSheet);
 
   void PostUnblockOnloadEvent();
   void DoUnblockOnload();
@@ -1739,11 +1723,6 @@ private:
   nsresult CheckFrameOptions();
   bool IsLoopDocument(nsIChannel* aChannel);
   nsresult InitCSP(nsIChannel* aChannel);
-
-  void FlushCSPWebConsoleErrorQueue()
-  {
-    mCSPWebConsoleErrorQueue.Flush(this);
-  }
 
   /**
    * Find the (non-anonymous) content in this document for aFrame. It will
@@ -1766,6 +1745,8 @@ private:
   // Reschedule any notifications we need to handle
   // requestAnimationFrame, if it's OK to do so.
   void MaybeRescheduleAnimationFrameNotifications();
+
+  void ClearAllBoxObjects();
 
   // Returns true if the scheme for the url for this document is "about"
   bool IsAboutPage();
@@ -1865,8 +1846,6 @@ private:
 
   nsrefcnt mStackRefCnt;
   bool mNeedsReleaseAfterStackRefCntRelease;
-
-  CSPErrorQueue mCSPWebConsoleErrorQueue;
 
   nsCOMPtr<nsIDocument> mMasterDocument;
   RefPtr<mozilla::dom::ImportManager> mImportManager;

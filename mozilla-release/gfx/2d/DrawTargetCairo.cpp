@@ -595,6 +595,7 @@ NeedIntermediateSurface(const Pattern& aPattern, const DrawOptions& aOptions)
 DrawTargetCairo::DrawTargetCairo()
   : mContext(nullptr)
   , mSurface(nullptr)
+  , mTransformSingular(false)
   , mLockedBits(nullptr)
 {
 }
@@ -659,7 +660,7 @@ DrawTargetCairo::GetType() const
     case CAIRO_SURFACE_TYPE_TEE: // included to silence warning about unhandled enum value
       return DrawTargetType::SOFTWARE_RASTER;
     default:
-      MOZ_CRASH("Unsupported cairo surface type");
+      MOZ_CRASH("GFX: Unsupported cairo surface type");
     }
   }
   MOZ_ASSERT(false, "Could not determine DrawTargetType for DrawTargetCairo");
@@ -791,6 +792,10 @@ DrawTargetCairo::DrawSurface(SourceSurface *aSurface,
                              const DrawSurfaceOptions &aSurfOptions,
                              const DrawOptions &aOptions)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   if (!IsValid() || !aSurface) {
     gfxCriticalNote << "DrawSurface with bad surface " << cairo_surface_status(mSurface);
     return;
@@ -989,6 +994,10 @@ DrawTargetCairo::FillRect(const Rect &aRect,
                           const Pattern &aPattern,
                           const DrawOptions &aOptions)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
 
   bool restoreTransform = false;
@@ -1064,6 +1073,10 @@ DrawTargetCairo::CopySurface(SourceSurface *aSurface,
                              const IntRect &aSource,
                              const IntPoint &aDest)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
   AutoClearDeviceOffset clear(aSurface);
 
@@ -1086,6 +1099,10 @@ void
 DrawTargetCairo::CopyRect(const IntRect &aSource,
                           const IntPoint &aDest)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
 
   IntRect source = aSource;
@@ -1118,6 +1135,10 @@ DrawTargetCairo::CopyRect(const IntRect &aSource,
 void
 DrawTargetCairo::ClearRect(const Rect& aRect)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
 
   if (!mContext || aRect.Width() <= 0 || aRect.Height() <= 0 ||
@@ -1140,6 +1161,10 @@ DrawTargetCairo::StrokeRect(const Rect &aRect,
                             const StrokeOptions &aStrokeOptions /* = StrokeOptions() */,
                             const DrawOptions &aOptions /* = DrawOptions() */)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
 
   cairo_new_path(mContext);
@@ -1155,6 +1180,10 @@ DrawTargetCairo::StrokeLine(const Point &aStart,
                             const StrokeOptions &aStrokeOptions /* = StrokeOptions() */,
                             const DrawOptions &aOptions /* = DrawOptions() */)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
 
   cairo_new_path(mContext);
@@ -1170,6 +1199,10 @@ DrawTargetCairo::Stroke(const Path *aPath,
                         const StrokeOptions &aStrokeOptions /* = StrokeOptions() */,
                         const DrawOptions &aOptions /* = DrawOptions() */)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext, aPath);
 
   if (aPath->GetBackendType() != BackendType::CAIRO)
@@ -1186,6 +1219,10 @@ DrawTargetCairo::Fill(const Path *aPath,
                       const Pattern &aPattern,
                       const DrawOptions &aOptions /* = DrawOptions() */)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext, aPath);
 
   if (aPath->GetBackendType() != BackendType::CAIRO)
@@ -1214,6 +1251,10 @@ DrawTargetCairo::FillGlyphs(ScaledFont *aFont,
                             const DrawOptions &aOptions,
                             const GlyphRenderingOptions*)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   if (!IsValid()) {
     gfxDebug() << "FillGlyphs bad surface " << cairo_surface_status(mSurface);
     return;
@@ -1242,7 +1283,8 @@ DrawTargetCairo::FillGlyphs(ScaledFont *aFont,
   // allocation in ~99% of cases.
   Vector<cairo_glyph_t, 1024 / sizeof(cairo_glyph_t)> glyphs;
   if (!glyphs.resizeUninitialized(aBuffer.mNumGlyphs)) {
-    MOZ_CRASH("glyphs allocation failed");
+    gfxDevCrash(LogReason::GlyphAllocFailedCairo) << "glyphs allocation failed";
+    return;
   }
   for (uint32_t i = 0; i < aBuffer.mNumGlyphs; ++i) {
     glyphs[i].index = aBuffer.mGlyphs[i].mIndex;
@@ -1262,6 +1304,10 @@ DrawTargetCairo::Mask(const Pattern &aSource,
                       const Pattern &aMask,
                       const DrawOptions &aOptions /* = DrawOptions() */)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
   AutoClearDeviceOffset clearSource(aSource);
   AutoClearDeviceOffset clearMask(aMask);
@@ -1287,6 +1333,7 @@ DrawTargetCairo::Mask(const Pattern &aSource,
   }
 
   cairo_set_source(mContext, source);
+  cairo_set_operator(mContext, GfxOpToCairoOp(aOptions.mCompositionOp));
   cairo_mask(mContext, mask);
 
   cairo_pattern_destroy(mask);
@@ -1299,6 +1346,10 @@ DrawTargetCairo::MaskSurface(const Pattern &aSource,
                              Point aOffset,
                              const DrawOptions &aOptions)
 {
+  if (mTransformSingular) {
+    return;
+  }
+
   AutoPrepareForDrawing prep(this, mContext);
   AutoClearDeviceOffset clearSource(aSource);
   AutoClearDeviceOffset clearMask(aMask);
@@ -1365,7 +1416,13 @@ DrawTargetCairo::PushClip(const Path *aPath)
   cairo_save(mContext);
 
   PathCairo* path = const_cast<PathCairo*>(static_cast<const PathCairo*>(aPath));
-  path->SetPathOnContext(mContext);
+
+  if (mTransformSingular) {
+    cairo_new_path(mContext);
+    cairo_rectangle(mContext, 0, 0, 0, 0);
+  } else {
+    path->SetPathOnContext(mContext);
+  }
   cairo_clip_preserve(mContext);
 }
 
@@ -1376,7 +1433,11 @@ DrawTargetCairo::PushClipRect(const Rect& aRect)
   cairo_save(mContext);
 
   cairo_new_path(mContext);
-  cairo_rectangle(mContext, aRect.X(), aRect.Y(), aRect.Width(), aRect.Height());
+  if (mTransformSingular) {
+    cairo_rectangle(mContext, 0, 0, 0, 0);
+  } else {
+    cairo_rectangle(mContext, aRect.X(), aRect.Y(), aRect.Width(), aRect.Height());
+  }
   cairo_clip_preserve(mContext);
 }
 
@@ -1393,9 +1454,6 @@ DrawTargetCairo::PopClip()
   cairo_restore(mContext);
 
   cairo_set_matrix(mContext, &mat);
-
-  MOZ_ASSERT(cairo_status(mContext) || GetTransform() == Matrix(mat.xx, mat.yx, mat.xy, mat.yy, mat.x0, mat.y0),
-             "Transforms are out of sync");
 }
 
 already_AddRefed<PathBuilder>
@@ -1508,10 +1566,10 @@ DrawTargetCairo::OptimizeSourceSurface(SourceSurface *aSurface) const
   Display *dpy = DisplayOfScreen(screen);
   XRenderPictFormat* xrenderFormat = nullptr;
   switch (format) {
-  case SurfaceFormat::B8G8R8A8:
+  case SurfaceFormat::A8R8G8B8_UINT32:
     xrenderFormat = XRenderFindStandardFormat(dpy, PictStandardARGB32);
     break;
-  case SurfaceFormat::B8G8R8X8:
+  case SurfaceFormat::X8R8G8B8_UINT32:
     xrenderFormat = XRenderFindStandardFormat(dpy, PictStandardRGB24);
     break;
   case SurfaceFormat::A8:
@@ -1626,7 +1684,7 @@ DrawTargetCairo::InitAlreadyReferenced(cairo_surface_t* aSurface, const IntSize&
   cairo_rectangle(mContext, 0, 0, mSize.width, mSize.height);
   cairo_clip(mContext);
 
-  if (mFormat == SurfaceFormat::B8G8R8A8 ||
+  if (mFormat == SurfaceFormat::A8R8G8B8_UINT32 ||
       mFormat == SurfaceFormat::R8G8B8A8) {
     SetPermitSubpixelAA(false);
   } else {
@@ -1745,11 +1803,14 @@ DrawTargetCairo::WillChange(const Path* aPath /* = nullptr */)
 void
 DrawTargetCairo::SetTransform(const Matrix& aTransform)
 {
-  mTransform = aTransform;
+  DrawTarget::SetTransform(aTransform);
 
-  cairo_matrix_t mat;
-  GfxMatrixToCairoMatrix(mTransform, mat);
-  cairo_set_matrix(mContext, &mat);
+  mTransformSingular = aTransform.IsSingular();
+  if (!mTransformSingular) {
+    cairo_matrix_t mat;
+    GfxMatrixToCairoMatrix(mTransform, mat);
+    cairo_set_matrix(mContext, &mat);
+  }
 }
 
 Rect
