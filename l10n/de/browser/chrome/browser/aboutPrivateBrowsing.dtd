@@ -2,6 +2,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
+%brandDTD;
+
 <!ENTITY aboutPrivateBrowsing.notPrivate       "Sie befinden sich derzeit nicht in einem privaten Fenster.">
 <!ENTITY privatebrowsingpage.openPrivateWindow.label "Neues privates Fenster öffnen">
 <!ENTITY privatebrowsingpage.openPrivateWindow.accesskey "F">
@@ -27,7 +30,7 @@
 <!ENTITY aboutPrivateBrowsing.info.downloads   "Downloads">
 <!ENTITY aboutPrivateBrowsing.info.bookmarks   "Lesezeichen">
 
-<!ENTITY aboutPrivateBrowsing.note1            "Ihr Arbeitgeber oder Ihr Internetanbieter können weiterhin verfolgen, welche Seiten Sie besuchen.">
+<!ENTITY aboutPrivateBrowsing.note1            "Bitte beachte: Dein Arbeitgeber oder Internetanbieter können weiterhin verfolgen, welche Seiten du besuchst, wenn Anti-Tracking deaktiviert ist. Sicher und datengeschützt surfst du mit &brandShortName; auch im normalen Modus.">
 <!ENTITY aboutPrivateBrowsing.learnMore        "Weitere Informationen">
 
 <!-- LOCALIZATION NOTE (trackingProtection.width1):
