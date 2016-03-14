@@ -150,6 +150,7 @@
         <label class="category-name" flex="1">&paneSecurity.title;</label>
       </richlistitem>
 
+#ifdef MOZ_SERVICES_SYNC
       <richlistitem id="category-sync"
                     class="category"
                     value="paneSync"
@@ -159,6 +160,7 @@
         <image class="category-icon"/>
         <label class="category-name" flex="1">&paneSync.title;</label>
       </richlistitem>
+#endif
 
       <richlistitem id="category-advanced"
                     class="category"
@@ -180,7 +182,9 @@
 #include applications.xul
 #include content.xul
 #include security.xul
-#include sync.xul
+#ifdef MOZ_SERVICES_SYNC
+  #include sync.xul
+#endif
       </prefpane>
     </vbox>
 

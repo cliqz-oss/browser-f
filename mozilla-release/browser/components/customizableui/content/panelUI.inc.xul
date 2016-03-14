@@ -85,11 +85,13 @@
                        label="&appMenuHistory.clearRecent.label;"
                        class="subviewbutton"
                        command="Tools:Sanitize"/>
+#ifdef MOZ_SERVICES_SYNC
         <toolbarbutton id="sync-tabs-menuitem2"
                        class="syncTabsMenuItem subviewbutton"
                        label="&syncTabsMenu3.label;"
                        oncommand="BrowserOpenSyncTabs();"
                        hidden="true"/>
+#endif
         <toolbarbutton id="appMenuRestoreLastSession"
                        label="&appMenuHistory.restoreSession.label;"
                        class="subviewbutton"
@@ -107,6 +109,7 @@
                      oncommand="PlacesCommandHook.showPlacesOrganizer('History'); CustomizableUI.hidePanelForNode(this);"/>
     </panelview>
 
+#ifdef MOZ_SERVICES_SYNC
     <panelview id="PanelUI-remotetabs" flex="1" class="PanelUI-subView">
       <label value="&appMenuRemoteTabs.label;" class="panel-subview-header"/>
       <vbox class="panel-subview-body">
@@ -188,6 +191,7 @@
         </hbox>
       </vbox>
     </panelview>
+#endif  // MOZ_SERVICES_SYNC
 
     <panelview id="PanelUI-bookmarks" flex="1" class="PanelUI-subView">
       <label value="&bookmarksMenu.label;" class="panel-subview-header"/>

@@ -244,12 +244,14 @@ const CustomizableWidgets = [
         recentlyClosedWindows.removeChild(recentlyClosedWindows.firstChild);
       }
 
+#ifdef MOZ_SERVICES_SYNC
       let tabsFromOtherComputers = doc.getElementById("sync-tabs-menuitem2");
       if (PlacesUIUtils.shouldShowTabsFromOtherComputersMenuitem()) {
         tabsFromOtherComputers.removeAttribute("hidden");
       } else {
         tabsFromOtherComputers.setAttribute("hidden", true);
       }
+#endif
 
       let utils = RecentlyClosedTabsAndWindowsMenuUtils;
       let tabsFragment = utils.getTabsFragment(doc.defaultView, "toolbarbutton", true,
@@ -288,7 +290,9 @@ const CustomizableWidgets = [
     onViewHiding: function(aEvent) {
       LOG("History view is being hidden!");
     }
-  }, {
+  },
+#ifdef MOZ_SERVICES_SYNC
+  {
     id: "sync-button",
     label: "remotetabs-panelmenu.label",
     tooltiptext: "remotetabs-panelmenu.tooltiptext",
@@ -495,7 +499,9 @@ const CustomizableWidgets = [
         return b.tabs[0].lastUsed - a.tabs[0].lastUsed;
       });
     },
-  }, {
+  },
+#endif  // MOZ_SERVICES_SYNC
+  {
     id: "privatebrowsing-button",
     shortcutId: "key_privatebrowsing",
     defaultArea: CustomizableUI.AREA_PANEL,

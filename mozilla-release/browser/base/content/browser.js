@@ -165,8 +165,10 @@ XPCOMUtils.defineLazyGetter(this, "gCustomizeMode", function() {
   return new scope.CustomizeMode(window);
 });
 
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyModuleGetter(this, "Weave",
   "resource://services-sync/main.js");
+#endif
 
 XPCOMUtils.defineLazyGetter(this, "PopupNotifications", function () {
   let tmp = {};
@@ -1322,9 +1324,11 @@ var gBrowserInit = {
 
     FullScreen.init();
 
+#ifdef MOZ_SERVICES_SYNC
     // initialize the sync UI
     gSyncUI.init();
     gFxAccounts.init();
+#endif
 
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
@@ -1462,7 +1466,9 @@ var gBrowserInit = {
 
     FullScreen.uninit();
 
+#ifdef MOZ_SERVICES_SYNC
     gFxAccounts.uninit();
+#endif
 
     Services.obs.removeObserver(gPluginHandler.NPAPIPluginCrashed, "plugin-crashed");
 
@@ -1669,8 +1675,10 @@ if (AppConstants.platform == "macosx") {
     // initialize the private browsing UI
     gPrivateBrowsingUI.init();
 
+#ifdef MOZ_SERVICES_SYNC
     // initialize the sync UI
     gSyncUI.init();
+#endif
 
     if (AppConstants.E10S_TESTING_ONLY) {
       gRemoteTabsUI.init();
@@ -6671,6 +6679,7 @@ function checkEmptyPageOrigin(browser = gBrowser.selectedBrowser,
   return ssm.isSystemPrincipal(contentPrincipal);
 }
 
+#ifdef MOZ_SERVICES_SYNC
 function BrowserOpenSyncTabs() {
   if (Services.prefs.getBoolPref("services.sync.syncedTabsUIRefresh")) {
     gSyncUI.openSyncedTabsPanel();
@@ -6678,6 +6687,7 @@ function BrowserOpenSyncTabs() {
     switchToTabHavingURI("about:sync-tabs", true);
   }
 }
+#endif
 
 /**
  * Format a URL

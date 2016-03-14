@@ -180,6 +180,7 @@
     <broadcaster id="singleFeedMenuitemState" disabled="true"/>
     <broadcaster id="multipleFeedsMenuState" hidden="true"/>
 
+#ifdef MOZ_SERVICES_SYNC
     <!-- Sync broadcasters -->
     <!-- A broadcaster of a number of attributes suitable for "sync now" UI -
         A 'syncstatus' attribute is set while actively syncing, and the label
@@ -190,6 +191,8 @@
     <broadcaster id="sync-setup-state"/>
     <broadcaster id="sync-syncnow-state" hidden="true"/>
     <broadcaster id="sync-reauth-state" hidden="true"/>
+#endif
+
     <broadcaster id="workOfflineMenuitemState"/>
     <broadcaster id="socialSidebarBroadcaster" hidden="true"/>
 

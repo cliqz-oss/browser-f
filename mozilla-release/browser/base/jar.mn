@@ -74,7 +74,7 @@ browser.jar:
 *       content/browser/aboutTabGroupsMigration.xhtml (content/aboutTabGroupsMigration.xhtml)
         content/browser/aboutTabGroupsMigration.js    (content/aboutTabGroupsMigration.js)
 *       content/browser/browser.css                   (content/browser.css)
-        content/browser/browser.js                    (content/browser.js)
+*       content/browser/browser.js                    (content/browser.js)
 *       content/browser/browser.xul                   (content/browser.xul)
         content/browser/browser-addons.js             (content/browser-addons.js)
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)
@@ -87,14 +87,16 @@ browser.jar:
         content/browser/browser-fullZoom.js           (content/browser-fullZoom.js)
         content/browser/browser-fxaccounts.js         (content/browser-fxaccounts.js)
         content/browser/browser-gestureSupport.js     (content/browser-gestureSupport.js)
-        content/browser/browser-places.js             (content/browser-places.js)
+*       content/browser/browser-places.js             (content/browser-places.js)
         content/browser/browser-plugins.js            (content/browser-plugins.js)
 #ifdef MOZ_SAFE_BROWSING
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
 #endif
         content/browser/browser-sidebar.js            (content/browser-sidebar.js)
         content/browser/browser-social.js             (content/browser-social.js)
+#ifdef MOZ_SERVICES_SYNC
         content/browser/browser-syncui.js             (content/browser-syncui.js)
+#endif
 *       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
 #ifdef CAN_DRAW_IN_TITLEBAR
         content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
@@ -147,6 +149,7 @@ browser.jar:
         content/browser/pageinfo/feeds.xml            (content/pageinfo/feeds.xml)
         content/browser/pageinfo/permissions.js       (content/pageinfo/permissions.js)
         content/browser/pageinfo/security.js          (content/pageinfo/security.js)
+#ifdef MOZ_SERVICES_SYNC
         content/browser/sync/aboutSyncTabs.xul        (content/sync/aboutSyncTabs.xul)
         content/browser/sync/aboutSyncTabs.js         (content/sync/aboutSyncTabs.js)
         content/browser/sync/aboutSyncTabs.css        (content/sync/aboutSyncTabs.css)
@@ -162,6 +165,7 @@ browser.jar:
 *       content/browser/sync/customize.xul            (content/sync/customize.xul)
         content/browser/sync/customize.js             (content/sync/customize.js)
         content/browser/sync/customize.css            (content/sync/customize.css)
+#endif
         content/browser/safeMode.css                  (content/safeMode.css)
         content/browser/safeMode.js                   (content/safeMode.js)
         content/browser/safeMode.xul                  (content/safeMode.xul)

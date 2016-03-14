@@ -1247,6 +1247,7 @@ pref("browser.taskbar.lists.tasks.enabled", true);
 pref("browser.taskbar.lists.refreshInSeconds", 120);
 #endif
 
+#ifdef MOZ_SERVICES_SYNC
 // The sync engines to use.
 pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab,Addons");
 // Preferences to be synced by default
@@ -1325,6 +1326,8 @@ pref("services.sync.syncedTabsUIRefresh", true);
 #else
 pref("services.sync.syncedTabsUIRefresh", false);
 #endif
+
+#endif  // MOZ_SERVICES_SYNC
 
 // Developer edition preferences
 #ifdef MOZ_DEV_EDITION
