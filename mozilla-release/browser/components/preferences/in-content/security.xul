@@ -43,6 +43,7 @@
 <groupbox id="addonsPhishingGroup" data-category="paneSecurity" hidden="true">
   <caption><label>&general.label;</label></caption>
 
+#if 0
   <hbox id="addonInstallBox">
     <checkbox id="warnAddonInstall"
               label="&warnAddonInstall.label;"
@@ -54,6 +55,7 @@
             label="&addonExceptions.label;"
             accesskey="&addonExceptions.accesskey;"/>
   </hbox>
+#endif
 
   <separator class="thin"/>
   <vbox align="start">

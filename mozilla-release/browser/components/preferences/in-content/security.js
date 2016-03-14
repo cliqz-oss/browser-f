@@ -21,8 +21,10 @@ var gSecurityPane = {
     this._pane = document.getElementById("paneSecurity");
     this._initMasterPasswordUI();
 
+#if 0
     setEventListener("addonExceptions", "command",
       gSecurityPane.showAddonExceptions);
+#endif
     setEventListener("passwordExceptions", "command",
       gSecurityPane.showPasswordExceptions);
     setEventListener("useMasterPassword", "command",
@@ -35,6 +37,7 @@ var gSecurityPane = {
 
   // ADD-ONS
 
+#if 0
   /*
    * Preferences:
    *
@@ -75,6 +78,7 @@ var gSecurityPane = {
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
                     null, params);
   },
+#endif
 
   /**
    * Parameters for the add-on install permissions dialog.
