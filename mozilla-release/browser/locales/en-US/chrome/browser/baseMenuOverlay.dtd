@@ -25,7 +25,7 @@
 
 <!ENTITY helpSafeMode.label       "Restart in safe mode…">
 <!ENTITY helpSafeMode.accesskey   "R">
-<!ENTITY helpSafeMode.stop.label       "Restart with Add-ons Enabled">
+<!ENTITY helpSafeMode.stop.label       "Restart in normal mode">
 <!ENTITY helpSafeMode.stop.accesskey   "R">
 
 <!ENTITY healthReport2.label      "&brandShorterName; Health Report">

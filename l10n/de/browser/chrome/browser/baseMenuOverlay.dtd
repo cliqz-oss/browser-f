@@ -25,7 +25,7 @@
 
 <!ENTITY helpSafeMode.label       "Im abgesicherten Modus neu starten…">
 <!ENTITY helpSafeMode.accesskey   "A">
-<!ENTITY helpSafeMode.stop.label       "Mit aktivierten Add-ons neu starten">
+<!ENTITY helpSafeMode.stop.label       "Im normalen Modus neu starten">
 <!ENTITY helpSafeMode.stop.accesskey   "A">
 
 <!ENTITY healthReport2.label      "&brandShorterName;-Statusbericht">
