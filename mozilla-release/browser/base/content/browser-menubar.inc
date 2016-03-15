@@ -567,9 +567,9 @@
                             accesskey="&errorConsoleCmd.accesskey;"/>
                   <menuitem id="menu_devtools_connect"
                             observes="devtoolsMenuBroadcaster_connect"/>
-                  <menuseparator id="devToolsEndSeparator"/>
 #if 0
 # Addons are disabled in CLIQZ
+                  <menuseparator id="devToolsEndSeparator"/>
                   <menuitem id="getMoreDevtools"
                             observes="devtoolsMenuBroadcaster_GetMoreTools"
                             accesskey="&getMoreDevtoolsCmd.accesskey;"/>
