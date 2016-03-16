@@ -40,7 +40,7 @@ PushNotificationService.prototype = {
                                          Ci.nsIPushQuotaManager,]),
 
   register: function register(scope, originAttributes) {
-    return PushService._register({
+    return PushService.register({
       scope: scope,
       originAttributes: originAttributes,
       maxQuota: Infinity,
@@ -48,11 +48,11 @@ PushNotificationService.prototype = {
   },
 
   unregister: function unregister(scope, originAttributes) {
-    return PushService._unregister({scope, originAttributes});
+    return PushService.unregister({scope, originAttributes});
   },
 
   registration: function registration(scope, originAttributes) {
-    return PushService._registration({scope, originAttributes});
+    return PushService.registration({scope, originAttributes});
   },
 
   clearAll: function clearAll() {

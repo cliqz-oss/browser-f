@@ -2974,7 +2974,7 @@ SVGTextDrawPathCallbacks::FillAndStrokeGeometry()
   bool pushedGroup = false;
   if (mColor == NS_40PERCENT_FOREGROUND_COLOR) {
     pushedGroup = true;
-    gfx->PushGroup(gfxContentType::COLOR_ALPHA);
+    gfx->PushGroupForBlendBack(gfxContentType::COLOR_ALPHA, 0.4f);
   }
 
   uint32_t paintOrder = mFrame->StyleSVG()->mPaintOrder;
@@ -2998,8 +2998,7 @@ SVGTextDrawPathCallbacks::FillAndStrokeGeometry()
   }
 
   if (pushedGroup) {
-    gfx->PopGroupToSource();
-    gfx->Paint(0.4);
+    gfx->PopGroupAndBlend();
   }
 }
 
@@ -3212,10 +3211,8 @@ void
 nsDisplaySVGText::Paint(nsDisplayListBuilder* aBuilder,
                         nsRenderingContext* aCtx)
 {
-  gfxContext* ctx = aCtx->ThebesContext();
-
-  gfxContextAutoDisableSubpixelAntialiasing
-    disable(ctx, mDisableSubpixelAA);
+  DrawTargetAutoDisableSubpixelAntialiasing
+    disable(aCtx->GetDrawTarget(), mDisableSubpixelAA);
 
   uint32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
 
@@ -3230,6 +3227,7 @@ nsDisplaySVGText::Paint(nsDisplayListBuilder* aBuilder,
   gfxMatrix tm = nsSVGIntegrationUtils::GetCSSPxToDevPxMatrix(mFrame) *
                    gfxMatrix::Translation(devPixelOffset);
 
+  gfxContext* ctx = aCtx->ThebesContext();
   ctx->Save();
   static_cast<SVGTextFrame*>(mFrame)->PaintSVG(*ctx, tm);
   ctx->Restore();

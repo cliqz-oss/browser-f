@@ -424,6 +424,10 @@ RTCPeerConnection.prototype = {
     this.__DOM_IMPL__._innerObject = this;
     this._observer = new this._win.PeerConnectionObserver(this.__DOM_IMPL__);
 
+    var location = "" + this._win.location;
+    this._isLoop = location.startsWith("about:loop") ||
+                   location.startsWith("https://hello.firefox.com/");
+
     // Add a reference to the PeerConnection to global list (before init).
     _globalPCList.addPC(this);
 
@@ -1321,17 +1325,28 @@ PeerConnectionObserver.prototype = {
   //                 STUN requests.
 
   handleIceConnectionStateChange: function(iceConnectionState) {
-    var histogram = Services.telemetry.getHistogramById("WEBRTC_ICE_SUCCESS_RATE");
+    if (this._dompc.iceConnectionState === 'new') {
+      var checking_histogram = Services.telemetry.getHistogramById("WEBRTC_ICE_CHECKING_RATE");
+      if (iceConnectionState === 'checking') {
+        checking_histogram.add(true);
+      } else if (iceConnectionState === 'failed') {
+        checking_histogram.add(false);
+      }
+    } else if (this._dompc.iceConnectionState === 'checking') {
+      var success_histogram = Services.telemetry.getHistogramById(this._dompc._isLoop ?
+        "LOOP_ICE_SUCCESS_RATE" : "WEBRTC_ICE_SUCCESS_RATE");
+      if (iceConnectionState === 'completed' ||
+          iceConnectionState === 'connected') {
+        success_histogram.add(true);
+      } else if (iceConnectionState === 'failed') {
+        success_histogram.add(false);
+      }
+    }
 
     if (iceConnectionState === 'failed') {
-      histogram.add(false);
       this._dompc.logError("ICE failed, see about:webrtc for more details", null, 0);
     }
-    if (this._dompc.iceConnectionState === 'checking' &&
-        (iceConnectionState === 'completed' ||
-         iceConnectionState === 'connected')) {
-          histogram.add(true);
-    }
+
     this._dompc.changeIceConnectionState(iceConnectionState);
   },
 

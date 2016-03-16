@@ -21,11 +21,6 @@ pref("devtools.errorconsole.enabled", false);
 pref("devtools.toolbar.enabled", true);
 pref("devtools.toolbar.visible", false);
 
-// Enable the app manager
-pref("devtools.appmanager.enabled", true);
-pref("devtools.appmanager.lastTab", "help");
-pref("devtools.appmanager.manifestEditor.enabled", true);
-
 // Enable DevTools WebIDE by default
 pref("devtools.webide.enabled", true);
 
@@ -70,6 +65,10 @@ pref("devtools.inspector.showUserAgentStyles", false);
 pref("devtools.inspector.showAllAnonymousContent", false);
 // Enable the MDN docs tooltip
 pref("devtools.inspector.mdnDocsTooltip.enabled", true);
+
+// Collapse attributes that are too long.
+// Use -1 to not collapse attributes at all.
+pref("devtools.markup.collapseAttributeLength", 120);
 
 // DevTools default color unit
 pref("devtools.defaultColorUnit", "authored");

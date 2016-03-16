@@ -518,7 +518,7 @@ gfxPlatformFontList::SystemFindFontForChar(uint32_t aCh, uint32_t aNextCh,
     }
     TimeDuration elapsed = TimeStamp::Now() - start;
 
-    PRLogModuleInfo *log = gfxPlatform::GetLog(eGfxLog_textrun);
+    LogModule* log = gfxPlatform::GetLog(eGfxLog_textrun);
 
     if (MOZ_UNLIKELY(MOZ_LOG_TEST(log, LogLevel::Warning))) {
         uint32_t unicodeRange = FindCharUnicodeRange(aCh);
@@ -619,24 +619,6 @@ gfxPlatformFontList::GlobalFontFallback(const uint32_t aCh,
     return data.mBestMatch;
 }
 
-#ifdef XP_WIN
-#include <windows.h>
-
-// crude hack for using when monitoring process
-static void LogRegistryEvent(const wchar_t *msg)
-{
-  HKEY dummyKey;
-  HRESULT hr;
-  wchar_t buf[512];
-
-  wsprintfW(buf, L" log %s", msg);
-  hr = RegOpenKeyExW(HKEY_LOCAL_MACHINE, buf, 0, KEY_READ, &dummyKey);
-  if (SUCCEEDED(hr)) {
-    RegCloseKey(dummyKey);
-  }
-}
-#endif
-
 gfxFontFamily*
 gfxPlatformFontList::CheckFamily(gfxFontFamily *aFamily)
 {
@@ -657,7 +639,8 @@ gfxPlatformFontList::CheckFamily(gfxFontFamily *aFamily)
 }
 
 gfxFontFamily* 
-gfxPlatformFontList::FindFamily(const nsAString& aFamily, gfxFontStyle* aStyle)
+gfxPlatformFontList::FindFamily(const nsAString& aFamily, gfxFontStyle* aStyle,
+                                gfxFloat aDevToCssSize)
 {
     nsAutoString key;
     gfxFontFamily *familyEntry;

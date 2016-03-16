@@ -291,7 +291,7 @@ nsScriptSecurityManager::AppStatusForPrincipal(nsIPrincipal *aPrin)
     // The app could contain a cross-origin iframe - make sure that the content
     // is actually same-origin with the app.
     MOZ_ASSERT(inMozBrowser == false, "Checked this above");
-    OriginAttributes attrs(appId, false);
+    PrincipalOriginAttributes attrs(appId, false);
     nsCOMPtr<nsIPrincipal> appPrin = BasePrincipal::CreateCodebasePrincipal(appURI, attrs);
     NS_ENSURE_TRUE(appPrin, nsIPrincipal::APP_STATUS_NOT_INSTALLED);
     return aPrin->Equals(appPrin) ? status
@@ -362,7 +362,7 @@ nsScriptSecurityManager::GetChannelResultPrincipal(nsIChannel* aChannel,
 }
 
 nsresult
-nsScriptSecurityManager::MaybeSetAddonIdFromURI(OriginAttributes& aAttrs, nsIURI* aURI)
+nsScriptSecurityManager::MaybeSetAddonIdFromURI(PrincipalOriginAttributes& aAttrs, nsIURI* aURI)
 {
   nsAutoCString scheme;
   nsresult rv = aURI->GetScheme(scheme);
@@ -405,7 +405,8 @@ nsScriptSecurityManager::GetChannelURIPrincipal(nsIChannel* aChannel,
         return GetLoadContextCodebasePrincipal(uri, loadContext, aPrincipal);
     }
 
-    OriginAttributes attrs(UNKNOWN_APP_ID, false);
+    //TODO: Bug 1211590. inherit Origin Attributes from LoadInfo.
+    PrincipalOriginAttributes attrs(UNKNOWN_APP_ID, false);
     rv = MaybeSetAddonIdFromURI(attrs, uri);
     NS_ENSURE_SUCCESS(rv, rv);
     nsCOMPtr<nsIPrincipal> prin = BasePrincipal::CreateCodebasePrincipal(uri, attrs);
@@ -430,7 +431,6 @@ nsScriptSecurityManager::IsSystemPrincipal(nsIPrincipal* aPrincipal,
 ////////////////////////////////////
 NS_IMPL_ISUPPORTS(nsScriptSecurityManager,
                   nsIScriptSecurityManager,
-                  nsIChannelEventSink,
                   nsIObserver)
 
 ///////////////////////////////////////////////////
@@ -988,7 +988,7 @@ bool
 nsScriptSecurityManager::ScriptAllowed(JSObject *aGlobal)
 {
     MOZ_ASSERT(aGlobal);
-    MOZ_ASSERT(JS_IsGlobalObject(aGlobal) || js::IsOuterObject(aGlobal));
+    MOZ_ASSERT(JS_IsGlobalObject(aGlobal) || js::IsWindowProxy(aGlobal));
 
     // Check the bits on the compartment private.
     return xpc::Scriptability::Get(aGlobal).Allowed();
@@ -1008,7 +1008,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::GetSimpleCodebasePrincipal(nsIURI* aURI,
                                                     nsIPrincipal** aPrincipal)
 {
-  OriginAttributes attrs(UNKNOWN_APP_ID, false);
+  PrincipalOriginAttributes attrs(UNKNOWN_APP_ID, false);
   nsCOMPtr<nsIPrincipal> prin = BasePrincipal::CreateCodebasePrincipal(aURI, attrs);
   prin.forget(aPrincipal);
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
@@ -1018,7 +1018,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::GetNoAppCodebasePrincipal(nsIURI* aURI,
                                                    nsIPrincipal** aPrincipal)
 {
-  OriginAttributes attrs(NO_APP_ID, false);
+  PrincipalOriginAttributes attrs(NO_APP_ID, false);
   nsCOMPtr<nsIPrincipal> prin = BasePrincipal::CreateCodebasePrincipal(aURI, attrs);
   prin.forget(aPrincipal);
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
@@ -1035,7 +1035,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::CreateCodebasePrincipal(nsIURI* aURI, JS::Handle<JS::Value> aOriginAttributes,
                                                  JSContext* aCx, nsIPrincipal** aPrincipal)
 {
-  OriginAttributes attrs;
+  PrincipalOriginAttributes attrs;
   if (!aOriginAttributes.isObject() || !attrs.Init(aCx, aOriginAttributes)) {
       return NS_ERROR_INVALID_ARG;
   }
@@ -1065,7 +1065,7 @@ NS_IMETHODIMP
 nsScriptSecurityManager::CreateNullPrincipal(JS::Handle<JS::Value> aOriginAttributes,
                                              JSContext* aCx, nsIPrincipal** aPrincipal)
 {
-  OriginAttributes attrs;
+  PrincipalOriginAttributes attrs;
   if (!aOriginAttributes.isObject() || !attrs.Init(aCx, aOriginAttributes)) {
       return NS_ERROR_INVALID_ARG;
   }
@@ -1099,7 +1099,7 @@ nsScriptSecurityManager::GetAppCodebasePrincipal(nsIURI* aURI,
   NS_ENSURE_TRUE(aAppId != nsIScriptSecurityManager::UNKNOWN_APP_ID,
                  NS_ERROR_INVALID_ARG);
 
-  OriginAttributes attrs(aAppId, aInMozBrowser);
+  PrincipalOriginAttributes attrs(aAppId, aInMozBrowser);
   nsCOMPtr<nsIPrincipal> prin = BasePrincipal::CreateCodebasePrincipal(aURI, attrs);
   prin.forget(aPrincipal);
   return *aPrincipal ? NS_OK : NS_ERROR_FAILURE;
@@ -1111,9 +1111,12 @@ nsScriptSecurityManager::
                                   nsILoadContext* aLoadContext,
                                   nsIPrincipal** aPrincipal)
 {
-  OriginAttributes attrs;
-  bool result = attrs.CopyFromLoadContext(aLoadContext);
+  DocShellOriginAttributes docShellAttrs;
+  bool result = aLoadContext->GetOriginAttributes(docShellAttrs);;
   NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
+
+  PrincipalOriginAttributes attrs;
+  attrs.InheritFromDocShellToDoc(docShellAttrs, aURI);
 
   nsresult rv = MaybeSetAddonIdFromURI(attrs, aURI);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1127,10 +1130,8 @@ nsScriptSecurityManager::GetDocShellCodebasePrincipal(nsIURI* aURI,
                                                       nsIDocShell* aDocShell,
                                                       nsIPrincipal** aPrincipal)
 {
-  OriginAttributes attrs;
-  nsDocShell* docShell= nsDocShell::Cast(aDocShell);
-  bool result = attrs.CopyFromLoadContext(docShell);
-  NS_ENSURE_TRUE(result, NS_ERROR_FAILURE);
+  PrincipalOriginAttributes attrs;
+  attrs.InheritFromDocShellToDoc(nsDocShell::Cast(aDocShell)->GetOriginAttributes(), aURI);
 
   nsresult rv = MaybeSetAddonIdFromURI(attrs, aURI);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1233,41 +1234,6 @@ nsScriptSecurityManager::CanGetService(JSContext *cx,
     SetPendingException(cx, errorMsg.get());
     return NS_ERROR_DOM_XPCONNECT_ACCESS_DENIED;
 }
-
-/////////////////////////////////////////////
-// Method implementing nsIChannelEventSink //
-/////////////////////////////////////////////
-NS_IMETHODIMP
-nsScriptSecurityManager::AsyncOnChannelRedirect(nsIChannel* oldChannel, 
-                                                nsIChannel* newChannel,
-                                                uint32_t redirFlags,
-                                                nsIAsyncVerifyRedirectCallback *cb)
-{
-    nsCOMPtr<nsIPrincipal> oldPrincipal;
-    GetChannelResultPrincipal(oldChannel, getter_AddRefs(oldPrincipal));
-
-    nsCOMPtr<nsIURI> newURI;
-    newChannel->GetURI(getter_AddRefs(newURI));
-    nsCOMPtr<nsIURI> newOriginalURI;
-    newChannel->GetOriginalURI(getter_AddRefs(newOriginalURI));
-
-    NS_ENSURE_STATE(oldPrincipal && newURI && newOriginalURI);
-
-    const uint32_t flags =
-        nsIScriptSecurityManager::LOAD_IS_AUTOMATIC_DOCUMENT_REPLACEMENT |
-        nsIScriptSecurityManager::DISALLOW_SCRIPT;
-    nsresult rv = CheckLoadURIWithPrincipal(oldPrincipal, newURI, flags);
-    if (NS_SUCCEEDED(rv) && newOriginalURI != newURI) {
-        rv = CheckLoadURIWithPrincipal(oldPrincipal, newOriginalURI, flags);
-    }
-
-    if (NS_FAILED(rv))
-        return rv;
-
-    cb->OnRedirectVerifyCallback(NS_OK);
-    return NS_OK;
-}
-
 
 /////////////////////////////////////
 // Method implementing nsIObserver //

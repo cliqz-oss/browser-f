@@ -32,6 +32,7 @@
 #include "nsIdleService.h"
 #include "nsIObserverService.h"
 #include "nsAppShell.h"
+#include "nsProxyRelease.h"
 #include "nsTArray.h"
 #include "pixelflinger/format.h"
 #include "nsIDisplayInfo.h"
@@ -112,8 +113,10 @@ SurfaceFormatToColorDepth(int32_t aSurfaceFormat)
 
 nsScreenGonk::nsScreenGonk(uint32_t aId,
                            GonkDisplay::DisplayType aDisplayType,
-                           const GonkDisplay::NativeData& aNativeData)
+                           const GonkDisplay::NativeData& aNativeData,
+                           NotifyDisplayChangedEvent aEventVisibility)
     : mId(aId)
+    , mEventVisibility(aEventVisibility)
     , mNativeWindow(aNativeData.mNativeWindow)
     , mDpi(aNativeData.mXdpi)
     , mScreenRotation(nsIScreen::ROTATION_0_DEG)
@@ -181,6 +184,12 @@ nsScreenGonk::GetId()
     return mId;
 }
 
+NotifyDisplayChangedEvent
+nsScreenGonk::GetEventVisibility()
+{
+    return mEventVisibility;
+}
+
 NS_IMETHODIMP
 nsScreenGonk::GetRect(int32_t *outLeft,  int32_t *outTop,
                       int32_t *outWidth, int32_t *outHeight)
@@ -194,7 +203,7 @@ nsScreenGonk::GetRect(int32_t *outLeft,  int32_t *outTop,
     return NS_OK;
 }
 
-nsIntRect
+LayoutDeviceIntRect
 nsScreenGonk::GetRect()
 {
     return mVirtualBounds;
@@ -263,9 +272,9 @@ nsScreenGonk::SetRotation(uint32_t aRotation)
     uint32_t rotation = EffectiveScreenRotation();
     if (rotation == nsIScreen::ROTATION_90_DEG ||
         rotation == nsIScreen::ROTATION_270_DEG) {
-        mVirtualBounds = nsIntRect(0, 0,
-                                   mNaturalBounds.height,
-                                   mNaturalBounds.width);
+        mVirtualBounds = LayoutDeviceIntRect(0, 0,
+                                             mNaturalBounds.height,
+                                             mNaturalBounds.width);
     } else {
         mVirtualBounds = mNaturalBounds;
     }
@@ -281,7 +290,7 @@ nsScreenGonk::SetRotation(uint32_t aRotation)
     return NS_OK;
 }
 
-nsIntRect
+LayoutDeviceIntRect
 nsScreenGonk::GetNaturalBounds()
 {
     return mNaturalBounds;
@@ -296,7 +305,7 @@ nsScreenGonk::EffectiveScreenRotation()
 // NB: This isn't gonk-specific, but gonk is the only widget backend
 // that does this calculation itself, currently.
 static ScreenOrientationInternal
-ComputeOrientation(uint32_t aRotation, const nsIntSize& aScreenSize)
+ComputeOrientation(uint32_t aRotation, const LayoutDeviceIntSize& aScreenSize)
 {
     bool naturallyPortrait = (aScreenSize.height > aScreenSize.width);
     switch (aRotation) {
@@ -330,12 +339,12 @@ RotationToAngle(uint32_t aRotation)
 ScreenConfiguration
 nsScreenGonk::GetConfiguration()
 {
-    ScreenOrientationInternal orientation = ComputeOrientation(mScreenRotation,
-                                                               mNaturalBounds.Size());
+    ScreenOrientationInternal orientation =
+        ComputeOrientation(mScreenRotation, mNaturalBounds.Size());
 
     // NB: perpetuating colorDepth == pixelDepth illusion here, for
     // consistency.
-    return ScreenConfiguration(mVirtualBounds, orientation,
+    return ScreenConfiguration(mVirtualBounds.ToUnknownRect(), orientation,
                                RotationToAngle(mScreenRotation),
                                mColorDepth, mColorDepth);
 }
@@ -436,11 +445,21 @@ nsScreenGonk::GetEGLDisplay()
 hwc_surface_t
 nsScreenGonk::GetEGLSurface()
 {
+    MOZ_ASSERT(CompositorParent::IsInCompositorThread());
     return mEGLSurface;
 }
 
+already_AddRefed<mozilla::gl::GLContext>
+nsScreenGonk::GetGLContext()
+{
+    MOZ_ASSERT(CompositorParent::IsInCompositorThread());
+    RefPtr<mozilla::gl::GLContext>glContext = mGLContext;
+    return glContext.forget();
+}
+
 static void
-UpdateMirroringWidgetSync(nsScreenGonk* aScreen, nsWindow* aWindow) {
+UpdateMirroringWidgetSync(nsMainThreadPtrHandle<nsScreenGonk>&& aScreen, nsWindow* aWindow)
+{
     MOZ_ASSERT(CompositorParent::IsInCompositorThread());
     already_AddRefed<nsWindow> window(aWindow);
     aScreen->UpdateMirroringWidget(window);
@@ -466,10 +485,12 @@ nsScreenGonk::EnableMirroring()
     MOZ_ASSERT(static_cast<nsWindow*>(window)->GetScreen() == this);
 
     // Update mMirroringWidget on compositor thread
+    nsMainThreadPtrHandle<nsScreenGonk> primary =
+      nsMainThreadPtrHandle<nsScreenGonk>(new nsMainThreadPtrHolder<nsScreenGonk>(primaryScreen, false));
     CompositorParent::CompositorLoop()->PostTask(
         FROM_HERE,
         NewRunnableFunction(&UpdateMirroringWidgetSync,
-                            primaryScreen,
+                            primary,
                             window.forget().take()));
 
     mIsMirroring = true;
@@ -490,10 +511,12 @@ nsScreenGonk::DisableMirroring()
     NS_ENSURE_TRUE(ret, false);
 
     // Update mMirroringWidget on compositor thread
+    nsMainThreadPtrHandle<nsScreenGonk> primary =
+      nsMainThreadPtrHandle<nsScreenGonk>(new nsMainThreadPtrHolder<nsScreenGonk>(primaryScreen, false));
     CompositorParent::CompositorLoop()->PostTask(
         FROM_HERE,
         NewRunnableFunction(&UpdateMirroringWidgetSync,
-                            primaryScreen,
+                            primary,
                             nullptr));
     return true;
 }
@@ -770,7 +793,8 @@ NotifyDisplayChange(uint32_t aId, bool aConnected)
 
 nsresult
 nsScreenManagerGonk::AddScreen(GonkDisplay::DisplayType aDisplayType,
-                               android::IGraphicBufferProducer* aSink)
+                               android::IGraphicBufferProducer* aSink,
+                               NotifyDisplayChangedEvent aEventVisibility)
 {
     MOZ_ASSERT(NS_IsMainThread());
 
@@ -782,11 +806,15 @@ nsScreenManagerGonk::AddScreen(GonkDisplay::DisplayType aDisplayType,
 
     GonkDisplay::NativeData nativeData =
         GetGonkDisplay()->GetNativeData(aDisplayType, aSink);
-    nsScreenGonk* screen = new nsScreenGonk(id, aDisplayType, nativeData);
-
+    nsScreenGonk* screen = new nsScreenGonk(id,
+                                            aDisplayType,
+                                            nativeData,
+                                            aEventVisibility);
     mScreens.AppendElement(screen);
 
-    NotifyDisplayChange(id, true);
+    if (aEventVisibility == NotifyDisplayChangedEvent::Observable) {
+        NotifyDisplayChange(id, true);
+    }
 
     // By default, non primary screen does mirroring.
     if (aDisplayType != GonkDisplay::DISPLAY_PRIMARY &&
@@ -805,6 +833,7 @@ nsScreenManagerGonk::RemoveScreen(GonkDisplay::DisplayType aDisplayType)
     NS_ENSURE_TRUE(aDisplayType < GonkDisplay::DisplayType::NUM_DISPLAY_TYPES,
                    NS_ERROR_FAILURE);
 
+    NotifyDisplayChangedEvent eventVisibility = NotifyDisplayChangedEvent::Observable;
     uint32_t screenId = GetIdFromType(aDisplayType);
     NS_ENSURE_TRUE(IsScreenConnected(screenId), NS_ERROR_FAILURE);
 
@@ -813,12 +842,14 @@ nsScreenManagerGonk::RemoveScreen(GonkDisplay::DisplayType aDisplayType)
             if (mScreens[i]->IsMirroring()) {
                 mScreens[i]->DisableMirroring();
             }
+            eventVisibility = mScreens[i]->GetEventVisibility();
             mScreens.RemoveElementAt(i);
             break;
         }
     }
 
-    NotifyDisplayChange(screenId, false);
-
+    if (eventVisibility == NotifyDisplayChangedEvent::Observable) {
+      NotifyDisplayChange(screenId, false);
+    }
     return NS_OK;
 }

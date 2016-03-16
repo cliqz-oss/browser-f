@@ -302,6 +302,10 @@ public:
         return mVersionString.get();
     }
 
+    inline uint32_t ShadingLanguageVersion() const {
+        return mShadingLanguageVersion;
+    }
+
     GLVendor Vendor() const {
         return mVendor;
     }
@@ -345,6 +349,8 @@ protected:
     uint32_t mVersion;
     nsCString mVersionString;
     ContextProfile mProfile;
+
+    uint32_t mShadingLanguageVersion;
 
     GLVendor mVendor;
     GLRenderer mRenderer;
@@ -647,7 +653,11 @@ public:
             MOZ_ASSERT(!mHasBeenChecked);
             mHasBeenChecked = true;
 
-            return mGL.fGetError();
+            const GLenum ret = mGL.fGetError();
+
+            while (mGL.fGetError()) {}
+
+            return ret;
         }
 
         ~LocalErrorScope() {
@@ -2309,6 +2319,7 @@ public:
 public:
     void fDrawBuffers(GLsizei n, const GLenum* bufs) {
         BEFORE_GL_CALL;
+        ASSERT_SYMBOL_PRESENT(fDrawBuffers);
         mSymbols.fDrawBuffers(n, bufs);
         AFTER_GL_CALL;
     }

@@ -2157,8 +2157,8 @@ if (AppConstants.MOZ_SERVICES_HEALTHREPORT) {
     _serializeJSONDaily: function(data) {
       let result = {_v: this.version };
 
-      for (let [field, data] of data) {
-        result[field] = data;
+      for (let [field, value] of data) {
+        result[field] = value;
       }
 
       return result;

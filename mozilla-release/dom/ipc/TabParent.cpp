@@ -184,7 +184,7 @@ private:
         // Our TabParent may have been destroyed already.  If so, don't send any
         // fds over, just go back to the IO thread and close them.
         if (!tabParent->IsDestroyed()) {
-            mozilla::unused << tabParent->SendCacheFileDescriptor(mPath, fd);
+            mozilla::Unused << tabParent->SendCacheFileDescriptor(mPath, fd);
         }
 
         if (!mFD) {
@@ -232,7 +232,7 @@ private:
             // Intentionally leak the runnable (but not the fd) rather
             // than crash when trying to release a main thread object
             // off the main thread.
-            mozilla::unused << mTabParent.forget();
+            mozilla::Unused << mTabParent.forget();
             CloseFile();
         }
     }
@@ -549,7 +549,7 @@ TabParent::DestroyInternal()
   // If this fails, it's most likely due to a content-process crash,
   // and auto-cleanup will kick in.  Otherwise, the child side will
   // destroy itself and send back __delete__().
-  unused << SendDestroy();
+  Unused << SendDestroy();
 
   if (RenderFrameParent* frame = GetRenderFrame()) {
     RemoveTabParentFromTable(frame->GetLayersId());
@@ -769,7 +769,7 @@ TabParent::LoadURL(nsIURI* aURI)
     if (mSendOfflineStatus && NS_IsAppOffline(appId)) {
       // If the app is offline in the parent process
       // pass that state to the child process as well
-      unused << SendAppOfflineStatus(appId, true);
+      Unused << SendAppOfflineStatus(appId, true);
     }
     mSendOfflineStatus = false;
 
@@ -779,7 +779,7 @@ TabParent::LoadURL(nsIURI* aURI)
       return;
     }
 
-    unused << SendLoadURL(spec, configuration);
+    Unused << SendLoadURL(spec, configuration, GetShowInfo());
 
     // If this app is a packaged app then we can speed startup by sending over
     // the file descriptor for the "application.zip" file that it will
@@ -824,7 +824,7 @@ TabParent::LoadURL(nsIURI* aURI)
                 if (cachedFd) {
                     FileDescriptor::PlatformHandleType handle =
                         FileDescriptor::PlatformHandleType(PR_FileDesc2NativeHandle(cachedFd));
-                    unused << SendCacheFileDescriptor(path, FileDescriptor(handle));
+                    Unused << SendCacheFileDescriptor(path, FileDescriptor(handle));
                 } else
 #endif
                 {
@@ -863,24 +863,11 @@ TabParent::Show(const ScreenIntSize& size, bool aParentIsActive)
                                     &success);
           MOZ_ASSERT(success);
           AddTabParentToTable(layersId, this);
-          unused << SendPRenderFrameConstructor(renderFrame);
+          Unused << SendPRenderFrameConstructor(renderFrame);
         }
     }
 
-    TryCacheDPIAndScale();
-    ShowInfo info(EmptyString(), false, false, mDPI, mDefaultScale.scale);
-
-    if (mFrameElement) {
-      nsAutoString name;
-      mFrameElement->GetAttr(kNameSpaceID_None, nsGkAtoms::name, name);
-      bool allowFullscreen =
-        mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::allowfullscreen) ||
-        mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::mozallowfullscreen);
-      bool isPrivate = mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::mozprivatebrowsing);
-      info = ShowInfo(name, allowFullscreen, isPrivate, mDPI, mDefaultScale.scale);
-    }
-
-    unused << SendShow(size, info, textureFactoryIdentifier,
+    Unused << SendShow(size, GetShowInfo(), textureFactoryIdentifier,
                        layersId, renderFrame, aParentIsActive);
 }
 
@@ -970,12 +957,12 @@ TabParent::UpdateDimensions(const nsIntRect& rect, const ScreenIntSize& size)
       ViewAs<LayoutDevicePixel>(mRect,
                                 PixelCastJustification::LayoutDeviceIsScreenForTabDims);
     LayoutDeviceIntSize devicePixelSize =
-      ViewAs<LayoutDevicePixel>(mDimensions.ToUnknownSize(),
+      ViewAs<LayoutDevicePixel>(mDimensions,
                                 PixelCastJustification::LayoutDeviceIsScreenForTabDims);
 
     CSSRect unscaledRect = devicePixelRect / widgetScale;
     CSSSize unscaledSize = devicePixelSize / widgetScale;
-    unused << SendUpdateDimensions(unscaledRect, unscaledSize,
+    Unused << SendUpdateDimensions(unscaledRect, unscaledSize,
                                    widget->SizeMode(),
                                    orientation, chromeOffset);
   }
@@ -985,7 +972,7 @@ void
 TabParent::UpdateFrame(const FrameMetrics& aFrameMetrics)
 {
   if (!mIsDestroyed) {
-    unused << SendUpdateFrame(aFrameMetrics);
+    Unused << SendUpdateFrame(aFrameMetrics);
   }
 }
 
@@ -1001,7 +988,7 @@ TabParent::UIResolutionChanged()
     // fails to cache the values, then mDefaultScale.scale might be invalid.
     // We don't want to send that value to content. Just send -1 for it too in
     // that case.
-    unused << SendUIResolutionChanged(mDPI, mDPI < 0 ? -1.0 : mDefaultScale.scale);
+    Unused << SendUIResolutionChanged(mDPI, mDPI < 0 ? -1.0 : mDefaultScale.scale);
   }
 }
 
@@ -1014,7 +1001,7 @@ TabParent::ThemeChanged()
     // LookAndFeel should have the up-to-date values, which we now
     // send down to the child. We do this for every remote tab for now,
     // but bug 1156934 has been filed to do it once per content process.
-    unused << SendThemeChanged(LookAndFeel::GetIntCache());
+    Unused << SendThemeChanged(LookAndFeel::GetIntCache());
   }
 }
 
@@ -1024,7 +1011,7 @@ TabParent::HandleAccessKey(nsTArray<uint32_t>& aCharCodes,
                            const int32_t& aModifierMask)
 {
   if (!mIsDestroyed) {
-    unused << SendHandleAccessKey(aCharCodes, aIsTrusted, aModifierMask);
+    Unused << SendHandleAccessKey(aCharCodes, aIsTrusted, aModifierMask);
   }
 }
 
@@ -1033,7 +1020,7 @@ TabParent::RequestFlingSnap(const FrameMetrics::ViewID& aScrollId,
                             const mozilla::CSSPoint& aDestination)
 {
   if (!mIsDestroyed) {
-    unused << SendRequestFlingSnap(aScrollId, aDestination);
+    Unused << SendRequestFlingSnap(aScrollId, aDestination);
   }
 }
 
@@ -1041,7 +1028,7 @@ void
 TabParent::AcknowledgeScrollUpdate(const ViewID& aScrollId, const uint32_t& aScrollGeneration)
 {
   if (!mIsDestroyed) {
-    unused << SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
+    Unused << SendAcknowledgeScrollUpdate(aScrollId, aScrollGeneration);
   }
 }
 
@@ -1050,7 +1037,7 @@ void TabParent::HandleDoubleTap(const CSSPoint& aPoint,
                                 const ScrollableLayerGuid &aGuid)
 {
   if (!mIsDestroyed) {
-    unused << SendHandleDoubleTap(aPoint, aModifiers, aGuid);
+    Unused << SendHandleDoubleTap(aPoint, aModifiers, aGuid);
   }
 }
 
@@ -1059,7 +1046,7 @@ void TabParent::HandleSingleTap(const CSSPoint& aPoint,
                                 const ScrollableLayerGuid &aGuid)
 {
   if (!mIsDestroyed) {
-    unused << SendHandleSingleTap(aPoint, aModifiers, aGuid);
+    Unused << SendHandleSingleTap(aPoint, aModifiers, aGuid);
   }
 }
 
@@ -1069,7 +1056,7 @@ void TabParent::HandleLongTap(const CSSPoint& aPoint,
                               uint64_t aInputBlockId)
 {
   if (!mIsDestroyed) {
-    unused << SendHandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
+    Unused << SendHandleLongTap(aPoint, aModifiers, aGuid, aInputBlockId);
   }
 }
 
@@ -1078,7 +1065,7 @@ void TabParent::NotifyAPZStateChange(ViewID aViewId,
                                      int aArg)
 {
   if (!mIsDestroyed) {
-    unused << SendNotifyAPZStateChange(aViewId, aChange, aArg);
+    Unused << SendNotifyAPZStateChange(aViewId, aChange, aArg);
   }
 }
 
@@ -1086,7 +1073,7 @@ void
 TabParent::NotifyMouseScrollTestEvent(const ViewID& aScrollId, const nsString& aEvent)
 {
   if (!mIsDestroyed) {
-    unused << SendMouseScrollTestEvent(aScrollId, aEvent);
+    Unused << SendMouseScrollTestEvent(aScrollId, aEvent);
   }
 }
 
@@ -1094,7 +1081,7 @@ void
 TabParent::NotifyFlushComplete()
 {
   if (!mIsDestroyed) {
-    unused << SendNotifyFlushComplete();
+    Unused << SendNotifyFlushComplete();
   }
 }
 
@@ -1102,7 +1089,7 @@ void
 TabParent::Activate()
 {
   if (!mIsDestroyed) {
-    unused << SendActivate();
+    Unused << SendActivate();
   }
 }
 
@@ -1110,7 +1097,7 @@ void
 TabParent::Deactivate()
 {
   if (!mIsDestroyed) {
-    unused << SendDeactivate();
+    Unused << SendDeactivate();
   }
 }
 
@@ -1301,7 +1288,7 @@ TabParent::SendMouseEvent(const nsAString& aType, float aX, float aY,
                           int32_t aModifiers, bool aIgnoreRootScrollFrame)
 {
   if (!mIsDestroyed) {
-    unused << PBrowserParent::SendMouseEvent(nsString(aType), aX, aY,
+    Unused << PBrowserParent::SendMouseEvent(nsString(aType), aX, aY,
                                              aButton, aClickCount,
                                              aModifiers, aIgnoreRootScrollFrame);
   }
@@ -1315,7 +1302,7 @@ TabParent::SendKeyEvent(const nsAString& aType,
                         bool aPreventDefault)
 {
   if (!mIsDestroyed) {
-    unused << PBrowserParent::SendKeyEvent(nsString(aType), aKeyCode, aCharCode,
+    Unused << PBrowserParent::SendKeyEvent(nsString(aType), aKeyCode, aCharCode,
                                            aModifiers, aPreventDefault);
   }
 }
@@ -1646,7 +1633,7 @@ TabParent::RecvSynthesizeNativeMouseScrollEvent(const LayoutDeviceIntPoint& aPoi
 bool
 TabParent::RecvSynthesizeNativeTouchPoint(const uint32_t& aPointerId,
                                           const TouchPointerState& aPointerState,
-                                          const nsIntPoint& aPointerScreenPoint,
+                                          const ScreenIntPoint& aPointerScreenPoint,
                                           const double& aPointerPressure,
                                           const uint32_t& aPointerOrientation,
                                           const uint64_t& aObserverId)
@@ -1661,7 +1648,7 @@ TabParent::RecvSynthesizeNativeTouchPoint(const uint32_t& aPointerId,
 }
 
 bool
-TabParent::RecvSynthesizeNativeTouchTap(const nsIntPoint& aPointerScreenPoint,
+TabParent::RecvSynthesizeNativeTouchTap(const ScreenIntPoint& aPointerScreenPoint,
                                         const bool& aLongTap,
                                         const uint64_t& aObserverId)
 {
@@ -2329,21 +2316,24 @@ TabParent::GetTabIdFrom(nsIDocShell *docShell)
 RenderFrameParent*
 TabParent::GetRenderFrame()
 {
-  PRenderFrameParent* p = LoneManagedOrNull(ManagedPRenderFrameParent());
+  PRenderFrameParent* p = LoneManagedOrNullAsserts(ManagedPRenderFrameParent());
   return static_cast<RenderFrameParent*>(p);
 }
 
 bool
-TabParent::RecvEndIMEComposition(const bool& aCancel,
-                                 bool* aNoCompositionEvent,
-                                 nsString* aComposition)
+TabParent::RecvRequestIMEToCommitComposition(const bool& aCancel,
+                                             bool* aIsCommitted,
+                                             nsString* aCommittedString)
 {
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (!widget) {
+    *aIsCommitted = false;
     return true;
   }
-  *aNoCompositionEvent =
-    !mContentCache.RequestToCommitComposition(widget, aCancel, *aComposition);
+
+  *aIsCommitted =
+    mContentCache.RequestIMEToCommitComposition(widget, aCancel,
+                                                *aCommittedString);
   return true;
 }
 
@@ -2376,21 +2366,18 @@ TabParent::RecvSetPluginFocused(const bool& aFocused)
 
 bool
 TabParent::RecvGetInputContext(int32_t* aIMEEnabled,
-                               int32_t* aIMEOpen,
-                               intptr_t* aNativeIMEContext)
+                               int32_t* aIMEOpen)
 {
   nsCOMPtr<nsIWidget> widget = GetWidget();
   if (!widget) {
     *aIMEEnabled = IMEState::DISABLED;
     *aIMEOpen = IMEState::OPEN_STATE_NOT_SUPPORTED;
-    *aNativeIMEContext = 0;
     return true;
   }
 
   InputContext context = widget->GetInputContext();
   *aIMEEnabled = static_cast<int32_t>(context.mIMEState.mEnabled);
   *aIMEOpen = static_cast<int32_t>(context.mIMEState.mOpen);
-  *aNativeIMEContext = reinterpret_cast<intptr_t>(context.mNativeIMEContext);
   return true;
 }
 
@@ -2707,6 +2694,12 @@ TabParent::ApzAwareEventRoutingToChild(ScrollableLayerGuid* aOutTargetGuid,
                                        uint64_t* aOutInputBlockId,
                                        nsEventStatus* aOutApzResponse)
 {
+  // Let the widget know that the event will be sent to the child process,
+  // which will (hopefully) send a confirmation notice back to APZ.
+  // Do this even if APZ is off since we need it for swipe gesture support on
+  // OS X without APZ.
+  InputAPZContext::SetRoutedToChildProcess();
+
   if (AsyncPanZoomEnabled()) {
     if (aOutTargetGuid) {
       *aOutTargetGuid = InputAPZContext::GetTargetLayerGuid();
@@ -2728,10 +2721,6 @@ TabParent::ApzAwareEventRoutingToChild(ScrollableLayerGuid* aOutTargetGuid,
     if (aOutApzResponse) {
       *aOutApzResponse = InputAPZContext::GetApzResponse();
     }
-
-    // Let the widget know that the event will be sent to the child process,
-    // which will (hopefully) send a confirmation notice back to APZ.
-    InputAPZContext::SetRoutedToChildProcess();
   } else {
     if (aOutInputBlockId) {
       *aOutInputBlockId = 0;
@@ -2835,13 +2824,11 @@ TabParent::GetLoadContext()
   if (mLoadContext) {
     loadContext = mLoadContext;
   } else {
-    // TODO Bug 1191740 - Add OriginAttributes in TabContext
-    OriginAttributes attrs = OriginAttributes(OwnOrContainingAppId(), IsBrowserElement());
     loadContext = new LoadContext(GetOwnerElement(),
                                   true /* aIsContent */,
                                   mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW,
                                   mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
-                                  attrs);
+                                  OriginAttributesRef());
     mLoadContext = loadContext;
   }
   return loadContext.forget();
@@ -2893,11 +2880,13 @@ TabParent::InjectTouchEvent(const nsAString& aType,
         CSSPoint::ToAppUnits(CSSPoint(aXs[i], aYs[i])),
         presContext->AppUnitsPerDevPixel());
 
-    RefPtr<Touch> t = new Touch(aIdentifiers[i],
-                                  pt,
-                                  nsIntPoint(aRxs[i], aRys[i]),
-                                  aRotationAngles[i],
-                                  aForces[i]);
+    LayoutDeviceIntPoint radius =
+      LayoutDeviceIntPoint::FromAppUnitsRounded(
+        CSSPoint::ToAppUnits(CSSPoint(aRxs[i], aRys[i])),
+        presContext->AppUnitsPerDevPixel());
+
+    RefPtr<Touch> t =
+      new Touch(aIdentifiers[i], pt, radius, aRotationAngles[i], aForces[i]);
 
     // Consider all injected touch events as changedTouches. For more details
     // about the meaning of changedTouches for each event, see
@@ -2922,7 +2911,7 @@ NS_IMETHODIMP
 TabParent::SetDocShellIsActive(bool isActive)
 {
   mDocShellIsActive = isActive;
-  unused << SendSetDocShellIsActive(isActive);
+  Unused << SendSetDocShellIsActive(isActive, true);
   return NS_OK;
 }
 
@@ -2930,6 +2919,14 @@ NS_IMETHODIMP
 TabParent::GetDocShellIsActive(bool* aIsActive)
 {
   *aIsActive = mDocShellIsActive;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TabParent::SetDocShellIsActiveAndForeground(bool isActive)
+{
+  mDocShellIsActive = isActive;
+  Unused << SendSetDocShellIsActive(isActive, false);
   return NS_OK;
 }
 
@@ -2948,7 +2945,7 @@ TabParent::SuppressDisplayport(bool aEnabled)
 
   MOZ_ASSERT(mActiveSupressDisplayportCount >= 0);
 
-  unused << SendSuppressDisplayport(aEnabled);
+  Unused << SendSuppressDisplayport(aEnabled);
   return NS_OK;
 }
 
@@ -2975,7 +2972,7 @@ TabParent::SetHasContentOpener(bool aHasContentOpener)
 NS_IMETHODIMP
 TabParent::NavigateByKey(bool aForward, bool aForDocumentNavigation)
 {
-  unused << SendNavigateByKey(aForward, aForDocumentNavigation);
+  Unused << SendNavigateByKey(aForward, aForDocumentNavigation);
   return NS_OK;
 }
 
@@ -3264,7 +3261,7 @@ TabParent::RecvInvokeDragSession(nsTArray<IPCDataTransfer>&& aTransfers,
   nsIPresShell* shell = mFrameElement->OwnerDoc()->GetShell();
   if (!shell) {
     if (Manager()->IsContentParent()) {
-      unused << Manager()->AsContentParent()->SendEndDragSession(true, true);
+      Unused << Manager()->AsContentParent()->SendEndDragSession(true, true);
     }
     return true;
   }
@@ -3379,6 +3376,25 @@ TabParent::StartPersistence(uint64_t aOuterWindowID,
     ->SendPWebBrowserPersistDocumentConstructor(actor, this, aOuterWindowID)
     ? NS_OK : NS_ERROR_FAILURE;
   // (The actor will be destroyed on constructor failure.)
+}
+
+ShowInfo
+TabParent::GetShowInfo()
+{
+  TryCacheDPIAndScale();
+  if (mFrameElement) {
+    nsAutoString name;
+    mFrameElement->GetAttr(kNameSpaceID_None, nsGkAtoms::name, name);
+    bool allowFullscreen =
+      mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::allowfullscreen) ||
+      mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::mozallowfullscreen);
+    bool isPrivate = mFrameElement->HasAttr(kNameSpaceID_None, nsGkAtoms::mozprivatebrowsing);
+    return ShowInfo(name, allowFullscreen, isPrivate, false,
+                    mDPI, mDefaultScale.scale);
+  }
+
+  return ShowInfo(EmptyString(), false, false, false,
+                  mDPI, mDefaultScale.scale);
 }
 
 NS_IMETHODIMP

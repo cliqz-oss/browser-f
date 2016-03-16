@@ -74,7 +74,8 @@ nsSliderFrame::nsSliderFrame(nsStyleContext* aContext):
   mCurPos(0),
   mChange(0),
   mDragFinished(true),
-  mUserChanged(false)
+  mUserChanged(false),
+  mScrollingWithAPZ(false)
 {
 }
 
@@ -485,6 +486,9 @@ nsSliderFrame::HandleEvent(nsPresContext* aPresContext,
     switch (aEvent->mMessage) {
     case eTouchMove:
     case eMouseMove: {
+      if (mScrollingWithAPZ) {
+        break;
+      }
       nsPoint eventPoint;
       if (!GetEventPoint(aEvent, eventPoint)) {
         break;
@@ -939,6 +943,10 @@ nsSliderFrame::StartAPZDrag(WidgetGUIEvent* aEvent)
                                IsHorizontal() ? AsyncDragMetrics::HORIZONTAL :
                                                 AsyncDragMetrics::VERTICAL);
 
+  if (!nsLayoutUtils::GetDisplayPort(scrollableContent)) {
+    return false;
+  }
+
   // When we start an APZ drag, we wont get mouse events for the drag.
   // APZ will consume them all and only notify us of the new scroll position.
   this->GetNearestWidget()->StartAsyncScrollbarDrag(dragMetrics);
@@ -1012,7 +1020,7 @@ nsSliderFrame::StartDrag(nsIDOMEvent* aEvent)
 
   mDragStart = pos - mThumbStart;
 
-  StartAPZDrag(event);
+  mScrollingWithAPZ = StartAPZDrag(event);
 
 #ifdef DEBUG_SLIDER
   printf("Pressed mDragStart=%d\n",mDragStart);
@@ -1026,6 +1034,8 @@ nsSliderFrame::StopDrag()
 {
   AddListener();
   DragThumb(false);
+
+  mScrollingWithAPZ = false;
 
 #ifdef MOZ_WIDGET_GTK
   nsIFrame* thumbFrame = mFrames.FirstChild();

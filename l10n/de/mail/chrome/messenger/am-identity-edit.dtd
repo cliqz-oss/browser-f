@@ -1,4 +1,4 @@
-<!ENTITY identityDialog.style "width: 100ch;">
+<!ENTITY identityDialog.style "min-width: 87ch;">
 <!ENTITY identityTitle.label "Identität konfigurieren">
 <!ENTITY identityListDesc.label "Konfigurieren Sie diese Identität:">
 

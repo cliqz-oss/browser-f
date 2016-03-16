@@ -362,16 +362,16 @@ Java_org_mozilla_gecko_GeckoJavaSampler_getProfilerTime(JNIEnv * arg0, jclass ar
 
 #ifdef JNI_STUBS
 
-typedef void (*Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived_t)(JNIEnv *, jclass, jstring, jstring, jint, jlong);
+typedef void (*Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived_t)(JNIEnv *, jclass, jint, jstring, jstring, jint, jlong, jlong);
 static Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived_t f_Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived;
 extern "C" NS_EXPORT void MOZ_JNICALL
-Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived(JNIEnv * arg0, jclass arg1, jstring arg2, jstring arg3, jint arg4, jlong arg5) {
+Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived(JNIEnv * arg0, jclass arg1, jint arg2, jstring arg3, jstring arg4, jint arg5, jlong arg6, jlong arg7) {
     if (!f_Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived) {
         arg0->ThrowNew(arg0->FindClass("java/lang/UnsupportedOperationException"),
                        "JNI Function called before it was loaded");
         return ;
     }
-     f_Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived(arg0, arg1, arg2, arg3, arg4, arg5);
+     f_Java_org_mozilla_gecko_GeckoSmsManager_notifySmsReceived(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7);
 }
 #endif
 
@@ -742,39 +742,20 @@ Java_org_mozilla_gecko_gfx_NativePanZoomController_getRedrawHint(JNIEnv * arg0, 
 
 #ifdef JNI_STUBS
 
-typedef void (*Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode_t)(JNIEnv *, jobject, jint);
-static Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode_t f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode;
+typedef void (*Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled_t)(JNIEnv *, jobject, jboolean);
+static Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled_t f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled;
 extern "C" NS_EXPORT void MOZ_JNICALL
-Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode(JNIEnv * arg0, jobject arg1, jint arg2) {
-    if (!f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode) {
+Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled(JNIEnv * arg0, jobject arg1, jboolean arg2) {
+    if (!f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled) {
         arg0->ThrowNew(arg0->FindClass("java/lang/UnsupportedOperationException"),
                        "JNI Function called before it was loaded");
         return ;
     }
-     f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode(arg0, arg1, arg2);
+     f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled(arg0, arg1, arg2);
 }
 #endif
 
 #ifdef JNI_BINDINGS
-  xul_dlsym("Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode", &f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setOverScrollMode);
-#endif
-
-#ifdef JNI_STUBS
-
-typedef jint (*Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode_t)(JNIEnv *, jobject);
-static Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode_t f_Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode;
-extern "C" NS_EXPORT jint MOZ_JNICALL
-Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode(JNIEnv * arg0, jobject arg1) {
-    if (!f_Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode) {
-        arg0->ThrowNew(arg0->FindClass("java/lang/UnsupportedOperationException"),
-                       "JNI Function called before it was loaded");
-        return 0;
-    }
-    return f_Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode(arg0, arg1);
-}
-#endif
-
-#ifdef JNI_BINDINGS
-  xul_dlsym("Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode", &f_Java_org_mozilla_gecko_gfx_NativePanZoomController_getOverScrollMode);
+  xul_dlsym("Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled", &f_Java_org_mozilla_gecko_gfx_NativePanZoomController_setIsLongpressEnabled);
 #endif
 

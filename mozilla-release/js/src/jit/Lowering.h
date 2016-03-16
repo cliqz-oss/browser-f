@@ -21,6 +21,8 @@
 # include "jit/arm64/Lowering-arm64.h"
 #elif defined(JS_CODEGEN_MIPS32)
 # include "jit/mips32/Lowering-mips32.h"
+#elif defined(JS_CODEGEN_MIPS64)
+# include "jit/mips64/Lowering-mips64.h"
 #elif defined(JS_CODEGEN_NONE)
 # include "jit/none/Lowering-none.h"
 #else
@@ -98,9 +100,9 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitSetArgumentsObjectArg(MSetArgumentsObjectArg* ins);
     void visitReturnFromCtor(MReturnFromCtor* ins);
     void visitComputeThis(MComputeThis* ins);
-    void visitLoadArrowThis(MLoadArrowThis* ins);
     void visitCall(MCall* call);
     void visitApplyArgs(MApplyArgs* apply);
+    void visitApplyArray(MApplyArray* apply);
     void visitArraySplice(MArraySplice* splice);
     void visitBail(MBail* bail);
     void visitUnreachable(MUnreachable* unreachable);
@@ -175,6 +177,7 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitMaybeToDoubleElement(MMaybeToDoubleElement* ins);
     void visitMaybeCopyElementsForWrite(MMaybeCopyElementsForWrite* ins);
     void visitLoadSlot(MLoadSlot* ins);
+    void visitLoadFixedSlotAndUnbox(MLoadFixedSlotAndUnbox* ins);
     void visitFunctionEnvironment(MFunctionEnvironment* ins);
     void visitInterruptCheck(MInterruptCheck* ins);
     void visitAsmJSInterruptCheck(MAsmJSInterruptCheck* ins);
@@ -304,7 +307,9 @@ class LIRGenerator : public LIRGeneratorSpecific
     void visitNewTarget(MNewTarget* ins);
     void visitArrowNewTarget(MArrowNewTarget* ins);
     void visitAtomicIsLockFree(MAtomicIsLockFree* ins);
+    void visitGuardSharedTypedArray(MGuardSharedTypedArray* ins);
     void visitCheckReturn(MCheckReturn* ins);
+    void visitCheckObjCoercible(MCheckObjCoercible* ins);
 };
 
 } // namespace jit

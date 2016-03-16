@@ -207,7 +207,7 @@ public:
    * be found (e.g. it's detached).
    */
   nsRootPresContext* GetRootPresContext();
-  nsRootPresContext* GetDisplayRootPresContext();
+
   virtual bool IsRoot() { return false; }
 
   nsIDocument* Document() const
@@ -525,10 +525,12 @@ public:
 
   nsDeviceContext* DeviceContext() { return mDeviceContext; }
   mozilla::EventStateManager* EventStateManager() { return mEventManager; }
-  nsIAtom* GetLanguageFromCharset() { return mLanguage; }
+  nsIAtom* GetLanguageFromCharset() const { return mLanguage; }
+  already_AddRefed<nsIAtom> GetContentLanguage() const;
 
   float TextZoom() { return mTextZoom; }
   void SetTextZoom(float aZoom) {
+    MOZ_ASSERT(aZoom > 0.0f, "invalid zoom factor");
     if (aZoom == mTextZoom)
       return;
 
@@ -1102,28 +1104,13 @@ protected:
     LangGroupFontPrefs()
       : mLangGroup(nullptr)
       , mMinimumFontSize(0)
-      , mDefaultVariableFont(mozilla::eFamily_serif, NS_FONT_STYLE_NORMAL,
-                             NS_FONT_WEIGHT_NORMAL,
-                             NS_FONT_STRETCH_NORMAL, 0, 0)
-      , mDefaultFixedFont(mozilla::eFamily_monospace, NS_FONT_STYLE_NORMAL,
-                          NS_FONT_WEIGHT_NORMAL,
-                          NS_FONT_STRETCH_NORMAL, 0, 0)
-      , mDefaultSerifFont(mozilla::eFamily_serif, NS_FONT_STYLE_NORMAL,
-                          NS_FONT_WEIGHT_NORMAL,
-                          NS_FONT_STRETCH_NORMAL, 0, 0)
-      , mDefaultSansSerifFont(mozilla::eFamily_sans_serif,
-                              NS_FONT_STYLE_NORMAL,
-                              NS_FONT_WEIGHT_NORMAL,
-                              NS_FONT_STRETCH_NORMAL, 0, 0)
-      , mDefaultMonospaceFont(mozilla::eFamily_monospace, NS_FONT_STYLE_NORMAL,
-                              NS_FONT_WEIGHT_NORMAL,
-                              NS_FONT_STRETCH_NORMAL, 0, 0)
-      , mDefaultCursiveFont(mozilla::eFamily_cursive, NS_FONT_STYLE_NORMAL,
-                            NS_FONT_WEIGHT_NORMAL,
-                            NS_FONT_STRETCH_NORMAL, 0, 0)
-      , mDefaultFantasyFont(mozilla::eFamily_fantasy, NS_FONT_STYLE_NORMAL,
-                            NS_FONT_WEIGHT_NORMAL,
-                            NS_FONT_STRETCH_NORMAL, 0, 0)
+      , mDefaultVariableFont(mozilla::eFamily_serif, 0)
+      , mDefaultFixedFont(mozilla::eFamily_monospace, 0)
+      , mDefaultSerifFont(mozilla::eFamily_serif, 0)
+      , mDefaultSansSerifFont(mozilla::eFamily_sans_serif, 0)
+      , mDefaultMonospaceFont(mozilla::eFamily_monospace, 0)
+      , mDefaultCursiveFont(mozilla::eFamily_cursive, 0)
+      , mDefaultFantasyFont(mozilla::eFamily_fantasy, 0)
     {}
 
     size_t SizeOfExcludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {

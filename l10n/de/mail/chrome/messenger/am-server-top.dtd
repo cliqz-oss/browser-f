@@ -23,6 +23,8 @@
 <!ENTITY biffStart.label "Alle ">
 <!ENTITY biffStart.accesskey "A">
 <!ENTITY biffEnd.label "Minuten auf neue Nachrichten prüfen">
+<!ENTITY useIdleNotifications.label "Bei Eingang neuer Nachrichten auf Server sofort benachrichtigen">
+<!ENTITY useIdleNotifications.accesskey "E">
 <!ENTITY connectionSecurity.label "Verbindungssicherheit:">
 <!ENTITY connectionSecurity.accesskey "n">
 <!ENTITY connectionSecurityType-0.label "Keine">

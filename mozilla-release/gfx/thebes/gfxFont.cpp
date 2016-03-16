@@ -48,6 +48,7 @@
 #include "graphite2/Font.h"
 
 #include <algorithm>
+#include <cmath>
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -467,9 +468,14 @@ gfxFontShaper::MergeFontFeatures(
     // petite caps cases can fallback to appropriate smallcaps
     uint32_t variantCaps = aStyle->variantCaps;
     switch (variantCaps) {
+        case NS_FONT_VARIANT_CAPS_NORMAL:
+            break;
+
         case NS_FONT_VARIANT_CAPS_ALLSMALL:
             mergedFeatures.Put(HB_TAG('c','2','s','c'), 1);
             // fall through to the small-caps case
+            MOZ_FALLTHROUGH;
+
         case NS_FONT_VARIANT_CAPS_SMALLCAPS:
             mergedFeatures.Put(HB_TAG('s','m','c','p'), 1);
             break;
@@ -477,11 +483,13 @@ gfxFontShaper::MergeFontFeatures(
         case NS_FONT_VARIANT_CAPS_ALLPETITE:
             mergedFeatures.Put(aAddSmallCaps ? HB_TAG('c','2','s','c') :
                                                HB_TAG('c','2','p','c'), 1);
-        // fall through to the petite-caps case
+            // fall through to the petite-caps case
+            MOZ_FALLTHROUGH;
+
         case NS_FONT_VARIANT_CAPS_PETITECAPS:
             mergedFeatures.Put(aAddSmallCaps ? HB_TAG('s','m','c','p') :
                                                HB_TAG('p','c','a','p'), 1);
-        break;
+            break;
 
         case NS_FONT_VARIANT_CAPS_TITLING:
             mergedFeatures.Put(HB_TAG('t','i','t','l'), 1);
@@ -492,11 +500,14 @@ gfxFontShaper::MergeFontFeatures(
             break;
 
         default:
+            MOZ_ASSERT_UNREACHABLE("Unexpected variantCaps");
             break;
     }
 
     // font-variant-position - handled here due to the need for fallback
     switch (aStyle->variantSubSuper) {
+        case NS_FONT_VARIANT_POSITION_NORMAL:
+            break;
         case NS_FONT_VARIANT_POSITION_SUPER:
             mergedFeatures.Put(HB_TAG('s','u','p','s'), 1);
             break;
@@ -504,6 +515,7 @@ gfxFontShaper::MergeFontFeatures(
             mergedFeatures.Put(HB_TAG('s','u','b','s'), 1);
             break;
         default:
+            MOZ_ASSERT_UNREACHABLE("Unexpected variantSubSuper");
             break;
     }
 
@@ -737,7 +749,7 @@ gfxFont::gfxFont(gfxFontEntry *aFontEntry, const gfxFontStyle *aFontStyle,
     mApplySyntheticBold(false),
     mStyle(*aFontStyle),
     mAdjustedSize(0.0),
-    mFUnitsConvFactor(0.0f),
+    mFUnitsConvFactor(-1.0f), // negative to indicate "not yet initialized"
     mAntialiasOption(anAAOption)
 {
 #ifdef DEBUG_TEXT_RUN_STORAGE_METRICS
@@ -774,10 +786,10 @@ gfxFont::GetGlyphHAdvance(gfxContext *aCtx, uint16_t aGID)
     if (ProvidesGlyphWidths()) {
         return GetGlyphWidth(*aCtx->GetDrawTarget(), aGID) / 65536.0;
     }
-    if (mFUnitsConvFactor == 0.0f) {
+    if (mFUnitsConvFactor < 0.0f) {
         GetMetrics(eHorizontal);
     }
-    NS_ASSERTION(mFUnitsConvFactor > 0.0f,
+    NS_ASSERTION(mFUnitsConvFactor >= 0.0f,
                  "missing font unit conversion factor");
     if (!mHarfBuzzShaper) {
         mHarfBuzzShaper = new gfxHarfBuzzShaper(this);
@@ -1632,7 +1644,7 @@ double
 gfxFont::CalcXScale(gfxContext *aContext)
 {
     // determine magnitude of a 1px x offset in device space
-    gfxSize t = aContext->UserToDevice(gfxSize(1.0, 0.0));
+    Size t = aContext->UserToDevice(Size(1.0, 0.0));
     if (t.width == 1.0 && t.height == 0.0) {
         // short-circuit the most common case to avoid sqrt() and division
         return 1.0;
@@ -1838,6 +1850,46 @@ gfxFont::DrawGlyphs(gfxShapedText            *aShapedText,
     return emittedGlyphs;
 }
 
+// This method is mostly parallel to DrawGlyphs.
+void
+gfxFont::DrawEmphasisMarks(gfxTextRun* aShapedText, gfxPoint* aPt,
+                           uint32_t aOffset, uint32_t aCount,
+                           const EmphasisMarkDrawParams& aParams)
+{
+    gfxFloat& inlineCoord = aParams.isVertical ? aPt->y : aPt->x;
+    uint32_t markLength = aParams.mark->GetLength();
+
+    gfxFloat clusterStart = NAN;
+    bool shouldDrawEmphasisMark = false;
+    for (uint32_t i = 0, idx = aOffset; i < aCount; ++i, ++idx) {
+        if (aParams.spacing) {
+            inlineCoord += aParams.direction * aParams.spacing[i].mBefore;
+        }
+        if (aShapedText->IsClusterStart(idx)) {
+            clusterStart = inlineCoord;
+        }
+        if (aShapedText->CharMayHaveEmphasisMark(idx)) {
+            shouldDrawEmphasisMark = true;
+        }
+        inlineCoord += aParams.direction * aShapedText->GetAdvanceForGlyph(idx);
+        if (shouldDrawEmphasisMark &&
+            (i + 1 == aCount || aShapedText->IsClusterStart(idx + 1))) {
+            MOZ_ASSERT(!std::isnan(clusterStart), "Should have cluster start");
+            gfxFloat clusterAdvance = inlineCoord - clusterStart;
+            // Move the coord backward to get the needed start point.
+            gfxFloat delta = (clusterAdvance + aParams.advance) / 2;
+            inlineCoord -= delta;
+            aParams.mark->Draw(aParams.context, *aPt, DrawMode::GLYPH_FILL,
+                               0, markLength, nullptr, nullptr, nullptr);
+            inlineCoord += delta;
+            shouldDrawEmphasisMark = false;
+        }
+        if (aParams.spacing) {
+            inlineCoord += aParams.direction * aParams.spacing[i].mAfter;
+        }
+    }
+}
+
 void
 gfxFont::Draw(gfxTextRun *aTextRun, uint32_t aStart, uint32_t aEnd,
               gfxPoint *aPt, const TextRunDrawParams& aRunParams,
@@ -1956,7 +2008,9 @@ gfxFont::Draw(gfxTextRun *aTextRun, uint32_t aStart, uint32_t aEnd,
             // get the glyphs positioned correctly in the new device space
             // though, since the font matrix should only be applied to drawing
             // the glyphs, and not to their position.
-            mat = ToMatrix(*reinterpret_cast<gfxMatrix*>(&matrix));
+            mat = Matrix(matrix.xx, matrix.yx,
+                         matrix.xy, matrix.yy,
+                         matrix.x0, matrix.y0);
 
             mat._11 = mat._22 = 1.0;
             mat._21 /= GetAdjustedSize();
@@ -2832,8 +2886,7 @@ gfxFont::SplitAndInitTextRun(gfxContext *aContext,
                     gfxTextRunFactory::TEXT_ORIENT_VERTICAL_SIDEWAYS_RIGHT;
             }
             if (boundary != ' ' ||
-                !aTextRun->SetSpaceGlyphIfSimple(this, aContext,
-                                                 aRunStart + i, ch,
+                !aTextRun->SetSpaceGlyphIfSimple(this, aRunStart + i, ch,
                                                  orientation)) {
                 // Currently, the only "boundary" characters we recognize are
                 // space and no-break space, which are both 8-bit, so we force
@@ -3004,6 +3057,7 @@ gfxFont::InitFakeSmallCapsRun(gfxContext     *aContext,
             case kUppercaseReduce:
                 // use reduced-size font, then fall through to uppercase the text
                 f = smallCapsFont;
+                MOZ_FALLTHROUGH;
 
             case kUppercase:
                 // apply uppercase transform to the string
@@ -3203,7 +3257,7 @@ gfxFont::InitMetricsFromSfntTables(Metrics& aMetrics)
 
     uint32_t len;
 
-    if (mFUnitsConvFactor == 0.0) {
+    if (mFUnitsConvFactor < 0.0) {
         // If the conversion factor from FUnits is not yet set,
         // get the unitsPerEm from the 'head' table via the font entry
         uint16_t unitsPerEm = GetFontEntry()->UnitsPerEm();
@@ -3439,7 +3493,7 @@ gfxFont::CreateVerticalMetrics()
     const float UNINITIALIZED_LEADING = -10000.0f;
     metrics->externalLeading = UNINITIALIZED_LEADING;
 
-    if (mFUnitsConvFactor == 0.0) {
+    if (mFUnitsConvFactor < 0.0) {
         uint16_t upem = GetFontEntry()->UnitsPerEm();
         if (upem != gfxFontEntry::kInvalidUPEM) {
             mFUnitsConvFactor = GetAdjustedSize() / upem;
@@ -3450,7 +3504,7 @@ gfxFont::CreateVerticalMetrics()
 #define SET_SIGNED(field,src)   metrics->field = int16_t(src) * mFUnitsConvFactor
 
     gfxFontEntry::AutoTable os2Table(mFontEntry, kOS_2TableTag);
-    if (os2Table && mFUnitsConvFactor > 0.0) {
+    if (os2Table && mFUnitsConvFactor >= 0.0) {
         const OS2Table *os2 =
             reinterpret_cast<const OS2Table*>(hb_blob_get_data(os2Table, &len));
         // These fields should always be present in any valid OS/2 table
@@ -3476,7 +3530,7 @@ gfxFont::CreateVerticalMetrics()
     // and use the line height from its ascent/descent.
     if (!metrics->aveCharWidth) {
         gfxFontEntry::AutoTable hheaTable(mFontEntry, kHheaTableTag);
-        if (hheaTable && mFUnitsConvFactor > 0.0) {
+        if (hheaTable && mFUnitsConvFactor >= 0.0) {
             const MetricsHeader* hhea =
                 reinterpret_cast<const MetricsHeader*>
                     (hb_blob_get_data(hheaTable, &len));
@@ -3492,7 +3546,7 @@ gfxFont::CreateVerticalMetrics()
 
     // Read real vertical metrics if available.
     gfxFontEntry::AutoTable vheaTable(mFontEntry, kVheaTableTag);
-    if (vheaTable && mFUnitsConvFactor > 0.0) {
+    if (vheaTable && mFUnitsConvFactor >= 0.0) {
         const MetricsHeader* vhea =
             reinterpret_cast<const MetricsHeader*>
                 (hb_blob_get_data(vheaTable, &len));

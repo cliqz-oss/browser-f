@@ -442,7 +442,7 @@ Sync11Service.prototype = {
 
     // Map each old pref to the current pref branch
     let oldPref = new Preferences(oldPrefBranch);
-    for each (let pref in oldPrefNames)
+    for (let pref of oldPrefNames)
       Svc.Prefs.set(pref, oldPref.get(pref));
 
     // Remove all the old prefs and remember that we've migrated
@@ -901,7 +901,7 @@ Sync11Service.prototype = {
     // Deletion doesn't make sense if we aren't set up yet!
     if (this.clusterURL != "") {
       // Clear client-specific data from the server, including disabled engines.
-      for each (let engine in [this.clientsEngine].concat(this.engineManager.getAll())) {
+      for (let engine of [this.clientsEngine].concat(this.engineManager.getAll())) {
         try {
           engine.removeClientData();
         } catch(ex) {
@@ -1268,7 +1268,7 @@ Sync11Service.prototype = {
     return reason;
   },
 
-  sync: function sync() {
+  sync: function sync(engineNamesToSync) {
     if (!this.enabled) {
       this._log.debug("Not syncing as Sync is disabled.");
       return;
@@ -1288,14 +1288,14 @@ Sync11Service.prototype = {
       else {
         this._log.trace("In sync: no need to login.");
       }
-      return this._lockedSync.apply(this, arguments);
+      return this._lockedSync(engineNamesToSync);
     })();
   },
 
   /**
    * Sync up engines with the server.
    */
-  _lockedSync: function _lockedSync() {
+  _lockedSync: function _lockedSync(engineNamesToSync) {
     return this._lock("service.js: sync",
                       this._notify("sync", "", function onNotify() {
 
@@ -1306,7 +1306,7 @@ Sync11Service.prototype = {
       let cb = Async.makeSpinningCallback();
       synchronizer.onComplete = cb;
 
-      synchronizer.sync();
+      synchronizer.sync(engineNamesToSync);
       // wait() throws if the first argument is truthy, which is exactly what
       // we want.
       let result = cb.wait();
@@ -1511,7 +1511,7 @@ Sync11Service.prototype = {
 
     // Wipe everything we know about except meta because we just uploaded it
     let engines = [this.clientsEngine].concat(this.engineManager.getAll());
-    let collections = [engine.name for each (engine in engines)];
+    let collections = engines.map(engine => engine.name);
     // TODO: there's a bug here. We should be calling resetClient, no?
 
     // Generate, upload, and download new keys. Do this last so we don't wipe
@@ -1593,7 +1593,7 @@ Sync11Service.prototype = {
     }
 
     // Fully wipe each engine if it's able to decrypt data
-    for each (let engine in engines) {
+    for (let engine of engines) {
       if (engine.canDecrypt()) {
         engine.wipeClient();
       }
@@ -1671,7 +1671,7 @@ Sync11Service.prototype = {
       }
 
       // Have each engine drop any temporary meta data
-      for each (let engine in engines) {
+      for (let engine of engines) {
         engine.resetClient();
       }
     })();

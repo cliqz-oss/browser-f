@@ -17,11 +17,10 @@
 #include "nsStyleContext.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
-#include "mozilla/LookAndFeel.h"
-#include "LayerAnimationInfo.h" // For LayerAnimationInfo::sRecords
-#include "Layers.h"
 #include "FrameLayerBuilder.h"
 #include "nsDisplayList.h"
+#include "mozilla/AnimationUtils.h"
+#include "mozilla/EffectSet.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/KeyframeEffect.h"
 #include "RestyleManager.h"
@@ -29,27 +28,10 @@
 #include "nsStyleSet.h"
 #include "nsStyleChangeList.h"
 
-using mozilla::layers::Layer;
 using mozilla::dom::Animation;
 using mozilla::dom::KeyframeEffectReadOnly;
 
 namespace mozilla {
-
-/* static */ bool
-IsGeometricProperty(nsCSSProperty aProperty)
-{
-  switch (aProperty) {
-    case eCSSProperty_bottom:
-    case eCSSProperty_height:
-    case eCSSProperty_left:
-    case eCSSProperty_right:
-    case eCSSProperty_top:
-    case eCSSProperty_width:
-      return true;
-    default:
-      return false;
-  }
-}
 
 CommonAnimationManager::CommonAnimationManager(nsPresContext *aPresContext)
   : mPresContext(aPresContext)
@@ -85,13 +67,65 @@ CommonAnimationManager::RemoveAllElementCollections()
 }
 
 AnimationCollection*
+CommonAnimationManager::GetAnimationCollection(dom::Element *aElement,
+                                               nsCSSPseudoElements::Type
+                                                 aPseudoType,
+                                               bool aCreateIfNeeded)
+{
+  if (!aCreateIfNeeded && mElementCollections.isEmpty()) {
+    // Early return for the most common case.
+    return nullptr;
+  }
+
+  nsIAtom *propName;
+  if (aPseudoType == nsCSSPseudoElements::ePseudo_NotPseudoElement) {
+    propName = GetAnimationsAtom();
+  } else if (aPseudoType == nsCSSPseudoElements::ePseudo_before) {
+    propName = GetAnimationsBeforeAtom();
+  } else if (aPseudoType == nsCSSPseudoElements::ePseudo_after) {
+    propName = GetAnimationsAfterAtom();
+  } else {
+    NS_ASSERTION(!aCreateIfNeeded,
+                 "should never try to create transitions for pseudo "
+                 "other than :before or :after");
+    return nullptr;
+  }
+  AnimationCollection* collection =
+    static_cast<AnimationCollection*>(aElement->GetProperty(propName));
+  if (!collection && aCreateIfNeeded) {
+    // FIXME: Consider arena-allocating?
+    collection = new AnimationCollection(aElement, propName, this);
+    nsresult rv =
+      aElement->SetProperty(propName, collection,
+                            &AnimationCollection::PropertyDtor, false);
+    if (NS_FAILED(rv)) {
+      NS_WARNING("SetProperty failed");
+      // The collection must be destroyed via PropertyDtor, otherwise
+      // mCalledPropertyDtor assertion is triggered in destructor.
+      AnimationCollection::PropertyDtor(aElement, propName, collection, nullptr);
+      return nullptr;
+    }
+    if (aPseudoType == nsCSSPseudoElements::ePseudo_NotPseudoElement) {
+      aElement->SetMayHaveAnimations();
+    }
+
+    AddElementCollection(collection);
+  }
+
+  return collection;
+}
+
+AnimationCollection*
 CommonAnimationManager::GetAnimationCollection(const nsIFrame* aFrame)
 {
   nsIContent* content = aFrame->GetContent();
   if (!content) {
     return nullptr;
   }
-  nsIAtom* animProp;
+
+  nsCSSPseudoElements::Type pseudoType =
+    nsCSSPseudoElements::ePseudo_NotPseudoElement;
+
   if (aFrame->IsGeneratedContentFrame()) {
     nsIFrame* parent = aFrame->GetParent();
     if (parent->IsGeneratedContentFrame()) {
@@ -99,9 +133,9 @@ CommonAnimationManager::GetAnimationCollection(const nsIFrame* aFrame)
     }
     nsIAtom* name = content->NodeInfo()->NameAtom();
     if (name == nsGkAtoms::mozgeneratedcontentbefore) {
-      animProp = GetAnimationsBeforeAtom();
+      pseudoType = nsCSSPseudoElements::ePseudo_before;
     } else if (name == nsGkAtoms::mozgeneratedcontentafter) {
-      animProp = GetAnimationsAfterAtom();
+      pseudoType = nsCSSPseudoElements::ePseudo_after;
     } else {
       return nullptr;
     }
@@ -113,26 +147,14 @@ CommonAnimationManager::GetAnimationCollection(const nsIFrame* aFrame)
     if (!content->MayHaveAnimations()) {
       return nullptr;
     }
-    animProp = GetAnimationsAtom();
   }
 
-  return static_cast<AnimationCollection*>(content->GetProperty(animProp));
-}
-
-AnimationCollection*
-CommonAnimationManager::GetAnimationsForCompositor(const nsIFrame* aFrame,
-                                                   nsCSSProperty aProperty)
-{
-  AnimationCollection* collection = GetAnimationCollection(aFrame);
-  if (!collection ||
-      !collection->HasCurrentAnimationOfProperty(aProperty) ||
-      !collection->CanPerformOnCompositorThread(
-        AnimationCollection::CanAnimate_AllowPartial)) {
+  if (!content->IsElement()) {
     return nullptr;
   }
 
-  // This animation can be done on the compositor.
-  return collection;
+  return GetAnimationCollection(content->AsElement(), pseudoType,
+                                false /* aCreateIfNeeded */);
 }
 
 nsRestyleHint
@@ -269,54 +291,6 @@ CommonAnimationManager::ExtractComputedValueForTransition(
   return result;
 }
 
-AnimationCollection*
-CommonAnimationManager::GetAnimations(dom::Element *aElement,
-                                      nsCSSPseudoElements::Type aPseudoType,
-                                      bool aCreateIfNeeded)
-{
-  if (!aCreateIfNeeded && mElementCollections.isEmpty()) {
-    // Early return for the most common case.
-    return nullptr;
-  }
-
-  nsIAtom *propName;
-  if (aPseudoType == nsCSSPseudoElements::ePseudo_NotPseudoElement) {
-    propName = GetAnimationsAtom();
-  } else if (aPseudoType == nsCSSPseudoElements::ePseudo_before) {
-    propName = GetAnimationsBeforeAtom();
-  } else if (aPseudoType == nsCSSPseudoElements::ePseudo_after) {
-    propName = GetAnimationsAfterAtom();
-  } else {
-    NS_ASSERTION(!aCreateIfNeeded,
-                 "should never try to create transitions for pseudo "
-                 "other than :before or :after");
-    return nullptr;
-  }
-  AnimationCollection* collection =
-    static_cast<AnimationCollection*>(aElement->GetProperty(propName));
-  if (!collection && aCreateIfNeeded) {
-    // FIXME: Consider arena-allocating?
-    collection = new AnimationCollection(aElement, propName, this);
-    nsresult rv =
-      aElement->SetProperty(propName, collection,
-                            &AnimationCollection::PropertyDtor, false);
-    if (NS_FAILED(rv)) {
-      NS_WARNING("SetProperty failed");
-      // The collection must be destroyed via PropertyDtor, otherwise
-      // mCalledPropertyDtor assertion is triggered in destructor.
-      AnimationCollection::PropertyDtor(aElement, propName, collection, nullptr);
-      return nullptr;
-    }
-    if (aPseudoType == nsCSSPseudoElements::ePseudo_NotPseudoElement) {
-      aElement->SetMayHaveAnimations();
-    }
-
-    AddElementCollection(collection);
-  }
-
-  return collection;
-}
-
 void
 CommonAnimationManager::FlushAnimations()
 {
@@ -352,7 +326,7 @@ CommonAnimationManager::GetAnimationRule(mozilla::dom::Element* aElement,
   }
 
   AnimationCollection* collection =
-    GetAnimations(aElement, aPseudoType, false);
+    GetAnimationCollection(aElement, aPseudoType, false /* aCreateIfNeeded */);
   if (!collection) {
     return nullptr;
   }
@@ -372,9 +346,13 @@ void
 CommonAnimationManager::ClearIsRunningOnCompositor(const nsIFrame* aFrame,
                                                    nsCSSProperty aProperty)
 {
-  AnimationCollection* collection = GetAnimationCollection(aFrame);
-  if (collection) {
-    collection->ClearIsRunningOnCompositor(aProperty);
+  EffectSet* effects = EffectSet::GetEffectSet(aFrame);
+  if (!effects) {
+    return;
+  }
+
+  for (KeyframeEffectReadOnly* effect : *effects) {
+    effect->SetIsRunningOnCompositor(aProperty, false);
   }
 }
 
@@ -417,6 +395,12 @@ AnimValuesStyleRule::MapRuleInfoInto(nsRuleData* aRuleData)
   }
 }
 
+/* virtual */ bool
+AnimValuesStyleRule::MightMapInheritedStyleData()
+{
+  return mStyleBits & NS_STYLE_INHERITED_STRUCT_MASK;
+}
+
 #ifdef DEBUG
 /* virtual */ void
 AnimValuesStyleRule::List(FILE* out, int32_t aIndent) const
@@ -439,168 +423,6 @@ AnimValuesStyleRule::List(FILE* out, int32_t aIndent) const
   fprintf_stderr(out, "%s", str.get());
 }
 #endif
-
-bool
-AnimationCollection::CanAnimatePropertyOnCompositor(
-  const dom::Element *aElement,
-  nsCSSProperty aProperty,
-  CanAnimateFlags aFlags)
-{
-  bool shouldLog = nsLayoutUtils::IsAnimationLoggingEnabled();
-  if (!gfxPlatform::OffMainThreadCompositingEnabled()) {
-    if (shouldLog) {
-      nsCString message;
-      message.AppendLiteral("Performance warning: Compositor disabled");
-      LogAsyncAnimationFailure(message);
-    }
-    return false;
-  }
-
-  nsIFrame* frame = nsLayoutUtils::GetStyleFrame(aElement);
-  if (IsGeometricProperty(aProperty)) {
-    if (shouldLog) {
-      nsCString message;
-      message.AppendLiteral("Performance warning: Async animation of geometric property '");
-      message.Append(nsCSSProps::GetStringValue(aProperty));
-      message.AppendLiteral("' is disabled");
-      LogAsyncAnimationFailure(message, aElement);
-    }
-    return false;
-  }
-  if (aProperty == eCSSProperty_transform) {
-    if (frame->Preserves3D() ||
-        frame->Preserves3DChildren()) {
-      if (shouldLog) {
-        nsCString message;
-        message.AppendLiteral("Gecko bug: Async animation of 'preserve-3d' transforms is not supported.  See bug 779598");
-        LogAsyncAnimationFailure(message, aElement);
-      }
-      return false;
-    }
-    // Note that testing BackfaceIsHidden() is not a sufficient test for
-    // what we need for animating backface-visibility correctly if we
-    // remove the above test for Preserves3DChildren(); that would require
-    // looking at backface-visibility on descendants as well.
-    if (frame->StyleDisplay()->BackfaceIsHidden()) {
-      if (shouldLog) {
-        nsCString message;
-        message.AppendLiteral("Gecko bug: Async animation of 'backface-visibility: hidden' transforms is not supported.  See bug 1186204.");
-        LogAsyncAnimationFailure(message, aElement);
-      }
-      return false;
-    }
-    if (frame->IsSVGTransformed()) {
-      if (shouldLog) {
-        nsCString message;
-        message.AppendLiteral("Gecko bug: Async 'transform' animations of frames with SVG transforms is not supported.  See bug 779599");
-        LogAsyncAnimationFailure(message, aElement);
-      }
-      return false;
-    }
-    if (aFlags & CanAnimate_HasGeometricProperty) {
-      if (shouldLog) {
-        nsCString message;
-        message.AppendLiteral("Performance warning: Async animation of 'transform' not possible due to presence of geometric properties");
-        LogAsyncAnimationFailure(message, aElement);
-      }
-      return false;
-    }
-  }
-  bool enabled = nsLayoutUtils::AreAsyncAnimationsEnabled();
-  if (!enabled && shouldLog) {
-    nsCString message;
-    message.AppendLiteral("Performance warning: Async animations are disabled");
-    LogAsyncAnimationFailure(message);
-  }
-  bool propertyAllowed = (aProperty == eCSSProperty_transform) ||
-                         (aProperty == eCSSProperty_opacity) ||
-                         (aFlags & CanAnimate_AllowPartial);
-  return enabled && propertyAllowed;
-}
-
-/* static */ bool
-AnimationCollection::IsCompositorAnimationDisabledForFrame(
-  nsIFrame* aFrame)
-{
-  void* prop = aFrame->Properties().Get(nsIFrame::RefusedAsyncAnimation());
-  return bool(reinterpret_cast<intptr_t>(prop));
-}
-
-bool
-AnimationCollection::CanPerformOnCompositorThread(
-  CanAnimateFlags aFlags) const
-{
-  dom::Element* element = GetElementToRestyle();
-  if (!element) {
-    return false;
-  }
-  nsIFrame* frame = nsLayoutUtils::GetStyleFrame(element);
-  if (!frame) {
-    return false;
-  }
-
-  for (size_t animIdx = mAnimations.Length(); animIdx-- != 0; ) {
-    const Animation* anim = mAnimations[animIdx];
-    if (!anim->IsPlaying()) {
-      continue;
-    }
-
-    const KeyframeEffectReadOnly* effect = anim->GetEffect();
-    MOZ_ASSERT(effect, "A playing animation should have an effect");
-
-    for (size_t propIdx = 0, propEnd = effect->Properties().Length();
-         propIdx != propEnd; ++propIdx) {
-      if (IsGeometricProperty(effect->Properties()[propIdx].mProperty)) {
-        aFlags = CanAnimateFlags(aFlags | CanAnimate_HasGeometricProperty);
-        break;
-      }
-    }
-  }
-
-  bool existsProperty = false;
-  for (size_t animIdx = mAnimations.Length(); animIdx-- != 0; ) {
-    const Animation* anim = mAnimations[animIdx];
-    if (!anim->IsPlaying()) {
-      continue;
-    }
-
-    const KeyframeEffectReadOnly* effect = anim->GetEffect();
-    MOZ_ASSERT(effect, "A playing animation should have an effect");
-
-    existsProperty = existsProperty || effect->Properties().Length() > 0;
-
-    for (size_t propIdx = 0, propEnd = effect->Properties().Length();
-         propIdx != propEnd; ++propIdx) {
-      const AnimationProperty& prop = effect->Properties()[propIdx];
-      if (!CanAnimatePropertyOnCompositor(element,
-                                          prop.mProperty,
-                                          aFlags) ||
-          IsCompositorAnimationDisabledForFrame(frame)) {
-        return false;
-      }
-    }
-  }
-
-  // No properties to animate
-  if (!existsProperty) {
-    return false;
-  }
-
-  return true;
-}
-
-bool
-AnimationCollection::HasCurrentAnimationOfProperty(nsCSSProperty
-                                                     aProperty) const
-{
-  for (Animation* animation : mAnimations) {
-    if (animation->HasCurrentEffect() &&
-        animation->GetEffect()->HasAnimationOfProperty(aProperty)) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /*static*/ nsString
 AnimationCollection::PseudoTypeAsString(nsCSSPseudoElements::Type aPseudoType)
@@ -641,26 +463,6 @@ AnimationCollection::GetElementToRestyle() const
     return nullptr;
   }
   return pseudoFrame->GetContent()->AsElement();
-}
-
-/* static */ void
-AnimationCollection::LogAsyncAnimationFailure(nsCString& aMessage,
-                                                     const nsIContent* aContent)
-{
-  if (aContent) {
-    aMessage.AppendLiteral(" [");
-    aMessage.Append(nsAtomCString(aContent->NodeInfo()->NameAtom()));
-
-    nsIAtom* id = aContent->GetID();
-    if (id) {
-      aMessage.AppendLiteral(" with id '");
-      aMessage.Append(nsAtomCString(aContent->GetID()));
-      aMessage.Append('\'');
-    }
-    aMessage.Append(']');
-  }
-  aMessage.Append('\n');
-  printf_stderr("%s", aMessage.get());
 }
 
 /*static*/ void
@@ -730,102 +532,6 @@ AnimationCollection::EnsureStyleRuleFor(TimeStamp aRefreshTime)
   }
 }
 
-bool
-AnimationCollection::CanThrottleTransformChanges(TimeStamp aTime)
-{
-  if (!nsLayoutUtils::AreAsyncAnimationsEnabled()) {
-    return false;
-  }
-
-  // If we know that the animation cannot cause overflow,
-  // we can just disable flushes for this animation.
-
-  // If we don't show scrollbars, we don't care about overflow.
-  if (LookAndFeel::GetInt(LookAndFeel::eIntID_ShowHideScrollbars) == 0) {
-    return true;
-  }
-
-  // If this animation can cause overflow, we can throttle some of the ticks.
-  if (!mStyleRuleRefreshTime.IsNull() &&
-      (aTime - mStyleRuleRefreshTime) < TimeDuration::FromMilliseconds(200)) {
-    return true;
-  }
-
-  dom::Element* element = GetElementToRestyle();
-  if (!element) {
-    return false;
-  }
-
-  // If the nearest scrollable ancestor has overflow:hidden,
-  // we don't care about overflow.
-  nsIScrollableFrame* scrollable = nsLayoutUtils::GetNearestScrollableFrame(
-                                     nsLayoutUtils::GetStyleFrame(element));
-  if (!scrollable) {
-    return true;
-  }
-
-  ScrollbarStyles ss = scrollable->GetScrollbarStyles();
-  if (ss.mVertical == NS_STYLE_OVERFLOW_HIDDEN &&
-      ss.mHorizontal == NS_STYLE_OVERFLOW_HIDDEN &&
-      scrollable->GetLogicalScrollPosition() == nsPoint(0, 0)) {
-    return true;
-  }
-
-  return false;
-}
-
-bool
-AnimationCollection::CanThrottleAnimation(TimeStamp aTime)
-{
-  dom::Element* element = GetElementToRestyle();
-  if (!element) {
-    return false;
-  }
-  nsIFrame* frame = nsLayoutUtils::GetStyleFrame(element);
-  if (!frame) {
-    return false;
-  }
-
-  for (const LayerAnimationInfo::Record& record :
-        LayerAnimationInfo::sRecords) {
-    // We only need to worry about *current* animations here.
-    // - If we have a newly-finished animation, Animation::CanThrottle will
-    //   detect that and force an unthrottled sample.
-    // - If we have a newly-idle animation, then whatever caused the animation
-    //   to be idle will update the animation generation so we'll return false
-    //   from the layer generation check below for any other running compositor
-    //   animations (and if no other compositor animations exist we won't get
-    //   this far).
-    if (!HasCurrentAnimationOfProperty(record.mProperty)) {
-      continue;
-    }
-
-    Layer* layer = FrameLayerBuilder::GetDedicatedLayer(
-                     frame, record.mLayerType);
-    if (!layer || mAnimationGeneration > layer->GetAnimationGeneration()) {
-      return false;
-    }
-
-    if (record.mProperty == eCSSProperty_transform &&
-        !CanThrottleTransformChanges(aTime)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
-void
-AnimationCollection::ClearIsRunningOnCompositor(nsCSSProperty aProperty)
-{
-  for (Animation* anim : mAnimations) {
-    dom::KeyframeEffectReadOnly* effect = anim->GetEffect();
-    if (effect) {
-      effect->SetIsRunningOnCompositor(aProperty, false);
-    }
-  }
-}
-
 void
 AnimationCollection::RequestRestyle(RestyleType aRestyleType)
 {
@@ -856,16 +562,6 @@ AnimationCollection::RequestRestyle(RestyleType aRestyleType)
     return;
   }
 
-  // Upgrade throttled restyles if other factors prevent
-  // throttling (e.g. async animations are not enabled).
-  if (aRestyleType == RestyleType::Throttled) {
-    TimeStamp now = presContext->RefreshDriver()->MostRecentRefresh();
-    if (!CanPerformOnCompositorThread(CanAnimateFlags(0)) ||
-        !CanThrottleAnimation(now)) {
-      aRestyleType = RestyleType::Standard;
-    }
-  }
-
   if (aRestyleType >= RestyleType::Standard) {
     mHasPendingAnimationRestyle = true;
     PostRestyleForAnimation(presContext);
@@ -890,38 +586,7 @@ void
 AnimationCollection::UpdateCheckGeneration(
   nsPresContext* aPresContext)
 {
-  mCheckGeneration =
-    aPresContext->RestyleManager()->GetAnimationGeneration();
-}
-
-bool
-AnimationCollection::HasCurrentAnimations() const
-{
-  for (size_t animIdx = mAnimations.Length(); animIdx-- != 0; ) {
-    if (mAnimations[animIdx]->HasCurrentEffect()) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-bool
-AnimationCollection::HasCurrentAnimationsForProperties(
-                              const nsCSSProperty* aProperties,
-                              size_t aPropertyCount) const
-{
-  for (size_t animIdx = mAnimations.Length(); animIdx-- != 0; ) {
-    const Animation& anim = *mAnimations[animIdx];
-    const KeyframeEffectReadOnly* effect = anim.GetEffect();
-    if (effect &&
-        effect->IsCurrent() &&
-        effect->HasAnimationOfProperties(aProperties, aPropertyCount)) {
-      return true;
-    }
-  }
-
-  return false;
+  mCheckGeneration = aPresContext->RestyleManager()->GetAnimationGeneration();
 }
 
 nsPresContext*

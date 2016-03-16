@@ -368,9 +368,9 @@
 #ifdef MOZ_SERVICES_SYNC
                 <menuitem id="sync-tabs-menuitem"
                           class="syncTabsMenuItem"
-                          label="&syncTabsMenu2.label;"
+                          label="&syncTabsMenu3.label;"
                           oncommand="BrowserOpenSyncTabs();"
-                          disabled="true"/>
+                          hidden="true"/>
 #endif
                 <menuitem id="historyRestoreLastSession"
                           label="&historyRestoreLastSession.label;"
@@ -507,7 +507,6 @@
                         label="&loopMenuItem.label;"
                         accesskey = "&loopMenuItem.accesskey;"
                         oncommand="LoopUI.togglePanel();"/>
-
 #ifdef MOZ_SERVICES_SYNC
               <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"

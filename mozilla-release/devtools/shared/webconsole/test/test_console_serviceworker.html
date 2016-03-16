@@ -60,7 +60,7 @@ let startTest = Task.async(function*() {
     ]}, resolve);
   });
 
-  attachConsole(["ConsoleAPI"], onAttach, true);
+  attachConsoleToTab(["ConsoleAPI"], onAttach);
 });
 addEventListener("load", startTest);
 

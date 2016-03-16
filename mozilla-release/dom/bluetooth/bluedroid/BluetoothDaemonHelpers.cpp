@@ -456,7 +456,8 @@ Convert(uint8_t aIn, BluetoothStatus& aOut)
     [0x07] = STATUS_PARM_INVALID,
     [0x08] = STATUS_UNHANDLED,
     [0x09] = STATUS_AUTH_FAILURE,
-    [0x0a] = STATUS_RMT_DEV_DOWN
+    [0x0a] = STATUS_RMT_DEV_DOWN,
+    [0x0b] = STATUS_AUTH_REJECTED
   };
   if (MOZ_HAL_IPC_CONVERT_WARN_IF(
         aIn >= MOZ_ARRAY_LENGTH(sStatus), uint8_t, BluetoothStatus)) {
@@ -532,6 +533,14 @@ Convert(const BluetoothAttributeHandle& aIn, int32_t& aOut)
   aOut = static_cast<int32_t>(aIn.mHandle);
   return NS_OK;
 }
+
+nsresult
+Convert(const BluetoothAttributeHandle& aIn, uint16_t& aOut)
+{
+  aOut = aIn.mHandle;
+  return NS_OK;
+}
+
 
 nsresult
 Convert(BluetoothAvrcpEvent aIn, uint8_t& aOut)
@@ -926,6 +935,26 @@ Convert(BluetoothGattAuthReq aIn, int32_t& aOut)
   if (MOZ_HAL_IPC_CONVERT_WARN_IF(
         aIn >= MOZ_ARRAY_LENGTH(sGattAuthReq), BluetoothGattAuthReq,
         int32_t)) {
+    aOut = GATT_AUTH_REQ_NONE; // silences compiler warning
+    return NS_ERROR_ILLEGAL_VALUE;
+  }
+  aOut = sGattAuthReq[aIn];
+  return NS_OK;
+}
+
+nsresult
+Convert(BluetoothGattAuthReq aIn, uint8_t& aOut)
+{
+  static const uint8_t sGattAuthReq[] = {
+    [GATT_AUTH_REQ_NONE] = 0x00,
+    [GATT_AUTH_REQ_NO_MITM] = 0x01,
+    [GATT_AUTH_REQ_MITM] = 0x02,
+    [GATT_AUTH_REQ_SIGNED_NO_MITM] = 0x03,
+    [GATT_AUTH_REQ_SIGNED_MITM] = 0x04
+  };
+  if (MOZ_HAL_IPC_CONVERT_WARN_IF(
+        aIn >= MOZ_ARRAY_LENGTH(sGattAuthReq), BluetoothGattAuthReq,
+        uint8_t)) {
     aOut = GATT_AUTH_REQ_NONE; // silences compiler warning
     return NS_ERROR_ILLEGAL_VALUE;
   }

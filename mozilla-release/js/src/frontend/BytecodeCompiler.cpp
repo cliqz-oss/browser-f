@@ -31,7 +31,8 @@ using mozilla::Maybe;
 class MOZ_STACK_CLASS AutoCompilationTraceLogger
 {
   public:
-    AutoCompilationTraceLogger(ExclusiveContext* cx, const TraceLoggerTextId id);
+    AutoCompilationTraceLogger(ExclusiveContext* cx, const TraceLoggerTextId id,
+            const ReadOnlyCompileOptions& options);
 
   private:
     TraceLoggerThread* logger;
@@ -117,10 +118,11 @@ class MOZ_STACK_CLASS BytecodeCompiler
     Maybe<BytecodeEmitter> emitter;
 };
 
-AutoCompilationTraceLogger::AutoCompilationTraceLogger(ExclusiveContext* cx, const TraceLoggerTextId id)
+AutoCompilationTraceLogger::AutoCompilationTraceLogger(ExclusiveContext* cx,
+        const TraceLoggerTextId id, const ReadOnlyCompileOptions& options)
   : logger(cx->isJSContext() ? TraceLoggerForMainThread(cx->asJSContext()->runtime())
                              : TraceLoggerForCurrentThread()),
-    event(logger, TraceLogger_AnnotateScripts),
+    event(logger, TraceLogger_AnnotateScripts, options),
     scriptLogger(logger, event),
     typeLogger(logger, id)
 {}
@@ -131,7 +133,7 @@ BytecodeCompiler::BytecodeCompiler(ExclusiveContext* cx,
                                    SourceBufferHolder& sourceBuffer,
                                    Handle<ScopeObject*> enclosingStaticScope,
                                    TraceLoggerTextId logId)
-  : traceLogger(cx, logId),
+  : traceLogger(cx, logId, options),
     keepAtoms(cx->perThreadData),
     cx(cx),
     alloc(alloc),
@@ -494,11 +496,15 @@ BytecodeCompiler::compileScript(HandleObject scopeChain, HandleScript evalCaller
     if (!createSourceAndParser())
         return nullptr;
 
-    bool savedCallerFun = evalCaller && evalCaller->functionOrCallerFunction();
+    RootedFunction savedCallerFun(cx);
+    if (evalCaller)
+        savedCallerFun = evalCaller->functionOrCallerFunction();
+
     if (!createScript(enclosingStaticScope, savedCallerFun))
         return nullptr;
 
-    GlobalSharedContext globalsc(cx, enclosingStaticScope, directives, options.extraWarningsOption);
+    GlobalSharedContext globalsc(cx, enclosingStaticScope, directives, options.extraWarningsOption,
+                                 savedCallerFun);
     if (!createEmitter(&globalsc, evalCaller, isNonGlobalEvalCompilationUnit()))
         return nullptr;
 
@@ -595,8 +601,8 @@ ModuleObject* BytecodeCompiler::compileModule()
         return nullptr;
     }
 
-    ModuleBuilder builder(cx->asJSContext());
-    if (!builder.buildAndInit(pn, module))
+    ModuleBuilder builder(cx->asJSContext(), module);
+    if (!builder.buildAndInit(pn))
         return nullptr;
 
     parser->handler.freeTree(pn);
@@ -781,7 +787,7 @@ frontend::CompileLazyFunction(JSContext* cx, Handle<LazyScript*> lazy, const cha
            .setNoScriptRval(false)
            .setSelfHostingMode(false);
 
-    AutoCompilationTraceLogger traceLogger(cx, TraceLogger_ParserCompileLazy);
+    AutoCompilationTraceLogger traceLogger(cx, TraceLogger_ParserCompileLazy, options);
 
     Parser<FullParseHandler> parser(cx, &cx->tempLifoAlloc(), options, chars, length,
                                     /* foldConstants = */ true, nullptr, lazy);

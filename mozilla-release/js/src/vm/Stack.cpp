@@ -34,11 +34,9 @@ using mozilla::PodCopy;
 
 void
 InterpreterFrame::initExecuteFrame(JSContext* cx, HandleScript script, AbstractFramePtr evalInFramePrev,
-                                   const Value& thisv, const Value& newTargetValue, HandleObject scopeChain,
+                                   const Value& newTargetValue, HandleObject scopeChain,
                                    ExecuteType type)
 {
-    MOZ_ASSERT_IF(type & MODULE, thisv.isUndefined());
-
     /*
      * See encoding of ExecuteType. When GLOBAL isn't set, we are executing a
      * script in the context of another frame and the frame type is determined
@@ -77,8 +75,7 @@ InterpreterFrame::initExecuteFrame(JSContext* cx, HandleScript script, AbstractF
         }
     }
 
-    Value* dstvp = (Value*)this - 3;
-    dstvp[2] = thisv;
+    Value* dstvp = (Value*)this - 2;
 
     if (isFunctionFrame()) {
         dstvp[1] = ObjectValue(*callee);
@@ -259,15 +256,15 @@ InterpreterFrame::prologue(JSContext* cx)
     if (isConstructing()) {
         if (script->isDerivedClassConstructor()) {
             MOZ_ASSERT(callee().isClassConstructor());
-            functionThis() = MagicValue(JS_UNINITIALIZED_LEXICAL);
-        } else if (functionThis().isPrimitive()) {
+            thisArgument() = MagicValue(JS_UNINITIALIZED_LEXICAL);
+        } else if (thisArgument().isPrimitive()) {
             RootedObject callee(cx, &this->callee());
             RootedObject newTarget(cx, &this->newTarget().toObject());
             JSObject* obj = CreateThisForFunction(cx, callee, newTarget,
                                                   createSingleton() ? SingletonObject : GenericObject);
             if (!obj)
                 return false;
-            functionThis() = ObjectValue(*obj);
+            thisArgument() = ObjectValue(*obj);
         }
     }
 
@@ -316,44 +313,35 @@ InterpreterFrame::epilogue(JSContext* cx)
     if (MOZ_UNLIKELY(cx->compartment()->isDebuggee()))
         DebugScopes::onPopCall(this, cx);
 
-    if (!fun()->isGenerator() && isConstructing() && thisValue().isObject() && returnValue().isPrimitive())
-        setReturnValue(ObjectValue(constructorThis()));
+    if (!fun()->isGenerator() &&
+        isConstructing() &&
+        thisArgument().isObject() &&
+        returnValue().isPrimitive())
+    {
+        setReturnValue(thisArgument());
+    }
 }
 
 bool
-InterpreterFrame::checkThis(JSContext* cx)
+InterpreterFrame::checkReturn(JSContext* cx, HandleValue thisv)
 {
-    if (script()->isDerivedClassConstructor()) {
-        MOZ_ASSERT(isNonEvalFunctionFrame());
-        MOZ_ASSERT(fun()->isClassConstructor());
+    MOZ_ASSERT(script()->isDerivedClassConstructor());
+    MOZ_ASSERT(isFunctionFrame());
+    MOZ_ASSERT(callee().isClassConstructor());
 
-        if (thisValue().isMagic(JS_UNINITIALIZED_LEXICAL)) {
-            RootedFunction func(cx, fun());
-            return ThrowUninitializedThis(cx, this);
-        }
+    HandleValue retVal = returnValue();
+    if (retVal.isObject())
+        return true;
+
+    if (!retVal.isUndefined()) {
+        ReportValueError(cx, JSMSG_BAD_DERIVED_RETURN, JSDVG_IGNORE_STACK, retVal, nullptr);
+        return false;
     }
-    return true;
-}
 
-bool
-InterpreterFrame::checkReturn(JSContext* cx)
-{
-    if (script()->isDerivedClassConstructor()) {
-        MOZ_ASSERT(isNonEvalFunctionFrame());
-        MOZ_ASSERT(callee().isClassConstructor());
+    if (thisv.isMagic(JS_UNINITIALIZED_LEXICAL))
+        return ThrowUninitializedThis(cx, this);
 
-        HandleValue retVal = returnValue();
-        if (retVal.isObject())
-            return true;
-
-        if (!retVal.isUndefined()) {
-            ReportValueError(cx, JSMSG_BAD_DERIVED_RETURN, JSDVG_IGNORE_STACK, retVal, nullptr);
-            return false;
-        }
-
-        if (!checkThis(cx))
-            return false;
-    }
+    setReturnValue(thisv);
     return true;
 }
 
@@ -463,8 +451,8 @@ InterpreterFrame::markValues(JSTracer* trc, Value* sp, jsbytecode* pc)
         unsigned argc = Max(numActualArgs(), numFormalArgs());
         TraceRootRange(trc, argc + 2 + isConstructing(), argv_ - 2, "fp argv");
     } else {
-        // Mark callee, |this|, and newTarget
-        TraceRootRange(trc, 3, ((Value*)this) - 3, "stack callee, this, newTarget");
+        // Mark callee and newTarget
+        TraceRootRange(trc, 2, ((Value*)this) - 2, "stack callee and newTarget");
     }
 }
 
@@ -521,20 +509,20 @@ InterpreterStack::pushInvokeFrame(JSContext* cx, const CallArgs& args, InitialFr
 }
 
 InterpreterFrame*
-InterpreterStack::pushExecuteFrame(JSContext* cx, HandleScript script, const Value& thisv,
-                                   const Value& newTargetValue, HandleObject scopeChain,
-                                   ExecuteType type, AbstractFramePtr evalInFrame)
+InterpreterStack::pushExecuteFrame(JSContext* cx, HandleScript script, const Value& newTargetValue,
+                                   HandleObject scopeChain, ExecuteType type,
+                                   AbstractFramePtr evalInFrame)
 {
     LifoAlloc::Mark mark = allocator_.mark();
 
-    unsigned nvars = 3 /* callee, this, newTarget */ + script->nslots();
+    unsigned nvars = 2 /* callee, newTarget */ + script->nslots();
     uint8_t* buffer = allocateFrame(cx, sizeof(InterpreterFrame) + nvars * sizeof(Value));
     if (!buffer)
         return nullptr;
 
-    InterpreterFrame* fp = reinterpret_cast<InterpreterFrame*>(buffer + 3 * sizeof(Value));
+    InterpreterFrame* fp = reinterpret_cast<InterpreterFrame*>(buffer + 2 * sizeof(Value));
     fp->mark_ = mark;
-    fp->initExecuteFrame(cx, script, evalInFrame, thisv, newTargetValue, scopeChain, type);
+    fp->initExecuteFrame(cx, script, evalInFrame, newTargetValue, scopeChain, type);
     fp->initLocals();
 
     return fp;
@@ -1306,23 +1294,11 @@ FrameIter::argsObj() const
     return abstractFramePtr().argsObj();
 }
 
-bool
-FrameIter::computeThis(JSContext* cx) const
-{
-    MOZ_ASSERT(!done() && !isAsmJS());
-    assertSameCompartment(cx, scopeChain(cx));
-    return ComputeThis(cx, abstractFramePtr());
-}
-
 Value
-FrameIter::computedThisValue() const
+FrameIter::thisArgument(JSContext* cx) const
 {
-    return abstractFramePtr().thisValue();
-}
+    MOZ_ASSERT(isNonEvalFunctionFrame());
 
-Value
-FrameIter::thisv(JSContext* cx) const
-{
     switch (data_.state_) {
       case DONE:
       case ASMJS:
@@ -1330,11 +1306,11 @@ FrameIter::thisv(JSContext* cx) const
       case JIT:
         if (data_.jitFrames_.isIonScripted()) {
             jit::MaybeReadFallback recover(cx, activation()->asJit(), &data_.jitFrames_);
-            return ionInlineFrames_.thisValue(recover);
+            return ionInlineFrames_.thisArgument(recover);
         }
-        return data_.jitFrames_.baselineFrame()->thisValue();
+        return data_.jitFrames_.baselineFrame()->thisArgument();
       case INTERP:
-        return interpFrame()->thisValue();
+        return interpFrame()->thisArgument();
     }
     MOZ_CRASH("Unexpected state");
 }
@@ -1469,9 +1445,58 @@ NonBuiltinScriptFrameIter::settle()
     }
 }
 
+ActivationEntryMonitor::ActivationEntryMonitor(JSContext* cx)
+  : cx_(cx), entryMonitor_(cx->runtime()->entryMonitor)
+{
+    cx->runtime()->entryMonitor = nullptr;
+}
+
+Value
+ActivationEntryMonitor::asyncStack(JSContext* cx)
+{
+    RootedValue stack(cx, ObjectOrNullValue(cx->runtime()->asyncStackForNewActivations));
+    if (!cx->compartment()->wrap(cx, &stack)) {
+        cx->clearPendingException();
+        return UndefinedValue();
+    }
+    return stack;
+}
+
+ActivationEntryMonitor::ActivationEntryMonitor(JSContext* cx, InterpreterFrame* entryFrame)
+  : ActivationEntryMonitor(cx)
+{
+    if (entryMonitor_) {
+        // The InterpreterFrame is not yet part of an Activation, so it won't
+        // be traced if we trigger GC here. Suppress GC to avoid this.
+        gc::AutoSuppressGC suppressGC(cx);
+        RootedValue stack(cx, asyncStack(cx));
+        RootedString asyncCause(cx, cx->runtime()->asyncCauseForNewActivations);
+        if (entryFrame->isFunctionFrame())
+            entryMonitor_->Entry(cx, entryFrame->fun(), stack, asyncCause);
+        else
+            entryMonitor_->Entry(cx, entryFrame->script(), stack, asyncCause);
+    }
+}
+
+ActivationEntryMonitor::ActivationEntryMonitor(JSContext* cx, jit::CalleeToken entryToken)
+  : ActivationEntryMonitor(cx)
+{
+    if (entryMonitor_) {
+        // The CalleeToken is not traced at this point and we also don't want
+        // a GC to discard the code we're about to enter, so we suppress GC.
+        gc::AutoSuppressGC suppressGC(cx);
+        RootedValue stack(cx, asyncStack(cx));
+        RootedString asyncCause(cx, cx->runtime()->asyncCauseForNewActivations);
+        if (jit::CalleeTokenIsFunction(entryToken))
+            entryMonitor_->Entry(cx_, jit::CalleeTokenToFunction(entryToken), stack, asyncCause);
+        else
+            entryMonitor_->Entry(cx_, jit::CalleeTokenToScript(entryToken), stack, asyncCause);
+    }
+}
+
 /*****************************************************************************/
 
-jit::JitActivation::JitActivation(JSContext* cx, CalleeToken entryPoint, bool active)
+jit::JitActivation::JitActivation(JSContext* cx, bool active)
   : Activation(cx, Jit),
     active_(active),
     isLazyLinkExitFrame_(false),
@@ -1494,22 +1519,10 @@ jit::JitActivation::JitActivation(JSContext* cx, CalleeToken entryPoint, bool ac
         prevJitJSContext_ = nullptr;
         prevJitActivation_ = nullptr;
     }
-
-    if (entryMonitor_) {
-        MOZ_ASSERT(entryPoint);
-
-        if (CalleeTokenIsFunction(entryPoint))
-            entryMonitor_->Entry(cx_, CalleeTokenToFunction(entryPoint));
-        else
-            entryMonitor_->Entry(cx_, CalleeTokenToScript(entryPoint));
-    }
 }
 
 jit::JitActivation::~JitActivation()
 {
-    if (entryMonitor_)
-        entryMonitor_->Exit(cx_);
-
     if (active_) {
         if (isProfiling())
             unregisterProfiling();
@@ -1737,7 +1750,7 @@ AsmJSActivation::AsmJSActivation(JSContext* cx, AsmJSModule& module)
     entrySP_(nullptr),
     resumePC_(nullptr),
     fp_(nullptr),
-    exitReason_(AsmJSExit::None)
+    packedExitReason_(wasm::ExitReason(wasm::ExitReason::None).pack())
 {
     (void) entrySP_;  // squelch GCC warning
 

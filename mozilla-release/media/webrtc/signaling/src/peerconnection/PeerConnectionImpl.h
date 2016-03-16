@@ -316,11 +316,12 @@ public:
                                 NrIceCtx::ConnectionState state);
   void IceGatheringStateChange(NrIceCtx* ctx,
                                NrIceCtx::GatheringState state);
-  void EndOfLocalCandidates(const std::string& defaultAddr,
-                            uint16_t defaultPort,
-                            const std::string& defaultRtcpAddr,
-                            uint16_t defaultRtcpPort,
-                            uint16_t level);
+  void UpdateDefaultCandidate(const std::string& defaultAddr,
+                              uint16_t defaultPort,
+                              const std::string& defaultRtcpAddr,
+                              uint16_t defaultRtcpPort,
+                              uint16_t level);
+  void EndOfLocalCandidates(uint16_t level);
   void IceStreamReady(NrIceMediaStream *aStream);
 
   static void ListenThread(void *aData);
@@ -704,6 +705,8 @@ private:
   void RecordLongtermICEStatistics();
 
   void OnNegotiationNeeded();
+  static void MaybeFireNegotiationNeeded_static(const std::string& pcHandle);
+  void MaybeFireNegotiationNeeded();
 
   // Timecard used to measure processing time. This should be the first class
   // attribute so that we accurately measure the time required to instantiate
@@ -796,7 +799,7 @@ private:
 
   bool mTrickle;
 
-  bool mShouldSuppressNegotiationNeeded;
+  bool mNegotiationNeeded;
 
   // storage for Telemetry data
   uint16_t mMaxReceiving[SdpMediaSection::kMediaTypes];

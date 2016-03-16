@@ -541,7 +541,8 @@ class Marionette(object):
                  gecko_log=None, homedir=None, baseurl=None, no_window=False, logdir=None,
                  busybox=None, symbols_path=None, timeout=None, socket_timeout=360,
                  device_serial=None, adb_path=None, process_args=None,
-                 adb_host=None, adb_port=None, prefs=None, startup_timeout=None):
+                 adb_host=None, adb_port=None, prefs=None, startup_timeout=None,
+                 workspace=None):
         self.host = host
         self.port = self.local_port = port
         self.bin = bin
@@ -563,6 +564,7 @@ class Marionette(object):
         self.device_serial = device_serial
         self.adb_host = adb_host
         self.adb_port = adb_port
+        self.restart_handlers = []
 
         startup_timeout = startup_timeout or self.DEFAULT_STARTUP_TIMEOUT
 
@@ -590,9 +592,11 @@ class Marionette(object):
                     instance_class = geckoinstance.GeckoInstance
             self.instance = instance_class(host=self.host, port=self.port,
                                            bin=self.bin, profile=self.profile,
-                                           app_args=app_args, symbols_path=symbols_path,
+                                           app_args=app_args,
+                                           symbols_path=symbols_path,
                                            gecko_log=gecko_log, prefs=prefs,
-                                           addons=self.addons)
+                                           addons=self.addons,
+                                           workspace=workspace)
             self.instance.start()
             assert(self.wait_for_port(timeout=startup_timeout)), "Timed out waiting for port!"
 
@@ -671,6 +675,27 @@ class Marionette(object):
 
     @do_crash_check
     def _send_message(self, name, params=None, key=None):
+        """Send a blocking message to the server.
+
+        Marionette provides an asynchronous, non-blocking interface and
+        this attempts to paper over this by providing a synchronous API
+        to the user.
+
+        In particular, the Python client can be instructed to carry out
+        a sequence of instructions on the connected emulator.  For this
+        reason, if ``execute_script``, ``execute_js_script``, or
+        ``execute_async_script`` is called, it will loop until all
+        commands requested from the server have been exhausted, and we
+        receive our expected response.
+
+        :param name: Requested command key.
+        :param params: Optional dictionary of key/value arguments.
+        :param key: Optional key to extract from response.
+
+        :returns: Full response from the server, or if `key` is given,
+            the value of said key in the response.
+        """
+
         if not self.session_id and name != "newSession":
             raise errors.MarionetteException("Please start a session")
 
@@ -692,13 +717,16 @@ class Marionette(object):
                 returncode = self.instance.runner.wait(timeout=self.DEFAULT_STARTUP_TIMEOUT)
                 raise IOError("process died with returncode %s" % returncode)
             raise
+
         except socket.timeout:
             self.session = None
             self.window = None
             self.client.close()
             raise errors.TimeoutException("Connection timed out")
 
-        if isinstance(msg, transport.Command):
+        # support execution of commands on the client,
+        # loop until we receive our expected response
+        while isinstance(msg, transport.Command):
             if msg.name == "runEmulatorCmd":
                 self.emulator_callback_id = msg.params.get("id")
                 msg = self._emulator_cmd(msg.params["emulator_cmd"])
@@ -1109,6 +1137,11 @@ class Marionette(object):
         assert(self.wait_for_port()), "Timed out waiting for port!"
         self.start_session(session_id=self.session_id)
         self._reset_timeouts()
+
+        # Give consumers who depended on the old session a
+        # chance to re-initialize and/or restore state.
+        for handler in self.restart_handlers:
+            handler()
 
     def absolute_url(self, relative_url):
         '''

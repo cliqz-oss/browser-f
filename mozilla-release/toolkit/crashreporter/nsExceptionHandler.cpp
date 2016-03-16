@@ -599,7 +599,7 @@ public:
     if (!Valid()) {
       return;
     }
-    unused << sys_write(mFD, buffer, len);
+    Unused << sys_write(mFD, buffer, len);
   }
 
 private:
@@ -933,12 +933,12 @@ bool MinidumpCallback(
     // need to clobber this, as libcurl might load NSS,
     // and we want it to load the system NSS.
     unsetenv("LD_LIBRARY_PATH");
-    unused << execl(crashReporterPath,
+    Unused << execl(crashReporterPath,
                     crashReporterPath, minidumpPath, (char*)0);
 #else
     // Invoke the reportCrash activity using am
     if (androidUserSerial) {
-      unused << execlp("/system/bin/am",
+      Unused << execlp("/system/bin/am",
                        "/system/bin/am",
                        "start",
                        "--user", androidUserSerial,
@@ -947,7 +947,7 @@ bool MinidumpCallback(
                        "--es", "minidumpPath", minidumpPath,
                        (char*)0);
     } else {
-      unused << execlp("/system/bin/am",
+      Unused << execlp("/system/bin/am",
                        "/system/bin/am",
                        "start",
                        "-a", "org.mozilla.gecko.reportCrash",
@@ -962,7 +962,7 @@ bool MinidumpCallback(
     // We need to wait on the 'am start' command above to finish, otherwise everything will
     // be killed by the ActivityManager as soon as the signal handler exits
     int status;
-    unused << HANDLE_EINTR(sys_waitpid(pid, &status, __WALL));
+    Unused << HANDLE_EINTR(sys_waitpid(pid, &status, __WALL));
 #endif
   }
 #endif // XP_MACOSX
@@ -1123,10 +1123,18 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory,
     exePath->GetNativePath(crashReporterPath_temp);
     crashReporterPath = ToNewCString(crashReporterPath_temp);
 #else
-    // On Android, we launch using the application package name
-    // instead of a filename, so use ANDROID_PACKAGE_NAME to do that here.
-    nsCString package(ANDROID_PACKAGE_NAME "/org.mozilla.gecko.CrashReporter");
-    crashReporterPath = ToNewCString(package);
+    // On Android, we launch using the application package name instead of a
+    // filename, so use the dynamically set MOZ_ANDROID_PACKAGE_NAME, or fall
+    // back to the static ANDROID_PACKAGE_NAME.
+    const char* androidPackageName = PR_GetEnv("MOZ_ANDROID_PACKAGE_NAME");
+    if (androidPackageName != nullptr) {
+      nsCString package(androidPackageName);
+      package.Append("/org.mozilla.gecko.CrashReporter");
+      crashReporterPath = ToNewCString(package);
+    } else {
+      nsCString package(ANDROID_PACKAGE_NAME "/org.mozilla.gecko.CrashReporter");
+      crashReporterPath = ToNewCString(package);
+    }
 #endif
   }
 

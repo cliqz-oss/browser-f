@@ -53,7 +53,6 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsIServiceManager.h"
 #include "mozilla/css/StyleRule.h"
-#include "nsIStyleSheet.h"
 #include "nsIURL.h"
 #include "nsViewManager.h"
 #include "nsIWidget.h"
@@ -385,15 +384,14 @@ nsXULElement::Clone(mozilla::dom::NodeInfo *aNodeInfo, nsINode **aResult) const
         nsAttrValue attrValue;
 
         // Style rules need to be cloned.
-        if (originalValue->Type() == nsAttrValue::eCSSStyleRule) {
-            RefPtr<css::Rule> ruleClone =
-                originalValue->GetCSSStyleRuleValue()->Clone();
+        if (originalValue->Type() == nsAttrValue::eCSSDeclaration) {
+            RefPtr<css::Declaration> declClone =
+              new css::Declaration(*originalValue->GetCSSDeclarationValue());
 
             nsString stringValue;
             originalValue->ToString(stringValue);
 
-            RefPtr<css::StyleRule> styleRule = do_QueryObject(ruleClone);
-            attrValue.SetTo(styleRule, &stringValue);
+            attrValue.SetTo(declClone, &stringValue);
         } else {
             attrValue.SetTo(*originalValue);
         }
@@ -1863,15 +1861,14 @@ nsXULElement::MakeHeavyweight(nsXULPrototypeElement* aPrototype)
         nsAttrValue attrValue;
 
         // Style rules need to be cloned.
-        if (protoattr->mValue.Type() == nsAttrValue::eCSSStyleRule) {
-            RefPtr<css::Rule> ruleClone =
-                protoattr->mValue.GetCSSStyleRuleValue()->Clone();
+        if (protoattr->mValue.Type() == nsAttrValue::eCSSDeclaration) {
+            RefPtr<css::Declaration> declClone = new css::Declaration(
+              *protoattr->mValue.GetCSSDeclarationValue());
 
             nsString stringValue;
             protoattr->mValue.ToString(stringValue);
 
-            RefPtr<css::StyleRule> styleRule = do_QueryObject(ruleClone);
-            attrValue.SetTo(styleRule, &stringValue);
+            attrValue.SetTo(declClone, &stringValue);
         } else {
             attrValue.SetTo(protoattr->mValue);
         }
@@ -2009,7 +2006,7 @@ public:
     explicit MarginSetter(nsIWidget* aWidget) :
         mWidget(aWidget), mMargin(-1, -1, -1, -1)
     {}
-    MarginSetter(nsIWidget *aWidget, const nsIntMargin& aMargin) :
+    MarginSetter(nsIWidget *aWidget, const LayoutDeviceIntMargin& aMargin) :
         mWidget(aWidget), mMargin(aMargin)
     {}
 
@@ -2023,7 +2020,7 @@ public:
 
 private:
     nsCOMPtr<nsIWidget> mWidget;
-    nsIntMargin mMargin;
+    LayoutDeviceIntMargin mMargin;
 };
 
 void
@@ -2048,7 +2045,9 @@ nsXULElement::SetChromeMargins(const nsAttrValue* aValue)
         gotMargins = nsContentUtils::ParseIntMarginValue(tmp, margins);
     }
     if (gotMargins) {
-        nsContentUtils::AddScriptRunner(new MarginSetter(mainWidget, margins));
+        nsContentUtils::AddScriptRunner(
+            new MarginSetter(
+                mainWidget, LayoutDeviceIntMargin::FromUnknownMargin(margins)));
     }
 }
 
@@ -2438,7 +2437,6 @@ nsXULPrototypeElement::SetAttrAt(uint32_t aPos, const nsAString& aValue,
     } else if (mAttributes[aPos].mName.Equals(nsGkAtoms::style)) {
         mHasStyleAttribute = true;
         // Parse the element's 'style' attribute
-        RefPtr<css::StyleRule> rule;
 
         nsCSSParser parser;
 
@@ -2446,14 +2444,14 @@ nsXULPrototypeElement::SetAttrAt(uint32_t aPos, const nsAString& aValue,
         // TODO: If we implement Content Security Policy for chrome documents
         // as has been discussed, the CSP should be checked here to see if
         // inline styles are allowed to be applied.
-        parser.ParseStyleAttribute(aValue, aDocumentURI, aDocumentURI,
-                                   // This is basically duplicating what
-                                   // nsINode::NodePrincipal() does
-                                   mNodeInfo->NodeInfoManager()->
-                                     DocumentPrincipal(),
-                                   getter_AddRefs(rule));
-        if (rule) {
-            mAttributes[aPos].mValue.SetTo(rule, &aValue);
+        RefPtr<css::Declaration> declaration =
+          parser.ParseStyleAttribute(aValue, aDocumentURI, aDocumentURI,
+                                     // This is basically duplicating what
+                                     // nsINode::NodePrincipal() does
+                                     mNodeInfo->NodeInfoManager()->
+                                       DocumentPrincipal());
+        if (declaration) {
+            mAttributes[aPos].mValue.SetTo(declaration, &aValue);
 
             return NS_OK;
         }

@@ -1,8 +1,9 @@
+"use strict";
+
 const { interfaces: Ci, utils: Cu } = Components;
 Cu.import("resource://gre/modules/ExtensionUtils.jsm");
 var {
   EventManager,
-  ignoreEvent,
   runSafe,
 } = ExtensionUtils;
 
@@ -19,8 +20,8 @@ function convert(cookie) {
     secure: cookie.isSecure,
     httpOnly: cookie.isHttpOnly,
     session: cookie.isSession,
-    storeId: DEFAULT_STORE
-  }
+    storeId: DEFAULT_STORE,
+  };
 
   if (!cookie.isSession) {
     result.expirationDate = cookie.expiry;
@@ -29,11 +30,13 @@ function convert(cookie) {
   return result;
 }
 
-function* query(allDetails, allowed) {
+function* query(detailsIn, props) {
+  // Different callers want to filter on different properties. |props|
+  // tells us which ones they're interested in.
   let details = {};
-  allowed.map(property => {
-    if (property in allDetails) {
-      details[property] = allDetails[property];
+  props.map(property => {
+    if (detailsIn[property] !== null) {
+      details[property] = detailsIn[property];
     }
   });
 
@@ -81,7 +84,7 @@ function* query(allDetails, allowed) {
 
     // "Restricts the retrieved cookies to those that would match the given URL."
     if ("url" in details) {
-      var uri = Services.io.newURI(details.url, null, null);
+      let uri = Services.io.newURI(details.url, null, null);
 
       if (!domainMatches(uri.host)) {
         return false;
@@ -136,14 +139,10 @@ function* query(allDetails, allowed) {
   }
 }
 
-extensions.registerPrivilegedAPI("cookies", (extension, context) => {
+extensions.registerSchemaAPI("cookies", "cookies", (extension, context) => {
   let self = {
     cookies: {
       get: function(details, callback) {
-        if (!details || !details.url || !details.name) {
-          throw new Error("Mising required property");
-        }
-
         // FIXME: We don't sort by length of path and creation time.
         for (let cookie of query(details, ["url", "name", "storeId"])) {
           runSafe(context, callback, convert(cookie));
@@ -155,10 +154,6 @@ extensions.registerPrivilegedAPI("cookies", (extension, context) => {
       },
 
       getAll: function(details, callback) {
-        if (!details) {
-          details = {};
-        }
-
         let allowed = ["url", "name", "domain", "path", "secure", "session", "storeId"];
         let result = [];
         for (let cookie of query(details, allowed)) {
@@ -169,21 +164,17 @@ extensions.registerPrivilegedAPI("cookies", (extension, context) => {
       },
 
       set: function(details, callback) {
-        if (!details || !details.url) {
-          throw new Error("Mising required property");
-        }
-
         let uri = Services.io.newURI(details.url, null, null);
 
         let domain;
-        if ("domain" in details) {
+        if (details.domain !== null) {
           domain = "." + details.domain;
         } else {
           domain = uri.host; // "If omitted, the cookie becomes a host-only cookie."
         }
 
         let path;
-        if ("path" in details) {
+        if (details.path !== null) {
           path = details.path;
         } else {
           // Chrome seems to trim the path after the last slash.
@@ -198,11 +189,11 @@ extensions.registerPrivilegedAPI("cookies", (extension, context) => {
           }
         }
 
-        let name = "name" in details ? details.name : "";
-        let value = "value" in details ? details.value : "";
-        let secure = "secure" in details ? details.secure : false;
-        let httpOnly = "httpOnly" in details ? details.httpOnly : false;
-        let isSession = !("expirationDate" in details);
+        let name = details.name !== null ? details.name : "";
+        let value = details.value !== null ? details.value : "";
+        let secure = details.secure !== null ? details.secure : false;
+        let httpOnly = details.httpOnly !== null ? details.httpOnly : false;
+        let isSession = details.expirationDate === null;
         let expiry = isSession ? 0 : details.expirationDate;
         // Ingore storeID.
 
@@ -213,17 +204,13 @@ extensions.registerPrivilegedAPI("cookies", (extension, context) => {
       },
 
       remove: function(details, callback) {
-        if (!details || !details.name || !details.url) {
-          throw new Error("Mising required property");
-        }
-
         for (let cookie of query(details, ["url", "name", "storeId"])) {
           Services.cookies.remove(cookie.host, cookie.name, cookie.path, false);
           if (callback) {
             runSafe(context, callback, {
               url: details.url,
               name: details.name,
-              storeId: DEFAULT_STORE
+              storeId: DEFAULT_STORE,
             });
           }
           // Todo: could there be multiple per subdomain?
@@ -244,7 +231,7 @@ extensions.registerPrivilegedAPI("cookies", (extension, context) => {
         let observer = (subject, topic, data) => {
           let notify = (removed, cookie, cause) => {
             fire({removed, cookie: convert(cookie.QueryInterface(Ci.nsICookie2)), cause});
-          }
+          };
 
           // We do our best effort here to map the incompatible states.
           switch (data) {

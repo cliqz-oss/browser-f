@@ -92,6 +92,16 @@
 <p>Diese Arten von Web-Fälschungen werden in Betrugsversuchen verwendet, die als &quot;Phishing-Attacken&quot; bekannt sind. Dabei versuchen Kriminelle in betrügerischer Absicht, Webseiten oder E-Mails nachzuahmen, denen Sie eventuell vertrauen.</p>
 ">
 
+<!ENTITY forbiddenBlocked.title "Verbotene Seite">
+<!ENTITY forbiddenBlocked.longDesc "<p>Der Browser hat diese Seite am Laden gehindert, weil er konfiguriert ist, sie zu blockieren.</p>
+">
+
+<!ENTITY securityOverride.linkText "Oder Sie können eine Ausnahme hinzufügen…">
+<!ENTITY securityOverride.warningContent "
+<p>Sie sollten keine Ausnahme hinzufügen, wenn Sie eine Internetverbindung verwenden, der Sie nicht komplett vertrauen, oder nicht gewohnt sind, diese Warnung für diesen Server zu sehen.</p>
+<p>Wenn Sie trotzdem eine Ausnahme für diese Website hinzufügen möchten, können Sie das in Ihren erweiterten Verschlüsselungseinstellungen tun.</p>
+">
+
 <!ENTITY cspBlocked.title "Durch Inhaltsicherheitsrichtlinie (CSP) blockiert">
 <!ENTITY cspBlocked.longDesc "<p>Der Browser hat das Laden dieser Seite auf diese Art blockiert, weil diese Seite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, das nicht erlaubt.</p>">
 
@@ -100,10 +110,3 @@
 
 <!ENTITY remoteXUL.title "Externes XUL">
 <!ENTITY remoteXUL.longDesc "<p><ul><li>Bitte kontaktieren Sie die Inhaber der Website, um sie über dieses Problem zu informieren.</li></ul></p>">
-
-<!-- Include app-specific error messages - do not change this in localization!
-     Some applications might override netErrorApp.dtd with their specific version,
-     this inclusion needs to be intact for that approach to work correctly.
-     Please, try to keep this at the end of the file. -->
-<!ENTITY % netErrorAppDTD SYSTEM "chrome://global/locale/netErrorApp.dtd">
-%netErrorAppDTD;

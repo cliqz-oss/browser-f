@@ -23,6 +23,10 @@ XPCOMUtils.defineLazyGetter(this, "DOMApplicationRegistry", function () {
   return DOMApplicationRegistry;
 });
 
+XPCOMUtils.defineLazyServiceGetter(this, "systemMessenger",
+                                   "@mozilla.org/system-message-internal;1",
+                                   "nsISystemMessagesInternal");
+
 function debug(msg) {
   //dump("BrowserElementParent - " + msg + "\n");
 }
@@ -38,7 +42,7 @@ function getIntPref(prefName, def) {
 
 function handleWindowEvent(e) {
   if (this._browserElementParents) {
-    let beps = Cu.nondeterministicGetWeakMapKeys(this._browserElementParents);
+    let beps = ThreadSafeChromeUtils.nondeterministicGetWeakMapKeys(this._browserElementParents);
     beps.forEach(bep => bep._handleOwnerEvent(e));
   }
 }
@@ -248,6 +252,7 @@ function BrowserElementParent() {
   Services.obs.addObserver(this, 'oop-frameloader-crashed', /* ownsWeak = */ true);
   Services.obs.addObserver(this, 'copypaste-docommand', /* ownsWeak = */ true);
   Services.obs.addObserver(this, 'ask-children-to-execute-copypaste-command', /* ownsWeak = */ true);
+  Services.obs.addObserver(this, 'back-docommand', /* ownsWeak = */ true);
 
   this.proxyCallHandler = new BrowserElementParentProxyCallHandler();
 }
@@ -385,7 +390,8 @@ BrowserElementParent.prototype = {
       "got-audio-channel-muted": this._gotDOMRequestResult,
       "got-set-audio-channel-muted": this._gotDOMRequestResult,
       "got-is-audio-channel-active": this._gotDOMRequestResult,
-      "got-structured-data": this._gotDOMRequestResult
+      "got-structured-data": this._gotDOMRequestResult,
+      "got-web-manifest": this._gotDOMRequestResult,
     };
 
     let mmSecuritySensitiveCalls = {
@@ -1207,8 +1213,29 @@ BrowserElementParent.prototype = {
                                 {audioChannel: aAudioChannel});
   },
 
+  notifyChannel: function(aEvent, aManifest, aAudioChannel) {
+    var self = this;
+    var req = Services.DOMRequest.createRequest(self._window);
+
+    // Since the pageURI of the app has been registered to the system messager,
+    // when the app was installed. The system messager can only use the manifest
+    // to send the message to correct page.
+    let manifestURL = Services.io.newURI(aManifest, null, null);
+    systemMessenger.sendMessage(aEvent, aAudioChannel, null, manifestURL)
+      .then(function() {
+        Services.DOMRequest.fireSuccess(req,
+          Cu.cloneInto(true, self._window));
+      }, function() {
+        debug("Error : NotifyChannel fail.");
+        Services.DOMRequest.fireErrorAsync(req,
+          Cu.cloneInto("NotifyChannel fail.", self._window));
+      });
+    return req;
+  },
+
   getStructuredData: defineDOMRequestMethod('get-structured-data'),
 
+  getWebManifest: defineDOMRequestMethod('get-web-manifest'),
   /**
    * Called when the visibility of the window which owns this iframe changes.
    */
@@ -1283,6 +1310,11 @@ BrowserElementParent.prototype = {
     case 'ask-children-to-execute-copypaste-command':
       if (this._isAlive() && this._frameElement == subject.wrappedJSObject) {
         this._sendAsyncMsg('copypaste-do-command', { command: data });
+      }
+      break;
+    case 'back-docommand':
+      if (this._isAlive() && this._frameLoader.visible) {
+          this.goBack();
       }
       break;
     default:

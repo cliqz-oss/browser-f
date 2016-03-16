@@ -273,6 +273,9 @@ public:
             PBrowserChild* aBrowser) override;
     virtual bool DeallocPExternalHelperAppChild(PExternalHelperAppChild *aService) override;
 
+    virtual PHandlerServiceChild* AllocPHandlerServiceChild() override;
+    virtual bool DeallocPHandlerServiceChild(PHandlerServiceChild*) override;
+
     virtual PCellBroadcastChild* AllocPCellBroadcastChild() override;
     PCellBroadcastChild* SendPCellBroadcastConstructor(PCellBroadcastChild* aActor);
     virtual bool DeallocPCellBroadcastChild(PCellBroadcastChild* aActor) override;
@@ -305,6 +308,8 @@ public:
                                                         const nsString& aSessionId) override;
     virtual bool RecvNotifyPresentationReceiverCleanUp(const nsString& aSessionId) override;
 
+    virtual bool RecvNotifyGMPsChanged() override;
+
     virtual PSpeechSynthesisChild* AllocPSpeechSynthesisChild() override;
     virtual bool DeallocPSpeechSynthesisChild(PSpeechSynthesisChild* aActor) override;
 
@@ -327,8 +332,6 @@ public:
 
     virtual bool RecvBidiKeyboardNotify(const bool& isLangRTL) override;
 
-    virtual bool RecvUpdateServiceWorkerRegistrations() override;
-
     virtual bool RecvNotifyVisited(const URIParams& aURI) override;
     // auto remove when alertfinished is received.
     nsresult AddRemoteAlertObserver(const nsString& aData, nsIObserver* aObserver);
@@ -337,6 +340,13 @@ public:
                                            const uint32_t& aMemoryAvailable) override;
 
     virtual bool RecvPreferenceUpdate(const PrefSetting& aPref) override;
+
+    virtual bool RecvDataStoragePut(const nsString& aFilename,
+                                    const DataStorageItem& aItem) override;
+    virtual bool RecvDataStorageRemove(const nsString& aFilename,
+                                       const nsCString& aKey,
+                                       const DataStorageType& aType) override;
+    virtual bool RecvDataStorageClear(const nsString& aFilename) override;
 
     virtual bool RecvNotifyAlertsObserver(const nsCString& aType,
                                           const nsString& aData) override;
@@ -414,10 +424,7 @@ public:
                                       const bool& aResult) override;
     virtual bool RecvUpdateWindow(const uintptr_t& aChildId) override;
 
-    virtual bool RecvStartProfiler(const uint32_t& aEntries,
-                                   const double& aInterval,
-                                   nsTArray<nsCString>&& aFeatures,
-                                   nsTArray<nsCString>&& aThreadNameFilters) override;
+    virtual bool RecvStartProfiler(const ProfilerInitParams& params) override;
     virtual bool RecvPauseProfiler(const bool& aPause) override;
     virtual bool RecvStopProfiler() override;
     virtual bool RecvGatherProfile() override;

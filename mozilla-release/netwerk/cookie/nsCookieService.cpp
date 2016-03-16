@@ -61,7 +61,7 @@ using namespace mozilla::net;
 // on content processes (see bug 777620), change to use the appropriate app
 // namespace.  For now those IDLs aren't supported on child processes.
 #define DEFAULT_APP_KEY(baseDomain) \
-        nsCookieKey(baseDomain, OriginAttributes())
+        nsCookieKey(baseDomain, NeckoOriginAttributes())
 
 /******************************************************************************
  * nsCookieService impl:
@@ -185,55 +185,48 @@ struct nsListIter
 #define SET_COOKIE true
 #define GET_COOKIE false
 
-static PRLogModuleInfo *
-GetCookieLog()
-{
-  static PRLogModuleInfo *sCookieLog;
-  if (!sCookieLog)
-    sCookieLog = PR_NewLogModule("cookie");
-  return sCookieLog;
-}
+static LazyLogModule gCookieLog("cookie");
 
 #define COOKIE_LOGFAILURE(a, b, c, d)    LogFailure(a, b, c, d)
 #define COOKIE_LOGSUCCESS(a, b, c, d, e) LogSuccess(a, b, c, d, e)
 
 #define COOKIE_LOGEVICTED(a, details)          \
   PR_BEGIN_MACRO                               \
-  if (MOZ_LOG_TEST(GetCookieLog(), LogLevel::Debug))  \
+  if (MOZ_LOG_TEST(gCookieLog, LogLevel::Debug))  \
       LogEvicted(a, details);                  \
   PR_END_MACRO
 
 #define COOKIE_LOGSTRING(lvl, fmt)   \
   PR_BEGIN_MACRO                     \
-    MOZ_LOG(GetCookieLog(), lvl, fmt);  \
-    MOZ_LOG(GetCookieLog(), lvl, ("\n")); \
+    MOZ_LOG(gCookieLog, lvl, fmt);  \
+    MOZ_LOG(gCookieLog, lvl, ("\n")); \
   PR_END_MACRO
 
 static void
 LogFailure(bool aSetCookie, nsIURI *aHostURI, const char *aCookieString, const char *aReason)
 {
   // if logging isn't enabled, return now to save cycles
-  if (!MOZ_LOG_TEST(GetCookieLog(), LogLevel::Warning))
+  if (!MOZ_LOG_TEST(gCookieLog, LogLevel::Warning))
     return;
 
   nsAutoCString spec;
   if (aHostURI)
     aHostURI->GetAsciiSpec(spec);
 
-  MOZ_LOG(GetCookieLog(), LogLevel::Warning,
+  MOZ_LOG(gCookieLog, LogLevel::Warning,
     ("===== %s =====\n", aSetCookie ? "COOKIE NOT ACCEPTED" : "COOKIE NOT SENT"));
-  MOZ_LOG(GetCookieLog(), LogLevel::Warning,("request URL: %s\n", spec.get()));
+  MOZ_LOG(gCookieLog, LogLevel::Warning,("request URL: %s\n", spec.get()));
   if (aSetCookie)
-    MOZ_LOG(GetCookieLog(), LogLevel::Warning,("cookie string: %s\n", aCookieString));
+    MOZ_LOG(gCookieLog, LogLevel::Warning,("cookie string: %s\n", aCookieString));
 
   PRExplodedTime explodedTime;
   PR_ExplodeTime(PR_Now(), PR_GMTParameters, &explodedTime);
   char timeString[40];
   PR_FormatTimeUSEnglish(timeString, 40, "%c GMT", &explodedTime);
 
-  MOZ_LOG(GetCookieLog(), LogLevel::Warning,("current time: %s", timeString));
-  MOZ_LOG(GetCookieLog(), LogLevel::Warning,("rejected because %s\n", aReason));
-  MOZ_LOG(GetCookieLog(), LogLevel::Warning,("\n"));
+  MOZ_LOG(gCookieLog, LogLevel::Warning,("current time: %s", timeString));
+  MOZ_LOG(gCookieLog, LogLevel::Warning,("rejected because %s\n", aReason));
+  MOZ_LOG(gCookieLog, LogLevel::Warning,("\n"));
 }
 
 static void
@@ -244,27 +237,27 @@ LogCookie(nsCookie *aCookie)
   char timeString[40];
   PR_FormatTimeUSEnglish(timeString, 40, "%c GMT", &explodedTime);
 
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("current time: %s", timeString));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("current time: %s", timeString));
 
   if (aCookie) {
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("----------------\n"));
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("name: %s\n", aCookie->Name().get()));
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("value: %s\n", aCookie->Value().get()));
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("%s: %s\n", aCookie->IsDomain() ? "domain" : "host", aCookie->Host().get()));
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("path: %s\n", aCookie->Path().get()));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("----------------\n"));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("name: %s\n", aCookie->Name().get()));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("value: %s\n", aCookie->Value().get()));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("%s: %s\n", aCookie->IsDomain() ? "domain" : "host", aCookie->Host().get()));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("path: %s\n", aCookie->Path().get()));
 
     PR_ExplodeTime(aCookie->Expiry() * int64_t(PR_USEC_PER_SEC),
                    PR_GMTParameters, &explodedTime);
     PR_FormatTimeUSEnglish(timeString, 40, "%c GMT", &explodedTime);
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,
+    MOZ_LOG(gCookieLog, LogLevel::Debug,
       ("expires: %s%s", timeString, aCookie->IsSession() ? " (at end of session)" : ""));
 
     PR_ExplodeTime(aCookie->CreationTime(), PR_GMTParameters, &explodedTime);
     PR_FormatTimeUSEnglish(timeString, 40, "%c GMT", &explodedTime);
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("created: %s", timeString));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("created: %s", timeString));
 
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("is secure: %s\n", aCookie->IsSecure() ? "true" : "false"));
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("is httpOnly: %s\n", aCookie->IsHttpOnly() ? "true" : "false"));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("is secure: %s\n", aCookie->IsSecure() ? "true" : "false"));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("is httpOnly: %s\n", aCookie->IsHttpOnly() ? "true" : "false"));
   }
 }
 
@@ -272,7 +265,7 @@ static void
 LogSuccess(bool aSetCookie, nsIURI *aHostURI, const char *aCookieString, nsCookie *aCookie, bool aReplacing)
 {
   // if logging isn't enabled, return now to save cycles
-  if (!MOZ_LOG_TEST(GetCookieLog(), LogLevel::Debug)) {
+  if (!MOZ_LOG_TEST(gCookieLog, LogLevel::Debug)) {
     return;
   }
 
@@ -280,27 +273,27 @@ LogSuccess(bool aSetCookie, nsIURI *aHostURI, const char *aCookieString, nsCooki
   if (aHostURI)
     aHostURI->GetAsciiSpec(spec);
 
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,
+  MOZ_LOG(gCookieLog, LogLevel::Debug,
     ("===== %s =====\n", aSetCookie ? "COOKIE ACCEPTED" : "COOKIE SENT"));
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("request URL: %s\n", spec.get()));
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("cookie string: %s\n", aCookieString));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("request URL: %s\n", spec.get()));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("cookie string: %s\n", aCookieString));
   if (aSetCookie)
-    MOZ_LOG(GetCookieLog(), LogLevel::Debug,("replaces existing cookie: %s\n", aReplacing ? "true" : "false"));
+    MOZ_LOG(gCookieLog, LogLevel::Debug,("replaces existing cookie: %s\n", aReplacing ? "true" : "false"));
 
   LogCookie(aCookie);
 
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("\n"));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("\n"));
 }
 
 static void
 LogEvicted(nsCookie *aCookie, const char* details)
 {
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("===== COOKIE EVICTED =====\n"));
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("%s\n", details));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("===== COOKIE EVICTED =====\n"));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("%s\n", details));
 
   LogCookie(aCookie);
 
-  MOZ_LOG(GetCookieLog(), LogLevel::Debug,("\n"));
+  MOZ_LOG(gCookieLog, LogLevel::Debug,("\n"));
 }
 
 // inline wrappers to make passing in nsAFlatCStrings easier
@@ -346,7 +339,7 @@ protected:
 public:
   NS_IMETHOD HandleError(mozIStorageError* aError) override
   {
-    if (MOZ_LOG_TEST(GetCookieLog(), LogLevel::Warning)) {
+    if (MOZ_LOG_TEST(gCookieLog, LogLevel::Warning)) {
       int32_t result = -1;
       aError->GetResult(&result);
 
@@ -580,7 +573,7 @@ public:
     MOZ_ASSERT(!nsCRT::strcmp(aTopic, TOPIC_CLEAR_ORIGIN_DATA));
 
     MOZ_ASSERT(XRE_IsParentProcess());
-    OriginAttributes attrs;
+    NeckoOriginAttributes attrs;
     MOZ_ALWAYS_TRUE(attrs.Init(nsDependentString(aData)));
 
     nsCOMPtr<nsICookieManager2> cookieManager
@@ -840,7 +833,7 @@ ConvertAppIdToOriginAttrsSQLFunction::OnFunctionCall(
 
   // Create an originAttributes object by appId and inBrowserElemnt.
   // Then create the originSuffix string from this object.
-  OriginAttributes attrs(appId, (inBrowser ? 1 : 0));
+  NeckoOriginAttributes attrs(appId, (inBrowser ? 1 : 0));
   nsAutoCString suffix;
   attrs.CreateSuffix(suffix);
 
@@ -868,7 +861,7 @@ SetAppIdFromOriginAttributesSQLFunction::OnFunctionCall(
 {
   nsresult rv;
   nsAutoCString suffix;
-  OriginAttributes attrs;
+  NeckoOriginAttributes attrs;
 
   rv = aFunctionArguments->GetUTF8String(0, suffix);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -900,7 +893,7 @@ SetInBrowserFromOriginAttributesSQLFunction::OnFunctionCall(
 {
   nsresult rv;
   nsAutoCString suffix;
-  OriginAttributes attrs;
+  NeckoOriginAttributes attrs;
 
   rv = aFunctionArguments->GetUTF8String(0, suffix);
   NS_ENSURE_SUCCESS(rv, rv);
@@ -1902,7 +1895,7 @@ nsCookieService::GetCookieStringCommon(nsIURI *aHostURI,
   mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
 
   // Get originAttributes.
-  OriginAttributes attrs;
+  NeckoOriginAttributes attrs;
   if (aChannel) {
     NS_GetOriginAttributes(aChannel, attrs);
   }
@@ -1975,7 +1968,7 @@ nsCookieService::SetCookieStringCommon(nsIURI *aHostURI,
   mThirdPartyUtil->IsThirdPartyChannel(aChannel, aHostURI, &isForeign);
 
   // Get originAttributes.
-  OriginAttributes attrs;
+  NeckoOriginAttributes attrs;
   if (aChannel) {
     NS_GetOriginAttributes(aChannel, attrs);
   }
@@ -1996,7 +1989,7 @@ nsCookieService::SetCookieStringInternal(nsIURI                 *aHostURI,
                                          nsDependentCString     &aCookieHeader,
                                          const nsCString        &aServerTime,
                                          bool                    aFromHttp,
-                                         const OriginAttributes &aOriginAttrs,
+                                         const NeckoOriginAttributes &aOriginAttrs,
                                          bool                    aIsPrivate,
                                          nsIChannel             *aChannel)
 {
@@ -2307,7 +2300,7 @@ nsCookieService::Add(const nsACString &aHost,
 
 
 nsresult
-nsCookieService::Remove(const nsACString& aHost, const OriginAttributes& aAttrs,
+nsCookieService::Remove(const nsACString& aHost, const NeckoOriginAttributes& aAttrs,
                         const nsACString& aName, const nsACString& aPath,
                         bool aBlocked)
 {
@@ -2365,7 +2358,7 @@ nsCookieService::Remove(const nsACString &aHost,
                         const nsACString &aPath,
                         bool             aBlocked)
 {
-  OriginAttributes attrs;
+  NeckoOriginAttributes attrs;
   return Remove(aHost, attrs, aName, aPath, aBlocked);
 }
 
@@ -2689,7 +2682,7 @@ nsCookieService::EnsureReadComplete()
     stmt->GetUTF8String(IDX_BASE_DOMAIN, baseDomain);
 
     nsAutoCString suffix;
-    OriginAttributes attrs;
+    NeckoOriginAttributes attrs;
     stmt->GetUTF8String(IDX_ORIGIN_ATTRIBUTES, suffix);
     attrs.PopulateFromSuffix(suffix);
 
@@ -2838,7 +2831,7 @@ nsCookieService::ImportCookies(nsIFile *aCookieFile)
       continue;
 
     // pre-existing cookies have appId=0, inBrowser=false set by default
-    // constructor of OriginAttributes().
+    // constructor of NeckoOriginAttributes().
     nsCookieKey key = DEFAULT_APP_KEY(baseDomain);
 
     // Create a new nsCookie and assign the data. We don't know the cookie
@@ -2929,7 +2922,7 @@ void
 nsCookieService::GetCookieStringInternal(nsIURI *aHostURI,
                                          bool aIsForeign,
                                          bool aHttpBound,
-                                         const OriginAttributes aOriginAttrs,
+                                         const NeckoOriginAttributes aOriginAttrs,
                                          bool aIsPrivate,
                                          nsCString &aCookieString)
 {
@@ -4343,7 +4336,7 @@ nsCookieService::RemoveCookiesForApp(uint32_t aAppId, bool aOnlyBrowserElement)
     //
     // NOTE: we could make this better by getting nsCookieEntry objects instead
     // of plain nsICookie.
-    OriginAttributes attrs(aAppId, true);
+    NeckoOriginAttributes attrs(aAppId, true);
     Remove(host, attrs, name, path, false);
     if (!aOnlyBrowserElement) {
       attrs.mInBrowser = false;

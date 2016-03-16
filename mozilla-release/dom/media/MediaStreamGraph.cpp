@@ -39,7 +39,7 @@ using namespace mozilla::gfx;
 
 namespace mozilla {
 
-PRLogModuleInfo* gMediaStreamGraphLog;
+LazyLogModule gMediaStreamGraphLog("MediaStreamGraph");
 #define STREAM_LOG(type, msg) MOZ_LOG(gMediaStreamGraphLog, type, msg)
 
 // #define ENABLE_LIFECYCLE_LOG
@@ -349,7 +349,7 @@ MediaStreamGraphImpl::UpdateStreamOrder()
     }
   }
 
-  if (!audioTrackPresent &&
+  if (!audioTrackPresent && mRealtime &&
       CurrentDriver()->AsAudioCallbackDriver()) {
     MonitorAutoLock mon(mMonitor);
     if (CurrentDriver()->AsAudioCallbackDriver()->IsStarted()) {
@@ -358,6 +358,17 @@ MediaStreamGraphImpl::UpdateStreamOrder()
         mMixer.RemoveCallback(CurrentDriver()->AsAudioCallbackDriver());
         CurrentDriver()->SwitchAtNextIteration(driver);
       }
+    }
+  }
+
+  if (audioTrackPresent && mRealtime &&
+      !CurrentDriver()->AsAudioCallbackDriver() &&
+      !CurrentDriver()->Switching()) {
+    MonitorAutoLock mon(mMonitor);
+    if (mLifecycleState == LIFECYCLE_RUNNING) {
+      AudioCallbackDriver* driver = new AudioCallbackDriver(this);
+      mMixer.AddCallback(driver);
+      CurrentDriver()->SwitchAtNextIteration(driver);
     }
   }
 
@@ -817,13 +828,11 @@ MediaStreamGraphImpl::PlayVideo(MediaStream* aStream)
 
     if (frame->GetForceBlack()) {
       if (!blackImage) {
-        blackImage = aStream->mVideoOutputs[0]->
-          GetImageContainer()->CreateImage(ImageFormat::PLANAR_YCBCR);
+        blackImage = aStream->mVideoOutputs[0]->GetImageContainer()->CreatePlanarYCbCrImage();
         if (blackImage) {
           // Sets the image to a single black pixel, which will be scaled to
           // fill the rendered size.
-          SetImageToBlackPixel(static_cast<PlanarYCbCrImage*>
-                               (blackImage.get()));
+          SetImageToBlackPixel(blackImage->AsPlanarYCbCrImage());
         }
       }
       if (blackImage) {
@@ -1000,7 +1009,21 @@ MediaStreamGraphImpl::AllFinishedStreamsNotified()
 }
 
 void
-MediaStreamGraphImpl::UpdateGraph(GraphTime aEndBlockingDecisions)
+MediaStreamGraphImpl::RunMessageAfterProcessing(nsAutoPtr<ControlMessage> aMessage)
+{
+  MOZ_ASSERT(CurrentDriver()->OnThread());
+
+  if (mFrontMessageQueue.IsEmpty()) {
+    mFrontMessageQueue.AppendElement();
+  }
+
+  // Only one block is used for messages from the graph thread.
+  MOZ_ASSERT(mFrontMessageQueue.Length() == 1);
+  mFrontMessageQueue[0].mMessages.AppendElement(Move(aMessage));
+}
+
+void
+MediaStreamGraphImpl::RunMessagesInQueue()
 {
   // Calculate independent action times for each batch of messages (each
   // batch corresponding to an event loop task). This isolates the performance
@@ -1013,7 +1036,11 @@ MediaStreamGraphImpl::UpdateGraph(GraphTime aEndBlockingDecisions)
     }
   }
   mFrontMessageQueue.Clear();
+}
 
+void
+MediaStreamGraphImpl::UpdateGraph(GraphTime aEndBlockingDecisions)
+{
   MOZ_ASSERT(aEndBlockingDecisions >= mProcessedTime);
   // The next state computed time can be the same as the previous: it
   // means the driver would be have been blocking indefinitly, but the graph has
@@ -1202,6 +1229,9 @@ MediaStreamGraphImpl::UpdateMainThreadState()
 bool
 MediaStreamGraphImpl::OneIteration(GraphTime aStateEnd)
 {
+  // Process graph message from the main thread for this iteration.
+  RunMessagesInQueue();
+
   MaybeProduceMemoryReport();
 
   GraphTime stateEnd = std::min(aStateEnd, mEndTime);
@@ -1215,6 +1245,10 @@ MediaStreamGraphImpl::OneIteration(GraphTime aStateEnd)
   mProcessedTime = stateEnd;
 
   UpdateCurrentTimeForStreams(oldProcessedTime);
+
+  // Process graph messages queued from RunMessageAfterProcessing() on this
+  // thread during the iteration.
+  RunMessagesInQueue();
 
   return UpdateMainThreadState();
 }
@@ -2392,6 +2426,7 @@ MediaInputPort::Init()
 void
 MediaInputPort::Disconnect()
 {
+  GraphImpl()->AssertOnGraphThreadOrNotRunning();
   NS_ASSERTION(!mSource == !mDest,
                "mSource must either both be null or both non-null");
   if (!mSource)
@@ -2510,7 +2545,7 @@ ProcessedMediaStream::AllocateInputPort(MediaStream* aStream, TrackID aTrackID,
       mPort->Init();
       // The graph holds its reference implicitly
       mPort->GraphImpl()->SetStreamOrderDirty();
-      unused << mPort.forget();
+      Unused << mPort.forget();
     }
     virtual void RunDuringShutdown()
     {
@@ -2603,10 +2638,6 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(GraphDriverType aDriverRequested,
 #endif
   , mAudioChannel(aChannel)
 {
-  if (!gMediaStreamGraphLog) {
-    gMediaStreamGraphLog = PR_NewLogModule("MediaStreamGraph");
-  }
-
   if (mRealtime) {
     if (aDriverRequested == AUDIO_THREAD_DRIVER) {
       AudioCallbackDriver* driver = new AudioCallbackDriver(this);
@@ -2832,14 +2863,11 @@ MediaStreamGraph::CreateAudioCaptureStream(DOMMediaStream* aWrapper,
 }
 
 void
-MediaStreamGraph::AddStream(MediaStream* aStream, uint32_t aFlags)
+MediaStreamGraph::AddStream(MediaStream* aStream)
 {
   NS_ADDREF(aStream);
   MediaStreamGraphImpl* graph = static_cast<MediaStreamGraphImpl*>(this);
   aStream->SetGraphImpl(graph);
-  if (aFlags & ADD_STREAM_SUSPENDED) {
-    aStream->IncrementSuspendCount();
-  }
   graph->AppendMessage(new CreateMessage(aStream));
 }
 

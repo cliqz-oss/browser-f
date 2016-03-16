@@ -128,7 +128,8 @@ protected:
                    const uint32_t&            aCacheKey,
                    const nsCString&           aSchedulingContextID,
                    const OptionalCorsPreflightArgs& aCorsPreflightArgs,
-                   const uint32_t&            aInitialRwin);
+                   const uint32_t&            aInitialRwin,
+                   const bool&                aSuspendAfterSynthesizeResponse);
 
   virtual bool RecvSetPriority(const uint16_t& priority) override;
   virtual bool RecvSetClassOfService(const uint32_t& cos) override;
@@ -139,7 +140,8 @@ protected:
   virtual bool RecvRedirect2Verify(const nsresult& result,
                                    const RequestHeaderTuples& changedHeaders,
                                    const uint32_t& loadFlags,
-                                   const OptionalURIParams& apiRedirectUri) override;
+                                   const OptionalURIParams& apiRedirectUri,
+                                   const OptionalCorsPreflightArgs& aCorsPreflightArgs) override;
   virtual bool RecvUpdateAssociatedContentSecurity(const int32_t& broken,
                                                    const int32_t& no) override;
   virtual bool RecvDocumentChannelCleanup() override;
@@ -176,6 +178,7 @@ private:
                              const uint32_t& count);
   void DivertOnStopRequest(const nsresult& statusCode);
   void DivertComplete();
+  void MaybeFlushPendingDiversion();
 
   void SynthesizeResponse(nsIInterceptedChannel* aChannel);
 
@@ -214,10 +217,14 @@ private:
   nsAutoPtr<nsHttpResponseHead> mSynthesizedResponseHead;
 
   RefPtr<HttpChannelParentListener> mParentListener;
-  // This is listener we are diverting to.
+  // The listener we are diverting to or will divert to if mPendingDiversion
+  // is set.
   nsCOMPtr<nsIStreamListener> mDivertListener;
   // Set to the canceled status value if the main channel was canceled.
   nsresult mStatus;
+  // Indicates that diversion has been requested, but we could not start it
+  // yet because the channel is still being opened with a synthesized response.
+  bool mPendingDiversion;
   // Once set, no OnStart/OnData/OnStop calls should be accepted; conversely, it
   // must be set when RecvDivertOnData/~DivertOnStop/~DivertComplete are
   // received from the child channel.
@@ -232,6 +239,8 @@ private:
   bool mShouldIntercept : 1;
   // Set if this channel should suspend on interception.
   bool mShouldSuspendIntercept : 1;
+  // Set if this channel should be suspended after synthesizing a response.
+  bool mSuspendAfterSynthesizeResponse : 1;
 
   dom::TabId mNestedFrameId;
 

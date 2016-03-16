@@ -176,9 +176,6 @@ public:
   // Get the scroll range assuming the scrollport has size (aWidth, aHeight).
   nsRect GetScrollRange(nscoord aWidth, nscoord aHeight) const;
   nsSize GetScrollPositionClampingScrollPortSize() const;
-  float GetResolution() const;
-  void SetResolution(float aResolution);
-  void SetResolutionAndScaleTo(float aResolution);
   void FlingSnap(const mozilla::CSSPoint& aDestination);
   void ScrollSnap(nsIScrollableFrame::ScrollMode aMode = nsIScrollableFrame::SMOOTH_MSD);
   void ScrollSnap(const nsPoint &aDestination,
@@ -435,6 +432,7 @@ public:
   nsTArray<nsIScrollPositionListener*> mListeners;
   nsIAtom* mLastScrollOrigin;
   nsIAtom* mLastSmoothScrollOrigin;
+  Maybe<nsPoint> mApzSmoothScrollDestination;
   uint32_t mScrollGeneration;
   nsRect mScrollPort;
   // Where we're currently scrolling to, if we're scrolling asynchronously.
@@ -453,9 +451,6 @@ public:
   // 0,0 when this is a new frame. Set to -1,-1 once we've scrolled for any reason
   // other than trying to restore mRestorePos.
   nsPoint mLastPos;
-
-  // The current resolution derived from the zoom level and device pixel ratio.
-  float mResolution;
 
   nsExpirationState mActivityExpirationState;
 
@@ -526,17 +521,9 @@ public:
   // True if this frame has been scrolled at least once
   bool mHasBeenScrolled:1;
 
-  // True if the frame's resolution has been set via SetResolution or
-  // SetResolutionAndScaleTo or restored via RestoreState.
-  bool mIsResolutionSet:1;
-
   // True if the events synthesized by OSX to produce momentum scrolling should
   // be ignored.  Reset when the next real, non-synthesized scroll event occurs.
   bool mIgnoreMomentumScroll:1;
-
-  // True if the frame's resolution has been set via SetResolutionAndScaleTo.
-  // Only meaningful for root scroll frames.
-  bool mScaleToResolution:1;
 
   // True if the APZ is in the process of async-transforming this scrollframe,
   // (as best as we can tell on the main thread, anyway).
@@ -733,15 +720,6 @@ public:
   virtual nsSize GetScrollPositionClampingScrollPortSize() const override {
     return mHelper.GetScrollPositionClampingScrollPortSize();
   }
-  virtual float GetResolution() const override {
-    return mHelper.GetResolution();
-  }
-  virtual void SetResolution(float aResolution) override {
-    return mHelper.SetResolution(aResolution);
-  }
-  virtual void SetResolutionAndScaleTo(float aResolution) override {
-    return mHelper.SetResolutionAndScaleTo(aResolution);
-  }
   virtual nsSize GetLineScrollAmount() const override {
     return mHelper.GetLineScrollAmount();
   }
@@ -823,9 +801,6 @@ public:
   }
   virtual void ResetScrollPositionForLayerPixelAlignment() override {
     mHelper.ResetScrollPositionForLayerPixelAlignment();
-  }
-  virtual bool IsResolutionSet() const override {
-    return mHelper.mIsResolutionSet;
   }
   virtual bool DidHistoryRestore() const override {
     return mHelper.mDidHistoryRestore;
@@ -1145,15 +1120,6 @@ public:
   virtual nsSize GetScrollPositionClampingScrollPortSize() const override {
     return mHelper.GetScrollPositionClampingScrollPortSize();
   }
-  virtual float GetResolution() const override {
-    return mHelper.GetResolution();
-  }
-  virtual void SetResolution(float aResolution) override {
-    return mHelper.SetResolution(aResolution);
-  }
-  virtual void SetResolutionAndScaleTo(float aResolution) override {
-    return mHelper.SetResolutionAndScaleTo(aResolution);
-  }
   virtual nsSize GetLineScrollAmount() const override {
     return mHelper.GetLineScrollAmount();
   }
@@ -1231,9 +1197,6 @@ public:
   }
   virtual void ResetScrollPositionForLayerPixelAlignment() override {
     mHelper.ResetScrollPositionForLayerPixelAlignment();
-  }
-  virtual bool IsResolutionSet() const override {
-    return mHelper.mIsResolutionSet;
   }
   virtual bool DidHistoryRestore() const override {
     return mHelper.mDidHistoryRestore;

@@ -8,6 +8,7 @@
 #include "mozilla/dom/AudioBufferSourceNodeBinding.h"
 #include "mozilla/dom/AudioParam.h"
 #include "mozilla/FloatingPoint.h"
+#include "nsContentUtils.h"
 #include "nsMathUtils.h"
 #include "AudioNodeEngine.h"
 #include "AudioNodeStream.h"
@@ -473,15 +474,6 @@ public:
     }
 
     StreamTime streamPosition = mDestination->GraphTimeToStreamTime(aFrom);
-    // We've finished if we've gone past mStop, or if we're past mDuration when
-    // looping is disabled.
-    if (streamPosition >= mStop ||
-        (!mLoop && mBufferPosition >= mBufferEnd && !mRemainingResamplerTail)) {
-      *aFinished = true;
-      aOutput->SetNull(WEBAUDIO_BLOCK_SIZE);
-      return;
-    }
-
     uint32_t channels = mBuffer ? mBuffer->GetChannels() : 0;
 
     UpdateSampleRateIfNeeded(channels, streamPosition);
@@ -513,6 +505,13 @@ public:
           FillWithZeroes(aOutput, channels, &written, &streamPosition, STREAM_TIME_MAX);
         }
       }
+    }
+
+    // We've finished if we've gone past mStop, or if we're past mDuration when
+    // looping is disabled.
+    if (streamPosition >= mStop ||
+        (!mLoop && mBufferPosition >= mBufferEnd && !mRemainingResamplerTail)) {
+      *aFinished = true;
     }
   }
 
@@ -663,6 +662,10 @@ AudioBufferSourceNode::Start(double aWhen, double aOffset,
   mOffset = aOffset;
   mDuration = aDuration.WasPassed() ? aDuration.Value()
                                     : std::numeric_limits<double>::min();
+
+  WEB_AUDIO_API_LOG("%f: %s %u Start(%f, %g, %g)", Context()->CurrentTime(),
+                    NodeType(), Id(), aWhen, aOffset, mDuration);
+
   // We can't send these parameters without a buffer because we don't know the
   // buffer's sample rate or length.
   if (mBuffer) {
@@ -743,6 +746,9 @@ AudioBufferSourceNode::Stop(double aWhen, ErrorResult& aRv)
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
+
+  WEB_AUDIO_API_LOG("%f: %s %u Stop(%f)", Context()->CurrentTime(),
+                    NodeType(), Id(), aWhen);
 
   AudioNodeStream* ns = mStream;
   if (!ns || !Context()) {

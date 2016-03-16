@@ -508,7 +508,7 @@ MDefinition::dumpLocation() const
     out.finish();
 }
 
-#ifdef DEBUG
+#if defined(DEBUG) || defined(JS_JITSPEW)
 size_t
 MDefinition::useCount() const
 {
@@ -602,6 +602,11 @@ MDefinition::justReplaceAllUsesWith(MDefinition* dom)
     MOZ_ASSERT(dom != nullptr);
     MOZ_ASSERT(dom != this);
 
+    // Carry over the fact the value has uses which are no longer inspectable
+    // with the graph.
+    if (isUseRemoved())
+        dom->setUseRemovedUnchecked();
+
     for (MUseIterator i(usesBegin()), e(usesEnd()); i != e; ++i)
         i->setProducerUnchecked(dom);
     dom->uses_.takeElements(uses_);
@@ -612,6 +617,11 @@ MDefinition::justReplaceAllUsesWithExcept(MDefinition* dom)
 {
     MOZ_ASSERT(dom != nullptr);
     MOZ_ASSERT(dom != this);
+
+    // Carry over the fact the value has uses which are no longer inspectable
+    // with the graph.
+    if (isUseRemoved())
+        dom->setUseRemovedUnchecked();
 
     // Move all uses to new dom. Save the use of the dominating instruction.
     MUse *exceptUse = nullptr;
@@ -896,13 +906,13 @@ MConstant::canProduceFloat32() const
 MDefinition*
 MSimdValueX4::foldsTo(TempAllocator& alloc)
 {
-    DebugOnly<MIRType> scalarType = SimdTypeToScalarType(type());
+    DebugOnly<MIRType> laneType = SimdTypeToLaneType(type());
     bool allConstants = true;
     bool allSame = true;
 
     for (size_t i = 0; i < 4; ++i) {
         MDefinition* op = getOperand(i);
-        MOZ_ASSERT(op->type() == scalarType);
+        MOZ_ASSERT(op->type() == laneType);
         if (!op->isConstantValue())
             allConstants = false;
         if (i > 0 && op != getOperand(i - 1))
@@ -942,11 +952,11 @@ MSimdValueX4::foldsTo(TempAllocator& alloc)
 MDefinition*
 MSimdSplatX4::foldsTo(TempAllocator& alloc)
 {
-    DebugOnly<MIRType> scalarType = SimdTypeToScalarType(type());
+    DebugOnly<MIRType> laneType = SimdTypeToLaneType(type());
     MDefinition* op = getOperand(0);
     if (!op->isConstantValue())
         return this;
-    MOZ_ASSERT(op->type() == scalarType);
+    MOZ_ASSERT(op->type() == laneType);
 
     SimdConstant cst;
     switch (type()) {
@@ -1080,7 +1090,7 @@ void
 MCompare::printOpcode(GenericPrinter& out) const
 {
     MDefinition::printOpcode(out);
-    out.printf(" %s", js_CodeName[jsop()]);
+    out.printf(" %s", CodeName[jsop()]);
 }
 
 void
@@ -1426,6 +1436,13 @@ MApplyArgs::New(TempAllocator& alloc, JSFunction* target, MDefinition* fun, MDef
     return new(alloc) MApplyArgs(target, fun, argc, self);
 }
 
+MApplyArray*
+MApplyArray::New(TempAllocator& alloc, JSFunction* target, MDefinition* fun, MDefinition* elements,
+                 MDefinition* self)
+{
+    return new(alloc) MApplyArray(target, fun, elements, self);
+}
+
 MDefinition*
 MStringLength::foldsTo(TempAllocator& alloc)
 {
@@ -1542,6 +1559,30 @@ MUnbox::printOpcode(GenericPrinter& out) const
       case TypeBarrier: out.printf(" (typebarrier)"); break;
       default: break;
     }
+}
+
+MDefinition*
+MUnbox::foldsTo(TempAllocator &alloc)
+{
+    if (!input()->isLoadFixedSlot())
+        return this;
+    MLoadFixedSlot* load = input()->toLoadFixedSlot();
+    if (load->type() != MIRType_Value)
+        return this;
+    if (type() != MIRType_Boolean && !IsNumberType(type()))
+        return this;
+    // Only optimize if the load comes immediately before the unbox, so it's
+    // safe to copy the load's dependency field.
+    MInstructionIterator iter(load->block()->begin(load));
+    ++iter;
+    if (*iter != this)
+        return this;
+
+    MLoadFixedSlotAndUnbox* ins = MLoadFixedSlotAndUnbox::New(alloc, load->object(), load->slot(),
+                                                              mode(), type(), bailoutKind());
+    // As GVN runs after the Alias Analysis, we have to set the dependency by hand
+    ins->setDependency(load->dependency());
+    return ins;
 }
 
 void
@@ -4149,6 +4190,14 @@ MLoadFixedSlot::mightAlias(const MDefinition* store) const
     return true;
 }
 
+bool
+MLoadFixedSlotAndUnbox::mightAlias(const MDefinition* store) const
+{
+    if (store->isStoreFixedSlot() && store->toStoreFixedSlot()->slot() != slot())
+        return false;
+    return true;
+}
+
 MDefinition*
 MLoadFixedSlot::foldsTo(TempAllocator& alloc)
 {
@@ -4703,7 +4752,7 @@ MAsmJSUnsignedToFloat32::foldsTo(TempAllocator& alloc)
 }
 
 MAsmJSCall*
-MAsmJSCall::New(TempAllocator& alloc, const CallSiteDesc& desc, Callee callee,
+MAsmJSCall::New(TempAllocator& alloc, const wasm::CallSiteDesc& desc, Callee callee,
                 const Args& args, MIRType resultType, size_t spIncrement)
 {
     MAsmJSCall* call = new(alloc) MAsmJSCall(desc, callee, spIncrement);
@@ -4913,9 +4962,6 @@ jit::ElementAccessIsAnyTypedArray(CompilerConstraintList* constraints,
         return false;
 
     *arrayType = types->getTypedArrayType(constraints);
-    if (*arrayType != Scalar::MaxTypedArrayViewType)
-        return true;
-    *arrayType = types->getSharedTypedArrayType(constraints);
     return *arrayType != Scalar::MaxTypedArrayViewType;
 }
 

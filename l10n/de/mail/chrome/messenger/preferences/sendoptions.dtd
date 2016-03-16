@@ -1,5 +1,11 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!ENTITY dialog.title                 "Sende-Optionen">
 <!ENTITY sendMail.title               "Textformat">
+<!ENTITY autoDowngrade.label          "Nachrichten falls möglich als Reintext senden">
+<!ENTITY autoDowngrade.accesskey      "t">
 <!ENTITY sendMaildesc.label           "Beim Senden von Nachrichten im HTML-Format an Empfänger, die laut Liste HTML nicht empfangen können oder wollen:">
 <!ENTITY askMe.label                  "Fragen, wie gesendet werden soll">
 <!ENTITY askMe.accesskey              "F">

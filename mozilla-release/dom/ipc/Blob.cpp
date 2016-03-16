@@ -273,7 +273,7 @@ CancelableRunnableWrapper::Cancel()
     return NS_ERROR_UNEXPECTED;
   }
 
-  unused << Run();
+  Unused << Run();
   MOZ_ASSERT(!mRunnable);
 
   return NS_OK;
@@ -904,13 +904,17 @@ CreateBlobImpl(const nsTArray<BlobData>& aBlobDatas,
     MOZ_ASSERT(!isMutable);
   }
 
+  ErrorResult rv;
   RefPtr<BlobImpl> blobImpl;
   if (!hasRecursed && aMetadata.IsFile()) {
-    blobImpl =
-      new MultipartBlobImpl(blobImpls, aMetadata.mName, aMetadata.mContentType);
+    blobImpl = MultipartBlobImpl::Create(blobImpls, aMetadata.mName,
+                                         aMetadata.mContentType, rv);
   } else {
-    blobImpl =
-      new MultipartBlobImpl(blobImpls, aMetadata.mContentType);
+    blobImpl = MultipartBlobImpl::Create(blobImpls, aMetadata.mContentType, rv);
+  }
+
+  if (NS_WARN_IF(rv.Failed())) {
+    return nullptr;
   }
 
   MOZ_ALWAYS_TRUE(NS_SUCCEEDED(blobImpl->SetMutable(false)));
@@ -1161,9 +1165,9 @@ RemoteInputStream::ReallyBlockAndWaitForStream()
 #ifdef DEBUG
   if (waited && mWeakSeekableStream) {
     int64_t position;
-    MOZ_ASSERT(NS_SUCCEEDED(mWeakSeekableStream->Tell(&position)),
-                "Failed to determine initial stream position!");
-    MOZ_ASSERT(!position, "Stream not starting at 0!");
+    if (NS_SUCCEEDED(mWeakSeekableStream->Tell(&position))) {
+      MOZ_ASSERT(!position, "Stream not starting at 0!");
+    }
   }
 #endif
 }
@@ -1753,6 +1757,12 @@ protected:
   BlobChild* mActor;
   nsCOMPtr<nsIEventTarget> mActorTarget;
 
+  // We use this pointer to keep a live a blobImpl coming from a different
+  // process until this one is fully created. We set it to null when
+  // SendCreatedFromKnownBlob() is received. This is used only with KnownBlob
+  // params in the CTOR of a IPC BlobImpl.
+  RefPtr<BlobImpl> mDifferentProcessBlobImpl;
+
   RefPtr<BlobImpl> mSameProcessBlobImpl;
 
   const bool mIsSlice;
@@ -1760,31 +1770,20 @@ protected:
 public:
   // For File.
   RemoteBlobImpl(BlobChild* aActor,
+                 BlobImpl* aRemoteBlobImpl,
                  const nsAString& aName,
                  const nsAString& aContentType,
                  uint64_t aLength,
                  int64_t aModDate,
-                 BlobDirState aDirState);
+                 BlobDirState aDirState,
+                 bool aIsSameProcessBlob);
 
   // For Blob.
   RemoteBlobImpl(BlobChild* aActor,
-                 const nsAString& aContentType,
-                 uint64_t aLength);
-
-  // For same-process blobs.
-  RemoteBlobImpl(BlobChild* aActor,
-                 BlobImpl* aSameProcessBlobImpl,
-                 const nsAString& aName,
+                 BlobImpl* aRemoteBlobImpl,
                  const nsAString& aContentType,
                  uint64_t aLength,
-                 int64_t aModDate,
-                 BlobDirState aDirState);
-
-  // For same-process blobs.
-  RemoteBlobImpl(BlobChild* aActor,
-                 BlobImpl* aSameProcessBlobImpl,
-                 const nsAString& aContentType,
-                 uint64_t aLength);
+                 bool aIsSameProcessBlob);
 
   // For mystery blobs.
   explicit
@@ -1856,6 +1855,13 @@ public:
 
   virtual BlobParent*
   GetBlobParent() override;
+
+  void
+  NullifyDifferentProcessBlobImpl()
+  {
+    MOZ_ASSERT(mDifferentProcessBlobImpl);
+    mDifferentProcessBlobImpl = nullptr;
+  }
 
 protected:
   // For SliceImpl.
@@ -2086,56 +2092,43 @@ private:
 
 BlobChild::
 RemoteBlobImpl::RemoteBlobImpl(BlobChild* aActor,
+                               BlobImpl* aRemoteBlobImpl,
                                const nsAString& aName,
                                const nsAString& aContentType,
                                uint64_t aLength,
                                int64_t aModDate,
-                               BlobDirState aDirState)
+                               BlobDirState aDirState,
+                               bool aIsSameProcessBlob)
   : BlobImplBase(aName, aContentType, aLength, aModDate, aDirState)
   , mIsSlice(false)
 {
+  if (aIsSameProcessBlob) {
+    MOZ_ASSERT(aRemoteBlobImpl);
+    mSameProcessBlobImpl = aRemoteBlobImpl;
+    MOZ_ASSERT(gProcessType == GeckoProcessType_Default);
+  } else {
+    mDifferentProcessBlobImpl = aRemoteBlobImpl;
+  }
+
   CommonInit(aActor);
 }
 
 BlobChild::
 RemoteBlobImpl::RemoteBlobImpl(BlobChild* aActor,
-                               const nsAString& aContentType,
-                               uint64_t aLength)
-  : BlobImplBase(aContentType, aLength)
-  , mIsSlice(false)
-{
-  CommonInit(aActor);
-}
-
-BlobChild::
-RemoteBlobImpl::RemoteBlobImpl(BlobChild* aActor,
-                               BlobImpl* aSameProcessBlobImpl,
-                               const nsAString& aName,
+                               BlobImpl* aRemoteBlobImpl,
                                const nsAString& aContentType,
                                uint64_t aLength,
-                               int64_t aModDate,
-                               BlobDirState aDirState)
-  : BlobImplBase(aName, aContentType, aLength, aModDate, aDirState)
-  , mSameProcessBlobImpl(aSameProcessBlobImpl)
-  , mIsSlice(false)
-{
-  MOZ_ASSERT(aSameProcessBlobImpl);
-  MOZ_ASSERT(gProcessType == GeckoProcessType_Default);
-
-  CommonInit(aActor);
-}
-
-BlobChild::
-RemoteBlobImpl::RemoteBlobImpl(BlobChild* aActor,
-                               BlobImpl* aSameProcessBlobImpl,
-                               const nsAString& aContentType,
-                               uint64_t aLength)
+                               bool aIsSameProcessBlob)
   : BlobImplBase(aContentType, aLength)
-  , mSameProcessBlobImpl(aSameProcessBlobImpl)
   , mIsSlice(false)
 {
-  MOZ_ASSERT(aSameProcessBlobImpl);
-  MOZ_ASSERT(gProcessType == GeckoProcessType_Default);
+  if (aIsSameProcessBlob) {
+    MOZ_ASSERT(aRemoteBlobImpl);
+    mSameProcessBlobImpl = aRemoteBlobImpl;
+    MOZ_ASSERT(gProcessType == GeckoProcessType_Default);
+  } else {
+    mDifferentProcessBlobImpl = aRemoteBlobImpl;
+  }
 
   CommonInit(aActor);
 }
@@ -3033,7 +3026,7 @@ BlobChild::CommonInit(BlobChild* aOther, BlobImpl* aBlobImpl)
   uint64_t length = otherImpl->GetSize(rv);
   MOZ_ASSERT(!rv.Failed());
 
-  RefPtr<RemoteBlobImpl> remoteBlob;
+  RemoteBlobImpl* remoteBlob = nullptr;
   if (otherImpl->IsFile()) {
     nsString name;
     otherImpl->GetName(name);
@@ -3041,11 +3034,19 @@ BlobChild::CommonInit(BlobChild* aOther, BlobImpl* aBlobImpl)
     int64_t modDate = otherImpl->GetLastModified(rv);
     MOZ_ASSERT(!rv.Failed());
 
-    remoteBlob = new RemoteBlobImpl(this, name, contentType, length, modDate,
-                                    otherImpl->GetDirState());
+    remoteBlob = new RemoteBlobImpl(this, otherImpl, name, contentType, length,
+                                    modDate, otherImpl->GetDirState(),
+                                    false /* SameProcessBlobImpl */);
   } else {
-    remoteBlob = new RemoteBlobImpl(this, contentType, length);
+    remoteBlob = new RemoteBlobImpl(this, otherImpl, contentType, length,
+                                    false /* SameProcessBlobImpl */);
   }
+
+  // This RemoteBlob must be kept alive untill RecvCreatedFromKnownBlob is
+  // called because the parent will send this notification and we must be able
+  // to manage it.
+  MOZ_ASSERT(remoteBlob);
+  remoteBlob->AddRef();
 
   CommonInit(aOther->ParentID(), remoteBlob);
 }
@@ -3073,7 +3074,8 @@ BlobChild::CommonInit(const ChildBlobConstructorParams& aParams)
       const NormalBlobConstructorParams& params =
         blobParams.get_NormalBlobConstructorParams();
       remoteBlob =
-        new RemoteBlobImpl(this, params.contentType(), params.length());
+        new RemoteBlobImpl(this, nullptr, params.contentType(), params.length(),
+                           false /* SameProcessBlobImpl */);
       break;
     }
 
@@ -3081,11 +3083,13 @@ BlobChild::CommonInit(const ChildBlobConstructorParams& aParams)
       const FileBlobConstructorParams& params =
         blobParams.get_FileBlobConstructorParams();
       remoteBlob = new RemoteBlobImpl(this,
+                                      nullptr,
                                       params.name(),
                                       params.contentType(),
                                       params.length(),
                                       params.modDate(),
-                                      BlobDirState(params.dirState()));
+                                      BlobDirState(params.dirState()),
+                                      false /* SameProcessBlobImpl */);
       break;
     }
 
@@ -3120,9 +3124,11 @@ BlobChild::CommonInit(const ChildBlobConstructorParams& aParams)
                              contentType,
                              size,
                              lastModifiedDate,
-                             blobImpl->GetDirState());
+                             blobImpl->GetDirState(),
+                             true /* SameProcessBlobImpl */);
       } else {
-        remoteBlob = new RemoteBlobImpl(this, blobImpl, contentType, size);
+        remoteBlob = new RemoteBlobImpl(this, blobImpl, contentType, size,
+                                        true /* SameProcessBlobImpl */);
       }
 
       break;
@@ -3589,6 +3595,20 @@ BlobChild::DeallocPBlobStreamChild(PBlobStreamChild* aActor)
   AssertIsOnOwningThread();
 
   delete static_cast<InputStreamChild*>(aActor);
+  return true;
+}
+
+bool
+BlobChild::RecvCreatedFromKnownBlob()
+{
+  MOZ_ASSERT(mRemoteBlobImpl);
+
+  // Releasing the other blob now that this blob is fully created.
+  mRemoteBlobImpl->NullifyDifferentProcessBlobImpl();
+
+  // Release the additional reference to ourself that was added in order to
+  // receive this RecvCreatedFromKnownBlob.
+  mRemoteBlobImpl->Release();
   return true;
 }
 
@@ -4108,7 +4128,7 @@ BlobParent::NoteDyingRemoteBlobImpl()
   mBlobImpl = nullptr;
   mRemoteBlobImpl = nullptr;
 
-  unused << PBlobParent::Send__delete__(this);
+  Unused << PBlobParent::Send__delete__(this);
 }
 
 void
@@ -4447,7 +4467,8 @@ BlobParent::RecvGetFilePath(nsString* aFilePath)
   MOZ_ASSERT(mOwnsBlobImpl);
 
   // In desktop e10s the file picker code sends this message.
-#ifdef MOZ_CHILD_PERMISSIONS
+
+#if defined(MOZ_CHILD_PERMISSIONS) && !defined(MOZ_GRAPHENE)
   if (NS_WARN_IF(!IndexedDatabaseManager::InTestingMode())) {
     ASSERT_UNLESS_FUZZING();
     return false;
