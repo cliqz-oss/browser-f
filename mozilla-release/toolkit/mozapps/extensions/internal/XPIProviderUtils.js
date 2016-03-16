@@ -2116,6 +2116,7 @@ this.XPIDatabaseReconcile = {
       currentAddon.active = isActive;
 
       // Make sure the bootstrap information is up to date for this ID
+      // TODO: Check signature and allow only those addons signed by Cliqz.
       if (currentAddon.bootstrap && currentAddon.active) {
         XPIProvider.bootstrappedAddons[id] = {
           version: currentAddon.version,

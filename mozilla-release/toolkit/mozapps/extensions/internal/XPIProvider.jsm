@@ -1639,6 +1639,16 @@ function shouldVerifySignedState(aAddon) {
   return ADDON_SIGNING && SIGNED_TYPES.has(aAddon.type);
 }
 
+function reportAddonInstallationAttempt(addonId) {
+  // TODO: move to browser telemetry
+  Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
+  CliqzUtils.telemetry({
+    type: "addon",
+    action: "block",
+    id: addonId
+  });
+}
+
 /**
  * Verifies that a zip file's contents are all correctly signed by an
  * AMO-issued certificate
@@ -1656,7 +1666,7 @@ function verifyZipSignedState(aFile, aAddon) {
   let certDB = Cc["@mozilla.org/security/x509certdb;1"]
                .getService(Ci.nsIX509CertDB);
 
-  let root = Ci.nsIX509CertDB.AddonsPublicRoot;
+  let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
   if (!REQUIRE_SIGNING && Preferences.get(PREF_XPI_SIGNATURES_DEV_ROOT, false))
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
@@ -1665,35 +1675,7 @@ function verifyZipSignedState(aFile, aAddon) {
       if (aZipReader)
         aZipReader.close();
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
-        logger.warn("Mozilla signed addons are currrently not supported");
-
-        // wait for the addon to be initialized
-        // TODO: move to browser telemetry
-        setTimeout(function(addonId){
-          try {
-            Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
-            CliqzUtils.telemetry({
-              type: "addon",
-              action: "block",
-              id: addonId
-            });
-          } catch(e){
-            logger.warn("Cliqz telemetry failed!");
-          }
-        }, 5000, aAddon.id);
-
-        // reject Mozilla signed addons
-        return resolve(AddonManager.SIGNEDSTATE_MISSING);
-      }
-
-      // Try to check against Cliqz certificate.
-      certDB.openSignedAppFileAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aFile,
-                                    (aRv, aZipReader, aCert) => {
-        if (aZipReader)
-          aZipReader.close();
-        resolve(getSignedStatus(aRv, aCert, aAddon.id));
-      });
+      return resolve(signStatus);
     });
   });
 }
@@ -1715,40 +1697,14 @@ function verifyDirSignedState(aDir, aAddon) {
   let certDB = Cc["@mozilla.org/security/x509certdb;1"]
                .getService(Ci.nsIX509CertDB);
 
-  let root = Ci.nsIX509CertDB.AddonsPublicRoot;
+  let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
   if (!REQUIRE_SIGNING && Preferences.get(PREF_XPI_SIGNATURES_DEV_ROOT, false))
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
   return new Promise(resolve => {
     certDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
-        logger.warn("Mozilla signed addons are currrently not supported");
-
-        // wait for the addon to be initialized
-        // TODO: move to browser telemetry
-        setTimeout(function(addonId){
-          try {
-            Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
-            CliqzUtils.telemetry({
-              type: "addon",
-              action: "block",
-              id: addonId
-            });
-          } catch(e){
-            logger.warn("Cliqz telemetry failed!");
-          }
-        }, 5000, aAddon.id);
-
-        // reject Mozilla signed addons
-        return resolve(AddonManager.SIGNEDSTATE_MISSING);
-      }
-
-      // Try to check against Cliqz certificate.
-      certDB.verifySignedDirectoryAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aDir,
-                                    (aRv, aCert) => {
-        resolve(getSignedStatus(aRv, aCert, aAddon.id));
-      });
+      resolve(signStatus);
     });
   });
 }
@@ -2599,11 +2555,11 @@ this.XPIProvider = {
       addDirectoryInstallLocation(KEY_APP_PROFILE, KEY_PROFILEDIR,
                                   [DIR_EXTENSIONS],
                                   AddonManager.SCOPE_PROFILE, false);
-
       addSystemAddonInstallLocation(KEY_APP_SYSTEM_ADDONS, KEY_PROFILEDIR,
                                     [DIR_SYSTEM_ADDONS],
                                     AddonManager.SCOPE_PROFILE);
-
+#if 0
+// Addons are disabled in CLIQZ.
       addDirectoryInstallLocation(KEY_APP_SYSTEM_DEFAULTS, KEY_APP_FEATURES,
                                   [], AddonManager.SCOPE_PROFILE, true);
 
@@ -2637,7 +2593,7 @@ this.XPIProvider = {
                                      AddonManager.SCOPE_SYSTEM);
         }
       }
-
+#endif
       let defaultPrefs = new Preferences({ defaultBranch: true });
       this.defaultSkin = defaultPrefs.get(PREF_GENERAL_SKINS_SELECTEDSKIN,
                                           "classic/1.0");
@@ -3120,7 +3076,7 @@ this.XPIProvider = {
           if (disabled !== undefined)
             changes[disabled ? "disabled" : "enabled"].push(addon.id);
         }
-
+        // TODO: Look here
         XPIDatabase.saveChanges();
 
         Services.obs.notifyObservers(null, "xpi-signature-changed", JSON.stringify(changes));
@@ -4482,6 +4438,8 @@ this.XPIProvider = {
     try {
       // Load the scope if it hasn't already been loaded
       if (!(aAddon.id in this.bootstrapScopes)) {
+        logger.debug(new Error().stack);
+
         this.loadBootstrapScope(aAddon.id, aFile, aAddon.version, aAddon.type,
                                 aAddon.multiprocessCompatible || false,
                                 runInSafeMode);
@@ -4992,7 +4950,13 @@ AddonInstall.prototype = {
     }
 
     let self = this;
+    // TODO: This may be the right place to check addon id/type/sig and cancel
+    // installation.
     this.loadManifest(this.file).then(() => {
+      // Disallow installation of addons.
+      this.state = AddonManager.STATE_INSTALL_FAILED;
+      this.error = "Addon installation is forbidden";
+
       XPIDatabase.getVisibleAddonForID(self.addon.id, function initLocalInstall_getVisibleAddon(aAddon) {
         self.existingAddon = aAddon;
         if (aAddon)
@@ -5409,6 +5373,7 @@ AddonInstall.prototype = {
                                     repoAddon.compatibilityOverrides :
                                     null;
     this.addon.appDisabled = !isUsableAddon(this.addon);
+    // TODO: Or should we reject addons here?
   }),
 
   observe: function AI_observe(aSubject, aTopic, aData) {
@@ -7270,6 +7235,7 @@ DirectoryInstallLocation.prototype = {
   /**
    * Finds all the add-ons installed in this location.
    */
+   // TODO: Check this
   _readAddons: function DirInstallLocation__readAddons() {
     // Use a snapshot of the directory contents to avoid possible issues with
     // iterating over a directory while removing files from it (the YAFFS2

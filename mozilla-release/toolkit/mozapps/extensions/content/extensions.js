@@ -51,7 +51,7 @@ const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/
 
 const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml"
 
-var gViewDefault = "addons://discover/";
+var gViewDefault = "addons://list/";
 
 var gStrings = {};
 XPCOMUtils.defineLazyServiceGetter(gStrings, "bundleSvc",
@@ -632,8 +632,10 @@ var gViewController = {
   initialize: function gVC_initialize() {
     this.viewPort = document.getElementById("view-port");
 
+#if 0
     this.viewObjects["search"] = gSearchView;
     this.viewObjects["discover"] = gDiscoverView;
+#endif
     this.viewObjects["list"] = gListView;
     this.viewObjects["detail"] = gDetailView;
     this.viewObjects["updates"] = gUpdatesView;

@@ -98,7 +98,7 @@ Cu.import("resource://gre/modules/Log.jsm");
 // messages for all the modules under addons.*
 const PARENT_LOGGER_ID = "addons";
 var parentLogger = Log.repository.getLogger(PARENT_LOGGER_ID);
-parentLogger.level = Log.Level.Warn;
+parentLogger.level = Log.Level.Info;
 var formatter = new Log.BasicFormatter();
 // Set parent logger (and its children) to append to
 // the Javascript section of the Browser Console

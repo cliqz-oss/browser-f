@@ -9,9 +9,11 @@
 const Cc = Components.classes;
 const Ci = Components.interfaces;
 const Cr = Components.results;
+const Cu = Components.utils;
 
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 Components.utils.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/Console.jsm");
 
 try {
   // AddonManager.jsm doesn't allow itself to be imported in the child
@@ -381,6 +383,14 @@ Blocklist.prototype = {
 
   /* See nsIBlocklistService */
   getAddonBlocklistState: function Blocklist_getAddonBlocklistState(addon, appVersion, toolkitVersion) {
+#if 0
+    // It's also possible to block all addons through blocklist.
+    console.log("BLOCKLIST CHECK", addon.id, addon.type);
+    const isCliqzExtension =
+        (addon.type === "extension") && (addon.id === "cliqz@cliqz.com");
+    return isCliqzExtension ? Ci.nsIBlocklistService.STATE_NOT_BLOCKED
+                            : Ci.nsIBlocklistService.STATE_BLOCKED;
+#endif
     if (!this._isBlocklistLoaded())
       this._loadBlocklist();
     return this._getAddonBlocklistState(addon, this._addonEntries,
