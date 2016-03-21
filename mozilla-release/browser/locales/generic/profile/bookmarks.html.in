@@ -16,10 +16,10 @@
 <DD>@bookmarks_toolbarfolder_description@
     <DL><p>
     </DL><p>
-    <DT><H3 ID="rdf:#$ZvPhC3">@firefox_heading@</H3>
+    <DT><H3 ID="rdf:#$ZvPhC3">@cliqz_heading@</H3>
     <DL><p>
-        <DT><A HREF="https://www.cliqz.com/team"  ID="rdf:#$42iCK1">Team</A>
-        <DT><A HREF="https://www.cliqz.com/aboutus"  ID="rdf:#$52iCK1">@firefox_about@</A>
-        <DT><A HREF="@cliqz_triqz_url@"  ID="rdf:#$52iCK1">@cliqz_triqz@</A>
+        <DT><A HREF="https://cliqz.com/support" ID="rdf:#$42iCK1">@cliqz_contact</A>
+        <DT><A HREF="https://cliqz.com/aboutus"  ID="rdf:#$52iCK1">@cliqz_about@</A>
+        <DT><A HREF="https://cliqz.com/products/tips"  ID="rdf:#$52iCK1">@cliqz_tips@</A>
     </DL><p>
 </DL><p>

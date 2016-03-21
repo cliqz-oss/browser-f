@@ -19,7 +19,7 @@
 
 # LOCALIZATION NOTE (firefox_heading):
 # Firefox links folder name
-#define firefox_heading CLIQZ
+#define firefox_heading Firefox
 
 # LOCALIZATION NOTE (firefox_help):
 # link title for https://www.mozilla.org/en-US/firefox/help/
@@ -37,8 +37,10 @@
 # link title for https://www.mozilla.org/en-US/about/
 #define firefox_about Über uns
 
-#define cliqz_triqz CLIQZ Triqz
-# not the place to put this url!
-#define cliqz_triqz_url https://cliqz.com/home/cliqz-triqz
+# CLIQZ links folder
+#define cliqz_heading CLIQZ
+#define cliqz_about Über uns
+#define cliqz_contact Hilfe und Kontakt
+#define cliqz_tips Tips and Tricks
 
 #unfilter emptyLines
