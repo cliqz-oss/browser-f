@@ -212,7 +212,10 @@ var CustomizableUIInternal = {
 
     let navbarPlacements = [
       "urlbar-container",
+#if 0
       "search-container",
+#endif
+      "cliqz-button",
 #ifdef MOZ_DEV_EDITION
       "developer-button",
 #endif
@@ -220,6 +223,7 @@ var CustomizableUIInternal = {
       "downloads-button",
       "home-button",
       "loop-button",
+      "antitracking-button",
     ];
 
     // Insert the Pocket button after the bookmarks button if it's present.
