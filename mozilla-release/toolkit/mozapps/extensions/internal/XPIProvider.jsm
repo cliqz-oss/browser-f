@@ -241,6 +241,10 @@ const SIGNED_TYPES = new Set([
   "webextension",
   "extension",
   "experiment",
+  "theme",
+  "locale",
+  "multipackage",
+  "dictionary",
 ]);
 
 // Whether add-on signing is required.
