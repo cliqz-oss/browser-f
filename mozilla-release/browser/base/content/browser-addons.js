@@ -462,6 +462,7 @@ var LightWeightThemeWebInstaller = {
         this._installRequest(data.themeData, data.baseURI);
         break;
       }
+#if 0
       case "LightWeightThemeWebInstaller:Preview": {
         this._preview(data.themeData, data.baseURI);
         break;
@@ -470,6 +471,7 @@ var LightWeightThemeWebInstaller = {
         this._resetPreview(data && data.baseURI);
         break;
       }
+#endif
     }
   },
 
@@ -490,6 +492,16 @@ var LightWeightThemeWebInstaller = {
   },
 
   _installRequest: function (dataString, baseURI) {
+    this._removePreviousNotifications();
+    let notificationBox = gBrowser.getNotificationBox();
+    notificationBox.appendNotification(
+        gNavigatorBundle.getString("lwthemeInstallRequest.disabledInCliqz"),
+        "lwtheme-install-request", "",
+        notificationBox.PRIORITY_INFO_MEDIUM,
+        []);
+#if 0
+    // Disable LW themes in CLIQZ.
+
     let data = this._manager.parseTheme(dataString, baseURI);
 
     if (!data) {
@@ -524,6 +536,7 @@ var LightWeightThemeWebInstaller = {
                                          notificationBox.PRIORITY_INFO_MEDIUM,
                                          buttons);
     notificationBar.persistence = 1;
+#endif
   },
 
   _install: function (newLWTheme) {
@@ -629,6 +642,7 @@ var LightWeightThemeWebInstaller = {
   },
 
   _isAllowed: function (srcURIString) {
+    return false;  // Disable LW themes in CLIQZ.
     let uri;
     try {
       uri = makeURI(srcURIString);
