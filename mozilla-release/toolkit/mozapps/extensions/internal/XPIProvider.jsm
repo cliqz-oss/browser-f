@@ -244,7 +244,6 @@ const SIGNED_TYPES = new Set([
   "theme",
   "locale",
   "multipackage",
-  "dictionary",
 ]);
 
 // Whether add-on signing is required.
@@ -693,6 +692,13 @@ function isUsableAddon(aAddon) {
       aAddon.signedState != AddonManager.SIGNEDSTATE_SYSTEM) {
     return false;
   }
+
+  // All addons must be signed to be able to work in CLIQZ browser.
+  if (mustSign(aAddon.type) &&
+      aAddon.signedState != AddonManager.SIGNEDSTATE_SIGNED) {
+    return false;
+  }
+
   // temporary and system add-ons do not require signing
   if ((aAddon._installLocation.name != KEY_APP_SYSTEM_DEFAULTS &&
        aAddon._installLocation.name != KEY_APP_TEMPORARY) &&
@@ -1709,7 +1715,7 @@ function verifyZipSignedState(aFile, aAddon) {
   if (!shouldVerifySignedState(aAddon))
     return Promise.resolve(AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
-  let root = Ci.nsIX509CertDB.AddonsPublicRoot;
+  let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
   if (!REQUIRE_SIGNING && Preferences.get(PREF_XPI_SIGNATURES_DEV_ROOT, false))
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
@@ -1718,35 +1724,7 @@ function verifyZipSignedState(aFile, aAddon) {
       if (aZipReader)
         aZipReader.close();
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
-        logger.warn("Mozilla signed addons are currrently not supported");
-
-        // wait for the addon to be initialized
-        // TODO: move to browser telemetry
-        setTimeout(function(addonId){
-          try {
-            Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
-            CliqzUtils.telemetry({
-              type: "addon",
-              action: "block",
-              id: addonId
-            });
-          } catch(e){
-            logger.warn("Cliqz telemetry failed!");
-          }
-        }, 5000, aAddon.id);
-
-        // reject Mozilla signed addons
-        return resolve(AddonManager.SIGNEDSTATE_MISSING);
-      }
-
-      // Try to check against Cliqz certificate.
-      gCertDB.openSignedAppFileAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aFile,
-                                    (aRv, aZipReader, aCert) => {
-        if (aZipReader)
-          aZipReader.close();
-        resolve(getSignedStatus(aRv, aCert, aAddon.id));
-      });
+      return resolve(signStatus);
     });
   });
 }
@@ -1765,40 +1743,14 @@ function verifyDirSignedState(aDir, aAddon) {
   if (!shouldVerifySignedState(aAddon))
     return Promise.resolve(AddonManager.SIGNEDSTATE_NOT_REQUIRED);
 
-  let root = Ci.nsIX509CertDB.AddonsPublicRoot;
+  let root = Ci.nsIX509CertDB.CliqzAddonsRoot;
   if (!REQUIRE_SIGNING && Preferences.get(PREF_XPI_SIGNATURES_DEV_ROOT, false))
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
   return new Promise(resolve => {
     gCertDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
       let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      if (signStatus >= AddonManager.SIGNEDSTATE_MISSING){
-        logger.warn("Mozilla signed addons are currrently not supported");
-
-        // wait for the addon to be initialized
-        // TODO: move to browser telemetry
-        setTimeout(function(addonId){
-          try {
-            Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
-            CliqzUtils.telemetry({
-              type: "addon",
-              action: "block",
-              id: addonId
-            });
-          } catch(e){
-            logger.warn("Cliqz telemetry failed!");
-          }
-        }, 5000, aAddon.id);
-
-        // reject Mozilla signed addons
-        return resolve(AddonManager.SIGNEDSTATE_MISSING);
-      }
-
-      // Try to check against Cliqz certificate.
-      gCertDB.verifySignedDirectoryAsync(Ci.nsIX509CertDB.CliqzAddonsRoot, aDir,
-                                    (aRv, aCert) => {
-        resolve(getSignedStatus(aRv, aCert, aAddon.id));
-      });
+      resolve(signStatus);
     });
   });
 }
@@ -2781,6 +2733,9 @@ this.XPIProvider = {
         this.addAddonsToCrashReporter();
       }
 
+      // See DB-481.
+      this.verifySignatures(true);
+
       try {
         AddonManagerPrivate.recordTimestamp("XPI_bootstrap_addons_begin");
         for (let id in this.bootstrappedAddons) {
@@ -3157,8 +3112,8 @@ this.XPIProvider = {
   /**
    * Verifies that all installed add-ons are still correctly signed.
    */
-  verifySignatures: function() {
-    XPIDatabase.getAddonList(a => true, (addons) => {
+  verifySignatures: function(sync) {
+     let addonsCheckerFunc = (addons) => {
       Task.spawn(function*() {
         let changes = {
           enabled: [],
@@ -3171,6 +3126,7 @@ this.XPIProvider = {
             continue;
 
           let signedState = yield verifyBundleSignedState(addon._sourceBundle, addon);
+          logger.debug("Addon signed state", [addon.id, signedState]);
 
           if (signedState != addon.signedState) {
             addon.signedState = signedState;
@@ -3190,7 +3146,15 @@ this.XPIProvider = {
       }).then(null, err => {
         logger.error("XPI_verifySignature: " + err);
       })
-    });
+    };
+    if (!sync)
+      return XPIDatabase.getAddonList(a => true, addonsCheckerFunc);
+
+    // Synchronous version.
+    if (!XPIDatabase.initialized)
+      XPIDatabase.syncLoadDB(true);
+    let addons = XPIDatabase.getAddons();
+    addonsCheckerFunc(addons);
   },
 
   /**
@@ -5543,6 +5507,7 @@ AddonInstall.prototype = {
     try {
       // loadManifestFromZipReader performs the certificate verification for us
       this.addon = yield loadManifestFromZipReader(zipreader, this.installLocation);
+      logger.debug("Parsed manifest", this.addon);
     }
     catch (e) {
       zipreader.close();
@@ -5554,15 +5519,19 @@ AddonInstall.prototype = {
         // This add-on isn't properly signed by a signature that chains to the
         // trusted root.
         let state = this.addon.signedState;
+        const manifest = this.addon;
         this.addon = null;
         zipreader.close();
 
-        if (state == AddonManager.SIGNEDSTATE_MISSING)
+        if (state == AddonManager.SIGNEDSTATE_MISSING ||
+            state == AddonManager.SIGNEDSTATE_UNKNOWN)
           return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                 "signature is required but missing"])
+                                 "signature is required but missing",
+                                 manifest]);
 
         return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                               "signature verification failed"])
+                               "signature verification failed",
+                               manifest])
       }
     }
     else if (this.addon.signedState == AddonManager.SIGNEDSTATE_UNKNOWN ||
@@ -5830,7 +5799,8 @@ AddonInstall.prototype = {
       return;
     }
 
-    logger.debug("Download of " + this.sourceURI.spec + " completed.");
+    logger.debug("Download of " + this.sourceURI.spec +
+        " completed with satatus " + aStatus);
 
     if (Components.isSuccessCode(aStatus)) {
       if (!(aRequest instanceof Ci.nsIHttpChannel) || aRequest.requestSucceeded) {
@@ -5866,7 +5836,10 @@ AddonInstall.prototype = {
               onUpdateFinished: aAddon => this.downloadCompleted(),
             }, AddonManager.UPDATE_WHEN_ADDON_INSTALLED);
           }
-        }, ([error, message]) => {
+        }, ([error, message, manifest]) => {
+          manifest = manifest || this.addon;
+          XPIDatabase.reportAddonInstallationAttempt(manifest.id, manifest.type,
+              "download");
           this.downloadFailed(error, message);
         });
       }
