@@ -495,7 +495,7 @@ var Impl = {
    * @returns {Promise} Test-only - a promise that is resolved with the ping id once the ping is stored or sent.
    */
   submitExternalPing: function send(aType, aPayload, aOptions) {
-    this._log.trace("submitExternalPing - type: " + aType + ", aOptions: " + JSON.stringify(aOptions));
+    this._log.trace("submitExternalPing", [aType, aOptions]);
 
     // Enforce the type string to only contain sane characters.
     const typeUuid = /^[a-z0-9][a-z0-9-]+[a-z0-9]$/i;

@@ -8,3 +8,5 @@ if echo $OSTYPE | grep -q "darwin"; then
   # Enable universal MacOS executable build
   . $topsrcdir/build/macosx/universal/mozconfig
 fi
+
+export MOZ_TELEMETRY_REPORTING=1
