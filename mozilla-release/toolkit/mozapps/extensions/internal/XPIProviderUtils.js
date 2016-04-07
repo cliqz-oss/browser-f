@@ -13,6 +13,7 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/AddonManager.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
+Cu.import("resource://gre/modules/TelemetryController.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "AddonRepository",
                                   "resource://gre/modules/addons/AddonRepository.jsm");
@@ -26,6 +27,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "OS",
                                   "resource://gre/modules/osfile.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
                                  'resource://gre/modules/Timer.jsm');
+XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
+    "resource://gre/modules/TelemetryController.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
@@ -1535,7 +1538,33 @@ this.XPIDatabase = {
       Services.prefs.clearUserPref(PREF_EM_ENABLED_ADDONS);
     }
     return true;
-  }
+  },
+
+  reportAddonInstallationAttempt: function(addonId, way) {
+    logger.debug("reportAddonInstallationAttempt", [addonId, way]);
+    TelemetryController.submitExternalPing(
+      "addon-install-blocked",
+      {
+        id: addonId,
+        way: way
+      }
+    );
+
+    // TODO: Remove that
+    setTimeout(function() {
+      try {
+        Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
+        CliqzUtils.telemetry({
+          type: "addon",
+          action: way == "foreign" ? "foreign_install" : "block",
+          id: addonId
+        });
+      }
+      catch (e) {
+        logger.warn("Could not report through CliqzUtils telemetry", e);
+      }
+    }, 5000);
+  },
 };
 
 this.XPIDatabaseReconcile = {
@@ -1717,20 +1746,7 @@ this.XPIDatabaseReconcile = {
         // which case just mark any sideloaded add-ons as already seen.
         aNewAddon.seen = !aOldAppVersion;
 
-        // wait for the addon to be initialized
-        // TODO: move to browser telemetry
-        setTimeout(function(addonId){
-          try {
-            Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
-            CliqzUtils.telemetry({
-              type: "addon",
-              action: "foreign_installed",
-              id: addonId
-            });
-          } catch(e){
-            logger.warn("Cliqz telemetry failed!");
-          }
-        }, 5000, aNewAddon.id);
+        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, "foreign");
       }
     }
 
