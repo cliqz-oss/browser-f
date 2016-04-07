@@ -10,7 +10,6 @@
 
 #include "jsmath.h"
 
-#include "mozilla/Constants.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MemoryReporting.h"
@@ -742,94 +741,58 @@ js::math_pow(JSContext* cx, unsigned argc, Value* vp)
     return math_pow_handle(cx, args.get(0), args.get(1), args.rval());
 }
 
-void
-js::random_generateSeed(uint64_t* seedBuffer, size_t length)
+static uint64_t
+GenerateSeed()
 {
-    if (length == 0)
-        return;
+    uint64_t seed = 0;
 
 #if defined(XP_WIN)
-    size_t size = length * sizeof(seedBuffer[0]);
-    if (RtlGenRandom(seedBuffer, size))
-        return;
-
-    // Use PRMJ_Now() if we couldn't read from RtlGetRandom().
-    for (size_t i = 0; i < length; i++)
-        seedBuffer[i] = PRMJ_Now();
-
+    MOZ_ALWAYS_TRUE(RtlGenRandom(&seed, sizeof(seed)));
 #elif defined(HAVE_ARC4RANDOM)
-    union {
-        uint32_t    u32[2];
-        uint64_t    u64;
-    } seed;
-    seed.u64 = 0;
-
-    for (size_t i = 0; i < length; i++) {
-        seed.u32[0] = arc4random();
-        seed.u32[1] = arc4random();
-        seedBuffer[i] = seed.u64 ^ PRMJ_Now();
-    }
-
+    seed = (static_cast<uint64_t>(arc4random()) << 32) | arc4random();
 #elif defined(XP_UNIX)
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
-        ssize_t size = length * sizeof(seedBuffer[0]);
-        ssize_t nread = read(fd, (char *) seedBuffer, size);
+        read(fd, static_cast<void*>(&seed), sizeof(seed));
         close(fd);
-        if (nread == size)
-            return;
     }
-
-    // Use PRMJ_Now() if we couldn't read from /dev/urandom.
-    for (size_t i = 0; i < length; i++)
-        seedBuffer[i] = PRMJ_Now();
 #else
-# error "Platform needs to implement random_generateSeed()"
+# error "Platform needs to implement GenerateSeed()"
 #endif
+
+    // Also mix in PRMJ_Now() in case we couldn't read random bits from the OS.
+    return seed ^ PRMJ_Now();
 }
 
-/*
- * Math.random() support, lifted from java.util.Random.java.
- */
 void
-js::random_initState(uint64_t* rngState)
+js::GenerateXorShift128PlusSeed(mozilla::Array<uint64_t, 2>& seed)
 {
-    /* Our PRNG only uses 48 bits, so squeeze our entropy into those bits. */
-    uint64_t seed;
-    random_generateSeed(&seed, 1);
-    seed ^= (seed >> 16);
-    *rngState = (seed ^ RNG_MULTIPLIER) & RNG_MASK;
+    // XorShift128PlusRNG must be initialized with a non-zero seed.
+    do {
+        seed[0] = GenerateSeed();
+        seed[1] = GenerateSeed();
+    } while (seed[0] == 0 && seed[1] == 0);
 }
 
-uint64_t
-js::random_next(uint64_t* rngState, int bits)
+void
+JSCompartment::ensureRandomNumberGenerator()
 {
-    MOZ_ASSERT((*rngState & 0xffff000000000000ULL) == 0, "Bad rngState");
-    MOZ_ASSERT(bits > 0 && bits <= RNG_STATE_WIDTH, "bits is out of range");
-
-    if (*rngState == 0) {
-        random_initState(rngState);
+    if (randomNumberGenerator.isNothing()) {
+        mozilla::Array<uint64_t, 2> seed;
+        GenerateXorShift128PlusSeed(seed);
+        randomNumberGenerator.emplace(seed[0], seed[1]);
     }
-
-    uint64_t nextstate = *rngState * RNG_MULTIPLIER;
-    nextstate += RNG_ADDEND;
-    nextstate &= RNG_MASK;
-    *rngState = nextstate;
-    return nextstate >> (RNG_STATE_WIDTH - bits);
-}
-
-double
-js::math_random_no_outparam(JSContext* cx)
-{
-    /* Calculate random without memory traffic, for use in the JITs. */
-    return random_nextDouble(&cx->compartment()->rngState);
 }
 
 bool
 js::math_random(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
-    double z = random_nextDouble(&cx->compartment()->rngState);
+
+    JSCompartment* comp = cx->compartment();
+    comp->ensureRandomNumberGenerator();
+
+    double z = comp->randomNumberGenerator.ref().nextDouble();
     args.rval().setDouble(z);
     return true;
 }

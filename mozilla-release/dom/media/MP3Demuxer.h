@@ -370,10 +370,12 @@ public:
   // or a 0-duration if unknown.
   media::TimeUnit Duration(int64_t aNumFrames) const;
 
+  // Returns the estimated current seek position time.
+  media::TimeUnit SeekPosition() const;
+
 #ifdef ENABLE_TESTS
   const FrameParser::Frame& LastFrame() const;
   RefPtr<MediaRawData> DemuxSample();
-  media::TimeUnit SeekPosition() const;
 #endif
 
   const ID3Parser::ID3Header& ID3Header() const;
@@ -411,10 +413,13 @@ private:
   // Updates post-read meta data.
   void UpdateState(const MediaByteRange& aRange);
 
-  // Returns the frame index for the given offset.
+  // Returns the estimated offset for the given frame index.
+  int64_t OffsetFromFrameIndex(int64_t aFrameIndex) const;
+
+  // Returns the estimated frame index for the given offset.
   int64_t FrameIndexFromOffset(int64_t aOffset) const;
 
-  // Returns the frame index for the given time.
+  // Returns the estimated frame index for the given time.
   int64_t FrameIndexFromTime(const media::TimeUnit& aTime) const;
 
   // Reads aSize bytes into aBuffer from the source starting at aOffset.

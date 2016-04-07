@@ -4,7 +4,9 @@
 "use strict";
 
 exports.allocations = require("./reducers/allocations");
-exports.snapshots = require("./reducers/snapshots");
 exports.breakdown = require("./reducers/breakdown");
+exports.diffing = require("./reducers/diffing");
 exports.errors = require("./reducers/errors");
+exports.filter = require("./reducers/filter");
 exports.inverted = require("./reducers/inverted");
+exports.snapshots = require("./reducers/snapshots");

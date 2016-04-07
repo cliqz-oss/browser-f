@@ -662,14 +662,14 @@ AndroidGeckoEvent::MakeTouchEvent(nsIWidget* widget)
         LayoutDeviceIntPoint pt(
             (Points()[i].x * scale.scale) - offset.x,
             (Points()[i].y * scale.scale) - offset.y);
-        nsIntPoint radii(
+        LayoutDeviceIntPoint radius(
             PointRadii()[i].x * scale.scale,
             PointRadii()[i].y * scale.scale);
         RefPtr<Touch> t = new Touch(PointIndicies()[i],
-                                      pt,
-                                      radii,
-                                      Orientations()[i],
-                                      Pressures()[i]);
+                                    pt,
+                                    radius,
+                                    Orientations()[i],
+                                    Pressures()[i]);
         event.touches.AppendElement(t);
     }
 
@@ -717,7 +717,7 @@ AndroidGeckoEvent::MakeMultiTouchInput(nsIWidget* widget)
         return event;
     }
 
-    const nsIntPoint& offset = widget->WidgetToScreenOffsetUntyped();
+    const nsIntPoint& offset = widget->WidgetToScreenOffset().ToUnknownPoint();
     event.mTouches.SetCapacity(endIndex - startIndex);
     for (int i = startIndex; i < endIndex; i++) {
         nsIntPoint point = Points()[i] - offset;

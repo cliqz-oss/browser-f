@@ -26,6 +26,7 @@
 #include "../opengl/CompositorOGL.h"
 #include "gfxPrefs.h"
 #include "gfxUtils.h"
+#include "IPDLActor.h"
 
 #ifdef MOZ_ENABLE_D3D10_LAYER
 #include "../d3d11/CompositorD3D11.h"
@@ -61,7 +62,7 @@ namespace layers {
  * TextureParent is the host-side IPDL glue between TextureClient and TextureHost.
  * It is an IPDL actor just like LayerParent, CompositableParent, etc.
  */
-class TextureParent : public PTextureParent
+class TextureParent : public ParentActor<PTextureParent>
 {
 public:
   explicit TextureParent(CompositableParentManager* aManager);
@@ -76,17 +77,11 @@ public:
 
   virtual bool RecvClientRecycle() override;
 
-  virtual bool RecvClearTextureHostSync() override;
-
-  virtual bool RecvRemoveTexture() override;
-
   virtual bool RecvRecycleTexture(const TextureFlags& aTextureFlags) override;
 
   TextureHost* GetTextureHost() { return mTextureHost; }
 
-  void ActorDestroy(ActorDestroyReason why) override;
-
-  void ClearTextureHost();
+  virtual void Destroy() override;
 
   CompositableParentManager* mCompositableManager;
   RefPtr<TextureHost> mWaitForClientRecycle;
@@ -218,7 +213,7 @@ TextureHost::Create(const SurfaceDescriptor& aDesc,
     case SurfaceDescriptor::TSurfaceDescriptorSharedGLTexture:
       return CreateTextureHostOGL(aDesc, aDeallocator, aFlags);
 
-    case SurfaceDescriptor::TNewSurfaceDescriptorGralloc:
+    case SurfaceDescriptor::TSurfaceDescriptorGralloc:
     case SurfaceDescriptor::TSurfaceDescriptorMacIOSurface:
       if (aBackend == LayersBackend::LAYERS_OPENGL) {
         return CreateTextureHostOGL(aDesc, aDeallocator, aFlags);
@@ -246,7 +241,7 @@ TextureHost::Create(const SurfaceDescriptor& aDesc,
       }
 #endif
     default:
-      MOZ_CRASH("Unsupported Surface type");
+      MOZ_CRASH("GFX: Unsupported Surface type host");
   }
 }
 
@@ -521,6 +516,8 @@ BufferTextureHost::Upload(nsIntRegion *aRegion)
     // We don't have a buffer; a possible cause is that the IPDL actor
     // is already dead. This inevitably happens as IPDL actors can die
     // at any time, so we want to silently return in this case.
+    // another possible cause is that IPDL failed to map the shmem when
+    // deserializing it.
     return false;
   }
   if (!mCompositor) {
@@ -659,11 +656,20 @@ ShmemTextureHost::ShmemTextureHost(const ipc::Shmem& aShmem,
                                    ISurfaceAllocator* aDeallocator,
                                    TextureFlags aFlags)
 : BufferTextureHost(aFormat, aFlags)
-, mShmem(MakeUnique<ipc::Shmem>(aShmem))
 , mDeallocator(aDeallocator)
 {
+  if (aShmem.IsReadable()) {
+    mShmem = MakeUnique<ipc::Shmem>(aShmem);
+    InitSize();
+  } else {
+    // This can happen if we failed to map the shmem on this process, perhaps
+    // because it was big and we didn't have enough contiguous address space
+    // available, even though we did on the child process.
+    // As a result this texture will be in an invalid state and Lock will
+    // always fail.
+    gfxCriticalError() << "Failed to create a valid ShmemTextureHost";
+  }
   MOZ_COUNT_CTOR(ShmemTextureHost);
-  InitSize();
 }
 
 ShmemTextureHost::~ShmemTextureHost()
@@ -782,7 +788,7 @@ TextureParent::CompositorRecycle()
   mTextureHost->ClearRecycleCallback();
 
   if (mTextureHost->GetFlags() & TextureFlags::RECYCLE) {
-    mozilla::unused << SendCompositorRecycle();
+    mozilla::Unused << SendCompositorRecycle();
     // Don't forget to prepare for the next reycle
     // if TextureClient request it.
     mWaitForClientRecycle = mTextureHost;
@@ -822,37 +828,8 @@ TextureParent::Init(const SurfaceDescriptor& aSharedData,
   return !!mTextureHost;
 }
 
-bool
-TextureParent::RecvRemoveTexture()
-{
-  return PTextureParent::Send__delete__(this);
-}
-
-bool
-TextureParent::RecvClearTextureHostSync()
-{
-  ClearTextureHost();
-  return true;
-}
-
 void
-TextureParent::ActorDestroy(ActorDestroyReason why)
-{
-  switch (why) {
-  case AncestorDeletion:
-  case Deletion:
-  case NormalShutdown:
-  case AbnormalShutdown:
-    break;
-  case FailedConstructor:
-    NS_RUNTIMEABORT("FailedConstructor isn't possible in PTexture");
-  }
-
-  ClearTextureHost();
-}
-
-void
-TextureParent::ClearTextureHost()
+TextureParent::Destroy()
 {
   if (!mTextureHost) {
     return;

@@ -13,7 +13,8 @@
 #include "nsIDocument.h"
 #include "nsWrapperCache.h"
 #include "mozilla/Attributes.h"
-#include "mozilla/LayerAnimationInfo.h" // LayerAnimations::kRecords
+#include "mozilla/ComputedTimingFunction.h" // ComputedTimingFunction
+#include "mozilla/LayerAnimationInfo.h"     // LayerAnimations::kRecords
 #include "mozilla/StickyTimeDuration.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/TimeStamp.h"
@@ -21,15 +22,25 @@
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/KeyframeBinding.h"
 #include "mozilla/dom/Nullable.h"
-#include "nsSMILKeySpline.h"
-#include "nsStyleStruct.h" // for nsTimingFunction
 
 struct JSContext;
 class nsCSSPropertySet;
+class nsIContent;
+class nsIDocument;
+class nsIFrame;
+class nsPresContext;
 
 namespace mozilla {
 
+struct AnimationCollection;
 class AnimValuesStyleRule;
+
+namespace dom {
+struct ComputedTimingProperties;
+class UnrestrictedDoubleOrKeyframeEffectOptions;
+enum class IterationCompositeOperation : uint32_t;
+enum class CompositeOperation : uint32_t;
+}
 
 /**
  * Input timing parameters.
@@ -43,17 +54,11 @@ struct AnimationTiming
   TimeDuration mIterationDuration;
   TimeDuration mDelay;
   float mIterationCount; // mozilla::PositiveInfinity<float>() means infinite
-  uint8_t mDirection;
-  uint8_t mFillMode;
+  dom::PlaybackDirection mDirection;
+  dom::FillMode mFillMode;
 
-  bool FillsForwards() const {
-    return mFillMode == NS_STYLE_ANIMATION_FILL_MODE_BOTH ||
-           mFillMode == NS_STYLE_ANIMATION_FILL_MODE_FORWARDS;
-  }
-  bool FillsBackwards() const {
-    return mFillMode == NS_STYLE_ANIMATION_FILL_MODE_BOTH ||
-           mFillMode == NS_STYLE_ANIMATION_FILL_MODE_BACKWARDS;
-  }
+  bool FillsForwards() const;
+  bool FillsBackwards() const;
   bool operator==(const AnimationTiming& aOther) const {
     return mIterationDuration == aOther.mIterationDuration &&
            mDelay == aOther.mDelay &&
@@ -72,73 +77,25 @@ struct AnimationTiming
  */
 struct ComputedTiming
 {
-  ComputedTiming()
-    : mProgress(kNullProgress)
-    , mCurrentIteration(0)
-    , mPhase(AnimationPhase_Null)
-  { }
-
-  static const double kNullProgress;
-
   // The total duration of the animation including all iterations.
   // Will equal StickyTimeDuration::Forever() if the animation repeats
   // indefinitely.
-  StickyTimeDuration mActiveDuration;
-
+  StickyTimeDuration  mActiveDuration;
   // Progress towards the end of the current iteration. If the effect is
   // being sampled backwards, this will go from 1.0 to 0.0.
-  // Will be kNullProgress if the animation is neither animating nor
+  // Will be null if the animation is neither animating nor
   // filling at the sampled time.
-  double mProgress;
+  Nullable<double>    mProgress;
+  // Zero-based iteration index (meaningless if mProgress is null).
+  uint64_t            mCurrentIteration = 0;
 
-  // Zero-based iteration index (meaningless if mProgress is kNullProgress).
-  uint64_t mCurrentIteration;
-
-  enum {
-    // Not sampled (null sample time)
-    AnimationPhase_Null,
-    // Sampled prior to the start of the active interval
-    AnimationPhase_Before,
-    // Sampled within the active interval
-    AnimationPhase_Active,
-    // Sampled after (or at) the end of the active interval
-    AnimationPhase_After
-  } mPhase;
-};
-
-class ComputedTimingFunction
-{
-public:
-  typedef nsTimingFunction::Type Type;
-  typedef nsTimingFunction::StepSyntax StepSyntax;
-  void Init(const nsTimingFunction &aFunction);
-  double GetValue(double aPortion) const;
-  const nsSMILKeySpline* GetFunction() const {
-    NS_ASSERTION(HasSpline(), "Type mismatch");
-    return &mTimingFunction;
-  }
-  Type GetType() const { return mType; }
-  bool HasSpline() const { return nsTimingFunction::IsSplineType(mType); }
-  uint32_t GetSteps() const { return mSteps; }
-  StepSyntax GetStepSyntax() const { return mStepSyntax; }
-  bool operator==(const ComputedTimingFunction& aOther) const {
-    return mType == aOther.mType &&
-           (HasSpline() ?
-            mTimingFunction == aOther.mTimingFunction :
-            (mSteps == aOther.mSteps &&
-             mStepSyntax == aOther.mStepSyntax));
-  }
-  bool operator!=(const ComputedTimingFunction& aOther) const {
-    return !(*this == aOther);
-  }
-  int32_t Compare(const ComputedTimingFunction& aRhs) const;
-  void AppendToString(nsAString& aResult) const;
-
-private:
-  Type mType;
-  nsSMILKeySpline mTimingFunction;
-  uint32_t mSteps;
-  StepSyntax mStepSyntax;
+  enum class AnimationPhase {
+    Null,   // Not sampled (null sample time)
+    Before, // Sampled prior to the start of the active interval
+    Active, // Sampled within the active interval
+    After   // Sampled after (or at) the end of the active interval
+  };
+  AnimationPhase      mPhase = AnimationPhase::Null;
 };
 
 struct AnimationPropertySegment
@@ -230,7 +187,7 @@ public:
   Constructor(const GlobalObject& aGlobal,
               Element* aTarget,
               const Optional<JS::Handle<JSObject*>>& aFrames,
-              const Optional<double>& aOptions,
+              const UnrestrictedDoubleOrKeyframeEffectOptions& aOptions,
               ErrorResult& aRv);
   Element* GetTarget() const {
     // Currently we never return animations from the API whose effect
@@ -253,13 +210,16 @@ public:
     aPseudoType = mPseudoType;
   }
 
-  const AnimationTiming& Timing() const {
-    return mTiming;
+  IterationCompositeOperation IterationComposite() const;
+  CompositeOperation Composite() const;
+  void GetSpacing(nsString& aRetVal) const {
+    aRetVal.AssignLiteral("distribute");
   }
-  AnimationTiming& Timing() {
-    return mTiming;
-  }
+
+  const AnimationTiming& Timing() const { return mTiming; }
+  AnimationTiming& Timing() { return mTiming; }
   void SetTiming(const AnimationTiming& aTiming);
+  void NotifyAnimationTimingUpdated() { UpdateTargetRegistration(); }
 
   Nullable<TimeDuration> GetLocalTime() const;
 
@@ -270,8 +230,8 @@ public:
   // active duration are calculated. All other members of the returned object
   // are given a null/initial value.
   //
-  // This function returns ComputedTiming::kNullProgress for the mProgress
-  // member of the return value if the animation should not be run
+  // This function returns a null mProgress member of the return value
+  // if the animation should not be run
   // (because it is not currently active and is not filling at this time).
   static ComputedTiming
   GetComputedTimingAt(const Nullable<TimeDuration>& aLocalTime,
@@ -279,10 +239,14 @@ public:
 
   // Shortcut for that gets the computed timing using the current local time as
   // calculated from the timeline time.
-  ComputedTiming GetComputedTiming(const AnimationTiming* aTiming
-                                     = nullptr) const {
+  ComputedTiming
+  GetComputedTiming(const AnimationTiming* aTiming = nullptr) const
+  {
     return GetComputedTimingAt(GetLocalTime(), aTiming ? *aTiming : mTiming);
   }
+
+  void
+  GetComputedTimingAsDict(ComputedTimingProperties& aRetVal) const override;
 
   // Return the duration of the active interval for the given timing parameters.
   static StickyTimeDuration
@@ -293,6 +257,7 @@ public:
   bool IsInEffect() const;
 
   void SetAnimation(Animation* aAnimation);
+  Animation* GetAnimation() const { return mAnimation; }
 
   const AnimationProperty*
   GetAnimationOfProperty(nsCSSProperty aProperty) const;
@@ -314,21 +279,59 @@ public:
   // Any updated properties are added to |aSetProperties|.
   void ComposeStyle(RefPtr<AnimValuesStyleRule>& aStyleRule,
                     nsCSSPropertySet& aSetProperties);
+  // Returns true if |aProperty| is currently being animated on compositor.
+  bool IsPropertyRunningOnCompositor(nsCSSProperty aProperty) const;
+  // Returns true if at least one property is being animated on compositor.
   bool IsRunningOnCompositor() const;
   void SetIsRunningOnCompositor(nsCSSProperty aProperty, bool aIsRunning);
+
+  bool CanThrottle() const;
+
+  // Returns true if this effect, applied to |aFrame|, contains
+  // properties that mean we shouldn't run *any* compositor animations on this
+  // element.
+  //
+  // For example, if we have an animation of geometric properties like 'left'
+  // and 'top' on an element, we force all 'transform' and 'opacity' animations
+  // running at the same time on the same element to run on the main thread.
+  //
+  // Similarly, some transform animations cannot be run on the compositor and
+  // when that is the case we simply disable all compositor animations
+  // on the same element.
+  //
+  // Bug 1218620 - It seems like we don't need to be this restrictive. Wouldn't
+  // it be ok to do 'opacity' animations on the compositor in either case?
+  bool ShouldBlockCompositorAnimations(const nsIFrame* aFrame) const;
+
+  nsIDocument* GetRenderedDocument() const;
+  nsPresContext* GetPresContext() const;
+
+  inline AnimationCollection* GetCollection() const;
 
 protected:
   virtual ~KeyframeEffectReadOnly();
   void ResetIsRunningOnCompositor();
 
+  // This effect is registered with its target element so long as:
+  //
+  // (a) It has a target element, and
+  // (b) It is "relevant" (i.e. yet to finish but not idle, or finished but
+  //     filling forwards)
+  //
+  // As a result, we need to make sure this gets called whenever anything
+  // changes with regards to this effects's timing including changes to the
+  // owning Animation's timing.
+  void UpdateTargetRegistration();
+
   static AnimationTiming ConvertKeyframeEffectOptions(
-      const Optional<double>& aOptions);
+    const UnrestrictedDoubleOrKeyframeEffectOptions& aOptions);
+
   static void BuildAnimationPropertyList(
-      JSContext* aCx,
-      Element* aTarget,
-      const Optional<JS::Handle<JSObject*>>& aFrames,
-      InfallibleTArray<AnimationProperty>& aResult,
-      ErrorResult& aRv);
+    JSContext* aCx,
+    Element* aTarget,
+    const Optional<JS::Handle<JSObject*>>& aFrames,
+    InfallibleTArray<AnimationProperty>& aResult,
+    ErrorResult& aRv);
 
   nsCOMPtr<Element> mTarget;
   RefPtr<Animation> mAnimation;
@@ -348,6 +351,21 @@ protected:
   // restyle is performed, this member may temporarily become false even if
   // the animation remains on the layer after the restyle.
   bool mIsPropertyRunningOnCompositor[LayerAnimationInfo::kRecords];
+
+private:
+  nsIFrame* GetAnimationFrame() const;
+
+  bool CanThrottleTransformChanges(nsIFrame& aFrame) const;
+
+  // Returns true unless Gecko limitations prevent performing transform
+  // animations for |aFrame|. Any limitations that are encountered are
+  // logged using |aContent| to describe the affected content.
+  // If |aContent| is nullptr, no logging is performed
+  static bool CanAnimateTransformOnCompositor(const nsIFrame* aFrame,
+                                              const nsIContent* aContent);
+  static bool IsGeometricProperty(const nsCSSProperty aProperty);
+
+  static const TimeDuration OverflowRegionRefreshInterval();
 };
 
 } // namespace dom

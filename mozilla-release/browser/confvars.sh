@@ -4,7 +4,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 MOZ_APP_BASENAME=CLIQZ
-MOZ_APP_VENDOR=Cliqz GmbH
+MOZ_APP_VENDOR="Cliqz GmbH"
 MOZ_APP_UA_NAME=Firefox
 MOZ_UPDATER=1
 MOZ_PHOENIX=1
@@ -64,6 +64,7 @@ MOZ_PAY=1
 MOZ_ACTIVITIES=1
 MOZ_JSDOWNLOADS=1
 MOZ_WEBM_ENCODER=1
+MOZ_RUST_MP4PARSE=1
 
 # Enable checking that add-ons are signed by the trusted root
 MOZ_ADDON_SIGNING=1

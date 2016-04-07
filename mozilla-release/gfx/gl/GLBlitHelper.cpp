@@ -12,6 +12,7 @@
 #include "ImageContainer.h"
 #include "HeapCopyOfStackArray.h"
 #include "mozilla/gfx/Matrix.h"
+#include "mozilla/UniquePtr.h"
 
 #ifdef MOZ_WIDGET_GONK
 #include "GrallocImages.h"
@@ -330,8 +331,8 @@ GLBlitHelper::InitTexQuadProgram(BlitType target)
                     break;
                 }
 
-                nsAutoArrayPtr<char> buffer(new char[length]);
-                mGL->fGetShaderInfoLog(mTexBlit_VertShader, length, nullptr, buffer);
+                auto buffer = MakeUnique<char[]>(length);
+                mGL->fGetShaderInfoLog(mTexBlit_VertShader, length, nullptr, buffer.get());
 
                 printf_stderr("Shader info log (%d bytes): %s\n", length, buffer.get());
                 break;
@@ -349,8 +350,8 @@ GLBlitHelper::InitTexQuadProgram(BlitType target)
                     break;
                 }
 
-                nsAutoArrayPtr<char> buffer(new char[length]);
-                mGL->fGetShaderInfoLog(fragShader, length, nullptr, buffer);
+                auto buffer = MakeUnique<char[]>(length);
+                mGL->fGetShaderInfoLog(fragShader, length, nullptr, buffer.get());
 
                 printf_stderr("Shader info log (%d bytes): %s\n", length, buffer.get());
                 break;
@@ -369,8 +370,8 @@ GLBlitHelper::InitTexQuadProgram(BlitType target)
                     break;
                 }
 
-                nsAutoArrayPtr<char> buffer(new char[length]);
-                mGL->fGetProgramInfoLog(program, length, nullptr, buffer);
+                auto buffer = MakeUnique<char[]>(length);
+                mGL->fGetProgramInfoLog(program, length, nullptr, buffer.get());
 
                 printf_stderr("Program info log (%d bytes): %s\n", length, buffer.get());
             }
@@ -683,7 +684,7 @@ GLBlitHelper::BlitGrallocImage(layers::GrallocImage* grallocImage)
 bool
 GLBlitHelper::BlitSurfaceTextureImage(layers::SurfaceTextureImage* stImage)
 {
-    AndroidSurfaceTexture* surfaceTexture = stImage->GetData()->mSurfTex;
+    AndroidSurfaceTexture* surfaceTexture = stImage->GetSurfaceTexture();
 
     ScopedBindTextureUnit boundTU(mGL, LOCAL_GL_TEXTURE0);
 
@@ -712,8 +713,8 @@ GLBlitHelper::BlitSurfaceTextureImage(layers::SurfaceTextureImage* stImage)
 bool
 GLBlitHelper::BlitEGLImageImage(layers::EGLImageImage* image)
 {
-    EGLImage eglImage = image->GetData()->mImage;
-    EGLSync eglSync = image->GetData()->mSync;
+    EGLImage eglImage = image->GetImage();
+    EGLSync eglSync = image->GetSync();
 
     if (eglSync) {
         EGLint status = sEGLLibrary.fClientWaitSync(EGL_DISPLAY(), eglSync, 0, LOCAL_EGL_FOREVER);
@@ -840,13 +841,12 @@ GLBlitHelper::BlitImageToFramebuffer(layers::Image* srcImage,
 #ifdef MOZ_WIDGET_ANDROID
     case ImageFormat::SURFACE_TEXTURE:
         type = ConvertSurfaceTexture;
-        srcOrigin = static_cast<layers::SurfaceTextureImage*>(srcImage)->GetData()
-                                                                       ->mOriginPos;
+        srcOrigin = srcImage->AsSurfaceTextureImage()->GetOriginPos();
         break;
 
     case ImageFormat::EGLIMAGE:
         type = ConvertEGLImage;
-        srcOrigin = static_cast<layers::EGLImageImage*>(srcImage)->GetData()->mOriginPos;
+        srcOrigin = srcImage->AsEGLImageImage()->GetOriginPos();
         break;
 #endif
 #ifdef XP_MACOSX
@@ -892,7 +892,7 @@ GLBlitHelper::BlitImageToFramebuffer(layers::Image* srcImage,
 
 #ifdef XP_MACOSX
     case ConvertMacIOSurfaceImage:
-        return BlitMacIOSurfaceImage(static_cast<layers::MacIOSurfaceImage*>(srcImage));
+        return BlitMacIOSurfaceImage(srcImage->AsMacIOSurfaceImage());
 #endif
 
     default:
@@ -934,6 +934,18 @@ GLBlitHelper::BlitTextureToFramebuffer(GLuint srcTex, GLuint destFB,
         return;
     }
 
+    DrawBlitTextureToFramebuffer(srcTex, destFB, srcSize, destSize, srcTarget,
+                                 internalFBs);
+}
+
+
+void
+GLBlitHelper::DrawBlitTextureToFramebuffer(GLuint srcTex, GLuint destFB,
+                                           const gfx::IntSize& srcSize,
+                                           const gfx::IntSize& destSize,
+                                           GLenum srcTarget,
+                                           bool internalFBs)
+{
     BlitType type;
     switch (srcTarget) {
     case LOCAL_GL_TEXTURE_2D:
@@ -943,7 +955,7 @@ GLBlitHelper::BlitTextureToFramebuffer(GLuint srcTex, GLuint destFB,
         type = BlitTexRect;
         break;
     default:
-        MOZ_CRASH("Fatal Error: Bad `srcTarget`.");
+        MOZ_CRASH("GFX: Fatal Error: Bad `srcTarget`.");
         break;
     }
 

@@ -311,6 +311,12 @@ JS_CallScriptTracer(JSTracer* trc, JS::Heap<JSScript*>* scriptp, const char* nam
 extern JS_PUBLIC_API(void)
 JS_CallFunctionTracer(JSTracer* trc, JS::Heap<JSFunction*>* funp, const char* name);
 
+namespace JS {
+template <typename T>
+extern JS_PUBLIC_API(void)
+TraceEdge(JSTracer* trc, JS::Heap<T>* edgep, const char* name);
+} // namespace JS
+
 // The following JS_CallUnbarriered*Tracer functions should only be called where
 // you know for sure that a heap post barrier is not required.  Use with extreme
 // caution!
@@ -328,16 +334,6 @@ JS_CallUnbarrieredStringTracer(JSTracer* trc, JSString** strp, const char* name)
 
 extern JS_PUBLIC_API(void)
 JS_CallUnbarrieredScriptTracer(JSTracer* trc, JSScript** scriptp, const char* name);
-
-template <typename HashSetEnum>
-inline void
-JS_CallHashSetObjectTracer(JSTracer* trc, HashSetEnum& e, JSObject* const& key, const char* name)
-{
-    JSObject* updated = key;
-    JS_CallUnbarrieredObjectTracer(trc, &updated, name);
-    if (updated != key)
-        e.rekeyFront(updated);
-}
 
 /**
  * Trace an object that is known to always be tenured.  No post barriers are
@@ -368,31 +364,66 @@ JS_GetTraceThingInfo(char* buf, size_t bufsize, JSTracer* trc,
                      void* thing, JS::TraceKind kind, bool includeDetails);
 
 namespace js {
-
-// Automates static dispatch for tracing for TraceableContainers.
-template <typename> struct DefaultTracer;
-
-// The default for non-pod (e.g. struct) types is to call the trace method.
+namespace gc {
 template <typename T>
-struct DefaultTracer {
+extern JS_PUBLIC_API(bool)
+EdgeNeedsSweep(JS::Heap<T>* edgep);
+} // namespace gc
+
+// Automates static dispatch for GC interaction with TraceableContainers.
+template <typename>
+struct DefaultGCPolicy;
+
+// This policy dispatches GC methods to a method on the type.
+template <typename T>
+struct StructGCPolicy {
     static void trace(JSTracer* trc, T* t, const char* name) {
+        // This is the default GC policy for storing GC things in containers.
         // If your build is failing here, it means you either need an
-        // implementation of DefaultTracer<T> for your type or, for container
-        // and structure types that contain GC pointers, a trace method.
+        // implementation of DefaultGCPolicy<T> for your type or, if this is
+        // the right policy for you, your struct or container is missing a
+        // trace method.
         t->trace(trc);
+    }
+
+    static bool needsSweep(T* t) {
+        return t->needsSweep();
     }
 };
 
+// This policy ignores any GC interaction, e.g. for non-GC types.
+template <typename T>
+struct IgnoreGCPolicy {
+    static void trace(JSTracer* trc, T* t, const char* name) {}
+    static bool needsSweep(T* v) { return false; }
+};
+
+// The default policy when no other more specific policy fits (e.g. for a
+// direct GC pointer), is to assume a struct type that implements the needed
+// methods.
+template <typename T>
+struct DefaultGCPolicy : public StructGCPolicy<T> {};
+
 template <>
-struct DefaultTracer<jsid>
+struct DefaultGCPolicy<jsid>
 {
     static void trace(JSTracer* trc, jsid* id, const char* name) {
         JS_CallUnbarrieredIdTracer(trc, id, name);
     }
 };
 
-template <> struct DefaultTracer<uint32_t> {
-    static void trace(JSTracer* trc, uint32_t* id, const char* name) {}
+template <> struct DefaultGCPolicy<uint32_t> : public IgnoreGCPolicy<uint32_t> {};
+template <> struct DefaultGCPolicy<uint64_t> : public IgnoreGCPolicy<uint64_t> {};
+
+template <typename T>
+struct DefaultGCPolicy<JS::Heap<T>>
+{
+    static void trace(JSTracer* trc, JS::Heap<T>* thingp, const char* name) {
+        JS::TraceEdge(trc, thingp, name);
+    }
+    static bool needsSweep(JS::Heap<T>* thingp) {
+        return gc::EdgeNeedsSweep(thingp);
+    }
 };
 
 } // namespace js

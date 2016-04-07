@@ -140,15 +140,9 @@ using namespace mozilla::dom;
 #define DUMP_LAYOUT_LEVEL 9 // this turns on the dumping of each doucment's layout info
 
 #ifndef PR_PL
-static PRLogModuleInfo *
-GetPrintingLog()
-{
-  static PRLogModuleInfo *sLog;
-  if (!sLog)
-    sLog = PR_NewLogModule("printing");
-  return sLog;
-}
-#define PR_PL(_p1)  MOZ_LOG(GetPrintingLog(), mozilla::LogLevel::Debug, _p1);
+static mozilla::LazyLogModule gPrintingLog("printing")
+
+#define PR_PL(_p1)  MOZ_LOG(gPrintingLog, mozilla::LogLevel::Debug, _p1);
 #endif
 
 #ifdef EXTENDED_DEBUG_PRINTING
@@ -1524,8 +1518,12 @@ void
 nsPrintEngine::FirePrintingErrorEvent(nsresult aPrintError)
 {
   nsCOMPtr<nsIContentViewer> cv = do_QueryInterface(mDocViewerPrint);
+  if (NS_WARN_IF(!cv)) {
+    return;
+  }
+
   nsCOMPtr<nsIDocument> doc = cv->GetDocument();
-  nsCOMPtr<nsIDOMCustomEvent> event =
+  RefPtr<CustomEvent> event =
     NS_NewDOMCustomEvent(doc, nullptr, nullptr);
 
   MOZ_ASSERT(event);
@@ -1644,7 +1642,7 @@ nsPrintEngine::SetupToPrintContent()
       NS_ENSURE_SUCCESS(rv, rv);
     }
 
-    if (MOZ_LOG_TEST(GetPrintingLog(), LogLevel::Debug)) {
+    if (MOZ_LOG_TEST(gPrintingLog, LogLevel::Debug)) {
       float calcRatio = 0.0f;
       if (mPrt->mPrintDocList.Length() > 1 && mPrt->mPrintObject->mFrameType == eFrameSet) {
         nsPrintObject* smallestPO = FindSmallestSTF();
@@ -2437,12 +2435,6 @@ nsPrintEngine::DoPrint(nsPrintObject * aPO)
         // which is needed to find the selection frames
         // mPrintDC must have positive width and height for this call
 
-        // CreateRenderingContext can fail for large dimensions
-        RefPtr<gfxContext> gCtx = mPrt->mPrintDC->CreateRenderingContext();
-        NS_ENSURE_TRUE(gCtx, NS_ERROR_OUT_OF_MEMORY);
-
-        nsRenderingContext rc(gCtx);
-
         // find the starting and ending page numbers
         // via the selection
         nsIFrame* startFrame;
@@ -2452,10 +2444,7 @@ nsPrintEngine::DoPrint(nsPrintObject * aPO)
         nsRect    startRect;
         nsRect    endRect;
 
-        RefPtr<Selection> selectionPS =
-          poPresShell->GetCurrentSelection(nsISelectionController::SELECTION_NORMAL);
-
-        rv = GetPageRangeForSelection(poPresShell, poPresContext, rc, selectionPS, pageSequence,
+        rv = GetPageRangeForSelection(pageSequence,
                                       &startFrame, startPageNum, startRect,
                                       &endFrame, endPageNum, endRect);
         if (NS_SUCCEEDED(rv)) {
@@ -2743,10 +2732,8 @@ nsPrintEngine::PrintPage(nsPrintObject*    aPO,
 /** ---------------------------------------------------
  *  Find by checking frames type
  */
-nsresult 
-nsPrintEngine::FindSelectionBoundsWithList(nsPresContext* aPresContext,
-                                           nsRenderingContext& aRC,
-                                           nsFrameList::Enumerator& aChildFrames,
+nsresult
+nsPrintEngine::FindSelectionBoundsWithList(nsFrameList::Enumerator& aChildFrames,
                                            nsIFrame *      aParentFrame,
                                            nsRect&         aRect,
                                            nsIFrame *&     aStartFrame,
@@ -2754,7 +2741,6 @@ nsPrintEngine::FindSelectionBoundsWithList(nsPresContext* aPresContext,
                                            nsIFrame *&     aEndFrame,
                                            nsRect&         aEndRect)
 {
-  NS_ASSERTION(aPresContext, "Pointer is null!");
   NS_ASSERTION(aParentFrame, "Pointer is null!");
 
   aRect += aParentFrame->GetPosition();
@@ -2770,7 +2756,7 @@ nsPrintEngine::FindSelectionBoundsWithList(nsPresContext* aPresContext,
         aEndRect.SetRect(aRect.x + r.x, aRect.y + r.y, r.width, r.height);
       }
     }
-    FindSelectionBounds(aPresContext, aRC, child, aRect, aStartFrame, aStartRect, aEndFrame, aEndRect);
+    FindSelectionBounds(child, aRect, aStartFrame, aStartRect, aEndFrame, aEndRect);
     child = child->GetNextSibling();
   }
   aRect -= aParentFrame->GetPosition();
@@ -2779,24 +2765,22 @@ nsPrintEngine::FindSelectionBoundsWithList(nsPresContext* aPresContext,
 
 //-------------------------------------------------------
 // Find the Frame that is XMost
-nsresult 
-nsPrintEngine::FindSelectionBounds(nsPresContext* aPresContext,
-                                   nsRenderingContext& aRC,
-                                   nsIFrame *      aParentFrame,
+nsresult
+nsPrintEngine::FindSelectionBounds(nsIFrame *      aParentFrame,
                                    nsRect&         aRect,
                                    nsIFrame *&     aStartFrame,
                                    nsRect&         aStartRect,
                                    nsIFrame *&     aEndFrame,
                                    nsRect&         aEndRect)
 {
-  NS_ASSERTION(aPresContext, "Pointer is null!");
   NS_ASSERTION(aParentFrame, "Pointer is null!");
 
   // loop through named child lists
   nsIFrame::ChildListIterator lists(aParentFrame);
   for (; !lists.IsDone(); lists.Next()) {
     nsFrameList::Enumerator childFrames(lists.CurrentList());
-    nsresult rv = FindSelectionBoundsWithList(aPresContext, aRC, childFrames, aParentFrame, aRect, aStartFrame, aStartRect, aEndFrame, aEndRect);
+    nsresult rv = FindSelectionBoundsWithList(childFrames, aParentFrame, aRect,
+      aStartFrame, aStartRect, aEndFrame, aEndRect);
     NS_ENSURE_SUCCESS(rv, rv);
   }
   return NS_OK;
@@ -2808,12 +2792,8 @@ nsPrintEngine::FindSelectionBounds(nsPresContext* aPresContext,
  *  the x,y of the rect is relative to the very top of the
  *  frame tree (absolutely positioned)
  */
-nsresult 
-nsPrintEngine::GetPageRangeForSelection(nsIPresShell *        aPresShell,
-                                        nsPresContext*       aPresContext,
-                                        nsRenderingContext&  aRC,
-                                        nsISelection*         aSelection,
-                                        nsIPageSequenceFrame* aPageSeqFrame,
+nsresult
+nsPrintEngine::GetPageRangeForSelection(nsIPageSequenceFrame* aPageSeqFrame,
                                         nsIFrame**            aStartFrame,
                                         int32_t&              aStartPageNum,
                                         nsRect&               aStartRect,
@@ -2821,9 +2801,6 @@ nsPrintEngine::GetPageRangeForSelection(nsIPresShell *        aPresShell,
                                         int32_t&              aEndPageNum,
                                         nsRect&               aEndRect)
 {
-  NS_ASSERTION(aPresShell, "Pointer is null!");
-  NS_ASSERTION(aPresContext, "Pointer is null!");
-  NS_ASSERTION(aSelection, "Pointer is null!");
   NS_ASSERTION(aPageSeqFrame, "Pointer is null!");
   NS_ASSERTION(aStartFrame, "Pointer is null!");
   NS_ASSERTION(aEndFrame, "Pointer is null!");
@@ -2840,8 +2817,7 @@ nsPrintEngine::GetPageRangeForSelection(nsIPresShell *        aPresShell,
   // capturing the starting and ending child frames of the selection
   // and their rects
   nsRect r = seqFrame->GetRect();
-  FindSelectionBounds(aPresContext, aRC, seqFrame, r,
-                      startFrame, aStartRect, endFrame, aEndRect);
+  FindSelectionBounds(seqFrame, r, startFrame, aStartRect, endFrame, aEndRect);
 
 #ifdef DEBUG_rodsX
   printf("Start Frame: %p\n", startFrame);

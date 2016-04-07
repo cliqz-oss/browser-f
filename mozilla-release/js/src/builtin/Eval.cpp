@@ -33,7 +33,7 @@ AssertInnerizedScopeChain(JSContext* cx, JSObject& scopeobj)
 #ifdef DEBUG
     RootedObject obj(cx);
     for (obj = &scopeobj; obj; obj = obj->enclosingScope())
-        MOZ_ASSERT(GetInnerObject(obj) == obj);
+        MOZ_ASSERT(!IsWindowProxy(obj));
 #endif
 }
 
@@ -238,12 +238,6 @@ EvalKernel(JSContext* cx, const CallArgs& args, EvalType evalType, AbstractFrame
         return false;
     }
 
-    if (evalType == DIRECT_EVAL && caller.script()->isDerivedClassConstructor()) {
-        JS_ReportErrorNumber(cx, GetErrorMessage, nullptr, JSMSG_DISABLED_DERIVED_CLASS,
-                             "direct eval");
-        return false;
-    }
-
     // ES5 15.1.2.1 step 1.
     if (args.length() < 1) {
         args.rval().setUndefined();
@@ -260,23 +254,8 @@ EvalKernel(JSContext* cx, const CallArgs& args, EvalType evalType, AbstractFrame
     // Per ES5, indirect eval runs in the global scope. (eval is specified this
     // way so that the compiler can make assumptions about what bindings may or
     // may not exist in the current frame if it doesn't see 'eval'.)
-    RootedValue thisv(cx);
-    if (evalType == DIRECT_EVAL) {
-        MOZ_ASSERT_IF(caller.isInterpreterFrame(), !caller.asInterpreterFrame()->runningInJit());
-
-        // Direct calls to eval are supposed to see the caller's |this|. If we
-        // haven't wrapped that yet, do so now, before we make a copy of it for
-        // the eval code to use.
-        if (!ComputeThis(cx, caller))
-            return false;
-        thisv = caller.thisValue();
-    } else {
-        MOZ_ASSERT(args.callee().global() == scopeobj->as<ClonedBlockObject>().global());
-
-        // Use the global as 'this', modulo outerization.
-        if (!GetThisValue(cx, scopeobj, &thisv))
-            return false;
-    }
+    MOZ_ASSERT_IF(evalType != DIRECT_EVAL,
+                  args.callee().global() == scopeobj->as<ClonedBlockObject>().global());
 
     RootedLinearString linearStr(cx, str->ensureLinear(cx));
     if (!linearStr)
@@ -349,15 +328,15 @@ EvalKernel(JSContext* cx, const CallArgs& args, EvalType evalType, AbstractFrame
 
     // Look up the newTarget from the frame iterator.
     Value newTargetVal = NullValue();
-    return ExecuteKernel(cx, esg.script(), *scopeobj, thisv, newTargetVal, ExecuteType(evalType),
+    return ExecuteKernel(cx, esg.script(), *scopeobj, newTargetVal, ExecuteType(evalType),
                          NullFramePtr() /* evalInFrame */, args.rval().address());
 }
 
 bool
 js::DirectEvalStringFromIon(JSContext* cx,
                             HandleObject scopeobj, HandleScript callerScript,
-                            HandleValue thisValue, HandleValue newTargetValue,
-                            HandleString str, jsbytecode* pc, MutableHandleValue vp)
+                            HandleValue newTargetValue, HandleString str,
+                            jsbytecode* pc, MutableHandleValue vp)
 {
     AssertInnerizedScopeChain(cx, *scopeobj);
 
@@ -429,21 +408,7 @@ js::DirectEvalStringFromIon(JSContext* cx,
         esg.setNewScript(compiled);
     }
 
-    // Primitive 'this' values should have been filtered out by Ion. If boxed,
-    // the calling frame cannot be updated to store the new object.
-    MOZ_ASSERT(thisValue.isObject() || thisValue.isUndefined() || thisValue.isNull());
-
-    // When eval'ing strict code in a non-strict context, compute the 'this'
-    // value to use from what the caller passed in. This isn't necessary if
-    // the callee is not strict, as it will compute the non-strict 'this'
-    // value as necessary while it executes.
-    RootedValue nthisValue(cx, thisValue);
-    if (!callerScript->strict() && esg.script()->strict() && !thisValue.isObject()) {
-        if (!BoxNonStrictThis(cx, thisValue, &nthisValue))
-            return false;
-    }
-
-    return ExecuteKernel(cx, esg.script(), *scopeobj, nthisValue, newTargetValue,
+    return ExecuteKernel(cx, esg.script(), *scopeobj, newTargetValue,
                          ExecuteType(DIRECT_EVAL), NullFramePtr() /* evalInFrame */, vp.address());
 }
 
@@ -516,12 +481,8 @@ js::ExecuteInGlobalAndReturnScope(JSContext* cx, HandleObject global, HandleScri
     if (!scope)
         return false;
 
-    RootedValue thisv(cx);
-    if (!GetThisValue(cx, global, &thisv))
-        return false;
-
     RootedValue rval(cx);
-    if (!ExecuteKernel(cx, script, *scope, thisv, UndefinedValue(), EXECUTE_GLOBAL,
+    if (!ExecuteKernel(cx, script, *scope, UndefinedValue(), EXECUTE_GLOBAL,
                        NullFramePtr() /* evalInFrame */, rval.address()))
     {
         return false;

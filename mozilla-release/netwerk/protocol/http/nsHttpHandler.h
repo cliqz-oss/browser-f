@@ -29,6 +29,8 @@ class nsISiteSecurityService;
 class nsIStreamConverterService;
 class nsITimer;
 
+extern mozilla::Atomic<PRThread*, mozilla::Relaxed> gSocketThread;
+
 namespace mozilla {
 namespace net {
 class ATokenBucketEvent;
@@ -475,6 +477,9 @@ private:
     bool           mSafeHintEnabled;
     bool           mParentalControlEnabled;
 
+    // true in between init and shutdown states
+    Atomic<bool, Relaxed> mHandlerActive;
+
     // Whether telemetry is reported or not
     uint32_t           mTelemetryEnabled : 1;
 
@@ -483,9 +488,6 @@ private:
 
     // The value of 'hidden' network.http.debug-observations : 1;
     uint32_t           mDebugObservations : 1;
-
-    // true in between init and shutdown states
-    uint32_t           mHandlerActive : 1;
 
     uint32_t           mEnableSpdy : 1;
     uint32_t           mSpdyV31 : 1;
@@ -563,15 +565,27 @@ public:
     nsresult SubmitPacedRequest(ATokenBucketEvent *event,
                                 nsICancelable **cancel)
     {
-        if (!mRequestTokenBucket)
-            return NS_ERROR_UNEXPECTED;
+        MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
+        if (!mRequestTokenBucket) {
+            return NS_ERROR_NOT_AVAILABLE;
+        }
         return mRequestTokenBucket->SubmitEvent(event, cancel);
     }
 
     // Socket thread only
     void SetRequestTokenBucket(EventTokenBucket *aTokenBucket)
     {
+        MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
         mRequestTokenBucket = aTokenBucket;
+    }
+
+    void StopRequestTokenBucket()
+    {
+        MOZ_ASSERT(PR_GetCurrentThread() == gSocketThread);
+        if (mRequestTokenBucket) {
+            mRequestTokenBucket->Stop();
+            mRequestTokenBucket = nullptr;
+        }
     }
 
 private:

@@ -124,22 +124,13 @@ NS_INTERFACE_MAP_END
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsDOMAttributeMap)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsDOMAttributeMap)
 
-PLDHashOperator
-SetOwnerDocumentFunc(nsAttrHashKey::KeyType aKey,
-                     RefPtr<Attr>& aData,
-                     void* aUserArg)
-{
-  nsresult rv = aData->SetOwnerDocument(static_cast<nsIDocument*>(aUserArg));
-
-  return NS_FAILED(rv) ? PL_DHASH_STOP : PL_DHASH_NEXT;
-}
-
 nsresult
 nsDOMAttributeMap::SetOwnerDocument(nsIDocument* aDocument)
 {
-  uint32_t n = mAttributeCache.Enumerate(SetOwnerDocumentFunc, aDocument);
-  NS_ENSURE_TRUE(n == mAttributeCache.Count(), NS_ERROR_FAILURE);
-
+  for (auto iter = mAttributeCache.Iter(); !iter.Done(); iter.Next()) {
+    nsresult rv = iter.Data()->SetOwnerDocument(aDocument);
+    NS_ENSURE_SUCCESS(rv, NS_ERROR_FAILURE);
+  }
   return NS_OK;
 }
 
@@ -221,7 +212,30 @@ nsDOMAttributeMap::NamedGetter(const nsAString& aAttrName, bool& aFound)
 bool
 nsDOMAttributeMap::NameIsEnumerable(const nsAString& aName)
 {
-  return true;
+  return false;
+}
+
+void
+nsDOMAttributeMap::GetSupportedNames(unsigned aFlags,
+                                     nsTArray<nsString>& aNames)
+{
+  if (!(aFlags & JSITER_HIDDEN)) {
+    return;
+  }
+
+  const uint32_t count = mContent->GetAttrCount();
+  bool seenNonAtomName = false;
+  for (uint32_t i = 0; i < count; i++) {
+    const nsAttrName* name = mContent->GetAttrNameAt(i);
+    seenNonAtomName = seenNonAtomName || !name->IsAtom();
+    nsString qualifiedName;
+    name->GetQualifiedName(qualifiedName);
+
+    if (seenNonAtomName && aNames.Contains(qualifiedName)) {
+      continue;
+    }
+    aNames.AppendElement(qualifiedName);
+  }
 }
 
 Attr*
@@ -249,7 +263,7 @@ nsDOMAttributeMap::SetNamedItem(nsIDOMAttr* aAttr, nsIDOMAttr** aReturn)
   NS_ENSURE_ARG(attribute);
 
   ErrorResult rv;
-  *aReturn = SetNamedItem(*attribute, rv).take();
+  *aReturn = SetNamedItemNS(*attribute, rv).take();
   return rv.StealNSResult();
 }
 
@@ -265,9 +279,7 @@ nsDOMAttributeMap::SetNamedItemNS(nsIDOMAttr* aAttr, nsIDOMAttr** aReturn)
 }
 
 already_AddRefed<Attr>
-nsDOMAttributeMap::SetNamedItemInternal(Attr& aAttr,
-                                        bool aWithNS,
-                                        ErrorResult& aError)
+nsDOMAttributeMap::SetNamedItemNS(Attr& aAttr, ErrorResult& aError)
 {
   NS_ENSURE_TRUE(mContent, nullptr);
 
@@ -302,24 +314,18 @@ nsDOMAttributeMap::SetNamedItemInternal(Attr& aAttr,
   // Get nodeinfo and preexisting attribute (if it exists)
   RefPtr<NodeInfo> oldNi;
 
-  if (!aWithNS) {
-    nsAutoString name;
-    aAttr.GetName(name);
-    oldNi = mContent->GetExistingAttrNameFromQName(name);
-  } else {
-    uint32_t i, count = mContent->GetAttrCount();
-    for (i = 0; i < count; ++i) {
-      const nsAttrName* name = mContent->GetAttrNameAt(i);
-      int32_t attrNS = name->NamespaceID();
-      nsIAtom* nameAtom = name->LocalName();
+  uint32_t i, count = mContent->GetAttrCount();
+  for (i = 0; i < count; ++i) {
+    const nsAttrName* name = mContent->GetAttrNameAt(i);
+    int32_t attrNS = name->NamespaceID();
+    nsIAtom* nameAtom = name->LocalName();
 
-      // we're purposefully ignoring the prefix.
-      if (aAttr.NodeInfo()->Equals(nameAtom, attrNS)) {
-        oldNi = mContent->NodeInfo()->NodeInfoManager()->
-          GetNodeInfo(nameAtom, name->GetPrefix(), aAttr.NodeInfo()->NamespaceID(),
-                      nsIDOMNode::ATTRIBUTE_NODE);
-        break;
-      }
+    // we're purposefully ignoring the prefix.
+    if (aAttr.NodeInfo()->Equals(nameAtom, attrNS)) {
+      oldNi = mContent->NodeInfo()->NodeInfoManager()->
+        GetNodeInfo(nameAtom, name->GetPrefix(), aAttr.NodeInfo()->NamespaceID(),
+                    nsIDOMNode::ATTRIBUTE_NODE);
+      break;
     }
   }
 

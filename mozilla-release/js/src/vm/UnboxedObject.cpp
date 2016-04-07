@@ -793,10 +793,7 @@ UnboxedPlainObject::obj_getProperty(JSContext* cx, HandleObject obj, HandleValue
     if (UnboxedExpandoObject* expando = obj->as<UnboxedPlainObject>().maybeExpando()) {
         if (expando->containsShapeOrElement(cx, id)) {
             RootedObject nexpando(cx, expando);
-            RootedValue nreceiver(cx, receiver);
-            if (receiver.isObject() && &receiver.toObject() == obj)
-                nreceiver.setObject(*expando);
-            return GetProperty(cx, nexpando, nreceiver, id, vp);
+            return GetProperty(cx, nexpando, receiver, id, vp);
         }
     }
 
@@ -834,10 +831,7 @@ UnboxedPlainObject::obj_setProperty(JSContext* cx, HandleObject obj, HandleId id
             AddTypePropertyId(cx, obj, id, v);
 
             RootedObject nexpando(cx, expando);
-            RootedValue nreceiver(cx, (receiver.isObject() && obj == &receiver.toObject())
-                                      ? ObjectValue(*expando)
-                                      : receiver);
-            return SetProperty(cx, nexpando, id, v, nreceiver, result);
+            return SetProperty(cx, nexpando, id, v, receiver, result);
         }
     }
 
@@ -940,7 +934,6 @@ const Class UnboxedPlainObject::class_ = {
         nullptr,   /* No unwatch needed, as watch() converts the object to native */
         nullptr,   /* getElements */
         UnboxedPlainObject::obj_enumerate,
-        nullptr, /* thisObject */
     }
 };
 
@@ -981,7 +974,7 @@ UnboxedArrayObject::convertToNativeWithGroup(ExclusiveContext* cx, JSObject* obj
     aobj->setLastPropertyMakeNative(cx, shape);
 
     // Make sure there is at least one element, so that this array does not
-    // use emptyObjectElements.
+    // use emptyObjectElements / emptyObjectElementsShared.
     if (!aobj->ensureElements(cx, Max<size_t>(initlen, 1)))
         return false;
 
@@ -1061,6 +1054,7 @@ UnboxedArrayObject::create(ExclusiveContext* cx, HandleObjectGroup group, uint32
         res = NewObjectWithGroup<UnboxedArrayObject>(cx, group, allocKind, newKind);
         if (!res)
             return nullptr;
+        res->setInitializedLengthNoBarrier(0);
         res->setInlineElements();
 
         size_t actualCapacity = (GetGCKindBytes(allocKind) - offsetOfInlineElements()) / elementSize;
@@ -1070,6 +1064,7 @@ UnboxedArrayObject::create(ExclusiveContext* cx, HandleObjectGroup group, uint32
         res = NewObjectWithGroup<UnboxedArrayObject>(cx, group, gc::AllocKind::OBJECT0, newKind);
         if (!res)
             return nullptr;
+        res->setInitializedLengthNoBarrier(0);
 
         uint32_t capacityIndex = (capacity == length)
                                  ? CapacityMatchesLengthIndex
@@ -1080,7 +1075,6 @@ UnboxedArrayObject::create(ExclusiveContext* cx, HandleObjectGroup group, uint32
         if (!res->elements_) {
             // Make the object safe for GC.
             res->setInlineElements();
-            res->setInitializedLength(0);
             return nullptr;
         }
 
@@ -1088,7 +1082,6 @@ UnboxedArrayObject::create(ExclusiveContext* cx, HandleObjectGroup group, uint32
     }
 
     res->setLength(cx, length);
-    res->setInitializedLength(0);
     return res;
 }
 
@@ -1613,8 +1606,6 @@ const Class UnboxedArrayObject::class_ = {
     UnboxedArrayObject::trace,
     JS_NULL_CLASS_SPEC,
     {
-        nullptr,    /* outerObject */
-        nullptr,    /* innerObject */
         false,      /* isWrappedNative */
         nullptr,    /* weakmapKeyDelegateOp */
         UnboxedArrayObject::objectMoved
@@ -1631,7 +1622,6 @@ const Class UnboxedArrayObject::class_ = {
         nullptr,   /* No unwatch needed, as watch() converts the object to native */
         nullptr,   /* getElements */
         UnboxedArrayObject::obj_enumerate,
-        nullptr,   /* thisObject */
     }
 };
 
@@ -1923,7 +1913,7 @@ js::TryConvertToUnboxedLayout(ExclusiveContext* cx, Shape* templateShape,
         return true;
 #endif
     } else {
-        if (jit::js_JitOptions.disableUnboxedObjects)
+        if (jit::JitOptions.disableUnboxedObjects)
             return true;
     }
 

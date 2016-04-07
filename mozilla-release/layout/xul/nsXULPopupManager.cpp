@@ -470,10 +470,11 @@ nsXULPopupManager::PopupMoved(nsIFrame* aFrame, nsIntPoint aPnt)
 
   // Don't do anything if the popup is already at the specified location. This
   // prevents recursive calls when a popup is positioned.
-  nsIntRect curDevSize = view->CalcWidgetBounds(eWindowType_popup);
+  LayoutDeviceIntRect curDevSize = view->CalcWidgetBounds(eWindowType_popup);
   nsIWidget* widget = menuPopupFrame->GetWidget();
   if (curDevSize.x == aPnt.x && curDevSize.y == aPnt.y &&
-      (!widget || widget->GetClientOffset() == menuPopupFrame->GetLastClientOffset())) {
+      (!widget || widget->GetClientOffset() ==
+                  menuPopupFrame->GetLastClientOffset())) {
     return;
   }
 
@@ -486,7 +487,7 @@ nsXULPopupManager::PopupMoved(nsIFrame* aFrame, nsIntPoint aPnt)
     menuPopupFrame->SetPopupPosition(nullptr, true, false);
   }
   else {
-    CSSPoint cssPos = LayoutDeviceIntPoint::FromUntyped(aPnt)
+    CSSPoint cssPos = LayoutDeviceIntPoint::FromUnknownPoint(aPnt)
                     / menuPopupFrame->PresContext()->CSSToDevPixelScale();
     menuPopupFrame->MoveTo(RoundedToInt(cssPos), false);
   }
@@ -503,7 +504,7 @@ nsXULPopupManager::PopupResized(nsIFrame* aFrame, LayoutDeviceIntSize aSize)
   if (!view)
     return;
 
-  nsIntRect curDevSize = view->CalcWidgetBounds(eWindowType_popup);
+  LayoutDeviceIntRect curDevSize = view->CalcWidgetBounds(eWindowType_popup);
   // If the size is what we think it is, we have nothing to do.
   if (curDevSize.width == aSize.width && curDevSize.height == aSize.height)
     return;
@@ -2319,7 +2320,7 @@ nsXULPopupManager::GetNextMenuItem(nsContainerFrame* aParent,
   while (currFrame) {
     // See if it's a menu item.
     nsIContent* currFrameContent = currFrame->GetContent();
-    if (IsValidMenuItem(presContext, currFrameContent, aIsPopup)) {
+    if (IsValidMenuItem(currFrameContent, aIsPopup)) {
       return do_QueryFrame(currFrame);
     }
     if (currFrameContent->IsXULElement(nsGkAtoms::menugroup) &&
@@ -2338,7 +2339,7 @@ nsXULPopupManager::GetNextMenuItem(nsContainerFrame* aParent,
   while (currFrame && currFrame != aStart) {
     // See if it's a menu item.
     nsIContent* currFrameContent = currFrame->GetContent();
-    if (IsValidMenuItem(presContext, currFrameContent, aIsPopup)) {
+    if (IsValidMenuItem(currFrameContent, aIsPopup)) {
       return do_QueryFrame(currFrame);
     }
     if (currFrameContent->IsXULElement(nsGkAtoms::menugroup) &&
@@ -2382,7 +2383,7 @@ nsXULPopupManager::GetPreviousMenuItem(nsContainerFrame* aParent,
   while (currFrame) {
     // See if it's a menu item.
     nsIContent* currFrameContent = currFrame->GetContent();
-    if (IsValidMenuItem(presContext, currFrameContent, aIsPopup)) {
+    if (IsValidMenuItem(currFrameContent, aIsPopup)) {
       return do_QueryFrame(currFrame);
     }
     if (currFrameContent->IsXULElement(nsGkAtoms::menugroup) &&
@@ -2403,7 +2404,7 @@ nsXULPopupManager::GetPreviousMenuItem(nsContainerFrame* aParent,
   while (currFrame && currFrame != aStart) {
     // See if it's a menu item.
     nsIContent* currFrameContent = currFrame->GetContent();
-    if (IsValidMenuItem(presContext, currFrameContent, aIsPopup)) {
+    if (IsValidMenuItem(currFrameContent, aIsPopup)) {
       return do_QueryFrame(currFrame);
     }
     if (currFrameContent->IsXULElement(nsGkAtoms::menugroup) &&
@@ -2423,9 +2424,7 @@ nsXULPopupManager::GetPreviousMenuItem(nsContainerFrame* aParent,
 }
 
 bool
-nsXULPopupManager::IsValidMenuItem(nsPresContext* aPresContext,
-                                   nsIContent* aContent,
-                                   bool aOnPopup)
+nsXULPopupManager::IsValidMenuItem(nsIContent* aContent, bool aOnPopup)
 {
   if (aContent->IsXULElement()) {
     if (!aContent->IsAnyOfXULElements(nsGkAtoms::menu, nsGkAtoms::menuitem)) {

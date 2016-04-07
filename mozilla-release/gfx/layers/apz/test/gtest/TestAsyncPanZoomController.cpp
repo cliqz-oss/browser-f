@@ -67,7 +67,6 @@ public:
   MOCK_METHOD3(HandleDoubleTap, void(const CSSPoint&, Modifiers, const ScrollableLayerGuid&));
   MOCK_METHOD3(HandleSingleTap, void(const CSSPoint&, Modifiers, const ScrollableLayerGuid&));
   MOCK_METHOD4(HandleLongTap, void(const CSSPoint&, Modifiers, const ScrollableLayerGuid&, uint64_t));
-  MOCK_METHOD3(SendAsyncScrollDOMEvent, void(bool aIsRoot, const CSSRect &aContentRect, const CSSSize &aScrollableSize));
   MOCK_METHOD2(PostDelayedTask, void(Task* aTask, int aDelayMs));
   MOCK_METHOD3(NotifyAPZStateChange, void(const ScrollableLayerGuid& aGuid, APZStateChange aChange, int aArg));
   MOCK_METHOD0(NotifyFlushComplete, void());
@@ -394,6 +393,21 @@ public:
     : APZCBasicTester(AsyncPanZoomController::USE_GESTURE_DETECTOR)
   {
   }
+
+protected:
+  FrameMetrics GetPinchableFrameMetrics()
+  {
+    FrameMetrics fm;
+    fm.SetCompositionBounds(ParentLayerRect(200, 200, 100, 200));
+    fm.SetScrollableRect(CSSRect(0, 0, 980, 1000));
+    fm.SetScrollOffset(CSSPoint(300, 300));
+    fm.SetZoom(CSSToParentLayerScale2D(2.0, 2.0));
+    // APZC only allows zooming on the root scrollable frame.
+    fm.SetIsRootContent(true);
+    // the visible area of the document in CSS pixels is x=300 y=300 w=50 h=100
+    return fm;
+  }
+
 };
 
 /* The InputReceiver template parameter used in the helper functions below needs
@@ -534,11 +548,12 @@ Pan(const RefPtr<InputReceiver>& aTarget,
     nsEventStatus (*aOutEventStatuses)[4] = nullptr,
     uint64_t* aOutInputBlockId = nullptr)
 {
-  // Reduce the touch start tolerance to a tiny value.
+  // Reduce the touch start and move tolerance to a tiny value.
   // We can't use a scoped pref because this value might be read at some later
   // time when the events are actually processed, rather than when we deliver
   // them.
   gfxPrefs::SetAPZTouchStartTolerance(1.0f / 1000.0f);
+  gfxPrefs::SetAPZTouchMoveTolerance(0.0f);
   const int OVERCOME_TOUCH_TOLERANCE = 1;
 
   const TimeDuration TIME_BETWEEN_TOUCH_EVENT = TimeDuration::FromMilliseconds(50);
@@ -804,10 +819,8 @@ protected:
     MakeApzcZoomable();
 
     if (aShouldTriggerPinch) {
-      EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(AtLeast(1));
       EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(1);
     } else {
-      EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(AtMost(2));
       EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(0);
     }
 
@@ -926,6 +939,157 @@ TEST_F(APZCPinchGestureDetectorTester, Pinch_PreventDefault) {
   apzc->AssertStateIsReset();
 }
 
+TEST_F(APZCGestureDetectorTester, Pan_After_Pinch) {
+  SCOPED_GFX_PREF(TouchActionEnabled, bool, false);
+
+  FrameMetrics originalMetrics = GetPinchableFrameMetrics();
+  apzc->SetFrameMetrics(originalMetrics);
+
+  MakeApzcZoomable();
+
+  // Test parameters
+  float zoomAmount = 1.25;
+  float pinchLength = 100.0;
+  float pinchLengthScaled = pinchLength * zoomAmount;
+  int focusX = 250;
+  int focusY = 300;
+  int panDistance = 20;
+
+  int firstFingerId = 0;
+  int secondFingerId = firstFingerId + 1;
+
+  // Put fingers down
+  MultiTouchInput mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_START, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, focusX, focusY));
+  mti.mTouches.AppendElement(CreateSingleTouchData(secondFingerId, focusX, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Spread fingers out to enter the pinch state
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, focusX - pinchLength, focusY));
+  mti.mTouches.AppendElement(CreateSingleTouchData(secondFingerId, focusX + pinchLength, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Do the actual pinch of 1.25x
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, focusX - pinchLengthScaled, focusY));
+  mti.mTouches.AppendElement(CreateSingleTouchData(secondFingerId, focusX + pinchLengthScaled, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Verify that the zoom changed, just to make sure our code above did what it
+  // was supposed to.
+  FrameMetrics zoomedMetrics = apzc->GetFrameMetrics();
+  float newZoom = zoomedMetrics.GetZoom().ToScaleFactor().scale;
+  EXPECT_EQ(originalMetrics.GetZoom().ToScaleFactor().scale * zoomAmount, newZoom);
+
+  // Now we lift one finger...
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(secondFingerId, focusX + pinchLengthScaled, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // ... and pan with the remaining finger. This pan just breaks through the
+  // distance threshold.
+  focusY += 40;
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, focusX - pinchLengthScaled, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // This one does an actual pan of 20 pixels
+  focusY += panDistance;
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, focusX - pinchLengthScaled, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Lift the remaining finger
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, focusX - pinchLengthScaled, focusY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Verify that we scrolled
+  FrameMetrics finalMetrics = apzc->GetFrameMetrics();
+  EXPECT_EQ(zoomedMetrics.GetScrollOffset().y - (panDistance / newZoom), finalMetrics.GetScrollOffset().y);
+
+  // Clear out any remaining fling animation and pending tasks
+  apzc->AdvanceAnimationsUntilEnd();
+  while (mcc->RunThroughDelayedTasks());
+  apzc->AssertStateIsReset();
+}
+
+TEST_F(APZCGestureDetectorTester, Pan_With_Tap) {
+  SCOPED_GFX_PREF(TouchActionEnabled, bool, false);
+
+  FrameMetrics originalMetrics = GetPinchableFrameMetrics();
+  apzc->SetFrameMetrics(originalMetrics);
+
+  // Making the APZC zoomable isn't really needed for the correct operation of
+  // this test, but it could help catch regressions where we accidentally enter
+  // a pinch state.
+  MakeApzcZoomable();
+
+  // Test parameters
+  int touchX = 250;
+  int touchY = 300;
+  int panDistance = 20;
+
+  int firstFingerId = 0;
+  int secondFingerId = firstFingerId + 1;
+
+  // Put finger down
+  MultiTouchInput mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_START, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Start a pan, break through the threshold
+  touchY += 40;
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Do an actual pan for a bit
+  touchY += panDistance;
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Put a second finger down
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_START, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  mti.mTouches.AppendElement(CreateSingleTouchData(secondFingerId, touchX + 10, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Lift the second finger
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(secondFingerId, touchX + 10, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Bust through the threshold again
+  touchY += 40;
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Do some more actual panning
+  touchY += panDistance;
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_MOVE, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Lift the first finger
+  mti = MultiTouchInput(MultiTouchInput::MULTITOUCH_END, 0, TimeStamp(), 0);
+  mti.mTouches.AppendElement(CreateSingleTouchData(firstFingerId, touchX, touchY));
+  apzc->ReceiveInputEvent(mti, nullptr);
+
+  // Verify that we scrolled
+  FrameMetrics finalMetrics = apzc->GetFrameMetrics();
+  float zoom = finalMetrics.GetZoom().ToScaleFactor().scale;
+  EXPECT_EQ(originalMetrics.GetScrollOffset().y - (panDistance * 2 / zoom), finalMetrics.GetScrollOffset().y);
+
+  // Clear out any remaining fling animation and pending tasks
+  apzc->AdvanceAnimationsUntilEnd();
+  while (mcc->RunThroughDelayedTasks());
+  apzc->AssertStateIsReset();
+}
+
 TEST_F(APZCBasicTester, Overzoom) {
   // the visible area of the document in CSS pixels is x=10 y=0 w=100 h=100
   FrameMetrics fm;
@@ -938,7 +1102,6 @@ TEST_F(APZCBasicTester, Overzoom) {
 
   MakeApzcZoomable();
 
-  EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(AtLeast(1));
   EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(1);
 
   PinchWithPinchInputAndCheckStatus(apzc, 50, 50, 0.5, true);
@@ -1085,10 +1248,8 @@ protected:
   void DoPanTest(bool aShouldTriggerScroll, bool aShouldBeConsumed, uint32_t aBehavior)
   {
     if (aShouldTriggerScroll) {
-      EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(AtLeast(1));
       EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(1);
     } else {
-      EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(0);
       EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(0);
     }
 
@@ -1196,7 +1357,6 @@ TEST_F(APZCPanningTester, PanWithPreventDefault) {
 }
 
 TEST_F(APZCBasicTester, Fling) {
-  EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(AtLeast(1));
   EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(1);
 
   int touchStart = 50;
@@ -1610,7 +1770,6 @@ protected:
   void DoLongPressPreventDefaultTest(uint32_t aBehavior) {
     MakeApzcUnzoomable();
 
-    EXPECT_CALL(*mcc, SendAsyncScrollDOMEvent(_,_,_)).Times(0);
     EXPECT_CALL(*mcc, RequestContentRepaint(_)).Times(0);
 
     int touchX = 10,
@@ -1922,7 +2081,7 @@ protected:
     if (aScrollId == FrameMetrics::START_SCROLL_ID) {
       metrics.SetIsLayersIdRoot(true);
     }
-    IntRect layerBound = aLayer->GetVisibleRegion().GetBounds();
+    IntRect layerBound = aLayer->GetVisibleRegion().ToUnknownRegion().GetBounds();
     metrics.SetCompositionBounds(ParentLayerRect(layerBound.x, layerBound.y,
                                                  layerBound.width, layerBound.height));
     metrics.SetScrollableRect(aScrollableRect);
@@ -1936,7 +2095,7 @@ protected:
       // case of a scrollable frame with the event regions and clip. This lets
       // us exercise the hit-testing code in APZCTreeManager
       EventRegions er = aLayer->GetEventRegions();
-      IntRect scrollRect = LayerIntRect::ToUntyped(RoundedToInt(aScrollableRect * metrics.LayersPixelsPerCSSPixel()));
+      IntRect scrollRect = RoundedToInt(aScrollableRect * metrics.LayersPixelsPerCSSPixel()).ToUnknownRect();
       er.mHitRegion = nsIntRegion(IntRect(layerBound.TopLeft(), scrollRect.Size()));
       aLayer->SetEventRegions(er);
     }
@@ -2025,8 +2184,8 @@ protected:
 
 class APZHitTestingTester : public APZCTreeManagerTester {
 protected:
-  Matrix4x4 transformToApzc;
-  Matrix4x4 transformToGecko;
+  ScreenToParentLayerMatrix4x4 transformToApzc;
+  ParentLayerToScreenMatrix4x4 transformToGecko;
 
   already_AddRefed<AsyncPanZoomController> GetTargetAPZC(const ScreenPoint& aPoint) {
     RefPtr<AsyncPanZoomController> hit = manager->GetTargetAPZC(aPoint, nullptr);
@@ -2119,8 +2278,8 @@ TEST_F(APZHitTestingTester, HitTesting1) {
   RefPtr<AsyncPanZoomController> hit = GetTargetAPZC(ScreenPoint(20, 20));
   TestAsyncPanZoomController* nullAPZC = nullptr;
   EXPECT_EQ(nullAPZC, hit.get());
-  EXPECT_EQ(Matrix4x4(), transformToApzc);
-  EXPECT_EQ(Matrix4x4(), transformToGecko);
+  EXPECT_EQ(ScreenToParentLayerMatrix4x4(), transformToApzc);
+  EXPECT_EQ(ParentLayerToScreenMatrix4x4(), transformToGecko);
 
   uint32_t paintSequenceNumber = 0;
 
@@ -2130,8 +2289,8 @@ TEST_F(APZHitTestingTester, HitTesting1) {
   hit = GetTargetAPZC(ScreenPoint(15, 15));
   EXPECT_EQ(ApzcOf(root), hit.get());
   // expect hit point at LayerIntPoint(15, 15)
-  EXPECT_EQ(Point(15, 15), transformToApzc * Point(15, 15));
-  EXPECT_EQ(Point(15, 15), transformToGecko * Point(15, 15));
+  EXPECT_EQ(ParentLayerPoint(15, 15), transformToApzc * ScreenPoint(15, 15));
+  EXPECT_EQ(ScreenPoint(15, 15), transformToGecko * ParentLayerPoint(15, 15));
 
   // Now we have a sub APZC with a better fit
   SetScrollableFrameMetrics(layers[3], FrameMetrics::START_SCROLL_ID + 1);
@@ -2140,8 +2299,8 @@ TEST_F(APZHitTestingTester, HitTesting1) {
   hit = GetTargetAPZC(ScreenPoint(25, 25));
   EXPECT_EQ(ApzcOf(layers[3]), hit.get());
   // expect hit point at LayerIntPoint(25, 25)
-  EXPECT_EQ(Point(25, 25), transformToApzc * Point(25, 25));
-  EXPECT_EQ(Point(25, 25), transformToGecko * Point(25, 25));
+  EXPECT_EQ(ParentLayerPoint(25, 25), transformToApzc * ScreenPoint(25, 25));
+  EXPECT_EQ(ScreenPoint(25, 25), transformToGecko * ParentLayerPoint(25, 25));
 
   // At this point, layers[4] obscures layers[3] at the point (15, 15) so
   // hitting there should hit the root APZC
@@ -2154,25 +2313,25 @@ TEST_F(APZHitTestingTester, HitTesting1) {
   hit = GetTargetAPZC(ScreenPoint(15, 15));
   EXPECT_EQ(ApzcOf(layers[4]), hit.get());
   // expect hit point at LayerIntPoint(15, 15)
-  EXPECT_EQ(Point(15, 15), transformToApzc * Point(15, 15));
-  EXPECT_EQ(Point(15, 15), transformToGecko * Point(15, 15));
+  EXPECT_EQ(ParentLayerPoint(15, 15), transformToApzc * ScreenPoint(15, 15));
+  EXPECT_EQ(ScreenPoint(15, 15), transformToGecko * ParentLayerPoint(15, 15));
 
   // Hit test ouside the reach of layer[3,4] but inside root
   hit = GetTargetAPZC(ScreenPoint(90, 90));
   EXPECT_EQ(ApzcOf(root), hit.get());
   // expect hit point at LayerIntPoint(90, 90)
-  EXPECT_EQ(Point(90, 90), transformToApzc * Point(90, 90));
-  EXPECT_EQ(Point(90, 90), transformToGecko * Point(90, 90));
+  EXPECT_EQ(ParentLayerPoint(90, 90), transformToApzc * ScreenPoint(90, 90));
+  EXPECT_EQ(ScreenPoint(90, 90), transformToGecko * ParentLayerPoint(90, 90));
 
   // Hit test ouside the reach of any layer
   hit = GetTargetAPZC(ScreenPoint(1000, 10));
   EXPECT_EQ(nullAPZC, hit.get());
-  EXPECT_EQ(Matrix4x4(), transformToApzc);
-  EXPECT_EQ(Matrix4x4(), transformToGecko);
+  EXPECT_EQ(ScreenToParentLayerMatrix4x4(), transformToApzc);
+  EXPECT_EQ(ParentLayerToScreenMatrix4x4(), transformToGecko);
   hit = GetTargetAPZC(ScreenPoint(-1000, 10));
   EXPECT_EQ(nullAPZC, hit.get());
-  EXPECT_EQ(Matrix4x4(), transformToApzc);
-  EXPECT_EQ(Matrix4x4(), transformToGecko);
+  EXPECT_EQ(ScreenToParentLayerMatrix4x4(), transformToApzc);
+  EXPECT_EQ(ParentLayerToScreenMatrix4x4(), transformToGecko);
 }
 
 // A more involved hit testing test that involves css and async transforms.
@@ -2195,8 +2354,8 @@ TEST_F(APZHitTestingTester, HitTesting2) {
   // Hit an area that's clearly on the root layer but not any of the child layers.
   RefPtr<AsyncPanZoomController> hit = GetTargetAPZC(ScreenPoint(75, 25));
   EXPECT_EQ(apzcroot, hit.get());
-  EXPECT_EQ(Point(75, 25), transformToApzc * Point(75, 25));
-  EXPECT_EQ(Point(75, 25), transformToGecko * Point(75, 25));
+  EXPECT_EQ(ParentLayerPoint(75, 25), transformToApzc * ScreenPoint(75, 25));
+  EXPECT_EQ(ScreenPoint(75, 25), transformToGecko * ParentLayerPoint(75, 25));
 
   // Hit an area on the root that would be on layers[3] if layers[2]
   // weren't transformed.
@@ -2207,31 +2366,31 @@ TEST_F(APZHitTestingTester, HitTesting2) {
   // start at x=10 but its content at x=20).
   hit = GetTargetAPZC(ScreenPoint(15, 75));
   EXPECT_EQ(apzcroot, hit.get());
-  EXPECT_EQ(Point(15, 75), transformToApzc * Point(15, 75));
-  EXPECT_EQ(Point(15, 75), transformToGecko * Point(15, 75));
+  EXPECT_EQ(ParentLayerPoint(15, 75), transformToApzc * ScreenPoint(15, 75));
+  EXPECT_EQ(ScreenPoint(15, 75), transformToGecko * ParentLayerPoint(15, 75));
 
   // Hit an area on layers[1].
   hit = GetTargetAPZC(ScreenPoint(25, 25));
   EXPECT_EQ(apzc1, hit.get());
-  EXPECT_EQ(Point(25, 25), transformToApzc * Point(25, 25));
-  EXPECT_EQ(Point(25, 25), transformToGecko * Point(25, 25));
+  EXPECT_EQ(ParentLayerPoint(25, 25), transformToApzc * ScreenPoint(25, 25));
+  EXPECT_EQ(ScreenPoint(25, 25), transformToGecko * ParentLayerPoint(25, 25));
 
   // Hit an area on layers[3].
   hit = GetTargetAPZC(ScreenPoint(25, 75));
   EXPECT_EQ(apzc3, hit.get());
   // transformToApzc should unapply layers[2]'s transform
-  EXPECT_EQ(Point(12.5, 75), transformToApzc * Point(25, 75));
+  EXPECT_EQ(ParentLayerPoint(12.5, 75), transformToApzc * ScreenPoint(25, 75));
   // and transformToGecko should reapply it
-  EXPECT_EQ(Point(25, 75), transformToGecko * Point(12.5, 75));
+  EXPECT_EQ(ScreenPoint(25, 75), transformToGecko * ParentLayerPoint(12.5, 75));
 
   // Hit an area on layers[3] that would be on the root if layers[2]
   // weren't transformed.
   hit = GetTargetAPZC(ScreenPoint(75, 75));
   EXPECT_EQ(apzc3, hit.get());
   // transformToApzc should unapply layers[2]'s transform
-  EXPECT_EQ(Point(37.5, 75), transformToApzc * Point(75, 75));
+  EXPECT_EQ(ParentLayerPoint(37.5, 75), transformToApzc * ScreenPoint(75, 75));
   // and transformToGecko should reapply it
-  EXPECT_EQ(Point(75, 75), transformToGecko * Point(37.5, 75));
+  EXPECT_EQ(ScreenPoint(75, 75), transformToGecko * ParentLayerPoint(37.5, 75));
 
   // Pan the root layer upward by 50 pixels.
   // This causes layers[1] to scroll out of view, and an async transform
@@ -2247,21 +2406,21 @@ TEST_F(APZHitTestingTester, HitTesting2) {
   hit = GetTargetAPZC(ScreenPoint(75, 75));
   EXPECT_EQ(apzcroot, hit.get());
   // transformToApzc doesn't unapply the root's own async transform
-  EXPECT_EQ(Point(75, 75), transformToApzc * Point(75, 75));
+  EXPECT_EQ(ParentLayerPoint(75, 75), transformToApzc * ScreenPoint(75, 75));
   // and transformToGecko unapplies it and then reapplies it, because by the
   // time the event being transformed reaches Gecko the new paint request will
   // have been handled.
-  EXPECT_EQ(Point(75, 75), transformToGecko * Point(75, 75));
+  EXPECT_EQ(ScreenPoint(75, 75), transformToGecko * ParentLayerPoint(75, 75));
 
   // Hit where layers[1] used to be and where layers[3] should now be.
   hit = GetTargetAPZC(ScreenPoint(25, 25));
   EXPECT_EQ(apzc3, hit.get());
   // transformToApzc unapplies both layers[2]'s css transform and the root's
   // async transform
-  EXPECT_EQ(Point(12.5, 75), transformToApzc * Point(25, 25));
+  EXPECT_EQ(ParentLayerPoint(12.5, 75), transformToApzc * ScreenPoint(25, 25));
   // transformToGecko reapplies both the css transform and the async transform
   // because we have already issued a paint request with it.
-  EXPECT_EQ(Point(25, 25), transformToGecko * Point(12.5, 75));
+  EXPECT_EQ(ScreenPoint(25, 25), transformToGecko * ParentLayerPoint(12.5, 75));
 
   // This second pan will move the APZC by another 50 pixels but since the paint
   // request dispatched above has not "completed", we will not dispatch another
@@ -2273,19 +2432,19 @@ TEST_F(APZHitTestingTester, HitTesting2) {
   hit = GetTargetAPZC(ScreenPoint(75, 75));
   EXPECT_EQ(apzcroot, hit.get());
   // transformToApzc doesn't unapply the root's own async transform
-  EXPECT_EQ(Point(75, 75), transformToApzc * Point(75, 75));
+  EXPECT_EQ(ParentLayerPoint(75, 75), transformToApzc * ScreenPoint(75, 75));
   // transformToGecko unapplies the full async transform of -100 pixels, and then
   // reapplies the "D" transform of -50 leading to an overall adjustment of +50
-  EXPECT_EQ(Point(75, 125), transformToGecko * Point(75, 75));
+  EXPECT_EQ(ScreenPoint(75, 125), transformToGecko * ParentLayerPoint(75, 75));
 
   // Hit where layers[1] used to be. It should now hit the root.
   hit = GetTargetAPZC(ScreenPoint(25, 25));
   EXPECT_EQ(apzcroot, hit.get());
   // transformToApzc doesn't unapply the root's own async transform
-  EXPECT_EQ(Point(25, 25), transformToApzc * Point(25, 25));
+  EXPECT_EQ(ParentLayerPoint(25, 25), transformToApzc * ScreenPoint(25, 25));
   // transformToGecko unapplies the full async transform of -100 pixels, and then
   // reapplies the "D" transform of -50 leading to an overall adjustment of +50
-  EXPECT_EQ(Point(25, 75), transformToGecko * Point(25, 25));
+  EXPECT_EQ(ScreenPoint(25, 75), transformToGecko * ParentLayerPoint(25, 25));
 }
 
 TEST_F(APZCTreeManagerTester, ScrollablePaintedLayers) {
@@ -2597,7 +2756,7 @@ TEST_F(APZHitTestingTester, Bug1148350) {
   }
   mcc->AdvanceByMillis(100);
 
-  layers[0]->SetVisibleRegion(nsIntRegion(IntRect(0,50,200,150)));
+  layers[0]->SetVisibleRegion(LayerIntRegion(LayerIntRect(0,50,200,150)));
   layers[0]->SetBaseTransform(Matrix4x4::Translation(0, 50, 0));
   manager->UpdateHitTestingTree(nullptr, root, false, 0, 0);
 

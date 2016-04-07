@@ -7,6 +7,9 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
 
+#include "mozilla/IntegerPrintfMacros.h"
+#include "mozilla/Snprintf.h"
+
 #include "nsCache.h"
 #include "nsDiskCache.h"
 #include "nsDiskCacheDeviceSQL.h"
@@ -46,7 +49,7 @@
 
 using namespace mozilla;
 using namespace mozilla::storage;
-using mozilla::OriginAttributes;
+using mozilla::NeckoOriginAttributes;
 
 static const char OFFLINE_CACHE_DEVICE_ID[] = { "offline" };
 
@@ -411,7 +414,7 @@ nsOfflineCacheBinding::Create(nsIFile *cacheDir,
 
     for (generation = 0; ; ++generation)
     {
-      PR_snprintf(leaf, sizeof(leaf), "%014llX-%X", hash, generation);
+      snprintf_literal(leaf, "%014" PRIX64 "-%X", hash, generation);
 
       rv = file->SetNativeLeafName(nsDependentCString(leaf));
       if (NS_FAILED(rv))
@@ -425,7 +428,7 @@ nsOfflineCacheBinding::Create(nsIFile *cacheDir,
   }
   else
   {
-    PR_snprintf(leaf, sizeof(leaf), "%014llX-%X", hash, generation);
+    snprintf_literal(leaf, "%014" PRIX64 "-%X", hash, generation);
     rv = file->AppendNative(nsDependentCString(leaf));
     if (NS_FAILED(rv))
       return nullptr;
@@ -1301,10 +1304,11 @@ GetGroupForCache(const nsCSubstring &clientID, nsCString &group)
 }
 
 void
-AppendJARIdentifier(nsACString &_result, OriginAttributes const *aOriginAttributes)
+AppendJARIdentifier(nsACString &_result, NeckoOriginAttributes const *aOriginAttributes)
 {
   nsAutoCString suffix;
   aOriginAttributes->CreateSuffix(suffix);
+  _result.Append('#');
   _result.Append(suffix);
 }
 
@@ -1313,7 +1317,7 @@ AppendJARIdentifier(nsACString &_result, OriginAttributes const *aOriginAttribut
 // static
 nsresult
 nsOfflineCacheDevice::BuildApplicationCacheGroupID(nsIURI *aManifestURL,
-                                                   OriginAttributes const *aOriginAttributes,
+                                                   NeckoOriginAttributes const *aOriginAttributes,
                                                    nsACString &_result)
 {
   nsCOMPtr<nsIURI> newURI;
@@ -1361,22 +1365,6 @@ nsOfflineCacheDevice::InitActiveCaches()
   return NS_OK;
 }
 
-/* static */
-PLDHashOperator
-nsOfflineCacheDevice::ShutdownApplicationCache(const nsACString &key,
-                                               nsIWeakReference *weakRef,
-                                               void *ctx)
-{
-  nsCOMPtr<nsIApplicationCache> obj = do_QueryReferent(weakRef);
-  if (obj)
-  {
-    nsApplicationCache *appCache = static_cast<nsApplicationCache*>(obj.get());
-    appCache->MarkInvalid();
-  }
-
-  return PL_DHASH_NEXT;
-}
-
 nsresult
 nsOfflineCacheDevice::Shutdown()
 {
@@ -1384,7 +1372,13 @@ nsOfflineCacheDevice::Shutdown()
 
   {
     MutexAutoLock lock(mLock);
-    mCaches.EnumerateRead(ShutdownApplicationCache, this);
+    for (auto iter = mCaches.Iter(); !iter.Done(); iter.Next()) {
+      nsCOMPtr<nsIApplicationCache> obj = do_QueryReferent(iter.UserData());
+      if (obj) {
+        auto appCache = static_cast<nsApplicationCache*>(obj.get());
+        appCache->MarkInvalid();
+      }
+    }
   }
 
   {
@@ -2417,11 +2411,11 @@ nsOfflineCacheDevice::DiscardByAppId(int32_t appID, bool browserEntriesOnly)
 
   jaridsuffix.Append('%');
 
-  // TODO - this method should accept OriginAttributes* from outside instead.
+  // TODO - this method should accept NeckoOriginAttributes* from outside instead.
   // If passed null, we should then delegate to
   // nsCacheService::GlobalInstance()->EvictEntriesInternal(nsICache::STORE_OFFLINE);
 
-  OriginAttributes oa;
+  NeckoOriginAttributes oa;
   oa.mAppId = appID;
   oa.mInBrowser = browserEntriesOnly;
   AppendJARIdentifier(jaridsuffix, &oa);
@@ -2501,7 +2495,7 @@ nsOfflineCacheDevice::CanUseCache(nsIURI *keyURI,
   // This is check of extended origin.
   nsAutoCString demandedGroupID;
 
-  const OriginAttributes *oa = loadContextInfo
+  const NeckoOriginAttributes *oa = loadContextInfo
     ? loadContextInfo->OriginAttributesPtr()
     : nullptr;
   rv = BuildApplicationCacheGroupID(groupURI, oa, demandedGroupID);

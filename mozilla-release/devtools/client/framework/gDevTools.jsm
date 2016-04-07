@@ -23,7 +23,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
 loader.lazyRequireGetter(this, "DebuggerServer", "devtools/server/main", true);
 loader.lazyRequireGetter(this, "DebuggerClient", "devtools/shared/client/main", true);
 
-const DefaultTools = require("devtools/client/definitions").defaultTools;
+const {defaultTools: DefaultTools, defaultThemes: DefaultThemes} =
+  require("devtools/client/definitions");
 const EventEmitter = require("devtools/shared/event-emitter");
 const Telemetry = require("devtools/client/shared/telemetry");
 const {JsonView} = require("devtools/client/jsonview/main");
@@ -36,7 +37,7 @@ const TABS_PINNED_AVG_HISTOGRAM = "DEVTOOLS_TABS_PINNED_AVERAGE_LINEAR";
 const FORBIDDEN_IDS = new Set(["toolbox", ""]);
 const MAX_ORDINAL = 99;
 
-const bundle = Services.strings.createBundle("chrome://browser/locale/devtools/toolbox.properties");
+const bundle = Services.strings.createBundle("chrome://devtools/locale/toolbox.properties");
 
 /**
  * DevTools is a class that represents a set of developer tools, it holds a
@@ -81,8 +82,7 @@ DevTools.prototype = {
    * - invertIconForLightTheme: The icon can automatically have an inversion
    *         filter applied (default is false).  All builtin tools are true, but
    *         addons may omit this to prevent unwanted changes to the `icon`
-   *         image. See devtools/client/themes/filters.svg#invert for
-   *         the filter being applied to the images (boolean|optional)
+   *         image. filter: invert(1) is applied to the image (boolean|optional)
    * - url: URL pointing to a XUL/XHTML document containing the user interface
    *        (string|required)
    * - label: Localized name for the tool to be displayed to the user
@@ -286,10 +286,17 @@ DevTools.prototype = {
 
     let currTheme = Services.prefs.getCharPref("devtools.theme");
 
-    // Change the current theme if it's being dynamically removed together
-    // with the owner (bootstrapped) extension.
-    // But, do not change it if the application is just shutting down.
-    if (!Services.startup.shuttingDown && theme.id == currTheme) {
+    // Note that we can't check if `theme` is an item
+    // of `DefaultThemes` as we end up reloading definitions
+    // module and end up with different theme objects
+    let isCoreTheme = DefaultThemes.some(t => t.id === themeId);
+
+    // Reset the theme if an extension theme that's currently applied
+    // is being removed.
+    // Ignore shutdown since addons get disabled during that time.
+    if (!Services.startup.shuttingDown &&
+        !isCoreTheme &&
+        theme.id == currTheme) {
       Services.prefs.setCharPref("devtools.theme", "light");
 
       let data = {
@@ -822,7 +829,7 @@ var gDevToolsBrowser = {
       broadcaster.removeAttribute("key");
     }
 
-    let tabContainer = win.document.getElementById("tabbrowser-tabs");
+    let tabContainer = win.gBrowser.tabContainer;
     tabContainer.addEventListener("TabSelect", this, false);
     tabContainer.addEventListener("TabOpen", this, false);
     tabContainer.addEventListener("TabClose", this, false);
@@ -1017,20 +1024,17 @@ var gDevToolsBrowser = {
         }
       }
 
-      let mp = doc.getElementById("menuWebDeveloperPopup");
-      if (mp) {
-        let ref;
+      let ref;
 
-        if (prevDef != null) {
-          let menuitem = doc.getElementById("menuitem_" + prevDef.id);
-          ref = menuitem && menuitem.nextSibling ? menuitem.nextSibling : null;
-        } else {
-          ref = doc.getElementById("menu_devtools_separator");
-        }
+      if (prevDef) {
+        let menuitem = doc.getElementById("menuitem_" + prevDef.id);
+        ref = menuitem && menuitem.nextSibling ? menuitem.nextSibling : null;
+      } else {
+        ref = doc.getElementById("menu_devtools_separator");
+      }
 
-        if (ref) {
-          mp.insertBefore(elements.menuitem, ref);
-        }
+      if (ref) {
+        ref.parentNode.insertBefore(elements.menuitem, ref);
       }
     }
 
@@ -1080,15 +1084,15 @@ var gDevToolsBrowser = {
     let mbs = doc.getElementById("mainBroadcasterSet");
     mbs.appendChild(fragBroadcasters);
 
-    let amp = doc.getElementById("appmenu_webDeveloper_popup");
-    if (amp) {
-      let amps = doc.getElementById("appmenu_devtools_separator");
-      amp.insertBefore(fragAppMenuItems, amps);
+    let amps = doc.getElementById("appmenu_devtools_separator");
+    if (amps) {
+      amps.parentNode.insertBefore(fragAppMenuItems, amps);
     }
 
-    let mp = doc.getElementById("menuWebDeveloperPopup");
     let mps = doc.getElementById("menu_devtools_separator");
-    mp.insertBefore(fragMenuItems, mps);
+    if (mps) {
+      mps.parentNode.insertBefore(fragMenuItems, mps);
+    }
   },
 
   /**
@@ -1249,7 +1253,7 @@ var gDevToolsBrowser = {
       }
     }
 
-    let tabContainer = win.document.getElementById("tabbrowser-tabs");
+    let tabContainer = win.gBrowser.tabContainer;
     tabContainer.removeEventListener("TabSelect", this, false);
     tabContainer.removeEventListener("TabOpen", this, false);
     tabContainer.removeEventListener("TabClose", this, false);
@@ -1268,7 +1272,7 @@ var gDevToolsBrowser = {
 
         for (let win of this._trackedBrowserWindows) {
           let tabContainer = win.gBrowser.tabContainer;
-          let numPinnedTabs = tabContainer.tabbrowser._numPinnedTabs;
+          let numPinnedTabs = win.gBrowser._numPinnedTabs || 0;
           let numTabs = tabContainer.itemCount - numPinnedTabs;
 
           open += numTabs;

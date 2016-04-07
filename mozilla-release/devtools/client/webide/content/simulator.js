@@ -12,7 +12,7 @@ const EventEmitter = require('devtools/shared/event-emitter');
 const promise = require("promise");
 const utils = require("devtools/client/webide/modules/utils");
 
-const Strings = Services.strings.createBundle("chrome://browser/locale/devtools/webide.properties");
+const Strings = Services.strings.createBundle("chrome://devtools/locale/webide.properties");
 
 var SimulatorEditor = {
 
@@ -44,7 +44,7 @@ var SimulatorEditor = {
       Simulators.on("configure", (e, simulator) => { this.edit(simulator) });
       // Extract the list of device simulation options we'll support.
       let deviceFields = form.querySelectorAll("*[data-device]");
-      this._deviceOptions = [].map.call(deviceFields, field => field.name);
+      this._deviceOptions = Array.map(deviceFields, field => field.name);
     }
 
     // Append a new <option> to a <select> (or <optgroup>) element.
@@ -172,7 +172,7 @@ var SimulatorEditor = {
       // TODO (Bug 1146531) Indicate that a custom profile is now required.
     }
     // If `form.name` contains the old version, update its last occurrence.
-    if (form.name.value.contains(oldVer) && simulator.version !== oldVer) {
+    if (form.name.value.includes(oldVer) && simulator.version !== oldVer) {
       let regex = new RegExp("(.*)" + oldVer);
       let name = form.name.value.replace(regex, "$1" + simulator.version);
       simulator.options.name = form.name.value = Simulators.uniqueName(name);

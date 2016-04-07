@@ -21,3 +21,8 @@
 <!-- Localization note (safeb.blocked.phishing.shortDesc) - Please don't translate the contents of the <span id="phishing_sitename"/> tag. It will be replaced at runtime with a domain name (e.g. www.badsite.com) -->
 <!ENTITY safeb.blocked.phishingPage.shortDesc "Die Webseite auf <span id='phishing_sitename'/> wurde als Betrugsversuch gemeldet und gemäß Ihrer Sicherheitseinstellungen blockiert">
 <!ENTITY safeb.blocked.phishingPage.longDesc "<p>Mit Betrugsseiten versuchen Kriminelle Sie dazu zu bringen, persönliche oder finanzielle Daten preiszugeben. Dabei ahmen sie in betrügerischer Absicht Webseiten oder E-Mails nach, denen Sie eventuell vertrauen.</p><p>Falls Sie hier persönliche Daten eingeben, müssen Sie mit Identitätsdiebstahl oder sonstigem Betrug rechnen.</p>">
+
+<!ENTITY safeb.blocked.forbiddenPage.title "Verbotene Website">
+<!-- Localization note (safeb.blocked.forbiddenPage.shortDesc) - Please don't translate the contents of the <span id="forbidden_sitename"/> tag.  It will be replaced at runtime with a domain name (e.g. www.badsite.com) -->
+<!ENTITY safeb.blocked.forbiddenPage.shortDesc "Die Website <span id='forbidden_sitename'/> wurde von Ihrer Browserkonfiguration blockiert.">
+

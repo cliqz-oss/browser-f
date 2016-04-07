@@ -130,10 +130,19 @@ public:
                           bool aAgcOn, uint32_t aAGC,
                           bool aNoiseOn, uint32_t aNoise,
                           int32_t aPlayoutDelay) override { return NS_OK; };
+  void AppendToSegment(AudioSegment& aSegment, TrackTicks aSamples);
   virtual void NotifyPull(MediaStreamGraph* aGraph,
                           SourceMediaStream *aSource,
                           TrackID aId,
-                          StreamTime aDesiredTime) override {}
+                          StreamTime aDesiredTime) override
+  {
+#ifdef DEBUG
+    StreamBuffer::Track* data = aSource->FindTrack(aId);
+    NS_WARN_IF_FALSE(!data || data->IsEnded() ||
+                     aDesiredTime <= aSource->GetEndOfAppendedData(aId),
+                     "MediaEngineDefaultAudioSource data underrun");
+#endif
+  }
 
   virtual bool IsFake() override {
     return true;
@@ -160,6 +169,9 @@ protected:
 
   TrackID mTrackID;
   nsCOMPtr<nsITimer> mTimer;
+
+  TimeStamp mLastNotify;
+  TrackTicks mBufferSize;
 
   SourceMediaStream* mSource;
   nsAutoPtr<SineWaveGenerator> mSineGenerator;

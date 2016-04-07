@@ -19,10 +19,11 @@
 #include "mozilla/unused.h"
 #include "MediaUtils.h"
 #include "nsThreadUtils.h"
+#include "base/singleton.h"
 
 #undef LOG
 #undef LOG_ENABLED
-PRLogModuleInfo *gCamerasChildLog;
+mozilla::LazyLogModule gCamerasChildLog("CamerasChild");
 #define LOG(args) MOZ_LOG(gCamerasChildLog, mozilla::LogLevel::Debug, args)
 #define LOG_ENABLED() MOZ_LOG_TEST(gCamerasChildLog, mozilla::LogLevel::Debug)
 
@@ -56,9 +57,6 @@ public:
     : mCamerasMutex("CamerasSingleton::mCamerasMutex"),
       mCameras(nullptr),
       mCamerasChildThread(nullptr) {
-    if (!gCamerasChildLog) {
-      gCamerasChildLog = PR_NewLogModule("CamerasChild");
-    }
     LOG(("CamerasSingleton: %p", this));
   }
 
@@ -66,26 +64,23 @@ public:
     LOG(("~CamerasSingleton: %p", this));
   }
 
-  static CamerasSingleton& GetInstance() {
-    static CamerasSingleton instance;
-    return instance;
-  }
-
   static OffTheBooksMutex& Mutex() {
-    return GetInstance().mCamerasMutex;
+    return gTheInstance.get()->mCamerasMutex;
   }
 
   static CamerasChild*& Child() {
-    GetInstance().Mutex().AssertCurrentThreadOwns();
-    return GetInstance().mCameras;
+    Mutex().AssertCurrentThreadOwns();
+    return gTheInstance.get()->mCameras;
   }
 
   static nsCOMPtr<nsIThread>& Thread() {
-    GetInstance().Mutex().AssertCurrentThreadOwns();
-    return GetInstance().mCamerasChildThread;
+    Mutex().AssertCurrentThreadOwns();
+    return gTheInstance.get()->mCamerasChildThread;
   }
 
 private:
+  static Singleton<CamerasSingleton> gTheInstance;
+
   // Reinitializing CamerasChild will change the pointers below.
   // We don't want this to happen in the middle of preparing IPC.
   // We will be alive on destruction, so this needs to be off the books.
@@ -143,10 +138,6 @@ GetCamerasChild() {
   CamerasSingleton::Mutex().AssertCurrentThreadOwns();
   if (!CamerasSingleton::Child()) {
     MOZ_ASSERT(!NS_IsMainThread(), "Should not be on the main Thread");
-    if (!gCamerasChildLog) {
-      gCamerasChildLog = PR_NewLogModule("CamerasChild");
-    }
-
     MOZ_ASSERT(!CamerasSingleton::Thread());
     LOG(("No sCameras, setting up IPC Thread"));
     nsresult rv = NS_NewNamedThread("Cameras IPC",
@@ -628,13 +619,14 @@ void
 Shutdown(void)
 {
   OffTheBooksMutexAutoLock lock(CamerasSingleton::Mutex());
-  if (!CamerasSingleton::Child()) {
+  CamerasChild* child = CamerasSingleton::Child();
+  if (!child) {
     // We don't want to cause everything to get fired up if we're
     // really already shut down.
     LOG(("Shutdown when already shut down"));
     return;
   }
-  GetCamerasChild()->Shutdown();
+  child->ShutdownAll();
 }
 
 class ShutdownRunnable : public nsRunnable {
@@ -659,14 +651,22 @@ private:
 };
 
 void
-CamerasChild::Shutdown()
+CamerasChild::ShutdownAll()
 {
+  // Called with CamerasSingleton::Mutex() held
+  ShutdownParent();
+  ShutdownChild();
+}
+
+void
+CamerasChild::ShutdownParent()
+{
+  // Called with CamerasSingleton::Mutex() held
   {
     MonitorAutoLock monitor(mReplyMonitor);
     mIPCIsAlive = false;
     monitor.NotifyAll();
   }
-
   if (CamerasSingleton::Thread()) {
     LOG(("Dispatching actor deletion"));
     // Delete the parent actor.
@@ -674,10 +674,20 @@ CamerasChild::Shutdown()
       // CamerasChild (this) will remain alive and is only deleted by the
       // IPC layer when SendAllDone returns.
       media::NewRunnableFrom([this]() -> nsresult {
-        unused << this->SendAllDone();
+        Unused << this->SendAllDone();
         return NS_OK;
       });
     CamerasSingleton::Thread()->Dispatch(deleteRunnable, NS_DISPATCH_NORMAL);
+  } else {
+    LOG(("ShutdownParent called without PBackground thread"));
+  }
+}
+
+void
+CamerasChild::ShutdownChild()
+{
+  // Called with CamerasSingleton::Mutex() held
+  if (CamerasSingleton::Thread()) {
     LOG(("PBackground thread exists, dispatching close"));
     // Dispatch closing the IPC thread back to us when the
     // BackgroundChild is closed.
@@ -698,7 +708,7 @@ bool
 CamerasChild::RecvDeliverFrame(const int& capEngine,
                                const int& capId,
                                mozilla::ipc::Shmem&& shmem,
-                               const int& size,
+                               const size_t& size,
                                const uint32_t& time_stamp,
                                const int64_t& ntp_time,
                                const int64_t& render_time)
@@ -750,10 +760,6 @@ CamerasChild::CamerasChild()
     mRequestMutex("mozilla::cameras::CamerasChild::mRequestMutex"),
     mReplyMonitor("mozilla::cameras::CamerasChild::mReplyMonitor")
 {
-  if (!gCamerasChildLog) {
-    gCamerasChildLog = PR_NewLogModule("CamerasChild");
-  }
-
   LOG(("CamerasChild: %p", this));
 
   MOZ_COUNT_CTOR(CamerasChild);
@@ -765,7 +771,11 @@ CamerasChild::~CamerasChild()
 
   {
     OffTheBooksMutexAutoLock lock(CamerasSingleton::Mutex());
-    Shutdown();
+    // In normal circumstances we've already shut down and the
+    // following does nothing. But on fatal IPC errors we will
+    // get destructed immediately, and should not try to reach
+    // the parent.
+    ShutdownChild();
   }
 
   MOZ_COUNT_DTOR(CamerasChild);

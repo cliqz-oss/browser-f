@@ -54,17 +54,17 @@ ElementPropertyTransition::CurrentValuePortion() const
   // case, we override the fill mode to 'both' to ensure the progress
   // is never null.
   AnimationTiming timingToUse = mTiming;
-  timingToUse.mFillMode = NS_STYLE_ANIMATION_FILL_MODE_BOTH;
+  timingToUse.mFillMode = dom::FillMode::Both;
   ComputedTiming computedTiming = GetComputedTiming(&timingToUse);
 
-  MOZ_ASSERT(computedTiming.mProgress != ComputedTiming::kNullProgress,
+  MOZ_ASSERT(!computedTiming.mProgress.IsNull(),
              "Got a null progress for a fill mode of 'both'");
   MOZ_ASSERT(mProperties.Length() == 1,
              "Should have one animation property for a transition");
   MOZ_ASSERT(mProperties[0].mSegments.Length() == 1,
              "Animation property should have one segment for a transition");
   return mProperties[0].mSegments[0].mTimingFunction
-         .GetValue(computedTiming.mProgress);
+         .GetValue(computedTiming.mProgress.Value());
 }
 
 ////////////////////////// CSSTransition ////////////////////////////
@@ -141,6 +141,16 @@ CSSTransition::QueueEvents()
   mOwningElement.GetElement(owningElement, owningPseudoType);
   MOZ_ASSERT(owningElement, "Owning element should be set");
 
+  // Do not queue any event for disabled properties. This could happen
+  // if the property has a default value which derives value from other
+  // property, e.g. color.
+  nsCSSProperty property = TransitionProperty();
+  if (!nsCSSProps::IsEnabled(property, nsCSSProps::eEnabledForAllContent) &&
+      (!nsContentUtils::IsSystemPrincipal(owningElement->NodePrincipal()) ||
+       !nsCSSProps::IsEnabled(property, nsCSSProps::eEnabledInChrome))) {
+    return;
+  }
+
   nsPresContext* presContext = mOwningElement.GetRenderedPresContext();
   if (!presContext) {
     return;
@@ -148,9 +158,8 @@ CSSTransition::QueueEvents()
 
   nsTransitionManager* manager = presContext->TransitionManager();
   manager->QueueEvent(TransitionEventInfo(owningElement, owningPseudoType,
-                                          TransitionProperty(),
-                                          mEffect->Timing()
-                                            .mIterationDuration,
+                                          property,
+                                          mEffect->Timing().mIterationDuration,
                                           AnimationTimeToTimeStamp(EffectEnd()),
                                           this));
 }
@@ -295,7 +304,8 @@ nsTransitionManager::StyleContextChanged(dom::Element *aElement,
     aElement = aElement->GetParent()->AsElement();
   }
 
-  AnimationCollection* collection = GetAnimations(aElement, pseudoType, false);
+  AnimationCollection* collection =
+    GetAnimationCollection(aElement, pseudoType, false /* aCreateIfNeeded */);
   if (!collection &&
       disp->mTransitionPropertyCount == 1 &&
       disp->mTransitions[0].GetCombinedDuration() <= 0.0f) {
@@ -658,8 +668,8 @@ nsTransitionManager::ConsiderStartingTransition(
   timing.mIterationDuration = TimeDuration::FromMilliseconds(duration);
   timing.mDelay = TimeDuration::FromMilliseconds(delay);
   timing.mIterationCount = 1;
-  timing.mDirection = NS_STYLE_ANIMATION_DIRECTION_NORMAL;
-  timing.mFillMode = NS_STYLE_ANIMATION_FILL_MODE_BACKWARDS;
+  timing.mDirection = dom::PlaybackDirection::Normal;
+  timing.mFillMode = dom::FillMode::Backwards;
 
   RefPtr<ElementPropertyTransition> pt =
     new ElementPropertyTransition(aElement->OwnerDoc(), aElement,
@@ -694,7 +704,9 @@ nsTransitionManager::ConsiderStartingTransition(
 
   if (!aElementTransitions) {
     aElementTransitions =
-      GetAnimations(aElement, aNewStyleContext->GetPseudoType(), true);
+      GetAnimationCollection(aElement,
+                             aNewStyleContext->GetPseudoType(),
+                             true /* aCreateIfNeeded */);
     if (!aElementTransitions) {
       NS_WARNING("allocating CommonAnimationManager failed");
       return;
@@ -734,7 +746,8 @@ nsTransitionManager::PruneCompletedTransitions(mozilla::dom::Element* aElement,
                                                  aPseudoType,
                                                nsStyleContext* aNewStyleContext)
 {
-  AnimationCollection* collection = GetAnimations(aElement, aPseudoType, false);
+  AnimationCollection* collection =
+    GetAnimationCollection(aElement, aPseudoType, false /* aCreateIfNeeded */);
   if (!collection) {
     return;
   }
@@ -787,8 +800,9 @@ nsTransitionManager::UpdateCascadeResultsWithTransitions(
                        AnimationCollection* aTransitions)
 {
   AnimationCollection* animations = mPresContext->AnimationManager()->
-      GetAnimations(aTransitions->mElement,
-                    aTransitions->PseudoElementType(), false);
+      GetAnimationCollection(aTransitions->mElement,
+                             aTransitions->PseudoElementType(),
+                             false /* aCreateIfNeeded */);
   UpdateCascadeResults(aTransitions, animations);
 }
 
@@ -797,8 +811,9 @@ nsTransitionManager::UpdateCascadeResultsWithAnimations(
                        AnimationCollection* aAnimations)
 {
   AnimationCollection* transitions = mPresContext->TransitionManager()->
-      GetAnimations(aAnimations->mElement,
-                    aAnimations->PseudoElementType(), false);
+      GetAnimationCollection(aAnimations->mElement,
+                             aAnimations->PseudoElementType(),
+                             false /* aCreateIfNeeded */);
   UpdateCascadeResults(transitions, aAnimations);
 }
 
@@ -811,8 +826,9 @@ nsTransitionManager::UpdateCascadeResultsWithAnimationsToBeDestroyed(
   // information that may now be incorrect.
   AnimationCollection* transitions =
     mPresContext->TransitionManager()->
-      GetAnimations(aAnimations->mElement,
-                    aAnimations->PseudoElementType(), false);
+      GetAnimationCollection(aAnimations->mElement,
+                             aAnimations->PseudoElementType(),
+                             false /* aCreateIfNeeded */);
   UpdateCascadeResults(transitions, nullptr);
 }
 

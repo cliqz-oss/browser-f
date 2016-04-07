@@ -4,13 +4,14 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <MediaStreamGraphImpl.h>
+#include "mozilla/dom/AudioContext.h"
 #include "CubebUtils.h"
 
 #ifdef XP_MACOSX
 #include <sys/sysctl.h>
 #endif
 
-extern PRLogModuleInfo* gMediaStreamGraphLog;
+extern mozilla::LazyLogModule gMediaStreamGraphLog;
 #define STREAM_LOG(type, msg) MOZ_LOG(gMediaStreamGraphLog, type, msg)
 
 // We don't use NSPR log here because we want this interleaved with adb logcat
@@ -503,11 +504,13 @@ StreamAndPromiseForOperation::StreamAndPromiseForOperation(MediaStream* aStream,
 
 AudioCallbackDriver::AudioCallbackDriver(MediaStreamGraphImpl* aGraphImpl)
   : GraphDriver(aGraphImpl)
+  , mSampleRate(0)
   , mIterationDurationMS(MEDIA_GRAPH_TARGET_PERIOD_MS)
   , mStarted(false)
   , mAudioChannel(aGraphImpl->AudioChannel())
   , mInCallback(false)
   , mPauseRequested(false)
+  , mMicrophoneActive(false)
 #ifdef XP_MACOSX
   , mCallbackReceivedWhileSwitching(0)
 #endif

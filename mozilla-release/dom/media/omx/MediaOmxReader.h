@@ -71,7 +71,7 @@ public:
   ~MediaOmxReader();
 
 protected:
-  virtual void NotifyDataArrivedInternal(uint32_t aLength, int64_t aOffset) override;
+  virtual void NotifyDataArrivedInternal() override;
 public:
 
   virtual nsresult ResetDecode()
@@ -91,8 +91,6 @@ public:
 
   virtual RefPtr<SeekPromise>
   Seek(int64_t aTime, int64_t aEndTime) override;
-
-  virtual bool IsMediaSeekable() override;
 
   virtual void SetIdle() override;
 
@@ -120,7 +118,7 @@ private:
 
   already_AddRefed<AbstractMediaDecoder> SafeGetDecoder();
 
-  NotifyDataArrivedFilter mFilter;
+  MediaByteRangeSet mLastCachedRanges;
 };
 
 } // namespace mozilla

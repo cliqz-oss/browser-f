@@ -737,6 +737,10 @@ bool ThrowRuntimeLexicalError(JSContext* cx, unsigned errorNumber);
 bool BaselineThrowUninitializedThis(JSContext* cx, BaselineFrame* frame);
 bool ThrowBadDerivedReturn(JSContext* cx, HandleValue v);
 
+bool ThrowObjectCoercible(JSContext* cx, HandleValue v);
+
+bool BaselineGetFunctionThis(JSContext* cx, BaselineFrame* frame, MutableHandleValue res);
+
 } // namespace jit
 } // namespace js
 

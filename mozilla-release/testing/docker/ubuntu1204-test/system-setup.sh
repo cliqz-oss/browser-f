@@ -38,6 +38,7 @@ apt_packages+=('gstreamer0.10-plugins-base')
 apt_packages+=('gstreamer0.10-plugins-good')
 apt_packages+=('gstreamer0.10-plugins-ugly')
 apt_packages+=('gstreamer0.10-tools')
+apt_packages+=('language-pack-en-base')
 apt_packages+=('libasound2-dev')
 apt_packages+=('libasound2-plugins:i386')
 apt_packages+=('libcanberra-pulse')
@@ -50,14 +51,6 @@ apt_packages+=('libdrm-radeon1:i386')
 apt_packages+=('libdrm2:i386')
 apt_packages+=('libexpat1:i386')
 apt_packages+=('libgconf2-dev')
-apt_packages+=('libgl1-mesa-dri')
-apt_packages+=('libgl1-mesa-dri:i386')
-apt_packages+=('libgl1-mesa-glx')
-apt_packages+=('libgl1-mesa-glx:i386')
-apt_packages+=('libglapi-mesa')
-apt_packages+=('libglapi-mesa:i386')
-apt_packages+=('libglu1-mesa')
-apt_packages+=('libglu1-mesa:i386')
 apt_packages+=('libgnome-bluetooth8')
 apt_packages+=('libgstreamer-plugins-base0.10-dev')
 apt_packages+=('libgstreamer0.10-dev')
@@ -84,7 +77,6 @@ apt_packages+=('llvm-2.9-dev')
 apt_packages+=('llvm-2.9-runtime')
 apt_packages+=('llvm-dev')
 apt_packages+=('llvm-runtime')
-apt_packages+=('mesa-common-dev')
 apt_packages+=('nano')
 apt_packages+=('pulseaudio')
 apt_packages+=('pulseaudio-module-X11')
@@ -103,6 +95,7 @@ apt_packages+=('ttf-oriya-fonts')
 apt_packages+=('ttf-paktype')
 apt_packages+=('ttf-punjabi-fonts')
 apt_packages+=('ttf-sazanami-mincho')
+apt_packages+=('ubuntu-desktop')
 apt_packages+=('unzip')
 apt_packages+=('uuid')
 apt_packages+=('vim')
@@ -122,7 +115,11 @@ apt_packages+=('python-dev')
 apt_packages+=('python-pip')
 
 apt-get update
+# This allows ubuntu-desktop to be installed without human interaction
+export DEBIAN_FRONTEND=noninteractive
 apt-get install -y --force-yes ${apt_packages[@]}
+
+dpkg-reconfigure locales
 
 # set up tooltool (temporarily)
 curl https://raw.githubusercontent.com/mozilla/build-tooltool/master/tooltool.py > /setup/tooltool.py
@@ -175,6 +172,12 @@ EOF
 tar -C /usr/local -xz --strip-components 1 < node-*.tar.gz
 node -v  # verify
 
+# Install custom-built Debian packages.  These come from a set of repositories
+# packaged in tarballs on tooltool to make them replicable.  Because they have
+# inter-dependenices, we install all repositories first, then perform the
+# installation.
+cp /etc/apt/sources.list sources.list.orig
+
 # Install a slightly newer version of libxcb
 # See bug 975216 for the original build of these packages
 # NOTE: if you're re-creating this, the tarball contains an `update.sh` which will rebuild the repository.
@@ -189,12 +192,49 @@ tooltool_fetch <<'EOF'
 ]
 EOF
 tar -zxf xcb-repo-*.tgz
-cp /etc/apt/sources.list sources.list.orig
 echo "deb file://$PWD/xcb precise all" >> /etc/apt/sources.list
+
+# Install a patched version of mesa, per bug 1227637.  Origin of the packages themselves is unknown, as
+# these binaries were copied from the apt repositories used by puppet.
+# NOTE: if you're re-creating this, the tarball contains an `update.sh` which will rebuild the repository.
+tooltool_fetch <<'EOF'
+[
+{
+    "size": 11619521,
+    "digest": "2ec1dbb735d06a5ae8c1f31cd0a9256339a50b0221c84fc1f6e8ada3b3c2757c16df6e2ace4a66f68159950d46ddce563ecd71dd5c2d2d421b085168a86a52fd",
+    "algorithm": "sha512",
+    "filename": "mesa-repo-9.2.1-1ubuntu3~precise1mozilla1.tgz"
+}
+]
+EOF
+tar -zxf mesa-repo-*.tgz
+echo "deb file://$PWD/mesa precise all" >> /etc/apt/sources.list
+
 apt-get update
-apt-get -q -y --force-yes install libxcb1 libxcb-render0 libxcb-shm0 libxcb-glx0 libxcb-shape0 libxcb-glx0:i386
+
+apt-get -q -y --force-yes install \
+    libxcb1 \
+    libxcb-render0 \
+    libxcb-shm0 \
+    libxcb-glx0 \
+    libxcb-shape0 libxcb-glx0:i386
 libxcb1_version=$(dpkg-query -s libxcb1 | grep ^Version | awk '{ print $2 }')
 [ "$libxcb1_version" = "1.8.1-2ubuntu2.1mozilla1" ] || exit 1
+
+apt-get -q -y --force-yes install \
+    libgl1-mesa-dev-lts-saucy:i386 \
+    libgl1-mesa-dri-lts-saucy \
+    libgl1-mesa-dri-lts-saucy:i386 \
+    libgl1-mesa-glx-lts-saucy \
+    libgl1-mesa-glx-lts-saucy:i386 \
+    libglapi-mesa-lts-saucy \
+    libglapi-mesa-lts-saucy:i386 \
+    libxatracker1-lts-saucy \
+    mesa-common-dev-lts-saucy:i386
+mesa_version=$(dpkg-query -s libgl1-mesa-dri-lts-saucy | grep ^Version | awk '{ print $2 }')
+[ "$mesa_version" = "9.2.1-1ubuntu3~precise1mozilla1" ] || exit 1
+
+# revert the list of repos
 cp sources.list.orig /etc/apt/sources.list
 apt-get update
 

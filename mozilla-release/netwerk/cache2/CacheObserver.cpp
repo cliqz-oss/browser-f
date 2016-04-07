@@ -11,6 +11,7 @@
 #include "nsIObserverService.h"
 #include "mozilla/Services.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/TimeStamp.h"
 #include "nsServiceManagerUtils.h"
 #include "prsystem.h"
 #include <time.h>
@@ -90,6 +91,9 @@ bool CacheObserver::sCacheFSReported = kDefaultCacheFSReported;
 
 static bool kDefaultHashStatsReported = false;
 bool CacheObserver::sHashStatsReported = kDefaultHashStatsReported;
+
+static int32_t const kDefaultMaxShutdownIOLag = 2; // seconds
+int32_t CacheObserver::sMaxShutdownIOLag = kDefaultMaxShutdownIOLag;
 
 NS_IMPL_ISUPPORTS(CacheObserver,
                   nsIObserver,
@@ -237,6 +241,9 @@ CacheObserver::AttachToPreferences()
     &sSanitizeOnShutdown, "privacy.sanitize.sanitizeOnShutdown", kDefaultSanitizeOnShutdown);
   mozilla::Preferences::AddBoolVarCache(
     &sClearCacheOnShutdown, "privacy.clearOnShutdown.cache", kDefaultClearCacheOnShutdown);
+
+  mozilla::Preferences::AddIntVarCache(
+    &sMaxShutdownIOLag, "browser.cache.max_shutdown_io_lag", kDefaultMaxShutdownIOLag);
 }
 
 // static
@@ -395,7 +402,7 @@ namespace CacheStorageEvictHelper {
 
 nsresult ClearStorage(bool const aPrivate,
                       bool const aAnonymous,
-                      OriginAttributes const &aOa)
+                      NeckoOriginAttributes const &aOa)
 {
   nsresult rv;
 
@@ -420,7 +427,7 @@ nsresult ClearStorage(bool const aPrivate,
   return NS_OK;
 }
 
-nsresult Run(OriginAttributes const &aOa)
+nsresult Run(NeckoOriginAttributes const &aOa)
 {
   nsresult rv;
 
@@ -464,6 +471,13 @@ bool const CacheObserver::EntryIsTooBig(int64_t aSize, bool aUsingDisk)
     return true;
 
   return false;
+}
+
+// static
+TimeDuration const& CacheObserver::MaxShutdownIOLag()
+{
+  static TimeDuration period = TimeDuration::FromSeconds(sMaxShutdownIOLag);
+  return period;
 }
 
 NS_IMETHODIMP
@@ -515,9 +529,9 @@ CacheObserver::Observe(nsISupports* aSubject,
   }
 
   if (!strcmp(aTopic, "clear-origin-data")) {
-    OriginAttributes oa;
+    NeckoOriginAttributes oa;
     if (!oa.Init(nsDependentString(aData))) {
-      NS_ERROR("Could not parse OriginAttributes JSON in clear-origin-data notification");
+      NS_ERROR("Could not parse NeckoOriginAttributes JSON in clear-origin-data notification");
       return NS_OK;
     }
 

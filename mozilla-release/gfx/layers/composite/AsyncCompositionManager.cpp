@@ -15,6 +15,7 @@
 #include "mozilla/StyleAnimationValue.h" // for StyleAnimationValue, etc
 #include "mozilla/WidgetUtils.h"        // for ComputeTransformForRotation
 #include "mozilla/dom/KeyframeEffect.h" // for KeyframeEffectReadOnly
+#include "mozilla/dom/AnimationEffectReadOnlyBinding.h" // for dom::FillMode
 #include "mozilla/gfx/BaseRect.h"       // for BaseRect
 #include "mozilla/gfx/Point.h"          // for RoundedToInt, PointTyped
 #include "mozilla/gfx/Rect.h"           // for RoundedToInt, RectTyped
@@ -40,6 +41,7 @@
 #endif
 #include "GeckoProfiler.h"
 #include "FrameUniformityData.h"
+#include "TreeTraversal.h"
 
 struct nsCSSValueSharedList;
 
@@ -200,12 +202,12 @@ GetBaseTransform(Layer* aLayer, Matrix4x4* aTransform)
 
 static void
 TransformClipRect(Layer* aLayer,
-                  const Matrix4x4& aTransform)
+                  const ParentLayerToParentLayerMatrix4x4& aTransform)
 {
   MOZ_ASSERT(aTransform.Is2D());
   const Maybe<ParentLayerIntRect>& clipRect = aLayer->AsLayerComposite()->GetShadowClipRect();
   if (clipRect) {
-    ParentLayerIntRect transformed = TransformTo<ParentLayerPixel>(aTransform, *clipRect);
+    ParentLayerIntRect transformed = TransformBy(aTransform, *clipRect);
     aLayer->AsLayerComposite()->SetShadowClipRect(Some(transformed));
   }
 }
@@ -252,7 +254,8 @@ TranslateShadowLayer(Layer* aLayer,
   aLayer->AsLayerComposite()->SetShadowTransformSetByAnimation(false);
 
   if (aAdjustClipRect) {
-    TransformClipRect(aLayer, Matrix4x4::Translation(aTranslation.x, aTranslation.y, 0));
+    TransformClipRect(aLayer,
+        ParentLayerToParentLayerMatrix4x4::Translation(aTranslation.x, aTranslation.y, 0));
 
     // If a fixed- or sticky-position layer has a mask layer, that mask should
     // move along with the layer, so apply the translation to the mask layer too.
@@ -465,8 +468,9 @@ AsyncCompositionManager::AlignFixedAndStickyLayers(Layer* aLayer,
   // transform, but |anchor| and |transformedAnchor| are in a coordinate space
   // where the local transform isn't applied yet, so apply it and then subtract
   // to get the desired translation.
-  ParentLayerPoint translation = TransformTo<ParentLayerPixel>(localTransform, transformedAnchor)
-                               - TransformTo<ParentLayerPixel>(localTransform, anchor);
+  auto localTransformTyped = ViewAs<LayerToParentLayerMatrix4x4>(localTransform);
+  ParentLayerPoint translation = TransformBy(localTransformTyped, transformedAnchor)
+                               - TransformBy(localTransformTyped, anchor);
 
   if (aLayer->GetIsStickyPosition()) {
     // For sticky positioned layers, the difference between the two rectangles
@@ -582,30 +586,31 @@ SampleAnimations(Layer* aLayer, TimeStamp aPoint)
     // into their start time, hence the delay is effectively zero.
     timing.mDelay = TimeDuration(0);
     timing.mIterationCount = animation.iterationCount();
-    timing.mDirection = animation.direction();
+    timing.mDirection = static_cast<dom::PlaybackDirection>(animation.direction());
     // Animations typically only run on the compositor during their active
     // interval but if we end up sampling them outside that range (for
     // example, while they are waiting to be removed) we currently just
     // assume that we should fill.
-    timing.mFillMode = NS_STYLE_ANIMATION_FILL_MODE_BOTH;
+    timing.mFillMode = dom::FillMode::Both;
 
     ComputedTiming computedTiming =
       dom::KeyframeEffectReadOnly::GetComputedTimingAt(
         Nullable<TimeDuration>(elapsedDuration), timing);
 
-    MOZ_ASSERT(0.0 <= computedTiming.mProgress &&
-               computedTiming.mProgress <= 1.0,
+    MOZ_ASSERT(!computedTiming.mProgress.IsNull() &&
+               0.0 <= computedTiming.mProgress.Value() &&
+               computedTiming.mProgress.Value() <= 1.0,
                "iteration progress should be in [0-1]");
 
     int segmentIndex = 0;
     AnimationSegment* segment = animation.segments().Elements();
-    while (segment->endPortion() < computedTiming.mProgress) {
+    while (segment->endPortion() < computedTiming.mProgress.Value()) {
       ++segment;
       ++segmentIndex;
     }
 
     double positionInSegment =
-      (computedTiming.mProgress - segment->startPortion()) /
+      (computedTiming.mProgress.Value() - segment->startPortion()) /
       (segment->endPortion() - segment->startPortion());
 
     double portion =
@@ -655,6 +660,7 @@ SampleAPZAnimations(const LayerMetricsWrapper& aLayer, TimeStamp aSampleTime)
   }
 
   if (AsyncPanZoomController* apzc = aLayer.GetApzc()) {
+    apzc->ReportCheckerboard(aSampleTime);
     activeAnimations |= apzc->AdvanceAnimations(aSampleTime);
   }
 
@@ -733,6 +739,40 @@ ExpandRootClipRect(Layer* aLayer, const ScreenMargin& aFixedLayerMargins)
   }
 }
 
+#ifdef MOZ_ANDROID_APZ
+static void
+MoveScrollbarForLayerMargin(Layer* aRoot, FrameMetrics::ViewID aRootScrollId,
+                            const ScreenMargin& aFixedLayerMargins)
+{
+  // See bug 1223928 comment 9 - once we can detect the RCD with just the
+  // isRootContent flag on the metrics, we can probably move this code into
+  // ApplyAsyncTransformToScrollbar rather than having it as a separate
+  // adjustment on the layer tree.
+  Layer* scrollbar = BreadthFirstSearch(aRoot,
+    [aRootScrollId](Layer* aNode) {
+      return (aNode->GetScrollbarDirection() == Layer::HORIZONTAL &&
+              aNode->GetScrollbarTargetContainerId() == aRootScrollId);
+    });
+  if (scrollbar) {
+    // Shift the horizontal scrollbar down into the new space exposed by the
+    // dynamic toolbar hiding. Technically we should also scale the vertical
+    // scrollbar a bit to expand into the new space but it's not as noticeable
+    // and it would add a lot more complexity, so we're going with the "it's not
+    // worth it" justification.
+    TranslateShadowLayer(scrollbar, gfxPoint(0, -aFixedLayerMargins.bottom), true);
+    if (scrollbar->GetParent()) {
+      // The layer that has the HORIZONTAL direction sits inside another
+      // ContainerLayer. This ContainerLayer also has a clip rect that causes
+      // the scrollbar to get clipped. We need to expand that clip rect to
+      // prevent that from happening. This is kind of ugly in that we're
+      // assuming a particular layer tree structure but short of adding more
+      // flags to the layer there doesn't appear to be a good way to do this.
+      ExpandRootClipRect(scrollbar->GetParent(), aFixedLayerMargins);
+    }
+  }
+}
+#endif
+
 bool
 AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer,
                                                           bool* aOutFoundRoot)
@@ -804,6 +844,7 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer,
             (aLayer->GetParent() == nullptr &&          /* rootmost metrics */
              i + 1 >= aLayer->GetFrameMetricsCount());
       if (*aOutFoundRoot) {
+        mRootScrollableId = metrics.GetScrollId();
         CSSToLayerScale geckoZoom = metrics.LayersPixelsPerCSSPixel().ToScaleFactor();
         if (mIsFirstPaint) {
           LayerIntPoint scrollOffsetLayerPixels = RoundedToInt(metrics.GetScrollOffset() * geckoZoom);
@@ -821,9 +862,10 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer,
               geckoZoom * asyncTransformWithoutOverscroll.mScale,
               metrics.GetScrollableRect(), displayPort, geckoZoom, mLayersUpdated,
               mPaintSyncId, fixedLayerMargins);
+          mFixedLayerMargins = fixedLayerMargins;
+          mLayersUpdated = false;
         }
         mIsFirstPaint = false;
-        mLayersUpdated = false;
         mPaintSyncId = 0;
       }
     }
@@ -838,7 +880,8 @@ AsyncCompositionManager::ApplyAsyncContentTransformToTree(Layer *aLayer,
     // frame and should not be transformed.
     if (asyncClip && !metrics.UsesContainerScrolling()) {
       MOZ_ASSERT(asyncTransform.Is2D());
-      asyncClip = Some(TransformTo<ParentLayerPixel>(asyncTransform, *asyncClip));
+      asyncClip = Some(TransformBy(
+          ViewAs<ParentLayerToParentLayerMatrix4x4>(asyncTransform), *asyncClip));
     }
 
     // Combine the local clip with the ancestor scrollframe clip. This is not
@@ -1074,7 +1117,7 @@ ApplyAsyncTransformToScrollbarForContent(Layer* aScrollbar,
     // including the layer with the async transform. Otherwise the scrollbar
     // shifts but gets clipped and so appears to flicker.
     for (Layer* ancestor = aScrollbar; ancestor != aContent.GetLayer(); ancestor = ancestor->GetParent()) {
-      TransformClipRect(ancestor, asyncCompensation);
+      TransformClipRect(ancestor, ViewAs<ParentLayerToParentLayerMatrix4x4>(asyncCompensation));
     }
   }
   transform = transform * compensation;
@@ -1311,6 +1354,9 @@ AsyncCompositionManager::TransformShadowTree(TimeStamp aCurrentFrame,
     if (ApplyAsyncContentTransformToTree(root, &foundRoot)) {
 #if defined(MOZ_ANDROID_APZ)
       MOZ_ASSERT(foundRoot);
+      if (foundRoot && mFixedLayerMargins != ScreenMargin()) {
+        MoveScrollbarForLayerMargin(root, mRootScrollableId, mFixedLayerMargins);
+      }
 #endif
     } else {
       nsAutoTArray<Layer*,1> scrollableLayers;

@@ -124,13 +124,25 @@ exports.zip = function zip(a, b) {
 /**
  * Converts an object into an array with 2-element arrays as key/value
  * pairs of the object. `{ foo: 1, bar: 2}` would become
- * `[[foo, 1], [bar 2]]` (order not guaranteed);
+ * `[[foo, 1], [bar 2]]` (order not guaranteed).
  *
  * @param object obj
  * @returns array
  */
 exports.entries = function entries(obj) {
   return Object.keys(obj).map(k => [k, obj[k]]);
+}
+
+/*
+ * Takes an array of 2-element arrays as key/values pairs and
+ * constructs an object using them.
+ */
+exports.toObject = function(arr) {
+  const obj = {};
+  for(let pair of arr) {
+    obj[pair[0]] = pair[1];
+  }
+  return obj;
 }
 
 /**
@@ -325,8 +337,13 @@ exports.getProperty = function getProperty(aObj, aKey) {
 exports.hasSafeGetter = function hasSafeGetter(aDesc) {
   // Scripted functions that are CCWs will not appear scripted until after
   // unwrapping.
-  let fn = aDesc.get.unwrap();
-  return fn && fn.callable && fn.class == "Function" && fn.script === undefined;
+  try {
+    let fn = aDesc.get.unwrap();
+    return fn && fn.callable && fn.class == "Function" && fn.script === undefined;
+  } catch(e) {
+    // Avoid exception 'Object in compartment marked as invisible to Debugger'
+    return false;
+  }
 };
 
 /**
@@ -459,6 +476,9 @@ exports.dbg_assert = function dbg_assert(cond, e) {
 };
 
 exports.defineLazyGetter(this, "AppConstants", () => {
+  if (isWorker) {
+    return {};
+  }
   const scope = {};
   Cu.import("resource://gre/modules/AppConstants.jsm", scope);
   return scope.AppConstants;

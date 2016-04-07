@@ -40,8 +40,8 @@
 using namespace mozilla;
 using namespace mozilla::dom;
 
-static PRLogModuleInfo* gSelectionCaretsLog;
 static const char* kSelectionCaretsLogModuleName = "SelectionCarets";
+static mozilla::LazyLogModule gSelectionCaretsLog(kSelectionCaretsLogModuleName);
 
 // To enable all the SELECTIONCARETS_LOG print statements, set the environment
 // variable NSPR_LOG_MODULES=SelectionCarets:5
@@ -66,9 +66,6 @@ NS_IMPL_ISUPPORTS(SelectionCarets,
                   nsISupportsWeakReference)
 
 /*static*/ int32_t SelectionCarets::sSelectionCaretsInflateSize = 0;
-/*static*/ bool SelectionCarets::sSelectionCaretDetectsLongTap = true;
-/*static*/ bool SelectionCarets::sCaretManagesAndroidActionbar = false;
-/*static*/ bool SelectionCarets::sSelectionCaretObservesCompositions = false;
 
 SelectionCarets::SelectionCarets(nsIPresShell* aPresShell)
   : mPresShell(aPresShell)
@@ -81,13 +78,8 @@ SelectionCarets::SelectionCarets(nsIPresShell* aPresShell)
   , mStartCaretVisible(false)
   , mSelectionVisibleInScrollFrames(true)
   , mVisible(false)
-  , mActionBarViewID(0)
 {
   MOZ_ASSERT(NS_IsMainThread());
-
-  if (!gSelectionCaretsLog) {
-    gSelectionCaretsLog = PR_NewLogModule(kSelectionCaretsLogModuleName);
-  }
 
   SELECTIONCARETS_LOG("Constructor, PresShell=%p", mPresShell);
 
@@ -95,12 +87,6 @@ SelectionCarets::SelectionCarets(nsIPresShell* aPresShell)
   if (!addedPref) {
     Preferences::AddIntVarCache(&sSelectionCaretsInflateSize,
                                 "selectioncaret.inflatesize.threshold");
-    Preferences::AddBoolVarCache(&sSelectionCaretDetectsLongTap,
-                                 "selectioncaret.detects.longtap", true);
-    Preferences::AddBoolVarCache(&sCaretManagesAndroidActionbar,
-                                 "caret.manages-android-actionbar");
-    Preferences::AddBoolVarCache(&sSelectionCaretObservesCompositions,
-                                 "selectioncaret.observes.compositions");
     addedPref = true;
   }
 }
@@ -271,7 +257,7 @@ SelectionCarets::HandleEvent(WidgetEvent* aEvent)
     }
 
   } else if (aEvent->mMessage == eMouseLongTap) {
-    if (!mVisible || !sSelectionCaretDetectsLongTap) {
+    if (!mVisible) {
       SELECTIONCARETS_LOG("SelectWord from eMouseLongTap");
 
       mDownPoint = ptInRoot;
@@ -325,11 +311,6 @@ SelectionCarets::SetVisibility(bool aVisible)
 
   dom::Element* endElement = mPresShell->GetSelectionCaretsEndElement();
   SetElementVisibility(endElement, mVisible && mEndCaretVisible);
-
-  // Update the Android Actionbar visibility if in use.
-  if (sCaretManagesAndroidActionbar) {
-    TouchCaret::UpdateAndroidActionBarVisibility(mVisible, mActionBarViewID);
-  }
 }
 
 void
@@ -1137,46 +1118,12 @@ SelectionCarets::NotifySelectionChanged(nsIDOMDocument* aDoc,
     return NS_OK;
   }
 
-  // Update SelectionCaret visibility.
-  if (sSelectionCaretObservesCompositions) {
-    // When observing selection change notifications generated for example
-    // by Android soft-keyboard compositions, we can only obtain visibility
-    // after mouse-up by long-tap, or final caret-drag.
-    if (!mVisible) {
-      if (aReason & nsISelectionListener::MOUSEUP_REASON) {
-        UpdateSelectionCarets();
-      }
-    } else {
-      // If already visible, we hide immediately for some known
-      // event-reasons: drag, keypress, or mouse down.
-      if (aReason & (nsISelectionListener::DRAG_REASON |
-                     nsISelectionListener::KEYPRESS_REASON |
-                     nsISelectionListener::MOUSEDOWN_REASON)) {
-        SetVisibility(false);
-      } else {
-        // Else we look further at the selection status, as currently
-        // style-composition changes don't provide reason codes.
-        UpdateSelectionCarets();
-      }
-    }
+  if (!aReason || (aReason & (nsISelectionListener::DRAG_REASON |
+                              nsISelectionListener::KEYPRESS_REASON |
+                              nsISelectionListener::MOUSEDOWN_REASON))) {
+    SetVisibility(false);
   } else {
-    // Default logic, mainly employed by b2g, isn't aware of soft-keyboard
-    // selection change compositions.
-    if (!aReason || (aReason & (nsISelectionListener::DRAG_REASON |
-                                nsISelectionListener::KEYPRESS_REASON |
-                                nsISelectionListener::MOUSEDOWN_REASON))) {
-      SetVisibility(false);
-    } else {
-      UpdateSelectionCarets();
-    }
-  }
-
-  // Maybe trigger Android ActionBar updates.
-  if (mVisible && sCaretManagesAndroidActionbar) {
-    nsCOMPtr<nsIObserverService> os = mozilla::services::GetObserverService();
-    if (os) {
-      os->NotifyObservers(nullptr, "ActionBar:UpdateState", nullptr);
-    }
+    UpdateSelectionCarets();
   }
 
   DispatchSelectionStateChangedEvent(static_cast<Selection*>(aSel),
@@ -1208,11 +1155,7 @@ SelectionCarets::AsyncPanZoomStarted()
 {
   if (mVisible) {
     mInAsyncPanZoomGesture = true;
-    // Hide selection carets if not using ActionBar.
-    if (!sCaretManagesAndroidActionbar) {
-      SetVisibility(false);
-    }
-
+    SetVisibility(false);
     SELECTIONCARETS_LOG("Dispatch scroll started");
     DispatchScrollViewChangeEvent(mPresShell, dom::ScrollState::Started);
   } else {
@@ -1247,11 +1190,7 @@ SelectionCarets::ScrollPositionChanged()
 {
   if (mVisible) {
     if (!mUseAsyncPanZoom) {
-      // Hide selection carets if not using ActionBar.
-      if (!sCaretManagesAndroidActionbar) {
-        SetVisibility(false);
-      }
-
+      SetVisibility(false);
       //TODO: handling scrolling for selection bubble when APZ is off
       // Dispatch event to notify gaia to hide selection bubble.
       // Positions will be updated when scroll is end, so no need to calculate
@@ -1279,7 +1218,7 @@ SelectionCarets::ScrollPositionChanged()
 void
 SelectionCarets::LaunchLongTapDetector()
 {
-  if (!sSelectionCaretDetectsLongTap || mUseAsyncPanZoom) {
+  if (mUseAsyncPanZoom) {
     return;
   }
 

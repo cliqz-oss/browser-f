@@ -18,6 +18,7 @@
 #include "CrashReporterChild.h"
 #include "GeckoProfiler.h"
 #include "TabChild.h"
+#include "HandlerServiceChild.h"
 
 #include "mozilla/Attributes.h"
 #include "mozilla/LookAndFeel.h"
@@ -81,7 +82,6 @@
 #include "nsIMutable.h"
 #include "nsIObserverService.h"
 #include "nsIScriptSecurityManager.h"
-#include "nsIServiceWorkerManager.h"
 #include "nsScreenManagerProxy.h"
 #include "nsMemoryInfoDumper.h"
 #include "nsServiceManagerUtils.h"
@@ -196,6 +196,7 @@
 #include "mozilla/widget/PuppetBidiKeyboard.h"
 #include "mozilla/RemoteSpellCheckEngineChild.h"
 #include "GMPServiceChild.h"
+#include "GMPDecoderModule.h"
 #include "gfxPlatform.h"
 #include "nscore.h" // for NS_FREE_PERMANENT_DATA
 
@@ -348,7 +349,7 @@ private:
         }
         // The XPCOM refcount drives the IPC lifecycle; see also
         // DeallocPCycleCollectWithLogsChild.
-        unused << Send__delete__(this);
+        Unused << Send__delete__(this);
     }
 
     nsresult UnimplementedProperty()
@@ -619,7 +620,26 @@ ContentChild::Init(MessageLoop* aIOLoop,
                    IPC::Channel* aChannel)
 {
 #ifdef MOZ_WIDGET_GTK
+  // We need to pass a display down to gtk_init because it's not going to
+  // use the one from the environment on its own when deciding which backend
+  // to use, and when starting under XWayland, it may choose to start with
+  // the wayland backend instead of the x11 backend.
+  // The DISPLAY environment variable is normally set by the parent process.
+  char* display_name = PR_GetEnv("DISPLAY");
+  if (display_name) {
+    int argc = 3;
+    char option_name[] = "--display";
+    char* argv[] = {
+      nullptr,
+      option_name,
+      display_name,
+      nullptr
+    };
+    char** argvp = argv;
+    gtk_init(&argc, &argvp);
+  } else {
     gtk_init(nullptr, nullptr);
+  }
 #endif
 
 #ifdef MOZ_WIDGET_QT
@@ -812,7 +832,7 @@ ContentChild::ProvideWindowCommon(TabChild* aTabOpener,
         ipcContext->get_PopupIPCTabContext().opener() = aTabOpener;
     }
 
-    unused << SendPBrowserConstructor(
+    Unused << SendPBrowserConstructor(
         // We release this ref in DeallocPBrowserChild
         RefPtr<TabChild>(newChild).forget().take(),
         tabId, *ipcContext, aChromeFlags,
@@ -885,9 +905,20 @@ ContentChild::ProvideWindowCommon(TabChild* aTabOpener,
         renderFrame = nullptr;
     }
 
+  ShowInfo showInfo(EmptyString(), false, false, true, 0, 0);
+  nsCOMPtr<nsPIDOMWindow> opener = do_QueryInterface(aParent);
+  nsIDocShell* openerShell;
+  if (opener && (openerShell = opener->GetDocShell())) {
+    nsCOMPtr<nsILoadContext> context = do_QueryInterface(openerShell);
+    showInfo = ShowInfo(EmptyString(), false,
+                        context->UsePrivateBrowsing(), true,
+                        aTabOpener->mDPI, aTabOpener->mDefaultScale);
+  }
+
     // Unfortunately we don't get a window unless we've shown the frame.  That's
     // pretty bogus; see bug 763602.
-    newChild->DoFakeShow(textureFactoryIdentifier, layersId, renderFrame);
+    newChild->DoFakeShow(textureFactoryIdentifier, layersId, renderFrame,
+                         showInfo);
 
     for (size_t i = 0; i < frameScripts.Length(); i++) {
         FrameScriptInfo& info = frameScripts[i];
@@ -897,7 +928,7 @@ ContentChild::ProvideWindowCommon(TabChild* aTabOpener,
     }
 
     if (!urlToLoad.IsEmpty()) {
-        newChild->RecvLoadURL(urlToLoad, BrowserConfiguration());
+        newChild->RecvLoadURL(urlToLoad, BrowserConfiguration(), showInfo);
     }
 
     nsCOMPtr<nsIDOMWindow> win = do_GetInterface(newChild->WebNavigation());
@@ -1422,16 +1453,6 @@ ContentChild::RecvBidiKeyboardNotify(const bool& aIsLangRTL)
     return true;
 }
 
-bool
-ContentChild::RecvUpdateServiceWorkerRegistrations()
-{
-    nsCOMPtr<nsIServiceWorkerManager> swm = mozilla::services::GetServiceWorkerManager();
-    if (swm) {
-        swm->UpdateAllRegistrations();
-    }
-    return true;
-}
-
 static CancelableTask* sFirstIdleTask;
 
 static void FirstIdle(void)
@@ -1628,6 +1649,13 @@ ContentChild::RecvNotifyPresentationReceiverCleanUp(const nsString& aSessionId)
   return true;
 }
 
+bool
+ContentChild::RecvNotifyGMPsChanged()
+{
+  GMPDecoderModule::UpdateUsableCodecs();
+  return true;
+}
+
 PCrashReporterChild*
 ContentChild::AllocPCrashReporterChild(const mozilla::dom::NativeThreadId& id,
                                        const uint32_t& processType)
@@ -1714,7 +1742,7 @@ ContentChild::DeallocPTestShellChild(PTestShellChild* shell)
 jsipc::CPOWManager*
 ContentChild::GetCPOWManager()
 {
-    if (PJavaScriptChild* c = LoneManagedOrNull(ManagedPJavaScriptChild())) {
+    if (PJavaScriptChild* c = LoneManagedOrNullAsserts(ManagedPJavaScriptChild())) {
         return CPOWManagerFor(c);
     }
     return CPOWManagerFor(SendPJavaScriptConstructor());
@@ -1883,6 +1911,20 @@ ContentChild::DeallocPExternalHelperAppChild(PExternalHelperAppChild* aService)
 {
     ExternalHelperAppChild *child = static_cast<ExternalHelperAppChild*>(aService);
     child->Release();
+    return true;
+}
+
+PHandlerServiceChild*
+ContentChild::AllocPHandlerServiceChild()
+{
+    HandlerServiceChild* actor = new HandlerServiceChild();
+    actor->AddRef();
+    return actor;
+}
+
+bool ContentChild::DeallocPHandlerServiceChild(PHandlerServiceChild* aHandlerServiceChild)
+{
+    static_cast<HandlerServiceChild*>(aHandlerServiceChild)->Release();
     return true;
 }
 
@@ -2154,8 +2196,7 @@ ContentChild::ActorDestroy(ActorDestroyReason why)
     // going through the full XPCOM shutdown path, because it doesn't
     // keep persistent state.
     QuickExit();
-#endif
-
+#else
     if (sFirstIdleTask) {
         sFirstIdleTask->Cancel();
     }
@@ -2180,6 +2221,7 @@ ContentChild::ActorDestroy(ActorDestroyReason why)
 #endif
 
     XRE_ShutdownChildProcess();
+#endif // NS_FREE_PERMANENT_DATA
 }
 
 void
@@ -2203,7 +2245,7 @@ ContentChild::ProcessingError(Result aCode, const char* aReason)
     }
 
 #if defined(MOZ_CRASHREPORTER) && !defined(MOZ_B2G)
-    if (PCrashReporterChild* c = LoneManagedOrNull(ManagedPCrashReporterChild())) {
+    if (PCrashReporterChild* c = LoneManagedOrNullAsserts(ManagedPCrashReporterChild())) {
         CrashReporterChild* crashReporter =
             static_cast<CrashReporterChild*>(c);
         nsDependentCString reason(aReason);
@@ -2251,6 +2293,39 @@ bool
 ContentChild::RecvPreferenceUpdate(const PrefSetting& aPref)
 {
     Preferences::SetPreference(aPref);
+    return true;
+}
+
+bool
+ContentChild::RecvDataStoragePut(const nsString& aFilename,
+                                 const DataStorageItem& aItem)
+{
+    RefPtr<DataStorage> storage = DataStorage::GetIfExists(aFilename);
+    if (storage) {
+        storage->Put(aItem.key(), aItem.value(), aItem.type());
+    }
+    return true;
+}
+
+bool
+ContentChild::RecvDataStorageRemove(const nsString& aFilename,
+                                    const nsCString& aKey,
+                                    const DataStorageType& aType)
+{
+    RefPtr<DataStorage> storage = DataStorage::GetIfExists(aFilename);
+    if (storage) {
+        storage->Remove(aKey, aType);
+    }
+    return true;
+}
+
+bool
+ContentChild::RecvDataStorageClear(const nsString& aFilename)
+{
+    RefPtr<DataStorage> storage = DataStorage::GetIfExists(aFilename);
+    if (storage) {
+        storage->Clear();
+    }
     return true;
 }
 
@@ -2355,7 +2430,7 @@ ContentChild::RecvAddPermission(const IPC::Permission& permission)
                "We have no permissionManager in the Content process !");
 
     nsAutoCString originNoSuffix;
-    OriginAttributes attrs;
+    PrincipalOriginAttributes attrs;
     attrs.PopulateFromOrigin(permission.origin, originNoSuffix);
 
     nsCOMPtr<nsIURI> uri;
@@ -2460,7 +2535,7 @@ OnFinishNuwaPreparation()
     }
 
     // This will create the actor.
-    unused << mozilla::dom::NuwaChild::GetSingleton();
+    Unused << mozilla::dom::NuwaChild::GetSingleton();
 
     MakeNuwaProcess();
 }
@@ -2585,17 +2660,17 @@ ContentChild::RecvFileSystemUpdate(const nsString& aFsName,
     }
 #else
     // Remove warnings about unused arguments
-    unused << aFsName;
-    unused << aVolumeName;
-    unused << aState;
-    unused << aMountGeneration;
-    unused << aIsMediaPresent;
-    unused << aIsSharing;
-    unused << aIsFormatting;
-    unused << aIsFake;
-    unused << aIsUnmounting;
-    unused << aIsRemovable;
-    unused << aIsHotSwappable;
+    Unused << aFsName;
+    Unused << aVolumeName;
+    Unused << aState;
+    Unused << aMountGeneration;
+    Unused << aIsMediaPresent;
+    Unused << aIsSharing;
+    Unused << aIsFormatting;
+    Unused << aIsFake;
+    Unused << aIsUnmounting;
+    Unused << aIsRemovable;
+    Unused << aIsHotSwappable;
 #endif
     return true;
 }
@@ -2610,7 +2685,7 @@ ContentChild::RecvVolumeRemoved(const nsString& aFsName)
     }
 #else
     // Remove warnings about unused arguments
-    unused << aFsName;
+    Unused << aFsName;
 #endif
     return true;
 }
@@ -2751,22 +2826,20 @@ ContentChild::RecvOnAppThemeChanged()
 }
 
 bool
-ContentChild::RecvStartProfiler(const uint32_t& aEntries,
-                                const double& aInterval,
-                                nsTArray<nsCString>&& aFeatures,
-                                nsTArray<nsCString>&& aThreadNameFilters)
+ContentChild::RecvStartProfiler(const ProfilerInitParams& params)
 {
     nsTArray<const char*> featureArray;
-    for (size_t i = 0; i < aFeatures.Length(); ++i) {
-        featureArray.AppendElement(aFeatures[i].get());
+    for (size_t i = 0; i < params.features().Length(); ++i) {
+        featureArray.AppendElement(params.features()[i].get());
     }
 
     nsTArray<const char*> threadNameFilterArray;
-    for (size_t i = 0; i < aThreadNameFilters.Length(); ++i) {
-        threadNameFilterArray.AppendElement(aThreadNameFilters[i].get());
+    for (size_t i = 0; i < params.threadFilters().Length(); ++i) {
+        threadNameFilterArray.AppendElement(params.threadFilters()[i].get());
     }
 
-    profiler_start(aEntries, aInterval, featureArray.Elements(), featureArray.Length(),
+    profiler_start(params.entries(), params.interval(),
+                   featureArray.Elements(), featureArray.Length(),
                    threadNameFilterArray.Elements(), threadNameFilterArray.Length());
 
     return true;
@@ -2802,7 +2875,7 @@ ContentChild::RecvGatherProfile()
         profileCString = EmptyCString();
     }
 
-    unused << SendProfile(profileCString);
+    Unused << SendProfile(profileCString);
     return true;
 }
 
@@ -2911,9 +2984,18 @@ ContentChild::RecvShutdown()
 
     GetIPCChannel()->SetAbortOnError(false);
 
+#ifdef MOZ_ENABLE_PROFILER_SPS
+    if (profiler_is_active()) {
+        // We're shutting down while we were profiling. Send the
+        // profile up to the parent so that we don't lose this
+        // information.
+        Unused << RecvGatherProfile();
+    }
+#endif
+
     // Ignore errors here. If this fails, the parent will kill us after a
     // timeout.
-    unused << SendFinishShutdown();
+    Unused << SendFinishShutdown();
     return true;
 }
 
@@ -2961,6 +3043,7 @@ ContentChild::AllocPContentPermissionRequestChild(const InfallibleTArray<Permiss
 bool
 ContentChild::DeallocPContentPermissionRequestChild(PContentPermissionRequestChild* actor)
 {
+    nsContentPermissionUtils::NotifyRemoveContentPermissionRequestChild(actor);
     auto child = static_cast<RemotePermissionRequest*>(actor);
     child->IPDLRelease();
     return true;

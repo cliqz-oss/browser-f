@@ -18,12 +18,12 @@
 #include "punycode.h"
 
 #ifdef IDNA2008
-// Currently we use the transitional processing option -- see
+// Currently we use the non-transitional processing option -- see
 // http://unicode.org/reports/tr46/
-// To switch to non-transitional processing, change the value of this flag
-// and kTransitionalProcessing in netwerk/test/unit/test_idna2008.js to false
-// (patch in bug 1218179).
-const bool kIDNA2008_TransitionalProcessing = true;
+// To switch to transitional processing, change the value of this flag
+// and kTransitionalProcessing in netwerk/test/unit/test_idna2008.js to true
+// (revert bug 1218179).
+const bool kIDNA2008_TransitionalProcessing = false;
 
 #include "ICUUtils.h"
 #endif
@@ -166,7 +166,7 @@ nsIDNService::IDNA2008ToUnicode(const nsACString& input, nsAString& output)
   UIDNAInfo info = UIDNA_INFO_INITIALIZER;
   UErrorCode errorCode = U_ZERO_ERROR;
   int32_t inLen = inputStr.Length();
-  int32_t outMaxLen = inLen - kACEPrefixLen + 1;
+  int32_t outMaxLen = kMaxDNSNodeLen + 1;
   UChar outputBuffer[kMaxDNSNodeLen + 1];
 
   int32_t outLen = uidna_labelToUnicode(mIDNA, (const UChar*)inputStr.get(),

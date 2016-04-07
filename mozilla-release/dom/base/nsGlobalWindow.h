@@ -267,15 +267,7 @@ public:
     , mValue(aValue) {}
   nsresult Get(nsIPrincipal* aSubject, nsIVariant** aResult);
   void Get(JSContext* aCx, JS::Handle<JSObject*> aScope, nsIPrincipal* aSubject,
-           JS::MutableHandle<JS::Value> aResult, mozilla::ErrorResult& aError)
-  {
-    if (aSubject->Subsumes(mOrigin)) {
-      aError = nsContentUtils::XPConnect()->VariantToJS(aCx, aScope,
-                                                        mValue, aResult);
-    } else {
-      aResult.setUndefined();
-    }
-  }
+           JS::MutableHandle<JS::Value> aResult, mozilla::ErrorResult& aError);
 private:
   virtual ~DialogValueHolder() {}
 
@@ -358,8 +350,6 @@ public:
   void PoisonOuterWindowProxy(JSObject *aObject);
 
   virtual bool IsBlackForCC(bool aTracingNeeded = true) override;
-
-  static JSObject* OuterObject(JSContext* aCx, JS::Handle<JSObject*> aObj);
 
   // nsIScriptObjectPrincipal
   virtual nsIPrincipal* GetPrincipal() override;
@@ -1133,7 +1123,10 @@ public:
   {
     MOZ_ASSERT(IsOuterWindow());
     mozilla::ErrorResult ignored;
-    return GetContentInternal(ignored, /* aUnprivilegedCaller = */ false);
+    nsCOMPtr<nsIDOMWindow> win =
+      GetContentInternal(ignored, /* aUnprivilegedCaller = */ false);
+    ignored.SuppressException();
+    return win.forget();
   }
 
   void Get_content(JSContext* aCx,

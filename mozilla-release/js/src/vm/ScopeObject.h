@@ -11,7 +11,9 @@
 #include "jsobj.h"
 #include "jsweakmap.h"
 
+#include "builtin/ModuleObject.h"
 #include "gc/Barrier.h"
+#include "js/GCHashTable.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/ProxyObject.h"
 
@@ -401,6 +403,10 @@ class ModuleEnvironmentObject : public LexicalScopeBase
     bool createImportBinding(JSContext* cx, HandleAtom importName, HandleModuleObject module,
                              HandleAtom exportName);
 
+    bool hasImportBinding(HandlePropertyName name);
+
+    bool lookupImport(jsid name, ModuleEnvironmentObject** envOut, Shape** shapeOut);
+
   private:
     static bool lookupProperty(JSContext* cx, HandleObject obj, HandleId id,
                                MutableHandleObject objp, MutableHandleShape propp);
@@ -415,7 +421,6 @@ class ModuleEnvironmentObject : public LexicalScopeBase
                                ObjectOpResult& result);
     static bool enumerate(JSContext* cx, HandleObject obj, AutoIdVector& properties,
                           bool enumerableOnly);
-    static bool thisValue(JSContext* cx, HandleObject obj, MutableHandleValue vp);
 };
 
 typedef Rooted<ModuleEnvironmentObject*> RootedModuleEnvironmentObject;
@@ -688,11 +693,9 @@ class DynamicWithObject : public NestedScopeObject
         return getReservedSlot(OBJECT_SLOT).toObject();
     }
 
-    /* Return object for the 'this' class hook. */
-    Value withThis() const {
-        Value thisValue = getReservedSlot(THIS_SLOT);
-        MOZ_ASSERT(thisValue.isObject());
-        return thisValue;
+    /* Return object for GetThisValue. */
+    JSObject* withThis() const {
+        return &getReservedSlot(THIS_SLOT).toObject();
     }
 
     /*
@@ -873,6 +876,8 @@ class StaticBlockObject : public BlockObject
 
 class ClonedBlockObject : public BlockObject
 {
+    static const unsigned THIS_VALUE_SLOT = 1;
+
     static ClonedBlockObject* create(JSContext* cx, Handle<StaticBlockObject*> block,
                                      HandleObject enclosing);
 
@@ -927,6 +932,8 @@ class ClonedBlockObject : public BlockObject
      * variable values as this.
      */
     static ClonedBlockObject* clone(JSContext* cx, Handle<ClonedBlockObject*> block);
+
+    Value thisValue() const;
 };
 
 // Internal scope object used by JSOP_BINDNAME upon encountering an
@@ -946,7 +953,7 @@ class ClonedBlockObject : public BlockObject
 // Attempting to access anything on this scope throws the appropriate
 // ReferenceError.
 //
-// ES6 'const' bindings induce a runtime assignment when assigned to outside
+// ES6 'const' bindings induce a runtime error when assigned to outside
 // of initialization, regardless of strictness.
 class RuntimeLexicalErrorObject : public ScopeObject
 {
@@ -1095,7 +1102,6 @@ class LiveScopeVal
     AbstractFramePtr frame_;
     RelocatablePtrObject staticScope_;
 
-    void sweep();
     static void staticAsserts();
 
   public:
@@ -1108,6 +1114,8 @@ class LiveScopeVal
     JSObject* staticScope() const { return staticScope_; }
 
     void updateFrame(AbstractFramePtr frame) { frame_ = frame; }
+
+    bool needsSweep();
 };
 
 /*****************************************************************************/
@@ -1178,6 +1186,10 @@ class DebugScopeObject : public ProxyObject
     // on exceptional cases.
     bool getMaybeSentinelValue(JSContext* cx, HandleId id, MutableHandleValue vp);
 
+    // Returns true iff this is a function scope with its own this-binding
+    // (all functions except arrow functions and generator expression lambdas).
+    bool isFunctionScopeWithThis();
+
     // Does this debug scope not have a dynamic counterpart or was never live
     // (and thus does not have a synthesized ScopeObject or a snapshot)?
     bool isOptimizedOut() const;
@@ -1206,10 +1218,10 @@ class DebugScopes
      * removes scopes as they are popped). Thus, two consecutive debugger lazy
      * updates of liveScopes need only fill in the new scopes.
      */
-    typedef HashMap<ScopeObject*,
-                    LiveScopeVal,
-                    DefaultHasher<ScopeObject*>,
-                    RuntimeAllocPolicy> LiveScopeMap;
+    typedef GCHashMap<ReadBarriered<ScopeObject*>,
+                      LiveScopeVal,
+                      MovableCellHasher<ReadBarriered<ScopeObject*>>,
+                      RuntimeAllocPolicy> LiveScopeMap;
     LiveScopeMap liveScopes;
     static MOZ_ALWAYS_INLINE void liveScopesPostWriteBarrier(JSRuntime* rt, LiveScopeMap* map,
                                                              ScopeObject* key);
@@ -1255,9 +1267,6 @@ class DebugScopes
     static void onCompartmentUnsetIsDebuggee(JSCompartment* c);
 };
 
-extern bool
-IsDebugScopeSlow(ProxyObject* proxy);
-
 }  /* namespace js */
 
 template<>
@@ -1289,13 +1298,8 @@ JSObject::is<js::ScopeObject>() const
 }
 
 template<>
-inline bool
-JSObject::is<js::DebugScopeObject>() const
-{
-    // Note: don't use is<ProxyObject>() here -- it also matches subclasses!
-    return hasClass(&js::ProxyObject::class_) &&
-           IsDebugScopeSlow(&const_cast<JSObject*>(this)->as<js::ProxyObject>());
-}
+bool
+JSObject::is<js::DebugScopeObject>() const;
 
 template<>
 inline bool
@@ -1447,6 +1451,24 @@ CreateScopeObjectsForScopeChain(JSContext* cx, AutoObjectVector& scopeChain,
 
 bool HasNonSyntacticStaticScopeChain(JSObject* staticScope);
 uint32_t StaticScopeChainLength(JSObject* staticScope);
+
+ModuleEnvironmentObject* GetModuleEnvironmentForScript(JSScript* script);
+
+bool GetThisValueForDebuggerMaybeOptimizedOut(JSContext* cx, AbstractFramePtr frame, jsbytecode* pc,
+                                              MutableHandleValue res);
+
+bool CheckVarNameConflict(JSContext* cx, Handle<ClonedBlockObject*> lexicalScope,
+                          HandlePropertyName name);
+
+bool CheckLexicalNameConflict(JSContext* cx, Handle<ClonedBlockObject*> lexicalScope,
+                              HandleObject varObj, HandlePropertyName name);
+
+bool CheckGlobalDeclarationConflicts(JSContext* cx, HandleScript script,
+                                     Handle<ClonedBlockObject*> lexicalScope,
+                                     HandleObject varObj);
+
+bool CheckEvalDeclarationConflicts(JSContext* cx, HandleScript script,
+                                   HandleObject scopeChain, HandleObject varObj);
 
 #ifdef DEBUG
 void DumpStaticScopeChain(JSScript* script);

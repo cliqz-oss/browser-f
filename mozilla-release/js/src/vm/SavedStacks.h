@@ -164,12 +164,18 @@ class SavedStacks {
     bool     init();
     bool     initialized() const { return frames.initialized(); }
     bool     saveCurrentStack(JSContext* cx, MutableHandleSavedFrame frame, unsigned maxFrameCount = 0);
+    bool     copyAsyncStack(JSContext* cx, HandleObject asyncStack, HandleString asyncCause,
+                            MutableHandleSavedFrame adoptedStack, unsigned maxFrameCount = 0);
     void     sweep(JSRuntime* rt);
     void     trace(JSTracer* trc);
     uint32_t count();
     void     clear();
-    void     setRNGState(uint64_t state0, uint64_t state1) { bernoulli.setRandomState(state0, state1); }
     void     chooseSamplingProbability(JSCompartment*);
+
+    // Set the sampling random number generator's state to |state0| and
+    // |state1|. One or the other must be non-zero. See the comments for
+    // mozilla::non_crypto::XorShift128PlusRNG::setState for details.
+    void     setRNGState(uint64_t state0, uint64_t state1) { bernoulli.setRandomState(state0, state1); }
 
     size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf);
 

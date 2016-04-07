@@ -280,6 +280,7 @@ nsNPAPIPluginInstance::StopTime()
 
 nsresult nsNPAPIPluginInstance::Initialize(nsNPAPIPlugin *aPlugin, nsPluginInstanceOwner* aOwner, const nsACString& aMIMEType)
 {
+  PROFILER_LABEL_FUNC(js::ProfileEntry::Category::OTHER);
   PLUGIN_LOG(PLUGIN_LOG_NORMAL, ("nsNPAPIPluginInstance::Initialize this=%p\n",this));
 
   NS_ENSURE_ARG_POINTER(aPlugin);
@@ -565,7 +566,7 @@ nsresult nsNPAPIPluginInstance::SetWindow(NPWindow* window)
     // That is somewhat complex to check, so we just use "unused"
     // to suppress any compiler warnings in build configurations
     // where the logging is a no-op.
-    mozilla::unused << error;
+    mozilla::Unused << error;
 
     mInPluginInitCall = oldVal;
 
@@ -582,9 +583,6 @@ nsNPAPIPluginInstance::NewStreamFromPlugin(const char* type, const char* target,
                                            nsIOutputStream* *result)
 {
   nsPluginStreamToFile* stream = new nsPluginStreamToFile(target, mOwner);
-  if (!stream)
-    return NS_ERROR_OUT_OF_MEMORY;
-
   return stream->QueryInterface(kIOutputStreamIID, (void**)result);
 }
 
@@ -657,6 +655,8 @@ nsresult nsNPAPIPluginInstance::HandleEvent(void* event, int16_t* result,
 {
   if (RUNNING != mRunning)
     return NS_OK;
+
+  PROFILER_LABEL_FUNC(js::ProfileEntry::Category::OTHER);
 
   if (!event)
     return NS_ERROR_FAILURE;
@@ -1070,12 +1070,8 @@ nsNPAPIPluginInstance* nsNPAPIPluginInstance::GetFromNPP(NPP npp)
 
 nsresult nsNPAPIPluginInstance::GetDrawingModel(int32_t* aModel)
 {
-#if defined(XP_MACOSX)
   *aModel = (int32_t)mDrawingModel;
   return NS_OK;
-#else
-  return NS_ERROR_FAILURE;
-#endif
 }
 
 nsresult nsNPAPIPluginInstance::IsRemoteDrawingCoreAnimation(bool* aDrawing)
@@ -1212,6 +1208,16 @@ nsNPAPIPluginInstance::GetImageSize(nsIntSize* aSize)
 
   AutoPluginLibraryCall library(this);
   return !library ? NS_ERROR_FAILURE : library->GetImageSize(&mNPP, aSize);
+}
+
+void
+nsNPAPIPluginInstance::DidComposite()
+{
+  if (RUNNING != mRunning)
+    return;
+
+  AutoPluginLibraryCall library(this);
+  library->DidComposite(&mNPP);
 }
 
 nsresult
@@ -1625,6 +1631,35 @@ nsNPAPIPluginInstance::URLRedirectResponse(void* notifyData, NPBool allow)
     if (currentListener->GetNotifyData() == notifyData) {
       currentListener->URLRedirectResponse(allow);
     }
+  }
+}
+
+NPError
+nsNPAPIPluginInstance::InitAsyncSurface(NPSize *size, NPImageFormat format,
+                                        void *initData, NPAsyncSurface *surface)
+{
+  if (mOwner) {
+    return mOwner->InitAsyncSurface(size, format, initData, surface);
+  }
+
+  return NPERR_GENERIC_ERROR;
+}
+
+NPError
+nsNPAPIPluginInstance::FinalizeAsyncSurface(NPAsyncSurface *surface)
+{
+  if (mOwner) {
+    return mOwner->FinalizeAsyncSurface(surface);
+  }
+
+  return NPERR_GENERIC_ERROR;
+}
+
+void
+nsNPAPIPluginInstance::SetCurrentAsyncSurface(NPAsyncSurface *surface, NPRect *changed)
+{
+  if (mOwner) {
+    mOwner->SetCurrentAsyncSurface(surface, changed);
   }
 }
 

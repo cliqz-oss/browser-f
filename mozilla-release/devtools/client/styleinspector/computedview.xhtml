@@ -4,8 +4,10 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!DOCTYPE window [
-  <!ENTITY % inspectorDTD SYSTEM "chrome://browser/locale/devtools/styleinspector.dtd">
+  <!ENTITY % inspectorDTD SYSTEM "chrome://devtools/locale/styleinspector.dtd">
   %inspectorDTD;
+  <!ENTITY % globalDTD SYSTEM "chrome://global/locale/global.dtd">
+  %globalDTD;
   <!ELEMENT loop ANY>
   <!ATTLIST li foreach CDATA #IMPLIED>
   <!ATTLIST div foreach CDATA #IMPLIED>
@@ -47,7 +49,7 @@
     </script>
   </head>
 
-  <body>
+  <body dir="&locale.dir;">
 
     <div id="root" class="devtools-monospace">
       <div class="devtools-toolbar">

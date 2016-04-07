@@ -10,8 +10,6 @@
 <!ENTITY usingSubscription.accesskey "N">
 <!ENTITY dualUseFolders.label "Server unterstützt Ordner, die Unterordner und Nachrichten enthalten">
 <!ENTITY dualUseFolders.accesskey "u">
-<!ENTITY useIdle.label "IDLE-Befehl verwenden, falls der Server ihn unterstützt">
-<!ENTITY useIdle.accesskey "K">
 <!ENTITY maximumConnectionsNumber.label "Maximale Anzahl der aufrecht erhaltenen Serververbindungen">
 <!ENTITY maximumConnectionsNumber.accesskey "M">
 <!-- LOCALIZATION NOTE (namespaceDesc.label): Do not translate "IMAP" -->
@@ -24,10 +22,10 @@
 <!ENTITY otherUsersNamespace.accesskey "A">
 <!ENTITY overrideNamespaces.label "Server erlauben, diese Namensräume zu übergehen">
 <!ENTITY overrideNamespaces.accesskey "e">
-<!ENTITY pop3Desc.label "Wo soll der Posteingang dieses Kontos gespeichert werden?">
-<!ENTITY accountDirectory.label "Separater Posteingang für dieses Konto">
-<!ENTITY accountDirectory.accesskey "S">
+<!ENTITY pop3DeferringDesc.label "Neue heruntergeladene Nachrichten für dieses Konto in folgendem Ordner speichern:" >
+<!ENTITY accountInbox.label "Posteingang für dieses Konto">
+<!ENTITY accountInbox.accesskey "d">
 <!ENTITY deferToServer.label "Posteingang eines anderen Kontos">
-<!ENTITY deferToServer.accesskey "D">
-<!ENTITY deferGetNewMail.label "Dieses Konto beim Abrufen von Nachrichten einschließen.">
-<!ENTITY deferGetNewMail.accesskey "I">
+<!ENTITY deferToServer.accesskey "a">
+<!ENTITY deferGetNewMail.label "Dieses Konto beim Abrufen von Nachrichten einschließen">
+<!ENTITY deferGetNewMail.accesskey "e">

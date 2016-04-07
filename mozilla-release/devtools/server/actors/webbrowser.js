@@ -12,7 +12,7 @@ var promise = require("promise");
 var { ActorPool, createExtraActors, appendExtraActors } = require("devtools/server/actors/common");
 var { DebuggerServer } = require("devtools/server/main");
 var DevToolsUtils = require("devtools/shared/DevToolsUtils");
-var { assert, dbg_assert } = DevToolsUtils;
+var { assert } = DevToolsUtils;
 var { TabSources } = require("./utils/TabSources");
 var makeDebugger = require("./utils/make-debugger");
 
@@ -23,6 +23,8 @@ loader.lazyRequireGetter(this, "ThreadActor", "devtools/server/actors/script", t
 loader.lazyRequireGetter(this, "unwrapDebuggerObjectGlobal", "devtools/server/actors/script", true);
 loader.lazyRequireGetter(this, "BrowserAddonActor", "devtools/server/actors/addon", true);
 loader.lazyRequireGetter(this, "WorkerActorList", "devtools/server/actors/worker", true);
+loader.lazyRequireGetter(this, "ServiceWorkerRegistrationActorList", "devtools/server/actors/worker", true);
+loader.lazyRequireGetter(this, "ProcessActorList", "devtools/server/actors/process", true);
 loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
 
 // Assumptions on events module:
@@ -130,6 +132,8 @@ function createRootActor(aConnection)
                          tabList: new BrowserTabList(aConnection),
                          addonList: new BrowserAddonList(aConnection),
                          workerList: new WorkerActorList({}),
+                         serviceWorkerRegistrationList: new ServiceWorkerRegistrationActorList(),
+                         processList: new ProcessActorList(),
                          globalActorFactories: DebuggerServer.globalActorFactories,
                          onShutdown: sendShutdownEvent
                        });
@@ -345,8 +349,7 @@ BrowserTabList.prototype._getActorForBrowser = function(browser) {
     this._checkListening();
     return actor.connect();
   } else {
-    actor = new BrowserTabActor(this._connection, browser,
-                                browser.getTabBrowser());
+    actor = new BrowserTabActor(this._connection, browser);
     this._actorByBrowser.set(browser, actor);
     this._checkListening();
     return promise.resolve(actor);
@@ -894,7 +897,7 @@ TabActor.prototype = {
 
   get sources() {
     if (!this._sources) {
-      dbg_assert(this.threadActor, "threadActor should exist when creating sources.");
+      assert(this.threadActor, "threadActor should exist when creating sources.");
       this._sources = new TabSources(this.threadActor);
     }
     return this._sources;
@@ -1090,6 +1093,10 @@ TabActor.prototype = {
   },
 
   onListWorkers: function BTA_onListWorkers(aRequest) {
+    if (!this.attached) {
+      return { error: "wrongState" };
+    }
+
     if (this._workerActorList === null) {
       this._workerActorList = new WorkerActorList({
         type: Ci.nsIWorkerDebugger.TYPE_DEDICATED,
@@ -1343,7 +1350,26 @@ TabActor.prototype = {
       this._tabActorPool = null;
     }
 
+    // Make sure that no more workerListChanged notifications are sent.
+    if (this._workerActorList !== null) {
+      this._workerActorList.onListChanged = null;
+      this._workerActorList = null;
+    }
+
+    if (this._workerActorPool !== null) {
+      this.conn.removeActorPool(this._workerActorPool);
+      this._workerActorPool = null;
+    }
+
+    // Make sure that no more serviceWorkerRegistrationChanged notifications are
+    // sent.
+    if (this._mustNotifyServiceWorkerRegistrationChanged) {
+      swm.removeListener(this);
+      this._mustNotifyServiceWorkerRegistrationChanged = false;
+    }
+
     this._attached = false;
+
     return true;
   },
 
@@ -1847,20 +1873,21 @@ exports.TabActor = TabActor;
 
 /**
  * Creates a tab actor for handling requests to a single in-process
- * <browser> tab. Most of the implementation comes from TabActor.
+ * <xul:browser> tab, or <html:iframe>.
+ * Most of the implementation comes from TabActor.
  *
  * @param aConnection DebuggerServerConnection
  *        The connection to the client.
  * @param aBrowser browser
- *        The browser instance that contains this tab.
- * @param aTabBrowser tabbrowser
- *        The tabbrowser that can receive nsIWebProgressListener events.
+ *        The frame instance that contains this tab.
  */
-function BrowserTabActor(aConnection, aBrowser, aTabBrowser)
+function BrowserTabActor(aConnection, aBrowser)
 {
   TabActor.call(this, aConnection, aBrowser);
   this._browser = aBrowser;
-  this._tabbrowser = aTabBrowser;
+  if (typeof(aBrowser.getTabBrowser) == "function") {
+    this._tabbrowser = aBrowser.getTabBrowser();
+  }
 
   Object.defineProperty(this, "docShell", {
     value: this._browser.docShell,

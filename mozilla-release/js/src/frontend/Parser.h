@@ -789,6 +789,10 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     bool matchInOrOf(bool* isForInp, bool* isForOfp);
 
     bool checkFunctionArguments();
+
+    bool defineFunctionThis();
+    Node newThisName();
+
     bool makeDefIntoUse(Definition* dn, Node pn, HandleAtom atom);
     bool checkFunctionDefinition(HandlePropertyName funName, Node* pn, FunctionSyntaxKind kind,
                                  bool* pbodyProcessed);
@@ -893,6 +897,8 @@ class Parser : private JS::AutoGCRooter, public StrictModeGetter
     bool asmJS(Node list);
 
     void addTelemetry(JSCompartment::DeprecatedLanguageExtension e);
+
+    bool warnOnceAboutExprClosure();
 
     friend class LegacyCompExprTransplanter;
     friend struct BindData<ParseHandler>;

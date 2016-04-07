@@ -6,7 +6,9 @@
 DevToolsModules(
     'allocations.js',
     'breakdown.js',
+    'diffing.js',
     'errors.js',
+    'filter.js',
     'inverted.js',
     'snapshots.js',
 )

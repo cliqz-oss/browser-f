@@ -41,6 +41,7 @@ public:
                                     nsACString& aOutVersion) override;
   NS_IMETHOD GetNodeId(const nsAString& aOrigin,
                        const nsAString& aTopLevelOrigin,
+                       const nsAString& aGMPName,
                        bool aInPrivateBrowsingMode,
                        UniquePtr<GetNodeIdCallback>&& aCallback) override;
   NS_IMETHOD UpdateTrialCreateState(const nsAString& aKeySystem,
@@ -73,6 +74,7 @@ private:
                                   size_t* aOutPluginIndex);
 
   nsresult GetNodeId(const nsAString& aOrigin, const nsAString& aTopLevelOrigin,
+                     const nsAString& aGMPName,
                      bool aInPrivateBrowsing, nsACString& aOutId);
 
   void UnloadPlugins();
@@ -95,7 +97,8 @@ private:
     ~DirectoryFilter() {}
   };
   void ClearNodeIdAndPlugin(DirectoryFilter& aFilter);
-
+  void ClearNodeIdAndPlugin(nsIFile* aPluginStorageDir,
+                            DirectoryFilter& aFilter);
   void ForgetThisSiteOnGMPThread(const nsACString& aOrigin);
   void ClearRecentHistoryOnGMPThread(PRTime aSince);
 
@@ -153,7 +156,7 @@ private:
     void Update(const nsCString& aPlugin, const nsCString& aInstance,
                 char aId, const nsCString& aState);
   private:
-    struct State { nsAutoCString mStateSequence; nsCString mLastStateDescription; };
+    struct State { nsCString mStateSequence; nsCString mLastStateDescription; };
     typedef nsClassHashtable<nsCStringHashKey, State> StatesByInstance;
     typedef nsClassHashtable<nsCStringHashKey, StatesByInstance> StateInstancesByPlugin;
     StateInstancesByPlugin mStates;
@@ -215,6 +218,7 @@ public:
                            uint32_t* aPluginId) override;
   virtual bool RecvGetGMPNodeId(const nsString& aOrigin,
                                 const nsString& aTopLevelOrigin,
+                                const nsString& aGMPName,
                                 const bool& aInPrivateBrowsing,
                                 nsCString* aID) override;
   static bool RecvGetGMPPluginVersionForAPI(const nsCString& aAPI,

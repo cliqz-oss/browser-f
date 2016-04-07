@@ -29,6 +29,7 @@
 #include "Units.h"
 #include "mozilla/ToString.h"
 #include "nsHTMLReflowMetrics.h"
+#include "ImageContainer.h"
 
 #include <limits>
 #include <algorithm>
@@ -67,6 +68,7 @@ struct IntrinsicSize;
 struct ContainerLayerParameters;
 class WritingMode;
 namespace dom {
+class CanvasRenderingContext2D;
 class DOMRectList;
 class Element;
 class HTMLImageElement;
@@ -78,6 +80,7 @@ namespace gfx {
 struct RectCornerRadii;
 } // namespace gfx
 namespace layers {
+class Image;
 class Layer;
 } // namespace layers
 } // namespace mozilla
@@ -119,6 +122,7 @@ class nsLayoutUtils
   typedef mozilla::gfx::SourceSurface SourceSurface;
   typedef mozilla::gfx::Color Color;
   typedef mozilla::gfx::DrawTarget DrawTarget;
+  typedef mozilla::gfx::ExtendMode ExtendMode;
   typedef mozilla::gfx::Filter Filter;
   typedef mozilla::gfx::Float Float;
   typedef mozilla::gfx::Point Point;
@@ -539,32 +543,6 @@ public:
   static bool IsScrollbarThumbLayerized(nsIFrame* aThumbFrame);
 
   /**
-   * Finds the nearest ancestor frame to aItem that is considered to have (or
-   * will have) "animated geometry". For example the scrolled frames of
-   * scrollframes which are actively being scrolled fall into this category.
-   * Frames with certain CSS properties that are being animated (e.g.
-   * 'left'/'top' etc) are also placed in this category.
-   * Frames with different active geometry roots are in different PaintedLayers,
-   * so that we can animate the geometry root by changing its transform (either
-   * on the main thread or in the compositor).
-   * The animated geometry root is required to be a descendant (or equal to)
-   * aItem's ReferenceFrame(), which means that we will fall back to
-   * returning aItem->ReferenceFrame() when we can't find another animated
-   * geometry root.
-   */
-  static nsIFrame* GetAnimatedGeometryRootFor(nsDisplayItem* aItem,
-                                              nsDisplayListBuilder* aBuilder);
-
-  /**
-   * Finds the nearest ancestor frame to aFrame that is considered to have (or
-   * will have) "animated geometry". This could be aFrame. Returns
-   * aStopAtAncestor if no closer ancestor is found.
-   */
-  static nsIFrame* GetAnimatedGeometryRootForFrame(nsDisplayListBuilder* aBuilder,
-                                                   nsIFrame* aFrame,
-                                                   const nsIFrame* aStopAtAncestor);
-
-  /**
     * GetScrollableFrameFor returns the scrollable frame for a scrolled frame
     */
   static nsIScrollableFrame* GetScrollableFrameFor(const nsIFrame *aScrolledFrame);
@@ -603,11 +581,18 @@ public:
      */
     SCROLLABLE_ONLY_ASYNC_SCROLLABLE = 0x04,
     /**
-     * If the SCROLLABLE_ALWAYS_MATCH_ROOT flag is set, then return the
-     * root scrollable frame for the root document (in the current process)
-     * if we don't hit anything else.
+     * If the SCROLLABLE_ALWAYS_MATCH_ROOT flag is set, then we will always
+     * return the root scrollable frame for the root document (in the current
+     * process) if we encounter it, whether or not it is async scrollable or
+     * overflow: hidden.
      */
     SCROLLABLE_ALWAYS_MATCH_ROOT = 0x08,
+    /**
+     * If the SCROLLABLE_FIXEDPOS_FINDS_ROOT flag is set, then for fixed-pos
+     * frames that are in the root document (in the current process) return the
+     * root scrollable frame for that document.
+     */
+    SCROLLABLE_FIXEDPOS_FINDS_ROOT = 0x10
   };
   /**
    * GetNearestScrollableFrame locates the first ancestor of aFrame
@@ -1034,9 +1019,11 @@ public:
    * to force rendering to use the widget's layer manager for testing
    * or speed. PAINT_WIDGET_LAYERS must be set if aRenderingContext is null.
    * If PAINT_DOCUMENT_RELATIVE is used, the visible region is interpreted
-   * as being relative to the document.  (Normally it's relative to the CSS
-   * viewport.) PAINT_TO_WINDOW sets painting to window to true on the display
-   * list builder even if we can't tell that we are painting to the window.
+   * as being relative to the document (normally it's relative to the CSS
+   * viewport) and the document is painted as if no scrolling has occured.
+   * Only considered if nsIPresShell::IgnoringViewportScrolling is true.
+   * PAINT_TO_WINDOW sets painting to window to true on the display list
+   * builder even if we can't tell that we are painting to the window.
    * If PAINT_EXISTING_TRANSACTION is set, then BeginTransaction() has already
    * been called on aFrame's widget's layer manager and should not be
    * called again.
@@ -1233,6 +1220,23 @@ public:
                                                 float aSizeInflation = 1.0f);
 
   /**
+   * Get the font metrics of emphasis marks corresponding to the given
+   * style data. The result is same as GetFontMetricsForStyleContext
+   * except that the font size is scaled down to 50%.
+   * @param aStyleContext the style data
+   * @param aFontMetrics the font metrics result
+   * @param aInflation number to multiple font size by
+   * @return success or failure code
+   */
+  static nsresult GetFontMetricsOfEmphasisMarks(nsStyleContext* aStyleContext,
+                                                nsFontMetrics** aFontMetrics,
+                                                float aInflation)
+  {
+    return GetFontMetricsForStyleContext(aStyleContext, aFontMetrics,
+                                         aInflation * 0.5f);
+  }
+
+  /**
    * Find the immediate child of aParent whose frame subtree contains
    * aDescendantFrame. Returns null if aDescendantFrame is not a descendant
    * of aParent.
@@ -1317,10 +1321,13 @@ public:
    * variations if that's what matches aAxis) and its padding, border and margin
    * in the corresponding dimension.
    */
-  enum IntrinsicISizeType { MIN_ISIZE, PREF_ISIZE };
+  enum class IntrinsicISizeType { MIN_ISIZE, PREF_ISIZE };
+  static const auto MIN_ISIZE = IntrinsicISizeType::MIN_ISIZE;
+  static const auto PREF_ISIZE = IntrinsicISizeType::PREF_ISIZE;
   enum {
     IGNORE_PADDING = 0x01,
     BAIL_IF_REFLOW_NEEDED = 0x02, // returns NS_INTRINSIC_WIDTH_UNKNOWN if so
+    MIN_INTRINSIC_ISIZE = 0x04, // use min-width/height instead of width/height
   };
   static nscoord IntrinsicForAxis(mozilla::PhysicalAxis aAxis,
                                   nsRenderingContext*   aRenderingContext,
@@ -1336,10 +1343,20 @@ public:
                                        uint32_t            aFlags = 0);
 
   /**
-   * Get the contribution of aFrame for the given physical axis.
+   * Get the definite size contribution of aFrame for the given physical axis.
    * This considers the child's 'min-width' property (or 'min-height' if the
    * given axis is vertical), and its padding, border, and margin in the
-   * corresponding dimension.
+   * corresponding dimension.  If the 'min-' property is 'auto' (and 'overflow'
+   * is 'visible') and the corresponding 'width'/'height' is definite it returns
+   * the "specified / transferred size" for:
+   * https://drafts.csswg.org/css-grid/#min-size-auto
+   * Note that any percentage in 'width'/'height' makes it count as indefinite.
+   * If the 'min-' property is 'auto' and 'overflow' is not 'visible', then it
+   * calculates the result as if the 'min-' computed value is zero.
+   * Otherwise, return NS_UNCONSTRAINEDSIZE.
+   *
+   * @note this behavior is specific to Grid/Flexbox (currently) so aFrame
+   * should be a grid/flex item.
    */
   static nscoord MinSizeContributionForAxis(mozilla::PhysicalAxis aAxis,
                                             nsRenderingContext*   aRC,
@@ -1733,7 +1750,8 @@ public:
    *   @param aAnchor           A point in aFill which we will ensure is
    *                            pixel-aligned in the output.
    *   @param aDirty            Pixels outside this area may be skipped.
-   *   @param aImageFlags       Image flags of the imgIContainer::FLAG_* variety
+   *   @param aImageFlags       Image flags of the imgIContainer::FLAG_* variety.
+   *   @param aExtendMode       How to extend the image over the dest rect.
    */
   static DrawResult DrawBackgroundImage(gfxContext&         aContext,
                                         nsPresContext*      aPresContext,
@@ -1744,7 +1762,8 @@ public:
                                         const nsRect&       aFill,
                                         const nsPoint&      aAnchor,
                                         const nsRect&       aDirty,
-                                        uint32_t            aImageFlags);
+                                        uint32_t            aImageFlags,
+                                        ExtendMode          aExtendMode);
 
   /**
    * Draw an image.
@@ -2071,10 +2090,25 @@ public:
   };
 
   struct SurfaceFromElementResult {
-    SurfaceFromElementResult();
+    friend class mozilla::dom::CanvasRenderingContext2D;
+    friend class nsLayoutUtils;
 
-    /* mSourceSurface will contain the resulting surface, or will be nullptr on error */
-    RefPtr<SourceSurface> mSourceSurface;
+    /* If SFEResult contains a valid surface, it either mLayersImage or mSourceSurface
+     * will be non-null, and GetSourceSurface() will not be null.
+     *
+     * For valid surfaces, mSourceSurface may be null if mLayersImage is non-null, but
+     * GetSourceSurface() will create mSourceSurface from mLayersImage when called.
+     */
+
+    /* Video elements (at least) often are already decoded as layers::Images. */
+    RefPtr<mozilla::layers::Image> mLayersImage;
+
+protected:
+    /* GetSourceSurface() fills this and returns its non-null value if this SFEResult
+     * was successful. */
+    RefPtr<mozilla::gfx::SourceSurface> mSourceSurface;
+
+public:
     /* Contains info for drawing when there is no mSourceSurface. */
     DirectDrawInfo mDrawInfo;
 
@@ -2096,11 +2130,19 @@ public:
     bool mCORSUsed;
     /* Whether the returned image contains premultiplied pixel data */
     bool mIsPremultiplied;
+
+    // Methods:
+
+    SurfaceFromElementResult();
+
+    // Gets mSourceSurface, or makes a SourceSurface from mLayersImage.
+    const RefPtr<mozilla::gfx::SourceSurface>& GetSourceSurface();
   };
 
   static SurfaceFromElementResult SurfaceFromElement(mozilla::dom::Element *aElement,
                                                      uint32_t aSurfaceFlags,
                                                      RefPtr<DrawTarget>& aTarget);
+
   static SurfaceFromElementResult SurfaceFromElement(mozilla::dom::Element *aElement,
                                                      uint32_t aSurfaceFlags = 0) {
     RefPtr<DrawTarget> target = nullptr;
@@ -2198,13 +2240,6 @@ public:
                                   nsCSSPseudoElements::Type &aPseudoTypeResult);
 
   /**
-   * Returns true if the frame has animations or transitions that can be
-   * performed on the compositor.
-   */
-  static bool HasAnimationsForCompositor(const nsIFrame* aFrame,
-                                         nsCSSProperty aProperty);
-
-  /**
    * Returns true if the frame has current (i.e. running or scheduled-to-run)
    * animations or transitions for the property.
    */
@@ -2212,14 +2247,7 @@ public:
                                             nsCSSProperty aProperty);
 
   /**
-   * Returns true if the frame has any current animations.
-   * A current animation is any animation that has not yet finished playing
-   * including paused animations.
-   */
-  static bool HasCurrentAnimations(const nsIFrame* aFrame);
-
-  /**
-   * Returns true if the frame has any current transitions.
+   * Returns true if the frame has any current CSS transitions.
    * A current transition is any transition that has not yet finished playing
    * including paused transitions.
    */
@@ -2289,6 +2317,12 @@ public:
    * Checks whether support for the CSS-wide "unset" value is enabled.
    */
   static bool UnsetValueEnabled();
+
+  /**
+   * Checks whether support for the CSS grid-template-{columns,rows} 'subgrid X'
+   * value is enabled.
+   */
+  static bool IsGridTemplateSubgridValueEnabled();
 
   /**
    * Checks whether support for the CSS text-align (and -moz-text-align-last)
@@ -2619,8 +2653,14 @@ public:
   static bool AsyncPanZoomEnabled(nsIFrame* aFrame);
 
   /**
+   * Returns the current APZ Resolution Scale. When Java Pan/Zoom is
+   * enabled in Fennec it will always return 1.0.
+   */
+  static float GetCurrentAPZResolutionScale(nsIPresShell* aShell);
+
+  /**
    * Log a key/value pair for APZ testing during a paint.
-   * @param aManager   The data will be written to the APZTestData associated 
+   * @param aManager   The data will be written to the APZTestData associated
    *                   with this layer manager.
    * @param aScrollId Identifies the scroll frame to which the data pertains.
    * @param aKey The key under which to log the data.
@@ -2693,6 +2733,15 @@ public:
                                           nsRect aDisplayPortBase,
                                           nsRect* aOutDisplayport);
 
+  static nsIScrollableFrame* GetAsyncScrollableAncestorFrame(nsIFrame* aTarget);
+
+  /**
+   * Sets a zero margin display port on all proper ancestors of aFrame that
+   * are async scrollable.
+   */
+  static void SetZeroMarginDisplayPortOnAsyncScrollableAncestors(nsIFrame* aFrame,
+                                                                 RepaintMode aRepaintMode);
+
   static bool IsOutlineStyleAutoEnabled();
 
   static void SetBSizeFromFontMetrics(const nsIFrame* aFrame,
@@ -2702,19 +2751,6 @@ public:
                                       mozilla::WritingMode aFrameWM);
 
   static bool HasDocumentLevelListenersForApzAwareEvents(nsIPresShell* aShell);
-
-  /**
-   * Get the resolution at which rescalable web content is drawn
-   * (see nsIDOMWindowUtils.getResolution).
-   */
-  static float GetResolution(nsIPresShell* aPresShell);
-
-  /**
-   * Set the resolution at which rescalable web content is drawn,
-   * and scales the content by the amount of the resolution
-   * (see nsIDOMWindowUtils.setResolutionAndScaleTo).
-   */
-  static void SetResolutionAndScaleTo(nsIPresShell* aPresShell, float aResolution);
 
   /**
    * Set the scroll port size for the purpose of clamping the scroll position
@@ -2784,6 +2820,12 @@ public:
    * @param aSel      Selection to check
    */
   static nsRect GetSelectionBoundingRect(mozilla::dom::Selection* aSel);
+
+  /**
+   * Returns true if the given frame is a scrollframe and it has snap points.
+   */
+  static bool IsScrollFrameWithSnapping(nsIFrame* aFrame);
+
 private:
   static uint32_t sFontSizeInflationEmPerLine;
   static uint32_t sFontSizeInflationMinTwips;

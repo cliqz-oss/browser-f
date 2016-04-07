@@ -307,6 +307,7 @@ class OSXBootstrapper(BaseBootstrapper):
             ('git', 'git'),
             ('autoconf213', HOMEBREW_AUTOCONF213),
             ('gnu-tar', 'gnu-tar'),
+            ('watchman', 'watchman',)
         ]
         self._ensure_homebrew_packages(packages)
 
@@ -355,9 +356,10 @@ class OSXBootstrapper(BaseBootstrapper):
         self.sdk_url = 'https://dl.google.com/android/android-sdk_r24.0.1-macosx.zip'
         is_64bits = sys.maxsize > 2**32
         if is_64bits:
-            self.ndk_url = 'https://dl.google.com/android/ndk/android-ndk-r10e-darwin-x86_64.bin'
+            self.ndk_url = android.android_ndk_url('darwin')
         else:
             raise Exception('You need a 64-bit version of Mac OS X to build Firefox for Android.')
+
         android.ensure_android_sdk_and_ndk(path=mozbuild_path,
                                            sdk_path=self.sdk_path, sdk_url=self.sdk_url,
                                            ndk_path=self.ndk_path, ndk_url=self.ndk_url)
@@ -367,7 +369,7 @@ class OSXBootstrapper(BaseBootstrapper):
         android_tool = os.path.join(self.sdk_path, 'tools', 'android')
         android.ensure_android_packages(android_tool=android_tool)
 
-    def suggest_mobile_android_mozconfig(self):
+    def suggest_homebrew_mobile_android_mozconfig(self):
         import android
         android.suggest_mozconfig(sdk_path=self.sdk_path,
                                   ndk_path=self.ndk_path)
@@ -384,10 +386,13 @@ class OSXBootstrapper(BaseBootstrapper):
             self.run_as_root([self.port, '-v', 'install'] + missing)
 
     def ensure_macports_system_packages(self):
-        packages = ['python27',
-                    'mercurial',
-                    'autoconf213',
-                    'gnutar']
+        packages = [
+            'python27',
+            'mercurial',
+            'autoconf213',
+            'gnutar',
+            'watchman',
+        ]
 
         self._ensure_macports_packages(packages)
         self.run_as_root([self.port, 'select', '--set', 'python', 'python27'])

@@ -29,6 +29,8 @@
 namespace mozilla {
 namespace devtools {
 
+class DominatorTree;
+
 struct NSFreePolicy {
   void operator()(void* ptr) {
     NS_Free(ptr);
@@ -147,8 +149,17 @@ public:
     return JS::ubi::Node(const_cast<DeserializedNode*>(&node));
   }
 
+  Maybe<JS::ubi::Node> getNodeById(JS::ubi::Node::Id nodeId) {
+    auto p = nodes.lookup(nodeId);
+    if (!p)
+      return Nothing();
+    return Some(JS::ubi::Node(const_cast<DeserializedNode*>(&*p)));
+  }
+
   void TakeCensus(JSContext* cx, JS::HandleObject options,
                   JS::MutableHandleValue rval, ErrorResult& rv);
+
+  already_AddRefed<DominatorTree> ComputeDominatorTree(ErrorResult& rv);
 
   dom::Nullable<uint64_t> GetCreationTime() {
     static const uint64_t maxTime = uint64_t(1) << 53;

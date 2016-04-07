@@ -183,14 +183,9 @@
 #include content.xul
 #include security.xul
 #ifdef MOZ_SERVICES_SYNC
-#include sync.xul
+  #include sync.xul
 #endif
       </prefpane>
-      <hbox pack="end">
-        <button id="help-button"
-                class="help-button"
-                aria-label="&helpButton.label;"/>
-      </hbox>
     </vbox>
 
   </hbox>

@@ -19,9 +19,6 @@
 #endif
 
 namespace mozilla {
-namespace gfx {
-class Matrix4x4;
-} // namespace gfx
 
 namespace layers {
 
@@ -66,11 +63,12 @@ Compositor::DrawDiagnostics(DiagnosticFlags aFlags,
     while (const gfx::IntRect* rect = screenIter.Next())
     {
       DrawDiagnostics(aFlags | DiagnosticFlags::REGION_RECT,
-                      ToRect(*rect), aClipRect, aTransform, aFlashCounter);
+                      IntRectToRect(*rect), aClipRect, aTransform,
+                      aFlashCounter);
     }
   }
 
-  DrawDiagnostics(aFlags, ToRect(aVisibleRegion.GetBounds()),
+  DrawDiagnostics(aFlags, IntRectToRect(aVisibleRegion.GetBounds()),
                   aClipRect, aTransform, aFlashCounter);
 }
 
@@ -111,7 +109,13 @@ Compositor::DrawDiagnosticsInternal(DiagnosticFlags aFlags,
       color = gfx::Color(0.0f, 1.0f, 1.0f, 1.0f); // greenish blue
     }
   } else if (aFlags & DiagnosticFlags::IMAGE) {
-    color = gfx::Color(1.0f, 0.0f, 0.0f, 1.0f); // red
+    if (aFlags & DiagnosticFlags::NV12) {
+      color = gfx::Color(1.0f, 1.0f, 0.0f, 1.0f); // yellow
+    } else if (aFlags & DiagnosticFlags::YCBCR) {
+      color = gfx::Color(1.0f, 0.55f, 0.0f, 1.0f); // orange
+    } else {
+      color = gfx::Color(1.0f, 0.0f, 0.0f, 1.0f); // red
+    }
   } else if (aFlags & DiagnosticFlags::COLOR) {
     color = gfx::Color(0.0f, 0.0f, 1.0f, 1.0f); // blue
   } else if (aFlags & DiagnosticFlags::CONTAINER) {
@@ -193,15 +197,8 @@ Compositor::FillRect(const gfx::Rect& aRect, const gfx::Color& aColor,
 static float
 WrapTexCoord(float v)
 {
-    // fmodf gives negative results for negative numbers;
-    // that is, fmodf(0.75, 1.0) == 0.75, but
-    // fmodf(-0.75, 1.0) == -0.75.  For the negative case,
-    // the result we need is 0.25, so we add 1.0f.
-    if (v < 0.0f) {
-        return 1.0f + fmodf(v, 1.0f);
-    }
-
-    return fmodf(v, 1.0f);
+    // This should return values in range [0, 1.0)
+    return v - floorf(v);
 }
 
 static void

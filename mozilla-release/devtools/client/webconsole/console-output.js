@@ -23,7 +23,7 @@ const Heritage = require("sdk/core/heritage");
 const URI = Cc["@mozilla.org/network/io-service;1"].getService(Ci.nsIIOService);
 const XHTML_NS = "http://www.w3.org/1999/xhtml";
 const XUL_NS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
-const STRINGS_URI = "chrome://browser/locale/devtools/webconsole.properties";
+const STRINGS_URI = "chrome://devtools/locale/webconsole.properties";
 
 const WebConsoleUtils = require("devtools/shared/webconsole/utils").Utils;
 const l10n = new WebConsoleUtils.l10n(STRINGS_URI);
@@ -1820,7 +1820,8 @@ Messages.ConsoleTable.prototype = Heritage.extend(Messages.Extended.prototype,
 
     let data = this._arguments[0];
     if (data.class != "Array" && data.class != "Object" &&
-        data.class != "Map" && data.class != "Set") {
+        data.class != "Map" && data.class != "Set" &&
+        data.class != "WeakMap" && data.class != "WeakSet") {
       return;
     }
 
@@ -1900,7 +1901,7 @@ Messages.ConsoleTable.prototype = Heritage.extend(Messages.Extended.prototype,
 
         deferred.resolve();
       });
-    } else if (data.class == "Map") {
+    } else if (data.class == "Map" || data.class == "WeakMap") {
       let entries = data.preview.entries;
 
       if (!hasColumnsArg) {
@@ -1925,7 +1926,7 @@ Messages.ConsoleTable.prototype = Heritage.extend(Messages.Extended.prototype,
       }
 
       deferred.resolve();
-    } else if (data.class == "Set") {
+    } else if (data.class == "Set" || data.class == "WeakSet") {
       let entries = data.preview.items;
 
       if (!hasColumnsArg) {
@@ -3375,6 +3376,54 @@ Widgets.ObjectRenderers.add({
     this._renderObjectSuffix();
   }
 }); // Widgets.ObjectRenderers.byClass.Promise
+
+/*
+ * A renderer used for wrapped primitive objects.
+ */
+
+function WrappedPrimitiveRenderer() {
+  let { ownProperties, safeGetterValues } = this.objectActor.preview || {};
+  if ((!ownProperties && !safeGetterValues) || this.options.concise) {
+    this._renderConciseObject();
+    return;
+  }
+
+  this._renderObjectPrefix();
+
+  let elem =
+      this.message._renderValueGrip(this.objectActor.preview.wrappedValue);
+  this.element.appendChild(elem);
+
+  this._renderObjectProperties(this.element, true);
+  this._renderObjectSuffix();
+}
+
+/**
+ * The widget used for displaying Boolean previews.
+ */
+Widgets.ObjectRenderers.add({
+  byClass: "Boolean",
+
+  render: WrappedPrimitiveRenderer,
+});
+
+/**
+ * The widget used for displaying Number previews.
+ */
+Widgets.ObjectRenderers.add({
+  byClass: "Number",
+
+  render: WrappedPrimitiveRenderer,
+});
+
+/**
+ * The widget used for displaying String previews.
+ */
+Widgets.ObjectRenderers.add({
+  byClass: "String",
+
+  render: WrappedPrimitiveRenderer,
+});
 
 /**
  * The widget used for displaying generic JS object previews.

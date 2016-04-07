@@ -338,6 +338,11 @@ Error(JSContext* cx, unsigned argc, Value* vp)
 {
     CallArgs args = CallArgsFromVp(argc, vp);
 
+    // ES6 19.5.1.1 mandates the .prototype lookup happens before the toString
+    RootedObject proto(cx);
+    if (!GetPrototypeFromCallableConstructor(cx, args, &proto))
+        return false;
+
     /* Compute the error message, if any. */
     RootedString message(cx, nullptr);
     if (args.hasDefined(0)) {
@@ -389,7 +394,7 @@ Error(JSContext* cx, unsigned argc, Value* vp)
     JSExnType exnType = JSExnType(args.callee().as<JSFunction>().getExtendedSlot(0).toInt32());
 
     RootedObject obj(cx, ErrorObject::create(cx, exnType, stack, fileName,
-                                             lineNumber, columnNumber, nullptr, message));
+                                             lineNumber, columnNumber, nullptr, message, proto));
     if (!obj)
         return false;
 
@@ -535,6 +540,13 @@ js::ErrorToException(JSContext* cx, const char* message, JSErrorReport* reportp,
     // Tell our caller to report immediately if this report is just a warning.
     MOZ_ASSERT(reportp);
     if (JSREPORT_IS_WARNING(reportp->flags))
+        return false;
+
+    // Similarly, we cannot throw a proper object inside the self-hosting
+    // compartment, as we cannot construct the Error constructor without
+    // self-hosted code. Tell our caller to report immediately.
+    // Without self-hosted code, we cannot get started anyway.
+    if (cx->runtime()->isSelfHostingCompartment(cx->compartment()))
         return false;
 
     // Find the exception index associated with this error.

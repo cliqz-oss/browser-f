@@ -138,7 +138,9 @@ static const PhaseInfo phases[] = {
             { PHASE_SWEEP_MARK_INCOMING_GRAY, "Mark Incoming Gray Pointers", PHASE_SWEEP_MARK, 14 },
             { PHASE_SWEEP_MARK_GRAY, "Mark Gray", PHASE_SWEEP_MARK, 15 },
             { PHASE_SWEEP_MARK_GRAY_WEAK, "Mark Gray and Weak", PHASE_SWEEP_MARK, 16 },
-        { PHASE_FINALIZE_START, "Finalize Start Callback", PHASE_SWEEP, 17 },
+        { PHASE_FINALIZE_START, "Finalize Start Callbacks", PHASE_SWEEP, 17 },
+            { PHASE_WEAK_ZONEGROUP_CALLBACK, "Per-Slice Weak Callback", PHASE_FINALIZE_START, 57 },
+            { PHASE_WEAK_COMPARTMENT_CALLBACK, "Per-Compartment Weak Callback", PHASE_FINALIZE_START, 58 },
         { PHASE_SWEEP_ATOMS, "Sweep Atoms", PHASE_SWEEP, 18 },
         { PHASE_SWEEP_SYMBOL_REGISTRY, "Sweep Symbol Registry", PHASE_SWEEP, 19 },
         { PHASE_SWEEP_COMPARTMENTS, "Sweep Compartments", PHASE_SWEEP, 20 },
@@ -173,6 +175,8 @@ static const PhaseInfo phases[] = {
         /* PHASE_MARK_ROOTS */
     { PHASE_TRACE_HEAP, "Trace Heap", PHASE_NO_PARENT, 47 },
         /* PHASE_MARK_ROOTS */
+    { PHASE_BARRIER, "Barriers", PHASE_NO_PARENT, 55 },
+        { PHASE_UNMARK_GRAY, "Unmark gray", PHASE_BARRIER, 56 },
     { PHASE_MARK_ROOTS, "Mark Roots", PHASE_MULTI_PARENTS, 48 },
         { PHASE_BUFFER_GRAY_ROOTS, "Buffer Gray Roots", PHASE_MARK_ROOTS, 49 },
         { PHASE_MARK_CCWS, "Mark Cross Compartment Wrappers", PHASE_MARK_ROOTS, 50 },
@@ -180,7 +184,11 @@ static const PhaseInfo phases[] = {
         { PHASE_MARK_RUNTIME_DATA, "Mark Runtime-wide Data", PHASE_MARK_ROOTS, 52 },
         { PHASE_MARK_EMBEDDING, "Mark Embedding", PHASE_MARK_ROOTS, 53 },
         { PHASE_MARK_COMPARTMENTS, "Mark Compartments", PHASE_MARK_ROOTS, 54 },
-    { PHASE_LIMIT, nullptr, PHASE_NO_PARENT, 55 }
+    { PHASE_LIMIT, nullptr, PHASE_NO_PARENT, 58 }
+
+    // Current number of telemetryBuckets is 58. If you insert new phases
+    // somewhere, start at that number and count up. Do not change any existing
+    // numbers.
 };
 
 static ExtraPhaseInfo phaseExtra[PHASE_LIMIT] = { { 0, 0 } };
@@ -1017,11 +1025,16 @@ Statistics::endSlice()
     MOZ_ASSERT(gcDepth >= 0);
 }
 
-void
+bool
 Statistics::startTimingMutator()
 {
-    // Should only be called from outside of GC
-    MOZ_ASSERT(phaseNestingDepth == 0);
+    if (phaseNestingDepth != 0) {
+        // Should only be called from outside of GC.
+        MOZ_ASSERT(phaseNestingDepth == 1);
+        MOZ_ASSERT(phaseNesting[0] == PHASE_MUTATOR);
+        return false;
+    }
+
     MOZ_ASSERT(suspendedPhaseNestingDepth == 0);
 
     timedGCTime = 0;
@@ -1030,6 +1043,7 @@ Statistics::startTimingMutator()
     timedGCStart = 0;
 
     beginPhase(PHASE_MUTATOR);
+    return true;
 }
 
 bool
