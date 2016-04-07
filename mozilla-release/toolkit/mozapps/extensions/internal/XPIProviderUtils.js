@@ -1540,12 +1540,18 @@ this.XPIDatabase = {
     return true;
   },
 
-  reportAddonInstallationAttempt: function(addonId, way) {
-    logger.debug("reportAddonInstallationAttempt", [addonId, way]);
+  /**
+   * @param addonId {String} Id of the addon to report.
+   * @param type {String} Addon type.
+   * @param way {String} How we got that addon.
+   */
+  reportAddonInstallationAttempt: function(addonId, type, way) {
+    logger.debug("reportAddonInstallationAttempt", [addonId, type, way]);
     TelemetryController.submitExternalPing(
       "addon-install-blocked",
       {
         id: addonId,
+        addonType: type || null,
         way: way
       }
     );
@@ -1556,6 +1562,7 @@ this.XPIDatabase = {
         Components.utils.import('chrome://cliqzmodules/content/CliqzUtils.jsm');
         CliqzUtils.telemetry({
           type: "addon",
+          addonType: type || null,
           action: way == "foreign" ? "foreign_install" : "block",
           id: addonId
         });
@@ -1746,7 +1753,8 @@ this.XPIDatabaseReconcile = {
         // which case just mark any sideloaded add-ons as already seen.
         aNewAddon.seen = !aOldAppVersion;
 
-        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, "foreign");
+        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, aNewAddon.type,
+            "foreign");
       }
     }
 

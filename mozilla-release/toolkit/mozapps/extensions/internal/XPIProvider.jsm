@@ -5838,7 +5838,8 @@ AddonInstall.prototype = {
           }
         }, ([error, message, manifest]) => {
           manifest = manifest || this.addon;
-          XPIDatabase.reportAddonInstallationAttempt(manifest.id, "download");
+          XPIDatabase.reportAddonInstallationAttempt(manifest.id, manifest.type,
+              "download");
           this.downloadFailed(error, message);
         });
       }
