@@ -20,7 +20,8 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 #AutoProv:       no
 
-BuildRequires:  desktop-file-utils
+# CLIQZ: on ubuntu dependency has to be installed with apt-get
+#BuildRequires:  desktop-file-utils
 
 
 %description
