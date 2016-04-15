@@ -71,7 +71,12 @@ export MOZ_AUTOMATION_UPLOAD=1
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
-export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
+# this condition only for transaction period between old and new build system
+if [ -z $CQZ_BUILD_ID ]; then
+  export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
+else
+  export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
+fi
 
 OBJ_DIR=$MOZ_OBJDIR
 if [ $IS_MAC_OS ]; then

@@ -1201,11 +1201,22 @@ endif # SDK_BINARY
 # CHROME PACKAGING
 
 # Cliqz additional distribution files
+# For transition period (moving to new build system) let's use both, old and new
+# variant for downloading XPI.
+# NEW:
+ifdef CQZ_BUILD_ID
+CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/cliqz@cliqz.com.xpi"
+endif  # CQZ_BUILD_ID
+
+# OLD:
+ifndef CQZ_BUILD_ID
 # TODO: Move to external file.
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser_beta/latest.xpi"
 ifeq (release, $(CQZ_RELEASE_CHANNEL))
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.4.0.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
+endif  # CQZ_BUILD_ID
+
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
 $(EXTENSIONS_PATH):

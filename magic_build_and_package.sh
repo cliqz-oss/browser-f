@@ -10,7 +10,9 @@
 # MOZ_MOZILLA_API_KEY
 # CQZ_RELEASE_CHANNEL or MOZ_UPDATE_CHANNEL
 # CQZ_CERT_DB_PATH
-# MOZ_UI_LOCALE
+#
+# Optional ENVs:
+#  CQZ_BUILD_LOCALIZATION - for build DE localization
 
 set -e
 set -x
@@ -40,17 +42,17 @@ if [ -z "$LANG" ]; then
   LANG='en-US'
 fi
 
-#  for german builds
-# TODO: Use MOZ_UI_LOCALE directly.
+# for support old build
 if [[ "$LANG" == 'de' ]]; then
-echo '***** German builds detected *****'
-  IS_DE=true
-  if [[ $IS_MAC_OS ]]; then
-    export L10NBASEDIR=../../l10n  # --with-l10n-base=...
-  else
-    export L10NBASEDIR=../l10n  # --with-l10n-base=...
-  fi
-  export MOZ_UI_LOCALE=de  # --enable-ui-locale=...
+  echo '***** German builds detected *****'
+  export MOZ_UI_LOCALE=de
+fi
+
+# for localization repack
+if [[ $IS_MAC_OS ]]; then
+  export L10NBASEDIR=../../l10n  # --with-l10n-base=...
+else
+  export L10NBASEDIR=../l10n  # --with-l10n-base=...
 fi
 
 echo '***** Building *****'
@@ -71,6 +73,14 @@ if [[ $IS_MAC_OS ]]; then
   export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
 else
   ./mach package
+fi
+
+echo '***** Build DE language pack *****'
+if [ $CQZ_BUILD_LOCALIZATION ]; then
+  cd $OLDPWD
+  cd $SRC_BASE/$MOZ_OBJDIR/browser/locales
+  $MAKE merge-de LOCALE_MERGEDIR=$(PWD)/mergedir
+  $MAKE installers-de LOCALE_MERGEDIR=$(PWD)/mergedir
 fi
 
 echo '***** Build & package finished successfully. *****'
