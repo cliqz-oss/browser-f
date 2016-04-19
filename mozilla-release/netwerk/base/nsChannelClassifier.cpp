@@ -64,7 +64,8 @@ nsChannelClassifier::ShouldEnableTrackingProtection(nsIChannel *aChannel,
 
     NS_ENSURE_ARG(result);
     *result = false;
-
+    return NS_OK;
+#if 0
     if (!Preferences::GetBool("privacy.trackingprotection.enabled", false) &&
         (!Preferences::GetBool("privacy.trackingprotection.pbmode.enabled",
                                false) || !NS_UsePrivateBrowsing(aChannel))) {
@@ -200,6 +201,7 @@ nsChannelClassifier::ShouldEnableTrackingProtection(nsIChannel *aChannel,
     // window for the channel, then the shield won't show up so we can't send
     // an event to the securityUI anyway.
     return NotifyTrackingProtectionDisabled(aChannel);
+#endif
 }
 
 // static

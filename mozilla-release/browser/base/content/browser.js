@@ -949,7 +949,9 @@ var gBrowserInit = {
     BrowserOnClick.init();
     FeedHandler.init();
     DevEdition.init();
+#if 0
     AboutPrivateBrowsingListener.init();
+#endif
     TrackingProtection.init();
 
     let mm = window.getGroupMessageManager("browsers");
@@ -8054,6 +8056,7 @@ var PanicButtonNotifier = {
   },
 };
 
+#if 0
 var AboutPrivateBrowsingListener = {
   init: function () {
     window.messageManager.addMessageListener(
@@ -8069,6 +8072,7 @@ var AboutPrivateBrowsingListener = {
     });
   }
 };
+#endif
 
 function TabModalPromptBox(browser) {
   this._weakBrowserRef = Cu.getWeakReference(browser);

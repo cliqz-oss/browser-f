@@ -643,6 +643,7 @@ var LightWeightThemeWebInstaller = {
 
   _isAllowed: function (srcURIString) {
     return false;  // Disable LW themes in CLIQZ.
+#if 0
     let uri;
     try {
       uri = makeURI(srcURIString);
@@ -658,6 +659,7 @@ var LightWeightThemeWebInstaller = {
 
     let pm = Services.perms;
     return pm.testPermission(uri, "install") == pm.ALLOW_ACTION;
+#endif
   }
 };
 

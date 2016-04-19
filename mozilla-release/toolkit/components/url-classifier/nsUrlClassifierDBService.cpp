@@ -1151,8 +1151,11 @@ nsUrlClassifierDBService::Init()
   mCheckPhishing = Preferences::GetBool(CHECK_PHISHING_PREF,
     CHECK_PHISHING_DEFAULT);
   mCheckTracking =
+    false;
+#if 0
     Preferences::GetBool(CHECK_TRACKING_PREF, CHECK_TRACKING_DEFAULT) ||
     Preferences::GetBool(CHECK_TRACKING_PB_PREF, CHECK_TRACKING_PB_DEFAULT);
+#endif
   mCheckForbiddenURIs = Preferences::GetBool(CHECK_FORBIDDEN_PREF,
     CHECK_FORBIDDEN_DEFAULT);
   uint32_t gethashNoise = Preferences::GetUint(GETHASH_NOISE_PREF,
