@@ -51,8 +51,12 @@ const phishingLists = getLists("urlclassifier.phishTable");
 const malwareLists = getLists("urlclassifier.malwareTable");
 const downloadBlockLists = getLists("urlclassifier.downloadBlockTable");
 const downloadAllowLists = getLists("urlclassifier.downloadAllowTable");
+#if 0
 const trackingProtectionLists = getLists("urlclassifier.trackingTable");
 const trackingProtectionWhitelists = getLists("urlclassifier.trackingWhitelistTable");
+#endif
+const trackingProtectionLists = [];
+const trackingProtectionWhitelists = [];
 const forbiddenLists = getLists("urlclassifier.forbiddenTable");
 
 this.SafeBrowsing = {

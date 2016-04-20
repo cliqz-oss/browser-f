@@ -16,6 +16,7 @@ var gPrivacyPane = {
    */
   _shouldPromptForRestart: true,
 
+#if 0
 #ifdef NIGHTLY_BUILD
   /**
    * Show the Tracking Protection UI depending on the
@@ -43,6 +44,7 @@ var gPrivacyPane = {
     let url = Services.urlFormatter.formatURLPref("app.support.baseURL") + "tracking-protection-pbm";
     link.setAttribute("href", url);
   },
+#endif
 
   /**
    * Initialize autocomplete to ensure prefs are in sync.
@@ -80,10 +82,12 @@ var gPrivacyPane = {
     this.updateHistoryModePane();
     this.updatePrivacyMicroControls();
     this.initAutoStartPrivateBrowsingReverter();
+#if 0
 #ifdef NIGHTLY_BUILD
     this._initTrackingProtection();
 #endif
     this._initTrackingProtectionPBM();
+#endif
     this._initAutocomplete();
 
     setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
@@ -116,8 +120,10 @@ var gPrivacyPane = {
                      gPrivacyPane.showCookies);
     setEventListener("clearDataSettings", "command",
                      gPrivacyPane.showClearPrivateDataSettings);
+#if 0
     setEventListener("changeBlockList", "command",
                      gPrivacyPane.showBlockLists);
+#endif
   },
 
   // HISTORY MODE
@@ -371,6 +377,7 @@ var gPrivacyPane = {
       this._shouldPromptForRestart = true;
   },
 
+#if 0
   /**
    * Displays the available block lists for tracking protection.
    */
@@ -385,6 +392,7 @@ var gPrivacyPane = {
     gSubDialog.open("chrome://browser/content/preferences/blocklists.xul",
                     null, params);
   },
+#endif
 
   // HISTORY
 

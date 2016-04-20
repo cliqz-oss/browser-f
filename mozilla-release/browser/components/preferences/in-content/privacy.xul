@@ -16,9 +16,11 @@
   <preference id="privacy.trackingprotection.enabled"
               name="privacy.trackingprotection.enabled"
               type="bool"/>
+#if 0
   <preference id="privacy.trackingprotection.pbmode.enabled"
               name="privacy.trackingprotection.pbmode.enabled"
               type="bool"/>
+#endif
 
   <!-- XXX button prefs -->
   <preference id="pref.privacy.disable_button.cookie_exceptions"
@@ -101,6 +103,7 @@
       </label>
     </hbox>
   </vbox>
+#if 0
   <vbox id="trackingprotectionbox" hidden="true">
     <hbox align="center">
       <checkbox id="trackingProtection"
@@ -127,6 +130,7 @@
               preference="pref.privacy.disable_button.change_blocklist"/>
     </hbox>
   </vbox>
+#endif
 </groupbox>
 
 <!-- History -->
