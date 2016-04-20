@@ -33,6 +33,9 @@ EXTRA_JS_MODULES += [
     'AddonManager.jsm',
     'ChromeManifestParser.jsm',
     'DeferredSave.jsm',
+]
+
+EXTRA_PP_JS_MODULES += [
     'LightweightThemeManager.jsm',
 ]
 
