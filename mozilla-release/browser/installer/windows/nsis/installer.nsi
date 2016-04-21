@@ -606,9 +606,10 @@ Section "-InstallEndCleanup"
         UAC::ExecCodeSegment $0
       ${EndIf}
     ${EndIf}
-    ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
-    ${MigrateTaskBarShortcut}
   ${EndUnless}
+  ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
+  ; CLIQZ: we want to have icon on taskbar in silent mode installation
+  ${MigrateTaskBarShortcut}
 
   ${GetShortcutsLogPath} $0
   WriteIniStr "$0" "TASKBAR" "Migrated" "true"
@@ -658,6 +659,15 @@ Section "-InstallEndCleanup"
         Rename "$INSTDIR\helper.exe" "$INSTDIR\${FileMainEXE}"
       ${EndUnless}
     ${EndIf}
+  ${EndIf}
+
+  ; CLIQZ: autolaunch in silent mode if /run switch exist
+  ${If} ${Silent}
+    ${GetParameters} $0
+    ${GetOptions} "$0" "/run" $0
+    ${Unless} ${Errors}
+      Call LaunchApp
+    ${EndUnless}
   ${EndIf}
 SectionEnd
 
