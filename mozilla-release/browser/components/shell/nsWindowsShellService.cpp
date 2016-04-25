@@ -697,14 +697,16 @@ nsWindowsShellService::InvokeHTTPOpenAsVerb()
 
   nsString urlStr;
   nsresult rv = formatter->FormatURLPref(
-    NS_LITERAL_STRING("app.support.baseURL"), urlStr);
+    NS_LITERAL_STRING("app.support.default_in_win10.URL"), urlStr);
   if (NS_FAILED(rv)) {
     return rv;
   }
   if (!StringBeginsWith(urlStr, NS_LITERAL_STRING("https://"))) {
     return NS_ERROR_FAILURE;
   }
+#if 0  // predefined in branding pref for CLIQZ browser
   urlStr.AppendLiteral("win10-default-browser");
+#endif
 
   SHELLEXECUTEINFOW seinfo = { sizeof(SHELLEXECUTEINFOW) };
   seinfo.lpVerb = L"openas";
