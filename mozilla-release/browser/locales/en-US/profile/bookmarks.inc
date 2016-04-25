@@ -41,6 +41,6 @@
 #define cliqz_heading CLIQZ
 #define cliqz_contact Contact and Support
 #define cliqz_about About us
-#define cliqz_tips Tipps und Tricks
+#define cliqz_tips Tips and Tricks
 
 #unfilter emptyLines
