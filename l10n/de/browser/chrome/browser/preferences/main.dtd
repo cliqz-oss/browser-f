@@ -8,7 +8,7 @@
 
 <!ENTITY startupPage.label         "Wenn &brandShortName; gestartet wird:">
 <!ENTITY startupPage.accesskey     "W">
-<!ENTITY startupHomePage.label     "&brandShortName; Startseite anzeigen">
+<!ENTITY startupHomePage.label     "Startseite anzeigen">
 <!ENTITY startupBlankPage.label    "Leere Seite anzeigen">
 <!ENTITY startupLastSession.label  "Fenster und Tabs der letzten Sitzung anzeigen">
 
