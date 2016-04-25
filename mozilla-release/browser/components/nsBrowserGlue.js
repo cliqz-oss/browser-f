@@ -1278,9 +1278,12 @@ BrowserGlue.prototype = {
       let shouldCheck = ShellService.shouldCheckDefaultBrowser;
 #endif
       let promptCount = 0;
-#ifndef RELEASE_BUILD
+#ifdef RELEASE_BUILD
+#if 0
+// In CLIQZ we never want the prompt counter to take any effect.
       promptCount =
         Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
+#endif
       let skipDefaultBrowserCheck =
         Services.prefs.getBoolPref("browser.shell.skipDefaultBrowserCheck");
 #else
@@ -1325,11 +1328,14 @@ BrowserGlue.prototype = {
         }
       }
 
+#if 0
+// In CLIQZ we never want the prompt counter to take any effect.
 #ifndef RELEASE_BUILD
       if (willPrompt) {
         Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount",
                                   promptCount);
       }
+#endif
 #endif
 
       try {
