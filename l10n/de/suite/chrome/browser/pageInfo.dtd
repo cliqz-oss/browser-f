@@ -112,7 +112,7 @@
 
 <!ENTITY  securityView.privacy.header                   "Privatsphäre &amp; Chronik">
 <!ENTITY  securityView.privacy.history                  "Wurde diese Website heute schon besucht?">
-<!ENTITY  securityView.privacy.cookies                  "Speichert diese Website Informationen (Cookies) auf Ihrem Computer?">
+<!ENTITY  securityView.privacy.cookies                  "Speichert diese Website Informationen (Cookies) auf deinem Computer?">
 <!ENTITY  securityView.privacy.viewCookies              "Cookies ansehen">
 <!ENTITY  securityView.privacy.viewCookies.accessKey    "C">
 <!ENTITY  securityView.privacy.passwords                "Wurden Passwörter für diese Website gespeichert?">

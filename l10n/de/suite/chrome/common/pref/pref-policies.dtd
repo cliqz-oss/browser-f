@@ -5,7 +5,7 @@
 
 <!ENTITY  pref.policies.title "Sicherheitsregeln">
 
-<!ENTITY  zoneIntro.label     "&brandShortName; erlaubt Ihnen, Regeln aufzustellen, die entscheiden, welche Zugriffsmöglichkeiten bestimmte Websites für verschiedene Funktionalitäten haben, inklusive Aspekten von Scripting und Java.">
+<!ENTITY  zoneIntro.label     "&brandShortName; erlaubt dir, Regeln aufzustellen, die entscheiden, welche Zugriffsmöglichkeiten bestimmte Websites für verschiedene Funktionalitäten haben, inklusive Aspekten von Scripting und Java.">
 
 <!ENTITY  policies.label      "Regeln:">
 <!ENTITY  default.label       "Standard-Regel">

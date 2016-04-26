@@ -7,7 +7,7 @@
 <!--LOCALIZATION NOTE : FILE Cache prefs dialog -->
 <!ENTITY pref.cache.title                "Cache">
 <!ENTITY pref.cache.caption              "Cache-Optionen setzen">
-<!ENTITY cachePara                       "Der Cache behält Kopien häufig besuchter Webseiten auf Ihrer Festplatte. (Wenn Sie &quot;Neu laden&quot; klicken, wird immer die aktuellste Version einer Seite angezeigt.)">
+<!ENTITY cachePara                       "Der Cache behält Kopien häufig besuchter Webseiten auf deiner Festplatte. (Wenn du &quot;Neu lädst&quot; klickst, wird immer die aktuellste Version einer Seite angezeigt.)">
 <!ENTITY cacheCheck.label                "Größe des Caches von &brandShortName; verwalten lassen">
 <!ENTITY cacheCheck.accesskey            "G">
 <!ENTITY diskCacheUpTo.label             "Bis zu">
@@ -18,7 +18,7 @@
 <!ENTITY clearDiskCache.accesskey        "l">
 <!ENTITY chooseDiskCacheFolder.label     "Ordner wählen…">
 <!ENTITY chooseDiskCacheFolder.accesskey "O">
-<!ENTITY diskCacheFolderExplanation      "Cache-Dateien werden in einem Unterordner namens &quot;Cache&quot; im angegebenen Ordner gespeichert. Starten Sie &brandShortName; neu, um diese Änderungen zu aktivieren.">
+<!ENTITY diskCacheFolderExplanation      "Cache-Dateien werden in einem Unterordner namens &quot;Cache&quot; im angegebenen Ordner gespeichert. Starte &brandShortName; neu, um diese Änderungen zu aktivieren.">
 <!ENTITY docCache.label                  "Vergleichen der Seite im Cache mit jener am Netzwerk:">
 <!ENTITY docCache.accesskey              "e">
 <!ENTITY checkOncePerSession.label       "Ein Mal pro Sitzung">
