@@ -415,7 +415,6 @@
                oncommand="BookmarksEventHandler.onCommand(event, this.parentNode._placesView);"
                onclick="BookmarksEventHandler.onClick(event, this.parentNode._placesView);"
                onpopupshowing="BookmarkingUI.onMainMenuPopupShowing(event);
-                               BookmarkingUI.updatePocketItemVisibility('menu_');
                                if (!this.parentNode._placesView)
                                  new PlacesMenu(event, 'place:folder=BOOKMARKS_MENU');"
                tooltip="bhTooltip" popupsinherittooltip="true">
@@ -424,12 +423,6 @@
                 command="Browser:ShowAllBookmarks"
                 key="manBookmarkKb"/>
       <menuseparator id="organizeBookmarksSeparator"/>
-      <menuitem id="menu_pocket" label="&pocketMenuitem.label;"
-#ifndef XP_MACOSX
-                class="menuitem-iconic"
-#endif
-                oncommand="openUILink(Pocket.listURL, event);"/>
-      <menuseparator id="menu_pocketSeparator"/>
       <menuitem id="menu_bookmarkThisPage"
                 command="Browser:AddBookmarkAs"
                 observes="bookmarkThisPageBroadcaster"
@@ -503,11 +496,22 @@
                         accesskey="&addons.accesskey;"
                         key="key_openAddons"
                         command="Tools:Addons"/>
+<<<<<<< HEAD
               <menuitem id="menu_openLoop"
                         label="&loopMenuItem.label;"
                         accesskey = "&loopMenuItem.accesskey;"
                         oncommand="LoopUI.togglePanel();"/>
 #ifdef MOZ_SERVICES_SYNC
+||||||| merged common ancestors
+
+              <menuitem id="menu_openLoop"
+                        label="&loopMenuItem.label;"
+                        accesskey = "&loopMenuItem.accesskey;"
+                        oncommand="LoopUI.togglePanel();"/>
+
+=======
+
+>>>>>>> origin/upstream-releases
               <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
                         label="&syncSignIn.label;"

@@ -34,3 +34,4 @@ boto.pth:python/boto
 rsa.pth:python/rsa
 futures.pth:python/futures
 ecc.pth:python/PyECC
+xpcshell.pth:testing/xpcshell

@@ -28,3 +28,8 @@ was trying to connect. -->
 <!ENTITY certerror.expert.contentPara2 "Fügen Sie keine Ausnahme hinzu, außer Sie wissen, dass es einen guten Grund dafür gibt, warum diese Website keine vertrauenswürdige Identifikation verwendet.">
 <!ENTITY certerror.addException.label "Ausnahme hinzufügen…">
 <!ENTITY certerror.copyToClipboard.label "In Zwischenablage kopieren">
+
+<!ENTITY errorReporting.automatic "Dieser Art von Fehlern automatisch an Mozilla melden, damit Mozilla falsch konfigurierte Websites leichter erkennen kann">
+<!ENTITY errorReporting.sending "Bericht wird gesendet">
+<!ENTITY errorReporting.sent "Bericht gesendet">
+<!ENTITY errorReporting.tryAgain "Erneut versuchen">

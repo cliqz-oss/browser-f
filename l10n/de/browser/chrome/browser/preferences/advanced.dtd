@@ -14,6 +14,8 @@
 <!ENTITY searchStartTyping.accesskey     "u">
 <!ENTITY blockAutoRefresh.label          "Warnen, wenn Webseiten versuchen umzuleiten oder neuzuladen">
 <!ENTITY blockAutoRefresh.accesskey      "W">
+<!ENTITY useOnScreenKeyboard.label       "Bildschirmtastatur falls notwendig anzeigen">
+<!ENTITY useOnScreenKeyboard.accesskey   "B">
 
 <!ENTITY browsing.label                  "Browsing">
 

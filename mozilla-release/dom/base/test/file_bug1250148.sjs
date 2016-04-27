@@ -32,7 +32,7 @@ function handleRequest(request, response) {
         contentTypeParams[''] = s;
       }
     });
-
+    
     if (contentTypeParams[''] == "multipart/form-data" &&
         request.queryString == "") {
       requestBody.split("--" + contentTypeParams.boundary).slice(1, -1).forEach(function (s) {

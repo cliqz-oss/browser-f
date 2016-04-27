@@ -17,7 +17,6 @@
 <!ENTITY allowWindowMoveResize.label     "Existierende Fenster verschieben oder deren Größe ändern">
 <!ENTITY allowWindowFlip.label           "Fenster vor oder hinter andere Fenster legen">
 <!ENTITY allowWindowStatusChange.label   "Statuszeilentext ändern">
-<!ENTITY allowWindowImageSrcChange.label "Grafiken verändern">
 <!ENTITY allowContextmenuDisable.label   "Kontextmenü einer Seite deaktivieren oder ersetzen">
 <!ENTITY allowHideStatusBar.label        "Statusleiste verstecken">
 
