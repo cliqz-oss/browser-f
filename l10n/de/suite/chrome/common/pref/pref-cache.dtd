@@ -7,7 +7,7 @@
 <!--LOCALIZATION NOTE : FILE Cache prefs dialog -->
 <!ENTITY pref.cache.title                "Cache">
 <!ENTITY pref.cache.caption              "Cache-Optionen setzen">
-<!ENTITY cachePara                       "Der Cache behält Kopien häufig besuchter Webseiten auf deiner Festplatte. (Wenn du &quot;Neu lädst&quot; klickst, wird immer die aktuellste Version einer Seite angezeigt.)">
+<!ENTITY cachePara                       "Der Cache behält Kopien häufig besuchter Webseiten auf deiner Festplatte. (Wenn du &quot;Neu laden&quot; klickst, wird immer die aktuellste Version einer Seite angezeigt.)">
 <!ENTITY cacheCheck.label                "Größe des Caches von &brandShortName; verwalten lassen">
 <!ENTITY cacheCheck.accesskey            "G">
 <!ENTITY diskCacheUpTo.label             "Bis zu">
