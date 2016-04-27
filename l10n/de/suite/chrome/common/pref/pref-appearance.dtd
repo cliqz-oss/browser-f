@@ -22,9 +22,9 @@
 <!ENTITY showHideTooltips.accesskey             "t">
 
 <!ENTITY pref.locales.title                     "Sprache der Benutzeroberfläche">
-<!ENTITY selectLocale.label                     "Wählen Sie die Sprache, in der Text in Dialogboxen, Menüs, Symbolleisten und Schaltflächenbeschriftungen erscheint:">
+<!ENTITY selectLocale.label                     "Wähle die Sprache, in der Text in Dialogboxen, Menüs, Symbolleisten und Schaltflächenbeschriftungen erscheint:">
 <!--LOCALIZATION NOTE (restartOnLangChange.label): Don't translate "&brandShortName;".
     Place &brandShortName; in the phrase where the name of the application should appear
 -->
-<!ENTITY restartOnLangChange.label              "Spracheinstellungen werden angewendet, wenn Sie &brandShortName; neu starten.">
+<!ENTITY restartOnLangChange.label              "Spracheinstellungen werden angewendet, wenn du &brandShortName; neu startest.">
 

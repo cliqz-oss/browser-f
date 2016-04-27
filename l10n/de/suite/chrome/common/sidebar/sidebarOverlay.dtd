@@ -20,8 +20,8 @@
 <!ENTITY sidebar.loading.stop.accesskey "S">
 
 <!ENTITY sidebar.no-panels.state     "Sidebar ist derzeit leer.">
-<!ENTITY sidebar.no-panels.add       'Sie können Tabs hinzufügen, indem Sie die "Tabs"-Schaltfläche oben anklicken.'>
-<!ENTITY sidebar.no-panels.hide      'Wenn die Sidebar völlig ausgeblendt werden soll, klicken Sie auf das "Ansicht"-Menü im obigen Menü und wählen Sie "Sidebar" vom "Anzeigen/Verstecken"-Untermenü.'>
+<!ENTITY sidebar.no-panels.add       'Du kannst Tabs hinzufügen, indem du die "Tabs"-Schaltfläche oben anklickst.'>
+<!ENTITY sidebar.no-panels.hide      'Wenn die Sidebar völlig ausgeblendt werden soll, klicke auf das "Ansicht"-Menü im obigen Menü und wähle "Sidebar" vom "Anzeigen/Verstecken"-Untermenü.'>
 <!ENTITY sidebar.sbDirectory.label   "Sidebar-Verzeichnis…">
 
 <!ENTITY sidebar.pagenotfound.label  "Dieses Tab ist derzeit nicht verfügbar.">

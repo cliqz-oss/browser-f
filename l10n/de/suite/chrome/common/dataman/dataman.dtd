@@ -34,7 +34,7 @@
 <!ENTITY tab.forget.label "Vergessen">
 
 <!-- cookies -->
-<!ENTITY cookies.description "Diese Domain hat die folgenden Cookies auf Ihrem Computer gespeichert:">
+<!ENTITY cookies.description "Diese Domain hat die folgenden Cookies auf deinem Computer gespeichert:">
 
 <!ENTITY cookies.tree.host.label "Website">
 <!ENTITY cookies.tree.name.label "Cookie-Name">

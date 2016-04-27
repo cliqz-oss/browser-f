@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY  intro2.label                "Sie möchten folgende Datei öffnen:">
+<!ENTITY  intro2.label                "Du möchtest folgende Datei öffnen:">
 <!ENTITY  from.label                  "Von:">
 <!ENTITY  actionQuestion.label        "Wie soll &brandShortName; mit dieser Datei verfahren?">
 
@@ -23,4 +23,4 @@
 <!ENTITY  chooseHandler.label         "Durchsuchen…">
 <!ENTITY  chooseHandler.accesskey     "D">
 
-<!ENTITY  unknownPromptText.label     "Möchten Sie diese Datei speichern?">
+<!ENTITY  unknownPromptText.label     "Möchtest du diese Datei speichern?">

@@ -48,18 +48,18 @@
 <!ENTITY stopButton.label             "Stopp">
 <!ENTITY stopButton.tooltip           "Laden dieser Seite stoppen">
 <!ENTITY searchButton.label           "Suchen">
-<!ENTITY searchButton.tooltip         "Geben Sie ein Wort in das Feld auf der linken Seite ein, dann klicken Sie &quot;Suchen&quot;">
+<!ENTITY searchButton.tooltip         "Gib ein Wort in das Feld auf der linken Seite ein, dann klicke &quot;Suchen&quot;">
 <!ENTITY goButton.label               "Gehe zu">
-<!ENTITY goButton.tooltip             "Geben Sie eine Adresse in das Feld auf der linken Seite ein, dann klicken Sie &quot;Gehe zu&quot;">
+<!ENTITY goButton.tooltip             "Gib eine Adresse in das Feld auf der linken Seite ein, dann klicke &quot;Gehe zu&quot;">
 <!ENTITY printButton.label            "Drucken">
 <!ENTITY printButton.tooltip          "Diese Seite drucken">
 
 <!ENTITY throbber.tooltip             "&vendorShortName;-Homepage aufrufen">
 
-<!ENTITY locationBar.tooltip          "Geben Sie einen Suchbegriff, ein Schlüsselwort oder eine Web-Adresse ein">
+<!ENTITY locationBar.tooltip          "Gib einen Suchbegriff, ein Schlüsselwort oder eine Web-Adresse ein">
 <!ENTITY locationBar.accesskey        "s">
 <!ENTITY locationBar.title            "Adresse">
-<!ENTITY proxyIcon.tooltip            "Ziehen Sie dieses Symbol, um einen Link zu dieser Seite zu erstellen">
+<!ENTITY proxyIcon.tooltip            "Ziehe dieses Symbol, um einen Link zu dieser Seite zu erstellen">
 
 <!ENTITY searchItem.title             "Suchen">
 

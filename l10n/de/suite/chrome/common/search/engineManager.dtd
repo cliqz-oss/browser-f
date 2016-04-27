@@ -4,7 +4,7 @@
 
 <!ENTITY  engineManager.title       "Suchmaschinen-Liste verwalten">
 <!ENTITY  engineManager.style       "min-width: 35em;">
-<!ENTITY  engineManager.intro       "Sie haben die folgenden Suchmaschinen installiert:">
+<!ENTITY  engineManager.intro       "Du hast die folgenden Suchmaschinen installiert:">
 
 <!ENTITY  columnLabel.name          "Name">
 <!ENTITY  columnLabel.keyword       "Schlüsselwort">
