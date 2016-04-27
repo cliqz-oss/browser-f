@@ -5280,7 +5280,7 @@
 !ifmacrodef InitHashAppModelId
       ; setup the application model id registration value
       !ifdef AppName
-      ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+      ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
       !endif
 !endif
 
