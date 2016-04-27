@@ -3344,13 +3344,7 @@ TelemetryImpl::CanRecordExtended() {
 
 NS_IMETHODIMP
 TelemetryImpl::GetIsOfficialTelemetry(bool *ret) {
-<<<<<<< HEAD
 #if defined(MOZ_TELEMETRY_REPORTING)
-||||||| merged common ancestors
-#if defined(MOZILLA_OFFICIAL) && defined(MOZ_TELEMETRY_REPORTING)
-=======
-#if defined(MOZILLA_OFFICIAL) && defined(MOZ_TELEMETRY_REPORTING) && !defined(DEBUG)
->>>>>>> origin/upstream-releases
   *ret = true;
 #else
   *ret = false;

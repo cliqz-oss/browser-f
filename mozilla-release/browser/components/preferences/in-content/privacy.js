@@ -16,13 +16,7 @@ var gPrivacyPane = {
    */
   _shouldPromptForRestart: true,
 
-<<<<<<< HEAD
 #if 0
-#ifdef NIGHTLY_BUILD
-||||||| merged common ancestors
-#ifdef NIGHTLY_BUILD
-=======
->>>>>>> origin/upstream-releases
   /**
    * Show the Tracking Protection UI depending on the
    * privacy.trackingprotection.ui.enabled pref, and linkify its Learn More link
@@ -89,13 +83,7 @@ var gPrivacyPane = {
     this.updateHistoryModePane();
     this.updatePrivacyMicroControls();
     this.initAutoStartPrivateBrowsingReverter();
-<<<<<<< HEAD
 #if 0
-#ifdef NIGHTLY_BUILD
-||||||| merged common ancestors
-#ifdef NIGHTLY_BUILD
-=======
->>>>>>> origin/upstream-releases
     this._initTrackingProtection();
     this._initTrackingProtectionPBM();
 #endif
@@ -135,23 +123,16 @@ var gPrivacyPane = {
                      gPrivacyPane.showCookies);
     setEventListener("clearDataSettings", "command",
                      gPrivacyPane.showClearPrivateDataSettings);
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-=======
     setEventListener("trackingProtectionRadioGroup", "command",
                      gPrivacyPane.trackingProtectionWritePrefs);
     setEventListener("trackingProtectionExceptions", "command",
                      gPrivacyPane.showTrackingProtectionExceptions);
->>>>>>> origin/upstream-releases
     setEventListener("changeBlockList", "command",
                      gPrivacyPane.showBlockLists);
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
     setEventListener("changeBlockListPBM", "command",
                      gPrivacyPane.showBlockLists);
+#endif
   },
 
   // TRACKING PROTECTION MODE
@@ -192,7 +173,6 @@ var gPrivacyPane = {
         pbmPref.value = false;
         break;
     }
->>>>>>> origin/upstream-releases
   },
 
   // HISTORY MODE

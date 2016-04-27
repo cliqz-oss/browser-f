@@ -13,24 +13,7 @@
 <!ENTITY  trackingProtectionExceptions.label   "Exceptions…">
 <!ENTITY  trackingProtectionExceptions.accesskey "x">
 
-<<<<<<< HEAD
-<!ENTITY dntTrackingNotOkay4.label     "Request that sites not track you">
-<!ENTITY dntTrackingNotOkay4.accesskey "n">
-<!ENTITY doNotTrackInfo.label          "Learn More">
-<!ENTITY doNotTrackInfo.label2         "When the feature is enabled, CLIQZ will tell advertising networks and other websites and applications that you want to opt-out of tracking for purposes like behavioral advertising.">
-<!ENTITY trackingProtection5.label     "Use Tracking Protection">
-<!ENTITY trackingProtection5.accesskey "i">
-<!ENTITY trackingProtectionLearnMore.label "Learn more">
-||||||| merged common ancestors
-<!ENTITY dntTrackingNotOkay4.label     "Request that sites not track you">
-<!ENTITY dntTrackingNotOkay4.accesskey "n">
-<!ENTITY doNotTrackInfo.label          "Learn More">
-<!ENTITY trackingProtection5.label     "Use Tracking Protection">
-<!ENTITY trackingProtection5.accesskey "i">
-<!ENTITY trackingProtectionLearnMore.label "Learn more">
-=======
 <!ENTITY tracking.label                 "Tracking">
->>>>>>> origin/upstream-releases
 <!ENTITY trackingProtectionPBM5.label         "Use Tracking Protection in Private Windows">
 <!ENTITY trackingProtectionPBM5.accesskey     "v">
 <!ENTITY trackingProtectionPBMLearnMore.label "Learn more">

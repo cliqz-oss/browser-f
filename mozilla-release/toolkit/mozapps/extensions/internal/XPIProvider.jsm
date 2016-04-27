@@ -1716,20 +1716,6 @@ function verifyZipSignedState(aFile, aAddon) {
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
   return new Promise(resolve => {
-<<<<<<< HEAD
-    gCertDB.openSignedAppFileAsync(root, aFile, (aRv, aZipReader, aCert) => {
-      if (aZipReader)
-        aZipReader.close();
-      let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      return resolve(signStatus);
-    });
-||||||| merged common ancestors
-    gCertDB.openSignedAppFileAsync(root, aFile, (aRv, aZipReader, aCert) => {
-      if (aZipReader)
-        aZipReader.close();
-      resolve(getSignedStatus(aRv, aCert, aAddon.id));
-    });
-=======
     let callback = {
       openSignedAppFileFinished: function(aRv, aZipReader, aCert) {
         if (aZipReader)
@@ -1742,7 +1728,6 @@ function verifyZipSignedState(aFile, aAddon) {
     callback.wrappedJSObject = callback;
 
     gCertDB.openSignedAppFileAsync(root, aFile, callback);
->>>>>>> origin/upstream-releases
   });
 }
 
@@ -1765,16 +1750,6 @@ function verifyDirSignedState(aDir, aAddon) {
     root = Ci.nsIX509CertDB.AddonsStageRoot;
 
   return new Promise(resolve => {
-<<<<<<< HEAD
-    gCertDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
-      let signStatus = getSignedStatus(aRv, aCert, aAddon.id);
-      resolve(signStatus);
-    });
-||||||| merged common ancestors
-    gCertDB.verifySignedDirectoryAsync(root, aDir, (aRv, aCert) => {
-      resolve(getSignedStatus(aRv, aCert, aAddon.id));
-    });
-=======
     let callback = {
       verifySignedDirectoryFinished: function(aRv, aCert) {
         resolve(getSignedStatus(aRv, aCert, aAddon.id));
@@ -1785,7 +1760,6 @@ function verifyDirSignedState(aDir, aAddon) {
     callback.wrappedJSObject = callback;
 
     gCertDB.verifySignedDirectoryAsync(root, aDir, callback);
->>>>>>> origin/upstream-releases
   });
 }
 

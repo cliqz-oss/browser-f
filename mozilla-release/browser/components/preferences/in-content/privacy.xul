@@ -89,39 +89,7 @@
 
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-<<<<<<< HEAD
-  <caption><label>&tracking.label;</label></caption>
-  <vbox>
-    <hbox align="center">
-      <checkbox id="privacyDoNotTrackCheckbox"
-                label="&dntTrackingNotOkay4.label;"
-                accesskey="&dntTrackingNotOkay4.accesskey;"
-                preference="privacy.donottrackheader.enabled"/>
-      <label id="doNotTrackInfo"
-             class="text-link"
-             href="https://www.mozilla.org/dnt">
-        &doNotTrackInfo.label;
-      </label>
-    </hbox>
-  </vbox>
 #if 0
-||||||| merged common ancestors
-  <caption><label>&tracking.label;</label></caption>
-  <vbox>
-    <hbox align="center">
-      <checkbox id="privacyDoNotTrackCheckbox"
-                label="&dntTrackingNotOkay4.label;"
-                accesskey="&dntTrackingNotOkay4.accesskey;"
-                preference="privacy.donottrackheader.enabled"/>
-      <label id="doNotTrackInfo"
-             class="text-link"
-             href="https://www.mozilla.org/dnt">
-        &doNotTrackInfo.label;
-      </label>
-    </hbox>
-  </vbox>
-=======
->>>>>>> origin/upstream-releases
   <vbox id="trackingprotectionbox" hidden="true">
     <hbox align="start">
       <vbox>
@@ -170,16 +138,12 @@
               preference="pref.privacy.disable_button.change_blocklist"/>
     </hbox>
   </vbox>
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
   <vbox>
     <description>&doNotTrack.pre.label;<html:a
     class="inline-link" id="doNotTrackSettings" href="#"
     >&doNotTrack.settings.label;</html:a>&doNotTrack.post.label;</description>
   </vbox>
->>>>>>> origin/upstream-releases
+#endif
 </groupbox>
 
 <!-- History -->

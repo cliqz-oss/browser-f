@@ -496,22 +496,7 @@
                         accesskey="&addons.accesskey;"
                         key="key_openAddons"
                         command="Tools:Addons"/>
-<<<<<<< HEAD
-              <menuitem id="menu_openLoop"
-                        label="&loopMenuItem.label;"
-                        accesskey = "&loopMenuItem.accesskey;"
-                        oncommand="LoopUI.togglePanel();"/>
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-
-              <menuitem id="menu_openLoop"
-                        label="&loopMenuItem.label;"
-                        accesskey = "&loopMenuItem.accesskey;"
-                        oncommand="LoopUI.togglePanel();"/>
-
-=======
-
->>>>>>> origin/upstream-releases
               <!-- only one of sync-setup, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
                         label="&syncSignIn.label;"

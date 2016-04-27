@@ -227,18 +227,8 @@ var CustomizableUIInternal = {
       "urlbar-container",
 #if 0
       "search-container",
-<<<<<<< HEAD
 #endif
       "cliqz-button",
-#ifdef MOZ_DEV_EDITION
-      "developer-button",
-#endif
-||||||| merged common ancestors
-#ifdef MOZ_DEV_EDITION
-      "developer-button",
-#endif
-=======
->>>>>>> origin/upstream-releases
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",

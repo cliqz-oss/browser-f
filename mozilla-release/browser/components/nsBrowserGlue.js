@@ -316,13 +316,7 @@ BrowserGlue.prototype = {
           this._setPrefToSaveSession();
         }
         break;
-<<<<<<< HEAD
-#endif
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-#endif
-=======
->>>>>>> origin/upstream-releases
       case "weave:service:ready":
         this._setSyncAutoconnectDelay();
         break;
@@ -529,23 +523,11 @@ BrowserGlue.prototype = {
     os.addObserver(this, "browser:purge-session-history", false);
     os.addObserver(this, "quit-application-requested", false);
     os.addObserver(this, "quit-application-granted", false);
-<<<<<<< HEAD
-#ifdef OBSERVE_LASTWINDOW_CLOSE_TOPICS
-    os.addObserver(this, "browser-lastwindow-close-requested", false);
-    os.addObserver(this, "browser-lastwindow-close-granted", false);
-#endif
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-#ifdef OBSERVE_LASTWINDOW_CLOSE_TOPICS
-    os.addObserver(this, "browser-lastwindow-close-requested", false);
-    os.addObserver(this, "browser-lastwindow-close-granted", false);
-#endif
-=======
     if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
       os.addObserver(this, "browser-lastwindow-close-requested", false);
       os.addObserver(this, "browser-lastwindow-close-granted", false);
     }
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
     os.addObserver(this, "weave:service:ready", false);
     os.addObserver(this, "weave:engine:clients:display-uri", false);
 #endif
@@ -599,23 +581,11 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "quit-application-requested");
     os.removeObserver(this, "quit-application-granted");
     os.removeObserver(this, "restart-in-safe-mode");
-<<<<<<< HEAD
-#ifdef OBSERVE_LASTWINDOW_CLOSE_TOPICS
-    os.removeObserver(this, "browser-lastwindow-close-requested");
-    os.removeObserver(this, "browser-lastwindow-close-granted");
-#endif
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-#ifdef OBSERVE_LASTWINDOW_CLOSE_TOPICS
-    os.removeObserver(this, "browser-lastwindow-close-requested");
-    os.removeObserver(this, "browser-lastwindow-close-granted");
-#endif
-=======
     if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
       os.removeObserver(this, "browser-lastwindow-close-requested");
       os.removeObserver(this, "browser-lastwindow-close-granted");
     }
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
     os.removeObserver(this, "weave:service:ready");
     os.removeObserver(this, "weave:engine:clients:display-uri");
 #endif
@@ -1222,47 +1192,17 @@ BrowserGlue.prototype = {
 
     // Perform default browser checking.
     if (ShellService) {
-<<<<<<< HEAD
-#ifdef DEBUG
-      let shouldCheck = false;
-#else
-      let shouldCheck = ShellService.shouldCheckDefaultBrowser;
-#endif
-      let promptCount = 0;
-#ifdef RELEASE_BUILD
-#if 0
-// In CLIQZ we never want the prompt counter to take any effect.
-      promptCount =
-        Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
-#endif
-      let skipDefaultBrowserCheck =
-        Services.prefs.getBoolPref("browser.shell.skipDefaultBrowserCheck");
-#else
-||||||| merged common ancestors
-#ifdef DEBUG
-      let shouldCheck = false;
-#else
-      let shouldCheck = ShellService.shouldCheckDefaultBrowser;
-#endif
-      let promptCount = 0;
-#ifndef RELEASE_BUILD
-      promptCount =
-        Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
-      let skipDefaultBrowserCheck =
-        Services.prefs.getBoolPref("browser.shell.skipDefaultBrowserCheck");
-#else
-=======
       let shouldCheck = AppConstants.DEBUG ? false :
                                              ShellService.shouldCheckDefaultBrowser;
       let promptCount;
->>>>>>> origin/upstream-releases
       let skipDefaultBrowserCheck = false;
       if (!AppConstants.RELEASE_BUILD) {
         promptCount =
           Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
-        skipDefaultBrowserCheck =
-          Services.prefs.getBoolPref("browser.shell.skipDefaultBrowserCheck");
       }
+      // CLIQZ: will skip showing dialog "Set as default" on first launch
+      skipDefaultBrowserCheck =
+        Services.prefs.getBoolPref("browser.shell.skipDefaultBrowserCheck");
       let willRecoverSession = false;
       try {
         let ss = Cc["@mozilla.org/browser/sessionstartup;1"].
@@ -1302,33 +1242,12 @@ BrowserGlue.prototype = {
         }
       }
 
-<<<<<<< HEAD
-#if 0
-// In CLIQZ we never want the prompt counter to take any effect.
-#ifndef RELEASE_BUILD
-      if (willPrompt) {
-        Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount",
-                                  promptCount);
-||||||| merged common ancestors
-#ifndef RELEASE_BUILD
-      if (willPrompt) {
-        Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount",
-                                  promptCount);
-=======
       if (!AppConstants.RELEASE_BUILD) {
         if (willPrompt) {
           Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount",
                                     promptCount);
         }
->>>>>>> origin/upstream-releases
       }
-<<<<<<< HEAD
-#endif
-#endif
-||||||| merged common ancestors
-#endif
-=======
->>>>>>> origin/upstream-releases
 
       try {
         // Report default browser status on startup to telemetry

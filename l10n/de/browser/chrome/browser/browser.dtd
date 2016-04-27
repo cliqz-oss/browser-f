@@ -250,19 +250,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY addons.label                 "Add-ons">
 <!ENTITY addons.accesskey             "d">
 <!ENTITY addons.commandkey            "A">
-<<<<<<< HEAD
 <!ENTITY plugins.label                "Plugins">
-<!ENTITY webapps.label                "Apps">
-<!ENTITY webapps.accesskey            "p">
-<!ENTITY loopMenuItem.label           "Gespräch beginnen…">
-<!ENTITY loopMenuItem.accesskey       "G">
-||||||| merged common ancestors
-<!ENTITY webapps.label                "Apps">
-<!ENTITY webapps.accesskey            "p">
-<!ENTITY loopMenuItem.label           "Gespräch beginnen…">
-<!ENTITY loopMenuItem.accesskey       "G">
-=======
->>>>>>> origin/upstream-releases
 
 <!ENTITY webDeveloperMenu.label       "Web-Entwickler">
 <!ENTITY webDeveloperMenu.accesskey   "W">
