@@ -244,7 +244,7 @@ Section "Uninstall"
   ${EndIf}
 
   ; setup the application model id registration value
-  ${un.InitHashAppModelId} "$INSTDIR" "Software\CLIQZ\${AppName}\TaskBarIDs"
+  ${un.InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   SetShellVarContext current  ; Set SHCTX to HKCU
   ${un.RegCleanMain} "Software\CLIQZ"
@@ -258,11 +258,11 @@ Section "Uninstall"
   ${EndIf}
 
   ; Remove the updates directory for Vista and above
-  ${un.CleanUpdateDirectories} "CLIQZ\Firefox" "CLIQZ\updates"
+  ${un.CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
 
   ; Remove any app model id's stored in the registry for this install path
-  DeleteRegValue HKCU "Software\CLIQZ\${AppName}\TaskBarIDs" "$INSTDIR"
-  DeleteRegValue HKLM "Software\CLIQZ\${AppName}\TaskBarIDs" "$INSTDIR"
+  DeleteRegValue HKCU "Software\${AppName}\TaskBarIDs" "$INSTDIR"
+  DeleteRegValue HKLM "Software\${AppName}\TaskBarIDs" "$INSTDIR"
 
   ClearErrors
   WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
@@ -281,31 +281,31 @@ Section "Uninstall"
   ${If} ${AtLeastWin8}
     ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
                              $AppUserModelID \
-                             "FirefoxURL" \
-                             "FirefoxHTML"
+                             "CliqzURL" \
+                             "CliqzHTML"
   ${EndIf}
 
-  ${un.RegCleanAppHandler} "FirefoxURL"
-  ${un.RegCleanAppHandler} "FirefoxHTML"
+  ${un.RegCleanAppHandler} "CliqzURL"
+  ${un.RegCleanAppHandler} "CliqzHTML"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
 
   ClearErrors
-  ReadRegStr $R9 HKCR "FirefoxHTML" ""
-  ; Don't clean up the file handlers if the FirefoxHTML key still exists since
+  ReadRegStr $R9 HKCR "CliqzHTML" ""
+  ; Don't clean up the file handlers if the CliqzHTML key still exists since
   ; there should be a second installation that may be the default file handler
   ${If} ${Errors}
-    ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML"
+    ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".html"  "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".xht"   "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".xhtml" "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".oga"  "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".ogg"  "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML"
+    ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML"
   ${EndIf}
 
   SetShellVarContext all  ; Set SHCTX to HKLM
@@ -392,7 +392,7 @@ Section "Uninstall"
   ${un.CleanVirtualStore}
 
   ; Only unregister the dll if the registration points to this installation
-  ReadRegStr $R1 HKCR "CLSID\{0D68D6D0-D93D-4D08-A30D-F00DD1F45B24}\InProcServer32" ""
+  ReadRegStr $R1 HKCR "CLSID\{AC93DDB0-2E8D-4DC4-A825-A9807472D777}\InProcServer32" ""
   ${If} "$INSTDIR\AccessibleMarshal.dll" == "$R1"
     ${UnregisterDLL} "$INSTDIR\AccessibleMarshal.dll"
   ${EndIf}

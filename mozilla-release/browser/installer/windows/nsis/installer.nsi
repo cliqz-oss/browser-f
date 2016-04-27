@@ -249,7 +249,7 @@ Section "-InstallStartCleanup"
   ${EndIf}
 
   ; setup the application model id registration value
-  ${InitHashAppModelId} "$INSTDIR" "Software\CLIQZ\${AppName}\TaskBarIDs"
+  ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   ; Remove the updates directory for Vista and above
   ${CleanUpdateDirectories} "CLIQZ\Firefox" "CLIQZ\updates"
@@ -379,17 +379,17 @@ Section "-Application" APP_IDX
   ; it doesn't cause problems always add them.
   ${SetUninstallKeys}
 
-  ; On install always add the FirefoxHTML and FirefoxURL keys.
-  ; An empty string is used for the 5th param because FirefoxHTML is not a
+  ; On install always add the CliqzHTML and CliqzURL keys.
+  ; An empty string is used for the 5th param because CliqzHTML is not a
   ; protocol handler.
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
   StrCpy $2 "$\"$8$\" -osint -url $\"%1$\""
 
-  ; In Win8, the delegate execute handler picks up the value in FirefoxURL and
-  ; FirefoxHTML to launch the desktop browser when it needs to.
-  ${AddDisabledDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" \
+  ; In Win8, the delegate execute handler picks up the value in CliqzURL and
+  ; CliqzHTML to launch the desktop browser when it needs to.
+  ${AddDisabledDDEHandlerValues} "CliqzHTML" "$2" "$8,1" \
                                  "${AppRegName} Document" ""
-  ${AddDisabledDDEHandlerValues} "FirefoxURL" "$2" "$8,1" "${AppRegName} URL" \
+  ${AddDisabledDDEHandlerValues} "CliqzURL" "$2" "$8,1" "${AppRegName} URL" \
                                  "true"
 
   ; For pre win8, the following keys should only be set if we can write to HKLM.
@@ -429,8 +429,8 @@ Section "-Application" APP_IDX
   ${If} ${AtLeastWin8}
     ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
                              $AppUserModelID \
-                             "FirefoxURL" \
-                             "FirefoxHTML"
+                             "CliqzURL" \
+                             "CliqzHTML"
   ${EndIf}
   ${EndIf}
 

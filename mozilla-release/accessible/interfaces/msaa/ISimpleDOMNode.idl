@@ -13,7 +13,7 @@ cpp_quote("// get_nodeInfo(")
 cpp_quote("//  /* [out] */ BSTR  *nodeName,   // For elements, this is the tag name")
 cpp_quote("//  /* [out] */ short  *nameSpaceID,")
 cpp_quote("//  /* [out] */ BSTR  *nodeValue, ")
-cpp_quote("//  /* [out] */ unsigned int    *numChildren); ") 
+cpp_quote("//  /* [out] */ unsigned int    *numChildren); ")
 cpp_quote("//  /* [out] */ unsigned int    *uniqueID;  // In Win32 accessible events we generate, the target's childID matches to this")
 cpp_quote("//  /* [out] */ unsigned short  *nodeType,")
 cpp_quote("// ---------------------------------------------------------------------------------------------------=")
@@ -102,7 +102,7 @@ import "oaidl.idl";
 import "ISimpleDOMText.idl";
 import "ISimpleDOMDocument.idl";
 
-[object, uuid(1814ceeb-49e2-407f-af99-fa755a7d2607)]
+[object, uuid(32F5D26E-855F-4F27-9C53-9CA88DF52CB7)]
 interface ISimpleDOMNode : IUnknown
 {
   const unsigned short NODETYPE_ELEMENT = 1;
@@ -127,33 +127,33 @@ interface ISimpleDOMNode : IUnknown
     [out, retval] unsigned short *nodeType
   );
 
-  [propget] HRESULT attributes(  
+  [propget] HRESULT attributes(
     [in] unsigned short maxAttribs,
-    [out, size_is(maxAttribs), length_is(*numAttribs)] BSTR *attribNames, 
-    [out, size_is(maxAttribs), length_is(*numAttribs)] short *nameSpaceID,  
+    [out, size_is(maxAttribs), length_is(*numAttribs)] BSTR *attribNames,
+    [out, size_is(maxAttribs), length_is(*numAttribs)] short *nameSpaceID,
     [out, size_is(maxAttribs), length_is(*numAttribs)] BSTR *attribValues,
     [out, retval] unsigned short *numAttribs
   );
 
-  [propget] HRESULT attributesForNames(  
+  [propget] HRESULT attributesForNames(
     [in] unsigned short numAttribs,
-    [in, size_is(numAttribs), length_is(numAttribs)] BSTR *attribNames, 
-    [in, size_is(numAttribs), length_is(numAttribs)] short *nameSpaceID,  
+    [in, size_is(numAttribs), length_is(numAttribs)] BSTR *attribNames,
+    [in, size_is(numAttribs), length_is(numAttribs)] short *nameSpaceID,
     [out, retval, size_is(numAttribs), length_is(numAttribs)] BSTR *attribValues
   );
 
-  [propget] HRESULT computedStyle(  
+  [propget] HRESULT computedStyle(
     [in] unsigned short maxStyleProperties,
     [in] boolean useAlternateView,  // If TRUE, returns properites for media as set in nsIDOMDocument::set_alternateViewMediaTypes
-    [out, size_is(maxStyleProperties), length_is(*numStyleProperties)] BSTR *styleProperties, 
+    [out, size_is(maxStyleProperties), length_is(*numStyleProperties)] BSTR *styleProperties,
     [out, size_is(maxStyleProperties), length_is(*numStyleProperties)] BSTR *styleValues,
     [out, retval] unsigned short *numStyleProperties
   );
 
-  [propget] HRESULT computedStyleForProperties(  
-    [in] unsigned short numStyleProperties, 
+  [propget] HRESULT computedStyleForProperties(
+    [in] unsigned short numStyleProperties,
     [in] boolean useAlternateView,  // If TRUE, returns properites for media as set in nsIDOMDocument::set_alternateViewMediaTypes
-    [in, size_is(numStyleProperties), length_is(numStyleProperties)] BSTR *styleProperties, 
+    [in, size_is(numStyleProperties), length_is(numStyleProperties)] BSTR *styleProperties,
     [out, retval, size_is(numStyleProperties), length_is(numStyleProperties)] BSTR *styleValues
   );
 
@@ -164,7 +164,7 @@ interface ISimpleDOMNode : IUnknown
   [propget] HRESULT lastChild([out, retval] ISimpleDOMNode **node);
   [propget] HRESULT previousSibling([out, retval] ISimpleDOMNode **node);
   [propget] HRESULT nextSibling([out, retval] ISimpleDOMNode **node);
-  [propget] HRESULT childAt([in] unsigned childIndex, 
+  [propget] HRESULT childAt([in] unsigned childIndex,
                             [out, retval] ISimpleDOMNode **node);
 
   [propget] HRESULT innerHTML([out, retval] BSTR *innerHTML);
@@ -176,10 +176,10 @@ interface ISimpleDOMNode : IUnknown
 
 
 [
-    uuid(a6245497-9c0b-4449-85a5-bd6ad07df8ea), 
+    uuid(a6245497-9c0b-4449-85a5-bd6ad07df8ea),
     helpstring("ISimpleDOM Type Library")
-] 
-library ISimpleDOM 
+]
+library ISimpleDOM
 {
   interface ISimpleDOMNode;
   interface ISimpleDOMText;
