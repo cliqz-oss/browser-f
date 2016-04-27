@@ -11,11 +11,6 @@
 <!ENTITY window.title "Web-Konsole">
 <!ENTITY browserConsole.title "Browser-Konsole">
 
-<!-- LOCALIZATION NOTE (saveBodies.label): You can see this string in the Web
-   - Console context menu. -->
-<!ENTITY saveBodies.label     "Anfrage- und Antwort-Inhalte aufzeichnen">
-<!ENTITY saveBodies.accesskey "A">
-
 <!-- LOCALIZATION NOTE (openURL.label): You can see this string in the Web
    - Console context menu. -->
 <!ENTITY openURL.label     "Adresse in neuem Tab öffnen">

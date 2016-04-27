@@ -6,13 +6,12 @@
 <!ENTITY sendMaildesc.label           "Beim Senden von formatierten (HTML-) Nachrichten an einen oder mehrere Empfänger, die nicht für HTML-Empfang eingetragen sind:">
 <!ENTITY askMe.label                  "Abfrage, was geschehen soll (Mail fragt Sie nach einem Format)">
 <!ENTITY askMe.accesskey              "A">
-<!ENTITY convertPlain.label           "Nachrichten in reinen Text konvertieren">
-<!ENTITY convertPlain.accesskey       "T">
-<!ENTITY sendHTML.label               "Nachrichten auf jeden Fall als formatierten Text (HTML) senden (manche Programme können das eventuell nicht darstellen)">
-<!ENTITY sendHTML.accesskey           "c">
-<!ENTITY sendBoth.label               "Nachrichten in reinem Text und HTML senden">
-<!ENTITY sendBoth.accesskey           "N">
-<!ENTITY override.label               "Sie können diese Einstellungen für einzelne Nachrichten außer Kraft setzen, indem Sie das Optionen-Menü verwenden, wenn Sie eine Nachricht verfassen.">
+<!ENTITY convertPlain2.label          "Die Nachricht in Reintext konvertieren (Formatierung könnte verloren gehen)">
+<!ENTITY convertPlain2.accesskey      "D">
+<!ENTITY sendHTML2.label              "Die Nachricht nur als HTML senden (könnte Anzeigeprobleme verursachen)">
+<!ENTITY sendHTML2.accesskey          "H">
+<!ENTITY sendBoth2.label              "Die Nachricht sowohl als Reintext als auch als HTML senden (größere Nachricht)">
+<!ENTITY sendBoth2.accesskey          "N">
 
 <!-- Html and Plain Text Domains  -->
 <!ENTITY domain.title                 "HTML- und Reintext-Domains">
@@ -37,3 +36,7 @@
 <!ENTITY domainnameError.title        "Domainnamenfehler">
 <!-- LOCALIZATION NOTE: do not translate @string@ -->
 <!ENTITY invalidEntryError.label      "Der Domainname @string@ ist ungültig und wird ignoriert. Gültige Domainnamen müssen zumindest einen &quot;.&quot; und beiderseits davon Buchstaben enthalten.">
+
+<!-- Global auto-detect switch -->
+<!ENTITY autoDowngrade.label          "Die Nachricht automatisch als Reintext senden wenn keine signifikanten Formatierungen vorhanden sind (übergeht andere Optionen)">
+<!ENTITY autoDowngrade.accesskey      "R">

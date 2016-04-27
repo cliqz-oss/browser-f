@@ -16,7 +16,7 @@
 <Url type="text/html" method="GET" template="https://de.search.yahoo.com/search" resultdomain="yahoo.com">
   <Param name="p" value="{searchTerms}"/>
   <Param name="ei" value="UTF-8"/>
-  <MozParam name="fr" condition="pref" pref="yahoo-fr" />
+  <Param name="fr" value="moz35" />
 </Url>
 <SearchForm>https://de.search.yahoo.com/</SearchForm>
 </SearchPlugin>

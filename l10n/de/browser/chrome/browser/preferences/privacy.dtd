@@ -2,19 +2,29 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY tracking.label                 "Verfolgung von Nutzeraktivitäten">
+<!ENTITY  trackingProtectionHeader.label       "Schutz vor Aktivitätenverfolgung verwenden">
+<!ENTITY  trackingProtectionAlways.label       "Immer">
+<!ENTITY  trackingProtectionAlways.accesskey   "m">
+<!ENTITY  trackingProtectionPrivate.label      "Nur in Privaten Fenstern">
+<!ENTITY  trackingProtectionPrivate.accesskey  "P">
+<!ENTITY  trackingProtectionNever.label        "Nie">
+<!ENTITY  trackingProtectionNever.accesskey    "N">
+<!ENTITY  trackingProtectionLearnMore.label    "Weitere Informationen">
+<!ENTITY  trackingProtectionExceptions.label   "Ausnahmen…">
+<!ENTITY  trackingProtectionExceptions.accesskey "u">
 
-<!ENTITY dntTrackingNotOkay4.label     "Websites auffordern, meine Aktivitäten nicht zu verfolgen">
-<!ENTITY dntTrackingNotOkay4.accesskey "n">
-<!ENTITY doNotTrackInfo.label           "Weitere Informationen">
-<!ENTITY trackingProtection5.label     "Schutz vor Aktivitätenverfolgung verwenden">
-<!ENTITY trackingProtection5.accesskey "A">
-<!ENTITY trackingProtectionLearnMore.label "Weitere Informationen">
+<!ENTITY tracking.label                 "Verfolgung von Nutzeraktivitäten">
 <!ENTITY trackingProtectionPBM5.label         "Schutz vor Aktivitätenverfolgung in privaten Fenstern verwenden">
 <!ENTITY trackingProtectionPBM5.accesskey     "p">
 <!ENTITY trackingProtectionPBMLearnMore.label "Weitere Informationen">
 <!ENTITY changeBlockList.label          "Blockierliste ändern">
 <!ENTITY changeBlockList.accesskey      "B">
+
+<!-- LOCALIZATION NOTE (doNotTrack.pre.label): include a trailing space as needed -->
+<!-- LOCALIZATION NOTE (doNotTrack.post.label): include a starting space as needed -->
+<!ENTITY  doNotTrack.pre.label          "Sie können auch ">
+<!ENTITY  doNotTrack.settings.label     "Ihre Einstellungen zum Schutz vor Aktivitätenverfolgung verwalten">
+<!ENTITY  doNotTrack.post.label         ".">
 
 <!ENTITY  history.label                 "Chronik">
 

@@ -250,10 +250,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY addons.label                 "Add-ons">
 <!ENTITY addons.accesskey             "d">
 <!ENTITY addons.commandkey            "A">
-<!ENTITY webapps.label                "Apps">
-<!ENTITY webapps.accesskey            "p">
-<!ENTITY loopMenuItem.label           "Gespräch beginnen…">
-<!ENTITY loopMenuItem.accesskey       "G">
 
 <!ENTITY webDeveloperMenu.label       "Web-Entwickler">
 <!ENTITY webDeveloperMenu.accesskey   "W">
@@ -752,7 +748,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
 <!ENTITY identity.connectionVerified1 "Sie sind derzeit mit dieser Website verbunden, welche betrieben wird von:">
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
-<!ENTITY identity.insecureLoginForms "Ihre Zugangsdaten könnten in falsche Hände fallen.">
+<!ENTITY identity.insecureLoginForms2 "Ihre Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
 
 <!-- Strings for connection state warnings. -->
 <!ENTITY identity.activeBlocked "&brandShortName; hat nicht sichere Inhalte dieser Seite blockiert.">
@@ -936,10 +932,3 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY emeNotificationsNotNow.accesskey         "N">
 <!ENTITY emeNotificationsDontAskAgain.label       "Nicht mehr nachfragen">
 <!ENTITY emeNotificationsDontAskAgain.accesskey   "m">
-
-<!-- LOCALIZATION NOTE (saveToPocketCmd.label, saveLinkToPocketCmd.label, pocketMenuitem.label): Pocket is a brand name -->
-<!ENTITY saveToPocketCmd.label     "Seite bei Pocket speichern">
-<!ENTITY saveToPocketCmd.accesskey "b">
-<!ENTITY saveLinkToPocketCmd.label     "Link bei Pocket speichern">
-<!ENTITY saveLinkToPocketCmd.accesskey "c">
-<!ENTITY pocketMenuitem.label      "Pocket-Liste anzeigen">

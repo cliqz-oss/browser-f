@@ -10,8 +10,9 @@ const { interfaces: Ci, utils: Cu, classes: Cc } = Components;
 const kNSXUL = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const kBrowserSharingNotificationId = "loop-sharing-notification";
 
-const MIN_CURSOR_DELTA = 3;
-const MIN_CURSOR_INTERVAL = 100;
+const CURSOR_MIN_DELTA = 3;
+const CURSOR_MIN_INTERVAL = 100;
+const CURSOR_CLICK_DELAY = 1000;
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
@@ -135,16 +136,14 @@ var WindowListener = {
        *
        * @param {DOMEvent} [event] Optional event that triggered the call to this
        *                           function.
-       * @param {String}   [tabId] Optional name of the tab to select after the panel
-       *                           has opened. Does nothing when the panel is hidden.
        * @return {Promise}
        */
-      togglePanel: function(event, tabId = null) {
+      togglePanel: function(event) {
         if (!this.panel) {
           // We're on the hidden window! What fun!
           let obs = win => {
             Services.obs.removeObserver(obs, "browser-delayed-startup-finished");
-            win.LoopUI.togglePanel(event, tabId);
+            win.LoopUI.togglePanel(event);
           };
           Services.obs.addObserver(obs, "browser-delayed-startup-finished", false);
           return window.OpenBrowserWindow();
@@ -160,9 +159,10 @@ var WindowListener = {
           return Promise.resolve();
         }
 
-        return this.openCallPanel(event, tabId).then(doc => {
-          let fm = Services.focus;
-          fm.moveFocus(doc.defaultView, null, fm.MOVEFOCUS_FIRST, fm.FLAG_NOSCROLL);
+        return this.openPanel(event).then(mm => {
+          if (mm) {
+            mm.sendAsyncMessage("Social:EnsureFocusElement");
+          }
         }).catch(err => {
           Cu.reportError(err);
         });
@@ -173,54 +173,24 @@ var WindowListener = {
        *
        * @param {event}  event   The event opening the panel, used to anchor
        *                         the panel to the button which triggers it.
-       * @param {String} [tabId] Identifier of the tab to select when the panel is
-       *                         opened. Example: 'rooms', 'contacts', etc.
        * @return {Promise}
        */
-      openCallPanel: function(event, tabId = null) {
+      openPanel: function(event) {
         return new Promise((resolve) => {
           let callback = iframe => {
-            // Helper function to show a specific tab view in the panel.
-            function showTab() {
-              if (!tabId) {
-                resolve(LoopUI.promiseDocumentVisible(iframe.contentDocument));
-                return;
-              }
-
-              let win = iframe.contentWindow;
-              let ev = new win.CustomEvent("UIAction", Cu.cloneInto({
-                detail: {
-                  action: "selectTab",
-                  tab: tabId
-                }
-              }, win));
-              win.dispatchEvent(ev);
-              resolve(LoopUI.promiseDocumentVisible(iframe.contentDocument));
+            let mm = iframe.QueryInterface(Ci.nsIFrameLoaderOwner).frameLoader.messageManager;
+            if (!("messageManager" in iframe)) {
+              iframe.messageManager = mm;
             }
+            this.hookWindowCloseForPanelClose(iframe);
 
-            // If the panel has been opened and initialized before, we can skip waiting
-            // for the content to load - because it's already there.
-            if (("contentWindow" in iframe) && iframe.contentWindow.document.readyState == "complete") {
-              showTab();
-              return;
-            }
-
-            let documentDOMLoaded = () => {
-              iframe.removeEventListener("DOMContentLoaded", documentDOMLoaded, true);
-              // Handle window.close correctly on the panel.
-              this.hookWindowCloseForPanelClose(iframe.contentWindow);
-              iframe.contentWindow.addEventListener("loopPanelInitialized", function loopPanelInitialized() {
-                iframe.contentWindow.removeEventListener("loopPanelInitialized",
-                  loopPanelInitialized);
-                showTab();
-              });
-            };
-            iframe.addEventListener("DOMContentLoaded", documentDOMLoaded, true);
+            mm.sendAsyncMessage("Social:WaitForDocumentVisible");
+            mm.addMessageListener("Social:DocumentVisible", () => resolve(mm));
 
             let buckets = this.constants.LOOP_MAU_TYPE;
             this.LoopAPI.sendMessageToHandler({
               name: "TelemetryAddValue",
-              data: ["LOOP_MAU", buckets.OPEN_PANEL]
+              data: ["LOOP_ACTIVITY_COUNTER", buckets.OPEN_PANEL]
             });
           };
 
@@ -233,7 +203,7 @@ var WindowListener = {
               // have resumed the tour as soon as the visitor joined if it was (and
               // the pref would have been set to false already.
               this.MozLoopService.resumeTour("waiting");
-              resolve();
+              resolve(null);
               return;
             }
 
@@ -250,6 +220,17 @@ var WindowListener = {
               callback);
           });
         });
+      },
+
+      /**
+       * Wrapper for openPanel - to support Firefox 46 and 45.
+       *
+       * @param {event}  event   The event opening the panel, used to anchor
+       *                         the panel to the button which triggers it.
+       * @return {Promise}
+       */
+      openCallPanel: function(event) {
+        return this.openPanel(event);
       },
 
       /**
@@ -318,8 +299,13 @@ var WindowListener = {
           }
         });
 
-        // Disabled for 45, as 45 has its own menuitem.
-        // this.addMenuItem();
+        // If we're in private browsing mode, then don't add the menu item,
+        // also don't add the listeners as we don't want to update the button.
+        if (PrivateBrowsingUtils.isWindowPrivate(window)) {
+          return;
+        }
+
+        this.addMenuItem();
 
         // Don't do the rest if this is for the hidden window - we don't
         // have a toolbar there.
@@ -500,7 +486,7 @@ var WindowListener = {
               options.onclick();
             } else {
               // Open the Loop panel as a default action.
-              this.openCallPanel(null, options.selectTab || null);
+              this.openPanel(null, options.selectTab || null);
             }
           }, 0);
         });
@@ -544,6 +530,7 @@ var WindowListener = {
           // Add this event to the parent gBrowser to avoid adding and removing
           // it for each individual tab's browsers.
           gBrowser.addEventListener("mousemove", this);
+          gBrowser.addEventListener("click", this);
         }
 
         this._maybeShowBrowserSharingInfoBar();
@@ -564,8 +551,12 @@ var WindowListener = {
         this._hideBrowserSharingInfoBar();
         gBrowser.tabContainer.removeEventListener("TabSelect", this);
         gBrowser.removeEventListener("DOMTitleChanged", this);
+
+        // Remove shared pointers related events
         gBrowser.removeEventListener("mousemove", this);
+        gBrowser.removeEventListener("click", this);
         this.removeRemoteCursor();
+
         this._listeningToTabSelect = false;
         this._browserSharePaused = false;
         this._sendTelemetryEventsIfNeeded();
@@ -619,7 +610,6 @@ var WindowListener = {
         }
 
         let browser = gBrowser.selectedBrowser;
-
         let cursor = document.getElementById("loop-remote-cursor");
         if (!cursor) {
           // Create a container to keep the pointer inside.
@@ -629,7 +619,6 @@ var WindowListener = {
 
           cursor = document.createElement("img");
           cursor.setAttribute("id", "loop-remote-cursor");
-
           cursorContainer.appendChild(cursor);
           // Note that browser.parent is a xul:stack so container will use
           // 100% of space if no other constrains added.
@@ -644,9 +633,36 @@ var WindowListener = {
       },
 
       /**
-       *  Removes the remote cursor from the screen
+       *  Adds the ripple effect animation to the cursor to show a click on the
+       *  remote end of the conversation.
+       *  Will only add it when:
+       *  - A click is received (cursorData = true)
+       *  - Sharing is active (this._listeningToTabSelect = true)
+       *  - Remote cursor is being painted (cursor != undefined)
        *
-       *  @param browser OPT browser where the cursor should be removed from.
+       *  @param clickData bool click event
+       */
+      clickRemoteCursor: function(clickData) {
+        if (!clickData || !this._listeningToTabSelect) {
+          return;
+        }
+
+        let class_name = "clicked";
+        let cursor = document.getElementById("loop-remote-cursor");
+        if (!cursor) {
+          return;
+        }
+
+        cursor.classList.add(class_name);
+
+        // after the proper time, we get rid of the animation
+        window.setTimeout(() => {
+          cursor.classList.remove(class_name);
+        }, CURSOR_CLICK_DELAY);
+      },
+
+      /**
+       *  Removes the remote cursor from the screen
        */
       removeRemoteCursor: function() {
         let cursor = document.getElementById("loop-remote-cursor");
@@ -803,6 +819,9 @@ var WindowListener = {
           case "mousemove":
             this.handleMousemove(event);
             break;
+          case "click":
+            this.handleMouseClick(event);
+            break;
           }
       },
 
@@ -819,7 +838,7 @@ var WindowListener = {
 
         // Only update every so often.
         let now = Date.now();
-        if (now - this.lastCursorTime < MIN_CURSOR_INTERVAL) {
+        if (now - this.lastCursorTime < CURSOR_MIN_INTERVAL) {
           return;
         }
         this.lastCursorTime = now;
@@ -830,8 +849,8 @@ var WindowListener = {
         let deltaY = event.screenY - browserBox.screenY;
         if (deltaX < 0 || deltaX > browserBox.width ||
             deltaY < 0 || deltaY > browserBox.height ||
-            (Math.abs(deltaX - this.lastCursorX) < MIN_CURSOR_DELTA &&
-             Math.abs(deltaY - this.lastCursorY) < MIN_CURSOR_DELTA)) {
+            (Math.abs(deltaX - this.lastCursorX) < CURSOR_MIN_DELTA &&
+             Math.abs(deltaY - this.lastCursorY) < CURSOR_MIN_DELTA)) {
           return;
         }
         this.lastCursorX = deltaX;
@@ -841,6 +860,20 @@ var WindowListener = {
           ratioX: deltaX / browserBox.width,
           ratioY: deltaY / browserBox.height
         });
+      },
+
+      /**
+       * Handles mouse click events from gBrowser and send a broadcast message
+       * with all the data needed for sending link generator cursor click position
+       * through the sdk.
+       */
+      handleMouseClick: function() {
+        // We want to stop sending events if sharing is paused.
+        if (this._browserSharePaused) {
+          return;
+        }
+
+        this.LoopAPI.broadcastPushMessage("CursorClick");
       },
 
       /**
@@ -904,8 +937,7 @@ var WindowListener = {
    */
   tearDownBrowserUI: function(window) {
     if (window.LoopUI) {
-      // Disabled for 45, as 45 has its own menuitem.
-      // window.LoopUI.removeMenuItem();
+      window.LoopUI.removeMenuItem();
 
       // XXX Bug 1229352 - Add in tear-down of the panel.
     }
@@ -1007,6 +1039,17 @@ function loadDefaultPrefs() {
       }
     }
   });
+
+  if (Services.vc.compare(Services.appinfo.version, "47.0a1") < 0) {
+    branch.setBoolPref("loop.remote.autostart", false);
+  }
+
+  // Don't enable pop-outs in Firefox 47 - that's where e10s is enabled, and popping
+  // out currently fails (bug 1245813).
+  if (Services.vc.compare(Services.appinfo.version, "47.0a1") >= 0 &&
+      Services.vc.compare(Services.appinfo.version, "48.0a1") < 0) {
+    branch.setBoolPref("loop.conversationPopOut.enabled", false);
+  }
 }
 
 /**
