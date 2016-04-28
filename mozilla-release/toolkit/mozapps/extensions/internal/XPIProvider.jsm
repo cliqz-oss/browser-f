@@ -693,12 +693,6 @@ function isUsableAddon(aAddon) {
     return false;
   }
 
-  // All addons must be signed to be able to work in CLIQZ browser.
-  if (mustSign(aAddon.type) &&
-      aAddon.signedState != AddonManager.SIGNEDSTATE_SIGNED) {
-    return false;
-  }
-
   // temporary and system add-ons do not require signing
   if ((aAddon._installLocation.name != KEY_APP_SYSTEM_DEFAULTS &&
        aAddon._installLocation.name != KEY_APP_TEMPORARY) &&
