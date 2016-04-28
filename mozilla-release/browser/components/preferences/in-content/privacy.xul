@@ -138,12 +138,12 @@
               preference="pref.privacy.disable_button.change_blocklist"/>
     </hbox>
   </vbox>
+#endif
   <vbox>
     <description>&doNotTrack.pre.label;<html:a
     class="inline-link" id="doNotTrackSettings" href="#"
     >&doNotTrack.settings.label;</html:a>&doNotTrack.post.label;</description>
   </vbox>
-#endif
 </groupbox>
 
 <!-- History -->
