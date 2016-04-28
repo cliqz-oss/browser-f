@@ -49,9 +49,10 @@ else
   MAKE=make
 fi
 
-# TODO: Use MOZ_UPDATE_CHANNEL.
 if [ -z $CQZ_RELEASE_CHANNEL ]; then
-  export CQZ_RELEASE_CHANNEL=release
+  export MOZ_UPDATE_CHANNEL=beta
+else
+  export MOZ_UPDATE_CHANNEL=$CQZ_RELEASE_CHANNEL
 fi
 
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
@@ -70,7 +71,7 @@ export MOZ_AUTOMATION_UPLOAD=1
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
-export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
+export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 
 OBJ_DIR=$MOZ_OBJDIR
 if [ $IS_MAC_OS ]; then

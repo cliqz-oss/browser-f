@@ -178,7 +178,7 @@ def GetUrlProperties(output, package):
         ('testPackagesUrl', lambda m: m.endswith('test_packages.json')),
         ('packageUrl', lambda m: m.endswith(package)),
     ]
-    url_re = re.compile(r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|mar|tar\.gz|json))$''')
+    url_re = re.compile(r'''^(https?://.*?\.(?:tar\.bz2|dmg|zip|apk|rpm|deb|mar|tar\.gz|json))$''')
     properties = {}
 
     try:
@@ -215,7 +215,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
         source_file = os.path.abspath(source_file)
         if not os.path.isfile(source_file):
             raise IOError("File not found: %s" % source_file)
-        if not re.search('(\w+)\.(mar|dmg|exe|tar\.bz2)$', source_file):
+        if not re.search('(\w+)\.(mar|dmg|rpm|deb|exe|tar\.bz2)$', source_file):
             continue
 
         dest_file = os.path.basename(source_file)
