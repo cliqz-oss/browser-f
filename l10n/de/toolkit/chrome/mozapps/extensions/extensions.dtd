@@ -25,6 +25,8 @@
 
 <!ENTITY showUnsignedExtensions.button.label  "Einige Erweiterungen konnten nicht verifiziert werden.">
 <!ENTITY showAllExtensions.button.label       "Alle Erweiterungen anzeigen">
+<!ENTITY debugAddons.label                    "Add-ons debuggen">
+<!ENTITY debugAddons.accesskey                "b">
 
 <!-- global warnings -->
 <!ENTITY warning.safemode.label                    "Alle Add-ons wurden durch den abgesicherten Modus deaktiviert.">
@@ -105,8 +107,6 @@
 <!ENTITY cmd.installAddon.accesskey           "I">
 <!ENTITY cmd.uninstallAddon.label             "Entfernen">
 <!ENTITY cmd.uninstallAddon.accesskey         "n">
-<!ENTITY cmd.debugAddon.label                 "In Entwicklerwerkzeugen öffnen">
-<!ENTITY cmd.debugAddon.accesskey             "t">
 <!ENTITY cmd.showPreferencesWin.label         "Einstellungen">
 <!ENTITY cmd.showPreferencesWin.tooltip       "Die Einstellungen dieses Add-ons ändern">
 <!ENTITY cmd.showPreferencesUnix.label        "Einstellungen">

@@ -21,11 +21,6 @@ from mozharness.mozilla.release import ReleaseMixin
 from mozharness.base.python import VirtualenvMixin
 from mozharness.base.log import ERROR, FATAL
 
-try:
-    import simplejson as json
-    assert json
-except ImportError:
-    import json
 
 # DesktopPartnerRepacks {{{1
 class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
@@ -45,7 +40,7 @@ class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
           "help": "Version of Firefox to repack",
           }],
         [["--build-number", "-n"], {
-          "dest": "buildnumber",
+          "dest": "build_number",
           "help": "Build number of Firefox to repack",
           }],
         [["--platform"], {
@@ -82,7 +77,7 @@ class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
             'all_actions': DesktopPartnerRepacks.actions,
             'default_actions': DesktopPartnerRepacks.actions,
             'config': {
-                'buildbot_json_path': os.environ.get('PROPERTIES_FILE'),
+                'buildbot_json_path': 'buildprops.json',
                 "log_name": "partner-repacks",
                 "hashType": "sha512",
                 'virtualenv_modules': [
@@ -103,18 +98,23 @@ class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
             **buildscript_kwargs
         )
 
-        if 'version' not in self.config:
-            self.fatal("Version (-v) not supplied.")
-        if 'buildnumber' not in self.config:
-            self.fatal("Build number (-n) not supplied.")
         if 'repo_file' not in self.config:
             self.fatal("repo_file not supplied.")
         if 'repack_manifests_url' not in self.config:
             self.fatal("repack_manifests_url not supplied.")
 
     def _pre_config_lock(self, rw_config):
+        self.read_buildbot_config()
+        if not self.buildbot_config:
+            self.warning("Skipping buildbot properties overrides")
+        else:
+            props = self.buildbot_config["properties"]
+            for prop in ['version', 'build_number', 'revision']:
+                if props.get(prop):
+                    self.info("Overriding %s with %s" % (prop, props[prop]))
+                    self.config[prop] = props.get(prop)
+
         if self.config.get('require_buildprops', False) is True:
-            self.read_buildbot_config()
             if not self.buildbot_config:
                 self.fatal("Unable to load properties from file: %s" % self.config.get('buildbot_json_path'))
             buildbot_props = self.buildbot_config.get('properties', {})
@@ -122,6 +122,11 @@ class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
             if not partner:
                 self.fatal("No partner specified in buildprops.json.")
             self.config['partner'] = partner
+
+        if 'version' not in self.config:
+            self.fatal("Version (-v) not supplied.")
+        if 'build_number' not in self.config:
+            self.fatal("Build number (-n) not supplied.")
 
     def query_abs_dirs(self):
         if self.abs_dirs:
@@ -176,7 +181,7 @@ class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
         python = self.query_exe("python2.7")
         repack_cmd = [python, "partner-repacks.py",
                       "-v", self.config['version'],
-                      "-n", self.config['buildnumber']]
+                      "-n", str(self.config['build_number'])]
         if self.config.get('platform'):
             repack_cmd.extend(["--platform", self.config['platform']])
         if self.config.get('partner'):
@@ -187,6 +192,8 @@ class DesktopPartnerRepacks(ReleaseMixin, BuildbotMixin, PurgeMixin,
             repack_cmd.extend(["--hgroot", self.config['hgroot']])
         if self.config.get('hgrepo'):
             repack_cmd.extend(["--repo", self.config['hgrepo']])
+        if self.config.get('revision'):
+            repack_cmd.extend(["--tag", self.config["revision"]])
 
         return self.run_command(repack_cmd,
                                 cwd=self.query_abs_dirs()['abs_scripts_dir'])

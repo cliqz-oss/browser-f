@@ -11,8 +11,9 @@
   - A good criteria is the language in which you'd find the best
   - documentation on web development on the web. -->
 
-<!-- LOCALIZATION NOTE (title): This is the label shown in the sidebar tab -->
-<!ENTITY title                  "Animationen">
+<!-- LOCALIZATION NOTE (animationInspectorTitle): This is the label shown in the
+     sidebar tab -->
+<!ENTITY animationInspectorTitle "Animationen">
 
 <!-- LOCALIZATION NOTE (invalidElement): This is the label shown in the panel
   - when an invalid node is currently selected in the inspector. -->

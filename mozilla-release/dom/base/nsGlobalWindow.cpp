@@ -207,7 +207,6 @@
 #include "prrng.h"
 #include "nsSandboxFlags.h"
 #include "TimeChangeObserver.h"
-#include "TouchCaret.h"
 #include "mozilla/dom/AudioContext.h"
 #include "mozilla/dom/BrowserElementDictionariesBinding.h"
 #include "mozilla/dom/cache/CacheStorage.h"
@@ -1139,6 +1138,7 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
     mIsPopupSpam(false),
     mBlockScriptedClosingFlag(false),
     mWasOffline(false),
+    mHasHadSlowScript(false),
     mNotifyIdleObserversIdleOnThaw(false),
     mNotifyIdleObserversActiveOnThaw(false),
     mCreatingInnerWindow(false),
@@ -1178,8 +1178,7 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
     mCleanedUp(false),
     mDialogAbuseCount(0),
     mAreDialogsEnabled(true),
-    mCanSkipCCGeneration(0),
-    mVRDevicesInitialized(false)
+    mCanSkipCCGeneration(0)
 {
   AssertIsOnMainThread();
 
@@ -1229,7 +1228,7 @@ nsGlobalWindow::nsGlobalWindow(nsGlobalWindow *aOuterWindow)
     Preferences::AddIntVarCache(&gMinBackgroundTimeoutValue,
                                 "dom.min_background_timeout_value",
                                 DEFAULT_MIN_BACKGROUND_TIMEOUT_VALUE);
-    Preferences::AddBoolVarCache(&sIdleObserversAPIFuzzTimeDisabled, 
+    Preferences::AddBoolVarCache(&sIdleObserversAPIFuzzTimeDisabled,
                                  "dom.idle-observers-api.fuzz_time.disabled",
                                  false);
   }
@@ -1624,6 +1623,9 @@ nsGlobalWindow::FreeInnerObjects()
   // other members that the window destroyed observers could
   // re-create.
   NotifyDOMWindowDestroyed(this);
+  if (auto* reporter = nsWindowMemoryReporter::Get()) {
+    reporter->ObserveDOMWindowDetached(this);
+  }
 
   mInnerObjectsFreed = true;
 
@@ -2072,7 +2074,7 @@ nsGlobalWindow::WouldReuseInnerWindow(nsIDocument* aNewDocument)
   if (!mDoc->IsInitialDocument()) {
     return false;
   }
-  
+
   NS_ASSERTION(NS_IsAboutBlank(mDoc->GetDocumentURI()),
                "How'd this happen?");
 
@@ -2327,13 +2329,11 @@ CreateNativeGlobalForInner(JSContext* aCx,
   // windows or inside a browser element. In such cases we want to tag the
   // window's compartment with the add-on ID. See bug 1092156.
   if (nsContentUtils::IsSystemPrincipal(aPrincipal)) {
-    options.setAddonId(MapURIToAddonID(aURI));
+    options.creationOptions().setAddonId(MapURIToAddonID(aURI));
   }
 
-  if (top) {
-    if (top->GetGlobalJSObject()) {
-      options.setSameZoneAs(top->GetGlobalJSObject());
-    }
+  if (top && top->GetGlobalJSObject()) {
+    options.creationOptions().setSameZoneAs(top->GetGlobalJSObject());
   }
 
   // Determine if we need the Components object.
@@ -2936,8 +2936,9 @@ nsGlobalWindow::DetachFromDocShell()
     inner->FreeInnerObjects();
   }
 
-  // Make sure that this is called before we null out the document.
-  NotifyDOMWindowDestroyed(this);
+  if (auto* reporter = nsWindowMemoryReporter::Get()) {
+    reporter->ObserveDOMWindowDetached(this);
+  }
 
   NotifyWindowIDDestroyed("outer-window-destroyed");
 
@@ -3744,7 +3745,7 @@ nsPIDOMWindow::SetAudioCapture(bool aCapture)
 
   RefPtr<AudioChannelService> service = AudioChannelService::GetOrCreate();
   if (service) {
-    service->RefreshAgentsCapture(GetOuterWindow(), mWindowID);
+    service->SetWindowAudioCaptured(GetOuterWindow(), mWindowID, aCapture);
   }
 
   return NS_OK;
@@ -3764,6 +3765,19 @@ nsGlobalWindow::GetSpeechSynthesis(ErrorResult& aError)
 
   return mSpeechSynthesis;
 }
+
+bool
+nsGlobalWindow::HasActiveSpeechSynthesis()
+{
+  MOZ_ASSERT(IsInnerWindow());
+
+  if (mSpeechSynthesis) {
+    return !mSpeechSynthesis->HasEmptyQueue();
+  }
+
+  return false;
+}
+
 #endif
 
 already_AddRefed<nsIDOMWindow>
@@ -4283,7 +4297,7 @@ nsGlobalWindow::IsShowModalDialogEnabled(JSContext*, JSObject*)
     sAddedPrefCache = true;
   }
 
-  return !sIsDisabled;
+  return !sIsDisabled && !XRE_IsContentProcess();
 }
 
 nsIDOMOfflineResourceList*
@@ -4362,7 +4376,7 @@ nsGlobalWindow::GetControllersOuter(ErrorResult& aError)
       aError.Throw(rv);
       return nullptr;
     }
-    
+
     mControllers->InsertControllerAt(0, controller);
     nsCOMPtr<nsIControllerContext> controllerContext = do_QueryInterface(controller);
     if (!controllerContext) {
@@ -4973,7 +4987,7 @@ nsGlobalWindow::SetOuterSize(int32_t aLengthCSSPixels, bool aIsWidth,
   } else {
     height = lengthDevPixels;
   }
-  aError = treeOwnerAsWin->SetSize(width, height, true);    
+  aError = treeOwnerAsWin->SetSize(width, height, true);
 }
 
 void
@@ -5862,7 +5876,6 @@ private:
     RefPtr<FullscreenTransitionTask> mTask;
   };
 
-  static const uint32_t kNextPaintTimeout = 1000; // ms
   static const char* const kPaintedTopic;
 
   RefPtr<nsGlobalWindow> mWindow;
@@ -5905,8 +5918,12 @@ FullscreenTransitionTask::Run()
       mWindow->mFullScreen = mFullscreen;
     }
     // Toggle the fullscreen state on the widget
-    mWindow->SetWidgetFullscreen(nsPIDOMWindow::eForFullscreenAPI,
-                                 mFullscreen, mWidget, mScreen);
+    if (!mWindow->SetWidgetFullscreen(nsPIDOMWindow::eForFullscreenAPI,
+                                      mFullscreen, mWidget, mScreen)) {
+      // Fail to setup the widget, call FinishFullscreenChange to
+      // complete fullscreen change directly.
+      mWindow->FinishFullscreenChange(mFullscreen);
+    }
     // Set observer for the next content paint.
     nsCOMPtr<nsIObserver> observer = new Observer(this);
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
@@ -5918,8 +5935,14 @@ FullscreenTransitionTask::Run()
     // Completely fixing those cases seems to be tricky, and since they
     // should rarely happen, it probably isn't worth to fix. Hence we
     // simply add a timeout here to ensure we never hang forever.
+    // In addition, if the page is complicated or the machine is less
+    // powerful, layout could take a long time, in which case, staying
+    // in black screen for that long could hurt user experience even
+    // more than exposing an intermediate state.
     mTimer = do_CreateInstance(NS_TIMER_CONTRACTID);
-    mTimer->Init(observer, kNextPaintTimeout, nsITimer::TYPE_ONE_SHOT);
+    uint32_t timeout =
+      Preferences::GetUint("full-screen-api.transition.timeout", 500);
+    mTimer->Init(observer, timeout, nsITimer::TYPE_ONE_SHOT);
   } else if (stage == eAfterToggle) {
     mWidget->PerformFullscreenTransition(nsIWidget::eAfterFullscreenToggle,
                                          mDuration.mFadeOut, mTransitionData,
@@ -5965,7 +5988,7 @@ FullscreenTransitionTask::Observer::Observe(nsISupports* aSubject,
 }
 
 static bool
-MakeWidgetFullscreen(nsGlobalWindow* aWindow, gfx::VRHMDInfo* aHMD,
+MakeWidgetFullscreen(nsGlobalWindow* aWindow, gfx::VRDeviceProxy* aHMD,
                      nsPIDOMWindow::FullscreenReason aReason, bool aFullscreen)
 {
   nsCOMPtr<nsIWidget> widget = aWindow->GetMainWidget();
@@ -5985,20 +6008,20 @@ MakeWidgetFullscreen(nsGlobalWindow* aWindow, gfx::VRHMDInfo* aHMD,
   }
   nsCOMPtr<nsIScreen> screen = aHMD ? aHMD->GetScreen() : nullptr;
   if (!performTransition) {
-    aWindow->SetWidgetFullscreen(aReason, aFullscreen, widget, screen);
+    return aWindow->SetWidgetFullscreen(aReason, aFullscreen, widget, screen);
   } else {
     nsCOMPtr<nsIRunnable> task =
       new FullscreenTransitionTask(duration, aWindow, aFullscreen,
                                    widget, screen, transitionData);
     task->Run();
+    return true;
   }
-  return true;
 }
 
 nsresult
 nsGlobalWindow::SetFullscreenInternal(FullscreenReason aReason,
                                       bool aFullScreen,
-                                      gfx::VRHMDInfo* aHMD)
+                                      gfx::VRDeviceProxy* aHMD)
 {
   MOZ_ASSERT(IsOuterWindow());
   MOZ_ASSERT(nsContentUtils::IsSafeToRunScript(),
@@ -6085,11 +6108,18 @@ nsGlobalWindow::SetFullscreenInternal(FullscreenReason aReason,
     }
   }
 
+  // If we didn't setup the widget, we may need to manually set this
+  // flag, or the assertion in FinishFullscreenChange is violated.
+  if (nsCOMPtr<nsIPresShell> presShell = mDocShell->GetPresShell()) {
+    if (!presShell->IsInFullscreenChange()) {
+      presShell->SetIsInFullscreenChange(true);
+    }
+  }
   FinishFullscreenChange(aFullScreen);
   return NS_OK;
 }
 
-void
+bool
 nsGlobalWindow::SetWidgetFullscreen(FullscreenReason aReason, bool aIsFullscreen,
                                     nsIWidget* aWidget, nsIScreen* aScreen)
 {
@@ -6101,13 +6131,12 @@ nsGlobalWindow::SetWidgetFullscreen(FullscreenReason aReason, bool aIsFullscreen
   if (nsCOMPtr<nsIPresShell> presShell = mDocShell->GetPresShell()) {
     presShell->SetIsInFullscreenChange(true);
   }
-  if (aReason == nsPIDOMWindow::eForFullscreenMode) {
+  nsresult rv = aReason == nsPIDOMWindow::eForFullscreenMode ?
     // If we enter fullscreen for fullscreen mode, we want
     // the native system behavior.
-    aWidget->MakeFullScreenWithNativeTransition(aIsFullscreen, aScreen);
-  } else {
+    aWidget->MakeFullScreenWithNativeTransition(aIsFullscreen, aScreen) :
     aWidget->MakeFullScreen(aIsFullscreen, aScreen);
-  }
+  return NS_SUCCEEDED(rv);
 }
 
 /* virtual */ void
@@ -6241,6 +6270,7 @@ nsGlobalWindow::Dump(const nsAString& aStr)
 #endif
 
   if (cstr) {
+    MOZ_LOG(nsContentUtils::DOMDumpLog(), LogLevel::Debug, ("[Window.Dump] %s", cstr));
 #ifdef XP_WIN
     PrintToDebugger(cstr);
 #endif
@@ -6418,8 +6448,8 @@ nsGlobalWindow::AlertOrConfirm(bool aAlert,
   nsAutoString title;
   MakeScriptDialogTitle(title);
 
-  // Remove non-terminating null characters from the 
-  // string. See bug #310037. 
+  // Remove non-terminating null characters from the
+  // string. See bug #310037.
   nsAutoString final;
   nsContentUtils::StripNullChars(aMessage, final);
 
@@ -6535,9 +6565,9 @@ nsGlobalWindow::PromptOuter(const nsAString& aMessage, const nsAString& aInitial
 
   nsAutoString title;
   MakeScriptDialogTitle(title);
-  
-  // Remove non-terminating null characters from the 
-  // string. See bug #310037. 
+
+  // Remove non-terminating null characters from the
+  // string. See bug #310037.
   nsAutoString fixedMessage, fixedInitial;
   nsContentUtils::StripNullChars(aMessage, fixedMessage);
   nsContentUtils::StripNullChars(aInitial, fixedInitial);
@@ -6904,11 +6934,11 @@ nsGlobalWindow::PrintOuter(ErrorResult& aError)
   nsCOMPtr<nsIWebBrowserPrint> webBrowserPrint;
   if (NS_SUCCEEDED(GetInterface(NS_GET_IID(nsIWebBrowserPrint),
                                 getter_AddRefs(webBrowserPrint)))) {
-    nsAutoSyncOperation sync(GetCurrentInnerWindowInternal() ? 
+    nsAutoSyncOperation sync(GetCurrentInnerWindowInternal() ?
                                GetCurrentInnerWindowInternal()->mDoc :
                                nullptr);
 
-    nsCOMPtr<nsIPrintSettingsService> printSettingsService = 
+    nsCOMPtr<nsIPrintSettingsService> printSettingsService =
       do_GetService("@mozilla.org/gfx/printsettings-service;1");
 
     nsCOMPtr<nsIPrintSettings> printSettings;
@@ -6926,8 +6956,8 @@ nsGlobalWindow::PrintOuter(ErrorResult& aError)
           printSettings->SetPrinterName(printerName);
         }
         printSettingsService->InitPrintSettingsFromPrinter(printerName, printSettings);
-        printSettingsService->InitPrintSettingsFromPrefs(printSettings, 
-                                                         true, 
+        printSettingsService->InitPrintSettingsFromPrefs(printSettings,
+                                                         true,
                                                          nsIPrintSettings::kInitSaveAll);
       } else {
         printSettingsService->GetNewPrintSettings(getter_AddRefs(printSettings));
@@ -7032,7 +7062,7 @@ nsGlobalWindow::MoveByOuter(int32_t aXDif, int32_t aYDif, ErrorResult& aError, b
 
   cssPos.width += aXDif;
   cssPos.height += aYDif;
-  
+
   CheckSecurityLeftAndTop(&cssPos.width, &cssPos.height, aCallerIsChrome);
 
   nsIntSize newDevPos(CSSToDevIntPixels(cssPos));
@@ -7089,7 +7119,7 @@ nsGlobalWindow::ResizeToOuter(int32_t aWidth, int32_t aHeight, ErrorResult& aErr
     aError.Throw(NS_ERROR_FAILURE);
     return;
   }
-  
+
   nsIntSize cssSize(aWidth, aHeight);
   CheckSecurityWidthAndHeight(&cssSize.width, &cssSize.height, aCallerIsChrome);
 
@@ -7562,7 +7592,7 @@ nsGlobalWindow::RevisePopupAbuseLevel(PopupControlState aControl)
   MOZ_ASSERT(IsOuterWindow());
 
   NS_ASSERTION(mDocShell, "Must have docshell");
-  
+
   if (mDocShell->ItemType() != nsIDocShellTreeItem::typeContent) {
     return openAllowed;
   }
@@ -7574,6 +7604,7 @@ nsGlobalWindow::RevisePopupAbuseLevel(PopupControlState aControl)
   case openOverridden:
     if (PopupWhitelisted())
       abuse = PopupControlState(abuse - 1);
+    break;
   case openAllowed: break;
   default:
     NS_WARNING("Strange PopupControlState!");
@@ -7668,7 +7699,6 @@ nsGlobalWindow::Open(const nsAString& aUrl, const nsAString& aName,
                              false,          // aDoJSFixups
                              true,           // aNavigate
                              nullptr, nullptr,  // No args
-                             GetPrincipal(),    // aCalleePrincipal
                              nullptr,           // aJSCallerContext
                              getter_AddRefs(window));
   if (NS_SUCCEEDED(rv) && window) {
@@ -7689,7 +7719,6 @@ nsGlobalWindow::OpenJS(const nsAString& aUrl, const nsAString& aName,
                       true,           // aDoJSFixups
                       true,           // aNavigate
                       nullptr, nullptr,  // No args
-                      GetPrincipal(),    // aCalleePrincipal
                       nsContentUtils::GetCurrentJSContext(), // aJSCallerContext
                       _retval);
 }
@@ -7709,7 +7738,6 @@ nsGlobalWindow::OpenDialog(const nsAString& aUrl, const nsAString& aName,
                       false,                   // aDoJSFixups
                       true,                    // aNavigate
                       nullptr, aExtraArgument,    // Arguments
-                      GetPrincipal(),             // aCalleePrincipal
                       nullptr,                    // aJSCallerContext
                       _retval);
 }
@@ -7729,7 +7757,6 @@ nsGlobalWindow::OpenNoNavigate(const nsAString& aUrl,
                       false,          // aDoJSFixups
                       false,          // aNavigate
                       nullptr, nullptr,  // No args
-                      GetPrincipal(),    // aCalleePrincipal
                       nullptr,           // aJSCallerContext
                       _retval);
 
@@ -7759,7 +7786,6 @@ nsGlobalWindow::OpenDialogOuter(JSContext* aCx, const nsAString& aUrl,
                         false,            // aDoJSFixups
                         true,                // aNavigate
                         argvArray, nullptr,  // Arguments
-                        GetPrincipal(),      // aCalleePrincipal
                         aCx,                 // aJSCallerContext
                         getter_AddRefs(dialog));
   return dialog.forget();
@@ -8796,7 +8822,7 @@ nsGlobalWindow::ShowModalDialogOuter(const nsAString& aUrl, nsIVariant* aArgumen
     mDoc->WarnOnceAbout(nsIDocument::eShowModalDialog);
   }
 
-  if (!IsShowModalDialogEnabled() || XRE_IsContentProcess()) {
+  if (!IsShowModalDialogEnabled()) {
     aError.Throw(NS_ERROR_NOT_AVAILABLE);
     return nullptr;
   }
@@ -8839,7 +8865,6 @@ nsGlobalWindow::ShowModalDialogOuter(const nsAString& aUrl, nsIVariant* aArgumen
                         true,           // aDoJSFixups
                         true,           // aNavigate
                         nullptr, argHolder, // args
-                        GetPrincipal(),     // aCalleePrincipal
                         nullptr,            // aJSCallerContext
                         getter_AddRefs(dlgWin));
   nsContentUtils::SetMicroTaskLevel(oldMicroTaskLevel);
@@ -9047,7 +9072,7 @@ nsGlobalWindow::FindOuter(const nsAString& aString, bool aCaseSensitive,
     framesFinder->SetRootSearchFrame(this);   // paranoia
     framesFinder->SetCurrentSearchFrame(this);
   }
-  
+
   // The Find API does not accept empty strings. Launch the Find Dialog.
   if (aString.IsEmpty() || aShowDialog) {
     // See if the find dialog is already up using nsIWindowMediator
@@ -9419,6 +9444,24 @@ nsGlobalWindow::SetActive(bool aActive)
   NotifyDocumentTree(mDoc, nullptr);
 }
 
+bool
+nsGlobalWindow::IsTopLevelWindowActive()
+{
+   nsCOMPtr<nsIDocShellTreeItem> treeItem(GetDocShell());
+   if (!treeItem) {
+     return false;
+   }
+
+   nsCOMPtr<nsIDocShellTreeItem> rootItem;
+   treeItem->GetRootTreeItem(getter_AddRefs(rootItem));
+   if (!rootItem) {
+     return false;
+   }
+
+   nsCOMPtr<nsPIDOMWindow> domWindow = rootItem->GetWindow();
+   return domWindow && domWindow->IsActive();
+}
+
 void nsGlobalWindow::SetIsBackground(bool aIsBackground)
 {
   MOZ_ASSERT(IsOuterWindow());
@@ -9634,7 +9677,7 @@ nsGlobalWindow::TakeFocus(bool aFocus, uint32_t aFocusMethod)
   if (mCleanedUp) {
     return false;
   }
-  
+
   if (aFocus)
     mFocusMethod = aFocusMethod & FOCUSMETHOD_MASK;
 
@@ -10531,9 +10574,16 @@ nsGlobalWindow::ShowSlowScriptDialog()
   }
 
   // Check if we should offer the option to debug
-  JS::AutoFilename filename;
+  JS::UniqueChars filename;
   unsigned lineno;
   bool hasFrame = JS::DescribeScriptedCaller(cx, &filename, &lineno);
+
+  // Record the slow script event if we haven't done so already for this inner window
+  // (which represents a particular page to the user).
+  if (!mHasHadSlowScript) {
+    Telemetry::Accumulate(Telemetry::SLOW_SCRIPT_PAGE_COUNT, 1);
+  }
+  mHasHadSlowScript = true;
 
   if (XRE_IsContentProcess() &&
       ProcessHangMonitor::Get()) {
@@ -11017,7 +11067,7 @@ nsGlobalWindow::Observe(nsISupports* aSubject, const char* aTopic,
       fireMozStorageChanged = mLocalStorage == changingStorage;
       if (fireMozStorageChanged) {
         eventType.AssignLiteral("MozLocalStorageChanged");
-      };
+      }
       break;
     }
     default:
@@ -11270,7 +11320,6 @@ nsGlobalWindow::OpenInternal(const nsAString& aUrl, const nsAString& aName,
                              bool aDoJSFixups, bool aNavigate,
                              nsIArray *argv,
                              nsISupports *aExtraArgument,
-                             nsIPrincipal *aCalleePrincipal,
                              JSContext *aJSCallerContext,
                              nsIDOMWindow **aReturn)
 {
@@ -12179,7 +12228,7 @@ nsresult nsGlobalWindow::ResetTimersForNonBackgroundWindow()
 
       // Since we reset mWhen we need to move |timeout| to the right
       // place in the list so that it remains sorted by mWhen.
-      
+
       // Get the pointer to the next timeout now, before we move the
       // current timeout in the list.
       nsTimeout* nextTimeout = timeout->getNext();
@@ -12539,12 +12588,12 @@ nsGlobalWindow::SuspendTimeouts(uint32_t aIncrease,
         t->mTimeRemaining = t->mWhen - now;
       else
         t->mTimeRemaining = TimeDuration(0);
-  
+
       // Drop the XPCOM timer; we'll reschedule when restoring the state.
       if (t->mTimer) {
         t->mTimer->Cancel();
         t->mTimer = nullptr;
-  
+
         // Drop the reference that the timer's closure had on this timeout, we'll
         // add it back in ResumeTimeouts. Note that it shouldn't matter that we're
         // passing null for the context, since this shouldn't actually release this
@@ -12949,19 +12998,11 @@ nsGlobalWindow::SyncGamepadState()
 #endif // MOZ_GAMEPAD
 
 bool
-nsGlobalWindow::GetVRDevices(nsTArray<RefPtr<mozilla::dom::VRDevice>>& aDevices)
+nsGlobalWindow::UpdateVRDevices(nsTArray<RefPtr<mozilla::dom::VRDevice>>& aDevices)
 {
-  FORWARD_TO_INNER(GetVRDevices, (aDevices), false);
+  FORWARD_TO_INNER(UpdateVRDevices, (aDevices), false);
 
-  if (!mVRDevicesInitialized) {
-    bool ok = mozilla::dom::VRDevice::CreateAllKnownVRDevices(ToSupports(this), mVRDevices);
-    if (!ok) {
-      mVRDevices.Clear();
-      return false;
-    }
-  }
-
-  mVRDevicesInitialized = true;
+  VRDevice::UpdateVRDevices(mVRDevices, ToSupports(this));
   aDevices = mVRDevices;
   return true;
 }

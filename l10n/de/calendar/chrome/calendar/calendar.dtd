@@ -149,7 +149,7 @@
 <!ENTITY calendar.task.complete.button.tooltip  "Ausgewählte Aufgaben als abgeschlossen markieren">
 <!ENTITY calendar.task.priority.button.tooltip  "Priorität ändern">
 
-<!ENTITY calendar.task.text-filter.textbox.emptytext.base            "Aufgaben filtern… #1">
+<!ENTITY calendar.task.text-filter.textbox.emptytext.base1           "Aufgaben suchen #1">
 <!ENTITY calendar.task.text-filter.textbox.emptytext.keylabel.nonmac "&lt;Ctrl+Shift+K&gt;">
 <!ENTITY calendar.task.text-filter.textbox.emptytext.keylabel.mac    "&lt;&#x21E7;&#x2318;K&gt;">
 
@@ -282,10 +282,11 @@
 <!ENTITY calendar.tasks.view.calendarlist.label        "Kalenderliste">
 <!ENTITY calendar.tasks.view.calendarlist.accesskey    "l">
 
-<!ENTITY calendar.tasks.view.filtertasks.label           "Aufgaben filtern">
-<!ENTITY calendar.tasks.view.filtertasks.accesskey       "f">
+<!ENTITY calendar.tasks.view.filtertasks.label           "Aufgaben suchen">
+<!ENTITY calendar.tasks.view.filtertasks.accesskey       "s">
 
 <!-- Calendar Alarm Dialog -->
+
 <!ENTITY calendar.alarm.location.label              "Ort:">
 <!ENTITY calendar.alarm.details.label               "Details…">
 

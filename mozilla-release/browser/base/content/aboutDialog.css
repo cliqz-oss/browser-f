@@ -36,6 +36,10 @@
   margin-right: 0;
 }
 
+#releasenotes {
+  margin-top: 10px;
+}
+
 #distribution,
 #distributionId {
   font-weight: bold;

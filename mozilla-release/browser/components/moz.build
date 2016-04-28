@@ -15,7 +15,6 @@ DIRS += [
     'migration',
     'newtab',
     'places',
-    'pocket',
     'preferences',
     'privatebrowsing',
     'search',
@@ -29,7 +28,6 @@ DIRS += [
 DIRS += ['build']
 
 XPIDL_SOURCES += [
-    'nsIAboutNewTabService.idl',
     'nsIBrowserGlue.idl',
     'nsIBrowserHandler.idl',
 ]
@@ -61,6 +59,3 @@ with Files('safebrowsing/*'):
 
 with Files('controlcenter/**'):
     BUG_COMPONENT = ('Firefox', 'General')
-
-if CONFIG['MOZ_REQUIRE_SIGNING']:
-    DEFINES['MOZ_REQUIRE_SIGNING'] = 1

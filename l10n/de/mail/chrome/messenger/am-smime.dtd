@@ -26,7 +26,7 @@
 <!ENTITY signingCert.message "Folgendes Zertifikat verwenden, um Nachrichten digital zu unterschreiben:">
 
 <!ENTITY certificates.label "Zertifikate">
-<!ENTITY manageCerts.label "Zertifikate verwalten…">
-<!ENTITY manageCerts.accesskey "Z">
+<!ENTITY manageCerts2.label "Zertifikate verwalten…">
+<!ENTITY manageCerts2.accesskey "Z">
 <!ENTITY manageDevices.label "Kryptographie-Module verwalten…">
 <!ENTITY manageDevices.accesskey "M">
