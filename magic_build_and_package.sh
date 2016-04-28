@@ -36,15 +36,6 @@ if [ $IS_WIN ]; then
   export MOZ_MEMORY=1  # --enable-jemalloc
 fi
 
-# TODO: Use MOZ_UPDATE_CHANNEL directly instead of CQZ_RELEASE_CHANNEL.
-# Don't forget to update magic_upload_files.sh along with this one.
-# --enable-update-channel=...
-if [ -z $CQZ_RELEASE_CHANNEL ]; then
-  export MOZ_UPDATE_CHANNEL=release
-else
-  export MOZ_UPDATE_CHANNEL=$CQZ_RELEASE_CHANNEL
-fi
-
 if [ -z "$LANG" ]; then
   LANG='en-US'
 fi
@@ -71,6 +62,7 @@ if [ $IS_WIN ]; then
 fi
 
 echo '***** Packaging *****'
+
 if [[ $IS_MAC_OS ]]; then
   MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
   unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!

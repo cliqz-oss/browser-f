@@ -403,7 +403,7 @@ def main():
                 precompile_cache(formatter.copier[omnijar_path],
                                  args.source, gre_path, base)
 
-    copier.copy(args.destination)
+    copier.copy(args.destination, remove_unaccounted=False)
 
 
 if __name__ == '__main__':

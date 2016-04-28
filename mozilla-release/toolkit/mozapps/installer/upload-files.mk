@@ -165,10 +165,11 @@ INNER_UNMAKE_PACKAGE	= $(CYGWIN_WRAPPER) 7z x $(UNPACKAGE) core && \
 endif
 
 #Create an RPM file
-ifeq ($(MOZ_PKG_FORMAT),RPM)
-PKG_SUFFIX  = .rpm
+#ifeq ($(MOZ_PKG_FORMAT),RPM)
+ifeq ($(OS_ARCH), Linux)
+RPM_PKG_SUFFIX  = .rpm
 MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
-MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[0-9.]*//' )
+MOZ_RPM_RELEASE=$(MOZ_UPDATE_CHANNEL)
 
 RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
 RPMBUILD_RPMDIR=$(ABS_DIST)
@@ -230,25 +231,34 @@ endif
 #For each of the main, tests, sdk rpms we want to make sure that
 #if they exist that they are in objdir/dist/ and that they get
 #uploaded and that they are beside the other build artifacts
-MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(RPM_PKG_SUFFIX)
+MAIN_DEB= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU).deb
+# Create deb package
+RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(_ABS_DIST)/
+RPM_CMD += && fakeroot alien $(MAIN_RPM) --scripts
+# Rename newly created deb (alien does not provide such option)
+RPM_CMD += && mv *.deb $(MAIN_DEB)
 UPLOAD_EXTRA_FILES += $(MAIN_RPM)
 RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
+UPLOAD_EXTRA_FILES += $(MAIN_DEB)
 
-ifdef ENABLE_TESTS
-TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(TESTS_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
-endif
+#ifdef ENABLE_TESTS
+#TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+#UPLOAD_EXTRA_FILES += $(TESTS_RPM)
+#RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
+#endif
 
-ifdef INSTALL_SDK
-SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(SDK_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
-endif
+#ifdef INSTALL_SDK
+#SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+#UPLOAD_EXTRA_FILES += $(SDK_RPM)
+#RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
+#endif
 
-INNER_MAKE_PACKAGE = $(RPM_CMD)
+INNER_MAKE_PACKAGE += \
+	&& $(RPM_CMD)
 #Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
-INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
+INNER_UNMAKE_PACKAGE += \
+	&& $(error Try using rpm2cpio and cpio)
 
 endif #Create an RPM file
 
