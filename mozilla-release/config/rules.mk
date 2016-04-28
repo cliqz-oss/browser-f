@@ -1190,7 +1190,7 @@ endif # SDK_BINARY
 
 # Cliqz additional distribution files
 # TODO: Move to external file.
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/beta/latest.xpi"
+CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser_beta/latest.xpi"
 ifeq (release, $(CQZ_RELEASE_CHANNEL))
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.3.2.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
