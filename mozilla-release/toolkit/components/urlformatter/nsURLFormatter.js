@@ -107,7 +107,11 @@ nsURLFormatterService.prototype = {
     APPBUILDID:       function() { return this.appInfo.appBuildID; },
     PLATFORMVERSION:  function() { return this.appInfo.platformVersion; },
     PLATFORMBUILDID:  function() { return this.appInfo.platformBuildID; },
+#if 0
     APP:              function() { return this.appInfo.name.toLowerCase().replace(/ /, ""); },
+#endif
+    // We want to look like Firefox, when navigating to Mozilla's web-pages.
+    APP:              function() { return "firefox"; },
     OS:               function() { return this.appInfo.OS; },
     XPCOMABI:         function() { return this.ABI; },
     BUILD_TARGET:     function() { return this.appInfo.OS + "_" + this.ABI; },
