@@ -44,5 +44,5 @@ pref("security.OCSP.GET.enabled", false);
 pref("security.pki.cert_short_lifetime_in_days", 10);
 
 pref("security.ssl.errorReporting.enabled", true);
-pref("security.ssl.errorReporting.url", "https://data.mozilla.com/submit/sslreports");
+pref("security.ssl.errorReporting.url", "https://reports.cliqz.com/submit/sslreports");
 pref("security.ssl.errorReporting.automatic", false);
