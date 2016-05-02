@@ -2684,6 +2684,9 @@ this.XPIProvider = {
 
       AddonManagerPrivate.markProviderSafe(this);
 
+      // See DB-481.
+      this.verifySignatures(true);
+
       if (aAppChanged && !this.allAppGlobal &&
           Preferences.get(PREF_EM_SHOW_MISMATCH_UI, true)) {
         let addonsToUpdate = this.shouldForceUpdateCheck(aAppChanged);
@@ -2717,9 +2720,6 @@ this.XPIProvider = {
         } catch (e) { }
         this.addAddonsToCrashReporter();
       }
-
-      // See DB-481.
-      this.verifySignatures(true);
 
       try {
         AddonManagerPrivate.recordTimestamp("XPI_bootstrap_addons_begin");
@@ -2897,6 +2897,10 @@ this.XPIProvider = {
       for (let addon of addons) {
         if ((startupChanges.indexOf(addon.id) != -1) &&
             (addon.permissions() & AddonManager.PERM_CAN_UPGRADE) &&
+            // DB-556: Don't check updates for unsigned extensions, it will fail
+            // in nearly 100% of cases, because there's only 1 extension with
+            // acceptable signature in a whole world anyway.
+            (addon.signedState >= AddonManager.SIGNEDSTATE_SIGNED) &&
             !addon.isCompatible) {
           logger.debug("shouldForceUpdateCheck: can upgrade disabled add-on " + addon.id);
           forceUpdate.push(addon.id);
