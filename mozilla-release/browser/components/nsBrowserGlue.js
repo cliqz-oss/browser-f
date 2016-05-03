@@ -1196,12 +1196,9 @@ BrowserGlue.prototype = {
                                              ShellService.shouldCheckDefaultBrowser;
       let promptCount;
       let skipDefaultBrowserCheck = false;
-      // CLIQZ: skip showing a dialog "Set as default" on first launch
-      if (AppConstants.RELEASE_BUILD) {
-#if 0
+      if (!AppConstants.RELEASE_BUILD) {
         promptCount =
           Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
-#endif
         skipDefaultBrowserCheck =
           Services.prefs.getBoolPref("browser.shell.skipDefaultBrowserCheck");
       }
@@ -1243,15 +1240,14 @@ BrowserGlue.prototype = {
           willPrompt = false;
         }
       }
-// CLIQZ: don't save anything to promptCount
-#if 0
+
       if (!AppConstants.RELEASE_BUILD) {
         if (willPrompt) {
           Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount",
                                     promptCount);
         }
       }
-#endif
+
       try {
         // Report default browser status on startup to telemetry
         // so we can track whether we are the default.
