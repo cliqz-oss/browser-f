@@ -5,7 +5,7 @@
 %global __jar_repack %{nil}
 
 #Use a consistent string to refer to the package by
-%define pr_name "%{moz_app_displayname} %{moz_app_version}"
+%define pr_name "%{moz_app_displayname} %{moz_app_version_display}"
 
 Name:           %{moz_app_name}
 Version:        %{moz_numeric_app_version}
@@ -65,6 +65,10 @@ desktop-file-validate %{SOURCE0}
 desktop-file-install \
     --dir $RPM_BUILD_ROOT%{_datadir}/applications \
     %{SOURCE0}
+
+# copy pref file
+cp %{_sourcedir}/no-updates.js $RPM_BUILD_ROOT/%{_libdir}/%{name}-%{moz_app_version}/defaults/pref/
+
 #In order to make branding work in a generic way, We find
 #all the icons that are likely to be used for desktop files
 #and install them appropriately

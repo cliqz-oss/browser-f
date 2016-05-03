@@ -189,13 +189,15 @@ RPM_CMD = \
 	$(RPM_INCIDENTALS)/mozilla.desktop \
 	-o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
   rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
+	cp $(RPM_INCIDENTALS)/no-updates.js $(RPMBUILD_SOURCEDIR) &&  \
   $(RPMBUILD) -bb \
   $(SPEC_FILE) \
   --target $(TARGET_CPU) \
   --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
   --define 'moz_app_name $(MOZ_APP_NAME)' \
   --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
-  --define 'moz_app_version $(MOZ_APP_VERSION_DISPLAY)' \
+  --define 'moz_app_version $(MOZ_APP_VERSION)' \
+  --define 'moz_app_version_display $(MOZ_APP_VERSION_DISPLAY)' \
   --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
   --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
   --define 'buildid $(BUILDID)' \
@@ -234,12 +236,11 @@ endif
 MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(RPM_PKG_SUFFIX)
 MAIN_DEB= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU).deb
 # Create deb package
-RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(_ABS_DIST)/
+RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
 RPM_CMD += && fakeroot alien $(MAIN_RPM) --scripts
 # Rename newly created deb (alien does not provide such option)
-RPM_CMD += && mv *.deb $(MAIN_DEB)
+RPM_CMD += && mv `ls *.deb | head -1` $(MAIN_DEB)
 UPLOAD_EXTRA_FILES += $(MAIN_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
 UPLOAD_EXTRA_FILES += $(MAIN_DEB)
 
 ifeq (0,1)
