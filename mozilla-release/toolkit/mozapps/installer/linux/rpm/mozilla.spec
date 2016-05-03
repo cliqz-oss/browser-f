@@ -13,7 +13,7 @@ Release:        %{?moz_rpm_release:%{moz_rpm_release}}%{?buildid:.%{buildid}}
 Summary:        %{pr_name}
 Group:          Applications/Internet
 License:        MPL 2
-Vendor:         Mozilla
+Vendor:         CLIQZ
 URL:            http://www.mozilla.org/projects/firefox/
 Source0:        %{name}.desktop
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
@@ -25,7 +25,7 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 
 %description
-%{pr_name}.  This package was built from 
+%{pr_name}.  This package was built from
 %{moz_source_repo}/rev/%{moz_source_stamp}
 
 #We only want a subpackage for the SDK if the required
@@ -62,7 +62,7 @@ echo No-op build
 rm -rf $RPM_BUILD_ROOT
 make install DESTDIR=$RPM_BUILD_ROOT
 desktop-file-validate %{SOURCE0}
-desktop-file-install --vendor mozilla \
+desktop-file-install \
     --dir $RPM_BUILD_ROOT%{_datadir}/applications \
     %{SOURCE0}
 #In order to make branding work in a generic way, We find
