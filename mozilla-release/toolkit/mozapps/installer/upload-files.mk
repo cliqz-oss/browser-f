@@ -195,7 +195,7 @@ RPM_CMD = \
   --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
   --define 'moz_app_name $(MOZ_APP_NAME)' \
   --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
-  --define 'moz_app_version $(MOZ_APP_VERSION)' \
+  --define 'moz_app_version $(MOZ_APP_VERSION_DISPLAY)' \
   --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
   --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
   --define 'buildid $(BUILDID)' \
