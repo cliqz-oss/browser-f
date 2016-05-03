@@ -204,7 +204,7 @@ functionality specific to firefox. -->
 <button id='exceptionDialogButton'>&securityOverride.exceptionButtonLabel;</button>
 ">
 
-<!ENTITY errorReporting.automatic2 "Fehler an CLIQZ melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
+<!ENTITY errorReporting.automatic2 "Fehler an Mozilla melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
 <!ENTITY errorReporting.learnMore "Weitere Informationen…">
 <!ENTITY errorReporting.sending "Bericht wird gesendet…">
 <!ENTITY errorReporting.sent "Bericht gesendet">
