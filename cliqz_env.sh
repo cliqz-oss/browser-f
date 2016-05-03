@@ -55,8 +55,6 @@ else
   export MOZ_UPDATE_CHANNEL=$CQZ_RELEASE_CHANNEL
 fi
 
-export MOZCONFIG=browser/config/cliqz-release.mozconfig
-SRC_BASE=mozilla-release
 export MOZ_OBJDIR=../obj
 
 # Mac specific paths
@@ -67,13 +65,14 @@ export MOZCONFIG=browser/config/cliqz-release.mozconfig
 export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}'\
   ./repack/distribution/distribution.ini | head -n1)
 export CQZ_UI_LOCALE=`echo $LANG`
-export MOZ_AUTOMATION_UPLOAD=1
+export MOZ_AUTOMATION_UPLOAD=1  // TODO: remove, duplicates cliqz.mozconfig
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
 
 OBJ_DIR=$MOZ_OBJDIR
+SRC_BASE=mozilla-release
 if [ $IS_MAC_OS ]; then
   OBJ_DIR=$I386DIR
 fi

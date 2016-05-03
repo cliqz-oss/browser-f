@@ -12,7 +12,7 @@ Object.defineProperty(this, "ADDON_SIGNING", {
   configurable: false,
   enumerable: false,
   writable: false,
-#ifdef MOZ_ADDON_SIGNING
+#if MOZ_ADDON_SIGNING
   value: true,
 #else
   value: false,
@@ -23,7 +23,7 @@ Object.defineProperty(this, "REQUIRE_SIGNING", {
   configurable: false,
   enumerable: false,
   writable: false,
-#ifdef MOZ_REQUIRE_SIGNING
+#if MOZ_REQUIRE_SIGNING
   value: true,
 #else
   value: false,

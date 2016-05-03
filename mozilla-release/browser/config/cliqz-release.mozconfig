@@ -3,6 +3,7 @@
 . $topsrcdir/browser/config/cliqz.mozconfig
 
 ac_add_options --disable-debug
+ac_add_options --disable-tests
 
 if echo $OSTYPE | grep -q "darwin"; then
   # Enable universal MacOS executable build
@@ -10,3 +11,5 @@ if echo $OSTYPE | grep -q "darwin"; then
 fi
 
 export MOZ_TELEMETRY_REPORTING=1
+export MOZ_ADDON_SIGNING=1
+export MOZ_REQUIRE_SIGNING=1
