@@ -12,3 +12,4 @@ ac_add_options --with-app-name=CLIQZ
 
 export MOZ_APP_PROFILE=CLIQZ
 export MOZ_AUTOMATION_UPLOAD=1
+export MOZ_SOURCE_REPO=https://github.com/cliqz-oss/browser-f

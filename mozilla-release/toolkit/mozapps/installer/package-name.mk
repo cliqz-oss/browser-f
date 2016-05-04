@@ -158,8 +158,10 @@ MOZ_SOURCE_STAMP = $(firstword $(shell git rev-parse HEAD))
 # bug: 746277 - preserve existing functionality.
 # MOZILLA_DIR="": cd $(SPACE); hg # succeeds if ~/.hg exists
 ###########################################################################
+ifeq (0, 1)
 ifdef MOZ_INCLUDE_SOURCE_INFO
 MOZ_SOURCE_REPO = $(call getSourceRepo,$(MOZILLA_DIR)$(NULL) $(NULL))
+endif
 endif
 
 MOZ_SOURCESTAMP_FILE = $(DIST)/$(PKG_PATH)/$(MOZ_INFO_BASENAME).txt
