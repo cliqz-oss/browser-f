@@ -31,6 +31,9 @@
   System::Call "kernel32::GetCurrentProcessId() i.r0"
   System::Call "kernel32::ProcessIdToSessionId(i $0, *i ${NSIS_MAX_STRLEN} r9)"
 
+  ; CLIQZ. Before processing futher - check and fix registry
+  Call FixCliqzAsFirefoxRegistry
+
   ; Determine if we're the protected UserChoice default or not. If so fix the
   ; start menu tile.  In case there are 2 Firefox installations, we only do
   ; this if the application being updated is the default.
@@ -1499,6 +1502,27 @@ Function AddFirewallEntries
   ${If} "$0" == "true"
     liteFirewallW::AddRule "$INSTDIR\${FileMainEXE}" "${BrandShortName} ($INSTDIR)"
   ${EndIf}
+FunctionEnd
+
+; CLIQZ. Clean after accidently replaced data in FirefoxHTML and FirefoxURL
+; keys in registry with CLIQZ value. For now CLIQZ use it own identifiers
+Function FixCliqzAsFirefoxRegistry
+  ; Check values in HKCU, must be always accessible, delete inconsistent state
+  ReadRegStr $0 HKCU "Software\Classes\FirefoxHTML" ""
+  ${If} $0 == "CLIQZ HTML Document"
+    DeleteRegKey HKCU "Software\Classes\FirefoxHTML"
+    DeleteRegKey HKCU "Software\Classes\FirefoxURL"
+  ${EndIf}
+
+  ; Same check for HKLM, if can not delete - so, just can not
+  ReadRegStr $0 HKLM "Software\Classes\FirefoxHTML" ""
+  ${If} $0 == "CLIQZ Document"
+    DeleteRegKey HKLM "Software\Classes\FirefoxHTML"
+    DeleteRegKey HKLM "Software\Classes\FirefoxURL"
+  ${EndIf}
+
+  ; Just in case, clear possible errors
+  ClearErrors
 FunctionEnd
 
 ; The !ifdef NO_LOG prevents warnings when compiling the installer.nsi due to

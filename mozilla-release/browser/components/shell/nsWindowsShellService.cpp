@@ -368,43 +368,6 @@ IsDefaultBrowserWin8(bool aCheckAllTypes, bool* aIsDefaultBrowser)
 }
 
 /*
- * CLIQZ. Fix acidentally replacing of FirefoxHTML and FirefoxURL
- * keys in registry for HKCU. Firefox will show "set as default"
- * dialog to fix this problem on their side. Same for CLIQZ
- * everything will be ok after
-*/
-static void FixCliqzRegistry()
-{
-  HKEY hKeyHtml;
-  DWORD res = ::RegOpenKeyW(HKEY_CURRENT_USER,
-                            L"Software\\Classes\\FirefoxHTML",
-                            &hKeyHtml);
-  if (REG_FAILED(res))
-    return;  // nothing to do
-
-  nsAutoRegKey keyHtml(hKeyHtml);
-  wchar_t currValue[MAX_BUF];
-  ::ZeroMemory(currValue, sizeof(currValue));
-  DWORD len = sizeof currValue;
-  res = ::RegQueryValueExW(keyHtml, L"", nullptr, nullptr,
-                           (LPBYTE)currValue, &len);
-  // If text in Firefox key started with CLIQZ - need to remove key
-  if (!wcsncmp(L"CLIQZ", currValue, 5)) {
-    ::SHDeleteKey(keyHtml, "");
-
-    HKEY hKeyUrl;
-    // one more key must be deleted
-    res = ::RegOpenKeyW(HKEY_CURRENT_USER,
-                        L"Software\\Classes\\FirefoxURL",
-                        &hKeyUrl);
-    if (REG_SUCCEEDED(res)) {
-      nsAutoRegKey keyUrl(hKeyUrl);
-      ::SHDeleteKey(keyUrl, "");
-    }
-  }
-}
-
-/*
  * Query's the AAR for the default status.
  * This only checks for FirefoxURL and if aCheckAllTypes is set, then
  * it also checks for FirefoxHTML.  Note that those ProgIDs are shared
@@ -442,9 +405,6 @@ nsWindowsShellService::IsDefaultBrowser(bool aStartupCheck,
                                         bool aForAllTypes,
                                         bool* aIsDefaultBrowser)
 {
-  // CLIQZ First fix FirefoxHTML and FirefoxURL (before version 1.2.0)
-  FixCliqzRegistry();
-
   // Assume we're the default unless one of the several checks below tell us
   // otherwise.
   *aIsDefaultBrowser = true;
@@ -761,9 +721,6 @@ nsWindowsShellService::LaunchHTTPHandlerPane()
 NS_IMETHODIMP
 nsWindowsShellService::SetDefaultBrowser(bool aClaimAllTypes, bool aForAllUsers)
 {
-  // CLIQZ First fix FirefoxHTML and FirefoxURL (before version 1.2.0)
-  FixCliqzRegistry();
-
   nsAutoString appHelperPath;
   if (NS_FAILED(GetHelperPath(appHelperPath)))
     return NS_ERROR_FAILURE;
