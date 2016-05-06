@@ -164,7 +164,9 @@
     </vbox>
     <vbox class="main-content" flex="1">
       <!-- main header -->
-      <hbox id="header" align="center" hidden="true">
+      <hbox id="header" align="center">
+      <!-- This is just to hide contents without actually removing elements. -->
+      <hbox hidden="true">
         <button id="show-all-extensions" hidden="true"
                 label="&showAllExtensions.button.label;"
                 command="cmd_showAllExtensions"/>
@@ -228,6 +230,7 @@
         <textbox id="header-search" type="search" searchbutton="true"
                  searchbuttonlabel="&search.buttonlabel;"
                  placeholder="&search.placeholder;"/>
+      </hbox>
       </hbox>
         <!-- view port -->
         <deck id="view-port" flex="1" selectedIndex="0">
