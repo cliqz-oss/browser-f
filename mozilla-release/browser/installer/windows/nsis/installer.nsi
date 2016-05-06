@@ -298,6 +298,7 @@ Section "-Application" APP_IDX
   ; Parameter is name for key, from where take a value
   ; If value exist - it will do not overwrite it
   CliqzHelper::setBrand "$INSTDIR" "brand"
+  Call FixCliqzAsFirefoxRegistry
 
   ; Register DLLs
   ; XXXrstrong - AccessibleMarshal.dll can be used by multiple applications but
