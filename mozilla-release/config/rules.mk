@@ -1207,7 +1207,7 @@ ifeq (release, $(CQZ_RELEASE_CHANNEL))
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.4.0.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
 DIST_RESPATH = $(DIST)/bin
-EXTENSIONS_PATH = $(DIST_RESPATH)/distribution/extensions
+EXTENSIONS_PATH = $(DIST_RESPATH)/features
 $(EXTENSIONS_PATH):
 	mkdir -p $(EXTENSIONS_PATH)
 
