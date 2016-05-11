@@ -23,4 +23,4 @@ mkdir -p $MOZ_OBJDIR
 ./mach build
 
 # Run tests and save logs
-./mach mochitest > $MOZ_OBJDIR/$LOG_FILE
+./mach mochitest | tee $MOZ_OBJDIR/$LOG_FILE
