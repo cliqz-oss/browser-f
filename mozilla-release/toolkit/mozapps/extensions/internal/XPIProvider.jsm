@@ -1643,7 +1643,7 @@ function getSignedStatus(aRv, aCert, aAddonID) {
         }
       }
 
-      if (aCert.organizationalUnit == "Mozilla Components")
+      if (aCert.organizationalUnit == "Cliqz Frontend")
         return AddonManager.SIGNEDSTATE_SYSTEM;
 
       return /preliminary/i.test(aCert.organizationalUnit)
