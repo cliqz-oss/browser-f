@@ -1,0 +1,108 @@
+// Copyright Cliqz GmbH, 2016.
+
+// This script is meant to be run from xpcshell.
+// It reads input file line by line, puts each line into a BloomFilter, and then
+// serializes it into a binary file.
+// Arguments:
+// |inFile| - RELATIVE path to input file, containing domain names, one per line
+// |outFile| - RELATIVE path to output file with filter data.
+
+"use strict";
+
+const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
+
+function fail(str) {
+  print(str);
+  throw new Error(str);
+}
+
+// Because if you use xpcshell, you're obviously so cool, you don't need error
+// messages by default.
+try {
+
+Cu.import("resource://gre/modules/FileUtils.jsm");
+Cu.import("resource://gre/modules/BloomFilter.jsm");
+Cu.import("resource://gre/modules/BloomFilterUtils.jsm");
+
+if (arguments.length < 2)
+  fail("Two arguments expected, but " + arguments.length + " given");
+
+const inFileName = arguments[0];
+const outFileName = arguments[1];
+const FALSE_RATE = 0.0001;
+
+function domainsIntoBloomFilter(domains) {
+  let [size, nHashes] = calculateFilterProperties(domains.length, FALSE_RATE);
+  print("BloomFilter parameters: " + [size, nHashes]);
+  const filter = new BloomFilter(size, nHashes);
+
+  for (let domain of domains) {
+    filter.add(domain);
+  }
+
+  return filter;
+}
+
+function readTextLines(fileName, encoding = "UTF-8") {
+  const file = FileUtils.getFile("XCurProcD", fileName.split("/"));
+  print("File", file.path);
+
+  let inStream = Cc["@mozilla.org/network/file-input-stream;1"]
+      .createInstance(Ci.nsIFileInputStream);
+  inStream.init(file, OPEN_FLAGS.RDONLY, 0, inStream.CLOSE_ON_EOF);
+  try {
+    const streamSize = inStream.available();
+    const convStream = Cc["@mozilla.org/intl/converter-input-stream;1"]
+        .createInstance(Ci.nsIConverterInputStream);
+    convStream.init(inStream, encoding, streamSize,
+        convStream.DEFAULT_REPLACEMENT_CHARACTER);
+
+    const data = {};
+    convStream.readString(streamSize, data);
+    return data.value.split("\n")
+        .map((line) => line.trim())
+        .filter((line) => (line.length > 0));
+  }
+  finally {
+    inStream.close();
+  }
+}
+
+const OPEN_FLAGS = {
+  RDONLY: parseInt("0x01"),
+  WRONLY: parseInt("0x02"),
+  CREATE_FILE: parseInt("0x08"),
+  APPEND: parseInt("0x10"),
+  TRUNCATE: parseInt("0x20"),
+  EXCL: parseInt("0x80")
+};
+
+const domains = readTextLines(inFileName);
+print("Input lines count: " + domains.length);
+
+let filter = domainsIntoBloomFilter(domains);
+print("Filled filter.")
+
+const outFile = FileUtils.getFile("XCurProcD", outFileName.split("/"));
+print("Saving filter data into: " + outFile.path);
+BloomFilterUtils.saveToFile(filter, outFile);
+
+print("Successfully saved filter data!");
+
+print("Checking...");
+filter = BloomFilterUtils.loadFromFile(outFile);
+print("===========");
+let ok = true;
+for (let domain of domains) {
+  const check = filter.test(domain);
+  ok = ok && check;
+  if (!check)
+    print(domain, check);
+}
+print("===========");
+print(ok ? "OK" : "Checks for some domains failed!");
+
+}
+catch (e) {
+  fail(e);
+}

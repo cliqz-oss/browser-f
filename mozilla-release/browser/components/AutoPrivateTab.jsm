@@ -6,110 +6,22 @@ this.EXPORTED_SYMBOLS = ["AutoPrivateTab"];
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
-Cu.import("resource://gre/modules/Services.jsm");
-const bf = {};
-Cu.import("resource://gre/modules/BloomFilter.jsm", bf);
-Cu.import("resource://gre/modules/Timer.jsm");
+Cu.import("resource://gre/modules/BloomFilterUtils.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
+Cu.import("resource://gre/modules/Services.jsm");
+Cu.import("resource://gre/modules/Timer.jsm");
 
 const PORN_DATA_FILE_NAME = "porn-domains.bin";
 const FILTER_N_HASHES = 14;
 
-const OPEN_FLAGS = {
-  RDONLY: parseInt("0x01"),
-  WRONLY: parseInt("0x02"),
-  CREATE_FILE: parseInt("0x08"),
-  APPEND: parseInt("0x10"),
-  TRUNCATE: parseInt("0x20"),
-  EXCL: parseInt("0x80")
-};
-
-function openFile(file) {
-  let inStream = Cc["@mozilla.org/network/file-input-stream;1"]
-      .createInstance(Ci.nsIFileInputStream);
-  const MODE_RDONLY = 1;
-  inStream.init(file, MODE_RDONLY, 0, inStream.CLOSE_ON_EOF);
-  return inStream;
+let filter;
+try {
+  filter = BloomFilterUtils.loadFromFile(
+      FileUtils.getFile("XCurProcD", [PORN_DATA_FILE_NAME]));
 }
-
-function stringFromStream(inStream, encoding) {
-  const streamSize = inStream.available();
-  const convStream = Cc["@mozilla.org/intl/converter-input-stream;1"]
-      .createInstance(Ci.nsIConverterInputStream);
-  convStream.init(inStream, encoding || "UTF-8", streamSize,
-      convStream.DEFAULT_REPLACEMENT_CHARACTER);
-  try {
-    const data = {};
-    convStream.readString(streamSize, data);
-    return data.value;
-  } finally {
-    convStream.close();
-  }
+catch (e) {
+  Cu.reportError(e);
 }
-
-function readBinary(file) {
-  const fStream = openFile(file);
-  try {
-    const binStream = Cc["@mozilla.org/binaryinputstream;1"]
-        .createInstance(Ci.nsIBinaryInputStream);
-    binStream.setInputStream(fStream);
-
-    const buffer = new ArrayBuffer(binStream.available());
-    const read = binStream.readArrayBuffer(buffer.byteLength, buffer);
-    if (read != buffer.byteLength)
-      throw new Error("Buffer underflow");
-    return buffer;
-  }
-  finally {
-    fStream.close();
-  }
-}
-
-var filter;
-(function init() {
-  var filterBinFile = FileUtils.getFile("XCurProcD", [PORN_DATA_FILE_NAME]);
-  if (filterBinFile.exists()) {
-    filter = new bf.BloomFilter(readBinary(filterBinFile), FILTER_N_HASHES);
-    return;
-  }
-#if 0
-  const profD = Services.dirsvc.get("ProfD", Ci.nsIFile);
-  const filterBinFile = profD.clone();
-  filterBinFile.append(PORN_DATA_FILE_NAME);
-  if (filterBinFile.exists()) {
-    // TODO: Check minimum and maximum size.
-    filter = new bf.BloomFilter(readBinary(filterBinFile), FILTER_N_HASHES);
-    return;
-  }
-  const filterJSONFile = profD.clone();
-  filterJSONFile.append("porn-domains.json");
-  if (!filterJSONFile.exists())
-    return;
-  const filterData = JSON.parse(stringFromStream(openFile(filterJSONFile)));
-  filter = new bf.BloomFilter(filterData.bkt, filterData.k);
-
-  // Resave as binary.
-  var foStream = Cc["@mozilla.org/network/file-output-stream;1"]
-      .createInstance(Ci.nsIFileOutputStream);
-  const openFlags = OPEN_FLAGS.WRONLY | OPEN_FLAGS.CREATE_FILE |
-      OPEN_FLAGS.TRUNCATE;
-  const permFlags = parseInt("0666", 8);
-  foStream.init(filterBinFile, openFlags, permFlags, 0);
-  try {
-    var binStream = Cc["@mozilla.org/binaryoutputstream;1"]
-        .createInstance(Ci.nsIBinaryOutputStream);
-    binStream.setOutputStream(foStream);
-    const buffer = new Uint8Array(filter._buckets.buffer);  // TODO: make public
-    binStream.writeByteArray(buffer, buffer.byteLength);
-  }
-  catch (e) {
-    Cu.reportError("Could not save binary filter data: " + e);
-  }
-  finally {
-    foStream.close();
-  }
-#endif
-})();
 
 const AutoPrivateTab = {
   // Stores internal data to disk. Call before quitting application.
@@ -141,6 +53,9 @@ const AutoPrivateTab = {
    *   extracted domain name (may be absent).
    */
   _shouldLoadURIInPrivateMode: function APT__shouldLoadURIInPrivateMode(uri) {
+    if (!filter)
+      return false;
+
     var spec;
     try {
       if (uri instanceof Ci.nsIURI) {

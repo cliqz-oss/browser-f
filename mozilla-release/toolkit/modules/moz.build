@@ -21,6 +21,7 @@ EXTRA_JS_MODULES += [
     'Battery.jsm',
     'BinarySearch.jsm',
     'BloomFilter.jsm',
+    'BloomFilterUtils.jsm',
     'BrowserUtils.jsm',
     'CertUtils.jsm',
     'CharsetMenu.jsm',

@@ -74,7 +74,8 @@ function BloomFilter(elementsOrSize, nHashes) {
   }
 
   this.m = this._buckets.length * BITS_PER_BUCKET;
-  this.k = nHashes;
+  this.k = this.nHashes = nHashes;  // TODO: make read-only
+  this.rawData = this._buckets.buffer;  // TODO: make read-only
 }
 
 BloomFilter.prototype.update = function(a) {
