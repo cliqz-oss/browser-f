@@ -4,10 +4,19 @@
 
 ac_add_options --disable-debug
 ac_add_options --disable-tests
+ac_add_options --enable-release
+ac_add_options --enable-warnings-as-errors
 
 if echo $OSTYPE | grep -q "darwin"; then
   # Enable universal MacOS executable build
   . $topsrcdir/build/macosx/universal/mozconfig
+fi
+
+if echo $OSTYPE | grep -q "msys"; then
+  # Windows specific flags
+  ac_add_options --enable-jemalloc
+  ac_add_options --enable-require-all-d3dc-versions
+  ac_add_options --enable-eme=adobe
 fi
 
 export MOZ_TELEMETRY_REPORTING=1
