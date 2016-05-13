@@ -248,7 +248,7 @@ this.AppConstants = Object.freeze({
 #endif
 
   MOZ_REQUIRE_SIGNING:
-#ifdef MOZ_REQUIRE_SIGNING
+#if MOZ_REQUIRE_SIGNING
   true,
 #else
   false,

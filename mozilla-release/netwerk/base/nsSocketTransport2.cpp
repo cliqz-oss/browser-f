@@ -1252,6 +1252,7 @@ nsSocketTransport::InitiateSocket()
                            "or from a test-specific httpd.js server (if running xpcshell tests). "
                            "Browser services should be disabled or redirected to a local server.\n",
                            mHost.get(), ipaddr.get());
+            return NS_ERROR_FAILURE;  // We don't really want to crash.
             MOZ_CRASH("Attempting to connect to non-local address!");
         }
     }
