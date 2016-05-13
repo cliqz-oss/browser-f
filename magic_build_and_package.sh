@@ -32,10 +32,6 @@ if [ -z $MOZ_MOZILLA_API_KEY ]; then
   echo "warning: MOZ_MOZILLA_API_KEY environment variable is missing"
 fi
 
-if [ $IS_WIN ]; then
-  export MOZ_MEMORY=1  # --enable-jemalloc
-fi
-
 if [ -z "$LANG" ]; then
   LANG='en-US'
 fi
