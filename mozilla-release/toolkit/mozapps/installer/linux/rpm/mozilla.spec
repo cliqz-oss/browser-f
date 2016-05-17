@@ -41,7 +41,7 @@ requires:   %{name} = %{version}-%{release}
 %{pr_name} SDK libraries, headers and interface descriptions
 %endif
 
-%if %{?createtests:1}
+%if 0%{?createtests:1}
 %package tests
 Summary:    %{pr_name} tests
 Group:      Developement/Libraries
@@ -81,7 +81,7 @@ for i in $(cat icons.list) ; do
 done
 rm icons.list #cleanup
 
-%if %{?createtests:1}
+%if 0%{?createtests:1}
 #wastefully creates a zip file, but ensures that we stage all test suites
 make package-tests
 testdir=$RPM_BUILD_ROOT/%{_datadir}/%{_testsinstalldir}/tests
@@ -129,7 +129,7 @@ fi
 %endif
 
 
-%if %{?createtests:1}
+%if 0%{?createtests:1}
 %files tests
 %{_datadir}/%{_testsinstalldir}/tests/
 %endif
