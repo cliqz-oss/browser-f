@@ -23,6 +23,7 @@ EXTRA_JS_MODULES += [
     'BloomFilter.jsm',
     'BloomFilterUtils.jsm',
     'BrowserUtils.jsm',
+    'BSPatch.jsm',
     'CertUtils.jsm',
     'CharsetMenu.jsm',
     'ClientID.jsm',
