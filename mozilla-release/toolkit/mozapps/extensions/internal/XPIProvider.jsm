@@ -7944,6 +7944,10 @@ Object.assign(SystemAddonInstallLocation.prototype, {
       return false;
     }
 
+#if 0
+# CLIQZ - https-everywhere is unpacked non bootstrap addon, though we want
+#         it to be a system addon. Thus we disable those checks for now
+
     if (aAddon.unpack) {
       logger.warn(`System add-on ${aAddon.id} isn't a packed add-on.`);
       return false;
@@ -7953,6 +7957,7 @@ Object.assign(SystemAddonInstallLocation.prototype, {
       logger.warn(`System add-on ${aAddon.id} isn't restartless.`);
       return false;
     }
+#endif
 
     return true;
   },
