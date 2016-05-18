@@ -1206,6 +1206,7 @@ endif # SDK_BINARY
 # NEW:
 ifdef CQZ_BUILD_ID
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/cliqz@cliqz.com.xpi"
+HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/https-everywhere@cliqz.com.xpi"
 endif  # CQZ_BUILD_ID
 
 # OLD:
@@ -1227,6 +1228,13 @@ $(CLIQZ_XPI_PATH): $(EXTENSIONS_PATH)
 	echo CLIQZ_XPI_PATH in `pwd`
 	wget --output-document $(CLIQZ_XPI_PATH) $(CLIQZ_EXT_URL)
 
+ifdef HTTPSE_EXT_URL
+HTTPSE_XPI_PATH = $(EXTENSIONS_PATH)/https-everywhere@cliqz.com.xpi
+$(HTTPSE_XPI_PATH): $(EXTENSIONS_PATH)
+	echo HTTPSE_XPI_PATH in `pwd`
+	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
+endif
+
 DISTR_INI = $(DIST_RESPATH)/distribution/distribution.ini
 $(DISTR_INI):
 	echo DISTR_INI in `pwd`
@@ -1239,7 +1247,7 @@ $(CLIQZ_CFG):
 	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(DISTR_INI) $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(DISTR_INI) $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
