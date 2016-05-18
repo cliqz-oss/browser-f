@@ -39,6 +39,7 @@ loadFromFile: function(file) {
     const version = binStream.read8();
     if (version != FORMAT_VERSION)
       throw new Error(ERRORS.WRONG_FORMAT);
+    const dbVersion = binStream.read16();
     const nHashes = binStream.read8();
 
     // Read the rest of it into a buffer:
@@ -48,7 +49,7 @@ loadFromFile: function(file) {
         throw new Error(ERRORS.BUFF_UNDERFLOW);
 
     // Construct filter from buffer:
-    return new BloomFilter(buffer, nHashes);
+    return [new BloomFilter(buffer, nHashes), dbVersion];
   }
   finally {
     fStream.close();
@@ -57,9 +58,10 @@ loadFromFile: function(file) {
 
 /**
  * @param {BloomFilter} filter - bloom filter to save to file.
+ * @param {int} version - database version.
  * @param {nsIFile} file - pointer to the bloom filter data file.
  */
-saveToFile: function(filter, file) {
+saveToFile: function(filter, version, file) {
   var foStream = Cc["@mozilla.org/network/file-output-stream;1"]
       .createInstance(Ci.nsIFileOutputStream);
   const openFlags = OPEN_FLAGS.WRONLY | OPEN_FLAGS.CREATE_FILE |
@@ -74,6 +76,7 @@ saveToFile: function(filter, file) {
     // Write header:
     binStream.write32(HEAD_SIG);
     binStream.write8(FORMAT_VERSION);
+    binStream.write16(version);
     binStream.write8(filter.nHashes);
 
     // Write filter data:

@@ -24,13 +24,14 @@ Cu.import("resource://gre/modules/FileUtils.jsm");
 Cu.import("resource://gre/modules/BloomFilter.jsm");
 Cu.import("resource://gre/modules/BloomFilterUtils.jsm");
 
-if (arguments.length < 2)
-  fail("Two arguments expected, but " + arguments.length + " given");
+if (arguments.length < 3)
+  fail("Three arguments expected, but " + arguments.length + " given");
 
 const inFileName = arguments[0];
 const outFileName = arguments[1];
-const explicitSize = parseInt(arguments[2]);
-const explicitHashes = parseInt(arguments[3]);
+const dbVersion = parseInt(arguments[2]);
+const explicitSize = parseInt(arguments[3]);
+const explicitHashes = parseInt(arguments[4]);
 const FALSE_RATE = 0.0001;
 const SIZE_INC_STEP_BLOCKS = 1024;  // 4kB
 
@@ -95,16 +96,18 @@ print("Filled filter.")
 
 const outFile = FileUtils.getFile("XCurProcD", outFileName.split("/"));
 print("Saving filter data into: " + outFile.path);
-BloomFilterUtils.saveToFile(filter, outFile);
+BloomFilterUtils.saveToFile(filter, dbVersion, outFile);
 
 print("Successfully saved filter data!");
 
 print("Checking...");
-filter = BloomFilterUtils.loadFromFile(outFile);
+let [testFilter, testVersion] = BloomFilterUtils.loadFromFile(outFile);
 print("===========");
+if (dbVersion != testVersion)
+  print("Versions don't match", dbVersion, testVersion);
 let ok = true;
 for (let line of lines) {
-  const check = filter.test(line);
+  const check = testFilter.test(line);
   ok = ok && check;
   if (!check)
     print(line, check);

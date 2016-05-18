@@ -15,9 +15,11 @@ const PORN_DATA_FILE_NAME = "porn-domains.bin";
 const FILTER_N_HASHES = 14;
 
 let filter;
+let version;
 try {
-  filter = BloomFilterUtils.loadFromFile(
+  [filter, version] = BloomFilterUtils.loadFromFile(
       FileUtils.getFile("XCurProcD", [PORN_DATA_FILE_NAME]));
+  dump("AutoPrivateTab: Loaded database version " + version + "\n");
 }
 catch (e) {
   Cu.reportError(e);
