@@ -4,7 +4,7 @@
 // It reads input file line by line, puts each line into a BloomFilter, and then
 // serializes it into a binary file.
 // Arguments:
-// |inFile| - RELATIVE path to input file, containing domain names, one per line
+// |inFile| - RELATIVE path to input file, containing text records, one per line
 // |outFile| - RELATIVE path to output file with filter data.
 
 "use strict";
@@ -29,15 +29,27 @@ if (arguments.length < 2)
 
 const inFileName = arguments[0];
 const outFileName = arguments[1];
+const explicitSize = parseInt(arguments[2]);
+const explicitHashes = parseInt(arguments[3]);
 const FALSE_RATE = 0.0001;
+const SIZE_INC_STEP_BLOCKS = 1024;  // 4kB
 
-function domainsIntoBloomFilter(domains) {
-  let [size, nHashes] = calculateFilterProperties(domains.length, FALSE_RATE);
-  print("BloomFilter parameters: " + [size, nHashes]);
+function linesIntoBloomFilter(lines) {
+  let [size, nHashes] = calculateFilterProperties(lines.length, FALSE_RATE);
+  print("BloomFilter optimal parameters: " + [size, nHashes]);
+  if (!Number.isNaN(explicitSize) && !Number.isNaN(explicitHashes)) {
+    size = explicitSize;
+    nHashes = explicitHashes;
+    print("Explicit parameters " + [size, nHashes]);
+  }
+  else {
+    size = Math.ceil(size / SIZE_INC_STEP_BLOCKS) * SIZE_INC_STEP_BLOCKS;
+    print("Rounded size up to " + size);
+  }
   const filter = new BloomFilter(size, nHashes);
 
-  for (let domain of domains) {
-    filter.add(domain);
+  for (let line of lines) {
+    filter.add(line);
   }
 
   return filter;
@@ -45,8 +57,6 @@ function domainsIntoBloomFilter(domains) {
 
 function readTextLines(fileName, encoding = "UTF-8") {
   const file = FileUtils.getFile("XCurProcD", fileName.split("/"));
-  print("File", file.path);
-
   let inStream = Cc["@mozilla.org/network/file-input-stream;1"]
       .createInstance(Ci.nsIFileInputStream);
   inStream.init(file, OPEN_FLAGS.RDONLY, 0, inStream.CLOSE_ON_EOF);
@@ -77,10 +87,10 @@ const OPEN_FLAGS = {
   EXCL: parseInt("0x80")
 };
 
-const domains = readTextLines(inFileName);
-print("Input lines count: " + domains.length);
+const lines = readTextLines(inFileName);
+print("Input lines count: " + lines.length);
 
-let filter = domainsIntoBloomFilter(domains);
+let filter = linesIntoBloomFilter(lines);
 print("Filled filter.")
 
 const outFile = FileUtils.getFile("XCurProcD", outFileName.split("/"));
@@ -93,14 +103,14 @@ print("Checking...");
 filter = BloomFilterUtils.loadFromFile(outFile);
 print("===========");
 let ok = true;
-for (let domain of domains) {
-  const check = filter.test(domain);
+for (let line of lines) {
+  const check = filter.test(line);
   ok = ok && check;
   if (!check)
-    print(domain, check);
+    print(line, check);
 }
 print("===========");
-print(ok ? "OK" : "Checks for some domains failed!");
+print(ok ? "OK" : "Checks for some lines failed!");
 
 }
 catch (e) {
