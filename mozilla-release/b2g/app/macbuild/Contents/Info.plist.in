@@ -21,7 +21,7 @@
 	<key>CFBundleShortVersionString</key>
 	<string>%APP_VERSION%</string>
 	<key>CFBundleSignature</key>
-	<string>MOZB</string>
+	<string>CLQZ</string>
 	<key>CFBundleVersion</key>
 	<string>%APP_VERSION%</string>
 	<key>NSAppleScriptEnabled</key>
