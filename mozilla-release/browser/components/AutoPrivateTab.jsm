@@ -33,19 +33,28 @@ const AutoPrivateTab = {
     // TODO: Write _whiteList to file.
   },
 
-  handleTabNavigation: function APT_handleTabNavigation(uri, tab_browser) {
+  handleTabNavigation: function APT_handleTabNavigation(uri, tabBrowser) {
     const [pm, domain] = this._shouldLoadURIInPrivateMode(uri)
     if (!pm)
       return;
-    const gBrowser = tab_browser.ownerGlobal.gBrowser;
-    tab_browser.loadContext.usePrivateBrowsing = true;
-    const tab = gBrowser.getTabForBrowser(tab_browser)
+    const gBrowser = tabBrowser.ownerGlobal.gBrowser;
+    tabBrowser.loadContext.usePrivateBrowsing = true;
+    const tab = gBrowser.getTabForBrowser(tabBrowser)
     if (tab)
       tab.private = true;
     // TODO: Navigation could happen in a background tab, not the current one.
     setTimeout(
-      this._addOrUpdateNotification.bind(this, tab_browser, domain),
+      this._addOrUpdateNotification.bind(this, tabBrowser, domain),
       1000);
+  },
+
+  /**
+   * @param {DOMElement} tab - <xul:tab> to toggle mode on.
+   */
+  toggleTabPrivateMode: function APT_toggleTabPrivateMode(tab, rememberDomain) {
+    // TODO: Clean history when going into private mode.
+    tab.private = !tab.private;
+    tab.linkedBrowser.reload();
   },
 
   /**
@@ -84,8 +93,8 @@ const AutoPrivateTab = {
   },
 
   _addOrUpdateNotification: function APT__addOrUpdateNotification(
-      tab_browser, domain) {
-    const gBrowser = tab_browser.ownerGlobal.gBrowser;
+      tabBrowser, domain) {
+    const gBrowser = tabBrowser.ownerGlobal.gBrowser;
     const notificationBox = gBrowser.getNotificationBox();
     const notification = notificationBox.getNotificationWithValue(
         this._consts.AUTO_PRIVATE_TAB_NOTIFICATION);
@@ -94,39 +103,37 @@ const AutoPrivateTab = {
     }
     const buttons = [
     {
-      label: "Reload in normal mode",
-      accessKey: "R",
+      label: browserStrings.GetStringFromName("apt.notification.revertButton"),
+      accessKey: browserStrings.GetStringFromName(
+          "apt.notification.revertButton.AK"),
       popup: null,
       callback: (notification, descr) => {
-          this._reloadTabAsNormal(tab_browser);
+          this._reloadBrowserAsNormal(tabBrowser);
       }
     },
     {
-      label: "Always load in normal mode",
-      accessKey: "A",
+      label: browserStrings.GetStringFromName("apt.notification.setupButton"),
+      accessKey: browserStrings.GetStringFromName(
+          "apt.notification.setupButton.AK"),
       popup: null,
       callback: (notification, descr) => {
-        this._reloadTabAsNormal(tab_browser);
-        this._whiteList.add(domain);
-        this._dirty = true;
+        gBrowser.ownerGlobal.openPreferences("panePrivacy");
       }
     }];
 
     notificationBox.appendNotification(
-        domain + " is better viewed in private mode",
+        browserStrings.GetStringFromName("apt.notification.label"),
         this._consts.AUTO_PRIVATE_TAB_NOTIFICATION,
         "chrome://browser/skin/privatebrowsing-mask.png",
         notificationBox.PRIORITY_INFO_HIGH,
         buttons);
   },
 
-  _reloadTabAsNormal: function APT__reloadTabAsNormal(tab_browser) {
-    tab_browser.loadContext.usePrivateBrowsing = false;
-    const gBrowser = tab_browser.ownerGlobal.gBrowser;
-    const tab = gBrowser.getTabForBrowser(tab_browser)
-    if (tab)
-      tab.private = false;
-    tab_browser.reload();
+  _reloadBrowserAsNormal: function APT__reloadBrowserAsNormal(tabBrowser) {
+    const gBrowser = tabBrowser.ownerGlobal.gBrowser;
+    const tab = gBrowser.getTabForBrowser(tabBrowser);
+    tab.private = false;
+    tab.linkedBrowser.reload();
   },
 
   _consts: {
@@ -136,3 +143,6 @@ const AutoPrivateTab = {
   _whiteList: new Set(),
   _dirty: false
 };
+
+const browserStrings = Services.strings.createBundle(
+    "chrome://browser/locale/browser.properties");

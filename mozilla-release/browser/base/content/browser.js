@@ -7529,6 +7529,7 @@ function restoreLastSession() {
 
 var TabContextMenu = {
   contextTab: null,
+
   _updateToggleMuteMenuItem(aTab, aConditionFn) {
     ["muted", "soundplaying"].forEach(attr => {
       if (!aConditionFn || aConditionFn(attr)) {
@@ -7540,6 +7541,7 @@ var TabContextMenu = {
       }
     });
   },
+
   updateContextMenu: function updateContextMenu(aPopupMenu) {
     this.contextTab = aPopupMenu.triggerNode.localName == "tab" ?
                       aPopupMenu.triggerNode : gBrowser.selectedTab;
@@ -7600,9 +7602,25 @@ var TabContextMenu = {
     this.contextTab.toggleMuteMenuItem = toggleMute;
     this._updateToggleMuteMenuItem(this.contextTab);
 
+    // Privateness related menu items.
+    const tabIsPrivate = this.contextTab.private;
+    document.getElementById("context_togglePrivate").label =
+        gNavigatorBundle.getString(
+            tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
+                         : "apt.tabContext.reloadInForgetMode");
+    document.getElementById("context_togglePrivateAndRememberDomain").label =
+        gNavigatorBundle.getString(
+            tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
+                         : "apt.tabContext.alwaysInForgetMode");
+
     this.contextTab.addEventListener("TabAttrModified", this, false);
     aPopupMenu.addEventListener("popuphiding", this, false);
   },
+
+  toggleTabPrivateMode: function toggleTabPrivateMode(rememberDomain) {
+    AutoPrivateTab.toggleTabPrivateMode(this.contextTab, rememberDomain);
+  },
+
   handleEvent(aEvent) {
     switch (aEvent.type) {
       case "popuphiding":

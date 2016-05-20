@@ -1856,8 +1856,6 @@
             var uniqueId = this._generateUniquePanelID();
             notificationbox.id = uniqueId;
             t.linkedPanel = uniqueId;
-            t.linkedBrowser = b;
-            this._tabForBrowser.set(b, t);
             t._tPos = position;
             t.lastAccessed = Date.now();
             this.tabContainer._setPositionalAttributes();
@@ -1871,6 +1869,12 @@
               // initialized by this point.
               this.mPanelContainer.appendChild(notificationbox);
             }
+
+            // Passing underinitialized browser element (before binding
+            // constructor has finished) is highly undesired. That's why it's
+            // done after browser's notificationbox in inserted into DOM tree.
+            t.linkedBrowser = b;
+            this._tabForBrowser.set(b, t);
 
             // We've waited until the tab is in the DOM to set the label. This
             // allows the TabLabelModified event to be properly dispatched.
@@ -1926,8 +1930,6 @@
               try {
                 // Go private before navigating if requested.
                 if (aPrivate) {
-                  //const context = b.docShell.QueryInterface(Ci.nsILoadContext);
-                  b.loadContext.usePrivateBrowsing = true;
                   t.private = true;
                 }
 
@@ -6020,7 +6022,26 @@
       </xul:stack>
     </content>
 
-    <implementation>
+    <implementation
+        implements="nsIPrivacyTransitionObserver, nsISupportsWeakReference"
+        >
+      <property
+          name="linkedBrowser"
+          onget="return this._linkedBrowser;"
+          >
+        <setter>
+        <![CDATA[
+          if (this._linkedBrowser && val) {
+            Cu.reportError("We're in trouble. Somebody sets linkedBrowser " +
+                "after it's already set. Since we cannot unsubscribe from " +
+                "privacy events, this is a bad situation!");
+            Cu.reportError((new Error()).stack);
+          }
+          this._linkedBrowser = val;
+          this._watchPrivacyEvents();
+        ]]>
+        </setter>
+      </property>
 
       <property name="_visuallySelected">
         <setter>
@@ -6108,19 +6129,12 @@
           return this.getAttribute("hidden") == "true";
         </getter>
       </property>
-      <!--
-      Shown, whether this tab is marked private.
-      NOTE: This is only a visual hint, it has no effect on the contained
-      browser and its docShell/loaderContext.
-      -->
+
       <property name="private"
-          onget="return this.getAttribute('private') === 'true'">
+          onget="return this._linkedBrowser.loadContext.usePrivateBrowsing;">
         <setter>
         <![CDATA[
-          if (val)
-            this.setAttribute("private", "true");
-          else
-            this.removeAttribute("private");
+          this._linkedBrowser.loadContext.usePrivateBrowsing = !!val;
         ]]>
         </setter>
       </property>
@@ -6231,6 +6245,40 @@
         ]]>
         </body>
       </method>
+
+      <method name="_watchPrivacyEvents">
+        <body>
+        <![CDATA[
+          if (!this._linkedBrowser)
+            return;
+          // Copied from browser/components/sessionstore/content/content-sessionStore.js
+          this._linkedBrowser.loadContext.QueryInterface(Ci.nsIDocShell).
+              addWeakPrivacyTransitionObserver(this);
+        ]]>
+        </body>
+      </method>
+
+      <method name="privateModeChanged">
+        <parameter name="enabled"/>
+        <body>
+        <![CDATA[
+          this._updatePrivateAttr(enabled);
+        ]]>
+        </body>
+      </method>
+
+      <method name="_updatePrivateAttr">
+        <parameter name="private"/>
+        <body>
+        <![CDATA[
+          if (private)
+            this.setAttribute("private", "true");
+          else
+            this.removeAttribute("private");
+        ]]>
+        </body>
+      </method>
+
     </implementation>
 
     <handlers>

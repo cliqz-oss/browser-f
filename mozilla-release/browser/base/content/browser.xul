@@ -83,6 +83,14 @@
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
       <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
+      <menuitem
+          id="context_togglePrivate"
+          oncommand="TabContextMenu.toggleTabPrivateMode();"
+          />
+      <menuitem
+          id="context_togglePrivateAndRememberDomain"
+          oncommand="TabContextMenu.toggleTabPrivateMode(true);"
+          />
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuseparator/>
       <menuitem id="context_pinTab" label="&pinTab.label;"
