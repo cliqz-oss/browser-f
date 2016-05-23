@@ -70,3 +70,4 @@ if [ $CQZ_BUILD_LOCALIZATION ]; then
 fi
 
 cd $ROOT_PATH
+
