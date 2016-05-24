@@ -1213,7 +1213,7 @@ ifndef CQZ_BUILD_ID
 # TODO: Move to external file.
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser_beta/latest.xpi"
 ifeq (release, $(CQZ_RELEASE_CHANNEL))
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.5.1.xpi"
+CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.5.2.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
 endif  # CQZ_BUILD_ID
 
