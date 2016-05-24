@@ -7,10 +7,10 @@ node {
   } catch (MissingPropertyExceptionmpe) {
     CQZ_COMMIT = ''
   }
-  CQZ_COMMIT = CQZ_COMMIT ? CQZ_COMMIT : 'DB-588_2'
+  CQZ_COMMIT = CQZ_COMMIT ? CQZ_COMMIT : 'master'
 
   stage 'checkout'
-  git branch: CQZ_COMMIT, url: 'https://github.com/chrmod/browser-f'
+  git branch: CQZ_COMMIT, url: 'https://github.com/cliqz-oss/browser-f'
 
   stage 'expose certs'
   sh 'rm -fr certs'
