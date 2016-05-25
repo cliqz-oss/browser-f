@@ -999,6 +999,12 @@ ${EndIf}
     RmDir /r /REBOOTOK "$INSTDIR\extensions\talkback@cliqz.com"
   ${EndIf}
 
+  ; Remove CLIQZ extension from distribution\extensions because now it must be
+  ; in System Addon (browser\feature)
+  ${If} ${FileExists} "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
+    Delete "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
+  ${EndIf}
+
   ; Remove the Java Console extension (bug 1165156)
   ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0031-ABCDEFFEDCBA}"
     RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0031-ABCDEFFEDCBA}"
