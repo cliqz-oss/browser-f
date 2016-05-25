@@ -21,8 +21,10 @@ SOURCES += [
 
 FINAL_TARGET_FILES += [
     'blocklist.xml',
-    'porn-domains.bin',
 ]
+if CONFIG['CQZ_ADULT_DOMAINS_BF']:
+    FINAL_TARGET_FILES += ['%' + CONFIG['CQZ_ADULT_DOMAINS_BF']]
+
 FINAL_TARGET_FILES.defaults.profile += ['profile/prefs.js']
 FINAL_TARGET_FILES.defaults += ['permissions']
 

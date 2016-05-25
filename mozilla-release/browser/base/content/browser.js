@@ -232,8 +232,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "ReaderParent",
 XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
+#if CQZ_AUTO_PRIVATE_TAB
 XPCOMUtils.defineLazyModuleGetter(this, "AutoPrivateTab",
   "resource:///modules/AutoPrivateTab.jsm");
+#endif
 
 var gInitialPages = [
   "about:blank",
@@ -825,9 +827,11 @@ function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
+#if CQZ_AUTO_PRIVATE_TAB
   else {
     AutoPrivateTab.handleTabNavigation(uri, browser);
   }
+#endif
 
   let flags = params.flags || 0;
   let referrer = params.referrerURI;
@@ -1880,9 +1884,11 @@ function BrowserOpenTab()
   openUILinkIn(BROWSER_NEW_TAB_URL, "tab");
 }
 
+#if CQZ_AUTO_PRIVATE_TAB
 function BrowserOpenPrivateTab() {
   openUILinkIn("about:privatebrowsing", "tab", {private: true});
 }
+#endif
 
 /* Called from the openLocation dialog. This allows that dialog to instruct
    its opener to open a new window and then step completely out of the way.
@@ -7602,6 +7608,7 @@ var TabContextMenu = {
     this.contextTab.toggleMuteMenuItem = toggleMute;
     this._updateToggleMuteMenuItem(this.contextTab);
 
+#if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
     const tabIsPrivate = this.contextTab.private;
     document.getElementById("context_togglePrivate").label =
@@ -7612,15 +7619,18 @@ var TabContextMenu = {
         gNavigatorBundle.getString(
             tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
                          : "apt.tabContext.alwaysInForgetMode");
+#endif
 
     this.contextTab.addEventListener("TabAttrModified", this, false);
     aPopupMenu.addEventListener("popuphiding", this, false);
   },
 
+#if CQZ_AUTO_PRIVATE_TAB
   toggleTabPrivateMode: function toggleTabPrivateMode(rememberDomain) {
     AutoPrivateTab.toggleTabPrivateMode(this.contextTab, rememberDomain);
   },
 
+#endif
   handleEvent(aEvent) {
     switch (aEvent.type) {
       case "popuphiding":
@@ -7812,11 +7822,13 @@ var MousePosTracker = {
 };
 
 function BrowserOpenNewTabOrWindow(event) {
+#if CQZ_AUTO_PRIVATE_TAB
   if (event.shiftKey) {
     BrowserOpenPrivateTab();
-  } else {
-    BrowserOpenTab();
+    return;
   }
+#endif
+  BrowserOpenTab();
 }
 
 var ToolbarIconColor = {

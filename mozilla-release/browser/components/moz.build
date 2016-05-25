@@ -44,9 +44,10 @@ EXTRA_COMPONENTS += [
 ]
 
 EXTRA_JS_MODULES += [
-    'AutoPrivateTab.jsm',
     'distribution.js',
 ]
+if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
+    EXTRA_JS_MODULES += ['AutoPrivateTab.jsm']
 
 EXTRA_PP_JS_MODULES += [
 
