@@ -1,13 +1,13 @@
 #!groovy
 
 node {
-  // die early without CQZ_BUILD_ID or CQZ_COMMIT
+  // die early without CQZ_BUILD_ID, CQZ_RELEASE_CHANNEL or CQZ_COMMIT
   CQZ_BUILD_ID
   CQZ_COMMIT
+  CQZ_RELEASE_CHANNEL
 
   stage 'checkout'
   checkout([$class: 'GitSCM', branches: [[name: CQZ_COMMIT]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f']]])
-
 
   stage 'expose certs'
   sh 'rm -fr certs'
