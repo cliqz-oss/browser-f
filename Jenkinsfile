@@ -1,16 +1,13 @@
-node {
-  // die early without CQZ_BUILD_ID
-  CQZ_BUILD_ID
+#!groovy
 
-  try {
-    CQZ_COMMIT
-  } catch (MissingPropertyExceptionmpe) {
-    CQZ_COMMIT = ''
-  }
-  CQZ_COMMIT = CQZ_COMMIT ? CQZ_COMMIT : 'master'
+node {
+  // die early without CQZ_BUILD_ID or CQZ_COMMIT
+  CQZ_BUILD_ID
+  CQZ_COMMIT
 
   stage 'checkout'
-  git branch: CQZ_COMMIT, url: 'https://github.com/cliqz-oss/browser-f'
+  checkout([$class: 'GitSCM', branches: [[name: CQZ_COMMIT]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f']]])
+
 
   stage 'expose certs'
   sh 'rm -fr certs'
