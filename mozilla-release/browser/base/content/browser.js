@@ -235,6 +235,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
 #if CQZ_AUTO_PRIVATE_TAB
 XPCOMUtils.defineLazyModuleGetter(this, "AutoPrivateTab",
   "resource:///modules/AutoPrivateTab.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
+  "chrome://browser/content/PrivateTabUI.jsm");
 #endif
 
 var gInitialPages = [
@@ -1010,6 +1012,10 @@ var gBrowserInit = {
     CombinedStopReload.init();
     gPrivateBrowsingUI.init();
     TabsInTitlebar.init();
+#if CQZ_AUTO_PRIVATE_TAB
+    this._privateTabUI = new PrivateTabUI(gBrowser, gNavToolbox);
+    this._privateTabUI.start();
+#endif
 
     if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
         window.matchMedia("(-moz-windows-default-theme)").matches) {
@@ -1411,6 +1417,10 @@ var gBrowserInit = {
     if (!this._loadHandled)
       return;
 
+#if CQZ_AUTO_PRIVATE_TAB
+    this._privateTabUI.stop();
+#endif
+
     gDevToolsBrowser.forgetBrowserWindow(window);
 
     let desc = Object.getOwnPropertyDescriptor(window, "DeveloperToolbar");
@@ -1521,6 +1531,8 @@ var gBrowserInit = {
           .XULBrowserWindow = null;
     window.QueryInterface(Ci.nsIDOMChromeWindow).browserDOMWindow = null;
   },
+
+  _privateTabUI: null
 };
 
 if (AppConstants.platform == "macosx") {

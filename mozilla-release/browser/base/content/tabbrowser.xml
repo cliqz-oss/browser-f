@@ -6262,6 +6262,13 @@
         <parameter name="enabled"/>
         <body>
         <![CDATA[
+          this.dispatchEvent(new CustomEvent("TabPrivateModeChanged", {
+              bubbles: true,
+              cancelable: false,
+              detail: {
+                private: enabled
+              }
+          }));
           this._updatePrivateAttr(enabled);
         ]]>
         </body>
