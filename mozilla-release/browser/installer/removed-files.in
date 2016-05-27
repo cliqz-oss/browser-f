@@ -71,7 +71,7 @@
 
 # CLIQZ Remove extension from distributions because it was move to
 # System Addon (browser/feature)
-@DIR_MACOS@distribution/extensions/cliqz@cliqz.com.xpi
+@DIR_RESOURCES@distribution/extensions/cliqz@cliqz.com.xpi
 
 # Some users are ending up with unpacked chrome instead of omni.ja. This
 # causes updates to break badly, see bug 1063052. Removing the toplevel
