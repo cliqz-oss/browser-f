@@ -7610,12 +7610,18 @@ var TabContextMenu = {
 
 #if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
+    const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     const tabIsPrivate = this.contextTab.private;
-    document.getElementById("context_togglePrivate").label =
+    const togglePrivateItem = document.getElementById("context_togglePrivate");
+    togglePrivateItem.hidden = windowIsPrivate;
+    togglePrivateItem.label =
         gNavigatorBundle.getString(
             tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
                          : "apt.tabContext.reloadInForgetMode");
-    document.getElementById("context_togglePrivateAndRememberDomain").label =
+    const addExceptionItem =
+        document.getElementById("context_togglePrivateAndRememberDomain");
+    addExceptionItem.hidden = windowIsPrivate;
+    addExceptionItem.label =
         gNavigatorBundle.getString(
             tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
                          : "apt.tabContext.alwaysInForgetMode");
