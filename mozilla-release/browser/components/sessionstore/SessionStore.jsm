@@ -2832,6 +2832,8 @@ var SessionStoreInternal = {
 
     // update the internal state data for this window
     for (let tab of tabs) {
+      if (tab.private)
+        continue;
       let tabData = TabState.collect(tab);
       tabMap.set(tab, tabData);
       tabsData.push(tabData);

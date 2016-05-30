@@ -3845,6 +3845,17 @@ MOZ_SANDBOX=1
 MOZ_BINARY_EXTENSIONS=
 MOZ_DEVTOOLS=server
 
+# Set this ENV variable to 1 to enable Automatic private tab feature.
+# NB: CQZ_ADULT_DOMAINS_BF is also required then.
+AC_SUBST(CQZ_AUTO_PRIVATE_TAB)
+
+# Path to bloom filter database of adult domains.
+# NB: This must be relative to source root.
+AC_SUBST(CQZ_ADULT_DOMAINS_BF)
+if test "$CQZ_ADULT_DOMAINS_BF"; then
+    CQZ_ADULT_DOMAINS_BF="${_topsrcdir}/$CQZ_ADULT_DOMAINS_BF"
+fi
+
 case "$target_os" in
     mingw*)
         NS_ENABLE_TSF=1

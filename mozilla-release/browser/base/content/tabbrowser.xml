@@ -1416,6 +1416,7 @@
               aForceNotRemote       = params.forceNotRemote;
               aNoReferrer           = params.noReferrer;
               aUserContextId        = params.userContextId;
+              aPrivate              = params.private;
             }
 
             var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -1434,7 +1435,8 @@
                                   allowMixedContent: aAllowMixedContent,
                                   forceNotRemote: aForceNotRemote,
                                   noReferrer: aNoReferrer,
-                                  userContextId: aUserContextId });
+                                  userContextId: aUserContextId,
+                                  private: aPrivate });
             if (!bgLoad)
               this.selectedTab = tab;
 
@@ -1763,6 +1765,7 @@
             var aForceNotRemote;
             var aNoReferrer;
             var aUserContextId;
+            var aPrivate;
             if (arguments.length == 2 &&
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
@@ -1780,6 +1783,7 @@
               aForceNotRemote       = params.forceNotRemote;
               aNoReferrer           = params.noReferrer;
               aUserContextId        = params.userContextId;
+              aPrivate              = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -1835,7 +1839,7 @@
             // Private windows are not included because both the label and the
             // icon for the tab would be set incorrectly (see bug 1195981).
             if (aURI == BROWSER_NEW_TAB_URL && !aUserContextId &&
-                !PrivateBrowsingUtils.isWindowPrivate(window)) {
+                !PrivateBrowsingUtils.isWindowPrivate(window) && !aPrivate) {
               b = this._getPreloadedBrowser();
               usingPreloadedContent = !!b;
             }
@@ -1852,8 +1856,6 @@
             var uniqueId = this._generateUniquePanelID();
             notificationbox.id = uniqueId;
             t.linkedPanel = uniqueId;
-            t.linkedBrowser = b;
-            this._tabForBrowser.set(b, t);
             t._tPos = position;
             t.lastAccessed = Date.now();
             this.tabContainer._setPositionalAttributes();
@@ -1867,6 +1869,12 @@
               // initialized by this point.
               this.mPanelContainer.appendChild(notificationbox);
             }
+
+            // Passing underinitialized browser element (before binding
+            // constructor has finished) is highly undesired. That's why it's
+            // done after browser's notificationbox in inserted into DOM tree.
+            t.linkedBrowser = b;
+            this._tabForBrowser.set(b, t);
 
             // We've waited until the tab is in the DOM to set the label. This
             // allows the TabLabelModified event to be properly dispatched.
@@ -1920,6 +1928,11 @@
               if (aAllowMixedContent)
                 flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT;
               try {
+                // Go private before navigating if requested.
+                if (aPrivate) {
+                  t.private = true;
+                }
+
                 b.loadURIWithFlags(aURI, {
                                    flags: flags,
                                    referrerURI: aNoReferrer ? null: aReferrerURI,
@@ -5978,7 +5991,7 @@
           <xul:hbox xbl:inherits="pinned,selected,visuallyselected"
                     class="tab-background-end"/>
         </xul:hbox>
-        <xul:hbox xbl:inherits="pinned,selected,visuallyselected,titlechanged,attention"
+        <xul:hbox xbl:inherits="pinned,selected,visuallyselected,titlechanged,attention,private"
                   class="tab-content" align="center">
           <xul:image xbl:inherits="fadein,pinned,busy,progress,selected,visuallyselected"
                      class="tab-throbber"
@@ -6009,7 +6022,26 @@
       </xul:stack>
     </content>
 
-    <implementation>
+    <implementation
+        implements="nsIPrivacyTransitionObserver, nsISupportsWeakReference"
+        >
+      <property
+          name="linkedBrowser"
+          onget="return this._linkedBrowser;"
+          >
+        <setter>
+        <![CDATA[
+          if (this._linkedBrowser && val) {
+            Cu.reportError("We're in trouble. Somebody sets linkedBrowser " +
+                "after it's already set. Since we cannot unsubscribe from " +
+                "privacy events, this is a bad situation!");
+            Cu.reportError((new Error()).stack);
+          }
+          this._linkedBrowser = val;
+          this._watchPrivacyEvents();
+        ]]>
+        </setter>
+      </property>
 
       <property name="_visuallySelected">
         <setter>
@@ -6096,6 +6128,15 @@
         <getter>
           return this.getAttribute("hidden") == "true";
         </getter>
+      </property>
+
+      <property name="private"
+          onget="return this._linkedBrowser.loadContext.usePrivateBrowsing;">
+        <setter>
+        <![CDATA[
+          this._linkedBrowser.loadContext.usePrivateBrowsing = !!val;
+        ]]>
+        </setter>
       </property>
 
       <property name="lastAccessed">
@@ -6204,6 +6245,40 @@
         ]]>
         </body>
       </method>
+
+      <method name="_watchPrivacyEvents">
+        <body>
+        <![CDATA[
+          if (!this._linkedBrowser)
+            return;
+          // Copied from browser/components/sessionstore/content/content-sessionStore.js
+          this._linkedBrowser.loadContext.QueryInterface(Ci.nsIDocShell).
+              addWeakPrivacyTransitionObserver(this);
+        ]]>
+        </body>
+      </method>
+
+      <method name="privateModeChanged">
+        <parameter name="enabled"/>
+        <body>
+        <![CDATA[
+          this._updatePrivateAttr(enabled);
+        ]]>
+        </body>
+      </method>
+
+      <method name="_updatePrivateAttr">
+        <parameter name="private"/>
+        <body>
+        <![CDATA[
+          if (private)
+            this.setAttribute("private", "true");
+          else
+            this.removeAttribute("private");
+        ]]>
+        </body>
+      </method>
+
     </implementation>
 
     <handlers>

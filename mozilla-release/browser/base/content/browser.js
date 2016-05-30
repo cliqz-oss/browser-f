@@ -232,6 +232,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "ReaderParent",
 XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
+#if CQZ_AUTO_PRIVATE_TAB
+XPCOMUtils.defineLazyModuleGetter(this, "AutoPrivateTab",
+  "resource:///modules/AutoPrivateTab.jsm");
+#endif
+
 var gInitialPages = [
   "about:blank",
   "about:newtab",
@@ -817,10 +822,17 @@ function gKeywordURIFixup({ target: browser, data: fixupInfo }) {
 
 // A shared function used by both remote and non-remote browser XBL bindings to
 // load a URI or redirect it to the correct process.
+// |browser| is the {xul::browser} element (binding id="tabbrowser-browser").
 function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
+#if CQZ_AUTO_PRIVATE_TAB
+  else {
+    AutoPrivateTab.handleTabNavigation(uri, browser);
+  }
+#endif
+
   let flags = params.flags || 0;
   let referrer = params.referrerURI;
   let referrerPolicy = ('referrerPolicy' in params ? params.referrerPolicy :
@@ -1871,6 +1883,12 @@ function BrowserOpenTab()
 {
   openUILinkIn(BROWSER_NEW_TAB_URL, "tab");
 }
+
+#if CQZ_AUTO_PRIVATE_TAB
+function BrowserOpenPrivateTab() {
+  openUILinkIn("about:privatebrowsing", "tab", {private: true});
+}
+#endif
 
 /* Called from the openLocation dialog. This allows that dialog to instruct
    its opener to open a new window and then step completely out of the way.
@@ -5406,7 +5424,9 @@ function contentAreaClick(event, isPanelClick)
   // pages loaded in frames are embed visits and lost with the session, while
   // visits across frames should be preserved.
   try {
-    if (!PrivateBrowsingUtils.isWindowPrivate(window))
+    const doc = event.target.ownerDocument;
+    const privateTab = doc && doc.docShell.usePrivateBrowsing;
+    if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab)
       PlacesUIUtils.markPageAsFollowedLink(href);
   } catch (ex) { /* Skip invalid URIs. */ }
 }
@@ -5425,10 +5445,11 @@ function handleLinkClick(event, href, linkNode) {
     return false;
 
   var doc = event.target.ownerDocument;
+  const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
     saveURL(href, linkNode ? gatherTextUnder(linkNode) : "", null, true,
-            true, doc.documentURIObject, doc);
+            true, doc.documentURIObject, doc, privateTab);
     event.preventDefault();
     return true;
   }
@@ -5467,7 +5488,8 @@ function handleLinkClick(event, href, linkNode) {
                  allowMixedContent: persistAllowMixedContentInChildTab,
                  referrerURI: referrerURI,
                  referrerPolicy: referrerPolicy,
-                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
+                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode),
+                 private: privateTab};
   openLinkIn(href, where, params);
   event.preventDefault();
   return true;
@@ -7513,6 +7535,7 @@ function restoreLastSession() {
 
 var TabContextMenu = {
   contextTab: null,
+
   _updateToggleMuteMenuItem(aTab, aConditionFn) {
     ["muted", "soundplaying"].forEach(attr => {
       if (!aConditionFn || aConditionFn(attr)) {
@@ -7524,6 +7547,7 @@ var TabContextMenu = {
       }
     });
   },
+
   updateContextMenu: function updateContextMenu(aPopupMenu) {
     this.contextTab = aPopupMenu.triggerNode.localName == "tab" ?
                       aPopupMenu.triggerNode : gBrowser.selectedTab;
@@ -7584,9 +7608,35 @@ var TabContextMenu = {
     this.contextTab.toggleMuteMenuItem = toggleMute;
     this._updateToggleMuteMenuItem(this.contextTab);
 
+#if CQZ_AUTO_PRIVATE_TAB
+    // Privateness related menu items.
+    const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+    const tabIsPrivate = this.contextTab.private;
+    const togglePrivateItem = document.getElementById("context_togglePrivate");
+    togglePrivateItem.hidden = windowIsPrivate;
+    togglePrivateItem.label =
+        gNavigatorBundle.getString(
+            tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
+                         : "apt.tabContext.reloadInForgetMode");
+    const addExceptionItem =
+        document.getElementById("context_togglePrivateAndRememberDomain");
+    addExceptionItem.hidden = windowIsPrivate;
+    addExceptionItem.label =
+        gNavigatorBundle.getString(
+            tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
+                         : "apt.tabContext.alwaysInForgetMode");
+#endif
+
     this.contextTab.addEventListener("TabAttrModified", this, false);
     aPopupMenu.addEventListener("popuphiding", this, false);
   },
+
+#if CQZ_AUTO_PRIVATE_TAB
+  toggleTabPrivateMode: function toggleTabPrivateMode(rememberDomain) {
+    AutoPrivateTab.toggleTabPrivateMode(this.contextTab, rememberDomain);
+  },
+
+#endif
   handleEvent(aEvent) {
     switch (aEvent.type) {
       case "popuphiding":
@@ -7778,11 +7828,13 @@ var MousePosTracker = {
 };
 
 function BrowserOpenNewTabOrWindow(event) {
+#if CQZ_AUTO_PRIVATE_TAB
   if (event.shiftKey) {
-    OpenBrowserWindow();
-  } else {
-    BrowserOpenTab();
+    BrowserOpenPrivateTab();
+    return;
   }
+#endif
+  BrowserOpenTab();
 }
 
 var ToolbarIconColor = {

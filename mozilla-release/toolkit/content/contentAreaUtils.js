@@ -404,7 +404,9 @@ function internalSave(aURL, aDocument, aDefaultFileName, aContentDisposition,
     let isPrivate = aIsContentWindowPrivate;
     if (isPrivate === undefined) {
       isPrivate = aInitiatingDocument instanceof Components.interfaces.nsIDOMDocument
-        ? PrivateBrowsingUtils.isContentWindowPrivate(aInitiatingDocument.defaultView)
+        ? PrivateBrowsingUtils.isContentWindowPrivate(
+              aInitiatingDocument.defaultView) ||
+              aInitiatingDocument.docShell.usePrivateBrowsing
         : aInitiatingDocument.isPrivate;
     }
 

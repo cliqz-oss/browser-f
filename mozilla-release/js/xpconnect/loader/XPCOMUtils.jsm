@@ -276,7 +276,8 @@ this.XPCOMUtils = {
           aPostLambda.apply(proxy);
         }
       } catch (ex) {
-        Cu.reportError("Failed to load module " + aResource + ".");
+        Cu.reportError("Failed to load module " + aResource);
+        Cu.reportError(ex);
         throw ex;
       }
       return temp[aSymbol || aName];
