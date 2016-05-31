@@ -1235,6 +1235,8 @@ $(HTTPSE_XPI_PATH): $(EXTENSIONS_PATH)
 ifdef HTTPSE_EXT_URL
 	echo HTTPSE_XPI_PATH in `pwd`
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
+	unzip $(HTTPSE_XPI_PATH) -d $(EXTENSIONS_PATH)/https-everywhere@cliqz.com
+	rm $(HTTPSE_XPI_PATH)
 endif
 
 DISTR_INI = $(DIST_RESPATH)/distribution/distribution.ini
