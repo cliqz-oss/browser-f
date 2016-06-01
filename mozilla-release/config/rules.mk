@@ -1236,8 +1236,7 @@ ifdef HTTPSE_EXT_URL
 	echo HTTPSE_XPI_PATH in `pwd`
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 	unzip $(HTTPSE_XPI_PATH) -d $(EXTENSIONS_PATH)/https-everywhere@cliqz.com
-	unzip $(EXTENSIONS_PATH)/https-everywhere@cliqz.com/chrome.jar -d $(EXTENSIONS_PATH)/https-everywhere@cliqz.com/chrome
-	rm $(EXTENSIONS_PATH)/https-everywhere@cliqz.com/chrome.jar
+	chmod a+r -R $(EXTENSIONS_PATH)/https-everywhere@cliqz.com
 	rm $(HTTPSE_XPI_PATH)
 endif
 
