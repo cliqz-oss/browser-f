@@ -8,17 +8,17 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/BloomFilterUtils.jsm");
 Cu.import("resource://gre/modules/FileUtils.jsm");
+Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Timer.jsm");
 
-const PORN_DATA_FILE_NAME = "porn-domains.bin";
-const FILTER_N_HASHES = 14;
+const ADULT_DOMAINS_BF_FILE_NAME = "adult-domains.bin";
 
 let filter;
 let version;
 try {
   [filter, version] = BloomFilterUtils.loadFromFile(
-      FileUtils.getFile("XCurProcD", [PORN_DATA_FILE_NAME]));
+      FileUtils.getFile("XCurProcD", [ADULT_DOMAINS_BF_FILE_NAME]));
   dump("AutoPrivateTab: Loaded database version " + version + "\n");
 }
 catch (e) {
@@ -64,8 +64,8 @@ const AutoPrivateTab = {
    *   extracted domain name (may be absent).
    */
   _shouldLoadURIInPrivateMode: function APT__shouldLoadURIInPrivateMode(uri) {
-    if (!filter)
-      return false;
+    if (!filter || !Preferences.get("browser.privatebrowsing.apt", false))
+      return [false, undefined];
 
     var spec;
     try {

@@ -147,7 +147,7 @@
 @RESPATH@/browser/blocklist.xml
 #if CQZ_AUTO_PRIVATE_TAB
 #if CQZ_ADULT_DOMAINS_BF
-@RESPATH@/browser/porn-domains.bin
+@RESPATH@/browser/adult-domains.bin
 #endif  ; CQZ_ADULT_DOMAINS_BF
 #endif  ; CQZ_AUTO_PRIVATE_TAB
 #ifdef XP_UNIX
