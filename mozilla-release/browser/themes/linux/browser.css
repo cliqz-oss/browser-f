@@ -1873,8 +1873,9 @@ toolbarbutton.chevron > .toolbarbutton-icon {
 
 
 #main-window[privatebrowsingmode=temporary] #private-browsing-indicator {
-  background: url("chrome://browser/skin/privatebrowsing-mask.png") center no-repeat;
-  width: 40px;
+  background: url("chrome://browser/skin/privatebrowsing-eraser.svg") center no-repeat;
+  width: 24px;
+  height: 16px;
 }
 
 %include ../shared/UITour.inc.css

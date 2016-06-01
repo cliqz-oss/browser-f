@@ -124,7 +124,7 @@ const AutoPrivateTab = {
     notificationBox.appendNotification(
         browserStrings.GetStringFromName("apt.notification.label"),
         this._consts.AUTO_PRIVATE_TAB_NOTIFICATION,
-        "chrome://browser/skin/privatebrowsing-mask.png",
+        "chrome://browser/skin/privatebrowsing-eraser.svg",
         notificationBox.PRIORITY_INFO_HIGH,
         buttons);
   },

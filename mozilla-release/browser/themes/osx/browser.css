@@ -3436,11 +3436,12 @@ menulist.translate-infobar-element > .menulist-dropmarker {
 /* End customization mode */
 
 .private-browsing-indicator {
-  background-image: url("chrome://browser/skin/privatebrowsing-mask.png");
+  background-image: url("chrome://browser/skin/privatebrowsing-eraser.svg");
   background-repeat: no-repeat;
   background-size: 100% auto;
-  width: 38px;
-  height: 28px;
+  width: 24px;
+  height: 16px;
+  margin-top: 12px;
   /**
    * The private browsing mask graphic has a 3px flare at the top. The distance
    * we want between the mask and items on either side is 7px, so we use 4px,
