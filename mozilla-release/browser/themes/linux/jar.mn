@@ -38,6 +38,7 @@ browser.jar:
   skin/classic/browser/pointerLock-16.png
   skin/classic/browser/pointerLock-64.png
   skin/classic/browser/Privacy-16.png
+  skin/classic/browser/privatebrowsing-eraser.svg
   skin/classic/browser/privatebrowsing-mask.png
   skin/classic/browser/reload-stop-go.png
   skin/classic/browser/reload-stop-go@2x.png
