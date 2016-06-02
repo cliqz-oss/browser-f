@@ -152,7 +152,7 @@ ifndef INCLUDED_RCS_MK
   include $(MOZILLA_DIR)/config/makefiles/makeutils.mk
 endif
 
-MOZ_SOURCE_STAMP = $(firstword $(shell git rev-parse HEAD))
+MOZ_SOURCE_STAMP = $(firstword $(shell git rev-parse HEAD 2>/dev/null))
 
 ###########################################################################
 # bug: 746277 - preserve existing functionality.

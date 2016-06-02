@@ -10,7 +10,7 @@ cd $SRC_BASE
 cd $OBJ_DIR
 
 echo '***** Generate MAR for DE, if needed *****'
-if [ $CQZ_BUILD_LOCALIZATION ]; then
+if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
   $MAKE -C ./tools/update-packaging full-update AB_CD=de
 fi
 echo '***** Packaging MAR *****'
@@ -49,7 +49,7 @@ python $ROOT_PATH/build-tools/scripts/updates/balrog-submitter.py \
   --api-root http://$CQZ_BALROG_DOMAIN/api \
   --build-properties build_properties.json
 
-if [ $CQZ_BUILD_LOCALIZATION ]; then
+if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
   # We need to copy this files because we build DE version as repack step, so
   # they don't exist for DE build (but must be before uploading stage, so they)
   # fall into mach_build_properties.json file
@@ -57,6 +57,7 @@ if [ $CQZ_BUILD_LOCALIZATION ]; then
     cp $f `echo $f | sed "s/en-US/de/"`
   done
 
+  export S3_UPLOAD_PATH=`echo $S3_UPLOAD_PATH | sed s/en-US/de/`
   $MAKE upload AB_CD=de
 
   echo '***** Genereting build_properties.json *****'
