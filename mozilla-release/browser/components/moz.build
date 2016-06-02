@@ -34,6 +34,9 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browsercompsbase'
 
+if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
+    EXTRA_COMPONENTS += ['AutoPrivateTab.js']
+
 EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
     'nsBrowserGlue.js',
@@ -46,8 +49,6 @@ EXTRA_COMPONENTS += [
 EXTRA_JS_MODULES += [
     'distribution.js',
 ]
-if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
-    EXTRA_JS_MODULES += ['AutoPrivateTab.jsm']
 
 EXTRA_PP_JS_MODULES += [
 

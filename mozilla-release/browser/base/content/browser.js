@@ -233,8 +233,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
 #if CQZ_AUTO_PRIVATE_TAB
-XPCOMUtils.defineLazyModuleGetter(this, "AutoPrivateTab",
-  "resource:///modules/AutoPrivateTab.jsm");
+const AutoPrivateTab = Cc["@cliqz.com/browser/auto_private_tab;1"].
+    getService(Ci.nsISupports).wrappedJSObject;
+
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
 #endif
