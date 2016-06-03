@@ -7633,7 +7633,7 @@ var TabContextMenu = {
                          : "apt.tabContext.reloadInForgetMode");
     const addExceptionItem =
         document.getElementById("context_togglePrivateAndRememberDomain");
-    addExceptionItem.hidden = windowIsPrivate;
+    addExceptionItem.hidden = windowIsPrivate || !AutoPrivateTab.active;
     addExceptionItem.label =
         gNavigatorBundle.getString(
             tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
