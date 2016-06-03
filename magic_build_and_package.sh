@@ -12,7 +12,7 @@
 # CQZ_CERT_DB_PATH
 #
 # Optional ENVs:
-#  CQZ_BUILD_LOCALIZATION - for build DE localization
+#  CQZ_BUILD_DE_LOCALIZATION - for build DE localization
 
 set -e
 set -x
@@ -72,7 +72,7 @@ else
 fi
 
 echo '***** Build DE language pack *****'
-if [ $CQZ_BUILD_LOCALIZATION ]; then
+if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
   cd $OLDPWD
   cd $SRC_BASE/$MOZ_OBJDIR/browser/locales
   $MAKE merge-de LOCALE_MERGEDIR=$(PWD)/mergedir
