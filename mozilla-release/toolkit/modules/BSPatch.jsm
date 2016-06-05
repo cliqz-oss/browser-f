@@ -5,6 +5,8 @@ this.EXPORTED_SYMBOLS = ["BSPatch", "BSPatchFile"];
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
+Cu.import("resource://gre/modules/FileUtils.jsm");
+
 const ERRORS = {
   WRONG_FORMAT: "Unrecognized filter data format",
   FILE_TOO_BIG: "File is too big",
@@ -87,15 +89,6 @@ function BSPatch(origInStream, patchInStream, resultOutStream) {
 
 // PRIVATE
 
-const OPEN_FLAGS = {
-  RDONLY: parseInt("0x01"),
-  WRONLY: parseInt("0x02"),
-  CREATE_FILE: parseInt("0x08"),
-  APPEND: parseInt("0x10"),
-  TRUNCATE: parseInt("0x20"),
-  EXCL: parseInt("0x80")
-};
-
 function makeBinInStream(inStream) {
   const binStream = Cc["@mozilla.org/binaryinputstream;1"]
       .createInstance(Ci.nsIBinaryInputStream);
@@ -106,15 +99,15 @@ function makeBinInStream(inStream) {
 function readFile(file) {
   let fStream = Cc["@mozilla.org/network/file-input-stream;1"]
       .createInstance(Ci.nsIFileInputStream);
-  fStream.init(file, OPEN_FLAGS.RDONLY, 0, fStream.CLOSE_ON_EOF);
+  fStream.init(file, FileUtils.MODE_RDONLY, 0, fStream.CLOSE_ON_EOF);
   return fStream;
 }
 
 function writeFile(file) {
   var foStream = Cc["@mozilla.org/network/file-output-stream;1"]
       .createInstance(Ci.nsIFileOutputStream);
-  const openFlags = OPEN_FLAGS.WRONLY | OPEN_FLAGS.CREATE_FILE |
-      OPEN_FLAGS.TRUNCATE;
+  const openFlags = FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE |
+      FileUtils.MODE_TRUNCATE;
   const permFlags = parseInt("0666", 8);
   foStream.init(file, openFlags, permFlags, 0);
   return foStream;

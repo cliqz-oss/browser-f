@@ -60,7 +60,7 @@ function readTextLines(fileName, encoding = "UTF-8") {
   const file = FileUtils.getFile("XCurProcD", fileName.split("/"));
   let inStream = Cc["@mozilla.org/network/file-input-stream;1"]
       .createInstance(Ci.nsIFileInputStream);
-  inStream.init(file, OPEN_FLAGS.RDONLY, 0, inStream.CLOSE_ON_EOF);
+  inStream.init(file, FileUtils.MODE_RDONLY, 0, inStream.CLOSE_ON_EOF);
   try {
     const streamSize = inStream.available();
     const convStream = Cc["@mozilla.org/intl/converter-input-stream;1"]
@@ -78,15 +78,6 @@ function readTextLines(fileName, encoding = "UTF-8") {
     inStream.close();
   }
 }
-
-const OPEN_FLAGS = {
-  RDONLY: parseInt("0x01"),
-  WRONLY: parseInt("0x02"),
-  CREATE_FILE: parseInt("0x08"),
-  APPEND: parseInt("0x10"),
-  TRUNCATE: parseInt("0x20"),
-  EXCL: parseInt("0x80")
-};
 
 const lines = readTextLines(inFileName);
 print("Input lines count: " + lines.length);

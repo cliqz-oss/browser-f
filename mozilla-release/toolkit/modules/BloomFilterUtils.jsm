@@ -24,7 +24,7 @@ const BloomFilterUtils = {
  * @return {BloomFilter} filter with a given file.
  */
 loadFromFile: function(file) {
-  const fStream = openFile(file);
+  const fStream = FileUtils.openFileInputStream(file);
   try {
     const binStream = Cc["@mozilla.org/binaryinputstream;1"]
         .createInstance(Ci.nsIBinaryInputStream);
@@ -64,8 +64,8 @@ loadFromFile: function(file) {
 saveToFile: function(filter, version, file) {
   var foStream = Cc["@mozilla.org/network/file-output-stream;1"]
       .createInstance(Ci.nsIFileOutputStream);
-  const openFlags = OPEN_FLAGS.WRONLY | OPEN_FLAGS.CREATE_FILE |
-      OPEN_FLAGS.TRUNCATE;
+  const openFlags = FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE_FILE |
+      FileUtils.MODE_TRUNCATE;
   const permFlags = parseInt("0666", 8);
   foStream.init(file, openFlags, permFlags, 0);
   try {
@@ -98,13 +98,6 @@ const OPEN_FLAGS = {
   TRUNCATE: parseInt("0x20"),
   EXCL: parseInt("0x80")
 };
-
-function openFile(file) {
-  let inStream = Cc["@mozilla.org/network/file-input-stream;1"]
-      .createInstance(Ci.nsIFileInputStream);
-  inStream.init(file, OPEN_FLAGS.RDONLY, 0, inStream.CLOSE_ON_EOF);
-  return inStream;
-}
 
 function stringFromStream(inStream, encoding) {
   const streamSize = inStream.available();
