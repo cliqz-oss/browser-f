@@ -5,7 +5,7 @@
 <!ENTITY cliqzPrivateBrowsing.header
   "Vergessen Modus">
 <!ENTITY cliqzPrivateBrowsing.explanation
-  "Du surfst im Vergessen Modus. Das heißt, dass die Websites, die du in diesem Modus besuchst, nicht in deinem Verlauf gespeichert werden, und dass auch temporäre Dateien und Cookies &quote;vergessen&quote; werden. Downloads und Lesezeichen werden auch hier gespeichert.">
+  "Du surfst im Vergessen Modus. Das heißt, dass die Websites, die du in diesem Modus besuchst, nicht in deinem Verlauf gespeichert werden, und dass auch temporäre Dateien und Cookies &quot;vergessen&quot; werden. Downloads und Lesezeichen werden auch hier gespeichert.">
 <!ENTITY cliqzPrivateBrowsing.note
   "Dein Internetanbieter oder auch dein Arbeitgeber können weiterhin verfolgen, welche Seiten du besuchst, wenn Anti-Tracking deaktiviert ist.">
 <!ENTITY cliqzPrivateBrowsing.learnMore
