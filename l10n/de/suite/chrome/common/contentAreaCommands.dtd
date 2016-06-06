@@ -11,7 +11,7 @@
 <!ENTITY openLinkCmdInTab.accesskey   "T">
 <!ENTITY openLinkCmd.label            "Link in neuem Fenster öffnen">
 <!ENTITY openLinkCmd.accesskey        "F">
-<!ENTITY openLinkCmdInPrivateWindow.label     "Link in privatem Fenster öffnen">
+<!ENTITY openLinkCmdInPrivateWindow.label     "Link in Vergessen Fenster öffnen">
 <!ENTITY openLinkCmdInPrivateWindow.accesskey "v">
 <!ENTITY openLinkInWindowCmd.label    "Öffnen">
 <!ENTITY openLinkInWindowCmd.accesskey "f">

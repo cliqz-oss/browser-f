@@ -22,7 +22,7 @@
 <!ENTITY newNavigatorCmd.label "Browser-Fenster">
 <!ENTITY newNavigatorCmd.key "N">
 <!ENTITY newNavigatorCmd.accesskey "F">
-<!ENTITY newPrivateWindowCmd.label "Privates Fenster">
+<!ENTITY newPrivateWindowCmd.label "Vergessen Fenster">
 <!ENTITY newPrivateWindowCmd.key "B">
 <!ENTITY newPrivateWindowCmd.accesskey "p">
 <!ENTITY printSetupCmd.label "Seite einrichten…">

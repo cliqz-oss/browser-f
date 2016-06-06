@@ -91,7 +91,7 @@
      We can't use android plural forms, sadly. See bug #753859. -->
 <!ENTITY num_tabs2 "&formatD; Tabs">
 <!ENTITY new_tab_opened "Neuer Tab geöffnet">
-<!ENTITY new_private_tab_opened "Neuer privater Tab geöffnet">
+<!ENTITY new_private_tab_opened "Neuer Vergessen Tab geöffnet">
 <!-- Localization note (switch_button_message): This string should be as short
      as possible because it's shown as a label in a toast.  Ideally, this string
      is upper-case, to match Google and Android's convention. -->
@@ -402,11 +402,11 @@ size. -->
 <!ENTITY page "Seite">
 <!ENTITY tools "Extras">
 <!ENTITY new_tab "Neuer Tab">
-<!ENTITY new_private_tab "Neuer privater Tab">
+<!ENTITY new_private_tab "Neuer Vergessen Tab">
 <!ENTITY close_all_tabs "Alle Tabs schließen">
-<!ENTITY close_private_tabs "Private Tabs schließen">
+<!ENTITY close_private_tabs "Vergessen Tabs schließen">
 <!ENTITY tabs_normal "Normal">
-<!ENTITY tabs_private "Privat">
+<!ENTITY tabs_private "Vergessen">
 <!ENTITY tabs_synced "Sync">
 <!ENTITY set_image_fail "Kann Grafik nicht verwenden">
 <!ENTITY set_image_path_fail "Kann Grafik nicht speichern">
@@ -427,7 +427,7 @@ size. -->
 <!ENTITY media_stop "Stopp">
 
 <!ENTITY contextmenu_open_new_tab "In neuem Tab öffnen">
-<!ENTITY contextmenu_open_private_tab "In privatem Tab öffnen">
+<!ENTITY contextmenu_open_private_tab "In Vergessen Tab öffnen">
 <!ENTITY contextmenu_remove "Löschen">
 <!ENTITY contextmenu_add_to_launcher "Zu Startbildschirm hinzufügen">
 <!ENTITY contextmenu_share "Teilen">
@@ -541,7 +541,7 @@ size. -->
 <!ENTITY home_selected_empty "In dem ausgewählten Zeitraum besuchte Webseiten werden hier angezeigt.">
 <!-- Localization note (home_most_recent_emptyhint2): "Psst" is a sound that might be used to attract someone's attention unobtrusively, and intended to hint at Private Browsing to the user.
      The placeholders &formatS1; and &formatS2; are used to mark the location of text underlining. -->
-<!ENTITY home_most_recent_emptyhint2 "Psst: Beim Verwenden von &formatS1;Neuer privater Tab&formatS2; werden die besuchten Seiten nicht gespeichert.">
+<!ENTITY home_most_recent_emptyhint2 "Psst: Beim Verwenden von &formatS1;Neuer Vergessen Tab&formatS2; werden die besuchten Seiten nicht gespeichert.">
 <!ENTITY home_reading_list_empty "Hier werden die für später gespeicherten Artikel angezeigt.">
 
 <!-- Localization note (home_default_empty): This string is used as the default text when there
@@ -748,7 +748,7 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      a restricted profile (e.g. child). Used inside the Android settings UI. -->
 <!ENTITY restrictable_feature_addons_installation "Add-ons">
 <!ENTITY restrictable_feature_addons_installation_description "Funktionen oder Funktionalität von Firefox erweitern. Hinweis: Add-ons können bestimmte Beschränkungen deaktivieren.">
-<!ENTITY restrictable_feature_private_browsing "Privater Modus">
+<!ENTITY restrictable_feature_private_browsing "Vergessen Modus">
 <!ENTITY restrictable_feature_private_browsing_description "Erlaubt es Familienmitgliedern zu surfen, ohne dass Informationen über die besuchten Websites gespeichert werden.">
 <!ENTITY restrictable_feature_clear_history "Chronik löschen">
 <!ENTITY restrictable_feature_clear_history_description "Erlaubt es Familienmitgliedern Informationen über besuchte Websites zu löschen.">

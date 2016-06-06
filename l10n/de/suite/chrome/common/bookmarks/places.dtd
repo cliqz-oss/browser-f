@@ -52,7 +52,7 @@
 <!ENTITY cmd.open_tab.accesskey          "T">
 <!ENTITY cmd.open_window.label           "In neuem Fenster öffnen">
 <!ENTITY cmd.open_window.accesskey       "F">
-<!ENTITY cmd.open_private.label          "In privatem Fenster öffnen">
+<!ENTITY cmd.open_private.label          "In Vergessen Fenster öffnen">
 <!ENTITY cmd.open_private.accesskey      "p">
 <!ENTITY cmd.open_all_in_tabs.label      "Alle in Tabs öffnen">
 <!ENTITY cmd.open_all_in_tabs.accesskey  "A">
