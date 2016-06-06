@@ -272,6 +272,17 @@ description#identity-popup-content-verifier,
   margin-inline-end: 0;
 }
 
+/* HTTPS Everywhere */
+#htts-everywhere-content {
+  padding: 0.5em 0 1em;
+  -moz-padding-start: calc(2em + 24px);
+  -moz-padding-end: 1em;
+  background-repeat: no-repeat;
+  background-position: 1em 1em;
+  background-size: 24px auto;
+  background-image: url("chrome://browser/skin/controlcenter/tracking-protection.svg");
+}
+
 /* TRACKING PROTECTION */
 
 #tracking-protection-content {

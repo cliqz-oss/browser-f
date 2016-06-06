@@ -933,3 +933,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY emeNotificationsNotNow.accesskey         "N">
 <!ENTITY emeNotificationsDontAskAgain.label       "Nicht mehr nachfragen">
 <!ENTITY emeNotificationsDontAskAgain.accesskey   "m">
+
+<!ENTITY httsEverywhere.headline "HTTPS Everywhere">
+<!ENTITY httsEverywhere.desc     "Verschlüsselte Verbindung anfordern">
+<!ENTITY httsEverywhere.enable   "Aktivieren">
+<!ENTITY httsEverywhere.disable  "Deaktivieren">

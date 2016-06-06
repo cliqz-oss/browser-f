@@ -7209,7 +7209,37 @@ var gIdentityHandler = {
     if (event.target == this._identityPopup) {
       window.addEventListener("focus", this, true);
     }
+
+
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
+      if(addon && addon.isActive){
+        document.getElementById("httsEverywhereGroup").hidden = false;
+        gIdentityHandler.updateHttpsEverywhereUIstate();
+      }
+    });
   },
+
+  updateHttpsEverywhereUIstate: function(){
+    var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
+    if(Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF)){
+      document.getElementById("httsEverywhere-enable").hidden = true;
+      document.getElementById("httsEverywhere-disable").hidden = false;
+    } else {
+      document.getElementById("httsEverywhere-enable").hidden = false;
+      document.getElementById("httsEverywhere-disable").hidden = true;
+    }
+
+    BrowserReload();
+  },
+
+  toggleHttpsEverywhere: function(){
+    var HTTPSEverywhere = Components.classes["@eff.org/https-everywhere;1"]
+                      .getService(Components.interfaces.nsISupports)
+                      .wrappedJSObject;
+    HTTPSEverywhere.toggleEnabledState();
+    gIdentityHandler.updateHttpsEverywhereUIstate();
+  },
+
 
   onPopupHidden(event) {
     if (event.target == this._identityPopup) {
