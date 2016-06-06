@@ -69,6 +69,21 @@
               label="&blockWebForgeries.label;"
               accesskey="&blockWebForgeries.accesskey;"
               preference="browser.safebrowsing.enabled" />
+
+    <!-- HTTPS Everywhere -->
+    <vbox id="httsEverywhereGroup" hidden="true">
+      <checkbox id="httsEverywhereEnable"
+                label="&httpsEverywhere.label;"
+                accesskey="&httpsEverywhere.accesskey;"
+                oncommand="gSecurityPane.toggleHttpsEverywhere();"
+                />
+      <hbox align="start">
+        <label>&httpsEverywhereDesc.label;</label>
+        <label class="text-link"
+               value="&httpsEverywhereMore.label;"
+               href="https://www.eff.org/https-everywhere"/>
+      </hbox>
+    </vbox>
   </vbox>
 </groupbox>
 
