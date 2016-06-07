@@ -935,7 +935,5 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY emeNotificationsDontAskAgain.accesskey   "D">
 
 
-<!ENTITY httsEverywhere.headline "HTTPS Everywhere">
-<!ENTITY httsEverywhere.desc     "Use encrypted connection">
-<!ENTITY httsEverywhere.enable   "Enable">
-<!ENTITY httsEverywhere.disable  "Disable">
+<!ENTITY httpsEverywhere.headline "HTTPS Everywhere">
+<!ENTITY httpsEverywhere.desc     "Use encrypted connection">

@@ -26,8 +26,8 @@ var gSecurityPane = {
       if(addon && addon.isActive){
         var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
 
-        document.getElementById("httsEverywhereGroup").hidden = false;
-        document.getElementById("httsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
+        document.getElementById("httpsEverywhereGroup").hidden = false;
+        document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
       }
     })
 

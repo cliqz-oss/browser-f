@@ -91,22 +91,16 @@
           <description>&identity.permissionsEmpty;</description>
         </vbox>
       </hbox>
-      <hbox id="httsEverywhereGroup"
+      <hbox id="httpsEverywhereGroup"
             class="identity-popup-section"
             hidden="true">
-        <vbox flex="1" id="htts-everywhere-content">
-          <description class="identity-popup-headline"
-                       crop="end"
-                       value="&httsEverywhere.headline;" />
-          <description>&httsEverywhere.desc;</description>
-          <button id="httsEverywhere-enable"
-                  label="&httsEverywhere.enable;"
-                  oncommand="gIdentityHandler.toggleHttpsEverywhere();"
-                  hidden="true"/>
-          <button id="httsEverywhere-disable"
-                  label="&httsEverywhere.disable;"
-                  oncommand="gIdentityHandler.toggleHttpsEverywhere();"
-                  hidden="true"/>
+        <vbox flex="1" id="https-everywhere-content">
+          <label class="identity-popup-headline"
+                       value="&httpsEverywhere.headline;" />
+          <description>&httpsEverywhere.desc;</description>
+          <button id="httpsEverywhere-toggle"
+                  label="HTTP"
+                  oncommand="gIdentityHandler.toggleHttpsEverywhere();"/>
         </vbox>
       </hbox>
     </panelview>

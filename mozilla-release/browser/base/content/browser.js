@@ -7213,23 +7213,25 @@ var gIdentityHandler = {
 
     AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
       if(addon && addon.isActive){
-        document.getElementById("httsEverywhereGroup").hidden = false;
         gIdentityHandler.updateHttpsEverywhereUIstate();
       }
     });
   },
 
   updateHttpsEverywhereUIstate: function(){
-    var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
-    if(Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF)){
-      document.getElementById("httsEverywhere-enable").hidden = true;
-      document.getElementById("httsEverywhere-disable").hidden = false;
-    } else {
-      document.getElementById("httsEverywhere-enable").hidden = false;
-      document.getElementById("httsEverywhere-disable").hidden = true;
-    }
+    var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled",
+        button = document.getElementById("httpsEverywhere-toggle"),
+        box = document.getElementById("httpsEverywhereGroup");
 
-    BrowserReload();
+    box.hidden = false;
+
+    if(Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF)){
+      button.label = gBrowser.mStringBundle.getString("httpsEverywhere.disable");
+      box.setAttribute("state", "enabled");
+    } else {
+      button.label = gBrowser.mStringBundle.getString("httpsEverywhere.enable");
+      box.setAttribute("state", "disabled");
+    }
   },
 
   toggleHttpsEverywhere: function(){
@@ -7238,6 +7240,8 @@ var gIdentityHandler = {
                       .wrappedJSObject;
     HTTPSEverywhere.toggleEnabledState();
     gIdentityHandler.updateHttpsEverywhereUIstate();
+
+    BrowserReload();
   },
 
 

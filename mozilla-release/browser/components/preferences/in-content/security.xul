@@ -71,8 +71,8 @@
               preference="browser.safebrowsing.enabled" />
 
     <!-- HTTPS Everywhere -->
-    <vbox id="httsEverywhereGroup" hidden="true">
-      <checkbox id="httsEverywhereEnable"
+    <vbox id="httpsEverywhereGroup" hidden="true">
+      <checkbox id="httpsEverywhereEnable"
                 label="&httpsEverywhere.label;"
                 accesskey="&httpsEverywhere.accesskey;"
                 oncommand="gSecurityPane.toggleHttpsEverywhere();"
