@@ -62,6 +62,12 @@ pref("extensions.blocklist.url", "https://blocklist.addons.mozilla.org/blocklist
 pref("extensions.blocklist.detailsURL", "https://www.mozilla.org/%LOCALE%/blocklist/");
 pref("extensions.blocklist.itemURL", "https://blocklist.addons.mozilla.org/%LOCALE%/%APP%/blocked/%blockID%");
 
+// Kinto blocklist preferences
+pref("services.kinto.base", "https://firefox.settings.services.mozilla.com/v1");
+pref("services.kinto.bucket", "blocklists");
+pref("services.kinto.onecrl.collection", "certificates");
+pref("services.kinto.onecrl.checked", 0);
+
 pref("extensions.update.autoUpdateDefault", true);
 
 pref("extensions.hotfix.id", "firefox-hotfix@mozilla.org");
@@ -529,8 +535,6 @@ pref("privacy.sanitize.sanitizeOnShutdown", false);
 
 pref("privacy.sanitize.migrateFx3Prefs",    false);
 
-pref("privacy.sanitize.migrateClearSavedPwdsOnExit", false);
-
 pref("privacy.panicButton.enabled",         true);
 
 pref("network.proxy.share_proxy_settings",  false); // use the same proxy settings for all protocols
@@ -655,187 +659,6 @@ pref("plugin.defaultXpi.state", 2);
 pref("plugin.state.flash", 2);
 pref("plugin.state.java", 1);
 
-// Whitelist Requests
-
-// Unity player, bug 979849
-#ifdef XP_WIN
-pref("plugin.state.npunity3d", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.unity web player", 2);
-#endif
-
-// Cisco Jabber SDK, bug 980133
-#ifdef XP_WIN
-pref("plugin.state.npciscowebcommunicator", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.ciscowebcommunicator", 2);
-#endif
-
-// McAfee Security Scanner detection plugin, bug 980772
-#ifdef XP_WIN
-pref("plugin.state.npmcafeemss", 2);
-#endif
-
-// Cisco VGConnect for directv.com, bug 981403 & bug 1051772
-#ifdef XP_WIN
-pref("plugin.state.npplayerplugin", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.playerplugin", 2);
-pref("plugin.state.playerplugin.dtv", 2);
-pref("plugin.state.playerplugin.ciscodrm", 2);
-pref("plugin.state.playerplugin.charter", 2);
-#endif
-
-// Cisco Jabber Client, bug 981905
-#ifdef XP_WIN
-pref("plugin.state.npchip", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.cisco jabber guest plug-in", 2);
-#endif
-
-// Estonian ID-card plugin, bug 982045
-#ifdef XP_WIN
-pref("plugin.state.npesteid-firefox-plugin", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.esteidfirefoxplugin", 2);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-pref("plugin.state.npesteid-firefox-plugin", 2);
-#endif
-
-// coupons.com, bug 984441
-#ifdef XP_WIN
-pref("plugin.state.npmozcouponprinter", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.couponprinter-firefox_v", 2);
-#endif
-
-// Nexus Personal BankID, bug 987056
-pref("plugin.state.npbispbrowser", 2);
-
-// Gradecam, bug 988119
-#ifdef XP_WIN
-pref("plugin.state.npgcplugin", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.gcplugin", 2);
-#endif
-
-// Smart Card Plugin, bug 988781
-#ifdef XP_WIN
-pref("plugin.state.npwebcard", 2);
-#endif
-
-// Cisco WebEx, bug 989096
-#ifdef XP_WIN
-pref("plugin.state.npatgpc", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.webex", 2);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-pref("plugin.state.npatgpc", 2);
-#endif
-
-// Skype, bug 990067
-#ifdef XP_WIN
-pref("plugin.state.npskypewebplugin", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.skypewebplugin", 2);
-#endif
-
-// Facebook video calling, bug 990068
-#ifdef XP_WIN
-pref("plugin.state.npfacebookvideocalling", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.facebookvideocalling", 2);
-#endif
-
-// MS Office Lync plugin, bug 990069
-#ifdef XP_WIN
-pref("plugin.state.npmeetingjoinpluginoc", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.lwaplugin", 2);
-#endif
-
-// VidyoWeb, bug 990286
-#ifdef XP_WIN
-pref("plugin.state.npvidyoweb", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.npvidyoweb", 2);
-pref("plugin.state.vidyoweb", 2);
-#endif
-
-// McAfee Virtual Technician, bug 981503
-#ifdef XP_WIN
-pref("plugin.state.npmvtplugin", 2);
-#endif
-
-// Verimatrix ViewRightWeb, bug 989872
-#ifdef XP_WIN
-pref("plugin.state.npviewright", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.viewrightwebplayer", 2);
-#endif
-
-// McAfee SiteAdvisor Enterprise, bug 987057
-#ifdef XP_WIN
-pref("plugin.state.npmcffplg", 2);
-#endif
-
-// F5 Networks SSLVPN plugin, bug 985640
-#ifdef XP_MACOSX
-pref("plugin.state.f5 ssl vpn plugin", 2);
-pref("plugin.state.f5 sam inspection host plugin", 2);
-#endif
-
-// Roblox Launcher Plugin, bug 1024073
-#ifdef XP_WIN
-pref("plugin.state.nprobloxproxy", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.nproblox", 2);
-#endif
-
-// Box Edit, bug 1029654
-#ifdef XP_WIN
-pref("plugin.state.npboxedit", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.box edit", 2);
-#endif
-
-// Nexus Personal, bug 1024965
-#ifdef XP_WIN
-pref("plugin.state.np_prsnl", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.personalplugin", 2);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-pref("plugin.state.libplugins", 2);
-#endif
-
-// Novell iPrint Client, bug 1036693
-#ifdef XP_WIN
-pref("plugin.state.npnipp", 2);
-pref("plugin.state.npnisp", 2);
-#endif
-#ifdef XP_MACOSX
-pref("plugin.state.iprint", 2);
-#endif
-
 #ifdef XP_MACOSX
 pref("browser.preferences.animateFadeIn", true);
 #else
@@ -955,6 +778,10 @@ pref("browser.safebrowsing.downloads.enabled", true);
 pref("browser.safebrowsing.downloads.remote.enabled", true);
 pref("browser.safebrowsing.downloads.remote.timeout_ms", 10000);
 pref("browser.safebrowsing.downloads.remote.url", "https://sb-ssl.google.com/safebrowsing/clientreport/download?key=%GOOGLE_API_KEY%");
+pref("browser.safebrowsing.downloads.remote.block_dangerous",            true);
+pref("browser.safebrowsing.downloads.remote.block_dangerous_host",       true);
+pref("browser.safebrowsing.downloads.remote.block_potentially_unwanted", false);
+pref("browser.safebrowsing.downloads.remote.block_uncommon",             false);
 pref("browser.safebrowsing.debug", false);
 
 pref("browser.safebrowsing.provider.google.lists", "goog-badbinurl-shavar,goog-downloadwhite-digest256,goog-phish-shavar,goog-malware-shavar,goog-unwanted-shavar");
@@ -1193,10 +1020,6 @@ pref("security.sandbox.content.level", 2);
 pref("security.sandbox.content.level", 0);
 #endif
 
-// ID (a UUID when set by gecko) that is used as a per profile suffix to a low
-// integrity temp directory.
-pref("security.sandbox.content.tempDirSuffix", "");
-
 #if defined(MOZ_STACKWALKING)
 // This controls the depth of stack trace that is logged when Windows sandbox
 // logging is turned on.  This is only currently available for the content
@@ -1217,6 +1040,15 @@ pref("security.sandbox.windows.log.stackTraceDepth", 0);
 // process is killed when all windows are closed, so a change will take effect
 // when the 1st window is opened.
 pref("security.sandbox.content.level", 1);
+#endif
+
+#if defined(XP_MACOSX) || defined(XP_WIN)
+#if defined(MOZ_SANDBOX) && defined(MOZ_CONTENT_SANDBOX)
+// ID (a UUID when set by gecko) that is used to form the name of a
+// sandbox-writable temporary directory to be used by content processes
+// when a temporary writable file is required in a level 1 sandbox.
+pref("security.sandbox.content.tempDirSuffix", "");
+#endif
 #endif
 
 // This pref governs whether we attempt to work around problems caused by
@@ -1310,15 +1142,16 @@ pref("services.sync.prefs.sync.security.OCSP.require", true);
 pref("services.sync.prefs.sync.security.default_personal_cert", true);
 pref("services.sync.prefs.sync.security.tls.version.min", true);
 pref("services.sync.prefs.sync.security.tls.version.max", true);
+pref("services.sync.prefs.sync.services.sync.syncedTabs.showRemoteIcons", true);
 pref("services.sync.prefs.sync.signon.rememberSignons", true);
 pref("services.sync.prefs.sync.spellchecker.dictionary", true);
 pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 
-#ifdef NIGHTLY_BUILD
-pref("services.sync.syncedTabsUIRefresh", true);
-#else
-pref("services.sync.syncedTabsUIRefresh", false);
-#endif
+// A preference that controls whether we should show the icon for a remote tab.
+// This pref has no UI but exists because some people may be concerned that
+// fetching these icons to show remote tabs may leak information about that
+// user's tabs and bookmarks. Note this pref is also synced.
+pref("services.sync.syncedTabs.showRemoteIcons", true);
 
 // Developer edition preferences
 #ifdef MOZ_DEV_EDITION
@@ -1363,6 +1196,9 @@ pref("browser.newtabpage.directory.ping", "https://tiles.services.mozilla.com/v3
 // activates the remote-hosted newtab page
 pref("browser.newtabpage.remote", false);
 
+// Toggles endpoints allowed for remote newtab communications
+pref("browser.newtabpage.remote.mode", "production");
+
 // Enable the DOM fullscreen API.
 pref("full-screen-api.enabled", true);
 
@@ -1383,11 +1219,6 @@ pref("pdfjs.firstRun", true);
 pref("pdfjs.previousHandler.preferredAction", 0);
 pref("pdfjs.previousHandler.alwaysAskBeforeHandling", false);
 
-// Shumway is only bundled in Nightly.
-#ifdef NIGHTLY_BUILD
-pref("shumway.disabled", true);
-#endif
-
 // The maximum amount of decoded image data we'll willingly keep around (we
 // might keep around more than this, but we'll try to get down to this value).
 // (This is intentionally on the high side; see bug 746055.)
@@ -1399,8 +1230,6 @@ pref("social.sidebar.unload_timeout_ms", 10000);
 // is true. Pref'd off for release while usage testing is done through beta.
 pref("social.share.activationPanelEnabled", true);
 pref("social.shareDirectory", "https://activations.cdn.mozilla.net/sharePanel.html");
-
-pref("dom.identity.enabled", false);
 
 // Block insecure active content on https pages
 pref("security.mixed_content.block_active_content", true);
@@ -1477,7 +1306,7 @@ pref("identity.fxaccounts.remote.webchannel.uri", "https://accounts.firefox.com/
 // The URL we take the user to when they opt to "manage" their Firefox Account.
 // Note that this will always need to be in the same TLD as the
 // "identity.fxaccounts.remote.signup.uri" pref.
-pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings");
+pref("identity.fxaccounts.settings.uri", "https://accounts.firefox.com/settings?service=sync&context=fx_desktop_v3");
 
 // The remote URL of the FxA Profile Server
 pref("identity.fxaccounts.remote.profile.uri", "https://profile.accounts.firefox.com/v1");
@@ -1527,9 +1356,16 @@ pref("media.gmp.decoder.h264", 2);
 // decode H.264.
 pref("media.gmp.trial-create.enabled", true);
 
-#ifdef MOZ_ADOBE_EME
+#if defined(MOZ_ADOBE_EME) || defined(MOZ_WIDEVINE_EME)
 pref("browser.eme.ui.enabled", true);
+#endif
+
+#ifdef MOZ_ADOBE_EME
 pref("media.gmp-eme-adobe.enabled", true);
+#endif
+
+#ifdef MOZ_WIDEVINE_EME
+pref("media.gmp-widevinecdm.enabled", true);
 #endif
 
 // Play with different values of the decay time and get telemetry,
@@ -1547,8 +1383,6 @@ pref("browser.translation.engine", "bing");
 // Telemetry settings.
 // Determines if Telemetry pings can be archived locally.
 pref("toolkit.telemetry.archive.enabled", true);
-// Whether we enable opt-out Telemetry for a sample of the release population.
-pref("toolkit.telemetry.optoutSample", true);
 
 // Telemetry experiments settings.
 pref("experiments.enabled", true);
@@ -1604,6 +1438,9 @@ pref("browser.defaultbrowser.notificationbar", false);
 // the hang monitor.
 pref("dom.ipc.cpow.timeout", 500);
 
+// Causes access on unsafe CPOWs from browser code to throw by default.
+pref("dom.ipc.cpows.forbid-unsafe-from-browser", true);
+
 // Enable e10s hang monitoring (slow script checking and plugin hang
 // detection).
 pref("dom.ipc.processHangMonitor", true);
@@ -1627,7 +1464,6 @@ pref("reader.errors.includeURLs", true);
 pref("view_source.tab", true);
 
 pref("dom.serviceWorkers.enabled", true);
-pref("dom.serviceWorkers.interception.enabled", true);
 pref("dom.serviceWorkers.openWindow.enabled", true);
 pref("dom.webnotifications.serviceworker.enabled", true);
 
@@ -1648,5 +1484,8 @@ pref("media.webspeech.synth.enabled", true);
 pref("browser.esedbreader.loglevel", "Error");
 
 pref("browser.laterrun.enabled", false);
+
+// Enable browser frames for use on desktop.  Only exposed to chrome callers.
+pref("dom.mozBrowserFramesEnabled", true);
 
 pref("extensions.pocket.enabled", true);
