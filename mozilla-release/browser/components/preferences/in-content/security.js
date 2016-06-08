@@ -4,6 +4,7 @@
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Components.utils.import("resource://gre/modules/AddonManager.jsm");
+var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
 var gSecurityPane = {
   _pane: null,
@@ -163,8 +164,9 @@ var gSecurityPane = {
 
     var checkbox = document.getElementById("useMasterPassword");
     checkbox.checked = !noMP;
-  },
 
+    gPasswordManagers.init();
+  },
   /**
    * Returns true if the user has a master password set and false otherwise.
    */
@@ -251,3 +253,72 @@ var gSecurityPane = {
   }
 
 };
+
+var gPasswordManagers = {
+  init: function(){
+    this._listBox = document.getElementById("features-list");
+
+    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results){
+      var available = results[0],
+          existing  = results[1],
+          existingIDs = [];
+
+      //clean the view
+      while (this._listBox.firstChild && this._listBox.firstChild.localName == "richlistitem")
+        this._listBox.removeChild(this._listBox.firstChild);
+
+      // add already installed password managers
+      for (let addon of existing){
+        this._listBox.appendChild(this.createItem(addon, "installed"));
+        existingIDs.push(addon.id);
+      }
+
+      //remove the ones already installed
+      var available = available.filter(function(addon){ return existingIDs.indexOf(addon.id) == -1 });
+      for (let addon of available){
+         this._listBox.appendChild(this.createItem(addon, "new"));
+      }
+
+    }).bind(this));
+  },
+
+  getExisting: function(){
+    let KNOWN_PW_MANAGERS = ["support@lastpass.com"];
+
+    return new Promise(function(resolve, reject){
+      AddonManager.getAllAddons(function(all){
+        // filter only installed extensions
+        var extensions = all.filter(function(addon){
+          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
+        });
+
+        resolve(extensions);
+      });
+    });
+  },
+  // can be a promise if we decide to move the list to backend
+  getAvailable: function(){
+    return [{
+      "id": "support@lastpass.com",
+      "icons": {
+       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/8/8542-64.png?modified=1457436015"
+      },
+      "name": "LastPass",
+      "homepageURL": "https://lastpass.com/",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/support@lastpass.com/latest.xpi"
+    }];
+  },
+  createItem: function(aObj, status) {
+    let item = document.createElement("richlistitem");
+
+    item.setAttribute("class", "cliqz-feature");
+    item.setAttribute("name", aObj.name);
+    item.setAttribute("description", aObj.description);
+    item.setAttribute("type", aObj.type);
+    item.setAttribute("value", aObj.id);
+    item.setAttribute("status", status);
+
+    item.mAddon = aObj;
+    return item;
+  }
+}

@@ -31,3 +31,44 @@ listitem.offlineapp {
     image-rendering: -moz-crisp-edges;
   }
 }
+
+.password-managers {
+  margin-top: 10px;
+}
+
+.cliqz-feature {
+  -moz-box-orient: vertical;
+  -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#cliqz-feature");
+  padding: 5px;
+}
+
+.cliqz-feature .version {
+  color: gray;
+  padding-left: 5px;
+}
+
+.cliqz-feature[status="new"] .addon-control.remove,
+.cliqz-feature[status="new"] .version {
+  display: none;
+}
+
+.cliqz-feature[status="installed"] .addon-control.install {
+  display: none;
+}
+
+.cliqz-feature .icon {
+  width: 48px;
+  height: 48px;
+  margin: 3px 7px;
+  -moz-box-align: center;
+  -moz-box-pack: center;
+}
+
+.cliqz-feature .name {
+  font-weight: bold;
+}
+
+.cliqz-feature .homepage-container {
+  margin-right: 10px;
+}
+

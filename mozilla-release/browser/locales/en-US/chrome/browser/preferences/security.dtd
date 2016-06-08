@@ -43,3 +43,7 @@
 <!ENTITY  httpsEverywhere.accesskey      "H">
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
 <!ENTITY  httpsEverywhereMore.label      "Learn more">
+
+<!ENTITY  passwordManager.title          "Password Manager">
+<!ENTITY  passwordManager.desc1          "CLIQZ unterstützt die Einbindung von LastPass, einer Fremdsoftware für Passwort Management.">
+<!ENTITY  passwordManager.desc2          "Bitte beachte, dass CLIQZ keine Kontrolle darüber hat, auf welche Daten diese Fremdsoftware Zugriff hat.">
