@@ -15,18 +15,13 @@ XPIDL_SOURCES += [
 XPIDL_MODULE = 'migration'
 
 EXTRA_COMPONENTS += [
-<<<<<<< HEAD
-||||||| merged common ancestors
-    'FirefoxProfileMigrator.js',
-=======
     'ChromeProfileMigrator.js',
-    'FirefoxProfileMigrator.js',
->>>>>>> origin/upstream-releases
     'ProfileMigrator.js',
 ]
 
 EXTRA_PP_COMPONENTS += [
     'BrowserProfileMigrators.manifest',
+    'FirefoxProfileMigrator.js',
 ]
 
 EXTRA_JS_MODULES += [
@@ -52,33 +47,6 @@ if CONFIG['OS_ARCH'] == 'WINNT':
     DEFINES['HAS_IE_MIGRATOR'] = True
     DEFINES['HAS_EDGE_MIGRATOR'] = True
 
-<<<<<<< HEAD
-EXTRA_PP_COMPONENTS += [
-    'BrowserProfileMigrators.manifest',
-    'ChromeProfileMigrator.js',
-    'FirefoxProfileMigrator.js',
-]
-
-if CONFIG['OS_ARCH'] == 'WINNT':
-    EXTRA_PP_COMPONENTS += [
-        'SafariProfileMigrator.js',
-    ]
-    DEFINES['HAS_SAFARI_MIGRATOR'] = True
-
-||||||| merged common ancestors
-EXTRA_PP_COMPONENTS += [
-    'BrowserProfileMigrators.manifest',
-    'ChromeProfileMigrator.js',
-]
-
-if CONFIG['OS_ARCH'] == 'WINNT':
-    EXTRA_PP_COMPONENTS += [
-        'SafariProfileMigrator.js',
-    ]
-    DEFINES['HAS_SAFARI_MIGRATOR'] = True
-
-=======
->>>>>>> origin/upstream-releases
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     EXTRA_COMPONENTS += [
         'SafariProfileMigrator.js',

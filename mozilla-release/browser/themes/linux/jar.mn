@@ -10,12 +10,8 @@ browser.jar:
   skin/classic/browser/aboutSessionRestore-window-icon.png
 #ifdef MOZ_SERVICES_SYNC
   skin/classic/browser/aboutSyncTabs.css
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
 * skin/classic/browser/syncedtabs/sidebar.css     (syncedtabs/sidebar.css)
->>>>>>> origin/upstream-releases
+#endif
   skin/classic/browser/actionicon-tab.png
 * skin/classic/browser/browser.css
 * skin/classic/browser/devedition.css

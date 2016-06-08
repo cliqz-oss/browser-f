@@ -1421,18 +1421,10 @@ var gBrowserInit = {
     if (!this._loadHandled)
       return;
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
     this._privateTabUI.stop();
 #endif
 
-    gDevToolsBrowser.forgetBrowserWindow(window);
-
-||||||| merged common ancestors
-    gDevToolsBrowser.forgetBrowserWindow(window);
-
-=======
->>>>>>> origin/upstream-releases
     let desc = Object.getOwnPropertyDescriptor(window, "DeveloperToolbar");
     if (desc && !desc.get) {
       DeveloperToolbar.destroy();

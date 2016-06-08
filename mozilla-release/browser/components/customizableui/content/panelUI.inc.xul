@@ -85,22 +85,6 @@
                        label="&appMenuHistory.clearRecent.label;"
                        class="subviewbutton"
                        command="Tools:Sanitize"/>
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-        <toolbarbutton id="sync-tabs-menuitem2"
-                       class="syncTabsMenuItem subviewbutton"
-                       label="&syncTabsMenu3.label;"
-                       oncommand="BrowserOpenSyncTabs();"
-                       hidden="true"/>
-#endif
-||||||| merged common ancestors
-        <toolbarbutton id="sync-tabs-menuitem2"
-                       class="syncTabsMenuItem subviewbutton"
-                       label="&syncTabsMenu3.label;"
-                       oncommand="BrowserOpenSyncTabs();"
-                       hidden="true"/>
-=======
->>>>>>> origin/upstream-releases
         <toolbarbutton id="appMenuRestoreLastSession"
                        label="&appMenuHistory.restoreSession.label;"
                        class="subviewbutton"

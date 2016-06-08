@@ -1797,12 +1797,8 @@
             var aForceNotRemote;
             var aNoReferrer;
             var aUserContextId;
-<<<<<<< HEAD
-            var aPrivate;
-||||||| merged common ancestors
-=======
             var aEventDetail;
->>>>>>> origin/upstream-releases
+            var aPrivate;
             if (arguments.length == 2 &&
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
@@ -1820,12 +1816,8 @@
               aForceNotRemote       = params.forceNotRemote;
               aNoReferrer           = params.noReferrer;
               aUserContextId        = params.userContextId;
-<<<<<<< HEAD
-              aPrivate              = params.private;
-||||||| merged common ancestors
-=======
               aEventDetail          = params.eventDetail;
->>>>>>> origin/upstream-releases
+              aPrivate              = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -1918,34 +1910,12 @@
               this.mPanelContainer.appendChild(notificationbox);
             }
 
-<<<<<<< HEAD
             // Passing underinitialized browser element (before binding
             // constructor has finished) is highly undesired. That's why it's
             // done after browser's notificationbox in inserted into DOM tree.
             t.linkedBrowser = b;
             this._tabForBrowser.set(b, t);
 
-            // We've waited until the tab is in the DOM to set the label. This
-            // allows the TabLabelModified event to be properly dispatched.
-            if (!aURI || isBlankPageURL(aURI)) {
-              t.label = this.mStringBundle.getString("tabs.emptyTabTitle");
-            } else if (aURI.toLowerCase().startsWith("javascript:")) {
-              // This can go away when bug 672618 or bug 55696 are fixed.
-              t.label = aURI;
-            }
-
-||||||| merged common ancestors
-            // We've waited until the tab is in the DOM to set the label. This
-            // allows the TabLabelModified event to be properly dispatched.
-            if (!aURI || isBlankPageURL(aURI)) {
-              t.label = this.mStringBundle.getString("tabs.emptyTabTitle");
-            } else if (aURI.toLowerCase().startsWith("javascript:")) {
-              // This can go away when bug 672618 or bug 55696 are fixed.
-              t.label = aURI;
-            }
-
-=======
->>>>>>> origin/upstream-releases
             this.tabContainer.updateVisibility();
 
             // wire up a progress listener for the new browser object.
