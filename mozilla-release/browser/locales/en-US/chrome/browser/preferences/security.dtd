@@ -38,3 +38,8 @@
 
 <!ENTITY  savedLogins.label              "Saved Logins…">
 <!ENTITY  savedLogins.accesskey          "L">
+
+<!ENTITY  httpsEverywhere.label          "Enable HTTPS Everywhere">
+<!ENTITY  httpsEverywhere.accesskey      "H">
+<!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere is a third-party service provided by that automatically enables HTTPS encryption wherever possible. ">
+<!ENTITY  httpsEverywhereMore.label      "Learn more">

@@ -7212,7 +7212,41 @@ var gIdentityHandler = {
     if (event.target == this._identityPopup) {
       window.addEventListener("focus", this, true);
     }
+
+
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
+      if(addon && addon.isActive){
+        gIdentityHandler.updateHttpsEverywhereUIstate();
+      }
+    });
   },
+
+  updateHttpsEverywhereUIstate: function(){
+    var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled",
+        button = document.getElementById("httpsEverywhere-toggle"),
+        box = document.getElementById("httpsEverywhereGroup");
+
+    box.hidden = false;
+
+    if(Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF)){
+      button.label = gBrowser.mStringBundle.getString("httpsEverywhere.disable");
+      box.setAttribute("state", "enabled");
+    } else {
+      button.label = gBrowser.mStringBundle.getString("httpsEverywhere.enable");
+      box.setAttribute("state", "disabled");
+    }
+  },
+
+  toggleHttpsEverywhere: function(){
+    var HTTPSEverywhere = Components.classes["@eff.org/https-everywhere;1"]
+                      .getService(Components.interfaces.nsISupports)
+                      .wrappedJSObject;
+    HTTPSEverywhere.toggleEnabledState();
+    gIdentityHandler.updateHttpsEverywhereUIstate();
+
+    BrowserReload();
+  },
+
 
   onPopupHidden(event) {
     if (event.target == this._identityPopup) {
