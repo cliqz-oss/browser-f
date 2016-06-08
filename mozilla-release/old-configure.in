@@ -3674,7 +3674,6 @@ MOZ_HELP_VIEWER=
 MOZ_SPELLCHECK=1
 MOZ_ANDROID_APZ=
 MOZ_TOOLKIT_SEARCH=1
-MOZ_UI_LOCALE=en-US
 MOZ_UNIVERSALCHARDET=1
 MOZ_URL_CLASSIFIER=
 MOZ_XUL=1
@@ -3713,9 +3712,25 @@ MOZ_CONTENT_SANDBOX=
 MOZ_GMP_SANDBOX=
 MOZ_SANDBOX=1
 MOZ_BINARY_EXTENSIONS=
-MOZ_ADDON_SIGNING=
-MOZ_REQUIRE_SIGNING=
+dnl DB-419: Preparations for automated tests running
+dnl MOZ_ADDON_SIGNING=
+dnl MOZ_REQUIRE_SIGNING=
 MOZ_DEVTOOLS=server
+
+# Set this ENV variable to 0 to disable Automatic private tab feature.
+# NB: CQZ_ADULT_DOMAINS_BF should be set to let feature actually work.
+AC_SUBST(CQZ_AUTO_PRIVATE_TAB)
+if test -z "$CQZ_AUTO_PRIVATE_TAB"; then
+  CQZ_AUTO_PRIVATE_TAB=1
+fi
+
+# Path to bloom filter database of adult domains.
+# NB: This must be relative to source root.
+# NB: File name must be exactly "adult-domains.bin" :(
+AC_SUBST(CQZ_ADULT_DOMAINS_BF)
+if test "$CQZ_ADULT_DOMAINS_BF"; then
+    CQZ_ADULT_DOMAINS_BF="${_topsrcdir}/$CQZ_ADULT_DOMAINS_BF"
+fi
 
 case "$target_os" in
     mingw*)
@@ -4466,6 +4481,11 @@ MOZ_ARG_ENABLE_STRING(ui-locale,
 [  --enable-ui-locale=ab-CD
                           Select the user interface locale (default: en-US)],
     MOZ_UI_LOCALE=$enableval )
+dnl DB-98: fix bug in FF configuration script with locale processing
+if test -z "$MOZ_UI_LOCALE"; then
+  MOZ_UI_LOCALE=en-US
+fi
+
 AC_SUBST(MOZ_UI_LOCALE)
 
 AC_SUBST(MOZ_OFFICIAL_BRANDING)
@@ -8448,7 +8468,8 @@ AC_SUBST(MOZ_CRASHREPORTER)
 AC_SUBST(MOZ_CRASHREPORTER_INJECTOR)
 AC_SUBST(MOZ_CRASHREPORTER_UPLOAD_FULL_SYMBOLS)
 AC_SUBST(MOZ_MAINTENANCE_SERVICE)
-AC_SUBST(MOZ_STUB_INSTALLER)
+dnl DB-564: Stub installer is not used in CLIQZ browser now
+dnl AC_SUBST(MOZ_STUB_INSTALLER)
 AC_SUBST(MOZ_VERIFY_MAR_SIGNATURE)
 AC_SUBST(MOZ_ENABLE_SIGNMAR)
 AC_SUBST(MOZ_UPDATER)
