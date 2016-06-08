@@ -45,7 +45,7 @@ public class StringHelper {
     public final String CONTEXT_MENU_BOOKMARK_LINK = "Bookmark Link";
     public final String CONTEXT_MENU_OPEN_LINK_IN_NEW_TAB = "Open Link in New Tab";
     public final String CONTEXT_MENU_OPEN_IN_NEW_TAB;
-    public final String CONTEXT_MENU_OPEN_LINK_IN_PRIVATE_TAB = "Open Link in Private Tab";
+    public final String CONTEXT_MENU_OPEN_LINK_IN_PRIVATE_TAB = "Open Link in Forget Tab";
     public final String CONTEXT_MENU_OPEN_IN_PRIVATE_TAB;
     public final String CONTEXT_MENU_COPY_LINK = "Copy Link";
     public final String CONTEXT_MENU_SHARE_LINK = "Share Link";

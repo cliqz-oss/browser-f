@@ -11,7 +11,7 @@
 <!ENTITY enter.accesskey "G">
 <!ENTITY chooseFile.label "Datei wählen…">
 <!ENTITY chooseFile.accesskey "D">
-<!ENTITY newPrivate.label "Neues privates Fenster">
+<!ENTITY newPrivate.label "Neues Vergessen Fenster">
 <!ENTITY newWindow.label "Neuem Browser-Fenster">
 <!ENTITY newTab.label "Neues Browser-Tab">
 <!ENTITY currentTab.label "Aktuelles Browser-Tab">

@@ -5,11 +5,11 @@
 <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
 %brandDTD;
 
-<!ENTITY aboutPrivateBrowsing.notPrivate       "You are currently not in a private window.">
-<!ENTITY privatebrowsingpage.openPrivateWindow.label "Open a Private Window">
+<!ENTITY aboutPrivateBrowsing.notPrivate       "You are currently not in a forget window.">
+<!ENTITY privatebrowsingpage.openPrivateWindow.label "Open a Forget Window">
 <!ENTITY privatebrowsingpage.openPrivateWindow.accesskey "P">
 
-<!ENTITY privateBrowsing.title                 "Private Browsing">
+<!ENTITY privateBrowsing.title                 "Forget Mode">
 
 <!-- LOCALIZATION NOTE (aboutPrivateBrowsing.width1):
      Width of the Private Browsing section. This should depend primarily on the
@@ -18,7 +18,7 @@
      30em to prevent the sections from wrapping on smaller window sizes.
      -->
 <!ENTITY aboutPrivateBrowsing.width1           "30em">
-<!ENTITY aboutPrivateBrowsing.title            "You're browsing privately">
+<!ENTITY aboutPrivateBrowsing.title            "You're in forget mode">
 
 <!ENTITY aboutPrivateBrowsing.info.notsaved    "Not Saved">
 <!ENTITY aboutPrivateBrowsing.info.history     "History">
