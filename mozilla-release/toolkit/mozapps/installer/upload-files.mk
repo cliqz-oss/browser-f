@@ -163,277 +163,104 @@ ifeq ($(MOZ_PKG_FORMAT),SFX7Z)
 endif
 
 #Create an RPM file
-<<<<<<< HEAD
-#ifeq ($(MOZ_PKG_FORMAT),RPM)
 ifeq ($(OS_ARCH), Linux)
-RPM_PKG_SUFFIX  = .rpm
-MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
-MOZ_RPM_RELEASE=$(MOZ_UPDATE_CHANNEL)
+	RPM_PKG_SUFFIX  = .rpm
+	MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
+	MOZ_RPM_RELEASE=$(MOZ_UPDATE_CHANNEL)
 
-RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
-RPMBUILD_RPMDIR=$(ABS_DIST)
-RPMBUILD_SRPMDIR=$(ABS_DIST)
-RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
-RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-RPMBUILD_BUILDDIR=$(ABS_DIST)/..
+	RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
+	RPMBUILD_RPMDIR=$(ABS_DIST)
+	RPMBUILD_SRPMDIR=$(ABS_DIST)
+	RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
+	RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+	RPMBUILD_BUILDDIR=$(ABS_DIST)/..
 
-SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
-RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
+	SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
+	RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
 
-RPM_CMD = \
-  echo Creating RPM && \
-  $(PYTHON) -m mozbuild.action.preprocessor \
-	-DMOZ_APP_NAME=$(MOZ_APP_NAME) \
-	-DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
-	$(RPM_INCIDENTALS)/mozilla.desktop \
-	-o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
-  rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
-	cp $(RPM_INCIDENTALS)/no-updates.js $(RPMBUILD_SOURCEDIR) &&  \
-  $(RPMBUILD) -bb \
-  $(SPEC_FILE) \
-  --target $(TARGET_CPU) \
-  --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
-  --define 'moz_app_name $(MOZ_APP_NAME)' \
-  --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
-  --define 'moz_app_version $(MOZ_APP_VERSION)' \
-  --define 'moz_app_version_display $(MOZ_APP_VERSION_DISPLAY)' \
-  --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
-  --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
-  --define 'buildid $(BUILDID)' \
-  $(if $(MOZ_SOURCE_REPO),--define 'moz_source_repo $(MOZ_SOURCE_REPO)') \
-  --define 'moz_source_stamp $(MOZ_SOURCE_STAMP)' \
-  --define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
-  --define '_topdir $(RPMBUILD_TOPDIR)' \
-  --define '_rpmdir $(RPMBUILD_RPMDIR)' \
-  --define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
-  --define '_specdir $(RPMBUILD_SPECDIR)' \
-  --define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
-  --define '_builddir $(RPMBUILD_BUILDDIR)' \
-  --define '_prefix $(prefix)' \
-  --define '_libdir $(libdir)' \
-  --define '_bindir $(bindir)' \
-  --define '_datadir $(datadir)' \
-  --define '_installdir $(installdir)'
+	RPM_CMD = \
+		echo Creating RPM && \
+		$(PYTHON) -m mozbuild.action.preprocessor \
+			-DMOZ_APP_NAME=$(MOZ_APP_NAME) \
+			-DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
+			$(RPM_INCIDENTALS)/mozilla.desktop \
+			-o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
+		rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
+		cp $(RPM_INCIDENTALS)/no-updates.js $(RPMBUILD_SOURCEDIR) &&  \
+		$(RPMBUILD) -bb \
+		$(SPEC_FILE) \
+		--target $(TARGET_CPU) \
+		--buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
+		--define 'moz_app_name $(MOZ_APP_NAME)' \
+		--define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
+		--define 'moz_app_version $(MOZ_APP_VERSION)' \
+		--define 'moz_app_version_display $(MOZ_APP_VERSION_DISPLAY)' \
+		--define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
+		--define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
+		--define 'buildid $(BUILDID)' \
+		--define 'moz_source_repo $(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)' \
+		--define 'moz_source_stamp $(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h)' \
+		--define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
+		--define '_topdir $(RPMBUILD_TOPDIR)' \
+		--define '_rpmdir $(RPMBUILD_RPMDIR)' \
+		--define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
+		--define '_specdir $(RPMBUILD_SPECDIR)' \
+		--define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
+		--define '_builddir $(RPMBUILD_BUILDDIR)' \
+		--define '_prefix $(prefix)' \
+		--define '_libdir $(libdir)' \
+		--define '_bindir $(bindir)' \
+		--define '_datadir $(datadir)' \
+		--define '_installdir $(installdir)'
 
-ifdef ENABLE_TESTS
-RPM_CMD += \
-  --define 'createtests yes' \
-  --define '_testsinstalldir $(shell basename $(installdir))'
-endif
+	ifdef ENABLE_TESTS
+		RPM_CMD += \
+			--define 'createtests yes' \
+			--define '_testsinstalldir $(shell basename $(installdir))'
+	endif
 
-ifdef INSTALL_SDK
-RPM_CMD += \
-  --define 'createdevel yes' \
-  --define '_idldir $(idldir)' \
-  --define '_sdkdir $(sdkdir)' \
-  --define '_includedir $(includedir)'
-endif
+	ifdef INSTALL_SDK
+		RPM_CMD += \
+			--define 'createdevel yes' \
+			--define '_idldir $(idldir)' \
+			--define '_sdkdir $(sdkdir)' \
+			--define '_includedir $(includedir)'
+	endif
 
-#For each of the main, tests, sdk rpms we want to make sure that
-#if they exist that they are in objdir/dist/ and that they get
-#uploaded and that they are beside the other build artifacts
-MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(RPM_PKG_SUFFIX)
-MAIN_DEB= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU).deb
-# Create deb package
-RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
-RPM_CMD += && fakeroot alien $(MAIN_RPM) --scripts
-# Rename newly created deb (alien does not provide such option)
-RPM_CMD += && mv `ls *.deb | head -1` $(MAIN_DEB)
-UPLOAD_EXTRA_FILES += $(MAIN_RPM)
-UPLOAD_EXTRA_FILES += $(MAIN_DEB)
-
-ifeq (0,1)
-ifdef ENABLE_TESTS
-TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(TESTS_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
-endif
-endif
+	#For each of the main, tests, sdk rpms we want to make sure that
+	#if they exist that they are in objdir/dist/ and that they get
+	#uploaded and that they are beside the other build artifacts
+	MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(RPM_PKG_SUFFIX)
+	MAIN_DEB= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU).deb
+	# Create deb package
+	RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
+	RPM_CMD += && fakeroot alien $(MAIN_RPM) --scripts
+	# Rename newly created deb (alien does not provide such option)
+	RPM_CMD += && mv `ls *.deb | head -1` $(MAIN_DEB)
+	UPLOAD_EXTRA_FILES += $(MAIN_RPM)
+	UPLOAD_EXTRA_FILES += $(MAIN_DEB)
 
 ifeq (0,1)
-ifdef INSTALL_SDK
-SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(SDK_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
-endif
-endif
-
-INNER_MAKE_PACKAGE += \
-	&& $(RPM_CMD)
-#Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
-INNER_UNMAKE_PACKAGE += \
-	&& $(error Try using rpm2cpio and cpio)
-||||||| merged common ancestors
-ifeq ($(MOZ_PKG_FORMAT),RPM)
-PKG_SUFFIX  = .rpm
-MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
-MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[0-9.]*//' )
-
-RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
-RPMBUILD_RPMDIR=$(ABS_DIST)
-RPMBUILD_SRPMDIR=$(ABS_DIST)
-RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
-RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-RPMBUILD_BUILDDIR=$(ABS_DIST)/..
-
-SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
-RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-
-RPM_CMD = \
-  echo Creating RPM && \
-  $(PYTHON) -m mozbuild.action.preprocessor \
-	-DMOZ_APP_NAME=$(MOZ_APP_NAME) \
-	-DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
-	$(RPM_INCIDENTALS)/mozilla.desktop \
-	-o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
-  rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
-  $(RPMBUILD) -bb \
-  $(SPEC_FILE) \
-  --target $(TARGET_CPU) \
-  --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
-  --define 'moz_app_name $(MOZ_APP_NAME)' \
-  --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
-  --define 'moz_app_version $(MOZ_APP_VERSION)' \
-  --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
-  --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
-  --define 'buildid $(BUILDID)' \
-  $(if $(MOZ_SOURCE_REPO),--define 'moz_source_repo $(MOZ_SOURCE_REPO)') \
-  --define 'moz_source_stamp $(MOZ_SOURCE_STAMP)' \
-  --define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
-  --define '_topdir $(RPMBUILD_TOPDIR)' \
-  --define '_rpmdir $(RPMBUILD_RPMDIR)' \
-  --define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
-  --define '_specdir $(RPMBUILD_SPECDIR)' \
-  --define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
-  --define '_builddir $(RPMBUILD_BUILDDIR)' \
-  --define '_prefix $(prefix)' \
-  --define '_libdir $(libdir)' \
-  --define '_bindir $(bindir)' \
-  --define '_datadir $(datadir)' \
-  --define '_installdir $(installdir)'
-
-ifdef ENABLE_TESTS
-RPM_CMD += \
-  --define 'createtests yes' \
-  --define '_testsinstalldir $(shell basename $(installdir))'
+	ifdef ENABLE_TESTS
+		TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+		UPLOAD_EXTRA_FILES += $(TESTS_RPM)
+		RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
+	endif
 endif
 
-ifdef INSTALL_SDK
-RPM_CMD += \
-  --define 'createdevel yes' \
-  --define '_idldir $(idldir)' \
-  --define '_sdkdir $(sdkdir)' \
-  --define '_includedir $(includedir)'
+ifeq (0,1)
+	ifdef INSTALL_SDK
+		SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
+		UPLOAD_EXTRA_FILES += $(SDK_RPM)
+		RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
+	endif
 endif
 
-#For each of the main, tests, sdk rpms we want to make sure that
-#if they exist that they are in objdir/dist/ and that they get
-#uploaded and that they are beside the other build artifacts
-MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(MAIN_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
-
-ifdef ENABLE_TESTS
-TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(TESTS_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
-endif
-
-ifdef INSTALL_SDK
-SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-UPLOAD_EXTRA_FILES += $(SDK_RPM)
-RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
-endif
-
-INNER_MAKE_PACKAGE = $(RPM_CMD)
-#Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
-INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
-=======
-ifeq ($(MOZ_PKG_FORMAT),RPM)
-  PKG_SUFFIX  = .rpm
-  MOZ_NUMERIC_APP_VERSION = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[^0-9.].*//' )
-  MOZ_RPM_RELEASE = $(shell echo $(MOZ_PKG_VERSION) | sed 's/[0-9.]*//' )
-
-  RPMBUILD_TOPDIR=$(ABS_DIST)/rpmbuild
-  RPMBUILD_RPMDIR=$(ABS_DIST)
-  RPMBUILD_SRPMDIR=$(ABS_DIST)
-  RPMBUILD_SOURCEDIR=$(RPMBUILD_TOPDIR)/SOURCES
-  RPMBUILD_SPECDIR=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-  RPMBUILD_BUILDDIR=$(ABS_DIST)/..
-
-  SPEC_FILE = $(RPMBUILD_SPECDIR)/mozilla.spec
-  RPM_INCIDENTALS=$(topsrcdir)/toolkit/mozapps/installer/linux/rpm
-
-  RPM_CMD = \
-    echo Creating RPM && \
-    $(PYTHON) -m mozbuild.action.preprocessor \
-      -DMOZ_APP_NAME=$(MOZ_APP_NAME) \
-      -DMOZ_APP_DISPLAYNAME='$(MOZ_APP_DISPLAYNAME)' \
-      $(RPM_INCIDENTALS)/mozilla.desktop \
-      -o $(RPMBUILD_SOURCEDIR)/$(MOZ_APP_NAME).desktop && \
-    rm -rf $(ABS_DIST)/$(TARGET_CPU) && \
-    $(RPMBUILD) -bb \
-    $(SPEC_FILE) \
-    --target $(TARGET_CPU) \
-    --buildroot $(RPMBUILD_TOPDIR)/BUILDROOT \
-    --define 'moz_app_name $(MOZ_APP_NAME)' \
-    --define 'moz_app_displayname $(MOZ_APP_DISPLAYNAME)' \
-    --define 'moz_app_version $(MOZ_APP_VERSION)' \
-    --define 'moz_numeric_app_version $(MOZ_NUMERIC_APP_VERSION)' \
-    --define 'moz_rpm_release $(MOZ_RPM_RELEASE)' \
-    --define 'buildid $(BUILDID)' \
-    --define 'moz_source_repo $(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)' \
-    --define 'moz_source_stamp $(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h)' \
-    --define 'moz_branding_directory $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)' \
-    --define '_topdir $(RPMBUILD_TOPDIR)' \
-    --define '_rpmdir $(RPMBUILD_RPMDIR)' \
-    --define '_sourcedir $(RPMBUILD_SOURCEDIR)' \
-    --define '_specdir $(RPMBUILD_SPECDIR)' \
-    --define '_srcrpmdir $(RPMBUILD_SRPMDIR)' \
-    --define '_builddir $(RPMBUILD_BUILDDIR)' \
-    --define '_prefix $(prefix)' \
-    --define '_libdir $(libdir)' \
-    --define '_bindir $(bindir)' \
-    --define '_datadir $(datadir)' \
-    --define '_installdir $(installdir)'
-
-  ifdef ENABLE_TESTS
-    RPM_CMD += \
-      --define 'createtests yes' \
-      --define '_testsinstalldir $(shell basename $(installdir))'
-  endif
-
-  ifdef INSTALL_SDK
-    RPM_CMD += \
-      --define 'createdevel yes' \
-      --define '_idldir $(idldir)' \
-      --define '_sdkdir $(sdkdir)' \
-      --define '_includedir $(includedir)'
-  endif
-
-  #For each of the main, tests, sdk rpms we want to make sure that
-  #if they exist that they are in objdir/dist/ and that they get
-  #uploaded and that they are beside the other build artifacts
-  MAIN_RPM= $(MOZ_APP_NAME)-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-  UPLOAD_EXTRA_FILES += $(MAIN_RPM)
-  RPM_CMD += && mv $(TARGET_CPU)/$(MAIN_RPM) $(ABS_DIST)/
-
-  ifdef ENABLE_TESTS
-    TESTS_RPM=$(MOZ_APP_NAME)-tests-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-    UPLOAD_EXTRA_FILES += $(TESTS_RPM)
-    RPM_CMD += && mv $(TARGET_CPU)/$(TESTS_RPM) $(ABS_DIST)/
-  endif
-
-  ifdef INSTALL_SDK
-    SDK_RPM=$(MOZ_APP_NAME)-devel-$(MOZ_NUMERIC_APP_VERSION)-$(MOZ_RPM_RELEASE).$(BUILDID).$(TARGET_CPU)$(PKG_SUFFIX)
-    UPLOAD_EXTRA_FILES += $(SDK_RPM)
-    RPM_CMD += && mv $(TARGET_CPU)/$(SDK_RPM) $(ABS_DIST)/
-  endif
-
-  INNER_MAKE_PACKAGE = $(RPM_CMD)
-  #Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
-  INNER_UNMAKE_PACKAGE = $(error Try using rpm2cpio and cpio)
->>>>>>> origin/upstream-releases
+	INNER_MAKE_PACKAGE += \
+		&& $(RPM_CMD)
+	#Avoiding rpm repacks, going to try creating/uploading xpi in rpm files instead
+	INNER_UNMAKE_PACKAGE += \
+		&& $(error Try using rpm2cpio and cpio)
 
 endif #Create an RPM file
 
