@@ -830,11 +830,6 @@ function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
-#if CQZ_AUTO_PRIVATE_TAB
-  else {
-    AutoPrivateTab.handleTabNavigation(uri, browser);
-  }
-#endif
 
   let flags = params.flags || 0;
   let referrer = params.referrerURI;
@@ -4753,6 +4748,13 @@ var TabsProgressListener = {
         TelemetryStopwatch.cancel("FX_PAGE_LOAD_MS", aBrowser);
       }
     }
+
+#if CQZ_AUTO_PRIVATE_TAB
+    if (aStateFlags &
+        (Ci.nsIWebProgressListener.STATE_IS_WINDOW |
+         Ci.nsIWebProgressListener.STATE_START))
+      AutoPrivateTab.handleTabNavigation(aRequest.originalURI, aBrowser);
+#endif
 
     // Attach a listener to watch for "click" events bubbling up from error
     // pages and other similar pages (like about:newtab). This lets us fix bugs
