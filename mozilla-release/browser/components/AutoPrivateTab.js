@@ -38,10 +38,16 @@ AutoPrivateTabDatabase.prototype = {
     if (!pm)
       return;
     const gBrowser = tabBrowser.ownerGlobal.gBrowser;
-    tabBrowser.loadContext.usePrivateBrowsing = true;
-    const tab = gBrowser.getTabForBrowser(tabBrowser)
-    if (tab)
-      tab.private = true;
+    const tab = gBrowser.getTabForBrowser(tabBrowser);
+    if (!tab || tab.private)
+      return;  // Don't do anything, if tab is already in forget mode.
+
+    if (this._oneTimeNormalLoadSet.has(tab)) {
+      this._oneTimeNormalLoadSet.delete(tab);
+      return;
+    }
+
+    tab.private = true;
     // TODO: Navigation could happen in a background tab, not the current one.
     setTimeout(
       this._addOrUpdateNotification.bind(this, tabBrowser, domain),
@@ -220,6 +226,16 @@ AutoPrivateTabDatabase.prototype = {
       }
     },
     {
+      label: browserStrings.GetStringFromName(
+          "apt.notification.alwaysNormalButton"),
+      accessKey: browserStrings.GetStringFromName(
+          "apt.notification.alwaysNormalButton.AK"),
+      popup: null,
+      callback: (notification, descr) => {
+          this._reloadBrowserAsNormal(tabBrowser, true);
+      }
+    },
+    {
       label: browserStrings.GetStringFromName("apt.notification.setupButton"),
       accessKey: browserStrings.GetStringFromName(
           "apt.notification.setupButton.AK"),
@@ -237,9 +253,19 @@ AutoPrivateTabDatabase.prototype = {
         buttons);
   },
 
-  _reloadBrowserAsNormal: function APT__reloadBrowserAsNormal(tabBrowser) {
+  _reloadBrowserAsNormal: function APT__reloadBrowserAsNormal(
+      tabBrowser, remember) {
     const gBrowser = tabBrowser.ownerGlobal.gBrowser;
     const tab = gBrowser.getTabForBrowser(tabBrowser);
+
+    if (remember) {
+      const domain = this._maybeGetDomain(tab.linkedBrowser.currentURI);
+      this.whitelistDomain(domain);
+    }
+    else {
+      this._oneTimeNormalLoadSet.add(tab);
+    }
+
     tab.private = false;
     tab.linkedBrowser.reload();
   },
@@ -257,6 +283,7 @@ AutoPrivateTabDatabase.prototype = {
   _usrWhiteList: new Set(),
   _usrBlackList: new Set(),
   _usrListsDirty: false,
+  _oneTimeNormalLoadSet: new WeakSet(),  // Set of tabs to load normally.
 
   // XPCOM:
   classID: Components.ID(APT_ID),
