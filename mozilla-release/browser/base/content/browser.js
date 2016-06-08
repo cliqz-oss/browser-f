@@ -4750,9 +4750,8 @@ var TabsProgressListener = {
     }
 
 #if CQZ_AUTO_PRIVATE_TAB
-    if (aStateFlags &
-        (Ci.nsIWebProgressListener.STATE_IS_WINDOW |
-         Ci.nsIWebProgressListener.STATE_START))
+    if ((aStateFlags & Ci.nsIWebProgressListener.STATE_IS_WINDOW) &&
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_START))
       AutoPrivateTab.handleTabNavigation(aRequest.originalURI, aBrowser);
 #endif
 
