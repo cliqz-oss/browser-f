@@ -13,6 +13,7 @@
 #include "mozilla/dom/DedicatedWorkerGlobalScopeBinding.h"
 #include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/FunctionBinding.h"
+#include "mozilla/dom/IDBFactory.h"
 #include "mozilla/dom/ImageBitmap.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseWorkerProxy.h"
@@ -21,7 +22,6 @@
 #include "mozilla/dom/WorkerDebuggerGlobalScopeBinding.h"
 #include "mozilla/dom/WorkerGlobalScopeBinding.h"
 #include "mozilla/dom/cache/CacheStorage.h"
-#include "mozilla/dom/indexedDB/IDBFactory.h"
 #include "mozilla/Services.h"
 #include "nsServiceManagerUtils.h"
 
@@ -53,7 +53,6 @@ using namespace mozilla::dom;
 USING_WORKERS_NAMESPACE
 
 using mozilla::dom::cache::CacheStorage;
-using mozilla::dom::indexedDB::IDBFactory;
 using mozilla::ipc::PrincipalInfo;
 
 BEGIN_WORKERS_NAMESPACE
@@ -214,12 +213,11 @@ WorkerGlobalScope::SetOnerror(OnErrorEventHandlerNonNull* aHandler)
 }
 
 void
-WorkerGlobalScope::ImportScripts(JSContext* aCx,
-                                 const Sequence<nsString>& aScriptURLs,
+WorkerGlobalScope::ImportScripts(const Sequence<nsString>& aScriptURLs,
                                  ErrorResult& aRv)
 {
   mWorkerPrivate->AssertIsOnWorkerThread();
-  scriptloader::Load(aCx, mWorkerPrivate, aScriptURLs, WorkerScript, aRv);
+  scriptloader::Load(mWorkerPrivate, aScriptURLs, WorkerScript, aRv);
 }
 
 int32_t
@@ -437,8 +435,12 @@ DedicatedWorkerGlobalScope::WrapGlobalObject(JSContext* aCx,
   behaviors.setDiscardSource(discardSource)
            .extraWarningsOverride().set(extraWarnings);
 
+  const bool inCertifiedApp = mWorkerPrivate->IsInCertifiedApp();
+  const bool sharedMemoryEnabled = xpc::SharedMemoryEnabled();
+
   JS::CompartmentCreationOptions& creationOptions = options.creationOptions();
-  creationOptions.setSharedMemoryAndAtomicsEnabled(xpc::SharedMemoryEnabled());
+  creationOptions.setSharedMemoryAndAtomicsEnabled(sharedMemoryEnabled)
+                 .setExperimentalDateTimeFormatFormatToPartsEnabled(inCertifiedApp);
 
   return DedicatedWorkerGlobalScopeBinding_workers::Wrap(aCx, this, this,
                                                          options,
@@ -557,7 +559,7 @@ public:
     promise->MaybeResolve(JS::UndefinedHandleValue);
 
     // Release the reference on the worker thread.
-    mPromiseProxy->CleanUp(aCx);
+    mPromiseProxy->CleanUp();
 
     return true;
   }
@@ -596,9 +598,7 @@ public:
     RefPtr<SkipWaitingResultRunnable> runnable =
       new SkipWaitingResultRunnable(workerPrivate, mPromiseProxy);
 
-    AutoJSAPI jsapi;
-    jsapi.Init();
-    if (!runnable->Dispatch(jsapi.cx())) {
+    if (!runnable->Dispatch()) {
       NS_WARNING("Failed to dispatch SkipWaitingResultRunnable to the worker.");
     }
     return NS_OK;
@@ -633,16 +633,6 @@ ServiceWorkerGlobalScope::SkipWaiting(ErrorResult& aRv)
   return promise.forget();
 }
 
-// static
-bool
-ServiceWorkerGlobalScope::InterceptionEnabled(JSContext* aCx, JSObject* aObj)
-{
-  WorkerPrivate* worker = GetCurrentThreadWorkerPrivate();
-  MOZ_ASSERT(worker);
-  worker->AssertIsOnWorkerThread();
-  return worker->InterceptionEnabled();
-}
-
 bool
 ServiceWorkerGlobalScope::OpenWindowEnabled(JSContext* aCx, JSObject* aObj)
 {
@@ -663,6 +653,25 @@ WorkerDebuggerGlobalScope::~WorkerDebuggerGlobalScope()
 {
   mWorkerPrivate->AssertIsOnWorkerThread();
 }
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(WorkerDebuggerGlobalScope)
+
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(WorkerDebuggerGlobalScope,
+                                                  DOMEventTargetHelper)
+  tmp->mWorkerPrivate->AssertIsOnWorkerThread();
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mConsole)
+NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
+
+NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(WorkerDebuggerGlobalScope,
+                                                DOMEventTargetHelper)
+  tmp->mWorkerPrivate->AssertIsOnWorkerThread();
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mConsole)
+NS_IMPL_CYCLE_COLLECTION_UNLINK_END
+
+NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(WorkerDebuggerGlobalScope,
+                                               DOMEventTargetHelper)
+  tmp->mWorkerPrivate->AssertIsOnWorkerThread();
+NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_IMPL_ADDREF_INHERITED(WorkerDebuggerGlobalScope, DOMEventTargetHelper)
 NS_IMPL_RELEASE_INHERITED(WorkerDebuggerGlobalScope, DOMEventTargetHelper)
@@ -870,7 +879,7 @@ WorkerDebuggerGlobalScope::LoadSubScript(JSContext* aCx,
 
   nsTArray<nsString> urls;
   urls.AppendElement(aURL);
-  scriptloader::Load(aCx, mWorkerPrivate, urls, DebuggerScript, aRv);
+  scriptloader::Load(mWorkerPrivate, urls, DebuggerScript, aRv);
 }
 
 void
@@ -892,10 +901,9 @@ WorkerDebuggerGlobalScope::PostMessage(const nsAString& aMessage)
 }
 
 void
-WorkerDebuggerGlobalScope::SetImmediate(JSContext* aCx, Function& aHandler,
-                                        ErrorResult& aRv)
+WorkerDebuggerGlobalScope::SetImmediate(Function& aHandler, ErrorResult& aRv)
 {
-  mWorkerPrivate->SetDebuggerImmediate(aCx, aHandler, aRv);
+  mWorkerPrivate->SetDebuggerImmediate(aHandler, aRv);
 }
 
 void
@@ -907,6 +915,19 @@ WorkerDebuggerGlobalScope::ReportError(JSContext* aCx,
   JS::DescribeScriptedCaller(aCx, &chars, &lineno);
   nsString filename(NS_ConvertUTF8toUTF16(chars.get()));
   mWorkerPrivate->ReportErrorToDebugger(filename, lineno, aMessage);
+}
+
+Console*
+WorkerDebuggerGlobalScope::GetConsole(ErrorResult& aRv)
+{
+  mWorkerPrivate->AssertIsOnWorkerThread();
+
+  // Debugger console has its own console object.
+  if (!mConsole) {
+    mConsole = new Console(nullptr);
+  }
+
+  return mConsole;
 }
 
 void

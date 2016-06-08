@@ -73,7 +73,7 @@
 #include "nsIDOMWindow.h"
 
 #include "nsNetCID.h"
-#include "prprf.h"
+#include "mozilla/Snprintf.h"
 #include "nsThreadUtils.h"
 #include "nsIInputStreamTee.h"
 #include "nsQueryObject.h"
@@ -137,6 +137,7 @@ using mozilla::dom::FakePluginTagInit;
 #define kPluginTmpDirName NS_LITERAL_CSTRING("plugtmp")
 
 static const char *kPrefWhitelist = "plugin.allowed_types";
+static const char *kPrefLoadInParentPrefix = "plugin.load_in_parent_process.";
 static const char *kPrefDisableFullPage = "plugin.disable_full_page_plugin_for_types";
 static const char *kPrefJavaMIME = "plugin.java.mime";
 
@@ -1849,7 +1850,8 @@ nsPluginHost::GetSpecialType(const nsACString & aMIMEType)
   }
 
   if (aMIMEType.LowerCaseEqualsASCII("application/x-shockwave-flash") ||
-      aMIMEType.LowerCaseEqualsASCII("application/futuresplash")) {
+      aMIMEType.LowerCaseEqualsASCII("application/futuresplash") ||
+      aMIMEType.LowerCaseEqualsASCII("application/x-shockwave-flash-test")) {
     return eSpecialType_Flash;
   }
 
@@ -2110,7 +2112,7 @@ nsresult nsPluginHost::ScanPluginsDirectory(nsIFile *pluginsDir,
   if (NS_FAILED(rv))
     return rv;
 
-  nsAutoTArray<nsCOMPtr<nsIFile>, 6> pluginFiles;
+  AutoTArray<nsCOMPtr<nsIFile>, 6> pluginFiles;
 
   bool hasMore;
   while (NS_SUCCEEDED(iter->HasMoreElements(&hasMore)) && hasMore) {
@@ -2458,7 +2460,8 @@ nsPluginHost::FindPluginsInContent(bool aCreatePluginList, bool* aPluginsChanged
                                                tag.isFlashPlugin(),
                                                tag.supportsAsyncInit(),
                                                tag.lastModifiedTime(),
-                                               tag.isFromExtension());
+                                               tag.isFromExtension(),
+                                               tag.sandboxLevel());
       AddPluginTag(pluginTag);
     }
   }
@@ -2699,7 +2702,8 @@ nsPluginHost::FindPluginsForContent(uint32_t aPluginEpoch,
                                       tag->FileName(),
                                       tag->Version(),
                                       tag->mLastModifiedTime,
-                                      tag->IsFromExtension()));
+                                      tag->IsFromExtension(),
+                                      tag->mSandboxLevel));
   }
   return NS_OK;
 }
@@ -2760,6 +2764,14 @@ nsPluginHost::IsTypeWhitelisted(const char *aMimeType)
   }
   nsDependentCString wrap(aMimeType);
   return IsTypeInList(wrap, whitelist);
+}
+
+/* static */ bool
+nsPluginHost::ShouldLoadTypeInParent(const nsACString& aMimeType)
+{
+  nsCString prefName(kPrefLoadInParentPrefix);
+  prefName += aMimeType;
+  return Preferences::GetBool(prefName.get(), false);
 }
 
 void
@@ -3658,7 +3670,7 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
   const char CRLFCRLF[] = {CR,LF,CR,LF,'\0'}; // C string"\r\n\r\n"
   const char ContentLenHeader[] = "Content-length";
 
-  nsAutoTArray<const char*, 8> singleLF;
+  AutoTArray<const char*, 8> singleLF;
   const char *pSCntlh = 0;// pointer to start of ContentLenHeader in inPostData
   const char *pSod = 0;   // pointer to start of data in inPostData
   const char *pEoh = 0;   // pointer to end of headers in inPostData
@@ -3773,8 +3785,8 @@ nsPluginHost::ParsePostBufferToFixHeaders(const char *inPostData, uint32_t inPos
     newBufferLen = dataLen + l;
     if (!(*outPostData = p = (char*)moz_xmalloc(newBufferLen)))
       return NS_ERROR_OUT_OF_MEMORY;
-    headersLen = PR_snprintf(p, l,"%s: %ld%s", ContentLenHeader, dataLen, CRLFCRLF);
-    if (headersLen == l) { // if PR_snprintf has ate all extra space consider this as an error
+    headersLen = snprintf(p, l,"%s: %u%s", ContentLenHeader, dataLen, CRLFCRLF);
+    if (headersLen == l) { // if snprintf has ate all extra space consider this as an error
       free(p);
       *outPostData = 0;
       return NS_ERROR_FAILURE;

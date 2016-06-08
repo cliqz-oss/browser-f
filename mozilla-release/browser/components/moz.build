@@ -21,6 +21,7 @@ DIRS += [
     'sessionstore',
     'shell',
     'selfsupport',
+    'syncedtabs',
     'uitour',
     'translation',
 ]
@@ -55,7 +56,11 @@ EXTRA_PP_JS_MODULES += [
 ]
 
 BROWSER_CHROME_MANIFESTS += [
-    'test/browser.ini'
+    'tests/browser/browser.ini'
+]
+
+XPCSHELL_TESTS_MANIFESTS += [
+    'tests/unit/xpcshell.ini'
 ]
 
 if CONFIG['MOZ_SAFE_BROWSING']:

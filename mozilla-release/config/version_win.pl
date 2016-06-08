@@ -113,8 +113,16 @@ if (!defined($module))
 
 my $bufferstr="    ";
 
+<<<<<<< HEAD
 my $MILESTONE_FILE = "$topsrcdir/browser/config/version_display.txt";
 my $BUILDID_FILE = "$depth/config/buildid";
+||||||| merged common ancestors
+my $MILESTONE_FILE = "$topsrcdir/config/milestone.txt";
+my $BUILDID_FILE = "$depth/config/buildid";
+=======
+my $MILESTONE_FILE = "$topsrcdir/config/milestone.txt";
+my $BUILDID_FILE = "$depth/buildid.h";
+>>>>>>> origin/upstream-releases
 
 #Read module.ver file
 #Version file overrides for WIN32:
@@ -183,7 +191,7 @@ $displayname =~ s/^\s*(.*)\s*$/$1/;
 
 open(BUILDID, "<", $BUILDID_FILE) || die("Couldn't open buildid file: $BUILDID_FILE");
 $buildid = <BUILDID>;
-$buildid =~ s/\s*$//;
+$buildid =~ s/^#define MOZ_BUILDID\s+(\S+)\s*$/$1/;
 close BUILDID;
 
 my $daycount = daysFromBuildID($buildid);

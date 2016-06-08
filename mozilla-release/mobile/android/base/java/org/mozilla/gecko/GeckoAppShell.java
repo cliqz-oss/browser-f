@@ -822,6 +822,7 @@ public class GeckoAppShell
     // This is the entry point from nsIShellService.
     @WrapForJNI
     public static void createShortcut(final String aTitle, final String aURI) {
+        ThreadUtils.assertOnBackgroundThread();
         final BrowserDB db = GeckoProfile.get(getApplicationContext()).getDB();
 
         final ContentResolver cr = getContext().getContentResolver();
@@ -841,7 +842,7 @@ public class GeckoAppShell
         OnFaviconLoadedListener listener = new OnFaviconLoadedListener() {
             @Override
             public void onFaviconLoaded(String url, String faviconURL, Bitmap favicon) {
-                createShortcutWithBitmap(aTitle, url, favicon);
+                doCreateShortcut(aTitle, url, favicon);
             }
         };
 
@@ -854,18 +855,6 @@ public class GeckoAppShell
         Favicons.getPreferredSizeFaviconForPage(getApplicationContext(), aURI, touchIconURL, listener);
     }
 
-    private static void createShortcutWithBitmap(final String aTitle, final String aURI, final Bitmap aBitmap) {
-        ThreadUtils.postToBackgroundThread(new Runnable() {
-            @Override
-            public void run() {
-                doCreateShortcut(aTitle, aURI, aBitmap);
-            }
-        });
-    }
-
-    /**
-     * Call this method only on the background thread.
-     */
     private static void doCreateShortcut(final String aTitle, final String aURI, final Bitmap aIcon) {
         // The intent to be launched by the shortcut.
         Intent shortcutIntent = new Intent();
@@ -2854,10 +2843,5 @@ public class GeckoAppShell
             sScreenSize = new Rect(0, 0, disp.getWidth(), disp.getHeight());
         }
         return sScreenSize;
-    }
-
-    @JNITarget
-    static boolean isWebAppProcess() {
-        return GeckoProfile.get(getApplicationContext()).isWebAppProfile();
     }
 }
