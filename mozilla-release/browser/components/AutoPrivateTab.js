@@ -220,6 +220,16 @@ AutoPrivateTabDatabase.prototype = {
       }
     },
     {
+      label: browserStrings.GetStringFromName(
+          "apt.notification.alwaysNormalButton"),
+      accessKey: browserStrings.GetStringFromName(
+          "apt.notification.alwaysNormalButton.AK"),
+      popup: null,
+      callback: (notification, descr) => {
+          this._reloadBrowserAsNormal(tabBrowser, true);
+      }
+    },
+    {
       label: browserStrings.GetStringFromName("apt.notification.setupButton"),
       accessKey: browserStrings.GetStringFromName(
           "apt.notification.setupButton.AK"),
@@ -237,9 +247,15 @@ AutoPrivateTabDatabase.prototype = {
         buttons);
   },
 
-  _reloadBrowserAsNormal: function APT__reloadBrowserAsNormal(tabBrowser) {
+  _reloadBrowserAsNormal: function APT__reloadBrowserAsNormal(
+      tabBrowser, remember) {
     const gBrowser = tabBrowser.ownerGlobal.gBrowser;
     const tab = gBrowser.getTabForBrowser(tabBrowser);
+
+    if (remember) {
+      const domain = this._maybeGetDomain(tab.linkedBrowser.currentURI);
+      this.whitelistDomain(domain);
+    }
     tab.private = false;
     tab.linkedBrowser.reload();
   },
