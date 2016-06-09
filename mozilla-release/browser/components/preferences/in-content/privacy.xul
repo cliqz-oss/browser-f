@@ -33,6 +33,10 @@
               name="pref.privacy.disable_button.tracking_protection_exceptions"
               type="bool"/>
 
+  <preference id="browser.privatebrowsing.apt"
+              name="browser.privatebrowsing.apt"
+              type="bool"/>
+
   <!-- Location Bar -->
   <preference id="browser.urlbar.autocomplete.enabled"
               name="browser.urlbar.autocomplete.enabled"
@@ -267,6 +271,27 @@
     </vbox>
   </deck>
 </groupbox>
+
+#if CQZ_AUTO_PRIVATE_TAB
+<!-- Forget mode tabs -->
+<vbox data-category="panePrivacy" hidden="true">
+  <groupbox id="forgetMode" hidden="true">
+    <caption>
+      <label>&forgetMode.caption;</label>
+    </caption>
+    <checkbox
+        id="forgetModeEnable"
+        label="&forgetMode.enableCheckboxLabel;"
+        preference="browser.privatebrowsing.apt"/>
+    <description>&forgetMode.explanation1;</description>
+    <separator class="thin"/>
+    <description>&forgetMode.explanation2;</description>
+    <html:a href="&forgetMode.learnMoreLink;">
+      &forgetMode.learnMore;
+    </html:a>
+  </groupbox>
+</vbox>
+#endif
 
 <!-- Location Bar -->
 <groupbox id="locationBarGroup"
