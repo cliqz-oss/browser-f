@@ -13,6 +13,9 @@
 <!ENTITY useFavIcons.accesskey                  "A">
 <!ENTITY enableAutomaticImageResizing.label     "Große Grafiken verkleinern, damit sie ins Browser-Fenster passen">
 <!ENTITY enableAutomaticImageResizing.accesskey "G">
+<!ENTITY scrolling.label                        "Scrolling">
+<!ENTITY useAutoScroll.label                    "Autoscrolling verwenden">
+<!ENTITY useAutoScroll.accesskey                "u">
 <!ENTITY useSmoothScroll.label                  "Sanftes Scrollen verwenden">
 <!ENTITY useSmoothScroll.accesskey              "S">
 <!ENTITY allowHWAccel.label                     "Hardwarebeschleunigung verwenden, wenn verfügbar">

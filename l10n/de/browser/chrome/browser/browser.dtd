@@ -163,7 +163,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY shareSelect.accesskey "w">
 <!ENTITY shareVideo.label "Video teilen">
 <!ENTITY shareVideo.accesskey "e">
-<!ENTITY feedsMenu.label "Abonnieren">
+<!ENTITY feedsMenu2.label "Seite abonnieren">
 <!ENTITY subscribeToPageMenupopup.label "Diese Seite abonnieren">
 <!ENTITY subscribeToPageMenuitem.label "Diese Seite abonnieren…">
 <!ENTITY addCurPagesCmd.label "Lesezeichen für alle Tabs hinzufügen…">
@@ -257,6 +257,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY devToolsCmd.keycode          "VK_F12">
 <!ENTITY devToolsCmd.keytext          "F12">
 
+<!ENTITY devtoolsServiceWorkers.label      "Service-Worker">
+<!ENTITY devtoolsServiceWorkers.accesskey  "c">
+
 <!ENTITY devtoolsConnect.label        "Verbinden…">
 <!ENTITY devtoolsConnect.accesskey    "V">
 
@@ -327,8 +330,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY fileMenu.label         "Datei"> 
 <!ENTITY fileMenu.accesskey       "D">
-<!ENTITY newUserContext.label             "Neuer Container-Tab">
-<!ENTITY newUserContext.accesskey         "C">
+<!ENTITY newUserContext.label             "Neuer Tab in Umgebung">
+<!ENTITY newUserContext.accesskey         "m">
 <!ENTITY userContextPersonal.label        "Privat">
 <!ENTITY userContextPersonal.accesskey    "P">
 <!ENTITY userContextWork.label            "Arbeit">
@@ -421,6 +424,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
+<!ENTITY appMenuRemoteTabs.sidebar.label "Sidebar mit synchronisierten Tabs">
 
 <!ENTITY customizeMenu.addToToolbar.label "Zu Symbolleiste hinzufügen">
 <!ENTITY customizeMenu.addToToolbar.accesskey "S">
@@ -527,6 +531,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY openFrameCmdInTab.accesskey  "T">
 <!ENTITY openFrameCmd.label           "Frame in neuem Fenster öffnen">
 <!ENTITY openFrameCmd.accesskey       "F">
+<!ENTITY openLinkCmdInContainerTab.label "Link in neuem Tab in Umgebung öffnen">
+<!ENTITY openLinkCmdInContainerTab.accesskey "m">
 <!ENTITY showOnlyThisFrameCmd.label     "Nur diesen Frame anzeigen">
 <!ENTITY showOnlyThisFrameCmd.accesskey "N">
 <!ENTITY reloadCmd.commandkey         "r">
@@ -740,7 +746,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY spellAddDictionaries.accesskey "W">
 
 <!ENTITY editBookmark.done.label                     "Fertig">
-<!ENTITY editBookmark.cancel.label                   "Abbrechen">
 <!ENTITY editBookmark.removeBookmark.accessKey       "L">
 
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
@@ -774,6 +779,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY identity.disableMixedContentBlocking.accesskey "d">
 <!ENTITY identity.learnMore "Weitere Informationen">
 
+<!ENTITY identity.removeCertException.label "Ausnahme entfernen">
+<!ENTITY identity.removeCertException.accesskey "A">
+
 <!ENTITY identity.moreInfoLinkText2 "Weitere Informationen">
 
 <!ENTITY identity.permissions "Berechtigungen">
@@ -785,6 +793,22 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!-- LOCALIZATION NOTE (syncTabsMenu3.label): This appears in the history menu and history panel -->
 <!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
+
+<!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
+<!ENTITY syncedTabs.sidebar.fetching.label     "Synchronisierte Tabs werden abgerufen…">
+<!ENTITY syncedTabs.sidebar.noclients.label    "Melden Sie sich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
+<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
+<!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
+<!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
+<!-- LOCALIZATION NOTE (syncedTabs.sidebar.tabsnotsyncing.label): This is shown
+     when Sync is configured but syncing tabs is disabled. -->
+<!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktivieren Sie das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
+
+<!ENTITY syncedTabs.context.openTab.label                   "Diesen Tab öffnen">
+<!ENTITY syncedTabs.context.openTab.accesskey               "f">
+<!ENTITY syncedTabs.context.bookmarkSingleTab.label         "Diesen Tab als Lesezeichen hinzufügen…">
+<!ENTITY syncedTabs.context.bookmarkSingleTab.accesskey     "L">
+
 
 <!ENTITY syncBrand.shortName.label    "Sync">
 
@@ -809,7 +833,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY social.toggleNotifications.label "Desktop-Benachrichtigungen">
 <!ENTITY social.toggleNotifications.accesskey "B">
 
-<!ENTITY social.activated.description "Dienste von <label/> wurden aktiviert. Sie können Ihre Einstellungen für Dienste im <label class='text-link'>Add-ons-Manager</label> ändern.">
+<!ENTITY social.activated.description "Dienste von <label/> wurden aktiviert. Sie können Ihre Einstellungen für Dienste in der <label class='text-link'>Add-ons-Verwaltung</label> ändern.">
 <!ENTITY social.activated.undo.label "Rückgängig machen">
 <!ENTITY social.activated.undo.accesskey "R">
 <!ENTITY social.learnMore.label "Weitere Informationen…">
@@ -822,7 +846,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY social.directory.introText "Zum Hinzufügen eines Dienstes zu &brandShortName; darauf klicken.">
 <!ENTITY social.directory.viewmore.text "Mehr anzeigen">
 
-<!ENTITY customizeMode.tabTitle "&brandShortName; anpassen">
 <!ENTITY customizeMode.menuAndToolbars.header2 "Weitere Werkzeuge und Funktionen">
 <!ENTITY customizeMode.menuAndToolbars.empty "Wollen Sie mehr Werkzeuge?">
 <!ENTITY customizeMode.menuAndToolbars.emptyLink "Wählen Sie aus Tausenden von Add-ons.">
@@ -928,7 +951,3 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY emeLearnMoreContextMenu.label            "Mehr über DRM-Kopierschutz erfahren…">
 <!ENTITY emeLearnMoreContextMenu.accesskey        "D">
-<!ENTITY emeNotificationsNotNow.label             "Nicht jetzt">
-<!ENTITY emeNotificationsNotNow.accesskey         "N">
-<!ENTITY emeNotificationsDontAskAgain.label       "Nicht mehr nachfragen">
-<!ENTITY emeNotificationsDontAskAgain.accesskey   "m">

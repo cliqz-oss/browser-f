@@ -32,8 +32,8 @@
 <!ENTITY return.accesskey                  "r">
 <!ENTITY results.label                     "Ergebnisse zurückgeben">
 <!ENTITY offlineText.label                 "Sie können eine lokale Kopie dieses Verzeichnisses herunterladen, sodass es verfügbar ist, wenn Sie offline arbeiten.">
-<!ENTITY saslMechanism.label               "Login-Methode:">
-<!ENTITY saslMechanism.accesskey           "L">
+<!ENTITY saslMechanism.label               "Zugangsmethode:">
+<!ENTITY saslMechanism.accesskey           "Z">
 <!ENTITY saslOff.label                     "Einfach">
 <!ENTITY saslOff.accesskey                 "E">
 <!ENTITY saslGSSAPI.label                  "Kerberos (GSSAPI)">

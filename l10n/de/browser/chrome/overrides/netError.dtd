@@ -160,27 +160,6 @@
 </ul>
 ">
 
-<!ENTITY malwareBlocked.title "Angreifende Website vermutet!">
-<!ENTITY malwareBlocked.longDesc "
-<p>Angreifende Websites versuchen Programme zu installieren, die private Daten stehlen, Ihren Computer benutzen, um andere anzugreifen oder Ihr System beschädigen</p>
-<p>Website-Inhaber, die glauben, dass ihre Website fälschlicherweise als angreifende Website gemeldet wurde, können unter <a href='http://www.stopbadware.org/home/reviewinfo' > eine erneute Einschätzung beantragen</a>.</p>
-">
-
-<!ENTITY unwantedBlocked.title "Verdacht auf Website mit ungewollter Software!">
-<!ENTITY unwantedBlocked.longDesc "
-<p>Seiten mit ungewollter Software versuchen, Software zu installieren, die betrügerisch sein und Ihr System in unerwarteter Weise beeinflussen kann.</p>
-">
-
-<!ENTITY phishingBlocked.title "Vermuteter Betrugsversuch!">
-<!ENTITY phishingBlocked.longDesc "
-<p>Falls Sie hier persönliche Daten eingeben, müssen Sie mit Identitätsdiebstahl oder sonstigem Betrug rechnen.</p>
-<p>Diese Art von Internet-Betrug ist auch bekannt als Phishing. Dabei versuchen Kriminelle in betrügerischer Absicht, Webseiten oder E-Mails nachzuahmen, denen Sie eventuell vertrauen.</p>
-">
-
-<!ENTITY forbiddenBlocked.title "Verbotene Website">
-<!ENTITY forbiddenBlocked.longDesc "<p>&brandShortName; wurde so konfiguriert, dass das Laden der Seite verhindert wurde.</p>
-">
-
 <!ENTITY cspBlocked.title "Blockiert von der Inhaltsicherheitsrichtlinie (CSP)">
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat diese Webseite daran gehindert, auf diese Weise geladen zu werden, weil die Webseite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, die dies nicht erlaubt.</p>">
 
@@ -206,9 +185,6 @@ functionality specific to firefox. -->
 
 <!ENTITY errorReporting.automatic2 "Fehler an Mozilla melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
 <!ENTITY errorReporting.learnMore "Weitere Informationen…">
-<!ENTITY errorReporting.sending "Bericht wird gesendet…">
-<!ENTITY errorReporting.sent "Bericht gesendet">
-<!ENTITY errorReporting.tryAgain "Nochmals versuchen">
 
 <!ENTITY remoteXUL.title "Remote-XUL">
 <!ENTITY remoteXUL.longDesc "<p><ul><li>Bitte informieren Sie den Website-Inhaber über dieses Problem.</li></ul></p>">

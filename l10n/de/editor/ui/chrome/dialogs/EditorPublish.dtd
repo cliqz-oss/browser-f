@@ -44,7 +44,7 @@
 <!-- Settings Tab Panel -->
 <!ENTITY publishSites.label           "Publizierungssites">
 <!ENTITY serverInfo.label             "Server-Informationen">
-<!ENTITY loginInfo.label              "Login-Informationen">
+<!ENTITY loginInfo.label              "Zugangsdaten">
 <!ENTITY siteName.label               "Website-Name:">
 <!ENTITY siteName.accesskey           "S">
 <!ENTITY siteName.tooltip             "Ein Spitzname, der diese Publizierungs-Website identifiziert (z.B.: 'MeineWebsite')">
@@ -62,4 +62,4 @@
 <!ENTITY password.tooltip             "Das zu Ihrem Benutzernamen gehörige Passwort">
 <!ENTITY savePassword.label           "Passwort speichern">
 <!ENTITY savePassword.accesskey       "o">
-<!ENTITY savePassword.tooltip         "Wählen Sie dies aus, um Ihr Passwort sicher mit dem Passwort-Manager zu speichern.">
+<!ENTITY savePassword.tooltip         "Wählen Sie dies aus, um Ihr Passwort sicher mit der Passwortverwaltung zu speichern.">

@@ -163,9 +163,9 @@
 <p>Website-Inhaber, die glauben, dass ihre Website fälschlicherweise als angreifende Website gemeldet wurde, können unter <a href='http://www.stopbadware.org/home/reviewinfo' > eine erneute Einschätzung beantragen</a>.</p>
 ">
 
-<!ENTITY unwantedBlocked.title "Verdacht auf eine Website mit ungewollter Software!">
+<!ENTITY unwantedBlocked.title "Verdacht auf eine Website mit unerwünschter Software!">
 <!ENTITY unwantedBlocked.longDesc "
-<p>Seiten mit ungewollter Software versuchen, Software zu installieren, die betrügerisch sein und Ihr System in unerwarteter Weise beeinflussen kann.</p>
+<p>Seiten mit unerwünschter Software versuchen, Software zu installieren, die betrügerisch sein und Ihr System in unerwarteter Weise beeinflussen kann.</p>
 ">
 
 <!ENTITY phishingBlocked.title "Vermuteter Betrugsversuch!">

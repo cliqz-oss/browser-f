@@ -27,8 +27,6 @@
 <!ENTITY retentionKeepAll.accesskey "K">
 <!ENTITY retentionKeepRecent.label "Alle löschen mit Ausnahme der neuesten">
 <!ENTITY retentionKeepRecent.accesskey "A">
-<!-- LOCALIZATION NOTE: Unhide with .keepUnreadOnly { display: -moz-box; } -->
-<!ENTITY retentionKeepUnreadHidden.label "Gelesene Nachrichten immer löschen (übergeht Alterseinstellungen)">
 <!ENTITY retentionApplyToFlagged.label "Gekennzeichnete Nachrichten immer behalten">
 <!ENTITY retentionApplyToFlagged.accesskey "k">
 <!ENTITY nntpRemoveMsgBody.label "Nachrichtentext für Nachrichten entfernen, die älter sind als">
