@@ -952,3 +952,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY emeLearnMoreContextMenu.label            "Learn more about DRM…">
 <!ENTITY emeLearnMoreContextMenu.accesskey        "D">
+
+<!ENTITY httpsEverywhere.headline "HTTPS Everywhere">
+<!ENTITY httpsEverywhere.desc     "Use encrypted connection">

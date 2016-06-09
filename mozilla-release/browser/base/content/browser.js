@@ -830,11 +830,6 @@ function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
-#if CQZ_AUTO_PRIVATE_TAB
-  else {
-    AutoPrivateTab.handleTabNavigation(uri, browser);
-  }
-#endif
 
   let flags = params.flags || 0;
   let referrer = params.referrerURI;
@@ -4677,6 +4672,12 @@ var TabsProgressListener = {
       }
     }
 
+#if CQZ_AUTO_PRIVATE_TAB
+    if ((aStateFlags & Ci.nsIWebProgressListener.STATE_IS_WINDOW) &&
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_START))
+      AutoPrivateTab.handleTabNavigation(aRequest.originalURI, aBrowser);
+#endif
+
     // Attach a listener to watch for "click" events bubbling up from error
     // pages and other similar pages (like about:newtab). This lets us fix bugs
     // like 401575 which require error page UI to do privileged things, without
@@ -7034,7 +7035,41 @@ var gIdentityHandler = {
     if (event.target == this._identityPopup) {
       window.addEventListener("focus", this, true);
     }
+
+
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
+      if(addon && addon.isActive){
+        gIdentityHandler.updateHttpsEverywhereUIstate();
+      }
+    });
   },
+
+  updateHttpsEverywhereUIstate: function(){
+    var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled",
+        button = document.getElementById("httpsEverywhere-toggle"),
+        box = document.getElementById("httpsEverywhereGroup");
+
+    box.hidden = false;
+
+    if(Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF)){
+      button.label = gBrowser.mStringBundle.getString("httpsEverywhere.disable");
+      box.setAttribute("state", "enabled");
+    } else {
+      button.label = gBrowser.mStringBundle.getString("httpsEverywhere.enable");
+      box.setAttribute("state", "disabled");
+    }
+  },
+
+  toggleHttpsEverywhere: function(){
+    var HTTPSEverywhere = Components.classes["@eff.org/https-everywhere;1"]
+                      .getService(Components.interfaces.nsISupports)
+                      .wrappedJSObject;
+    HTTPSEverywhere.toggleEnabledState();
+    gIdentityHandler.updateHttpsEverywhereUIstate();
+
+    BrowserReload();
+  },
+
 
   onPopupHidden(event) {
     if (event.target == this._identityPopup) {

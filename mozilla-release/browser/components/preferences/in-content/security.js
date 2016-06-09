@@ -3,6 +3,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
 var gSecurityPane = {
   _pane: null,
@@ -21,6 +22,15 @@ var gSecurityPane = {
     this._pane = document.getElementById("paneSecurity");
     this._initMasterPasswordUI();
 
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
+      if(addon && addon.isActive){
+        var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
+
+        document.getElementById("httpsEverywhereGroup").hidden = false;
+        document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
+      }
+    })
+
 #if 0
     setEventListener("addonExceptions", "command",
       gSecurityPane.showAddonExceptions);
@@ -33,6 +43,13 @@ var gSecurityPane = {
       gSecurityPane.changeMasterPassword);
     setEventListener("showPasswords", "command",
       gSecurityPane.showPasswords);
+  },
+
+  toggleHttpsEverywhere: function(){
+    var HTTPSEverywhere = Components.classes["@eff.org/https-everywhere;1"]
+                      .getService(Components.interfaces.nsISupports)
+                      .wrappedJSObject;
+    HTTPSEverywhere.toggleEnabledState();
   },
 
   // ADD-ONS
