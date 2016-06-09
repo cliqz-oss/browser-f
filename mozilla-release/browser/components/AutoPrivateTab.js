@@ -28,8 +28,12 @@ function AutoPrivateTabDatabase() {
 AutoPrivateTabDatabase.prototype = {
   // Public:
 
+  get hasDatabase() {
+    return !!this._adultDomainsBF;
+  },
+
   get active() {
-    return this._adultDomainsBF &&
+    return this.hasDatabase &&
         Preferences.get("browser.privatebrowsing.apt", false);
   },
 

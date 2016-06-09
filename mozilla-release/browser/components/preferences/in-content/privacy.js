@@ -89,6 +89,12 @@ var gPrivacyPane = {
 #endif
     this._initAutocomplete();
 
+#if CQZ_AUTO_PRIVATE_TAB
+    const AutoPrivateTab = Cc["@cliqz.com/browser/auto_private_tab;1"].
+        getService(Ci.nsISupports).wrappedJSObject;
+    document.getElementById("forgetMode").hidden = !AutoPrivateTab.hasDatabase;
+#endif
+
     setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
                      gPrivacyPane._updateSanitizeSettingsButton);
     setEventListener("browser.privatebrowsing.autostart", "change",
