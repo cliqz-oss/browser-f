@@ -3438,7 +3438,7 @@ menulist.translate-infobar-element > .menulist-dropmarker {
   background-size: 100% auto;
   width: 24px;
   height: 16px;
-  margin-top: 12px;
+  margin-top: 5px;
   /**
    * The private browsing mask graphic has a 3px flare at the top. The distance
    * we want between the mask and items on either side is 7px, so we use 4px,
@@ -3463,6 +3463,7 @@ menulist.translate-infobar-element > .menulist-dropmarker {
   display: none;
 }
 
+#if 0
 @media (min-resolution: 2dppx) {
   .private-browsing-indicator {
     background-image: url("chrome://browser/skin/privatebrowsing-mask@2x.png");
@@ -3471,6 +3472,7 @@ menulist.translate-infobar-element > .menulist-dropmarker {
     background-image: url("chrome://browser/skin/privatebrowsing-mask-short@2x.png");
   }
 }
+#endif
 
 @media (-moz-mac-lion-theme) {
   #TabsToolbar > .private-browsing-indicator {
