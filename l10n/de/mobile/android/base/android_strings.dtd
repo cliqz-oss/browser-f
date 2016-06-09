@@ -17,7 +17,7 @@
 <!ENTITY firstrun_bookmarks_subtext "Vorschläge aus Ihrer Chronik und Ihren Lesezeichen beim Suchen">
 <!ENTITY firstrun_data_title "Datenvolumen">
 <!ENTITY firstrun_data_message "Weniger Datenvolumen, größere Ersparnis">
-<!ENTITY firstrun_data_subtext "Blockieren Sie Grafiken, damit für jede besuchte Seite weniger Daten geladen werden müssen.">
+<!ENTITY firstrun_data_subtext2 "Sperren Sie das Laden von Grafiken, damit für jede besuchte Seite weniger Daten geladen werden müssen.">
 <!ENTITY firstrun_sync_title "Sync">
 <!ENTITY firstrun_sync_message "&brandShortName; immer dabei">
 <!ENTITY firstrun_sync_subtext "Synchronisieren Sie Ihre Tabs, Passwörter und mehr, egal wo Sie sind.">
@@ -230,8 +230,10 @@
 <!ENTITY pref_tap_to_load_images_data "Nur über WLAN">
 <!ENTITY pref_tap_to_load_images_disabled2 "Blockieren">
 
+<!ENTITY pref_show_web_fonts "Web-Schriftarten verwenden">
+
 <!ENTITY pref_tracking_protection_title "Schutz vor Aktivitätenverfolgung">
-<!ENTITY pref_tracking_protection_summary3 "Im privaten Modus aktiviert">
+<!ENTITY pref_tracking_protection_summary3 "Im Privaten Modus aktiviert">
 <!ENTITY pref_donottrack_title "Aktivitäten nicht verfolgen">
 <!ENTITY pref_donottrack_summary "&brandShortName; wird Websites mitteilen, dass Ihre Aktivitäten nicht verfolgt werden sollen.">
 
@@ -247,11 +249,11 @@
 <!ENTITY tab_queue_toast_message3 "Tab gespeichert in &brandShortName;">
 <!ENTITY tab_queue_toast_action "Jetzt öffnen">
 <!ENTITY tab_queue_prompt_title "Mehrere Links öffnen?">
-<!ENTITY tab_queue_prompt_text4 "Bis zum nächsten Öffnen von &brandShortName; speichern">
+<!ENTITY tab_queue_prompt_text4 "Lassen Sie diese erst beim nächsten Aufruf von &brandShortName; öffnen.">
 <!ENTITY tab_queue_prompt_tip_text2 "Sie können dies später in den Einstellungen ändern.">
 <!-- Localization note (tab_queue_prompt_permit_drawing_over_apps): This additional text is shown if the
      user needs to enable an Android setting in order to enable tab queues. -->
-<!ENTITY tab_queue_prompt_permit_drawing_over_apps "Erlauben Sie \'Über anderen Apps einblenden\'">
+<!ENTITY tab_queue_prompt_permit_drawing_over_apps "Erteilen Sie die Berechtigung \'Einblenden über anderen Apps zulassen\'.">
 <!ENTITY tab_queue_prompt_positive_action_button "Aktivieren">
 <!ENTITY tab_queue_prompt_negative_action_button "Nicht jetzt">
 <!-- Localization note (tab_queue_prompt_settings_button): This button is shown if the user needs to
@@ -469,8 +471,8 @@ size. -->
 <!ENTITY pref_scroll_title_bar2 "Vollbildmodus">
 <!ENTITY pref_scroll_title_bar_summary2 "Navigationsleiste von &brandShortName; beim Herunterwischen ausblenden">
 
-<!ENTITY pref_tab_queue_title2 "Beim Öffnen mehrerer Links">
-<!ENTITY pref_tab_queue_summary3 "Zurückstellen bis zum nächsten Öffnen von &brandShortName;">
+<!ENTITY pref_tab_queue_title3 "Links aus anderen Anwendungen">
+<!ENTITY pref_tab_queue_summary4 "Links aus anderen Apps erst öffnen, wenn &brandShortName; wieder aufgerufen wird">
 
 <!-- Localization note (page_removed): This string appears in a toast message when
      any page is removed frome about:home. This includes pages that are in history,
@@ -548,9 +550,9 @@ size. -->
      is no data to show in an about:home panel that was created by an add-on. -->
 <!ENTITY home_default_empty "Für diese Ansicht wurde kein Inhalt gefunden.">
 
-<!-- Localization note (home_move_up_to_filter): The variable is replaced by the name of the
+<!-- Localization note (home_back_up_to_filter): The variable is replaced by the name of the
      previous location in the navigation, such as the previous folder -->
-<!ENTITY home_move_up_to_filter "Nach oben zu &formatS;">
+<!ENTITY home_move_back_to_filter "Zurück zu &formatS;">
 
 <!ENTITY home_remote_tabs_title "Synchronisierte Tabs">
 <!ENTITY home_remote_tabs_empty "Ihre Tabs von anderen Geräten werden hier angezeigt.">
@@ -645,8 +647,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      replaced with the search query. -->
 <!ENTITY suggestion_for_engine "&formatS1;-Suche nach \u0022&formatS2;\u0022">
 
-<!ENTITY webapp_generic_name "App">
-
 <!ENTITY searchable_description "Lesezeichen und Chronik">
 
 <!-- Updater notifications -->
@@ -715,11 +715,6 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- Localization note: Used when the sync has not happend yet, showed in place of a date -->
 <!ENTITY remote_tabs_never_synced "Letzte Synchronisierung: nie">
 
-<!-- Find-In-Page strings -->
-<!-- LOCALIZATION NOTE (find_matchcase): This is meant to appear as an icon that changes color
-     if match-case is activated. i.e. No more than two letters, one uppercase, one lowercase. -->
-<!ENTITY find_matchcase "Aa">
-
 <!ENTITY intent_uri_cannot_open "Link kann nicht geöffnet werden">
 <!-- LOCALIZATION NOTE (intent_uri_private_browsing_prompt): This string will
      appear in an alert when a user, who is currently in private browsing,
@@ -776,5 +771,10 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      replaced by the Android OS version (e.g., 14)-->
 <!ENTITY unsupported_sdk_version "Leider funktioniert &brandShortName; nicht auf diesem Gerät (&formatS1;, &formatS2;). Bitte laden Sie die passende Version herunter.">
 
-<!ENTITY eol_notification_title "&brandShortName; unterstützt Android 3 nicht mehr.">
+<!ENTITY eol_notification_title2 "&brandShortName; wird sich nicht länger aktualisieren.">
 <!ENTITY eol_notification_summary "Hier tippen, um mehr zu erfahren.">
+
+<!-- LOCALIZATION NOTE (whatsnew_notification_title, whatsnew_notification_summary): These strings
+     are used for a system notification that's shown to users after the app updates. -->
+<!ENTITY whatsnew_notification_title "&brandShortName; ist aktuell">
+<!ENTITY whatsnew_notification_summary "Neue Funktionen und Änderungen">

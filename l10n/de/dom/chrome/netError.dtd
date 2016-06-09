@@ -75,27 +75,6 @@
 </ul>
 ">
 
-<!ENTITY malwareBlocked.title "Attackierende Website vermutet!">
-<!ENTITY malwareBlocked.longDesc '
-<p>Attackierende Websites versuchen, Programme zu installieren, die private Informationen stehlen, Ihren Computer verwenden, um andere zu attackieren, oder Ihr System beschädigen.</p>
-<p>Website-Betreiber, die glauben, dass ihre Website zu Unrecht als attackierende Website gemeldet wurde, können <a href="http://www.stopbadware.org/home/reviewinfo">ein "Review" beantragen</a>.</p>
-'>
-
-<!ENTITY unwantedBlocked.title "Verdacht auf eine Website mit ungewollter Software!">
-<!ENTITY unwantedBlocked.longDesc "
-<p>Seiten mit ungewollter Software versuchen, Software zu installieren, die betrügerisch sein und Ihr System in unerwarteter Weise beeinflussen kann.</p>
-">
-
-<!ENTITY phishingBlocked.title "Betrugsversuch vermutet!">
-<!ENTITY phishingBlocked.longDesc "
-<p>Falls Sie hier persönliche Daten eingeben, müssen Sie mit Identitätsdiebstahl oder sonstigem Betrug rechnen.</p>
-<p>Diese Arten von Web-Fälschungen werden in Betrugsversuchen verwendet, die als &quot;Phishing-Attacken&quot; bekannt sind. Dabei versuchen Kriminelle in betrügerischer Absicht, Webseiten oder E-Mails nachzuahmen, denen Sie eventuell vertrauen.</p>
-">
-
-<!ENTITY forbiddenBlocked.title "Verbotene Seite">
-<!ENTITY forbiddenBlocked.longDesc "<p>Der Browser hat diese Seite am Laden gehindert, weil er konfiguriert ist, sie zu blockieren.</p>
-">
-
 <!ENTITY securityOverride.linkText "Oder Sie können eine Ausnahme hinzufügen…">
 <!ENTITY securityOverride.warningContent "
 <p>Sie sollten keine Ausnahme hinzufügen, wenn Sie eine Internetverbindung verwenden, der Sie nicht komplett vertrauen, oder nicht gewohnt sind, diese Warnung für diesen Server zu sehen.</p>

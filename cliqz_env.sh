@@ -72,12 +72,14 @@ export S3_BUCKET=repository.cliqz.com
 # this condition only for transaction period between old and new build system
 if [ -z $CQZ_BUILD_ID ]; then
   export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/${LANG:0:2}`
+  export MOZ_SOURCE_CHANGESET=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 else
   # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
   # build artifacts back (to locale folder, same as FF)
   export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/en-US`
   # set our own BUILD_ID in new build system, must be specified in format %Y%m%d%H%M%S
   export MOZ_BUILD_DATE=$CQZ_BUILD_ID
+  export MOZ_SOURCE_CHANGESET=$CQZ_COMMIT
 fi
 
 OBJ_DIR=$MOZ_OBJDIR

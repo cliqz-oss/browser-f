@@ -75,9 +75,6 @@
 <!ENTITY key_zoomin2 "=">
 <!ENTITY key_zoomout "-">
 <!ENTITY key_resetzoom "0">
-<!-- reload WebIDE and devtools from local checkout -->
-<!-- this binding is with accel+alt, whereas all others are just accel -->
-<!ENTITY key_reload_devtools "R">
 
 <!ENTITY projectPanel_myProjects "Meine Projekte">
 <!ENTITY projectPanel_runtimeApps "Apps in Laufzeitumgebung">
@@ -114,7 +111,7 @@
 
 <!-- Addons -->
 <!ENTITY addons_title "Zusätzliche Komponenten">
-<!ENTITY addons_aboutaddons "Add-ons-Manager öffnen">
+<!ENTITY addons_aboutaddons "Add-ons-Verwaltung öffnen">
 
 <!-- Prefs -->
 <!ENTITY prefs_title "Einstellungen">
@@ -199,6 +196,7 @@
 <!-- LOCALIZATION NOTE (wifi_auth_token_request): Instructions requesting the
      user to transfer authentication info by transferring a token. -->
 <!ENTITY wifi_auth_token_request "Falls das andere Gerät nach einem Code statt einem QR-Code fragt,  so geben Sie bitte folgenden Wert auf dem anderen Gerät ein:">
+<!ENTITY wifi_auth_qr_size_note "Falls der QR-Code zu klein für eine erfolgreiche Verbindungsherstellung dargestellt wird, so vergrößern Sie den Code oder das ihn enthaltende Fenster.">
 
 <!-- Logs panel -->
 <!ENTITY logs_title "Protokolle der Prozesse vor dem Packen">

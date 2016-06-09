@@ -1,7 +1,7 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<!ENTITY addons.windowTitle                   "Add-ons-Manager">
+<!ENTITY addons.windowTitle                   "Add-ons-Verwaltung">
 
 <!ENTITY search.placeholder                   "Alle Add-ons durchsuchen">
 <!ENTITY search.buttonlabel                   "Suchen">
@@ -29,7 +29,7 @@
 <!ENTITY debugAddons.accesskey                "b">
 
 <!-- global warnings -->
-<!ENTITY warning.safemode.label                    "Alle Add-ons wurden durch den abgesicherten Modus deaktiviert.">
+<!ENTITY warning.safemode.label                    "Alle Add-ons wurden durch den Abgesicherten Modus deaktiviert.">
 <!ENTITY warning.checkcompatibility.label          "Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Sie könnten inkompatible Add-ons haben.">
 <!ENTITY warning.checkcompatibility.enable.label   "Aktivieren">
 <!ENTITY warning.checkcompatibility.enable.tooltip "Addon-Kompatibilitäts-Prüfung aktivieren">
