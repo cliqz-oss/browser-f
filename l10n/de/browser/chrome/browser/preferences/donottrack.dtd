@@ -2,11 +2,11 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY window.title                 "Schutz vor Aktivitätenverfolgung">
-<!ENTITY window.width                 "32em">
+<!ENTITY window.title                 "Do Not Track">
+<!ENTITY window.width                 "44em">
 <!ENTITY window.height                "8em">
 
-<!ENTITY doNotTrackCheckbox.label     "Schutz vor Aktivitätenverfolgung">
-<!ENTITY doNotTrackCheckbox.accesskey "A">
+<!ENTITY doNotTrackCheckbox.label     "Websites mitteilen, meine Nutzeraktivitäten nicht zu verfolgen">
+<!ENTITY doNotTrackCheckbox.accesskey "W">
 
 <!ENTITY doNotTrackLearnMore.label    "Weitere Informationen">

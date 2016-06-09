@@ -90,10 +90,10 @@
 <!ENTITY size-mediumCmd.accesskey "M">
 <!ENTITY size-largeCmd.label "Groß">
 <!ENTITY size-largeCmd.accesskey "G">
-<!ENTITY size-extraLargeCmd.label "Extragroß">
-<!ENTITY size-extraLargeCmd.accesskey "x">
-<!ENTITY size-hugeCmd.label "Sehr groß">
-<!ENTITY size-hugeCmd.accesskey "S">
+<!ENTITY size-extraLargeCmd.label "Sehr groß">
+<!ENTITY size-extraLargeCmd.accesskey "S">
+<!ENTITY size-hugeCmd.label "Extragroß">
+<!ENTITY size-hugeCmd.accesskey "x">
 
 <!-- Font Style SubMenu -->
 <!ENTITY fontStyleMenu.label "Schriftschnitt">

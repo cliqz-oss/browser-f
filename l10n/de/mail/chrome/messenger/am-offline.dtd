@@ -1,3 +1,7 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!ENTITY doNotDownloadPop3Movemail.label "Um Speicherplatz zu sparen, nicht herunterladen:">
 <!ENTITY doNotDownloadNntp.label "Um Speicherplatz zu sparen, nicht zum Offline-Lesen herunterladen:">
 <!ENTITY doNotDownloadImap.label "Um Speicherplatz zu sparen, kann das Herunterladen der Nachrichten vom IMAP-Server und das Bereithalten lokaler Kopien zum Offline-Lesen nach Alter und Größe begrenzt werden.">
@@ -23,8 +27,6 @@
 <!ENTITY retentionKeepAll.accesskey "r">
 <!ENTITY retentionKeepRecent.label "Alle außer den neuesten">
 <!ENTITY retentionKeepRecent.accesskey "u">
-<!-- LOCALIZATION NOTE: Unhide with .keepUnreadOnly { display: -moz-box; } -->
-<!ENTITY retentionKeepUnreadHidden.label "Gelesene Nachrichten immer löschen (trotz der vorherigen Einstellungen!)">
 <!ENTITY retentionApplyToFlagged.label "Gekennzeichnete Nachrichten immer behalten">
 <!ENTITY retentionApplyToFlagged.accesskey "z">
 <!ENTITY nntpRemoveMsgBody.label "Lösche Nachrichteninhalte, die älter sind als">

@@ -41,6 +41,12 @@ values from browser.dtd.  -->
   -  It allows you to switch the context of the whole toolbox. -->
 <!ENTITY toolboxFramesTooltip          "Einen IFrame als Zieldokument auswählen">
 
+<!-- LOCALIZATION NOTE (toolboxNoAutoHideButton): This is the label for
+  -  the button to force the popups/panels to stay visible on blur.
+  -  This is only visible in the browser toolbox as it is meant for
+  -  addon developers and Firefox contributors. -->
+<!ENTITY toolboxNoAutoHideTooltip      "Popups nicht automatisch schließen">
+
 <!-- LOCALIZATION NOTE (browserToolboxErrorMessage): This is the label
   -  shown next to error details when the Browser Toolbox is unable to open. -->
 <!ENTITY browserToolboxErrorMessage          "Fehler beim Öffnen der Browser-Werkzeuge:">
@@ -58,6 +64,12 @@ values from browser.dtd.  -->
   -  panel. -->
 <!ENTITY options.showUserAgentStyles.label "Browser-eigene Stile anzeigen">
 <!ENTITY options.showUserAgentStyles.tooltip "Nach dem Aktivieren werden die vom Browser geladenen Standardstile angezeigt.">
+
+<!-- LOCALIZATION NOTE (options.collapseAttrs.label): This is the label
+  -  for the checkbox option to enable collapse attributes in the Inspector
+  -  panel. -->
+<!ENTITY options.collapseAttrs.label "DOM-Attribute kürzen">
+<!ENTITY options.collapseAttrs.tooltip "Lange DOM-Attribute im Inspektor kürzen">
 
 <!-- LOCALIZATION NOTE (options.defaultColorUnit.label): This is the label for a
   -  dropdown list that controls the default color unit used in the inspector.
@@ -99,7 +111,7 @@ values from browser.dtd.  -->
   -  checkbox that toggles chrome debugging, i.e. devtools.chrome.enabled
   -  boolean preference in about:config, in the options panel. -->
 <!ENTITY options.enableChrome.label5    "Debugging-Werkzeuge für Browser-Chrome und Add-ons aktivieren">
-<!ENTITY options.enableChrome.tooltip3  "Das Aktivieren dieser Einstellung ermöglicht das Verwenden diverser Entwicklerwerkzeuge auf Browser-Ebene (über Extras > Web-Entwickler > Browser-Werkzeuge) und das Debuggen von Add-ons über den Add-ons-Manager.">
+<!ENTITY options.enableChrome.tooltip3  "Das Aktivieren dieser Einstellung ermöglicht das Verwenden diverser Entwicklerwerkzeuge auf Browser-Ebene (über Extras > Web-Entwickler > Browser-Werkzeuge) und das Debuggen von Add-ons über die Add-ons-Verwaltung.">
 
 <!-- LOCALIZATION NOTE (options.enableRemote.label3): This is the label for the
   -  checkbox that toggles remote debugging, i.e. devtools.debugger.remote-enabled

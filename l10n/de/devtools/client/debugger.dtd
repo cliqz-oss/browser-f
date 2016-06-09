@@ -73,7 +73,7 @@
 
 <!-- LOCALIZATION NOTE (debuggerUI.ignoreCaughtExceptions): This is the label for the
   -  checkbox that toggles ignoring caught exceptions. -->
-<!ENTITY debuggerUI.ignoreCaughtExceptions     "Auftretende Ausnahmefehler ignorieren">
+<!ENTITY debuggerUI.ignoreCaughtExceptions     "Abgefangene Ausnahmefehler ignorieren">
 <!ENTITY debuggerUI.ignoreCaughtExceptions.accesskey "g">
 
 <!-- LOCALIZATION NOTE (debuggerUI.showPanesOnInit): This is the label for the
