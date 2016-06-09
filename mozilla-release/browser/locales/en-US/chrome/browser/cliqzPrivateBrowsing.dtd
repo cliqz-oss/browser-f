@@ -2,6 +2,8 @@
 # Copyright Cliqz GmbH, 2016.
 -->
 
+<!ENTITY cliqzPrivateBrowsing.title
+  "Forget tab">
 <!ENTITY cliqzPrivateBrowsing.header
   "Forget Mode">
 <!ENTITY cliqzPrivateBrowsing.explanation

@@ -2,6 +2,8 @@
 # Copyright Cliqz GmbH, 2016.
 -->
 
+<!ENTITY cliqzPrivateBrowsing.title
+  "Vergessen Tab">
 <!ENTITY cliqzPrivateBrowsing.header
   "Vergessen Modus">
 <!ENTITY cliqzPrivateBrowsing.explanation
