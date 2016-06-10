@@ -34,6 +34,7 @@ const explicitSize = parseInt(arguments[3]);
 const explicitHashes = parseInt(arguments[4]);
 const FALSE_RATE = 0.0001;
 const SIZE_INC_STEP_BLOCKS = 1024;  // 4kB
+const withFreqPattern = /\"(.+)\"\t(\d+)/i;
 
 function linesIntoBloomFilter(lines) {
   let [size, nHashes] = calculateFilterProperties(lines.length, FALSE_RATE);
@@ -48,6 +49,9 @@ function linesIntoBloomFilter(lines) {
     print("Rounded size up to " + size);
   }
   const filter = new BloomFilter(size, nHashes);
+
+  if (!lines.length)
+    return filter;
 
   for (let line of lines) {
     filter.add(line);
@@ -72,6 +76,7 @@ function readTextLines(fileName, encoding = "UTF-8") {
     convStream.readString(streamSize, data);
     return data.value.split("\n")
         .map((line) => line.trim())
+        .map((line) => (withFreqPattern.test(line) ? line.match(withFreqPattern)[1] : line))
         .filter((line) => (line.length > 0));
   }
   finally {
