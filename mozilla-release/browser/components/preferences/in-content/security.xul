@@ -127,4 +127,12 @@
       </row>
     </rows>
   </grid>
+
+  <vbox flex="1" class="view-pane password-managers" tabindex="0">
+    <caption><label>&passwordManager.title;</label></caption>
+    <caption>&passwordManager.desc1;</caption>
+    <caption>&passwordManager.desc2;</caption>
+    <caption> </caption>
+    <richlistbox id="features-list" class="list" flex="1"></richlistbox>
+  </vbox>
 </groupbox>

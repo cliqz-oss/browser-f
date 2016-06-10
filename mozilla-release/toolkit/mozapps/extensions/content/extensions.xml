@@ -1761,6 +1761,96 @@
     </handlers>
   </binding>
 
+  <!-- CLIQZ feature -->
+  <binding id="cliqz-feature"
+           extends="chrome://mozapps/content/extensions/extensions.xml#addon-base">
+    <content>
+      <xul:hbox class="content-container" align="center">
+        <xul:vbox class="icon-container">
+          <xul:image anonid="icon" class="icon"/>
+        </xul:vbox>
+        <xul:vbox class="content-inner-container" flex="1">
+            <xul:hbox class="name-container">
+              <xul:label anonid="name" class="name" crop="end"
+                         tooltip="addonitem-tooltip" xbl:inherits="value=name"/>
+
+              <xul:label anonid="version" class="version" crop="end" flex="1"
+                         tooltip="addonitem-tooltip" xbl:inherits="value=version"/>
+            </xul:hbox>
+        </xul:vbox>
+        <xul:vbox class="homepage-container">
+          <xul:label anonid="homepage" class="text-link" crop="end" flex="1"
+                     tooltip="addonitem-tooltip" xbl:inherits="value=homepage"
+                     value="&setting.learnmore;"/>
+        </xul:vbox>
+
+        <xul:vbox class="status-control-wrapper">
+          <xul:hbox anonid="control-container" class="control-container">
+
+            <xul:button anonid="remove-btn" class="addon-control remove"
+                        label="&cmd.uninstallAddon.label;"
+                        oncommand="document.getBindingParent(this).uninstall();"/>
+            <xul:button anonid="install" class="addon-control install"
+                        label="&cmd.installAddon.label;"
+                        oncommand="document.getBindingParent(this).install();"/>
+          </xul:hbox>
+        </xul:vbox>
+      </xul:hbox>
+    </content>
+
+    <implementation>
+      <constructor><![CDATA[
+         var homepage = document.getAnonymousElementByAttribute(this, "anonid", "homepage"),
+             icon =  document.getAnonymousElementByAttribute(this, "anonid", "icon");
+
+         this.setAttribute("name", this.mAddon.name);
+         this.setAttribute("version", "(v. " + this.mAddon.version + ")");
+
+         homepage.href = this.mAddon.homepageURL;
+         icon.src = this.mAddon.icons["64"] || this.mAddon.icons["32"];
+      ]]></constructor>
+      <method name="install">
+        <body><![CDATA[
+          var progress = document.getAnonymousElementByAttribute(this, "anonid", "install");
+          AddonManager.getInstallForURL(this.mAddon.sourceURI,
+            function(addon) {
+              addon.addListener({
+                onDownloadProgress: function(aInstall) {
+                  progress.textContent = gStrings.GetStringFromName("installDownloading") + ' ' + parseInt(aInstall.progress / aInstall.maxProgress * 100) + "%";
+                },
+                onDownloadFailed: function() {
+                  progress.textContent = gStrings.GetStringFromName("installDownloadFailed");
+                  setTimeout(window.location.reload, 2000);
+                },
+                onInstallFailed: function() {
+                  progress.textContent = gStrings.GetStringFromName("installFailed");
+                  setTimeout(window.location.reload, 2000);
+                },
+                onInstallEnded: function(aInstall, aAddon) {
+                  window.location.reload()
+                }
+              });
+              addon.install();
+            },
+            "application/x-xpinstall"
+          );
+        ]]></body>
+      </method>
+      <method name="uninstall">
+        <body><![CDATA[
+          this.mAddon.uninstall();
+          window.location.reload();
+        ]]></body>
+      </method>
+      <property name="control">
+        <getter><![CDATA[
+          // mask default listbox - disable selection
+
+          return null;
+        ]]></getter>
+      </property>
+    </implementation>
+  </binding>
 
   <!-- Addon - uninstalled - An uninstalled addon that can be re-installed. -->
   <binding id="addon-uninstalled"
