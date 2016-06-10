@@ -2,6 +2,8 @@
 # Copyright Cliqz GmbH, 2016.
 -->
 
+<!ENTITY cliqzPrivateBrowsing.title
+  "Vergessen Tab">
 <!ENTITY cliqzPrivateBrowsing.header
   "Vergessen Modus">
 <!ENTITY cliqzPrivateBrowsing.explanation
@@ -10,3 +12,5 @@
   "Dein Internetanbieter oder auch dein Arbeitgeber können weiterhin verfolgen, welche Seiten du besuchst, wenn Anti-Tracking deaktiviert ist.">
 <!ENTITY cliqzPrivateBrowsing.learnMore
   "Erfahre mehr dazu">
+<!ENTITY cliqzPrivateBrowsing.learnMoreLink
+  "https://cliqz.com/support/automatischer-vergessen-modus">
