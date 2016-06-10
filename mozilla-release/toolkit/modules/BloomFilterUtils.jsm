@@ -64,7 +64,7 @@ loadFromFile: function(file) {
 saveToFile: function(filter, version, file) {
   var foStream = Cc["@mozilla.org/network/file-output-stream;1"]
       .createInstance(Ci.nsIFileOutputStream);
-  const openFlags = FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE_FILE |
+  const openFlags = FileUtils.MODE_WRONLY | FileUtils.MODE_CREATE |
       FileUtils.MODE_TRUNCATE;
   const permFlags = parseInt("0666", 8);
   foStream.init(file, openFlags, permFlags, 0);
