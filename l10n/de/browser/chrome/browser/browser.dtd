@@ -12,8 +12,8 @@
 <!-- LOCALIZATION NOTE (mainWindow.titlemodifiermenuseparator): DONT_TRANSLATE -->
 <!ENTITY mainWindow.titlemodifiermenuseparator " - ">
 <!-- LOCALIZATION NOTE (mainWindow.titlePrivateBrowsingSuffix): This will be appended to the window's title
-                                                                inside the private browsing mode -->
-<!ENTITY mainWindow.titlePrivateBrowsingSuffix "(Privater Modus)">
+                                                                inside the forget mode -->
+<!ENTITY mainWindow.titlePrivateBrowsingSuffix "(Vergessen Modus)">
 
 <!ENTITY appmenu.tooltip                     "Menü öffnen">
 <!ENTITY navbarOverflow.label                "Mehr Werkzeuge…">
@@ -344,7 +344,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY newNavigatorCmd.label        "&#xad;Neues Fenster">
 <!ENTITY newNavigatorCmd.key        "N">
 <!ENTITY newNavigatorCmd.accesskey      "N">
-<!ENTITY newPrivateWindow.label     "Neues privates Fenster">
+<!ENTITY newPrivateWindow.label     "Neues Vergessen Fenster">
 <!ENTITY newPrivateWindow.accesskey "p">
 <!ENTITY newNonRemoteWindow.label   "Neues Einzelprozessfenster">
 
@@ -883,12 +883,12 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY trackingProtection.notDetected3 "Keine Inhalte zur Aktivitätenverfolgung auf dieser Seite gefunden.">
 <!-- LOCALIZATION NOTE (trackingProtection.unblock.label, trackingProtection.unblock.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
-     center while looking at a site with trackers in NON-private browsing mode. -->
+     center while looking at a site with trackers in NON-forget mode. -->
 <!ENTITY trackingProtection.unblock.label "Schutz für diese Seite deaktivieren">
 <!ENTITY trackingProtection.unblock.accesskey "d">
 <!-- LOCALIZATION NOTE (trackingProtection.unblockPrivate.label, trackingProtection.unblockPrivate.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
-     center while looking at a site with trackers in PRIVATE browsing mode. -->
+     center while looking at a site with trackers in FORGET mode. -->
 <!ENTITY trackingProtection.unblockPrivate.label "Schutz für diese Sitzung deaktivieren">
 <!ENTITY trackingProtection.unblockPrivate.accesskey "d">
 <!ENTITY trackingProtection.block2.label "Schutz aktivieren">
