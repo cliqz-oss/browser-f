@@ -27,20 +27,76 @@ Cu.import("resource://gre/modules/BloomFilterUtils.jsm");
 if (arguments.length < 3)
   fail("Three arguments expected, but " + arguments.length + " given");
 
-const inFileName = arguments[0];
-const outFileName = arguments[1];
-const dbVersion = parseInt(arguments[2]);
-const explicitSize = parseInt(arguments[3]);
-const explicitHashes = parseInt(arguments[4]);
+const argDefs = {
+  "-i": {type: String, mandatory: true,  name: "inFileName"},
+  "-o": {type: String, mandatory: true,  name: "outFileName"},
+  "-v": {type: Number, mandatory: true,  name: "dbVersion"},
+  "-t": {type: Number, mandatory: false, name: "topN"},
+  "-s": {type: Number, mandatory: false, name: "explicitSize"},
+  "-h": {type: Number, mandatory: false, name: "explicitHashes"},
+};
+
+function parseArgs(args, argDefs) {
+  function parseVal(val, argDef) {
+    switch (argDef.type) {
+      case String:
+        return String(val);
+      case Number: {
+        const int = parseInt(val);
+        if (isNaN(int))
+          throw new Error("Could not parse integer from: " + val);
+        return int;
+      }
+      default:
+        throw new Error("Strange arguments definition type: " + argDef.type);
+    }
+  }
+
+  // Parse specified values.
+  let i = 0;
+  const vals = {};
+  while (i < args.length) {
+    const argKey = args[i];
+    const argDef = argDefs[argKey];
+    if (!argDef)
+      throw new Error("Unknown argument: " + argKey);
+    const val = args[i + 1];
+    if (val === undefined)
+      throw new Error("Missing value for argument: " + argKey);
+    vals[argKey] = parseVal(val, argDef);
+
+    i += 2;
+  }
+
+  // Check for unspecified mandatory arguments.
+  for (let argKey of Object.keys(argDefs)) {
+    const argDef = argDefs[argKey];
+    if (argDef.mandatory && !(argKey in vals))
+      throw new Error("Mandatory argument unspecified: " + argKey);
+  }
+
+  // Prepare final arguments map.
+  const result = {};
+  for (let argKey of Object.keys(vals)) {
+    const argName = argDefs[argKey].name;
+    result[argName] = vals[argKey];
+  }
+
+  return Object.freeze(result);
+}
+
+const args = parseArgs(arguments, argDefs);
 const FALSE_RATE = 0.0001;
 const SIZE_INC_STEP_BLOCKS = 1024;  // 4kB
+const withFreqPattern = /\"(.+)\"\t(\d+)/i;
 
 function linesIntoBloomFilter(lines) {
   let [size, nHashes] = calculateFilterProperties(lines.length, FALSE_RATE);
   print("BloomFilter optimal parameters: " + [size, nHashes]);
-  if (!Number.isNaN(explicitSize) && !Number.isNaN(explicitHashes)) {
-    size = explicitSize;
-    nHashes = explicitHashes;
+  if ((args.explicitSize !== undefined) &&
+      (args.explicitHashes !== undefined)) {
+    size = args.explicitSize;
+    nHashes = args.explicitHashes;
     print("Explicit parameters " + [size, nHashes]);
   }
   else {
@@ -48,6 +104,9 @@ function linesIntoBloomFilter(lines) {
     print("Rounded size up to " + size);
   }
   const filter = new BloomFilter(size, nHashes);
+
+  if (!lines.length)
+    return filter;
 
   for (let line of lines) {
     filter.add(line);
@@ -72,6 +131,7 @@ function readTextLines(fileName, encoding = "UTF-8") {
     convStream.readString(streamSize, data);
     return data.value.split("\n")
         .map((line) => line.trim())
+        .map((line) => (withFreqPattern.test(line) ? line.match(withFreqPattern)[1] : line))
         .filter((line) => (line.length > 0));
   }
   finally {
@@ -79,23 +139,23 @@ function readTextLines(fileName, encoding = "UTF-8") {
   }
 }
 
-const lines = readTextLines(inFileName);
+const lines = readTextLines(args.inFileName).slice(0, args.topN);
 print("Input lines count: " + lines.length);
 
 let filter = linesIntoBloomFilter(lines);
 print("Filled filter.")
 
-const outFile = FileUtils.getFile("XCurProcD", outFileName.split("/"));
+const outFile = FileUtils.getFile("XCurProcD", args.outFileName.split("/"));
 print("Saving filter data into: " + outFile.path);
-BloomFilterUtils.saveToFile(filter, dbVersion, outFile);
+BloomFilterUtils.saveToFile(filter, args.dbVersion, outFile);
 
 print("Successfully saved filter data!");
 
 print("Checking...");
 let [testFilter, testVersion] = BloomFilterUtils.loadFromFile(outFile);
 print("===========");
-if (dbVersion != testVersion)
-  print("Versions don't match", dbVersion, testVersion);
+if (args.dbVersion != testVersion)
+  print("Versions don't match", args.dbVersion, testVersion);
 let ok = true;
 for (let line of lines) {
   const check = testFilter.test(line);
