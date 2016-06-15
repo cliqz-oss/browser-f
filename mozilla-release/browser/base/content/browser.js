@@ -4672,12 +4672,6 @@ var TabsProgressListener = {
       }
     }
 
-#if CQZ_AUTO_PRIVATE_TAB
-    if ((aStateFlags & Ci.nsIWebProgressListener.STATE_IS_WINDOW) &&
-        (aStateFlags & Ci.nsIWebProgressListener.STATE_START))
-      AutoPrivateTab.handleTabNavigation(aRequest.originalURI, aBrowser);
-#endif
-
     // Attach a listener to watch for "click" events bubbling up from error
     // pages and other similar pages (like about:newtab). This lets us fix bugs
     // like 401575 which require error page UI to do privileged things, without

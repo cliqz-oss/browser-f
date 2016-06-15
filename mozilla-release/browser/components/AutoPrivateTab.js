@@ -16,6 +16,9 @@ Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Timer.jsm");
 
+XPCOMUtils.defineLazyServiceGetter(this, "docLoadService",
+    "@mozilla.org/docloaderservice;1", "nsIWebProgress");
+
 XPCOMUtils.defineLazyGetter(this, "nsIJSON", () => {
   return Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
 });
@@ -37,43 +40,16 @@ AutoPrivateTabDatabase.prototype = {
         Preferences.get("browser.privatebrowsing.apt", false);
   },
 
-  handleTabNavigation: function APT_handleTabNavigation(uri, tabBrowser) {
-    const [pm, domain] = this._shouldLoadURIInPrivateMode(uri)
-    if (!pm)
-      return;
-    const gBrowser = tabBrowser.ownerGlobal.gBrowser;
-    const tab = gBrowser.getTabForBrowser(tabBrowser);
-    if (!tab || tab.private)
-      return;  // Don't do anything, if tab is already in forget mode.
-
-    if (this._oneTimeNormalLoadSet.has(tab)) {
-      this._oneTimeNormalLoadSet.delete(tab);
-      return;
-    }
-
-    tab.private = true;
-    // TODO: Navigation could happen in a background tab, not the current one.
-    setTimeout(
-      this._addOrUpdateNotification.bind(this, tabBrowser, domain),
-      1000);
-  },
-
   /**
    * @param {DOMElement} tab - <xul:tab> to toggle mode on.
    */
   toggleTabPrivateMode: function APT_toggleTabPrivateMode(tab, rememberDomain) {
-    const domain = this._maybeGetDomain(tab.linkedBrowser.currentURI);
     if (tab.private) {
-      if (rememberDomain)
-        this.whitelistDomain(domain);
+      this._reloadTabAsNormal(tab, rememberDomain);
     }
     else {
-      if (rememberDomain)
-        this.blacklistDomain(domain);
-      this._cleanupHistory(domain);
+      this._reloadTabAsPrivate(tab, rememberDomain);
     }
-    tab.private = !tab.private;
-    tab.linkedBrowser.reload();
   },
 
   /**
@@ -113,10 +89,17 @@ AutoPrivateTabDatabase.prototype = {
         case "profile-after-change": {
           Services.obs.addObserver(this, "profile-before-change", false);
           this._load();
+          docLoadService.addProgressListener(this,
+              Ci.nsIWebProgress.NOTIFY_STATE_ALL);
           break;
         }
         case "profile-before-change": {
+          docLoadService.removeProgressListener(this);
           this._persist();
+          break;
+        }
+        case "http-on-modify-request": {
+          this._filterRequest(subject.QueryInterface(Ci.nsIChannel));
           break;
         }
       }
@@ -124,6 +107,42 @@ AutoPrivateTabDatabase.prototype = {
     catch (e) {
       dump("APT: " + e + "\n");
       dump("APT:\n" + e.stack);
+    }
+  },
+
+  // nsIWebProgressListener:
+  onStateChange: function APT_onStateChange(aWebProgress, aRequest, aStateFlags,
+      aStatus) {
+    if (false /* for debugging purposes */) {
+      const KNOWN_FLAGS = [
+          "STATE_IS_DOCUMENT",
+          "STATE_IS_REQUEST",
+          "STATE_IS_NETWORK",
+          "STATE_IS_WINDOW",
+          "STATE_IS_REDIR_DOC",
+          "STATE_START",
+          "STATE_REDIRECTING",
+          "STATE_TRANSFERRING",
+          "STATE_NEGOTIATING",
+          "STATE_STOP"];
+      let flags = KNOWN_FLAGS.map( (F) => {
+        return (aStateFlags & Ci.nsIWebProgressListener[F]) ? F : undefined;
+      }).filter( (s) => !!s );
+      let channel = aRequest.QueryInterface(Ci.nsIChannel);
+      let spec = channel.URI && channel.URI.spec;
+      let oldSpec = channel.originalURI && channel.originalURI.spec;
+      dump("APT_onStateChange: " + flags +
+           ", URI: " + spec +
+           ", originalURI: " + oldSpec + "\n");
+    }
+    const startOrRedirect =
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_START) ||
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_REDIRECTING);
+    const isDoc =
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_REDIR_DOC) ||
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT);
+    if (startOrRedirect && isDoc) {
+        this._filterRequest(aRequest.QueryInterface(Ci.nsIChannel));
     }
   },
 
@@ -153,6 +172,31 @@ AutoPrivateTabDatabase.prototype = {
 
     this._usrWhiteList = SetFromFileOrRemoveIt(
         FileUtils.getFile("ProfD", [USR_WHITELIST_FILE_NAME]));
+  },
+
+  _filterRequest: function(channel) {
+    const loadContext = findChannelLoadContext(channel);
+    if (!loadContext)
+      return;
+    const [pm, domain] = this._shouldLoadURIInPrivateMode(
+        channel.URI || channel.originalURI);
+    if (!pm || loadContext.usePrivateBrowsing)
+      return;
+
+    const chromeWindow = findChromeWindowForLoadContext(loadContext);
+    const tab = chromeWindow.gBrowser._getTabForContentWindow(
+        loadContext.associatedWindow);
+
+    if (this._oneTimeNormalLoadSet.has(tab)) {
+      this._oneTimeNormalLoadSet.delete(tab);
+      return;  // Allow the tab to be loaded normally.
+    }
+
+    loadContext.usePrivateBrowsing = true;
+
+    setTimeout(
+      this._addOrUpdateNotification.bind(this, tab, domain),
+      1000);
   },
 
   _usrWhitelisted: function(domain) {
@@ -210,15 +254,18 @@ AutoPrivateTabDatabase.prototype = {
     }
   },
 
-  _addOrUpdateNotification: function APT__addOrUpdateNotification(
-      tabBrowser, domain) {
-    const gBrowser = tabBrowser.ownerGlobal.gBrowser;
-    const notificationBox = gBrowser.getNotificationBox();
+  _addOrUpdateNotification: function APT__addOrUpdateNotification(tab, domain) {
+    const gBrowser = tab.ownerGlobal.gBrowser;
+    const notificationBox = gBrowser.getNotificationBox(tab.linkedBrowser);
+
+    // Remove existing notification, if any.
     const notification = notificationBox.getNotificationWithValue(
         this._consts.AUTO_PRIVATE_TAB_NOTIFICATION);
     if (notification) {
       notificationBox.removeNotification(notification);
     }
+
+    // Display new notification.
     const buttons = [
     {
       label: browserStrings.GetStringFromName("apt.notification.revertButton"),
@@ -226,7 +273,7 @@ AutoPrivateTabDatabase.prototype = {
           "apt.notification.revertButton.AK"),
       popup: null,
       callback: (notification, descr) => {
-          this._reloadBrowserAsNormal(tabBrowser);
+        this._reloadTabAsNormal(tab);
       }
     },
     {
@@ -236,7 +283,7 @@ AutoPrivateTabDatabase.prototype = {
           "apt.notification.alwaysNormalButton.AK"),
       popup: null,
       callback: (notification, descr) => {
-          this._reloadBrowserAsNormal(tabBrowser, true);
+        this._reloadTabAsNormal(tab, true);
       }
     },
     {
@@ -257,13 +304,11 @@ AutoPrivateTabDatabase.prototype = {
         buttons);
   },
 
-  _reloadBrowserAsNormal: function APT__reloadBrowserAsNormal(
-      tabBrowser, remember) {
-    const gBrowser = tabBrowser.ownerGlobal.gBrowser;
-    const tab = gBrowser.getTabForBrowser(tabBrowser);
+  _reloadTabAsNormal: function APT__reloadTabAsNormal(tab, remember) {
+    const tabBrowser = tab.linkedBrowser;
 
     if (remember) {
-      const domain = this._maybeGetDomain(tab.linkedBrowser.currentURI);
+      const domain = this._maybeGetDomain(tabBrowser.currentURI);
       this.whitelistDomain(domain);
     }
     else {
@@ -271,7 +316,20 @@ AutoPrivateTabDatabase.prototype = {
     }
 
     tab.private = false;
-    tab.linkedBrowser.reload();
+    tabBrowser.reload();
+  },
+
+  _reloadTabAsPrivate: function APT__reloadTabAsPrivate(tab, remember) {
+    const tabBrowser = tab.linkedBrowser;
+
+    const domain = this._maybeGetDomain(tabBrowser.currentURI);
+    if (remember) {
+      this.blacklistDomain(domain);
+    }
+    this._cleanupHistory(domain);
+
+    tab.private = true;
+    tabBrowser.reload();
   },
 
   _cleanupHistory: function(domain) {
@@ -295,6 +353,8 @@ AutoPrivateTabDatabase.prototype = {
   QueryInterface: XPCOMUtils.generateQI([
       Ci.nsISupports,
       Ci.nsIObserver,
+      Ci.nsISupportsWeakReference,
+      Ci.nsIWebProgressListener,
   ]),
 
   get wrappedJSObject() {
@@ -303,6 +363,41 @@ AutoPrivateTabDatabase.prototype = {
 };
 
 const NSGetFactory = XPCOMUtils.generateNSGetFactory([AutoPrivateTabDatabase]);
+
+function findChannelLoadContext(channel) {
+  if (!(channel instanceof Ci.nsIChannel))
+    return;
+
+  const notificationCallbacks = channel.notificationCallbacks ||
+      (channel.loadGroup && channel.loadGroup.notificationCallbacks);
+  if (!notificationCallbacks)
+    return;
+
+  try {
+    return notificationCallbacks.getInterface(Ci.nsILoadContext);
+  }
+  catch (e) {
+    // Most likely |e| is NS_NOINTERFACE, nothing can be done.
+  }
+}
+
+function findChromeWindowForLoadContext(loadContext) {
+  const contentWindow = loadContext.associatedWindow;
+  if (!contentWindow)
+    return;
+  const iReqtor = contentWindow.top.QueryInterface(Ci.nsIInterfaceRequestor);
+  if (!iReqtor)
+    return;
+
+  try {
+    return iReqtor.getInterface(Ci.nsIWebNavigation).
+        QueryInterface(Ci.nsIDocShellTreeItem).rootTreeItem.
+        QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsIDOMWindow);
+  }
+  catch (e) {
+    // Nothing we can do here.
+  }
+}
 
 function SetFromFileOrRemoveIt(file) {
   if (!file.exists() || !file.isFile())
