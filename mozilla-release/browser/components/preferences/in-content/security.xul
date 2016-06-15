@@ -80,6 +80,7 @@
       <hbox align="start">
         <label>&httpsEverywhereDesc.label;</label>
         <label class="text-link"
+               style="padding-left: 10px;"
                value="&httpsEverywhereMore.label;"
                href="https://www.eff.org/https-everywhere"/>
       </hbox>
