@@ -54,7 +54,8 @@ const tabContainerEvents = {
   },
 
   "TabPrivateModeChanged": function onTabPrivateModeChanged(event) {
-    this._toolbox.setAttribute(TOOLBOX_PRIVATE_ATTR_NAME,
-        (event.target === this._browser.selectedTab) && event.detail.private);
+    if (event.originalTarget !== this._browser.selectedTab)
+      return;
+    this._toolbox.setAttribute(TOOLBOX_PRIVATE_ATTR_NAME, event.detail.private);
   }
 };
