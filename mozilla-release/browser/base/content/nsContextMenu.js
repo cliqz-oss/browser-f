@@ -145,10 +145,13 @@ nsContextMenu.prototype = {
 
     var shouldShow = this.onSaveableLink || isMailtoInternal || this.onPlainTextLink;
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
+    const isTabPrivate = this.browser.docShell.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
+    this.showItem("context-openlink",
+        shouldShow && !isWindowPrivate && !isTabPrivate);
     this.showItem("context-openlinkprivate", shouldShow);
-    this.showItem("context-openlinkintab", shouldShow);
+    this.showItem("context-openlinkintab", shouldShow && !isTabPrivate);
+    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
     this.showItem("context-openlinkinusercontext-menu", shouldShow && showContainers);
     this.showItem("context-openlinkincurrent", this.onPlainTextLink);
     this.showItem("context-sep-open", shouldShow);
@@ -956,7 +959,9 @@ nsContextMenu.prototype = {
     let params = { charset: gContextMenuContentData.charSet,
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
-                   noReferrer: this.linkHasNoReferrer };
+                   noReferrer: this.linkHasNoReferrer,
+                   private: this.browser.docShell.usePrivateBrowsing
+    };
     for (let p in extra)
       params[p] = extra[p];
     return params;

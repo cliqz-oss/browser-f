@@ -521,10 +521,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY searchSetAsDefault.accesskey "S">
 
 <!ENTITY openLinkCmdInTab.label       "Link in neuem Tab öffnen">
+<!ENTITY openLinkCmdInForgetTab.label "Link in neuem Vergessen Tab öffnen">
 <!ENTITY openLinkCmdInTab.accesskey   "T">
 <!ENTITY openLinkCmd.label            "Link in neuem Fenster öffnen">
 <!ENTITY openLinkCmd.accesskey        "F">
-<!ENTITY openLinkInPrivateWindowCmd.label "Link in neuem privaten Fenster öffnen">
+<!ENTITY openLinkInPrivateWindowCmd.label "Link in neuem Vergessen Fenster öffnen">
 <!ENTITY openLinkInPrivateWindowCmd.accesskey "p">
 <!ENTITY openLinkCmdInCurrent.label     "Link öffnen">
 <!ENTITY openLinkCmdInCurrent.accesskey "k">
