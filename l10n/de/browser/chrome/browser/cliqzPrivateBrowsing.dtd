@@ -3,9 +3,9 @@
 -->
 
 <!ENTITY cliqzPrivateBrowsing.title
-  "Vergessen Tab">
-<!ENTITY cliqzPrivateBrowsing.header
   "Vergessen Modus">
+<!ENTITY cliqzPrivateBrowsing.header
+  "&cliqzPrivateBrowsing.title;">
 <!ENTITY cliqzPrivateBrowsing.explanation
   "Du surfst im Vergessen Modus. Das heißt, dass die Websites, die du in diesem Modus besuchst, nicht in deinem Verlauf gespeichert werden, und dass auch temporäre Dateien und Cookies &quot;vergessen&quot; werden. Downloads und Lesezeichen werden auch hier gespeichert.">
 <!ENTITY cliqzPrivateBrowsing.note
