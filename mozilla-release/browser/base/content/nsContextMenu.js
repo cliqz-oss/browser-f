@@ -956,7 +956,9 @@ nsContextMenu.prototype = {
     let params = { charset: gContextMenuContentData.charSet,
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
-                   noReferrer: this.linkHasNoReferrer };
+                   noReferrer: this.linkHasNoReferrer,
+                   private: this.browser.docShell.usePrivateBrowsing
+    };
     for (let p in extra)
       params[p] = extra[p];
     return params;
