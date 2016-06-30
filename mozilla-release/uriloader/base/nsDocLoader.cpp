@@ -459,7 +459,24 @@ nsDocLoader::OnStartRequest(nsIRequest *request, nsISupports *aCtxt)
   NS_ASSERTION(!mIsLoadingDocument || mDocumentRequest,
                "mDocumentRequest MUST be set for the duration of a page load!");
 
-  doStartURLLoad(request);
+  // This is the only way to catch document request start event after a redirect
+  // has occured without changing inherited Firefox behaviour significantly.
+  // Problem description:
+  // The combination of |STATE_START + STATE_IS_DOCUMENT| is only sent for
+  // initial request (see |doStartDocumentLoad| call above).
+  // And |STATE_REDIRECTING + STATE_IS_DOCUMENT| is sent with old channel, which
+  // makes it impossible to filter by destination URL (see
+  // |AsyncOnChannelRedirect| implementation).
+  // Fixing any of those bugs may cause unpredictable consequences in any part
+  // of the browser, so we just add a custom flag for this exact situation.
+  int32_t extraFlags = 0;
+  if (mIsLoadingDocument
+      && !bJustStartedLoading
+      && (loadFlags & nsIChannel::LOAD_DOCUMENT_URI)
+      && (loadFlags & nsIChannel::LOAD_REPLACE)) {
+    extraFlags = nsIWebProgressListener::STATE_IS_REDIR_DOC;
+  }
+  doStartURLLoad(request, extraFlags);
 
   return NS_OK;
 }
@@ -761,7 +778,7 @@ void nsDocLoader::doStartDocumentLoad(void)
                     NS_OK);
 }
 
-void nsDocLoader::doStartURLLoad(nsIRequest *request)
+void nsDocLoader::doStartURLLoad(nsIRequest *request, int32_t aExtraFlags)
 {
 #if defined(DEBUG)
   nsAutoCString buffer;
@@ -776,7 +793,8 @@ void nsDocLoader::doStartURLLoad(nsIRequest *request)
   FireOnStateChange(this,
                     request,
                     nsIWebProgressListener::STATE_START |
-                    nsIWebProgressListener::STATE_IS_REQUEST,
+                    nsIWebProgressListener::STATE_IS_REQUEST |
+                    aExtraFlags,
                     NS_OK);
 }
 
@@ -1370,6 +1388,25 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
                                                   uint32_t aFlags,
                                                   nsIAsyncVerifyRedirectCallback *cb)
 {
+  if (MOZ_LOG_TEST(gDocLoaderLog, LogLevel::Debug)) {
+    nsIURI* oldURI = nullptr;
+    if (aOldChannel)
+      aOldChannel->GetURI(&oldURI);
+    nsAutoCString oldURL;
+    if (oldURI)
+      oldURI->GetSpec(oldURL);
+
+    nsIURI* newURI = nullptr;
+    if (aNewChannel)
+      aNewChannel->GetURI(&newURI);
+    nsAutoCString newURL;
+    if (newURI)
+      newURI->GetSpec(newURL);
+
+    MOZ_LOG(gDocLoaderLog, LogLevel::Debug,
+           ("DocLoader:%p: AsyncOnChannelRedirect (%s -> %s) flags=%x",
+           this, oldURL.get(), newURL.get(), aFlags));
+  }
   if (aOldChannel)
   {
     nsLoadFlags loadFlags = 0;
