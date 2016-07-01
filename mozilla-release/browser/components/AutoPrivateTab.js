@@ -19,6 +19,9 @@ Cu.import("resource://gre/modules/Timer.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "docLoadService",
     "@mozilla.org/docloaderservice;1", "nsIWebProgress");
 
+XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
+    "resource://gre/modules/ForgetAboutSite.jsm");
+
 XPCOMUtils.defineLazyGetter(this, "nsIJSON", () => {
   return Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
 });
@@ -255,17 +258,6 @@ AutoPrivateTabDatabase.prototype = {
   },
 
   _addOrUpdateNotification: function APT__addOrUpdateNotification(tab, domain) {
-    const gBrowser = tab.ownerGlobal.gBrowser;
-    const notificationBox = gBrowser.getNotificationBox(tab.linkedBrowser);
-
-    // Remove existing notification, if any.
-    const notification = notificationBox.getNotificationWithValue(
-        this._consts.AUTO_PRIVATE_TAB_NOTIFICATION);
-    if (notification) {
-      notificationBox.removeNotification(notification);
-    }
-
-    // Display new notification.
     const buttons = [
     {
       label: browserStrings.GetStringFromName("apt.notification.revertButton"),
@@ -274,6 +266,7 @@ AutoPrivateTabDatabase.prototype = {
       popup: null,
       callback: (notification, descr) => {
         this._reloadTabAsNormal(tab);
+        return false;
       }
     },
     {
@@ -284,6 +277,7 @@ AutoPrivateTabDatabase.prototype = {
       popup: null,
       callback: (notification, descr) => {
         this._reloadTabAsNormal(tab, true);
+        return false;
       }
     },
     {
@@ -293,14 +287,16 @@ AutoPrivateTabDatabase.prototype = {
       popup: null,
       callback: (notification, descr) => {
         gBrowser.ownerGlobal.openPreferences("panePrivacy");
+        return false;
       }
     }];
 
-    notificationBox.appendNotification(
-        browserStrings.GetStringFromName("apt.notification.label"),
-        this._consts.AUTO_PRIVATE_TAB_NOTIFICATION,
+    addOrReplaceNotification(
+        tab,
+        this._consts.AUTO_SWITCHED_TO_FORGET,
+        "PRIORITY_INFO_HIGH",
         "chrome://browser/skin/privatebrowsing-eraser.svg",
-        notificationBox.PRIORITY_INFO_HIGH,
+        browserStrings.GetStringFromName("apt.notification.label"),
         buttons);
   },
 
@@ -326,18 +322,64 @@ AutoPrivateTabDatabase.prototype = {
     if (remember) {
       this.blacklistDomain(domain);
     }
-    this._cleanupHistory(domain);
 
     tab.private = true;
     tabBrowser.reload();
+
+    if (remember) {
+      ForgetAboutSite.removeDataFromDomain(domain);
+    }
+    else {
+      const gBrowser = tab.ownerGlobal.gBrowser;
+      const buttons = [
+        {
+          label: browserStrings.GetStringFromName(
+              "apt.cleanupPrompt.cleanButton"),
+          callback: (notification, descr) => {
+            ForgetAboutSite.removeDataFromDomain(domain);
+            return false;
+          }
+        },
+        {
+          label: browserStrings.GetStringFromName(
+              "apt.cleanupPrompt.leaveButton"),
+          callback: (notification, descr) => { return false; }
+        },
+        {
+          label: browserStrings.GetStringFromName(
+              "apt.cleanupPrompt.learnMoreButton"),
+          callback: (notification, descr) => {
+            gBrowser.ownerGlobal.openLinkIn(
+                "https://cliqz.com/support/daten-vergessen-modus",
+                "tab",
+                {
+                  relatedToCurrent: true,
+                  inBackground: false
+                });
+            return true;  // Don't close the notification.
+          }
+        }
+      ];
+      setTimeout(
+          addOrReplaceNotification.bind(null,
+              tab,
+              this._consts.HIST_CLEANUP_CONFIRM,
+              "PRIORITY_INFO_HIGH",
+              "chrome://browser/skin/privatebrowsing-eraser.svg",
+              browserStrings.GetStringFromName("apt.cleanupPrompt.label"),
+              buttons
+          ),
+          2000);
+    }
   },
 
   _cleanupHistory: function(domain) {
-    // TODO: Implement history cleanup.
+    ForgetAboutSite.removeDataFromDomain(domain);
   },
 
   _consts: {
-    AUTO_PRIVATE_TAB_NOTIFICATION: "auto-private-tab"
+    AUTO_SWITCHED_TO_FORGET: "apt-auto-switched",
+    HIST_CLEANUP_CONFIRM: "apt-confirm-cleanup"
   },
 
   _adultDomainsBF: null,  // BloomFilter instance with a set of adult domains.
@@ -397,6 +439,21 @@ function findChromeWindowForLoadContext(loadContext) {
   catch (e) {
     // Nothing we can do here.
   }
+}
+
+function addOrReplaceNotification (tab, id, priName, iconURL, text, buttons) {
+  const gBrowser = tab.ownerGlobal.gBrowser;
+  const notificationBox = gBrowser.getNotificationBox(tab.linkedBrowser);
+  // Remove existing notification, if any.
+  const notification = notificationBox.getNotificationWithValue(id);
+  if (notification) {
+    notificationBox.removeNotification(notification);
+  }
+  // Add new notification.
+  const priority = (priName in notificationBox) ?
+      notificationBox[priName] :
+      notificationBox.PRIORITY_INFO_LOW;
+  notificationBox.appendNotification(text, id, iconURL, priority, buttons);
 }
 
 function SetFromFileOrRemoveIt(file) {
