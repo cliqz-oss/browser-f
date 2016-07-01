@@ -18,6 +18,13 @@
                           command="cmd_newNavigatorTab"
                           key="key_newNavigatorTab"
                           accesskey="&tabCmd.accesskey;"/>
+#if CQZ_AUTO_PRIVATE_TAB
+                <menuitem id="menu_newForgetTab"
+                          label="&forgetTabCmd.label;"
+                          command="cmd_newForgetTab"
+                          key="key_newForgetTab"
+                          accesskey="&forgetTabCmd.accesskey;"/>
+#endif
                 <menu id="menu_newUserContext"
                       label="&newUserContext.label;"
                       accesskey="&newUserContext.accesskey;"

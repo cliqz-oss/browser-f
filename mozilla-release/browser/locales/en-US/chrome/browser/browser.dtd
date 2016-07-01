@@ -54,6 +54,9 @@ can reach it easily. -->
 <!ENTITY tabCmd.label "New Tab">
 <!ENTITY tabCmd.accesskey "T">
 <!ENTITY tabCmd.commandkey "t">
+<!ENTITY forgetTabCmd.label "New Forget Tab">
+<!ENTITY forgetTabCmd.accesskey "F">
+<!ENTITY forgetTabCmd.commandkey "f">
 <!-- LOCALIZATION NOTE (openLocationCmd.label): "Open Location" is only
 displayed on OS X, and only on windows that aren't main browser windows, or
 when there are no windows but Firefox is still running. -->
