@@ -1,6 +1,6 @@
 #!groovy
 
-node {
+node("master") {
   // die early without CQZ_BUILD_ID, CQZ_RELEASE_CHANNEL or CQZ_COMMIT
   CQZ_BUILD_ID
   CQZ_COMMIT
