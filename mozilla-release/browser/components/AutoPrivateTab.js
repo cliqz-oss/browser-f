@@ -197,9 +197,7 @@ AutoPrivateTabDatabase.prototype = {
 
     loadContext.usePrivateBrowsing = true;
 
-    setTimeout(
-      this._addOrUpdateNotification.bind(this, tab, domain),
-      1000);
+    this._addOrUpdateNotification(tab, domain);
   },
 
   _usrWhitelisted: function(domain) {
@@ -360,16 +358,14 @@ AutoPrivateTabDatabase.prototype = {
           }
         }
       ];
-      setTimeout(
-          addOrReplaceNotification.bind(null,
-              tab,
-              this._consts.HIST_CLEANUP_CONFIRM,
-              "PRIORITY_INFO_HIGH",
-              "chrome://browser/skin/privatebrowsing-eraser.svg",
-              browserStrings.GetStringFromName("apt.cleanupPrompt.label"),
-              buttons
-          ),
-          2000);
+      addOrReplaceNotification(
+          tab,
+          this._consts.HIST_CLEANUP_CONFIRM,
+          "PRIORITY_INFO_HIGH",
+          "chrome://browser/skin/privatebrowsing-eraser.svg",
+          browserStrings.GetStringFromName("apt.cleanupPrompt.label"),
+          buttons
+      );
     }
   },
 
@@ -445,7 +441,7 @@ function addOrReplaceNotification (tab, id, priName, iconURL, text, buttons) {
   const gBrowser = tab.ownerGlobal.gBrowser;
   const notificationBox = gBrowser.getNotificationBox(tab.linkedBrowser);
   // Remove existing notification, if any.
-  const notification = notificationBox.getNotificationWithValue(id);
+  let notification = notificationBox.getNotificationWithValue(id);
   if (notification) {
     notificationBox.removeNotification(notification);
   }
@@ -453,7 +449,9 @@ function addOrReplaceNotification (tab, id, priName, iconURL, text, buttons) {
   const priority = (priName in notificationBox) ?
       notificationBox[priName] :
       notificationBox.PRIORITY_INFO_LOW;
-  notificationBox.appendNotification(text, id, iconURL, priority, buttons);
+  notification = notificationBox.appendNotification(
+      text, id, iconURL, priority, buttons);
+  notification.timeout = Date.now() + 60000;  // 1 minute.
 }
 
 function SetFromFileOrRemoveIt(file) {
