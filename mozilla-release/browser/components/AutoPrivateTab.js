@@ -256,6 +256,7 @@ AutoPrivateTabDatabase.prototype = {
   },
 
   _addOrUpdateNotification: function APT__addOrUpdateNotification(tab, domain) {
+    const gBrowser = tab.ownerGlobal.gBrowser;
     const buttons = [
     {
       label: browserStrings.GetStringFromName("apt.notification.revertButton"),
