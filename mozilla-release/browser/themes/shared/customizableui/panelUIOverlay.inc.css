@@ -1224,6 +1224,11 @@ toolbarpaletteitem[place="palette"] > .toolbarbutton-1 > .toolbarbutton-menubutt
   width: @menuPanelWidth@;
 }
 
+/* Hidden in CLIQZ */
+#wrapper-search-container {
+  display: none !important;
+}
+
 #search-container[cui-areatype="menu-panel"] {
   margin-top: 6px;
   margin-bottom: 6px;
