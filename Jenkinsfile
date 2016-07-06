@@ -27,7 +27,7 @@ node("master") {
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_COMMIT=${CQZ_COMMIT}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-      "CQZ_DE_LOCALIZATION=${CQZ_DE_LOCALIZATION}",
+      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
     ]) {
       sh '''#!/bin/bash -xe
 export SHELL=/bin/bash
@@ -56,7 +56,7 @@ source ./certs/s3cmd_repository_cliqz_com.sh
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_COMMIT=${CQZ_COMMIT}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-      "CQZ_DE_LOCALIZATION=${CQZ_DE_LOCALIZATION}",
+      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
     ]) {
       sh '''#!/bin/bash -xe
 export SHELL=/bin/bash
