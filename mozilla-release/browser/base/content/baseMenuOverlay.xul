@@ -52,22 +52,24 @@
 #else
                   />
 #endif
+#if 0
         <menuitem id="menu_openTour"
                   oncommand="openTourPage();"
                   label="&helpShowTour2.label;"
                   accesskey="&helpShowTour2.accesskey;"/>
+#endif
         <menuitem id="menu_keyboardShortcuts"
                   oncommand="openHelpLink('keyboard-shortcuts')"
                   onclick="checkForMiddleClick(this, event);"
                   label="&helpKeyboardShortcuts.label;"
                   accesskey="&helpKeyboardShortcuts.accesskey;"/>
-#ifdef MOZ_TELEMETRY_REPORTING
+# originally was behind MOZ_TELEMETRY_REPORTING
+#if 0
         <menuitem id="healthReport"
                   label="&healthReport2.label;"
                   accesskey="&healthReport2.accesskey;"
                   oncommand="openHealthReport()"
                   onclick="checkForMiddleClick(this, event);"/>
-#endif
         <menuitem id="troubleShooting"
                   accesskey="&helpTroubleshootingInfo.accesskey;"
                   label="&helpTroubleshootingInfo.label;"
@@ -78,6 +80,7 @@
                   label="&helpFeedbackPage.label;"
                   oncommand="openFeedbackPage()"
                   onclick="checkForMiddleClick(this, event);"/>
+#endif
         <menuitem id="helpSafeMode"
                   accesskey="&helpSafeMode.accesskey;"
                   label="&helpSafeMode.label;"
