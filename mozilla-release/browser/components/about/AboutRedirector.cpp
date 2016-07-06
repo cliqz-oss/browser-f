@@ -83,11 +83,8 @@ static RedirEntry kRedirMap[] = {
   { "sync-tabs", "chrome://browser/content/sync/aboutSyncTabs.xul",
     nsIAboutModule::ALLOW_SCRIPT },
 #endif
-  { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::ENABLE_INDEXED_DB },
+  { "home", "about:cliqz",
+    nsIAboutModule::ALLOW_SCRIPT },
   // the newtab's actual URL will be determined when the channel is created
   { "newtab", "about:blank",
     nsIAboutModule::ALLOW_SCRIPT },
@@ -99,8 +96,11 @@ static RedirEntry kRedirMap[] = {
   { "healthreport", "chrome://browser/content/abouthealthreport/abouthealth.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
 #endif
+#if 0
+# Disabled in Cliqz
   { "accounts", "chrome://browser/content/aboutaccounts/aboutaccounts.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
+#endif
   { "loopconversation", "chrome://loop/content/panels/conversation.html",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |
@@ -184,6 +184,11 @@ AboutRedirector::NewChannel(nsIURI* aURI,
       rv = NS_URIChainHasFlags(tempURI, nsIProtocolHandler::URI_IS_UI_RESOURCE,
                                &isUIResource);
       NS_ENSURE_SUCCESS(rv, rv);
+      // TODO: Instead of this, try to return URI_IS_UI_RESOURCE from extension
+      // about-handler |getURIFlags|.
+      if (path.EqualsLiteral("home") || path.EqualsLiteral("newtab")) {
+        isUIResource = true;
+      }
 
       nsLoadFlags loadFlags =
         isUIResource ? static_cast<nsLoadFlags>(nsIChannel::LOAD_NORMAL)

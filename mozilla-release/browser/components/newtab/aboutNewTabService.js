@@ -23,7 +23,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "Locale",
 XPCOMUtils.defineLazyModuleGetter(this, "MODE_CHANNEL_MAP",
                                   "resource:///modules/NewTabRemoteResources.jsm");
 
-const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
+//const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
+const LOCAL_NEWTAB_URL = "about:cliqz";
 
 const REMOTE_NEWTAB_PATH = "/v%VERSION%/%CHANNEL%/%LOCALE%/index.html";
 

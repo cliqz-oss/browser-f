@@ -75,10 +75,13 @@ static RedirEntry kRedirMap[] = {
     "memory", "chrome://global/content/aboutMemory.xhtml",
     nsIAboutModule::ALLOW_SCRIPT
   },
+#if 0
+# Disabled in Cliqz
   {
     "mozilla", "chrome://global/content/mozilla.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT
   },
+#endif
   {
     "neterror", "chrome://global/content/netError.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
