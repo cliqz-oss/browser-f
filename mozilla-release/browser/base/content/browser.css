@@ -1200,6 +1200,12 @@ toolbarpaletteitem[dragover] {
   display: -moz-box;
 }
 
+/* Hidden in CLIQZ */
+#customization-toolbar-visibility-button,
+#customization-lwtheme-button {
+  display: none !important;
+}
+
 toolbarpaletteitem[place="palette"] {
   width: 10em;
   /* icon (32) + margin (2 * 4) + button padding/border (2 * 4) + label margin (~2) + label
