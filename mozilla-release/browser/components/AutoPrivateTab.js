@@ -90,19 +90,11 @@ AutoPrivateTabDatabase.prototype = {
     try {
       switch(topic) {
         case "profile-after-change": {
-          Services.obs.addObserver(this, "profile-before-change", false);
-          this._load();
-          docLoadService.addProgressListener(this,
-              Ci.nsIWebProgress.NOTIFY_STATE_ALL);
+          this._onProfileAfterChange();
           break;
         }
         case "profile-before-change": {
-          docLoadService.removeProgressListener(this);
-          this._persist();
-          break;
-        }
-        case "http-on-modify-request": {
-          this._filterRequest(subject.QueryInterface(Ci.nsIChannel));
+          this._onProfileBeforeChange();
           break;
         }
       }
@@ -117,20 +109,8 @@ AutoPrivateTabDatabase.prototype = {
   onStateChange: function APT_onStateChange(aWebProgress, aRequest, aStateFlags,
       aStatus) {
     if (false /* for debugging purposes */) {
-      const KNOWN_FLAGS = [
-          "STATE_IS_DOCUMENT",
-          "STATE_IS_REQUEST",
-          "STATE_IS_NETWORK",
-          "STATE_IS_WINDOW",
-          "STATE_IS_REDIR_DOC",
-          "STATE_START",
-          "STATE_REDIRECTING",
-          "STATE_TRANSFERRING",
-          "STATE_NEGOTIATING",
-          "STATE_STOP"];
-      let flags = KNOWN_FLAGS.map( (F) => {
-        return (aStateFlags & Ci.nsIWebProgressListener[F]) ? F : undefined;
-      }).filter( (s) => !!s );
+      let flags = bitFlagsToNames(
+          aStateFlags, WEB_PROGRESS_LISTENER_FLAGS, Ci.nsIWebProgressListener);
       let channel = aRequest.QueryInterface(Ci.nsIChannel);
       let spec = channel.URI && channel.URI.spec;
       let oldSpec = channel.originalURI && channel.originalURI.spec;
@@ -145,11 +125,29 @@ AutoPrivateTabDatabase.prototype = {
         (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_REDIR_DOC) ||
         (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT);
     if (startOrRedirect && isDoc) {
-        this._filterRequest(aRequest.QueryInterface(Ci.nsIChannel));
+      this._filterDocRequest(aRequest, aWebProgress.isTopLevel);
     }
   },
 
   // Private:
+
+  _onProfileAfterChange: function APT__onProfileAfterChange() {
+    Services.obs.addObserver(this, "profile-before-change", false);
+    this._load();
+    docLoadService.addProgressListener(this,
+        Ci.nsIWebProgress.NOTIFY_STATE_ALL);
+  },
+
+  _onProfileBeforeChange: function APT__onProfileBeforeChange() {
+    try {
+      Services.obs.removeObserver(this, "profile-before-change");
+      docLoadService.removeProgressListener(this);
+    }
+    finally {
+      this._persist();
+    }
+  },
+
   _persist: function APT_persist() {
     if (!this._usrListsDirty)
       return
@@ -177,13 +175,14 @@ AutoPrivateTabDatabase.prototype = {
         FileUtils.getFile("ProfD", [USR_WHITELIST_FILE_NAME]));
   },
 
-  _filterRequest: function(channel) {
-    const loadContext = findChannelLoadContext(channel);
-    if (!loadContext)
-      return;
+  _filterDocRequest: function APT__filterDocRequest(request, isTopLevel) {
+    const channel = request.QueryInterface(Ci.nsIChannel);
     const [pm, domain] = this._shouldLoadURIInPrivateMode(
         channel.URI || channel.originalURI);
-    if (!pm || loadContext.usePrivateBrowsing)
+    if (!pm)
+      return;
+    const loadContext = findChannelLoadContext(channel);
+    if (!loadContext || loadContext.usePrivateBrowsing)
       return;
 
     const chromeWindow = findChromeWindowForLoadContext(loadContext);
@@ -196,8 +195,22 @@ AutoPrivateTabDatabase.prototype = {
     }
 
     loadContext.usePrivateBrowsing = true;
+    // Load flags seem to be unaffected by privateness after request is already
+    // created, so we have to make it anonymous here to prevent http headers
+    // from being populated by cookies and potentially other deanonimyzers.
+    request.loadFlags |= Ci.nsIRequest.LOAD_ANONYMOUS;
+    // Unfortunately, at this moment cookie header is already set. Clear it.
+    // TODO: Put request into anonymous mode earlier, as there may be other
+    // pieces of data leaking, because of that.
+    const httpChannel = request.QueryInterface(Ci.nsIHttpChannel);
+    if (httpChannel)
+      httpChannel.setEmptyRequestHeader("Cookie");
 
-    this._addOrUpdateNotification(tab, domain);
+    // We filter sub-document requests, but don't want to display any
+    // notifications for those, because top-level page may be left in normal
+    // mode.
+    if (isTopLevel)
+      this._addOrUpdateNotification(tab, domain);
   },
 
   _usrWhitelisted: function(domain) {
@@ -477,3 +490,37 @@ function JSONToFile(obj, file) {
     outStream.close();
   }
 }
+
+// The rest is solely for debugging purposes.
+
+function bitFlagsToNames(flags, knownNames, intf) {
+  return knownNames.map( (F) => {
+    return (flags & intf[F]) ? F : undefined;
+  }).filter( (s) => !!s );
+}
+
+const WEB_PROGRESS_LISTENER_FLAGS = [
+    "STATE_IS_DOCUMENT",
+    "STATE_IS_REQUEST",
+    "STATE_IS_NETWORK",
+    "STATE_IS_WINDOW",
+    "STATE_IS_REDIR_DOC",
+    "STATE_START",
+    "STATE_REDIRECTING",
+    "STATE_TRANSFERRING",
+    "STATE_NEGOTIATING",
+    "STATE_STOP"
+];
+
+const CHANNEL_LOAD_FLAGS = [
+    "LOAD_DOCUMENT_URI",
+    "LOAD_RETARGETED_DOCUMENT_URI",
+    "LOAD_REPLACE",
+    "LOAD_INITIAL_DOCUMENT_URI",
+    "LOAD_TARGETED",
+    "LOAD_CALL_CONTENT_SNIFFERS",
+    "LOAD_CLASSIFY_URI",
+    "LOAD_MEDIA_SNIFFER_OVERRIDES_CONTENT_TYPE",
+    "LOAD_EXPLICIT_CREDENTIALS",
+    "LOAD_BYPASS_SERVICE_WORKER"
+];
