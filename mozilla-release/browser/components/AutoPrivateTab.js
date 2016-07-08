@@ -108,6 +108,9 @@ AutoPrivateTabDatabase.prototype = {
   // nsIWebProgressListener:
   onStateChange: function APT_onStateChange(aWebProgress, aRequest, aStateFlags,
       aStatus) {
+    if (!this.active)
+      return;
+
     if (false /* for debugging purposes */) {
       let flags = bitFlagsToNames(
           aStateFlags, WEB_PROGRESS_LISTENER_FLAGS, Ci.nsIWebProgressListener);
@@ -179,8 +182,7 @@ AutoPrivateTabDatabase.prototype = {
     const channel = request.QueryInterface(Ci.nsIChannel);
     const [pm, domain] = this._shouldLoadURIInPrivateMode(
         channel.URI || channel.originalURI);
-    if (!pm)
-      return;
+
     const loadContext = findChannelLoadContext(channel);
     if (!loadContext || loadContext.usePrivateBrowsing)
       return;
@@ -189,9 +191,18 @@ AutoPrivateTabDatabase.prototype = {
     const tab = chromeWindow.gBrowser._getTabForContentWindow(
         loadContext.associatedWindow);
 
-    if (this._oneTimeNormalLoadSet.has(tab)) {
-      this._oneTimeNormalLoadSet.delete(tab);
-      return;  // Allow the tab to be loaded normally.
+    const isTempNormalDomain =
+        this._tempNormalLoadMap.has(tab) &&
+        this._tempNormalLoadMap.get(tab) === domain;
+
+    if (!isTempNormalDomain) {
+      // After user has left the temporarily whitelisted domain, forget it.
+      // See DB-770.
+      this._tempNormalLoadMap.delete(tab);
+    }
+
+    if (!pm || isTempNormalDomain) {
+      return;
     }
 
     loadContext.usePrivateBrowsing = true;
@@ -315,12 +326,12 @@ AutoPrivateTabDatabase.prototype = {
   _reloadTabAsNormal: function APT__reloadTabAsNormal(tab, remember) {
     const tabBrowser = tab.linkedBrowser;
 
+    const domain = this._maybeGetDomain(tabBrowser.currentURI);
     if (remember) {
-      const domain = this._maybeGetDomain(tabBrowser.currentURI);
       this.whitelistDomain(domain);
     }
     else {
-      this._oneTimeNormalLoadSet.add(tab);
+      this._tempNormalLoadMap.set(tab, domain);
     }
 
     tab.private = false;
@@ -397,7 +408,7 @@ AutoPrivateTabDatabase.prototype = {
   _usrWhiteList: new Set(),
   _usrBlackList: new Set(),
   _usrListsDirty: false,
-  _oneTimeNormalLoadSet: new WeakSet(),  // Set of tabs to load normally.
+  _tempNormalLoadMap: new WeakMap(),  // Tab-domain map to load normally.
 
   // XPCOM:
   classID: Components.ID(APT_ID),
