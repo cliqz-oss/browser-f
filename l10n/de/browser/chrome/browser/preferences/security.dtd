@@ -44,6 +44,6 @@
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. ">
 <!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">
 
-<!ENTITY  passwordManager.title          "Password Manager">
+<!ENTITY  passwordManager.title          "Passwort Manager">
 <!ENTITY  passwordManager.desc1          "CLIQZ unterstützt die Einbindung von LastPass, einer Fremdsoftware für Passwort Management.">
 <!ENTITY  passwordManager.desc2          "Bitte beachte, dass CLIQZ keine Kontrolle darüber hat, auf welche Daten diese Fremdsoftware Zugriff hat.">
