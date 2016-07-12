@@ -112,7 +112,7 @@ IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
     EXIT 1
   )
 )
-exit
+
 :::::::::::::::::::::::::::::::::::
 :: UPLOAD AND SUBMIT
 :::::::::::::::::::::::::::::::::::
