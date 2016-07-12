@@ -55,7 +55,7 @@ certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 :: BUILD
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Starting build
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh -v | call C:\mozilla-build\start-shell-msvc2013.bat
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber | call C:\mozilla-build\start-shell-msvc2013.bat
 
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Build failed! Exiting.
