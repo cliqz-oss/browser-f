@@ -69,7 +69,6 @@ X86_64DIR=$MOZ_OBJDIR/x86_64
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
 export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}'\
   ./repack/distribution/distribution.ini | head -n1)
-export CQZ_UI_LOCALE=`echo $LANG`
 export MOZ_AUTOMATION_UPLOAD=1  # TODO: remove, duplicates cliqz.mozconfig
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
