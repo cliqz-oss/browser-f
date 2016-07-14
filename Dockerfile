@@ -24,4 +24,5 @@ RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default
   python bootstrap.py --application-choice=browser --no-interactive && \
   rm bootstrap.py
 
-RUN pip install awscli
+RUN pip install awscli \
+  compare-locales
