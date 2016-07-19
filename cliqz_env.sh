@@ -53,9 +53,12 @@ if [ -z $CQZ_RELEASE_CHANNEL ]; then
   export MOZ_UPDATE_CHANNEL=beta
 else
   export MOZ_UPDATE_CHANNEL=$CQZ_RELEASE_CHANNEL
-  if [ $CQZ_BUILD_ID ]; then # only for new build system
-    if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
-      export MOZ_PGO=1 # release build optimization
+  # turn on PGO only for release Windows build on new server
+  if [ $IS_WIN ]; then
+    if [ $CQZ_BUILD_ID ]; then
+      if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
+        export MOZ_PGO=1 # release build optimization
+      fi
     fi
   fi
 fi

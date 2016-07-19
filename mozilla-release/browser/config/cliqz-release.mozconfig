@@ -2,7 +2,6 @@
 
 . $topsrcdir/browser/config/cliqz.mozconfig
 
-ac_add_options --disable-debug
 ac_add_options --enable-release
 
 if echo $OSTYPE | grep -q "darwin"; then
@@ -16,7 +15,7 @@ if echo $OSTYPE | grep -q "msys"; then
   ac_add_options --enable-warnings-as-errors
   ac_add_options --enable-jemalloc
   ac_add_options --enable-require-all-d3dc-versions
-  ac_add_options --enable-eme=adobe
+  ac_add_options --enable-eme=adobe,widevine
 fi
 
 export MOZ_TELEMETRY_REPORTING=1
