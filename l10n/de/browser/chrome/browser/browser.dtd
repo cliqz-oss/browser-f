@@ -455,7 +455,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.accesskey             "s">
 <!ENTITY urlbar.switchToTab.label     "Wechseln zum Tab:">
 
-<!ENTITY urlbar.searchSuggestionsNotification.question "Wollen Sie ein besseres Sucherlebnis dank Suchvorschlägen?">
+<!ENTITY urlbar.searchSuggestionsNotification.question "Willst du ein besseres Sucherlebnis dank Suchvorschlägen?">
 <!ENTITY urlbar.searchSuggestionsNotification.learnMore "Weitere Informationen…">
 <!ENTITY urlbar.searchSuggestionsNotification.learnMore.accesskey "W">
 <!ENTITY urlbar.searchSuggestionsNotification.disable "Nein">

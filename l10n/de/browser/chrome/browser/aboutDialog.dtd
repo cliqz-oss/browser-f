@@ -38,12 +38,12 @@
 <!ENTITY community.creditsLink      "globalen Community">
 <!ENTITY community.end3             ", die daran arbeitet, dass das Internet frei, öffentlich und für jeden zugänglich bleibt.">
 
-<!ENTITY helpus.start               "Wollen Sie uns unterstützen? ">
+<!ENTITY helpus.start               "Möchtest du uns unterstützen? ">
 <!-- LOCALIZATION NOTE (helpus.donateLink): This is a link title that links to https://sendto.mozilla.org/page/contribute/Give-Now?source=mozillaorg_default_footer&ref=firefox_about&utm_campaign=firefox_about&utm_source=firefox&utm_medium=referral&utm_content=20140929_FireFoxAbout. -->
-<!ENTITY helpus.donateLink          "Spenden Sie">
+<!ENTITY helpus.donateLink          "Spende">
 <!ENTITY helpus.middle              " oder ">
 <!-- LOCALIZATION NOTE (helpus.getInvolvedLink): This is a link title that links to http://www.mozilla.org/contribute/. -->
-<!ENTITY helpus.getInvolvedLink     "machen Sie mit!">
+<!ENTITY helpus.getInvolvedLink     "mach mit!">
 <!ENTITY helpus.end                 "">
 
 <!ENTITY releaseNotes.link          "Neue Funktionen und Änderungen">
@@ -62,7 +62,7 @@
 <!-- LOCALIZATION NOTE (update.noUpdatesFound): try to make the localized text short (see bug 596813 for screenshots). -->
 <!ENTITY update.noUpdatesFound      "&brandShortName; ist aktuell">
 <!-- LOCALIZATION NOTE (update.adminDisabled): try to make the localized text short (see bug 596813 for screenshots). -->
-<!ENTITY update.adminDisabled       "Updates von Ihrem System-Administrator deaktiviert">
+<!ENTITY update.adminDisabled       "Updates von deinem System-Administrator deaktiviert">
 <!-- LOCALIZATION NOTE (update.otherInstanceHandlingUpdates): try to make the localized text short -->
 <!ENTITY update.otherInstanceHandlingUpdates "&brandShortName; wird durch eine andere Instanz aktualisiert.">
 
@@ -72,7 +72,7 @@
      the latest version of Firefox (e.g. http://www.firefox.com). As this is all in
      one line, try to make the localized text short (see bug 596813 for screenshots). -->
 <!ENTITY update.failed.start        "Update fehlgeschlagen. ">
-<!ENTITY update.failed.linkText     "Laden Sie die neueste Version herunter">
+<!ENTITY update.failed.linkText     "Lade die neueste Version herunter">
 <!ENTITY update.failed.end          "">
 
 <!-- LOCALIZATION NOTE (update.manual.start,update.manual.end): update.manual.start and update.manual.end
@@ -105,7 +105,7 @@
 <!-- LOCALIZATION NOTE (channel.description.start,channel.description.end): channel.description.start and
      channel.description.end create one sentence, with the current channel label inserted in between.
      example: You are currently on the _Stable_ update channel. -->
-<!ENTITY channel.description.start  "Sie sind derzeit auf dem Update-Kanal ">
+<!ENTITY channel.description.start  "Du bist derzeit auf dem Update-Kanal ">
 <!ENTITY channel.description.end    ".">
 
 
