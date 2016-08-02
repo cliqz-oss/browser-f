@@ -41,7 +41,7 @@ When submitting the bug report please include the following information:
 
 * OS version, eg. Windox 8.1, Mac OS X 10.10.4
 * system architecture (32/64 bit)
-* browser version, eg. CLIQZ 0.8, based on Firefox 39
+* browser version, eg. CLIQZ 1.5.0, based on Firefox 47
 
 ## Repository structure
 
