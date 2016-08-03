@@ -105,10 +105,17 @@ libs-%:
 	@$(MAKE) -C ../../toolkit/locales libs-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
 ifdef MOZ_SERVICES_SYNC
 	@$(MAKE) -C ../../services/sync/locales AB_CD=$* XPI_NAME=locale-$*
+<<<<<<< HEAD
 endif
 ifdef MOZ_WEBAPP_RUNTIME
 	@$(MAKE) -C ../../webapprt/locales AB_CD=$* XPI_NAME=locale-$*
 endif
+||||||| merged common ancestors
+ifdef MOZ_WEBAPP_RUNTIME
+	@$(MAKE) -C ../../webapprt/locales AB_CD=$* XPI_NAME=locale-$*
+endif
+=======
+>>>>>>> origin/upstream-releases
 	@$(MAKE) -C ../../extensions/spellcheck/locales AB_CD=$* XPI_NAME=locale-$*
 	@$(MAKE) -C ../../intl/locales AB_CD=$* XPI_NAME=locale-$*
 	@$(MAKE) -C ../../devtools/client/locales AB_CD=$* XPI_NAME=locale-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
@@ -142,14 +149,11 @@ endif
 clobber-zip:
 	$(RM) $(STAGEDIST)/chrome/$(AB_CD).jar \
 	  $(STAGEDIST)/chrome/$(AB_CD).manifest \
-	  $(STAGEDIST)/webapprt/chrome/$(AB_CD).jar \
-	  $(STAGEDIST)/webapprt/chrome/$(AB_CD).manifest \
 	  $(STAGEDIST)/$(PREF_DIR)/firefox-l10n.js
 	$(RM) -rf  $(STAGEDIST)/dictionaries \
 	  $(STAGEDIST)/hyphenation \
 	  $(STAGEDIST)/defaults/profile \
-	  $(STAGEDIST)/chrome/$(AB_CD) \
-	  $(STAGEDIST)/webapprt/chrome/$(AB_CD)
+	  $(STAGEDIST)/chrome/$(AB_CD)
 
 
 langpack: langpack-$(AB_CD)

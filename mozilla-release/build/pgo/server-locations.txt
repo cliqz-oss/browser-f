@@ -176,6 +176,7 @@ http://itisatracker.org:80
 http://trackertest.org:80
 
 https://malware.example.com:443
+https://unwanted.example.com:443
 https://tracking.example.com:443
 https://not-tracking.example.com:443
 https://tracking.example.org:443
