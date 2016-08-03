@@ -22,8 +22,6 @@
 <!ENTITY pref_clearHistory_dialogMessage 'Gesamte Suchchronik auf diesem Gerät löschen?'>
 <!ENTITY pref_clearHistory_title 'Suchchronik löschen'>
 
-<!ENTITY pref_searchProvider_title 'Suchmaschine'>
-
 <!ENTITY search_widget_button_label 'Suchen'>
 
 <!ENTITY network_error_title 'Keine Internetverbindung'>

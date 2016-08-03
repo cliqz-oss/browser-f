@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY window.title                 "Do Not Track">
-<!ENTITY window.width                 "44em">
+<!ENTITY window.width                 "56em">
 <!ENTITY window.height                "8em">
 
 <!ENTITY doNotTrackCheckbox.label     "Websites mitteilen, meine Nutzeraktivitäten nicht zu verfolgen">

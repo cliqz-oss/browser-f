@@ -12,6 +12,8 @@ const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/AppConstants.jsm");
+// Set us up to use async prefs in the parent process.
+Cu.import("resource://gre/modules/AsyncPrefs.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "AboutHome",
                                   "resource:///modules/AboutHome.jsm");
@@ -25,8 +27,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "DirectoryLinksProvider",
 XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
                                   "resource://gre/modules/NewTabUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "NewTabPrefsProvider",
-                                  "resource:///modules/NewTabPrefsProvider.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "NewTabMessages",
+                                  "resource:///modules/NewTabMessages.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "UITour",
                                   "resource:///modules/UITour.jsm");
@@ -51,9 +53,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "BookmarkHTMLUtils",
 
 XPCOMUtils.defineLazyModuleGetter(this, "BookmarkJSONUtils",
                                   "resource://gre/modules/BookmarkJSONUtils.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "WebappManager",
-                                  "resource:///modules/WebappManager.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "PageThumbs",
                                   "resource://gre/modules/PageThumbs.jsm");
@@ -538,21 +537,23 @@ BrowserGlue.prototype = {
       os.addObserver(this, AddonWatcher.TOPIC_SLOW_ADDON_DETECTED, false);
     }
 
-    ExtensionManagement.registerScript("chrome://browser/content/ext-utils.js");
+    ExtensionManagement.registerScript("chrome://browser/content/ext-bookmarks.js");
     ExtensionManagement.registerScript("chrome://browser/content/ext-browserAction.js");
-    ExtensionManagement.registerScript("chrome://browser/content/ext-pageAction.js");
     ExtensionManagement.registerScript("chrome://browser/content/ext-commands.js");
     ExtensionManagement.registerScript("chrome://browser/content/ext-contextMenus.js");
     ExtensionManagement.registerScript("chrome://browser/content/ext-desktop-runtime.js");
+    ExtensionManagement.registerScript("chrome://browser/content/ext-history.js");
+    ExtensionManagement.registerScript("chrome://browser/content/ext-pageAction.js");
     ExtensionManagement.registerScript("chrome://browser/content/ext-tabs.js");
+    ExtensionManagement.registerScript("chrome://browser/content/ext-utils.js");
     ExtensionManagement.registerScript("chrome://browser/content/ext-windows.js");
-    ExtensionManagement.registerScript("chrome://browser/content/ext-bookmarks.js");
 
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/bookmarks.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/browser_action.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/commands.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/context_menus.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/context_menus_internal.json");
+    ExtensionManagement.registerSchema("chrome://browser/content/schemas/history.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/page_action.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/tabs.json");
     ExtensionManagement.registerSchema("chrome://browser/content/schemas/windows.json");
@@ -742,7 +743,9 @@ BrowserGlue.prototype = {
     // handle any UI migration
     this._migrateUI();
 
-    WebappManager.init();
+    // Evaluate Webapps.jsm early to resolve ts_paint regression bug 1256667.
+    Cu.import("resource://gre/modules/Webapps.jsm", {});
+
     PageThumbs.init();
     webrtcUI.init();
     AboutHome.init();
@@ -752,7 +755,7 @@ BrowserGlue.prototype = {
     NewTabUtils.links.addProvider(DirectoryLinksProvider);
     AboutNewTab.init();
 
-    NewTabPrefsProvider.prefs.init();
+    NewTabMessages.init();
 
     SessionStore.init();
     BrowserUITelemetry.init();
@@ -1057,10 +1060,8 @@ BrowserGlue.prototype = {
     }
 
     SelfSupportBackend.uninit();
+    NewTabMessages.uninit();
 
-    WebappManager.uninit();
-
-    NewTabPrefsProvider.prefs.uninit();
     AboutNewTab.uninit();
     webrtcUI.uninit();
     FormValidationHandler.uninit();
@@ -1995,12 +1996,6 @@ BrowserGlue.prototype = {
       xulStore.removeValue(BROWSER_DOCURL, "TabsToolbar", "collapsed");
     }
 
-    if (currentUIVersion < 22) {
-      // Reset the Sync promobox count to promote the new FxAccount-based Sync.
-      Services.prefs.clearUserPref("browser.syncPromoViewsLeft");
-      Services.prefs.clearUserPref("browser.syncPromoViewsLeftMap");
-    }
-
     if (currentUIVersion < 23) {
       const kSelectedEnginePref = "browser.search.selectedEngine";
       if (Services.prefs.prefHasUserValue(kSelectedEnginePref)) {
@@ -2224,7 +2219,7 @@ BrowserGlue.prototype = {
     // be set to the version it has been added in.  We will compare its value
     // to users' smartBookmarksVersion and add new smart bookmarks without
     // recreating old deleted ones.
-    const SMART_BOOKMARKS_VERSION = 7;
+    const SMART_BOOKMARKS_VERSION = 8;
     const SMART_BOOKMARKS_ANNO = "Places/SmartBookmark";
     const SMART_BOOKMARKS_PREF = "browser.places.smartBookmarksVersion";
 
@@ -2255,18 +2250,6 @@ BrowserGlue.prototype = {
           url: "place:sort=" + queryOptions.SORT_BY_VISITCOUNT_DESCENDING +
                     "&maxResults=" + MAX_RESULTS,
           parentGuid: PlacesUtils.bookmarks.toolbarGuid,
-          newInVersion: 1
-        },
-        RecentlyBookmarked: {
-          title: bundle.GetStringFromName("recentlyBookmarkedTitle"),
-          url: "place:folder=BOOKMARKS_MENU" +
-                    "&folder=UNFILED_BOOKMARKS" +
-                    "&folder=TOOLBAR" +
-                    "&queryType=" + queryOptions.QUERY_TYPE_BOOKMARKS +
-                    "&sort=" + queryOptions.SORT_BY_DATEADDED_DESCENDING +
-                    "&maxResults=" + MAX_RESULTS +
-                    "&excludeQueries=1",
-          parentGuid: PlacesUtils.bookmarks.menuGuid,
           newInVersion: 1
         },
         RecentTags: {

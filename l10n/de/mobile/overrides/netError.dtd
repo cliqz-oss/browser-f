@@ -42,6 +42,12 @@
 </ul>
 ">
 
+<!ENTITY fileAccessDenied.title "Zugriff auf die Datei wurde verweigert">
+<!ENTITY fileAccessDenied.longDesc "
+<ul>
+  <li>Sie wurde möglicherweise entfernt, verschoben, oder Dateiberechtigungen könnten den Zugriff verhindern.</li>
+</ul>
+">
 
 <!ENTITY generic.title "Fehler: Anfrage konnte nicht ausgeführt werden">
 <!ENTITY generic.longDesc "
@@ -209,3 +215,8 @@ netError.xhtml) because it exposes functionality specific to firefox. -->
 <!-- LOCALIZATION NOTE (weakCryptoUsed.longDesc) - Do not translate
      "SSL_ERROR_NO_CYPHER_OVERLAP". -->
 <!ENTITY weakCryptoUsed.longDesc "Weitere Informationen: SSL_ERROR_NO_CYPHER_OVERLAP">
+
+<!ENTITY inadequateSecurityError.title "Diese Verbindung ist nicht sicher">
+<!-- LOCALIZATION NOTE (inadequateSecurityError.longDesc) - Do not translate
+     "NS_ERROR_NET_INADEQUATE_SECURITY". -->
+<!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor Sie die Seite aufrufen können.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">

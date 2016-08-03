@@ -1,3 +1,8 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
 <!ENTITY migrationWizard.title          "Import-Assistent">
 
 <!ENTITY importFromWin.label            "Einstellungen, Konten, Adressbücher, Filter und sonstige Daten importieren von:">
@@ -11,8 +16,6 @@
 <!ENTITY importFromOExpress.accesskey   "u">
 <!ENTITY importFromOutlook.label        "Outlook">
 <!ENTITY importFromOutlook.accesskey    "O">
-<!ENTITY importFromEudora.label         "Eudora">
-<!ENTITY importFromEudora.accesskey     "E">
 
 <!ENTITY importSource.title             "Einstellungen und Daten importieren">
 <!ENTITY importItems.title              "Zu importierende Daten">

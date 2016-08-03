@@ -33,103 +33,24 @@
 <!ENTITY bookmarks.folder.places.label ''>
 <!ENTITY bookmarks.folder.tags.label 'Schlagwörter'>
 <!ENTITY bookmarks.folder.toolbar.label 'Lesezeichen-Symbolleiste'>
-<!ENTITY bookmarks.folder.unfiled.label 'Unsortierte Lesezeichen'>
+<!ENTITY bookmarks.folder.other.label 'Weitere Lesezeichen'>
 <!ENTITY bookmarks.folder.desktop.label 'Desktop-Lesezeichen'>
 <!ENTITY bookmarks.folder.mobile.label 'Mobile Lesezeichen'>
-<!ENTITY bookmarks.folder.readinglist.label 'Leseliste'>
 <!-- Pinned sites on about:home. This folder should never be shown to the user, but we have to give it a string name -->
 <!ENTITY bookmarks.folder.pinned.label 'Angeheftet'>
 
-<!-- Send tab to device. -->
-<!ENTITY sync.title.redirect.to.set.up.sync.label '&syncBrand.shortName.label; einrichten'>
-<!ENTITY sync.text.redirect.to.set.up.sync.label '&syncBrand.fullName.label; muss eingerichtet werden, um Tabs an andere Geräte zu senden.'>
-<!ENTITY sync.text.tab.sent.label 'Tab wurde gesendet'>
-<!ENTITY sync.text.tab.not.sent.label 'Fehler beim Senden des Tabs'>
-
 <!-- Firefox Account strings. -->
-
-<!ENTITY fxaccount_full_label 'Firefox-Konten'>
-
-<!ENTITY fxaccount_custom_server_account_title 'Konto auf Server verwenden'>
-<!ENTITY fxaccount_custom_server_sync_title 'Sync-Daten auf Server speichern'>
-
-<!-- Localization note: these are shown in all screens that query the
-     user for an email address and password. Hide and show are button
-     labels. -->
-<!ENTITY fxaccount_email_hint 'E-Mail-Adresse'>
-<!ENTITY fxaccount_password_hint 'Passwort'>
-<!ENTITY fxaccount_password_hide 'Ausblenden'>
-<!ENTITY fxaccount_password_show 'Anzeigen'>
 
 <!-- Localization note: these are shown in screens after the user has
      created or signed in to an account, and take the user back to
      Firefox. -->
 <!ENTITY fxaccount_back_to_browsing 'Zurück zum Browser'>
 
-<!-- Localization note: the following two strings are interpolated
-     into fxaccount_create_account_policy_text2; see note for that
-     string as well.  Compare fxaccount_status_{linktos,linkprivacy}:
-     these strings are separated to accommodate languages that decline
-     the two uses differently. -->
-<!ENTITY fxaccount_policy_linktos 'Nutzungsbedingungen'>
-<!ENTITY fxaccount_policy_linkprivacy 'Datenschutzhinweis'>
-
 <!ENTITY fxaccount_getting_started_welcome_to_sync 'Willkommen bei &syncBrand.shortName.label;'>
 <!ENTITY fxaccount_getting_started_description2 'Melden Sie sich an, um Ihre Tabs, Lesezeichen, Zugangsdaten &amp; mehr zu synchronisieren.'>
 <!ENTITY fxaccount_getting_started_get_started 'Anmelden'>
 <!ENTITY fxaccount_getting_started_old_firefox 'Verwenden Sie eine ältere Version von &syncBrand.shortName.label;?'>
 
-<!-- Localization note: the Firefox below should not change with the
-     particular version of Firefox installed (Release, Beta, Aurora,
-     etc).  The account remains a "Firefox Account". -->
-<!ENTITY fxaccount_create_account_header2 'Ein Firefox-Konto erstellen'>
-<!ENTITY fxaccount_create_account_password_length_restriction 'Mindestens 8 Zeichen'>
-<!ENTITY fxaccount_create_account_day_of_birth 'Tag'>
-<!ENTITY fxaccount_create_account_month_of_birth 'Monat'>
-<!ENTITY fxaccount_create_account_year_of_birth 'Geburtsjahr'>
-<!-- Localization note: &formatS1; is fxaccount_policy_linktos, &formatS2; is fxaccount_policy_linkprivacy, both hyperlinked. -->
-<!ENTITY fxaccount_create_account_policy_text2 'Mit dem Fortfahren erklären Sie sich mit den &formatS1; und dem &formatS2; der Firefox-Online-Dienste einverstanden.'>
-<!ENTITY fxaccount_create_account_button 'Weiter'>
-<!ENTITY fxaccount_create_account_choose_what_to_sync 'Zu synchronisierende Daten auswählen'>
-<!ENTITY fxaccount_create_account_sign_in_instead 'Haben Sie bereits ein Konto? Melden Sie sich an.'>
-<!ENTITY fxaccount_create_account_1990_or_earlier '1990 oder früher'>
-<!ENTITY fxaccount_create_account_unknown_error 'Konto konnte nicht angelegt werden'>
-
-<!ENTITY fxaccount_account_create_not_allowed 'Konto konnte nicht angelegt werden'>
-<!ENTITY fxaccount_account_create_not_allowed_you_must_meet_certain_age_requirements 'Zum Anlegen eines Kontos müssen Sie bestimmte Altersanforderungen erfüllen.'>
-<!ENTITY fxaccount_account_create_not_allowed_learn_more 'Weitere Informationen'>
-
-<!ENTITY fxaccount_confirm_account_header 'Konto verifizieren'>
-<!-- Localization note: &formatS; is the Firefox account's email address. -->
-<!ENTITY fxaccount_confirm_account_verification_link 'Ein Verifizierungslink wurde an &formatS; gesendet.'>
-<!ENTITY fxaccount_confirm_account_resend_email 'E-Mail erneut anfordern'>
-<!ENTITY fxaccount_confirm_account_change_email 'Diese E-Mail-Adresse vergessen?'>
-<!ENTITY fxaccount_confirm_account_verification_link_sent2 'Verifizierungs-E-Mail gesendet'>
-<!ENTITY fxaccount_confirm_account_verification_link_not_sent2 'Verifizierungs-E-Mail konnte nicht gesendet werden.'>
-<!ENTITY fxaccount_resend_unlock_code_button_label 'Entsperr-E-Mail erneut senden'>
-<!ENTITY fxaccount_unlock_code_sent 'E-Mail zum Entsperren des Kontos gesendet'>
-<!ENTITY fxaccount_unlock_code_not_sent 'Entsperr-E-Mail konnte nicht gesendet werden'>
-
-<!ENTITY fxaccount_sign_in_sub_header 'Anmelden'>
-<!ENTITY fxaccount_sign_in_button_label 'Anmelden'>
-<!ENTITY fxaccount_sign_in_forgot_password 'Passwort vergessen?'>
-<!ENTITY fxaccount_sign_in_create_account_instead 'Konto anlegen'>
-<!ENTITY fxaccount_sign_in_unknown_error 'Anmeldung schlug fehl'>
-
-<!ENTITY fxaccount_account_verified_sub_header 'Konto verifiziert'>
-<!ENTITY fxaccount_account_verified_description2 'Die Synchronisation Ihrer Daten beginnt sofort.'>
-
-<!ENTITY fxaccount_migration_finished_header 'Aktualisierung abgeschlossen'>
-
-<!ENTITY fxaccount_update_credentials_header 'Anmelden'>
-<!ENTITY fxaccount_update_credentials_button_label 'Anmelden'>
-<!ENTITY fxaccount_update_credentials_unknown_error 'Anmeldung schlug fehl'>
-
-<!ENTITY fxaccount_finish_migrating_header 'Anmelden, um die Aktualisierung abzuschließen'>
-<!ENTITY fxaccount_finish_migrating_button_label 'Aktualisierung abschließen'>
-<!ENTITY fxaccount_finish_migrating_description 'Bei der Aktualisierung kann ein erhöhter Datenverkehr nötig werden. Es empfiehlt sich, mit einem WLAN verbunden zu sein.'>
-
-<!ENTITY fxaccount_status_header2 'Firefox-Konto'>
 <!ENTITY fxaccount_status_signed_in_as 'Angemeldet als'>
 <!ENTITY fxaccount_status_manage_account 'Benutzerkonto verwalten'>
 <!ENTITY fxaccount_status_auth_server 'Konto-Server'>
@@ -154,8 +75,8 @@
      external web pages.  Compare fxaccount_policy_{linktos,linkprivacy}:
      these strings are separated to accommodate languages that decline
      the two uses differently. -->
-<!ENTITY fxaccount_status_linktos 'Nutzungsbedingungen'>
-<!ENTITY fxaccount_status_linkprivacy 'Datenschutzhinweis'>
+<!ENTITY fxaccount_status_linktos2 'Nutzungsbedingungen'>
+<!ENTITY fxaccount_status_linkprivacy2 'Datenschutzhinweis'>
 <!ENTITY fxaccount_status_more 'Mehr&ellipsis;'>
 <!ENTITY fxaccount_remove_account 'Entfernen&ellipsis;'>
 
@@ -172,8 +93,8 @@
 <!ENTITY fxaccount_account_type_label 'Firefox'>
 
 <!-- Localization note: these are shown by the Android system itself,
-     when the user navigates to the Android > Accounts > [Firefox
-     Account] Screen. The link takes the user to the Firefox Account
+     when the user navigates to the Android > Accounts > {Firefox
+     Account} Screen. The link takes the user to the Firefox Account
      status activity, which lets them manage their Firefox
      Account. -->
 <!ENTITY fxaccount_options_title '&syncBrand.shortName.label; - Einstellungen'>
@@ -192,7 +113,6 @@
 <!ENTITY fxaccount_remote_error_CLIENT_HAS_SENT_TOO_MANY_REQUESTS 'Server ausgelastet, versuchen Sie es in ein paar Minuten erneut.'>
 <!ENTITY fxaccount_remote_error_SERVICE_TEMPORARILY_UNAVAILABLE_TO_DUE_HIGH_LOAD 'Server ausgelastet, versuchen Sie es in ein paar Minuten erneut.'>
 <!ENTITY fxaccount_remote_error_UNKNOWN_ERROR 'Es trat ein Problem auf.'>
-<!ENTITY fxaccount_remote_error_COULD_NOT_CONNECT 'Kann nicht mit Netzwerk verbinden.'>
 <!ENTITY fxaccount_remote_error_ACCOUNT_LOCKED 'Konto ist gesperrt. &formatS1;'>
 
 <!ENTITY fxaccount_sync_sign_in_error_notification_title2 '&syncBrand.shortName.label; ist nicht verbunden'>
@@ -204,8 +124,3 @@
 <!-- Localization note: the format string below will be replaced
      with the Firefox Account's email address. -->
 <!ENTITY fxaccount_sync_finish_migrating_notification_text 'Tippen Sie hier, um sich mit &formatS; anzumelden.'>
-
-<!-- Localization note: the following strings are used in a
-     notification and should be kept as short as possible. -->
-<!ENTITY old_sync_deprecated_notification_title 'Anmelden, um mit dem Synchronisieren fortzufahren'>
-<!ENTITY old_sync_deprecated_notification_content 'Ihr Benutzerkonto wird nicht mehr unterstützt.'>

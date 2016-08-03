@@ -108,3 +108,9 @@ variant of aboutSupport.showDir.label. -->
 
 <!ENTITY aboutSupport.safeModeTitle "Abgesicherten Modus probieren">
 <!ENTITY aboutSupport.restartInSafeMode.label "Mit deaktivierten Add-ons neu starten…">
+
+<!ENTITY aboutSupport.graphicsFeaturesTitle "Allgemeine Merkmale">
+<!ENTITY aboutSupport.graphicsDiagnosticsTitle "Weitere Informationen">
+<!ENTITY aboutSupport.graphicsFailureLogTitle "Fehlerprotokoll">
+<!ENTITY aboutSupport.graphicsGPU1Title "GPU 1">
+<!ENTITY aboutSupport.graphicsGPU2Title "GPU 2">

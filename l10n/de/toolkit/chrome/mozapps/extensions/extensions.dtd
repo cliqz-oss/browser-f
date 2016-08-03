@@ -43,7 +43,7 @@
 
 <!-- categories / views -->
 <!ENTITY view.search.label                    "Suchen">
-<!ENTITY view.discover.label                  "Add-ons suchen">
+<!ENTITY view.discover.label                  "Add-ons entdecken">
 <!ENTITY view.recentUpdates.label             "Zuletzt durchgeführte Updates">
 <!ENTITY view.availableUpdates.label          "Verfügbare Updates">
 

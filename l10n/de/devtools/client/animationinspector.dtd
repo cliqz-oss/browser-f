@@ -15,10 +15,6 @@
      sidebar tab -->
 <!ENTITY animationInspectorTitle "Animationen">
 
-<!-- LOCALIZATION NOTE (invalidElement): This is the label shown in the panel
-  - when an invalid node is currently selected in the inspector. -->
-<!ENTITY invalidElement         "Im ausgewählten Element wurden keine Animationen gefunden.">
-
 <!-- LOCALIZATION NOTE (selectElement): This is the label shown in the panel
   - when an invalid node is currently selected in the inspector, to invite the
   - user to select a new node by clicking on the element-picker icon. -->
