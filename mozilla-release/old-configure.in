@@ -2730,15 +2730,6 @@ MOZ_CONTENT_SANDBOX=
 MOZ_GMP_SANDBOX=
 MOZ_SANDBOX=1
 MOZ_BINARY_EXTENSIONS=
-<<<<<<< HEAD
-dnl DB-419: Preparations for automated tests running
-dnl MOZ_ADDON_SIGNING=
-dnl MOZ_REQUIRE_SIGNING=
-||||||| merged common ancestors
-MOZ_ADDON_SIGNING=
-MOZ_REQUIRE_SIGNING=
-=======
->>>>>>> origin/upstream-releases
 MOZ_DEVTOOLS=server
 
 # Set this ENV variable to 0 to disable Automatic private tab feature.

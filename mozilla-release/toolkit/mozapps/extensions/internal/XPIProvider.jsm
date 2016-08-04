@@ -706,14 +706,6 @@ function isUsableAddon(aAddon) {
       aAddon.signedState != AddonManager.SIGNEDSTATE_SYSTEM) {
     return false;
   }
-<<<<<<< HEAD
-
-  // temporary and system add-ons do not require signing
-  if ((aAddon._installLocation.name != KEY_APP_SYSTEM_DEFAULTS &&
-||||||| merged common ancestors
-  // temporary and system add-ons do not require signing
-  if ((aAddon._installLocation.name != KEY_APP_SYSTEM_DEFAULTS &&
-=======
   // Temporary and system add-ons do not require signing.
   // On UNIX platforms except OSX, an additional location for system add-ons
   // exists in /usr/{lib,share}/mozilla/extensions. Add-ons installed there
@@ -721,7 +713,6 @@ function isUsableAddon(aAddon) {
   if (((aAddon._installLocation.scope != AddonManager.SCOPE_SYSTEM ||
         Services.appinfo.OS == "Darwin") &&
        aAddon._installLocation.name != KEY_APP_SYSTEM_DEFAULTS &&
->>>>>>> origin/upstream-releases
        aAddon._installLocation.name != KEY_APP_TEMPORARY) &&
        mustSign(aAddon.type)) {
     if (aAddon.signedState <= AddonManager.SIGNEDSTATE_MISSING)

@@ -496,13 +496,9 @@
 #ifdef MOZ_SERVICES_SYNC
 @RESPATH@/components/SyncComponents.manifest
 @RESPATH@/components/Weave.js
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
 @RESPATH@/components/FxAccountsComponents.manifest
 @RESPATH@/components/FxAccountsPush.js
->>>>>>> origin/upstream-releases
 @RESPATH@/components/CaptivePortalDetectComponents.manifest
 @RESPATH@/components/captivedetect.js
 @RESPATH@/components/servicesComponents.manifest

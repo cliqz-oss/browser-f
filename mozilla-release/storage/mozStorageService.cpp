@@ -54,7 +54,7 @@
 // db/sqlite3/src/Makefile.in.
 #define PREF_TS_PAGESIZE_DEFAULT 32768
 
-PRLogModuleInfo* gStorageLog = nullptr;
+mozilla::LazyLogModule gStorageServiceLog("mozStorageService");
 
 namespace mozilla {
 namespace storage {
@@ -283,8 +283,6 @@ Service::Service()
 , mRegistrationMutex("Service::mRegistrationMutex")
 , mConnections()
 {
-  if (!gStorageLog)
-    gStorageLog = ::PR_NewLogModule("mozStorage");
 }
 
 Service::~Service()
@@ -960,7 +958,7 @@ Service::Observe(nsISupports *, const char *aTopic, const char16_t *)
       getConnections(connections);
       for (uint32_t i = 0, n = connections.Length(); i < n; i++) {
         if (!connections[i]->isClosed()) {
-          MOZ_LOG(gStorageLog, LogLevel::Error,
+          MOZ_LOG(gStorageServiceLog, LogLevel::Error,
                   ("Leaked connection to %s",
                    connections[i]->getFilename().get()));
           MOZ_CRASH();

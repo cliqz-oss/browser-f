@@ -1,7 +1,6 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-
 <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
 %brandDTD;
 
@@ -10,43 +9,15 @@
 <!ENTITY privatebrowsingpage.openPrivateWindow.accesskey "F">
 
 <!ENTITY privateBrowsing.title                 "Privates Surfen">
-<<<<<<< HEAD
-
-<!-- LOCALIZATION NOTE (aboutPrivateBrowsing.width1):
-     Width of the Private Browsing section. This should depend primarily on the
-     length of the headers and text, but should be roughly 1.5 times the width
-     of the Tracking Protection section, and in general not much larger than
-     30em to prevent the sections from wrapping on smaller window sizes.
-     -->
-<!ENTITY aboutPrivateBrowsing.width1           "30em">
-<!ENTITY aboutPrivateBrowsing.title            "Du surfst privat">
-
-<!ENTITY aboutPrivateBrowsing.info.notsaved    "Werden nicht gespeichert">
-<!ENTITY aboutPrivateBrowsing.info.history     "Chronik">
-||||||| merged common ancestors
-
-<!-- LOCALIZATION NOTE (aboutPrivateBrowsing.width1):
-     Width of the Private Browsing section. This should depend primarily on the
-     length of the headers and text, but should be roughly 1.5 times the width
-     of the Tracking Protection section, and in general not much larger than
-     30em to prevent the sections from wrapping on smaller window sizes.
-     -->
-<!ENTITY aboutPrivateBrowsing.width1           "30em">
-<!ENTITY aboutPrivateBrowsing.title            "Sie surfen privat">
-
-<!ENTITY aboutPrivateBrowsing.info.notsaved    "Werden nicht gespeichert">
-<!ENTITY aboutPrivateBrowsing.info.history     "Chronik">
-=======
 <!ENTITY privateBrowsing.title.tracking                  "Privates Surfen mit Schutz vor Aktivitätenverfolgung">
-<!ENTITY aboutPrivateBrowsing.info.notsaved.before       "Wenn Sie in einem privaten Fenster surfen, so wird Firefox ">
+<!ENTITY aboutPrivateBrowsing.info.notsaved.before       "Wenn Sie in einem privaten Fenster surfen, so wird &brandShortName; ">
 <!ENTITY aboutPrivateBrowsing.info.notsaved.emphasize    "Folgendes nicht speichern">
 <!ENTITY aboutPrivateBrowsing.info.notsaved.after        ":">
 <!ENTITY aboutPrivateBrowsing.info.visited               "Besuchte Seiten">
->>>>>>> origin/upstream-releases
 <!ENTITY aboutPrivateBrowsing.info.searches    "Suchanfragen">
 <!ENTITY aboutPrivateBrowsing.info.cookies     "Cookies">
 <!ENTITY aboutPrivateBrowsing.info.temporaryFiles "Temporäre Dateien">
-<!ENTITY aboutPrivateBrowsing.info.saved.before          "Firefox wird ">
+<!ENTITY aboutPrivateBrowsing.info.saved.before          "&brandShortName; wird ">
 <!ENTITY aboutPrivateBrowsing.info.saved.emphasize       "Folgendes speichern">
 <!ENTITY aboutPrivateBrowsing.info.saved.after2          ":">
 <!ENTITY aboutPrivateBrowsing.info.downloads   "Downloads">
@@ -57,34 +28,6 @@
 <!ENTITY aboutPrivateBrowsing.learnMore2                 "Weitere Informationen zu ">
 <!ENTITY aboutPrivateBrowsing.learnMore2.title           "privatem Surfen">
 
-<<<<<<< HEAD
-<!ENTITY aboutPrivateBrowsing.note1            "Bitte beachte: Dein Arbeitgeber oder Internetanbieter können weiterhin verfolgen, welche Seiten du besuchst, wenn Anti-Tracking deaktiviert ist. Sicher und datengeschützt surfst du mit &brandShortName; auch im normalen Modus.">
-<!ENTITY aboutPrivateBrowsing.learnMore        "Weitere Informationen">
-
-<!-- LOCALIZATION NOTE (trackingProtection.width1):
-     Width of the Tracking Protection section. It is fine for the enabled or
-     disabled indicator or the words in the title to wrap to the next line, but
-     you can expand or reduce this section to fit better, as long as the width
-     of the Private Browsing section is roughly 1.5 times the width of this one.
-     Note that the required space may vary between platforms because fonts are
-     different, so testing on Windows, Mac, and Linux is encouraged.
-     -->
-<!ENTITY trackingProtection.width1             "22em">
-||||||| merged common ancestors
-<!ENTITY aboutPrivateBrowsing.note1            "Ihr Arbeitgeber oder Ihr Internetanbieter können weiterhin verfolgen, welche Seiten Sie besuchen.">
-<!ENTITY aboutPrivateBrowsing.learnMore        "Weitere Informationen">
-
-<!-- LOCALIZATION NOTE (trackingProtection.width1):
-     Width of the Tracking Protection section. It is fine for the enabled or
-     disabled indicator or the words in the title to wrap to the next line, but
-     you can expand or reduce this section to fit better, as long as the width
-     of the Private Browsing section is roughly 1.5 times the width of this one.
-     Note that the required space may vary between platforms because fonts are
-     different, so testing on Windows, Mac, and Linux is encouraged.
-     -->
-<!ENTITY trackingProtection.width1             "22em">
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
-<!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
+<!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert &brandShortName; viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">
 <!ENTITY trackingProtection.startTour1         "Wie es funktioniert">

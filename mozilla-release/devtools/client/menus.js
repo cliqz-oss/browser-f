@@ -189,6 +189,7 @@ exports.menuitems = [
   { separator: true,
     id: "devToolsEndSeparator"
   },
+/* blocked by CLIQZ
   { id: "getMoreDevtools",
     l10nKey: "getMoreDevtoolsCmd",
     oncommand(event) {
@@ -196,4 +197,5 @@ exports.menuitems = [
       window.openUILinkIn("https://addons.mozilla.org/firefox/collections/mozilla/webdeveloper/", "tab");
     }
   },
+*/
 ];

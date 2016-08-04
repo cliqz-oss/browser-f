@@ -450,21 +450,13 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
 }
 
-<<<<<<< HEAD
 /* DB-652: Short-term design for (automatic) forget tabs */
 #navigator-toolbox[on_private_tab=true] #urlbar {
   background-color: #BBC6D4;
 }
 
-.ac-url-text:-moz-locale-dir(rtl),
-.ac-title:-moz-locale-dir(rtl) > description {
-||||||| merged common ancestors
-.ac-url-text:-moz-locale-dir(rtl),
-.ac-title:-moz-locale-dir(rtl) > description {
-=======
 /* Always show URLs LTR. */
 .ac-url-text:-moz-locale-dir(rtl) {
->>>>>>> origin/upstream-releases
   direction: ltr !important;
 }
 

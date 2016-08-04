@@ -84,14 +84,8 @@ browser.jar:
         content/browser/browser-fullZoom.js           (content/browser-fullZoom.js)
         content/browser/browser-fxaccounts.js         (content/browser-fxaccounts.js)
         content/browser/browser-gestureSupport.js     (content/browser-gestureSupport.js)
-<<<<<<< HEAD
-*       content/browser/browser-places.js             (content/browser-places.js)
-||||||| merged common ancestors
-        content/browser/browser-places.js             (content/browser-places.js)
-=======
         content/browser/browser-media.js              (content/browser-media.js)
-        content/browser/browser-places.js             (content/browser-places.js)
->>>>>>> origin/upstream-releases
+*       content/browser/browser-places.js             (content/browser-places.js)
         content/browser/browser-plugins.js            (content/browser-plugins.js)
         content/browser/browser-refreshblocker.js     (content/browser-refreshblocker.js)
 #ifdef MOZ_SAFE_BROWSING

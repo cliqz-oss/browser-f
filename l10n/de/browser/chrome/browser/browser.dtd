@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!-- LOCALIZATION NOTE : FILE This file contains the browser main menu items -->
-<!-- LOCALIZATION NOTE : FILE Do not translate commandkeys --> 
+<!-- LOCALIZATION NOTE : FILE Do not translate commandkeys -->
 
 <!-- LOCALIZATION NOTE (mainWindow.title): DONT_TRANSLATE -->
 <!ENTITY mainWindow.title "&brandFullName;">
@@ -220,7 +220,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY searchItem.title             "Suchen">
 
-<!-- Toolbar items --> 
+<!-- Toolbar items -->
 <!ENTITY homeButton.label             "Startseite">
 
 <!ENTITY bookmarksButton.label          "Lesezeichen">
@@ -241,7 +241,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY historySidebarCmd.commandKey   "H">
 
 <!ENTITY toolsMenu.label              "Extras">
-<!ENTITY toolsMenu.accesskey          "x"> 
+<!ENTITY toolsMenu.accesskey          "x">
 
 <!ENTITY keywordfield.label           "Ein Schlüsselwort für diese Suche hinzufügen…">
 <!ENTITY keywordfield.accesskey       "S">
@@ -261,117 +261,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY inspectContextMenu.label     "Element untersuchen">
 <!ENTITY inspectContextMenu.accesskey "Q">
 
-<<<<<<< HEAD
-<!ENTITY responsiveDesignTool.label   "Bildschirmgrößen testen">
-<!ENTITY responsiveDesignTool.accesskey "B">
-<!ENTITY responsiveDesignTool.commandkey "M">
-
-<!ENTITY eyedropper.label   "Farbpipette">
-<!ENTITY eyedropper.accesskey "F">
-
-<!-- LOCALIZATION NOTE (scratchpad.label): This menu item label appears
-  -  in the Tools menu. See bug 653093.
-  -  The Scratchpad is intended to provide a simple text editor for creating
-  -  and evaluating bits of JavaScript code for the purposes of function
-  -  prototyping, experimentation and convenient scripting.
-  -
-  -  It's quite possible that you won't have a good analogue for the word
-  -  "Scratchpad" in your locale. You should feel free to find a close
-  -  approximation to it or choose a word (or words) that means
-  -  "simple discardable text editor". -->
-<!ENTITY scratchpad.label             "JavaScript-Umgebung">
-<!ENTITY scratchpad.accesskey         "J">
-<!ENTITY scratchpad.keycode           "VK_F4">
-<!ENTITY scratchpad.keytext           "F4">
-
-<!-- LOCALIZATION NOTE (browserToolboxMenu.label): This is the label for the
-  -  application menu item that opens the browser toolbox UI in the Tools menu. -->
-<!ENTITY browserToolboxMenu.label     "Browser-Werkzeuge">
-<!ENTITY browserToolboxMenu.accesskey "u">
-<!ENTITY browserToolboxCmd.commandkey "i">
-
-<!-- LOCALIZATION NOTE (browserContentToolboxMenu.label): This is the label for the
-  -  application menu item that opens the browser content toolbox UI in the Tools menu.
-  -  This toolbox allows to debug the chrome of the content process in multiprocess builds.  -->
-<!ENTITY browserContentToolboxMenu.label     "Browser-Inhaltswerkzeuge">
-<!ENTITY browserContentToolboxMenu.accesskey "z">
-
-<!ENTITY devToolbarCloseButton.tooltiptext "Entwickler-Symbolleiste schließen">
-<!ENTITY devToolbarMenu.label              "Entwickler-Symbolleiste">
-<!ENTITY devToolbarMenu.accesskey          "E">
-<!ENTITY webide.label                      "WebIDE">
-<!ENTITY webide.accesskey                  "I">
-<!ENTITY webide.keycode                    "VK_F8">
-<!ENTITY webide.keytext                    "F8">
-<!ENTITY devToolbar.keycode                "VK_F2">
-<!ENTITY devToolbar.keytext                "F2">
-<!ENTITY devToolboxMenuItem.label          "Werkzeuge ein-/ausblenden">
-<!ENTITY devToolboxMenuItem.accesskey      "W">
-<!ENTITY devToolboxMenuItem.keytext        "I">
-
-<!ENTITY devToolbarToolsButton.tooltip     "Entwicklerwerkzeuge ein-/ausblenden">
-<!ENTITY devToolbarOtherToolsButton.label  "Mehr">
-
-<!ENTITY getMoreDevtoolsCmd.label        "Weitere Tools laden (Firefox add-ons)">
-<!ENTITY getMoreDevtoolsCmd.accesskey    "T">
-
-||||||| merged common ancestors
-<!ENTITY responsiveDesignTool.label   "Bildschirmgrößen testen">
-<!ENTITY responsiveDesignTool.accesskey "B">
-<!ENTITY responsiveDesignTool.commandkey "M">
-
-<!ENTITY eyedropper.label   "Farbpipette">
-<!ENTITY eyedropper.accesskey "F">
-
-<!-- LOCALIZATION NOTE (scratchpad.label): This menu item label appears
-  -  in the Tools menu. See bug 653093.
-  -  The Scratchpad is intended to provide a simple text editor for creating
-  -  and evaluating bits of JavaScript code for the purposes of function
-  -  prototyping, experimentation and convenient scripting.
-  -
-  -  It's quite possible that you won't have a good analogue for the word
-  -  "Scratchpad" in your locale. You should feel free to find a close
-  -  approximation to it or choose a word (or words) that means
-  -  "simple discardable text editor". -->
-<!ENTITY scratchpad.label             "JavaScript-Umgebung">
-<!ENTITY scratchpad.accesskey         "J">
-<!ENTITY scratchpad.keycode           "VK_F4">
-<!ENTITY scratchpad.keytext           "F4">
-
-<!-- LOCALIZATION NOTE (browserToolboxMenu.label): This is the label for the
-  -  application menu item that opens the browser toolbox UI in the Tools menu. -->
-<!ENTITY browserToolboxMenu.label     "Browser-Werkzeuge">
-<!ENTITY browserToolboxMenu.accesskey "u">
-<!ENTITY browserToolboxCmd.commandkey "i">
-
-<!-- LOCALIZATION NOTE (browserContentToolboxMenu.label): This is the label for the
-  -  application menu item that opens the browser content toolbox UI in the Tools menu.
-  -  This toolbox allows to debug the chrome of the content process in multiprocess builds.  -->
-<!ENTITY browserContentToolboxMenu.label     "Browser-Inhaltswerkzeuge">
-<!ENTITY browserContentToolboxMenu.accesskey "z">
-
-<!ENTITY devToolbarCloseButton.tooltiptext "Entwickler-Symbolleiste schließen">
-<!ENTITY devToolbarMenu.label              "Entwickler-Symbolleiste">
-<!ENTITY devToolbarMenu.accesskey          "E">
-<!ENTITY webide.label                      "WebIDE">
-<!ENTITY webide.accesskey                  "I">
-<!ENTITY webide.keycode                    "VK_F8">
-<!ENTITY webide.keytext                    "F8">
-<!ENTITY devToolbar.keycode                "VK_F2">
-<!ENTITY devToolbar.keytext                "F2">
-<!ENTITY devToolboxMenuItem.label          "Werkzeuge ein-/ausblenden">
-<!ENTITY devToolboxMenuItem.accesskey      "W">
-<!ENTITY devToolboxMenuItem.keytext        "I">
-
-<!ENTITY devToolbarToolsButton.tooltip     "Entwicklerwerkzeuge ein-/ausblenden">
-<!ENTITY devToolbarOtherToolsButton.label  "Mehr">
-
-<!ENTITY getMoreDevtoolsCmd.label        "Weitere Tools laden">
-<!ENTITY getMoreDevtoolsCmd.accesskey    "T">
-
-=======
->>>>>>> origin/upstream-releases
-<!ENTITY fileMenu.label         "Datei"> 
+<!ENTITY fileMenu.label         "Datei">
 <!ENTITY fileMenu.accesskey       "D">
 <!ENTITY newUserContext.label             "Neuer Tab in Umgebung">
 <!ENTITY newUserContext.accesskey         "m">
@@ -390,46 +280,46 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY newPrivateWindow.accesskey "p">
 <!ENTITY newNonRemoteWindow.label   "Neues Einzelprozessfenster">
 
-<!ENTITY editMenu.label         "Bearbeiten"> 
-<!ENTITY editMenu.accesskey       "B"> 
-<!ENTITY undoCmd.label            "Rückgängig">  
-<!ENTITY undoCmd.key            "Z">  
-<!ENTITY undoCmd.accesskey          "R"> 
-<!ENTITY redoCmd.label            "Wiederherstellen">  
-<!ENTITY redoCmd.key            "Y">  
-<!ENTITY redoCmd.accesskey          "W"> 
-<!ENTITY cutCmd.label           "Ausschneiden">  
-<!ENTITY cutCmd.key             "X">  
-<!ENTITY cutCmd.accesskey         "A"> 
-<!ENTITY copyCmd.label            "Kopieren">  
-<!ENTITY copyCmd.key            "C">  
-<!ENTITY copyCmd.accesskey          "K"> 
-<!ENTITY pasteCmd.label           "Einfügen">  
-<!ENTITY pasteCmd.key           "V">  
-<!ENTITY pasteCmd.accesskey         "E"> 
-<!ENTITY deleteCmd.label          "Löschen">  
-<!ENTITY deleteCmd.key            "D">  
-<!ENTITY deleteCmd.accesskey        "L"> 
-<!ENTITY selectAllCmd.label         "Alles markieren">  
-<!ENTITY selectAllCmd.key         "A">  
-<!ENTITY selectAllCmd.accesskey       "m"> 
+<!ENTITY editMenu.label         "Bearbeiten">
+<!ENTITY editMenu.accesskey       "B">
+<!ENTITY undoCmd.label            "Rückgängig">
+<!ENTITY undoCmd.key            "Z">
+<!ENTITY undoCmd.accesskey          "R">
+<!ENTITY redoCmd.label            "Wiederherstellen">
+<!ENTITY redoCmd.key            "Y">
+<!ENTITY redoCmd.accesskey          "W">
+<!ENTITY cutCmd.label           "Ausschneiden">
+<!ENTITY cutCmd.key             "X">
+<!ENTITY cutCmd.accesskey         "A">
+<!ENTITY copyCmd.label            "Kopieren">
+<!ENTITY copyCmd.key            "C">
+<!ENTITY copyCmd.accesskey          "K">
+<!ENTITY pasteCmd.label           "Einfügen">
+<!ENTITY pasteCmd.key           "V">
+<!ENTITY pasteCmd.accesskey         "E">
+<!ENTITY deleteCmd.label          "Löschen">
+<!ENTITY deleteCmd.key            "D">
+<!ENTITY deleteCmd.accesskey        "L">
+<!ENTITY selectAllCmd.label         "Alles markieren">
+<!ENTITY selectAllCmd.key         "A">
+<!ENTITY selectAllCmd.accesskey       "m">
 <!ENTITY preferencesCmd2.label       "Einstellungen">
-<!ENTITY preferencesCmd2.accesskey     "E"> 
+<!ENTITY preferencesCmd2.accesskey     "E">
 <!ENTITY preferencesCmdUnix.label       "Einstellungen">
-<!ENTITY preferencesCmdUnix.accesskey     "E"> 
+<!ENTITY preferencesCmdUnix.accesskey     "E">
 
 <!ENTITY clearRecentHistory.label            "Neueste Chronik löschen…">
 
 <!ENTITY privateBrowsingCmd.commandkey          "P">
 
-<!ENTITY viewMenu.label         "Ansicht"> 
-<!ENTITY viewMenu.accesskey       "A"> 
-<!ENTITY viewToolbarsMenu.label       "Symbolleisten"> 
-<!ENTITY viewToolbarsMenu.accesskey     "y"> 
+<!ENTITY viewMenu.label         "Ansicht">
+<!ENTITY viewMenu.accesskey       "A">
+<!ENTITY viewToolbarsMenu.label       "Symbolleisten">
+<!ENTITY viewToolbarsMenu.accesskey     "y">
 <!ENTITY viewSidebarMenu.label "Sidebar">
 <!ENTITY viewSidebarMenu.accesskey "b">
-<!ENTITY viewCustomizeToolbar.label       "Anpassen…"> 
-<!ENTITY viewCustomizeToolbar.accesskey     "A"> 
+<!ENTITY viewCustomizeToolbar.label       "Anpassen…">
+<!ENTITY viewCustomizeToolbar.accesskey     "A">
 
 <!ENTITY historyMenu.label "Chronik">
 <!ENTITY historyMenu.accesskey "C">
@@ -477,7 +367,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY customizeMenu.moveToToolbar.accesskey "v">
 <!-- LOCALIZATION NOTE (customizeMenu.moveToPanel.accesskey) can appear on the
      same context menu as menubarCmd and personalbarCmd, so they should have
-     different access keys. customizeMenu.moveToToolbar and 
+     different access keys. customizeMenu.moveToToolbar and
      customizeMenu.moveToPanel are mutually exclusive, so can share access
      keys.  -->
 <!ENTITY customizeMenu.moveToPanel.label "In Menü verschieben">
@@ -502,7 +392,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.searchSuggestionsNotification.enable "Ja">
 <!ENTITY urlbar.searchSuggestionsNotification.enable.accesskey "J">
 
-<!-- 
+<!--
   Comment duplicated from browser-sets.inc:
 
   Search Command Key Logic works like this:
@@ -584,7 +474,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY reloadFrameCmd.accesskey     "R">
 <!ENTITY viewPartialSourceForSelectionCmd.label "Auswahl-Quelltext anzeigen">
 <!ENTITY viewPartialSourceForMathMLCmd.label    "MathML-Quelle anzeigen">
-<!-- LOCALIZATION NOTE (viewPartialSourceCmd.accesskey): This accesskey is used for both 
+<!-- LOCALIZATION NOTE (viewPartialSourceCmd.accesskey): This accesskey is used for both
          viewPartialSourceForSelectionCmd.label and viewPartialSourceForMathMLCmd.label -->
 <!ENTITY viewPartialSourceCmd.accesskey "A">
 <!ENTITY viewPageSourceCmd.label      "Seitenquelltext anzeigen">
@@ -650,7 +540,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY copyImageCmd.label           "Grafikadresse kopieren">
 <!ENTITY copyImageCmd.accesskey       "d">
 <!ENTITY copyImageContentsCmd.label   "Grafik kopieren">
-<!ENTITY copyImageContentsCmd.accesskey  "o"> 
+<!ENTITY copyImageContentsCmd.accesskey  "o">
 <!ENTITY copyVideoURLCmd.label        "Video-Adresse kopieren">
 <!ENTITY copyVideoURLCmd.accesskey    "o">
 <!ENTITY copyAudioURLCmd.label        "Audio-Adresse kopieren">
@@ -661,8 +551,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY thisFrameMenu.accesskey          "F">
 
 <!-- Media (video/audio) controls -->
-<!-- LOCALIZATION NOTE: The access keys for "Play" and 
-"Pause" are the same because the two context-menu 
+<!-- LOCALIZATION NOTE: The access keys for "Play" and
+"Pause" are the same because the two context-menu
 items are mutually exclusive. -->
 <!ENTITY mediaPlay.label             "Abspielen">
 <!ENTITY mediaPlay.accesskey         "A">
@@ -736,19 +626,19 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY sidebarCloseButton.tooltip     "Sidebar schließen">
 
-<!ENTITY quitApplicationCmdWin2.label       "Beenden"> 
+<!ENTITY quitApplicationCmdWin2.label       "Beenden">
 <!ENTITY quitApplicationCmdWin2.accesskey   "B">
 <!ENTITY quitApplicationCmdWin2.tooltip     "&brandShorterName; beenden">
 <!ENTITY goBackCmd.commandKey "Ö">
 <!ENTITY goForwardCmd.commandKey "Ä">
-<!ENTITY quitApplicationCmd.label       "Beenden"> 
+<!ENTITY quitApplicationCmd.label       "Beenden">
 <!ENTITY quitApplicationCmd.accesskey   "B">
 <!ENTITY quitApplicationCmdMac2.label    "&brandShorterName; beenden">
 <!-- LOCALIZATION NOTE(quitApplicationCmdUnix.key): This keyboard shortcut is used by both Linux and OSX builds. -->
 <!ENTITY quitApplicationCmdUnix.key     "Q">
 
-<!ENTITY closeCmd.label                 "Schließen">  
-<!ENTITY closeCmd.key                   "W">  
+<!ENTITY closeCmd.label                 "Schließen">
+<!ENTITY closeCmd.key                   "W">
 <!ENTITY closeCmd.accesskey             "c">
 
 <!ENTITY toggleMuteCmd.key              "M">

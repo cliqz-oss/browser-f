@@ -30,12 +30,8 @@ EXTRA_JS_MODULES += [
     'BloomFilter.jsm',
     'BloomFilterUtils.jsm',
     'BrowserUtils.jsm',
-<<<<<<< HEAD
     'BSPatch.jsm',
-||||||| merged common ancestors
-=======
     'CanonicalJSON.jsm',
->>>>>>> origin/upstream-releases
     'CertUtils.jsm',
     'CharsetMenu.jsm',
     'ClientID.jsm',

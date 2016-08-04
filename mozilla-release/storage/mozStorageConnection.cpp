@@ -50,13 +50,7 @@
 // Maximum size of the pages cache per connection.
 #define MAX_CACHE_SIZE_KIBIBYTES 2048 // 2 MiB
 
-<<<<<<< HEAD
-extern PRLogModuleInfo* gStorageLog;
-||||||| merged common ancestors
-PRLogModuleInfo* gStorageLog = nullptr;
-=======
 mozilla::LazyLogModule gStorageLog("mozStorage");
->>>>>>> origin/upstream-releases
 
 // Checks that the protected code is running on the main-thread only if the
 // connection was also opened on it.

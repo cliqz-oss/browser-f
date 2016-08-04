@@ -107,16 +107,10 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.sandboxTitle "Sandbox">
 
 <!ENTITY aboutSupport.safeModeTitle "Try Safe Mode">
-<<<<<<< HEAD
 <!ENTITY aboutSupport.restartInSafeMode.label "Restart in safe mode…">
-||||||| merged common ancestors
-<!ENTITY aboutSupport.restartInSafeMode.label "Restart with Add-ons Disabled…">
-=======
-<!ENTITY aboutSupport.restartInSafeMode.label "Restart with Add-ons Disabled…">
 
 <!ENTITY aboutSupport.graphicsFeaturesTitle "Features">
 <!ENTITY aboutSupport.graphicsDiagnosticsTitle "Diagnostics">
 <!ENTITY aboutSupport.graphicsFailureLogTitle "Failure Log">
 <!ENTITY aboutSupport.graphicsGPU1Title "GPU #1">
 <!ENTITY aboutSupport.graphicsGPU2Title "GPU #2">
->>>>>>> origin/upstream-releases

@@ -166,11 +166,9 @@ var gSecurityPane = {
     var checkbox = document.getElementById("useMasterPassword");
     checkbox.checked = !noMP;
 
-<<<<<<< HEAD
     gPasswordManagers.init();
   },
-||||||| merged common ancestors
-=======
+
   _initSafeBrowsing() {
     let enableSafeBrowsing = document.getElementById("enableSafeBrowsing");
     let blockDownloads = document.getElementById("blockDownloads");
@@ -244,7 +242,6 @@ var gSecurityPane = {
     blockUncommonUnwanted.checked = blockUnwantedPref.value && blockUncommonPref.value;
   },
 
->>>>>>> origin/upstream-releases
   /**
    * Returns true if the user has a master password set and false otherwise.
    */

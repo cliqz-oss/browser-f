@@ -1003,16 +1003,11 @@ var gBrowserInit = {
     TabletModeUpdater.init();
     CombinedStopReload.init();
     gPrivateBrowsingUI.init();
-<<<<<<< HEAD
-    TabsInTitlebar.init();
+
 #if CQZ_AUTO_PRIVATE_TAB
     this._privateTabUI = new PrivateTabUI(gBrowser, gNavToolbox);
     this._privateTabUI.start();
 #endif
-||||||| merged common ancestors
-    TabsInTitlebar.init();
-=======
->>>>>>> origin/upstream-releases
 
     if (window.matchMedia("(-moz-os-version: windows-win8)").matches &&
         window.matchMedia("(-moz-windows-default-theme)").matches) {
@@ -1429,24 +1424,10 @@ var gBrowserInit = {
     if (!this._loadHandled)
       return;
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
     this._privateTabUI.stop();
 #endif
 
-    let desc = Object.getOwnPropertyDescriptor(window, "DeveloperToolbar");
-    if (desc && !desc.get) {
-      DeveloperToolbar.destroy();
-    }
-
-||||||| merged common ancestors
-    let desc = Object.getOwnPropertyDescriptor(window, "DeveloperToolbar");
-    if (desc && !desc.get) {
-      DeveloperToolbar.destroy();
-    }
-
-=======
->>>>>>> origin/upstream-releases
     // First clean up services initialized in gBrowserInit.onLoad (or those whose
     // uninit methods don't depend on the services having been initialized).
 

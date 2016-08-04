@@ -77,15 +77,17 @@
 
   <separator class="thin"/>
   <vbox align="start">
-<<<<<<< HEAD
-    <checkbox id="blockAttackSites"
-              label="&blockAttackSites.label;"
-              accesskey="&blockAttackSites.accesskey;"
-              preference="browser.safebrowsing.malware.enabled" />
-    <checkbox id="blockWebForgeries"
-              label="&blockWebForgeries.label;"
-              accesskey="&blockWebForgeries.accesskey;"
-              preference="browser.safebrowsing.enabled" />
+    <checkbox id="enableSafeBrowsing"
+              label="&enableSafeBrowsing.label;"
+              accesskey="&enableSafeBrowsing.accesskey;" />
+    <vbox class="indent">
+      <checkbox id="blockDownloads"
+                label="&blockDownloads.label;"
+                accesskey="&blockDownloads.accesskey;" />
+      <checkbox id="blockUncommonUnwanted"
+                label="&blockUncommonUnwanted.label;"
+                accesskey="&blockUncommonUnwanted.accesskey;" />
+    </vbox>
 
     <!-- HTTPS Everywhere -->
     <vbox id="httpsEverywhereGroup" hidden="true">
@@ -102,28 +104,6 @@
                href="https://www.eff.org/https-everywhere"/>
       </hbox>
     </vbox>
-||||||| merged common ancestors
-    <checkbox id="blockAttackSites"
-              label="&blockAttackSites.label;"
-              accesskey="&blockAttackSites.accesskey;"
-              preference="browser.safebrowsing.malware.enabled" />
-    <checkbox id="blockWebForgeries"
-              label="&blockWebForgeries.label;"
-              accesskey="&blockWebForgeries.accesskey;"
-              preference="browser.safebrowsing.enabled" />
-=======
-    <checkbox id="enableSafeBrowsing"
-              label="&enableSafeBrowsing.label;"
-              accesskey="&enableSafeBrowsing.accesskey;" />
-    <vbox class="indent">
-      <checkbox id="blockDownloads"
-                label="&blockDownloads.label;"
-                accesskey="&blockDownloads.accesskey;" />
-      <checkbox id="blockUncommonUnwanted"
-                label="&blockUncommonUnwanted.label;"
-                accesskey="&blockUncommonUnwanted.accesskey;" />
-    </vbox>
->>>>>>> origin/upstream-releases
   </vbox>
 </groupbox>
 

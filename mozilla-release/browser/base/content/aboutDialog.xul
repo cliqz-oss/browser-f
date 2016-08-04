@@ -128,27 +128,12 @@
               &warningDesc.telemetryDesc;
 #endif
             </description>
-<<<<<<< HEAD
-||||||| merged common ancestors
-            <description class="text-blurb" id="communityExperimentalDesc">
-              &community.exp.start;<label class="text-link" href="http://www.mozilla.org/">&community.exp.mozillaLink;</label>&community.exp.middle;<label class="text-link" href="about:credits">&community.exp.creditsLink;</label>&community.exp.end;
-            </description>
-=======
-            <description class="text-blurb" id="communityExperimentalDesc">
+            <description class="text-blurb" id="communityExperimentalDesc" hidden="true">
               &community.exp.start;<label class="text-link" href="http://www.mozilla.org/">&community.exp.mozillaLink;</label>&community.exp.middle;<label class="text-link" useoriginprincipal="true" href="about:credits">&community.exp.creditsLink;</label>&community.exp.end;
             </description>
->>>>>>> origin/upstream-releases
           </vbox>
-<<<<<<< HEAD
           <description class="text-blurb" id="communityDesc" hidden="true">
-            <label class="text-link" href="http://www.cliqz.com/" hidden="true">&community.mozillaLink;</label>
-||||||| merged common ancestors
-          <description class="text-blurb" id="communityDesc">
-            &community.start2;<label class="text-link" href="http://www.mozilla.org/">&community.mozillaLink;</label>&community.middle2;<label class="text-link" href="about:credits">&community.creditsLink;</label>&community.end3;
-=======
-          <description class="text-blurb" id="communityDesc">
-            &community.start2;<label class="text-link" href="http://www.mozilla.org/">&community.mozillaLink;</label>&community.middle2;<label class="text-link" useoriginprincipal="true" href="about:credits">&community.creditsLink;</label>&community.end3;
->>>>>>> origin/upstream-releases
+            &community.start2;<label class="text-link" href="http://www.cliqz.com/">&community.mozillaLink;</label>&community.middle2;<label class="text-link" useoriginprincipal="true" href="about:credits">&community.creditsLink;</label>&community.end3;
           </description>
           <description class="text-blurb" id="contributeDesc">
             &cliqz.headline;
@@ -177,20 +162,11 @@
       </vbox>
     </hbox>
     <vbox id="bottomBox">
-<<<<<<< HEAD
-||||||| merged common ancestors
-      <hbox pack="center">
-        <label class="text-link bottom-link" href="about:license">&bottomLinks.license;</label>
-        <label class="text-link bottom-link" href="about:rights">&bottomLinks.rights;</label>
-        <label class="text-link bottom-link" href="https://www.mozilla.org/privacy/">&bottomLinks.privacy;</label>
-      </hbox>
-=======
-      <hbox pack="center">
+      <hbox pack="center" hidden="true">
         <label class="text-link bottom-link" useoriginprincipal="true" href="about:license">&bottomLinks.license;</label>
         <label class="text-link bottom-link" useoriginprincipal="true" href="about:rights">&bottomLinks.rights;</label>
         <label class="text-link bottom-link" href="https://www.mozilla.org/privacy/">&bottomLinks.privacy;</label>
       </hbox>
->>>>>>> origin/upstream-releases
       <description id="trademark">&trademarkInfo.part1;</description>
     </vbox>
   </vbox>

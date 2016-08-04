@@ -80,17 +80,11 @@ static RedirEntry kRedirMap[] = {
 #ifdef MOZ_SERVICES_SYNC
   { "sync-tabs", "chrome://browser/content/sync/aboutSyncTabs.xul",
     nsIAboutModule::ALLOW_SCRIPT },
-<<<<<<< HEAD
 #endif
   { "home", "about:cliqz",
     nsIAboutModule::ALLOW_SCRIPT },
-||||||| merged common ancestors
-  { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
-    nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-    nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::ENABLE_INDEXED_DB },
-=======
+#if 0
+# Replaced by CLIQZ
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -98,7 +92,7 @@ static RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::MAKE_LINKABLE |
     nsIAboutModule::ENABLE_INDEXED_DB },
->>>>>>> origin/upstream-releases
+#endif
   // the newtab's actual URL will be determined when the channel is created
   { "newtab", "about:blank",
     nsIAboutModule::ALLOW_SCRIPT },
@@ -114,12 +108,8 @@ static RedirEntry kRedirMap[] = {
 # Disabled in Cliqz
   { "accounts", "chrome://browser/content/aboutaccounts/aboutaccounts.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
   // Linkable because of indexeddb use (bug 1228118)
->>>>>>> origin/upstream-releases
   { "loopconversation", "chrome://loop/content/panels/conversation.html",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
     nsIAboutModule::ALLOW_SCRIPT |
