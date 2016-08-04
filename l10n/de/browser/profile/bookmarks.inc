@@ -11,7 +11,7 @@
 #define bookmarks_heading Lesezeichen
 
 #define bookmarks_toolbarfolder Lesezeichen-Symbolleiste
-#define bookmarks_toolbarfolder_description Lesezeichen, die Sie in diesem Ordner ablegen, werden in der Lesezeichen-Symbolleiste angezeigt.
+#define bookmarks_toolbarfolder_description Lesezeichen, die du in diesem Ordner ablegst, werden in der Lesezeichen-Symbolleiste angezeigt.
 
 # LOCALIZATION NOTE (getting_started):
 # link title for https://www.mozilla.org/en-US/firefox/central/
@@ -31,7 +31,7 @@
 
 # LOCALIZATION NOTE (firefox_community):
 # link title for https://www.mozilla.org/en-US/contribute/
-#define firefox_community Machen Sie mit
+#define firefox_community Mach mit
 
 # LOCALIZATION NOTE (firefox_about):
 # link title for https://www.mozilla.org/en-US/about/
