@@ -108,6 +108,7 @@ AutoPrivateTabDatabase.prototype = {
   // nsIWebProgressListener:
   onStateChange: function APT_onStateChange(aWebProgress, aRequest, aStateFlags,
       aStatus) {
+    // TODO: Unsubscribe from events when deactivated.
     if (!this.active)
       return;
 
@@ -180,8 +181,9 @@ AutoPrivateTabDatabase.prototype = {
 
   _filterDocRequest: function APT__filterDocRequest(request, isTopLevel) {
     const channel = request.QueryInterface(Ci.nsIChannel);
-    const [pm, domain] = this._shouldLoadURIInPrivateMode(
-        channel.URI || channel.originalURI);
+    const domain = this._maybeGetDomain(channel.URI || channel.originalURI);
+    if (!domain)
+      return;
 
     const loadContext = findChannelLoadContext(channel);
     if (!loadContext || loadContext.usePrivateBrowsing)
@@ -201,7 +203,7 @@ AutoPrivateTabDatabase.prototype = {
       this._tempNormalLoadMap.delete(tab);
     }
 
-    if (!pm || isTempNormalDomain) {
+    if (isTempNormalDomain || !this._blacklisted(domain)) {
       return;
     }
 
@@ -231,22 +233,6 @@ AutoPrivateTabDatabase.prototype = {
   _blacklisted: function(domain) {
     return !this._usrWhitelisted(domain) &&
         (this._adultDomainsBF.test(domain) || this._usrBlackList.has(domain));
-  },
-
-  /**
-   * @param {nsIURI or string} uri - a URL to check.
-   * @return {[boolean, string]} pair with the following values:
-   *   whether a particular URL is unwelcome in normal mode,
-   *   extracted domain name (may be absent).
-   */
-  _shouldLoadURIInPrivateMode: function APT__shouldLoadURIInPrivateMode(uri) {
-    if (!this.active)
-      return [false, undefined];
-
-    const domain = this._maybeGetDomain(uri);
-    if (!domain)
-      [false, undefined];
-    return [this._blacklisted(domain), domain];
   },
 
   /**
