@@ -15,11 +15,11 @@
 <!-- These are added to Preferences dialog -->
 <!ENTITY viewingMessages.label            "Nachrichtenansicht">
 <!ENTITY notifications.label              "Benachrichtigungen">
-<!ENTITY address.label                    "Adressieren">
 <!ENTITY composingMessages.label          "Verfassen">
 <!ENTITY format.label                     "Sendeformat">
-<!ENTITY return.label                     "Empfangsbestätigungen">
+<!ENTITY address.label                    "Adressieren">
 <!ENTITY junk.label                       "Junk-Mail">
 <!ENTITY tags.label                       "Tags">
+<!ENTITY return.label                     "Empfangsbestätigungen">
 <!ENTITY characterEncoding2.label         "Textkodierung">
 <!ENTITY networkStorage.label             "Netzwerk &amp; Speicherung">

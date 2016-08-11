@@ -159,13 +159,18 @@
 <!-- LOCALIZATION NOTE (debuggerUI.seMenuBreak): This is the text that
   -  appears in the source editor context menu for adding a breakpoint. -->
 <!ENTITY debuggerUI.seMenuBreak         "Haltepunkt hinzufügen">
-<!ENTITY debuggerUI.seMenuBreak.key     "H">
+<!ENTITY debuggerUI.seMenuBreak.key     "B">
 
 <!-- LOCALIZATION NOTE (debuggerUI.seMenuCondBreak): This is the text that
   -  appears in the source editor context menu for adding a conditional
   -  breakpoint. -->
 <!ENTITY debuggerUI.seMenuCondBreak     "Bedingten Haltepunkt hinzufügen">
 <!ENTITY debuggerUI.seMenuCondBreak.key "B">
+
+<!-- LOCALIZATION NOTE (debuggerUI.seMenuBreak): This is the text that
+  -  appears in the source editor context menu for editing a breakpoint. -->
+<!ENTITY debuggerUI.seEditMenuCondBreak     "Bedingten Haltepunkt bearbeiten">
+<!ENTITY debuggerUI.seEditMenuCondBreak.key "B">
 
 <!-- LOCALIZATION NOTE (debuggerUI.tabs.*): This is the text that
   -  appears in the debugger's side pane tabs. -->
@@ -189,7 +194,7 @@
 <!-- LOCALIZATION NOTE (debuggerUI.removeWatch): This is the text that
   -  appears in the watch expressions context menu for removing all expressions. -->
 <!ENTITY debuggerUI.removeAllWatch      "Alle zu beobachtenden Ausdrücke entfernen">
-<!ENTITY debuggerUI.removeAllWatch.key  "e">
+<!ENTITY debuggerUI.removeAllWatch.key  "E">
 <!ENTITY debuggerUI.removeAllWatch.accesskey "e">
 
 <!-- LOCALIZATION NOTE (debuggerUI.stepping): These are the keycodes that

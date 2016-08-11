@@ -37,6 +37,13 @@
 </ul>
 ">
 
+<!ENTITY fileAccessDenied.title "Zugriff auf die Datei wurde verweigert">
+<!ENTITY fileAccessDenied.longDesc "
+<ul>
+  <li>Sie wurde möglicherweise entfernt, verschoben oder Dateiberechtigungen könnten den Zugriff verhindern.</li>
+</ul>
+">
+
 <!ENTITY generic.title "Fehler: Anfrage konnte nicht ausgeführt werden">
 <!ENTITY generic.longDesc "
 <p>&brandShortName; konnte die Seite aus unbekanntem Grund nicht laden.</p>
@@ -155,27 +162,6 @@
   <li>Wenn Ihr Computer oder Netzwerk von einer Firewall oder einem Proxy geschützt wird,
 	stellen Sie bitte sicher, dass &brandShortName; auf das Internet zugreifen darf.</li>
 </ul>
-">
-
-<!ENTITY malwareBlocked.title "Angreifende Website vermutet!">
-<!ENTITY malwareBlocked.longDesc "
-<p>Angreifende Websites versuchen Programme zu installieren, die private Daten stehlen, Ihren Computer benutzen, um andere anzugreifen oder Ihr System beschädigen</p>
-<p>Website-Inhaber, die glauben, dass ihre Website fälschlicherweise als angreifende Website gemeldet wurde, können unter <a href='http://www.stopbadware.org/home/reviewinfo' > eine erneute Einschätzung beantragen</a>.</p>
-">
-
-<!ENTITY unwantedBlocked.title "Verdacht auf eine Website mit unerwünschter Software!">
-<!ENTITY unwantedBlocked.longDesc "
-<p>Seiten mit unerwünschter Software versuchen, Software zu installieren, die betrügerisch sein und Ihr System in unerwarteter Weise beeinflussen kann.</p>
-">
-
-<!ENTITY phishingBlocked.title "Vermuteter Betrugsversuch!">
-<!ENTITY phishingBlocked.longDesc "
-<p>Falls Sie hier persönliche Daten eingeben, müssen Sie mit Identitätsdiebstahl oder sonstigem Betrug rechnen.</p>
-<p>Diese Art von Internet-Betrug ist auch bekannt als Phishing. Dabei versuchen Kriminelle in betrügerischer Absicht, Webseiten oder E-Mails nachzuahmen, denen Sie eventuell vertrauen.</p>
-">
-
-<!ENTITY forbiddenBlocked.title "Verbotene Website">
-<!ENTITY forbiddenBlocked.longDesc "<p>&brandShortName; hat aufgrund der Anwendungskonfiguration diese Seite am Laden gehindert.</p>
 ">
 
 <!ENTITY cspBlocked.title "Durch Inhaltsicherheitsrichtlinie (CSP) blockiert">
