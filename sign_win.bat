@@ -34,7 +34,6 @@ for /R %%f in (
   if ERRORLEVEL 1 (goto :error)
 )
 
-rem Copy binaries from original FF for Netflix support (temporary)
 copy /b %CQZ_WORKSPACE%\cliqz-helpers\firefox_files\voucher.bin core\voucher.bin
 copy /b %CQZ_WORKSPACE%\cliqz-helpers\firefox_files\plugin-container.exe core\plugin-container.exe
 
