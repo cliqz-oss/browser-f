@@ -28,7 +28,7 @@ fi
 # Enable building ./signmar and running libmar signature tests
 MOZ_ENABLE_SIGNMAR=1
 
-# MOZ_SAFE_BROWSING=1  # Disabled in Cliqz.
+MOZ_SAFE_BROWSING=1
 MOZ_SERVICES_COMMON=1
 MOZ_SERVICES_CRYPTO=1
 MOZ_SERVICES_HEALTHREPORT=1
