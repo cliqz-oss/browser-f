@@ -28,12 +28,12 @@ node('ubuntu && docker && gpu') {
 
     def imgName = 'cliqz-oss/browser-f'
 
-    stage('Build Base Image') {
+    stage('Build Image') {
         buildParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true .' : '.'
         docker.build(imgName, buildParams)
     }
 
-    stage('Build Base Image') {
+    stage('Build Browser') {
 
         // Start a container
         docker.image(imgName).inside("-u 0:0") {
