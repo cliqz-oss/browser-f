@@ -27,7 +27,7 @@ node('ubuntu && docker && gpu') {
     }
 
     def imgName = 'cliqz-oss/browser-f'
-    
+
     stage('Build Base Image') {
         buildParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true .' : '.'
         docker.build(imgName, buildParams)
@@ -39,7 +39,7 @@ node('ubuntu && docker && gpu') {
         docker.image(imgName).inside("-u 0:0") {
 
         // Install any missing dependencies
-        sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=desktop --no-interactive'
+        sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
         /*
         withEnv([
             "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
