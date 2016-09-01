@@ -32,7 +32,6 @@ node('ubuntu && docker && gpu') {
         docker.build(imgName, buildParams)
     }
 
-  /*
     stage('Build Base Image') {
 
         // Start a container
@@ -40,7 +39,7 @@ node('ubuntu && docker && gpu') {
 
         // Install any missing dependencies
         sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=desktop --no-interactive'
-
+        /*
         withEnv([
             "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
             "CQZ_COMMIT=${CQZ_COMMIT}",
@@ -48,7 +47,7 @@ node('ubuntu && docker && gpu') {
             "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
                 sh '''#!/bin/bash -xe export SHELL=/bin/bash cp ./certs/s3boto_repository_cliqz_com ~/.boto source ./certs/cliqz_browser_api_keys.sh ./magic_build_and_package.sh  --clobber'''
             }
+        */
         }
     }
-  */
 }
