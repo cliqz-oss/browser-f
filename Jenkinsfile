@@ -26,8 +26,9 @@ node('ubuntu && docker && gpu') {
         submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/faheem-cliqz/browser-f']]]
     }
 
+    def imgName = 'cliqz-oss/browser-f'
+    
     stage('Build Base Image') {
-        def imgName = 'cliqz-oss/browser-f'
         buildParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true .' : '.'
         docker.build(imgName, buildParams)
     }
