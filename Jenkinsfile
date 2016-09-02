@@ -21,9 +21,10 @@ node('ubuntu && docker && gpu') {
 
     stage('Checkout') {
         checkout changelog: false, poll: false, scm: [$class: 'GitSCM', branches: [[name: CQZ_COMMIT]],
-        doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'CheckoutOption', timeout: 30],
-        [$class: 'CloneOption', depth: 0, noTags: false, reference: '', shallow: false, timeout: 30]],
-        submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/faheem-cliqz/browser-f']]]
+        doGenerateSubmoduleConfigurations: false, extensions: [[$class: 'CleanBeforeCheckout'],
+        [$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '',
+        shallow: false, timeout: 30]], submoduleCfg: [],
+        userRemoteConfigs: [[url: 'https://github.com/faheem-cliqz/browser-f']]]
     }
 
     def imgName = 'cliqz-oss/browser-f'
@@ -43,12 +44,12 @@ node('ubuntu && docker && gpu') {
         stage('Build Browser') {
 
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-            //sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+            sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
       sh '''#!/bin/bash -xe
 env
-rm -rf obj/
 export SHELL=/bin/bash
+ls
 ./magic_build_and_package.sh
       '''
 
