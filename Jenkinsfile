@@ -50,6 +50,8 @@ node('ubuntu && docker && gpu') {
                 ./magic_build_and_package.sh  --clobber
             '''
 
+            sh 'env'
+
             /*
             // Build browser
             withCredentials([
