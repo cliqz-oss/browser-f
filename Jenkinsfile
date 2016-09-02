@@ -58,6 +58,7 @@ node('ubuntu && docker && gpu') {
                     "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
 
                         sh '''#!/bin/bash -xe
+                            export SHELL=/bin/bash
                             ./magic_build_and_package.sh  --clobber
                         '''
                 }
