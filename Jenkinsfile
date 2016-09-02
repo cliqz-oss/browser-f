@@ -56,14 +56,11 @@ export TERM=
 export BUILD_TAG=
 export JOB_URL=
 export JENKINS_HOME=
-export PATH=
-export PWD=
 export HUDSON_URL=
 export JOB_NAME=
 export BUILD_DISPLAY_NAME=
 export JENKINS_URL=
 export BUILD_ID=
-export JOB_BASE_NAME=
 export SHLVL=
 export HOME=
 export EXECUTOR_NUMBER=
@@ -72,7 +69,6 @@ export CLASSPATH=
 export HUDSON_HOME=
 export NODE_NAME=
 export BUILD_NUMBER=
-export _=
 
 export SHELL=/bin/bash
 ls
