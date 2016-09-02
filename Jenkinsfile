@@ -44,10 +44,36 @@ node('ubuntu && docker && gpu') {
         stage('Build Browser') {
 
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-            sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+            //sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
       sh '''#!/bin/bash -xe
 env
+export BUILD_URL=
+export HOSTNAME=
+export HUDSON_SERVER_COOKIE=
+export HOST=
+export TERM=
+export BUILD_TAG=
+export JOB_URL=
+export JENKINS_HOME=
+export PATH=
+export PWD=
+export HUDSON_URL=
+export JOB_NAME=
+export BUILD_DISPLAY_NAME=
+export JENKINS_URL=
+export BUILD_ID=
+export JOB_BASE_NAME=
+export SHLVL=
+export HOME=
+export EXECUTOR_NUMBER=
+export JENKINS_SERVER_COOKIE=
+export CLASSPATH=
+export HUDSON_HOME=
+export NODE_NAME=
+export BUILD_NUMBER=
+export _=
+
 export SHELL=/bin/bash
 ls
 ./magic_build_and_package.sh
