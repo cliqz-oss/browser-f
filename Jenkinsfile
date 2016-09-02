@@ -39,7 +39,7 @@ node('ubuntu && docker && gpu') {
         docker.build(imgName, buildParams)
     }
 
-    sh "docker run --rm -v ${pwd}:/browser -it cliqz-oss/browser-f /bin/bash -c "export SHELL=/bin/bash; ./browser/magic_build_and_package.sh""
+    sh "docker run --rm -v ${pwd}:/browser -it cliqz-oss/browser-f /bin/bash -c \"export SHELL=/bin/bash; ./browser/magic_build_and_package.sh\""
 
     // Start a container
     docker.image(imgName).inside("-u root") {
