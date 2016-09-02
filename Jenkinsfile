@@ -46,13 +46,9 @@ node('ubuntu && docker && gpu') {
             sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
             sh 'env'
-
-            sh '''#!/bin/bash -l
-                export SHELL=/bin/bash
-                rm -rf obj
-                ./magic_build_and_package.sh
-            '''
-
+            sh 'export SHELL=/bin/bash'
+            sh 'rm -rf obj'
+            sh './magic_build_and_package.sh'
 
 
             /*
