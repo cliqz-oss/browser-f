@@ -48,6 +48,8 @@ node('ubuntu && docker && gpu') {
             sh 'env'
 
             sh '''#!/bin/bash -l
+                export SHELL=/bin/bash
+                rm -rf obj
                 ./magic_build_and_package.sh  --clobber
             '''
 
