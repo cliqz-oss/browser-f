@@ -40,41 +40,22 @@ node('ubuntu && docker && gpu') {
     }
 
     // Start a container
-    docker.image(imgName).inside("-u 0:0") {
+    docker.image(imgName).inside() {
+
+      sh '''#!/bin/bash -xe
+
+export SHELL=/bin/bash
+env
+ls
+./magic_build_and_package.sh
+      '''
 
         stage('Build Browser') {
 
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
             //sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
-      sh '''#!/bin/bash -xe
-env
-unset BUILD_URL
-unset HOSTNAME
-unset HUDSON_SERVER_COOKIE
-unset HOST
-unset TERM
-unset BUILD_TAG
-unset JOB_URL
-unset JENKINS_HOME
-unset HUDSON_URL
-unset JOB_NAME
-unset BUILD_DISPLAY_NAME
-unset JENKINS_URL
-unset BUILD_ID
-unset SHLVL
-unset HOME
-unset EXECUTOR_NUMBER
-unset JENKINS_SERVER_COOKIE
-unset CLASSPATH
-unset HUDSON_HOME
-unset NODE_NAME
-unset BUILD_NUMBER
-export SHELL=/bin/bash
-env
-ls
-./magic_build_and_package.sh
-      '''
+
 
 
             /*
