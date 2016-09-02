@@ -47,6 +47,7 @@ node('ubuntu && docker && gpu') {
 
             sh 'env'
             sh 'export SHELL=/bin/bash'
+            sh 'env'
             sh 'rm -rf obj'
             sh './magic_build_and_package.sh'
 
