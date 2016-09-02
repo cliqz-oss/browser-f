@@ -45,6 +45,12 @@ node('ubuntu && docker && gpu') {
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
             sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
+            sh '''
+                export SHELL=/bin/bash
+                ./magic_build_and_package.sh  --clobber
+            '''
+
+            /*
             // Build browser
             withCredentials([
                 [$class: 'StringBinding', credentialsId: 'CQZ_GOOGLE_API_KEY', variable: 'CQZ_GOOGLE_API_KEY'],
@@ -57,12 +63,10 @@ node('ubuntu && docker && gpu') {
                     "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
                     "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
 
-                        sh '''
-                            export SHELL=/bin/bash
-                            ./magic_build_and_package.sh  --clobber
-                        '''
+
                 }
             }
+            */
 
         stage('Publisher (Debian Repo)') {
 /*
