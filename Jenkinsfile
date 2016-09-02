@@ -20,7 +20,7 @@ node('ubuntu && docker && gpu') {
     CQZ_BUILD_DE_LOCALIZATION
 
     stage('Checkout') {
-        deleteDir()
+        //  deleteDir()
         checkout changelog: false, poll: false, scm: [$class: 'GitSCM', branches: [[name: CQZ_COMMIT]],
         doGenerateSubmoduleConfigurations: false, extensions: [
         [$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '',
@@ -39,7 +39,7 @@ node('ubuntu && docker && gpu') {
         docker.build(imgName, buildParams)
     }
 
-    sh "docker run --rm -v ${pwd}:/browser -it cliqz-oss/browser-f /bin/bash -c \"export SHELL=/bin/bash; ./browser/magic_build_and_package.sh\""
+    sh "docker run --rm -v ${pwd()}:/browser -it cliqz-oss/browser-f /bin/bash -c \"export SHELL=/bin/bash; ./browser/magic_build_and_package.sh\""
 
     // Start a container
     docker.image(imgName).inside("-u root") {
