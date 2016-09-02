@@ -48,28 +48,28 @@ node('ubuntu && docker && gpu') {
 
       sh '''#!/bin/bash -xe
 env
-export BUILD_URL=
-export HOSTNAME=
-export HUDSON_SERVER_COOKIE=
-export HOST=
-export TERM=
-export BUILD_TAG=
-export JOB_URL=
-export JENKINS_HOME=
-export HUDSON_URL=
-export JOB_NAME=
-export BUILD_DISPLAY_NAME=
-export JENKINS_URL=
-export BUILD_ID=
-export SHLVL=
-export HOME=
-export EXECUTOR_NUMBER=
-export JENKINS_SERVER_COOKIE=
-export CLASSPATH=
-export HUDSON_HOME=
-export NODE_NAME=
-export BUILD_NUMBER=
-
+unset BUILD_URL
+unset HOSTNAME
+unset HUDSON_SERVER_COOKIE
+unset HOST
+unset TERM
+unset BUILD_TAG
+unset JOB_URL
+unset JENKINS_HOME
+unset HUDSON_URL
+unset JOB_NAME
+unset BUILD_DISPLAY_NAME
+unset JENKINS_URL
+unset BUILD_ID
+unset SHLVL
+unset HOME
+unset EXECUTOR_NUMBER
+unset JENKINS_SERVER_COOKIE
+unset CLASSPATH
+unset HUDSON_HOME
+unset NODE_NAME
+unset BUILD_NUMBER
+env
 export SHELL=/bin/bash
 ls
 ./magic_build_and_package.sh
