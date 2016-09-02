@@ -20,6 +20,7 @@ node('ubuntu && docker && gpu') {
     CQZ_BUILD_DE_LOCALIZATION
 
     stage('Checkout') {
+        deleteDir()
         checkout changelog: false, poll: false, scm: [$class: 'GitSCM', branches: [[name: CQZ_COMMIT]],
         doGenerateSubmoduleConfigurations: false, extensions: [
         [$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '',
@@ -69,8 +70,8 @@ unset CLASSPATH
 unset HUDSON_HOME
 unset NODE_NAME
 unset BUILD_NUMBER
-env
 export SHELL=/bin/bash
+env
 ls
 ./magic_build_and_package.sh
       '''
