@@ -40,7 +40,7 @@ node('ubuntu && docker && gpu') {
     }
 
     // Start a container
-    docker.image(imgName).inside() {
+    docker.image(imgName).inside("-u root") {
 
       sh '''#!/bin/bash -xe
 
