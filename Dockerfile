@@ -30,6 +30,7 @@ RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default
 ARG uid
 ARG gid
 ARG user
+ENV SHELL=/bin/bash
 
 RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && usermod -aG sudo $user
 

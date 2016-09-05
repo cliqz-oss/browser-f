@@ -11,8 +11,9 @@ Build parameters:
     CQZ_COMMIT
     CQZ_BUILD_DE_LOCALIZATION
     REBUILD_IMAGE
+    BUILD_NODE
 */
-node('ubuntu && docker && gpu') {
+node(BUILD_NODE) {
     // Die early without CQZ_BUILD_ID, CQZ_RELEASE_CHANNEL or CQZ_COMMIT
     CQZ_BUILD_ID
     CQZ_COMMIT
@@ -25,7 +26,7 @@ node('ubuntu && docker && gpu') {
         doGenerateSubmoduleConfigurations: false, extensions: [
         [$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '',
         shallow: false, timeout: 30]], submoduleCfg: [],
-        userRemoteConfigs: [[url: 'https://github.com/faheem-cliqz/browser-f']]]
+        userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f']]]
     }
 
     def imgName = 'cliqz-oss/browser-f'
@@ -39,12 +40,14 @@ node('ubuntu && docker && gpu') {
     }
 
     // Start a container
-    docker.image(imgName).inside("-v ${pwd()}:/browser -w /browser") {
+    # Mount to a smaller path. Problems while building on longer work paths
+    # TODO: Explicit mounted paths should supersede implicit ones. Docker plugin problems :(
+    docker.image(imgName).inside() {
 
         stage('Build Browser') {
 
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-            sh 'cd /browser && python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+            sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
             // Build browser
             withCredentials([
@@ -59,32 +62,26 @@ node('ubuntu && docker && gpu') {
                     "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
 
                     sh '''#!/bin/bash -l
-                    export SHELL=/bin/bash
-                    cd /browser
-                    ./magic_build_and_package.sh  --clobber
+                        export SHELL=/bin/bash
+                        ./magic_build_and_package.sh  --clobber
                     '''
                 }
             }
 
         stage('Publisher (Debian Repo)') {
-/*
-                sh '''#!/bin/bash -xe
-source ./certs/s3cmd_repository_cliqz_com.sh
-./sign_lin.sh
-'''
-*/
+            sh '''#!/bin/bash -l
+                source ./certs/s3cmd_repository_cliqz_com.sh
+                ./sign_lin.sh
+            '''
         }
 
         stage('Publisher (Internal)') {
-            /*
-            sh '''#!/bin/bash -xe
-export SHELL=/bin/bash
-cp ./certs/s3boto_repository_cliqz_com ~/.boto
-./magic_upload_files.sh
-rm ~/.boto
-'''
-*/
-        }
+            sh '''#!/bin/bash -l
+                export SHELL=/bin/bash
+                cp ./certs/s3boto_repository_cliqz_com ~/.boto
+                ./magic_upload_files.sh
+                rm ~/.boto
+            '''
         }
     }
 }
