@@ -9,7 +9,7 @@ It does the following:
 
 import org.codehaus.groovy.runtime.*;
 
-def CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
+def CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss').trim()
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
