@@ -31,4 +31,9 @@ ARG uid
 ARG gid
 ARG user
 
-RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && adduser $user sudo
+RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && usermod -aG sudo $user
+
+# Enable passwordless sudo for users under the "sudo" group
+RUN sed -i.bkp -e \
+      's/%sudo\s\+ALL=(ALL\(:ALL\)\?)\s\+ALL/%sudo ALL=NOPASSWD:ALL/g' \
+      /etc/sudoers
