@@ -21,13 +21,7 @@ node(LINUX_BUILD_NODE) {
         sh "cd docker && docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
     }
 
-    print binding.variables
-    sh 'env'
-
     docker.image(imgName).inside() {
-
-        print binding.variables
-        sh 'env'
 
        stage('Update Dependencies') {
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
