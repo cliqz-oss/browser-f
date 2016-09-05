@@ -2,7 +2,7 @@
 
 load 'build-helpers.groovy'
 
-node(BUILD_NODE) {
+node(LINUX_BUILD_NODE) {
     stage('Checkout') {
         checkoutSCM(REPO_URL, COMMIT_ID)
     }
