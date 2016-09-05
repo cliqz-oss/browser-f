@@ -36,7 +36,11 @@ node(BUILD_NODE) {
         // Build params with context
         def cacheParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-        sh "docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+        // Avoiding docker context
+        sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+
+        // Build image with a specific user
+        sh "cd docker && docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
     }
 
     // Start a container
