@@ -20,9 +20,21 @@ RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/ap
   apt-get update; \
   apt-get install aptly -y
 
+RUN pip install awscli \
+  compare-locales
+
 RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
   python bootstrap.py --application-choice=browser --no-interactive && \
   rm bootstrap.py
 
-RUN pip install awscli \
-  compare-locales
+ARG uid
+ARG gid
+ARG user
+ENV SHELL=/bin/bash
+
+RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && usermod -aG sudo $user
+
+# Enable passwordless sudo for users under the "sudo" group
+RUN sed -i.bkp -e \
+      's/%sudo\s\+ALL=(ALL\(:ALL\)\?)\s\+ALL/%sudo ALL=NOPASSWD:ALL/g' \
+      /etc/sudoers
