@@ -26,11 +26,11 @@ ARG GID
 RUN groupadd jenkins -g $GID
 RUN useradd -ms /bin/bash jenkins -u $UID -g $GID
 
-RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
-  python bootstrap.py --application-choice=browser --no-interactive && \
-  rm bootstrap.py
+USER jenkins
 
 RUN pip install awscli \
   compare-locales
 
-USER jenkins
+RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
+  python bootstrap.py --application-choice=browser --no-interactive && \
+  rm bootstrap.py
