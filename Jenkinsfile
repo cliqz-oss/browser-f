@@ -34,7 +34,7 @@ node('ubuntu && docker && gpu') {
 
         // Build params with context
         def cacheParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
-        
+
         sh "docker build -t ${imgName} ${cacheParams} --build-arg UID=`id -u` --build-arg GID=`id -g` ."
     }
 
