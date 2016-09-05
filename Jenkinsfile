@@ -9,7 +9,7 @@ It does the following:
 
 import org.codehaus.groovy.runtime.*;
 
-def CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss').trim()
+def CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
@@ -24,7 +24,7 @@ CQZ_AWS_CREDENTIAL_ID
 LINUX_BUILD_NODE
 
 stage("Copy XPI") {
-    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1")
+    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
     UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
     HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
