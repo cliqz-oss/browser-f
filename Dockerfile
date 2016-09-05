@@ -33,4 +33,4 @@ ARG user
 
 RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid
 
-USER $user
+#USER $user

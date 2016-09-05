@@ -37,7 +37,7 @@ node('ubuntu && docker && gpu') {
 
         sh "docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
     }
-
+    // "-u `id -g`:`id -u`"
     // Start a container
     docker.image(imgName).inside() {
 
