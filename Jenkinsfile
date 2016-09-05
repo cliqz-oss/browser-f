@@ -43,10 +43,8 @@ node('ubuntu && docker && gpu') {
 
         stage('Build Browser') {
 
-            sh 'pwd'
-            
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-            sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+            sh 'cd /browser && python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
             // Build browser
             withCredentials([
@@ -62,6 +60,7 @@ node('ubuntu && docker && gpu') {
 
                     sh '''#!/bin/bash -l
                     export SHELL=/bin/bash
+                    cd /browser
                     ./magic_build_and_package.sh  --clobber
                     '''
                 }
