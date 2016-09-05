@@ -20,17 +20,17 @@ RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/ap
   apt-get update; \
   apt-get install aptly -y
 
-RUN pip install awscli \
-  compare-locales
-
 ARG UID
 ARG GID
 
 RUN groupadd jenkins -g $GID
 RUN useradd -ms /bin/bash jenkins -u $UID -g $GID
 
-USER jenkins
-
 RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
   python bootstrap.py --application-choice=browser --no-interactive && \
   rm bootstrap.py
+
+RUN pip install awscli \
+  compare-locales
+
+USER jenkins
