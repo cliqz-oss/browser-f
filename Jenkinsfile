@@ -44,8 +44,8 @@ node(BUILD_NODE) {
     }
 
     // Start a container
-    # Mount to a smaller path. Problems while building on longer work paths
-    # TODO: Explicit mounted paths should supersede implicit ones. Docker plugin problems :(
+    // Mount to a smaller path. Problems while building on longer work paths
+    // TODO: Explicit mounted paths should supersede implicit ones. Docker plugin problems :(
     docker.image(imgName).inside() {
 
         stage('Build Browser') {
