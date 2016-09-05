@@ -1,5 +1,16 @@
 FROM ubuntu:14.04
 
+ARG uid
+ARG gid
+ARG user
+
+RUN echo $uid
+RUN echo $gid
+RUN echo $user
+
+RUN groupadd $user -g $gid
+RUN useradd -ms /bin/bash $user -u $uid -g $gid
+
 RUN apt-get update && apt-get install -y \
   alien \
   fakeroot \
@@ -19,12 +30,6 @@ RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/ap
   apt-key adv --keyserver keys.gnupg.net --recv-keys 9E3E53F19C7DE460; \
   apt-get update; \
   apt-get install aptly -y
-
-ARG UID
-ARG GID
-
-RUN groupadd jenkins -g $GID
-RUN useradd -ms /bin/bash jenkins -u $UID -g $GID
 
 USER jenkins
 
