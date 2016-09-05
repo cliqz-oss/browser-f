@@ -26,7 +26,7 @@ node(BUILD_NODE) {
         doGenerateSubmoduleConfigurations: false, extensions: [
         [$class: 'CheckoutOption', timeout: 30], [$class: 'CloneOption', depth: 0, noTags: false, reference: '',
         shallow: false, timeout: 30]], submoduleCfg: [],
-        userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f']]]
+        userRemoteConfigs: [[url: 'https://github.com/faheem-cliqz/browser-f']]]
     }
 
     def imgName = 'cliqz-oss/browser-f'
