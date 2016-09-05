@@ -26,8 +26,8 @@ RUN pip install awscli \
 ARG UID
 ARG GID
 
-RUN groupadd jenkins -g $GID \
-    && useradd -ms /bin/bash jenkins -u $UID -g $GID
+RUN groupadd jenkins -g $GID
+RUN useradd -ms /bin/bash jenkins -u $UID -g $GID
 
 USER jenkins
 
