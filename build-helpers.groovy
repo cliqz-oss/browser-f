@@ -15,3 +15,5 @@ def checkoutSCM(URL, COMMIT) {
         ]
     )
 }
+
+return this
