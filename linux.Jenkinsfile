@@ -19,7 +19,7 @@ node(BUILD_NODE) {
     CQZ_AWS_CREDENTIAL_ID
 
     stage('Checkout') {
-        checkout
+        checkout(
             changelog: false,
             poll: false,
             scm: [
@@ -33,6 +33,7 @@ node(BUILD_NODE) {
                 submoduleCfg: [],
                 userRemoteConfigs: [[url: REPO_URL]]
             ]
+        )
     }
 
     def imgName = 'cliqz-oss/browser-f'
