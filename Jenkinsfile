@@ -16,9 +16,9 @@ node("master") {
   stage 'prepare docker'
   def imgName = "cliqz-oss/browser-f:${env.BUILD_TAG}"
   docker.build(imgName, ".")
-  docker.image(imgName).inside("-u 0:0") {
-    sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=desktop --no-interactive'
-  }
+  //docker.image(imgName).inside("-u 0:0") {
+  //  sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=desktop --no-interactive'
+  //}
 
 
   stage 'build'
