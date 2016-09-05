@@ -61,23 +61,20 @@ node(BUILD_NODE) {
                     "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
                     "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
 
-                    sh '''#!/bin/bash -l
-                        export SHELL=/bin/bash
-                        ./magic_build_and_package.sh  --clobber
-                    '''
+                    sh './magic_build_and_package.sh  --clobber'
                 }
             }
+        }
 
         stage('Publisher (Debian Repo)') {
-            sh '''#!/bin/bash -l
+            sh '''
                 source ./certs/s3cmd_repository_cliqz_com.sh
                 ./sign_lin.sh
             '''
         }
 
         stage('Publisher (Internal)') {
-            sh '''#!/bin/bash -l
-                export SHELL=/bin/bash
+            sh '''
                 cp ./certs/s3boto_repository_cliqz_com ~/.boto
                 ./magic_upload_files.sh
                 rm ~/.boto
