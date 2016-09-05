@@ -31,8 +31,4 @@ ARG uid
 ARG gid
 ARG user
 
-RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid
-
-RUN usermod -a -G sudo $user
-
-#USER $user
+RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && adduser $user sudo
