@@ -37,7 +37,7 @@ node('ubuntu && docker && gpu') {
 
         sh "docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
     }
-    // "-u `id -g`:`id -u`"
+
     // Start a container
     docker.image(imgName).inside() {
 
@@ -58,7 +58,10 @@ node('ubuntu && docker && gpu') {
                     "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
                     "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
 
-                    sh "#!/bin/bash -l; export SHELL=/bin/bash; ./magic_build_and_package.sh  --clobber"
+                    sh '''#!/bin/bash -l
+                    export SHELL=/bin/bash
+                    ./magic_build_and_package.sh  --clobber
+                    '''
                 }
             }
 
