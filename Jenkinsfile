@@ -39,7 +39,7 @@ node('ubuntu && docker && gpu') {
     }
 
     // Start a container
-    docker.image(imgName).inside("-v `pwd`:/build -w /build") {
+    docker.image(imgName).inside("-v ${pwd()}:/browser -w /browser") {
 
         stage('Build Browser') {
 
