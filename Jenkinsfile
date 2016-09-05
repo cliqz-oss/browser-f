@@ -43,6 +43,8 @@ node('ubuntu && docker && gpu') {
 
         stage('Build Browser') {
 
+            sh 'pwd'
+            
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
             sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
