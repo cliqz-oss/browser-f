@@ -42,6 +42,6 @@ stage("Copy XPI") {
 stage('Build') {
     parallel (
         'linux en': { load 'linux.Jenkinsfile' },
-        'test': { print 'hello' }
+        'test': { stage('test') {print 'hello'}}
     )
 }
