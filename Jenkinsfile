@@ -55,8 +55,8 @@ node(BUILD_NODE) {
 
             // Build browser
             withCredentials([
-                [$class: 'StringBinding', credentialsId: 'CQZ_GOOGLE_API_KEY', variable: 'CQZ_GOOGLE_API_KEY'],
-                [$class: 'StringBinding', credentialsId: 'MOZ_MOZILLA_API_KEY', variable: 'MOZ_MOZILLA_API_KEY']]) {
+                [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                [$class: 'StringBinding', credentialsId: MOZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                 // Load environment variables
                 withEnv([
