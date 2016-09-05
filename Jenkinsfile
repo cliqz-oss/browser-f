@@ -33,26 +33,20 @@ node('ubuntu && docker && gpu') {
     stage('Build Image') {
 
         // Build params with context
-        buildParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true .' : '.'
+        def cacheParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-        // Build docker image with params
-        docker.build(imgName, buildParams)
+        def imgName = "cliqz/navigation-extension:latest"
+        sh "docker build -t ${imgName} ${cacheParams} --build-arg UID=`id -u` --build-arg GID=`id -g` ."
     }
 
-    sh "docker run --rm -v ${pwd()}:/browser -t cliqz-oss/browser-f /bin/bash -c \"export SHELL=/bin/bash; cd /browser; ./magic_build_and_package.sh\""
-
     // Start a container
-    docker.image(imgName).inside("-u root") {
+    docker.image(imgName).inside() {
 
         stage('Build Browser') {
 
             // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-            //sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+            sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
-
-
-
-            /*
             // Build browser
             withCredentials([
                 [$class: 'StringBinding', credentialsId: 'CQZ_GOOGLE_API_KEY', variable: 'CQZ_GOOGLE_API_KEY'],
@@ -65,10 +59,9 @@ node('ubuntu && docker && gpu') {
                     "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
                     "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}"]) {
 
-
+                    sh "#!/bin/bash -l; export SHELL=/bin/bash; ./magic_build_and_package.sh  --clobber"
                 }
             }
-            */
 
         stage('Publisher (Debian Repo)') {
 /*
