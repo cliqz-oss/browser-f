@@ -7,7 +7,7 @@ It does the following:
     2. Builds a docker image with dependencies installed
 */
 
-load 'build-helpers.groovy'
+helpers = load 'build-helpers.groovy'
 import org.codehaus.groovy.runtime.*;
 
 def CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
@@ -26,7 +26,7 @@ node() {
     LINUX_BUILD_NODE
 
     stage('Checkout') {
-        checkoutSCM(REPO_URL, COMMIT_ID)
+        helpers.checkoutSCM(REPO_URL, COMMIT_ID)
     }
 
     stage("Copy XPI") {

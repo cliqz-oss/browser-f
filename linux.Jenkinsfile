@@ -1,10 +1,10 @@
 #!/usr/bin/env groovy
 
-load 'build-helpers.groovy'
+helpers = load 'build-helpers.groovy'
 
 node(LINUX_BUILD_NODE) {
     stage('Checkout') {
-        checkoutSCM(REPO_URL, COMMIT_ID)
+        helpers.checkoutSCM(REPO_URL, COMMIT_ID)
     }
 
     def imgName = 'cliqz-oss/browser-f'
