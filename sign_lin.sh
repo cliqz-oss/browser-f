@@ -9,7 +9,7 @@ cd $SRC_BASE
 cd $OBJ_DIR
 
 echo '***** Generate DEBIAN repository *****'
-gpg --allow-secret-key-import --import ../debian.gpg.key
+gpg --allow-secret-key-import --import $DEBIAN_GPG_KEY
 rm -rf debian ~/.aptly aptly
 mkdir debian
 cp dist/*.deb debian/

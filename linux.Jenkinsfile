@@ -53,13 +53,12 @@ docker.image(imgName).inside() {
                         [$class: 'FileBinding', credentialsId: DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
                         [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
 
-                        sh 'echo $DEBIAN_GPG_KEY > debian.gpg.key'
                         sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
                     }
 
                     sh './sign_lin.sh'
                 } finally {
-                    sh 'rm -rf  debian.gpg.key debian.gpg.pass'
+                    sh 'rm -rf debian.gpg.pass'
                 }
             }
 
