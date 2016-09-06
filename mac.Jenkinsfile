@@ -85,8 +85,11 @@ try {
                         '''
                     }
 
-                    withCredentials([
-                        [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+                    withCredentials([[
+                        $class: 'UsernamePasswordMultiBinding',
+                        credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
                         sh """#!/bin/bash -l -x
                             ./magic_upload_files.sh
