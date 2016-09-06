@@ -4,71 +4,67 @@
 * Linux builder
 * Note: Checkout being done by a triggering job
 */
-helpers = load 'build-helpers.groovy'
 
-node(LINUX_BUILD_NODE) {
+def imgName = 'cliqz-oss/browser-f'
 
-    def imgName = 'cliqz-oss/browser-f'
+stage('Build Image') {
 
-    stage('Build Image') {
+    // Build params with context
+    def cacheParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-        // Build params with context
-        def cacheParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
+    // Avoiding docker context
+    sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
 
-        // Avoiding docker context
-        sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+    // Build image with a specific user
+    sh "cd docker && docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+}
 
-        // Build image with a specific user
-        sh "cd docker && docker build -t ${imgName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+docker.image(imgName).inside() {
+
+   stage('Update Dependencies') {
+        // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
+        sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
     }
 
-    docker.image(imgName).inside() {
+    withEnv([
+        "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+        "CQZ_COMMIT=$COMMIT_ID",
+        "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
+        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
 
-       stage('Update Dependencies') {
-            // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-            sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+        stage('Build Browser') {
+            withCredentials([
+                [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+
+                sh './magic_build_and_package.sh  --clobber'
+            }
         }
 
-        withEnv([
-            "CQZ_BUILD_ID=$CQZ_BUILD_ID",
-            "CQZ_COMMIT=$COMMIT_ID",
-            "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
-            "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+        withCredentials([[
+            $class: 'UsernamePasswordMultiBinding',
+            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+            usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-            stage('Build Browser') {
-                withCredentials([
-                    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+            stage('Publisher (Debian Repo)') {
+                try {
+                    withCredentials([
+                        [$class: 'FileBinding', credentialsId: DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
+                        [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
 
-                    sh './magic_build_and_package.sh  --clobber'
+                        sh 'echo $DEBIAN_GPG_KEY > debian.gpg.key'
+                        sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
+                    }
+
+                    sh './sign_lin.sh'
+                } finally {
+                    sh 'rm -rf  debian.gpg.key debian.gpg.pass'
                 }
             }
 
-            withCredentials([[
-                $class: 'UsernamePasswordMultiBinding',
-                credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-                usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
-
-                stage('Publisher (Debian Repo)') {
-                    try {
-                        withCredentials([
-                            [$class: 'FileBinding', credentialsId: DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
-                            [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
-
-                            sh 'echo $DEBIAN_GPG_KEY > debian.gpg.key'
-                            sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
-                        }
-
-                        sh './sign_lin.sh'
-                    } finally {
-                        sh 'rm -rf  debian.gpg.key debian.gpg.pass'
-                    }
-                }
-
-                stage('Publisher (Internal)') {
-                    sh './magic_upload_files.sh'
-                }
+            stage('Publisher (Internal)') {
+                sh './magic_upload_files.sh'
             }
         }
     }
