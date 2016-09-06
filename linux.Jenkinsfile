@@ -40,7 +40,7 @@ docker.image(imgName).inside() {
                 sh './magic_build_and_package.sh  --clobber'
             }
         }
-        
+
         withCredentials([[
             $class: 'UsernamePasswordMultiBinding',
             credentialsId: CQZ_AWS_CREDENTIAL_ID,
