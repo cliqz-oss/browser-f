@@ -63,7 +63,7 @@ stage('Build') {
             build job: 'browser-f-linux', parameters: [
                 string(name: 'REPO_URL', value: REPO_URL),
                 string(name: 'COMMIT_ID', value: COMMIT_ID),
-                string(name: 'ENTRY_POINT', value: ENTRY_POINT),
+                string(name: 'ENTRY_POINT', value: 'linux.Jenkinsfile'),
                 string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
                 string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
                 string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
@@ -74,6 +74,26 @@ stage('Build') {
                 string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
                 string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
                 string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID)]
+        },
+        'mac en': {
+            build job: 'browser-f-mac-en', parameters: [
+                string(name: 'REPO_URL', value: REPO_URL),
+                string(name: 'COMMIT_ID', value: COMMIT_ID),
+                string(name: 'ENTRY_POINT', value: 'mac.Jenkinsfile'),
+                string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
+                string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
+                string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+                string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
+                string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
+                string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
+                booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
+                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
+                string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
+                string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
+                string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
+                string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
+                string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID)]
         }
+
     )
 }

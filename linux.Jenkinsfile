@@ -1,11 +1,12 @@
 #!/usr/bin/env groovy
 
+/*
+* Linux builder
+* Note: Checkout being done by a triggering job
+*/
 helpers = load 'build-helpers.groovy'
 
 node(LINUX_BUILD_NODE) {
-    stage('Checkout') {
-        helpers.checkoutSCM(REPO_URL, COMMIT_ID)
-    }
 
     def imgName = 'cliqz-oss/browser-f'
 
