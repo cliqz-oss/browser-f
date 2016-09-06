@@ -70,7 +70,7 @@ stage('Build') {
                 string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
                 string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
                 string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
-                booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE),
+                booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
                 string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
                 string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
                 string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID)]
