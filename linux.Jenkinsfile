@@ -39,7 +39,7 @@ node(LINUX_BUILD_NODE) {
                     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
                     [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                     sh './magic_build_and_package.sh  --clobber'
+                    sh './magic_build_and_package.sh  --clobber'
                 }
             }
 
@@ -50,7 +50,19 @@ node(LINUX_BUILD_NODE) {
                 usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
                 stage('Publisher (Debian Repo)') {
-                    sh './sign_lin.sh'
+                    try {
+                        withCredentials([
+                            [$class: 'FileBinding', credentialsId: DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
+                            [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
+
+                            sh 'echo $DEBIAN_GPG_KEY > debian.gpg.key'
+                            sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
+                        }
+
+                        sh './sign_lin.sh'
+                    } finally {
+                        sh 'rm -rf  debian.gpg.key debian.gpg.pass'
+                    }
                 }
 
                 stage('Publisher (Internal)') {
