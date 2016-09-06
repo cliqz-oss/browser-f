@@ -5,6 +5,24 @@ Jenkins pipeline script to build CLIQZ browser for linux
 It does the following:
     1. Checks out 'cliqz-oss/browser-f'
     2. Builds a docker image with dependencies installed
+Checkout code in respective Jenkinsfile
+
+node("master") {
+    stage("Checkout") {
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: COMMIT_ID]],
+            doGenerateSubmoduleConfigurations: false,
+            extensions: [],
+            submoduleCfg: [],
+            userRemoteConfigs: [[url: REPO_URL]]
+        ])
+    }
+
+    stage("Start build") {
+        load ENTRY_POINT
+    }
+}
 */
 
 import org.codehaus.groovy.runtime.*;
@@ -41,7 +59,21 @@ stage("Copy XPI") {
 
 stage('Build') {
     parallel (
-        'linux en': { load 'linux.Jenkinsfile' },
-        'test': { stage('test') {print 'hello'}}
+        'linux en': {
+            build job: 'browser-f-linux', parameters: [
+                string(name: 'REPO_URL', value: REPO_URL),
+                string(name: 'COMMIT_ID', value: COMMIT_ID),
+                string(name: 'ENTRY_POINT', value: ENTRY_POINT),
+                string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+                string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
+                string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+                string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
+                string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
+                string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
+                booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE),
+                string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+                string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID)]
+        }
     )
 }
