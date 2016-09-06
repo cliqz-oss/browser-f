@@ -37,7 +37,7 @@ docker.image(imgName).inside() {
                 [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
                 [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                sh './magic_build_and_package.sh  --clobber'
+                //sh './magic_build_and_package.sh  --clobber'
             }
         }
 
