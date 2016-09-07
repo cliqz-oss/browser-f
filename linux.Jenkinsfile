@@ -7,6 +7,9 @@
 
 def imgName = 'cliqz-oss/browser-f'
 
+// Die early for missing build params
+CQZ_S3_DEBIAN_REPOSITORY_URL
+
 stage('Build Image') {
 
     // Build params with context
@@ -54,7 +57,12 @@ docker.image(imgName).inside() {
                         [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
 
                         sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
-                        sh './sign_lin.sh'
+
+                        withEnv([
+                            "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
+
+                            sh './sign_lin.sh'
+                        }
                     }
                 } finally {
                     sh 'rm -rf debian.gpg.pass'

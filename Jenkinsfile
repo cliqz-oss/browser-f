@@ -77,7 +77,8 @@ stage('Build') {
                 booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
                 string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
                 string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
-                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID)
+                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
+                string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL)
             ]
         ],
         'mac en': [
