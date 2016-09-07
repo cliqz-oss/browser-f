@@ -22,7 +22,12 @@ try {
         sh 'pip install compare-locales'
         sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
 
-        withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME", "CQZ_BUILD_ID=$CQZ_BUILD_ID", "CQZ_BUILD_DE_LOCALIZATION=CQZ_BUILD_DE_LOCALIZATION", "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
+        withEnv([
+            "CQZ_CERT_NAME=$CQZ_CERT_NAME",
+            "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+            "CQZ_BUILD_DE_LOCALIZATION=CQZ_BUILD_DE_LOCALIZATION",
+            "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
+            "LANG=$LANG"]) {
 
             stage 'build'
             withCredentials([

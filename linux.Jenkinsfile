@@ -30,7 +30,8 @@ docker.image(imgName).inside() {
         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
         "CQZ_COMMIT=$COMMIT_ID",
         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
-        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
+        "LANG=$LANG"]) {
 
         stage('Build Browser') {
             withCredentials([
