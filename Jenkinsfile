@@ -134,6 +134,6 @@ def submitBalrog(jobName, id) {
         python ./build-tools/scripts/updates/balrog-submitter.py \
             --credentials-file ./mozilla-release/build/creds.txt --username balrogadmin \
             --api-root http://$CQZ_BALROG_DOMAIN/api \
-            --build-properties ${folder+'/build_properties.json'}
+            --build-properties ${folder + '/obj/build_properties.json'}
     """
 }
