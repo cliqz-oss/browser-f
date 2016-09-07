@@ -81,6 +81,8 @@ withEnv([
                     sh """#!/bin/bash -l -x
                         ./magic_upload_files.sh
                     """
+
+                    archiveArtifacts 'obj/build_properties.json'
                 }
             } finally {
                 // remove certs
