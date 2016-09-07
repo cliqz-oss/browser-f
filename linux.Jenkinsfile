@@ -30,8 +30,7 @@ docker.image(imgName).inside() {
         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
         "CQZ_COMMIT=$COMMIT_ID",
         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
-        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
-        "LANG=$LANG"]) {
+        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
 
         stage('Build Browser') {
             withCredentials([
@@ -47,7 +46,7 @@ docker.image(imgName).inside() {
             credentialsId: CQZ_AWS_CREDENTIAL_ID,
             passwordVariable: 'AWS_SECRET_ACCESS_KEY',
             usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
-            /*
+
             stage('Publisher (Debian Repo)') {
                 try {
                     withCredentials([
@@ -61,12 +60,9 @@ docker.image(imgName).inside() {
                     sh 'rm -rf debian.gpg.pass'
                 }
             }
-            */
+            
             stage('Publisher (Internal)') {
-                sh '''#!/bin/bash
-                    env
-                   '''
-                //sh './magic_upload_files.sh'
+                sh './magic_upload_files.sh'
                 archive 'build_properties.json'
             }
         }

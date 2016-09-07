@@ -22,4 +22,8 @@ aptly publish repo \
   -passphrase-file=../debian.gpg.pass \
   cliqz-$CQZ_RELEASE_CHANNEL
 mv ~/.aptly/public aptly
+
+OLD_LANG=$LANG
+export LANG='en_US.UTF-8'
 aws s3 sync --delete aptly/ s3://repository.cliqz.com/dist/debian-$CQZ_RELEASE_CHANNEL/
+export LANG=$OLD_LANG
