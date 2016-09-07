@@ -46,7 +46,7 @@ docker.image(imgName).inside() {
             credentialsId: CQZ_AWS_CREDENTIAL_ID,
             passwordVariable: 'AWS_SECRET_ACCESS_KEY',
             usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
-
+            /*
             stage('Publisher (Debian Repo)') {
                 try {
                     withCredentials([
@@ -60,7 +60,7 @@ docker.image(imgName).inside() {
                     sh 'rm -rf debian.gpg.pass'
                 }
             }
-
+            */
             stage('Publisher (Internal)') {
                 sh './magic_upload_files.sh'
                 archive './obj/build_properties.json'
