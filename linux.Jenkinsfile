@@ -37,7 +37,7 @@ docker.image(imgName).inside() {
                 [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
                 [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                //sh './magic_build_and_package.sh  --clobber'
+                sh './magic_build_and_package.sh  --clobber'
             }
         }
 
@@ -46,7 +46,7 @@ docker.image(imgName).inside() {
             credentialsId: CQZ_AWS_CREDENTIAL_ID,
             passwordVariable: 'AWS_SECRET_ACCESS_KEY',
             usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
-            /*
+
             stage('Publisher (Debian Repo)') {
                 try {
                     withCredentials([
@@ -60,7 +60,7 @@ docker.image(imgName).inside() {
                     sh 'rm -rf debian.gpg.pass'
                 }
             }
-            */
+
             stage('Publisher (Internal)') {
                 sh './magic_upload_files.sh'
                 archiveArtifacts 'obj/build_properties.json'
