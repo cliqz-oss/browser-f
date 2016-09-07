@@ -76,7 +76,7 @@ stage('Build') {
                 string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
                 string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
                 string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
-                string(name: 'LANG', value: 'en-US')
+                string(name: 'LANG', value: 'en_US.UTF-8')
             ]
         ],
         'mac en': [
@@ -98,7 +98,7 @@ stage('Build') {
                 string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
                 string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
                 string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
-                string(name: 'LANG', value: 'en-US')
+                string(name: 'LANG', value: 'en_US.UTF-8')
             ]
         ]
 
