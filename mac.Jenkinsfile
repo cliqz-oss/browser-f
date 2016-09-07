@@ -6,7 +6,6 @@ stage('bootstrap') {
 }
 
 withEnv([
-    "CQZ_CERT_NAME=$CQZ_CERT_NAME",
     "CQZ_BUILD_ID=$CQZ_BUILD_ID",
     "CQZ_BUILD_DE_LOCALIZATION=CQZ_BUILD_DE_LOCALIZATION",
     "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
@@ -41,7 +40,7 @@ withEnv([
                     security import $CERT_FILE -P $CERT_PASS -k cliqz -A
                 '''
 
-                withEnv(["MAC_CERT_NAME=$MAC_CERT_NAME"]) {
+                withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
                     sh './sign_mac.sh'
                 }
             } finally {
