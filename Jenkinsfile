@@ -40,6 +40,7 @@ CQZ_GOOGLE_API_KEY_CREDENTIAL_ID
 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
 CQZ_AWS_CREDENTIAL_ID
 LINUX_BUILD_NODE
+CQZ_BALROG_DOMAIN
 
 stage("Copy XPI") {
     CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
@@ -58,9 +59,10 @@ stage("Copy XPI") {
 }
 
 stage('Build') {
-    parallel (
-        'linux en': {
-            build job: 'browser-f-linux', parameters: [
+    builds = [
+        'linux en': [
+            job: 'browser-f-linux',
+            parameters: [
                 string(name: 'REPO_URL', value: REPO_URL),
                 string(name: 'COMMIT_ID', value: COMMIT_ID),
                 string(name: 'ENTRY_POINT', value: 'linux.Jenkinsfile'),
@@ -74,10 +76,12 @@ stage('Build') {
                 string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
                 string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
                 string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID)
-                string(name: 'LANG', value: 'en-US')]
-        },
-        'mac en': {
-            build job: 'browser-f-mac-en', parameters: [
+                string(name: 'LANG', value: 'en-US')
+            ]
+        ],
+        'mac en': [
+            job: 'browser-f-mac-en',
+            parameters: [
                 string(name: 'REPO_URL', value: REPO_URL),
                 string(name: 'COMMIT_ID', value: COMMIT_ID),
                 string(name: 'ENTRY_POINT', value: 'mac.Jenkinsfile'),
@@ -94,8 +98,39 @@ stage('Build') {
                 string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
                 string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
                 string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID)
-                string(name: 'LANG', value: 'en-US')]
-        }
+                string(name: 'LANG', value: 'en-US')
+            ]
+        ]
 
+    ]
+    builds[]
+    parallel (
+        'linux en': {
+            def buildParams = builds['linux en']
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id)
+        },
+        'mac en': {
+            def buildParams = builds['mac en']
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id)
+        }
     )
+}
+
+def submitBalrog(jobName, id) {
+    def folder = "artifacts/$jobName/$id"
+    step([
+        $class: 'CopyArtifact',
+        projectName: jobName,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: id],
+        target: folder
+    ])
+
+    sh """
+        python ./build-tools/scripts/updates/balrog-submitter.py \
+            --credentials-file ./mozilla-release/build/creds.txt --username balrogadmin \
+            --api-root http://$CQZ_BALROG_DOMAIN/api \
+            --build-properties ${folder+'/build_properties.json'}
+    """
 }

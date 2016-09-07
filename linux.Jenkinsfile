@@ -64,6 +64,7 @@ docker.image(imgName).inside() {
 
             stage('Publisher (Internal)') {
                 sh './magic_upload_files.sh'
+                archive 'build_properties.json'
             }
         }
     }

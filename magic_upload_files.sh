@@ -43,12 +43,6 @@ $MAKE upload
 echo '***** Genereting build_properties.json *****'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
-echo '***** Submiting to Balrog *****'
-python $ROOT_PATH/build-tools/scripts/updates/balrog-submitter.py \
-  --credentials-file $ROOT_PATH/$SRC_BASE/build/creds.txt --username balrogadmin \
-  --api-root http://$CQZ_BALROG_DOMAIN/api \
-  --build-properties build_properties.json
-
 if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
   OLD_LANG=$LANG
   export LANG='de'
@@ -64,12 +58,6 @@ if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
 
   echo '***** Genereting build_properties.json *****'
   $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
-
-  echo '***** Submiting to Balrog *****'
-  python $ROOT_PATH/build-tools/scripts/updates/balrog-submitter.py \
-    --credentials-file $ROOT_PATH/$SRC_BASE/build/creds.txt --username balrogadmin \
-    --api-root http://$CQZ_BALROG_DOMAIN/api \
-    --build-properties build_properties.json
 
   export LANG=$OLD_LANG
 fi
