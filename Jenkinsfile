@@ -111,8 +111,11 @@ stage('Build') {
             submitBalrog(buildParams.job, job.id)
         },
         'mac en': {
+            def vagrantFileName = 'mac.Vagrantfile'
+            stash name: 'mac vagrant', includes: vagrantFileName
             node(MAC_BUILD_NODE) {
-                helpers.startVagrantAgent('mac.Vagrantfile')
+                unstash 'mac vagrant'
+                helpers.startVagrantAgent(vagrantFileName)
             }
             def buildParams = builds['mac en']
             job = build buildParams
