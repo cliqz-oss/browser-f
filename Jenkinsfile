@@ -75,7 +75,7 @@ stage('Build') {
                 booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
                 string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
                 string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
-                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID)
+                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
                 string(name: 'LANG', value: 'en-US')
             ]
         ],
@@ -97,7 +97,7 @@ stage('Build') {
                 string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
                 string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
                 string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
-                string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID)
+                string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
                 string(name: 'LANG', value: 'en-US')
             ]
         ]
