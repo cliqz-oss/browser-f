@@ -63,7 +63,7 @@ docker.image(imgName).inside() {
             */
             stage('Publisher (Internal)') {
                 sh './magic_upload_files.sh'
-                archive './obj/build_properties.json'
+                archiveArtifacts 'obj/build_properties.json'
             }
         }
     }
