@@ -25,6 +25,8 @@ node("master") {
 }
 */
 
+def helpers = load 'build-helpers.groovy'
+
 import org.codehaus.groovy.runtime.*;
 
 CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
@@ -109,6 +111,9 @@ stage('Build') {
             submitBalrog(buildParams.job, job.id)
         },
         'mac en': {
+            node(MAC_BUILD_NODE) {
+                helpers.startVagrantAgent('mac.Vagrantfile')
+            }
             def buildParams = builds['mac en']
             job = build buildParams
             submitBalrog(buildParams.job, job.id)

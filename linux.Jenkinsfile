@@ -60,7 +60,7 @@ docker.image(imgName).inside() {
                     sh 'rm -rf debian.gpg.pass'
                 }
             }
-            
+
             stage('Publisher (Internal)') {
                 sh './magic_upload_files.sh'
                 archive 'build_properties.json'
