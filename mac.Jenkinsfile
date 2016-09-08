@@ -40,7 +40,7 @@ withEnv([
                     security import $CERT_FILE -P $CERT_PASS -k cliqz -A
                 '''
 
-                withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
+                withEnv(["MAC_CERT_NAME=$CQZ_CERT_NAME"]) {
                     sh './sign_mac.sh'
                 }
             } finally {
@@ -81,7 +81,7 @@ withEnv([
                         ./magic_upload_files.sh
                     """
 
-                    archiveArtifacts 'obj/build_properties.json'
+                    archiveArtifacts 'obj/i386/build_properties.json'
                 }
             } finally {
                 // remove certs
