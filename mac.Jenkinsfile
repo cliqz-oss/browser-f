@@ -1,5 +1,12 @@
 #!/usr/bin/env groovy
 
+def LANG_PARAM = ""
+try {
+  if (CQZ_LANG) {
+    LANG_PARAM = "--lang ${CQZ_LANG}"
+  }
+} catch(e) {}
+
 stage('bootstrap') {
     sh 'pip install compare-locales'
     sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
@@ -15,7 +22,7 @@ withEnv([
             [$class: 'StringBinding', credentialsId: 'e2c7ea0a-285e-4199-9667-af2223d3b14a', variable: 'CQZ_GOOGLE_API_KEY'],
             [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-            sh './magic_build_and_package.sh --clobber'
+            sh "./magic_build_and_package.sh --clobber ${LANG_PARAM}"
         }
     }
 
@@ -41,7 +48,7 @@ withEnv([
                 '''
 
                 withEnv(["MAC_CERT_NAME=$CQZ_CERT_NAME"]) {
-                    sh './sign_mac.sh'
+                    sh "./sign_mac.sh ${LANG_PARAM}"
                 }
             } finally {
                 sh '''#!/bin/bash -l -x
@@ -78,7 +85,7 @@ withEnv([
                     usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
                     sh """#!/bin/bash -l -x
-                        ./magic_upload_files.sh
+                        ./magic_upload_files.sh ${LANG_PARAM}
                     """
 
                     archiveArtifacts 'obj/i386/build_properties.json'

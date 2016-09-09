@@ -81,7 +81,7 @@ stage('Build') {
                 string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL)
             ]
         ],
-        'mac en': [
+        'mac de': [
             job: 'browser-f-mac',
             parameters: [
                 string(name: 'REPO_URL', value: REPO_URL),
@@ -99,7 +99,8 @@ stage('Build') {
                 string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
                 string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
                 string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
-                string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID)
+                string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
+                string(name: 'CQZ_LANG', value: 'de'),
             ]
         ]
 
@@ -111,14 +112,14 @@ stage('Build') {
             job = build buildParams
             submitBalrog(buildParams.job, job.id)
         },
-        'mac en': {
+        'mac de': {
             def vagrantFileName = 'mac.Vagrantfile'
             stash name: 'mac vagrant', includes: vagrantFileName
             node(MAC_BUILD_NODE) {
                 unstash 'mac vagrant'
                 helpers.startVagrantAgent(vagrantFileName)
             }
-            def buildParams = builds['mac en']
+            def buildParams = builds['mac de']
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         }
