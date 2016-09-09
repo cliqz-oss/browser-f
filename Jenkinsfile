@@ -82,7 +82,7 @@ stage('Build') {
             ]
         ],
         'mac en': [
-            job: 'browser-f-mac-en',
+            job: 'browser-f-mac',
             parameters: [
                 string(name: 'REPO_URL', value: REPO_URL),
                 string(name: 'COMMIT_ID', value: COMMIT_ID),
@@ -104,7 +104,7 @@ stage('Build') {
         ]
 
     ]
-    builds[]
+
     parallel (
         'linux en': {
             def buildParams = builds['linux en']
@@ -120,12 +120,12 @@ stage('Build') {
             }
             def buildParams = builds['mac en']
             job = build buildParams
-            submitBalrog(buildParams.job, job.id)
+            submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         }
     )
 }
 
-def submitBalrog(jobName, id) {
+def submitBalrog(jobName, id, propsPath = 'obj/build_properties.json') {
     def folder = "artifacts/$jobName/$id"
     step([
         $class: 'CopyArtifact',
@@ -138,6 +138,6 @@ def submitBalrog(jobName, id) {
         python ./build-tools/scripts/updates/balrog-submitter.py \
             --credentials-file ./mozilla-release/build/creds.txt --username balrogadmin \
             --api-root http://$CQZ_BALROG_DOMAIN/api \
-            --build-properties ${folder + '/obj/build_properties.json'}
+            --build-properties ${folder + '/' + propsPath}
     """
 }
