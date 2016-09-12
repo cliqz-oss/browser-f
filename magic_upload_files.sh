@@ -54,7 +54,6 @@ if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
     cp $f `echo $f | sed "s/en-US/$LANG/"`
   done
 
-  export S3_UPLOAD_PATH=`echo $S3_UPLOAD_PATH | sed s/en-US/$LANG/`
   $MAKE upload AB_CD=$LANG
 
   echo '***** Genereting build_properties.json *****'
