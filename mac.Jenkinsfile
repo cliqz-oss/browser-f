@@ -3,7 +3,7 @@
 def LANG_PARAM = ""
 try {
   if (CQZ_LANG) {
-    LANG_PARAM = "--lang ${CQZ_LANG}"
+    LANG_PARAM = "-lang ${CQZ_LANG}"
   }
 } catch(e) {}
 
