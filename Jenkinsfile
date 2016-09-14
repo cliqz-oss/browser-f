@@ -60,66 +60,75 @@ stage("Copy XPI") {
     }
 }
 
-stage('Build') {
-    builds = [
-        'linux en': [
-            job: 'browser-f-linux',
-            parameters: [
-                string(name: 'REPO_URL', value: REPO_URL),
-                string(name: 'COMMIT_ID', value: COMMIT_ID),
-                string(name: 'ENTRY_POINT', value: 'linux.Jenkinsfile'),
-                string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
-                string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
-                string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
-                string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
-                string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
-                string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
-                booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
-                string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
-                string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
-                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
-                string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL)
-            ]
-        ],
-        'mac de': [
-            job: 'browser-f-mac',
-            parameters: [
-                string(name: 'REPO_URL', value: REPO_URL),
-                string(name: 'COMMIT_ID', value: COMMIT_ID),
-                string(name: 'ENTRY_POINT', value: 'mac.Jenkinsfile'),
-                string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
-                string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
-                string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
-                string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
-                string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
-                string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
-                booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
-                string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
-                string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
-                string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
-                string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
-                string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
-                string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
-                string(name: 'CQZ_LANG', value: 'de'),
-            ]
-        ]
-
+def getBaseBuildParams(jobName, entryPoint) {
+  return [
+    job: jobName,
+    parameters: [
+      string(name: 'REPO_URL', value: REPO_URL),
+      string(name: 'COMMIT_ID', value: COMMIT_ID),
+      string(name: 'ENTRY_POINT', value: entryPoint),
+      string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+      string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
+      string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+      string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
+      string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
+      string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
+      booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
+      string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+      string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+      string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
+      string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL)
     ]
+}
 
+def getBaseMacBuildParams() {
+  def buildParams  = getBaseBuildParams('browser-f-mac', 'mac.Jenkinsfile')
+  buildParams.parameters += [
+    string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
+    string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
+    string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
+    string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
+    string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
+    string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
+  ]
+  return buildParams
+}
+
+stage('Build') {
     parallel (
         'linux en': {
-            def buildParams = builds['linux en']
+            def buildParams = getBaseBuildParams('browser-f-linux', 'lin.Jenkinsfile')
+            buildParams.parameters += [
+              string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+              string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+              string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+              string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+            ]
             job = build buildParams
             submitBalrog(buildParams.job, job.id)
         },
         'mac de': {
+            def buildParams = getBaseMacBuildParams()
+            buildParams.parameters += [
+                string(name: 'CQZ_LANG', value: 'de'),
+            ]
             def vagrantFileName = 'mac.Vagrantfile'
             stash name: 'mac vagrant', includes: vagrantFileName
             node(MAC_BUILD_NODE) {
                 unstash 'mac vagrant'
                 helpers.startVagrantAgent(vagrantFileName)
             }
-            def buildParams = builds['mac de']
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
+        },
+        'mac en': {
+            def buildParams = getBaseMacBuildParams()
+            def vagrantFileName = 'mac.Vagrantfile'
+            stash name: 'mac vagrant', includes: vagrantFileName
+            node(MAC_BUILD_NODE) {
+                unstash 'mac vagrant'
+                helpers.startVagrantAgent(vagrantFileName)
+            }
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         }
