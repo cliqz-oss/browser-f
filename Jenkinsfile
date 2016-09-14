@@ -78,6 +78,8 @@ def getBaseBuildParams(jobName, entryPoint) {
       string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
       string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
       string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+      string(name: 'TRIGGERING_BUILD_NUMBER', value: env.BUILD_NUMBER),
+      string(name: 'TRIGGERING_JOB_NAME', value: env.JOB_NAME),
     ]
   ]
 }
@@ -94,6 +96,10 @@ def getBaseMacBuildParams() {
   ]
   return buildParams
 }
+
+archive 'build-helpers.groovy'
+archive 'win.Vagrantfile'
+archive 'mac.Vagrantfile'
 
 stage('Build') {
     parallel (
@@ -137,13 +143,11 @@ stage('Build') {
         */
         'win': {
             def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
-            helpers.withVagrant("win.Vagrantfile") { nodeId ->
-              buildParams.parameters += [
-                string(name: 'WIN_BUILD_NODE', value: nodeId),
-              ]
-              job = build buildParams
-              submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
-            }
+            buildParams.parameters += [
+              string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
+            ]
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
         }
     )
 }

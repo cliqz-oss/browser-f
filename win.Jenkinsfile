@@ -4,23 +4,25 @@
  TRIGGERING JOB
 
   ```groovy
-node(WIN_BUILD_NODE) {
-    stage("Checkout") {
-        checkout([
-            $class: 'GitSCM',
-            branches: [[name: COMMIT_ID]],
-            doGenerateSubmoduleConfigurations: false,
-            extensions: [
-                [$class: 'CheckoutOption', timeout: 60],
-                [$class: 'CloneOption', depth: 0, noTags: true, honorRefspec: true, reference: '', shallow: true, timeout: 60]
-            ],
-            submoduleCfg: [],
-            userRemoteConfigs: [[credentialsId: '0aededfc-f41d-40bd-9a63-dd4524adb7b6', url: REPO_URL]]
-        ])
-    }
+node() {
 
-    stage("Start build") {
+    step([
+        $class: 'CopyArtifact',
+        projectName: TRIGGERING_JOB_NAME,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: TRIGGERING_BUILD_NUMBER],
+        target: 'artifacts'
+    ])
+
+    def helpers = load "artifacts/build-helpers.groovy"
+
+    helpers.withVagrant("artifacts/${VAGRANTFILE}") { nodeId ->
+      node(nodeId) {
+        stage("Checkout") {
+            helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+        }
+
         load ENTRY_POINT
+      }
     }
 }
   ```
