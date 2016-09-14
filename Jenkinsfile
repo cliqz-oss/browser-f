@@ -142,7 +142,7 @@ stage('Build') {
                 string(name: 'WIN_BUILD_NODE', value: nodeId),
               ]
               job = build buildParams
-              submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
+              submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
             }
         }
     )
