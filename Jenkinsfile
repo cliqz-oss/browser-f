@@ -98,7 +98,7 @@ def getBaseMacBuildParams() {
 stage('Build') {
     parallel (
         'linux en': {
-            def buildParams = getBaseBuildParams('browser-f-linux', 'lin.Jenkinsfile')
+            def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
             buildParams.parameters += [
               string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
               string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
