@@ -1,3 +1,7 @@
+import jenkins.model.*
+import hudson.model.*
+import hudson.slaves.*
+
 def checkoutSCM(URL, COMMIT) {
     checkout(
         changelog: false,
@@ -34,6 +38,58 @@ def startVagrantAgent(vagrantFileName='Vagrantfile') {
                 vagrant ssh -c 'nohup java -jar slave.jar  -jnlpUrl http://magrathea:8080/computer/browser-f-mac-builder/slave-agent.jnlp -secret ${env.SLAVE_CREDS} > /dev/null 2>&1 &'
             """
         }
+    }
+}
+
+@NonCPS
+def createNode(nodeId) {
+    def launcher = new JNLPLauncher()
+    def node = new DumbSlave(
+        nodeId,
+        "/jenkins",
+        launcher
+    )
+    Jenkins.instance.addNode(node)
+}
+
+@NonCPS
+def removeNode(nodeId) {
+    def allNodes = Jenkins.getInstance().getNodes()
+    for (int i =0; i < allNodes.size(); i++) {
+        Slave node = allNodes[i]
+
+        if (node.name.toString() == nodeId) {
+            Jenkins.getInstance().removeNode(node)
+            return
+        }
+    }
+}
+
+@NonCPS
+def getNodeSecret(nodeId) {
+    return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
+}
+
+def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
+    def nodeId = "test-${env.BUILD_TAG}"
+    createNode(nodeId)
+    try {
+        def nodeSecret = getNodeSecret(nodeId)
+
+        withEnv([
+            "VAGRANT_VAGRANTFILE=${vagrantFilePath}",
+            "NODE_SECRET=${nodeSecret}",
+            "NODE_ID=${nodeId}",
+            ]) {
+            sh 'vagrant up'
+        }
+
+        body(nodeId)
+    } finally {
+        withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
+            sh 'vagrant destroy --force'
+        }
+        removeNode(nodeId)
     }
 }
 

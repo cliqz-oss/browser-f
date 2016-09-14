@@ -108,6 +108,7 @@ stage('Build') {
             job = build buildParams
             submitBalrog(buildParams.job, job.id)
         },
+        /*
         'mac de': {
             def buildParams = getBaseMacBuildParams()
             buildParams.parameters += [
@@ -132,6 +133,17 @@ stage('Build') {
             }
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
+        },
+        */
+        'win': {
+            def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
+            helpers.withVagrant("win.Vagrantfile") { nodeId ->
+              buildParams.parameters += [
+                string(name: 'WIN_BUILD_NODE', value: nodeId),
+              ]
+              job = build buildParams
+              submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
+            }
         }
     )
 }
