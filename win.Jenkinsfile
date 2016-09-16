@@ -38,7 +38,7 @@ withCredentials([
 
     withEnv([
       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-      "BUILD_ID=${CQZ_BUILD_ID}",
+      "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
     ]) {
       bat '''
