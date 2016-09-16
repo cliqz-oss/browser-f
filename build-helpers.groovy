@@ -81,15 +81,19 @@ def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
             "NODE_SECRET=${nodeSecret}",
             "NODE_ID=${nodeId}",
             ]) {
-            sh 'vagrant up'
+            sh '''#!/bin/bash -l
+              vagrant up
+            '''
         }
 
         body(nodeId)
     } finally {
-        withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
-            sh 'vagrant halt --force'
-        }
         removeNode(nodeId)
+        withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
+            sh '''#!/bin/bash -l
+              vagrant halt --force
+            '''
+        }
     }
 }
 
