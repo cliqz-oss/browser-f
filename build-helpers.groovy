@@ -71,7 +71,7 @@ def getNodeSecret(nodeId) {
 }
 
 def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
-    def nodeId = "${env.BUILD_TAG}-${vagrantFilePath}"
+    def nodeId = "${env.BUILD_TAG}"
     createNode(nodeId)
     try {
         def nodeSecret = getNodeSecret(nodeId)
@@ -82,11 +82,7 @@ def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
             "NODE_ID=${nodeId}",
             ]) {
 
-            try {
-              sh 'vagrant halt --force'
-            } catch (e) {
-            }
-
+            sh 'vagrant halt --force'
             sh  'vagrant up'
         }
 
