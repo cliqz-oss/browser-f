@@ -4,7 +4,7 @@
  TRIGGERING JOB
 
   ```groovy
-node("master") {
+node(WIN_BUILD_NODE) {
 
     step([
         $class: 'CopyArtifact',

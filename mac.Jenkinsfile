@@ -4,7 +4,7 @@
  TRIGGERING JOB
 
   ```groovy
-node("mac-vm-host") {
+node(MAC_BUILD_NODE) {
 
     step([
         $class: 'CopyArtifact',
