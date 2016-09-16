@@ -22,7 +22,6 @@ Vagrant.configure(2) do |config|
   end
 
   config.vm.provision "shell", run: "always", inline: <<-SHELL
-    net stop jenkinsslave-c__Jenkins
     cd c:/jenkins
     Remove-Item slave.jar -ErrorAction SilentlyContinue
     wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar

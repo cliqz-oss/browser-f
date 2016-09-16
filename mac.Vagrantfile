@@ -19,6 +19,7 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", run: "always", inline: <<-SHELL
     rm -f slave.jar
     wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar
+    echo java -jar slave.jar -jnlpUrl #{ENV['JENKINS_URL']}/computer/#{ENV['NODE_ID']}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}
     java -jar slave.jar -jnlpUrl #{ENV['JENKINS_URL']}/computer/#{ENV['NODE_ID']}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]} &
   SHELL
 end
