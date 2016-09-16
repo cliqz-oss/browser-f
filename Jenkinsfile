@@ -132,9 +132,12 @@ stage('Build') {
             def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
             buildParams.parameters += [
               string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
+              string(name: 'WIN_BUILD_NODE', value: 'master'),
             ]
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
+            // TODO: submit de build_properties
+            //submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
         }
     )
 }
