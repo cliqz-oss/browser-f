@@ -69,7 +69,6 @@ def getBaseBuildParams(jobName, entryPoint) {
       string(name: 'ENTRY_POINT', value: entryPoint),
       string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
       string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
-      string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
       string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
       string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
       string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
@@ -87,6 +86,7 @@ def getBaseBuildParams(jobName, entryPoint) {
 def getBaseMacBuildParams() {
   def buildParams  = getBaseBuildParams('browser-f-mac', 'mac.Jenkinsfile')
   buildParams.parameters += [
+    string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
     string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
     string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
     string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
@@ -107,6 +107,7 @@ stage('Build') {
         'linux en': {
             def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
             buildParams.parameters += [
+              string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
               string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
               string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
               string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
@@ -131,6 +132,7 @@ stage('Build') {
         'win': {
             def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
             buildParams.parameters += [
+              string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
               string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
               string(name: 'WIN_BUILD_NODE', value: 'master'),
               string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),

@@ -47,6 +47,10 @@ withCredentials([
       '''
     }
 
-    archiveArtifacts 'obj/en_build_properties.json'
-    archiveArtifacts 'obj/de_build_properties.json'
+    if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+      archiveArtifacts 'obj/en_build_properties.json'
+      archiveArtifacts 'obj/de_build_properties.json'
+    } else {
+      archiveArtifacts 'obj/build_properties.json'
+    }
  }
