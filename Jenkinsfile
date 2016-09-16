@@ -133,11 +133,12 @@ stage('Build') {
             buildParams.parameters += [
               string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
               string(name: 'WIN_BUILD_NODE', value: 'master'),
+              string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
+              string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
             ]
             job = build buildParams
-            submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
-            // TODO: submit de build_properties
-            //submitBalrog(buildParams.job, job.id, 'obj/build_properties.json')
+            submitBalrog(buildParams.job, job.id, 'obj/en_build_properties.json')
+            submitBalrog(buildParams.job, job.id, 'obj/de_build_properties.json')
         }
     )
 }

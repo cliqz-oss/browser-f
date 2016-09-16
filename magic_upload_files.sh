@@ -45,6 +45,9 @@ export LANG='en-US'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
 if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
+  # Rename build_properties so name wont collide with repack
+  cp build_properties.json en_build_properties.json
+
   OLD_LANG=$LANG
   export LANG='de'
   # We need to copy this files because we build DE version as repack step, so
@@ -58,6 +61,10 @@ if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
 
   echo '***** Genereting build_properties.json *****'
   $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
+
+  # Rename de build_properties for easier identification
+  cp build_properties.json de_build_properties.json
+
 
   export LANG=$OLD_LANG
 fi
