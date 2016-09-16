@@ -87,7 +87,7 @@ def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
         body(nodeId)
     } finally {
         withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
-            sh 'vagrant destroy --force'
+            sh 'vagrant halt --force'
         }
         removeNode(nodeId)
     }

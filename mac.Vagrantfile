@@ -3,7 +3,7 @@
 
 Vagrant.configure("2") do |config|
 
-  config.vm.box = "mac-browser_ios-v43"
+  config.vm.box = "customtest"
   config.vm.network "public_network"
 
   config.vm.provider "vmware_fusion" do |v|

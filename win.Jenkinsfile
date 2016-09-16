@@ -4,7 +4,7 @@
  TRIGGERING JOB
 
   ```groovy
-node() {
+node("master") {
 
     step([
         $class: 'CopyArtifact',

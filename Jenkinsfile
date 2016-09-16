@@ -93,6 +93,7 @@ def getBaseMacBuildParams() {
     string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
     string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
     string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
+    string(name: 'VAGRANTFILE', value: 'mac.Vagrantfile'),
   ]
   return buildParams
 }
@@ -114,33 +115,19 @@ stage('Build') {
             job = build buildParams
             submitBalrog(buildParams.job, job.id)
         },
-        /*
         'mac de': {
             def buildParams = getBaseMacBuildParams()
             buildParams.parameters += [
-                string(name: 'CQZ_LANG', value: 'de'),
+              string(name: 'CQZ_LANG', value: 'de'),
             ]
-            def vagrantFileName = 'mac.Vagrantfile'
-            stash name: 'mac vagrant', includes: vagrantFileName
-            node(MAC_BUILD_NODE) {
-                unstash 'mac vagrant'
-                helpers.startVagrantAgent(vagrantFileName)
-            }
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         },
         'mac en': {
             def buildParams = getBaseMacBuildParams()
-            def vagrantFileName = 'mac.Vagrantfile'
-            stash name: 'mac vagrant', includes: vagrantFileName
-            node(MAC_BUILD_NODE) {
-                unstash 'mac vagrant'
-                helpers.startVagrantAgent(vagrantFileName)
-            }
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         },
-        */
         'win': {
             def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
             buildParams.parameters += [

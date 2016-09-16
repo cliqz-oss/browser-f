@@ -1,5 +1,33 @@
 #!/usr/bin/env groovy
 
+/*
+ TRIGGERING JOB
+
+  ```groovy
+node("mac-vm-host") {
+
+    step([
+        $class: 'CopyArtifact',
+        projectName: TRIGGERING_JOB_NAME,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: TRIGGERING_BUILD_NUMBER],
+        target: 'artifacts'
+    ])
+
+    def helpers = load "artifacts/build-helpers.groovy"
+
+    helpers.withVagrant("artifacts/${VAGRANTFILE}") { nodeId ->
+      node(nodeId) {
+        stage("Checkout") {
+            helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+        }
+
+        load ENTRY_POINT
+      }
+    }
+}
+  ```
+*/
+
 def LANG_PARAM = ""
 try {
   if (CQZ_LANG) {
