@@ -21,7 +21,7 @@ Vagrant.configure(2) do |config|
     v.vmx["RemoteDisplay.vnc.port"] = "7905"
   end
 
-  config.vm.provision "shell", inline: <<-SHELL
+  config.vm.provision "shell", run: "always", inline: <<-SHELL
     net stop jenkinsslave-c__Jenkins
     cd c:/jenkins
     Remove-Item slave.jar -ErrorAction SilentlyContinue
