@@ -6,6 +6,8 @@ Vagrant.configure("2") do |config|
   config.vm.box = "customtest"
   config.vm.network "public_network"
 
+  config.ssh.private_key_path = "/Users/jenkins/old-vagrant-private-key"
+
   config.vm.provider "vmware_fusion" do |v|
     v.vmx["remotedisplay.vnc.enabled"] = "TRUE"
     v.vmx["remotedisplay.vnc.port"] = 5985
