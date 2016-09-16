@@ -31,14 +31,21 @@ node(WIN_BUILD_NODE) {
 withCredentials([
     [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
     [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY, variable: 'MOZ_MOZILLA_API_KEY'],
-    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY, variable: 'CQZ_GOOGLE_API_KEY'],
+    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-    bat '''
-      set CQZ_WORKSPACE=%cd%
-      build_win.bat
-    '''
+
+    withEnv([
+      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+      "BUILD_ID=${CQZ_BUILD_ID}",
+      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+    ]) {
+      bat '''
+        set CQZ_WORKSPACE=%cd%
+        build_win.bat
+      '''
+    }
 
     archiveArtifacts 'obj/en_build_properties.json'
     archiveArtifacts 'obj/de_build_properties.json'
