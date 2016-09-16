@@ -41,10 +41,12 @@ withCredentials([
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
     ]) {
-      bat '''
-        set CQZ_WORKSPACE=%cd%
-        build_win.bat
-      '''
+      stage('build') {
+        bat '''
+          set CQZ_WORKSPACE=%cd%
+          build_win.bat
+        '''
+      }
     }
 
     if (CQZ_BUILD_DE_LOCALIZATION == "1") {
