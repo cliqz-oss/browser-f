@@ -15,7 +15,7 @@ do
   cp -r /Volumes/CLIQZ/*.app $PKG_DIR
   for app in $PKG_DIR/*.app
   do
-    codesign -s $MAC_CERT_NAME --force --deep $app
+    codesign -s $CQZ_CERT_NAME --force --deep $app
   done
   hdiutil detach /Volumes/CLIQZ
   SIGNED_DMG="${DMG%.dmg}-signed.dmg"
@@ -23,4 +23,4 @@ do
   cp $SIGNED_DMG $DMG
 done
 
-codesign -s $MAC_CERT_NAME --force --deep obj/i386/dist/CLIQZ.app
+codesign -s $CQZ_CERT_NAME --force --deep obj/i386/dist/CLIQZ.app
