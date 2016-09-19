@@ -9,7 +9,7 @@ cd $SRC_BASE
 cd $OBJ_DIR
 
 echo '***** Generate DEBIAN repository *****'
-gpg --allow-secret-key-import --import ../certs/debian-$CQZ_RELEASE_CHANNEL@cliqz.com.gpg.key
+gpg --allow-secret-key-import --import $DEBIAN_GPG_KEY
 rm -rf debian ~/.aptly aptly
 mkdir debian
 cp dist/*.deb debian/
@@ -19,8 +19,11 @@ aptly publish repo \
   -architectures=i386,amd64 \
   -batch=true \
   -gpg-key=debian-$CQZ_RELEASE_CHANNEL@cliqz.com \
-  -passphrase-file=../certs/debian-$CQZ_RELEASE_CHANNEL@cliqz.com.pass \
+  -passphrase-file=../debian.gpg.pass \
   cliqz-$CQZ_RELEASE_CHANNEL
-source ../certs/s3cmd_repository_cliqz_com.sh
 mv ~/.aptly/public aptly
-aws s3 sync --delete aptly/ s3://repository.cliqz.com/dist/debian-$CQZ_RELEASE_CHANNEL/
+
+OLD_LANG=$LANG
+export LANG='en_US.UTF-8'
+aws s3 sync --delete aptly/ $CQZ_S3_DEBIAN_REPOSITORY_URL
+export LANG=$OLD_LANG

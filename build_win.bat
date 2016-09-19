@@ -11,7 +11,7 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 :: BUILD PARAMETERS
 ::
 :: Parameters must be set outside this script:
-::  BUILD_ID
+::  CQZ_BUILD_ID
 ::  CQZ_WORKSPACE - path to source code
 ::  CLZ_CERTIFICATE_PATH - path to certificate for digital signing
 ::  CLZ_CERTIFICATE_PWD - password for certificate
@@ -22,7 +22,7 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::  CQZ_RELEASE_CHANNEL - if not set will be set to "beta"
 ::  CQZ_BUILD_DE_LOCALIZATION - set it to 1 if you need DE localization together with en-US
 :::::::::::::::::::::::::::::::::::
-IF "%BUILD_ID%"=="" (
+IF "%CQZ_BUILD_ID%"=="" (
   ECHO "BUILD_ID must be specified. Format YYYYMMDDHHMMSS, like 20160705124211"
   EXIT 1
 )

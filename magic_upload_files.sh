@@ -41,15 +41,13 @@ echo '***** Uploading MAR and package files *****'
 $MAKE upload
 
 echo '***** Genereting build_properties.json *****'
+export LANG='en-US'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
-echo '***** Submiting to Balrog *****'
-python $ROOT_PATH/build-tools/scripts/updates/balrog-submitter.py \
-  --credentials-file $ROOT_PATH/$SRC_BASE/build/creds.txt --username balrogadmin \
-  --api-root http://$CQZ_BALROG_DOMAIN/api \
-  --build-properties build_properties.json
-
 if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
+  # Rename build_properties so name wont collide with repack
+  cp build_properties.json en_build_properties.json
+
   OLD_LANG=$LANG
   export LANG='de'
   # We need to copy this files because we build DE version as repack step, so
@@ -59,17 +57,14 @@ if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
     cp $f `echo $f | sed "s/en-US/$LANG/"`
   done
 
-  export S3_UPLOAD_PATH=`echo $S3_UPLOAD_PATH | sed s/en-US/$LANG/`
   $MAKE upload AB_CD=$LANG
 
   echo '***** Genereting build_properties.json *****'
   $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
-  echo '***** Submiting to Balrog *****'
-  python $ROOT_PATH/build-tools/scripts/updates/balrog-submitter.py \
-    --credentials-file $ROOT_PATH/$SRC_BASE/build/creds.txt --username balrogadmin \
-    --api-root http://$CQZ_BALROG_DOMAIN/api \
-    --build-properties build_properties.json
+  # Rename de build_properties for easier identification
+  cp build_properties.json de_build_properties.json
+
 
   export LANG=$OLD_LANG
 fi

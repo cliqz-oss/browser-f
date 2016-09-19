@@ -1,72 +1,163 @@
-#!groovy
+#!/usr/bin/env groovy
+
+/*
+Jenkins pipeline script to build CLIQZ browser for linux
+It does the following:
+    1. Checks out 'cliqz-oss/browser-f'
+    2. Builds a docker image with dependencies installed
+Checkout code in respective Jenkinsfile
 
 node("master") {
-  // die early without CQZ_BUILD_ID, CQZ_RELEASE_CHANNEL or CQZ_COMMIT
-  CQZ_BUILD_ID
-  CQZ_COMMIT
-  CQZ_RELEASE_CHANNEL
-
-  stage 'checkout'
-  checkout([$class: 'GitSCM', branches: [[name: CQZ_COMMIT]], doGenerateSubmoduleConfigurations: false, extensions: [], submoduleCfg: [], userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f']]])
-
-  stage 'expose certs'
-  sh 'rm -fr certs'
-  sh 'cp -R /cliqz certs'
-
-  stage 'prepare docker'
-  def imgName = "cliqz-oss/browser-f:${env.BUILD_TAG}"
-  docker.build(imgName, ".")
-  //docker.image(imgName).inside("-u 0:0") {
-  //  sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=desktop --no-interactive'
-  //}
-
-
-  stage 'build'
-  docker.image(imgName).inside("-u 0:0") {
-    withEnv([
-      "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-      "CQZ_COMMIT=${CQZ_COMMIT}",
-      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-    ]) {
-      sh '''#!/bin/bash -xe
-export SHELL=/bin/bash
-cp ./certs/s3boto_repository_cliqz_com ~/.boto
-source ./certs/cliqz_browser_api_keys.sh
-./magic_build_and_package.sh  --clobber
-      '''
+    stage("Checkout") {
+        checkout([
+            $class: 'GitSCM',
+            branches: [[name: COMMIT_ID]],
+            doGenerateSubmoduleConfigurations: false,
+            extensions: [],
+            submoduleCfg: [],
+            userRemoteConfigs: [[url: REPO_URL]]
+        ])
     }
-  }
 
-  stage 'publish debian repo'
-  docker.image(imgName).inside("-u 0:0") {
-    withEnv([
-      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-    ]) {
-      sh '''#!/bin/bash -xe
-source ./certs/s3cmd_repository_cliqz_com.sh
-./sign_lin.sh
-      '''
+    stage("Start build") {
+        load ENTRY_POINT
     }
-  }
+}
+*/
 
-  stage 'publish updates'
-  docker.image(imgName).inside("-u 0:0") {
-    withEnv([
-      "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-      "CQZ_COMMIT=${CQZ_COMMIT}",
-      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-    ]) {
-      sh '''#!/bin/bash -xe
-export SHELL=/bin/bash
-cp ./certs/s3boto_repository_cliqz_com ~/.boto
-./magic_upload_files.sh
-rm ~/.boto
-      '''
+def helpers = load 'build-helpers.groovy'
+
+import org.codehaus.groovy.runtime.*;
+
+CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
+
+// Die early for missing build params
+CQZ_RELEASE_CHANNEL
+CQZ_BUILD_ID
+COMMIT_ID
+REPO_URL
+CQZ_BUILD_DE_LOCALIZATION
+REBUILD_IMAGE
+CQZ_GOOGLE_API_KEY_CREDENTIAL_ID
+CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
+CQZ_AWS_CREDENTIAL_ID
+LINUX_BUILD_NODE
+CQZ_BALROG_DOMAIN
+
+stage("Copy XPI") {
+    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
+    withCredentials([[
+                $class: 'UsernamePasswordMultiBinding',
+                credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+        sh "s3cmd cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
+        sh "s3cmd cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
     }
-  }
+}
 
-  stage "remove certs"
-  sh 'rm -rf certs'
+def getBaseBuildParams(jobName, entryPoint) {
+  return [
+    job: jobName,
+    parameters: [
+      string(name: 'REPO_URL', value: REPO_URL),
+      string(name: 'COMMIT_ID', value: COMMIT_ID),
+      string(name: 'ENTRY_POINT', value: entryPoint),
+      string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+      string(name: 'CQZ_RELEASE_CHANNEL', value: CQZ_RELEASE_CHANNEL),
+      string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
+      string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
+      string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
+      booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
+      string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+      string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+      string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
+      string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+      string(name: 'TRIGGERING_BUILD_NUMBER', value: env.BUILD_NUMBER),
+      string(name: 'TRIGGERING_JOB_NAME', value: env.JOB_NAME),
+    ]
+  ]
+}
+
+def getBaseMacBuildParams() {
+  def buildParams  = getBaseBuildParams('browser-f-mac', 'mac.Jenkinsfile')
+  buildParams.parameters += [
+    string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+    string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
+    string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
+    string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
+    string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
+    string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
+    string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
+    string(name: 'VAGRANTFILE', value: 'mac.Vagrantfile'),
+  ]
+  return buildParams
+}
+
+archive 'build-helpers.groovy'
+archive 'win.Vagrantfile'
+archive 'mac.Vagrantfile'
+
+stage('Build') {
+    parallel (
+        'linux en': {
+            def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
+            buildParams.parameters += [
+              string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+              string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+              string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+              string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+              string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+            ]
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id)
+        },
+        'mac de': {
+            def buildParams = getBaseMacBuildParams()
+            buildParams.parameters += [
+              string(name: 'CQZ_LANG', value: 'de'),
+            ]
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
+        },
+        'mac en': {
+            def buildParams = getBaseMacBuildParams()
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
+        },
+        'win': {
+            def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
+            buildParams.parameters += [
+              string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
+              string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
+              string(name: 'WIN_BUILD_NODE', value: 'master'),
+              string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
+              string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
+            ]
+            job = build buildParams
+            submitBalrog(buildParams.job, job.id, 'obj/en_build_properties.json')
+            submitBalrog(buildParams.job, job.id, 'obj/de_build_properties.json')
+        }
+    )
+}
+
+def submitBalrog(jobName, id, propsPath = 'obj/build_properties.json') {
+    def folder = "artifacts/$jobName/$id"
+    step([
+        $class: 'CopyArtifact',
+        projectName: jobName,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: id],
+        target: folder
+    ])
+
+    sh """
+        python ./build-tools/scripts/updates/balrog-submitter.py \
+            --credentials-file ./mozilla-release/build/creds.txt --username balrogadmin \
+            --api-root http://$CQZ_BALROG_DOMAIN/api \
+            --build-properties ${folder + '/' + propsPath}
+    """
 }
