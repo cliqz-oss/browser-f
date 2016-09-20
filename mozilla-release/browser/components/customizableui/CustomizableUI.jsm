@@ -235,7 +235,8 @@ var CustomizableUIInternal = {
 #if 0
       "search-container",
 #endif
-      "cliqz-button",
+      "cliqz-cc-btn", // CLIQZ control center
+      "cliqz-button", // CLIQZ old Q button
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",
