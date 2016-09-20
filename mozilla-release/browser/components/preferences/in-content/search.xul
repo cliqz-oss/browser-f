@@ -43,7 +43,7 @@
                 label="&provideSearchSuggestions.label;"
                 accesskey="&provideSearchSuggestions.accesskey;"
                 preference="browser.search.suggest.enabled"/>
-      <vbox class="indent">
+      <vbox class="indent" hidden="true">
         <checkbox id="urlBarSuggestion" label="&showURLBarSuggestions.label;"
                   accesskey="&showURLBarSuggestions.accesskey;"
                   preference="browser.urlbar.suggest.searches"/>
