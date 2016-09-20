@@ -20,11 +20,27 @@
   <preference id="xpinstall.whitelist.required"
               name="xpinstall.whitelist.required"
               type="bool"/>
+
   <preference id="browser.safebrowsing.malware.enabled"
               name="browser.safebrowsing.malware.enabled"
               type="bool"/>
   <preference id="browser.safebrowsing.enabled"
               name="browser.safebrowsing.enabled"
+              type="bool"/>
+
+  <preference id="browser.safebrowsing.downloads.enabled"
+              name="browser.safebrowsing.downloads.enabled"
+              type="bool"/>
+
+  <preference id="urlclassifier.malwareTable"
+              name="urlclassifier.malwareTable"
+              type="string"/>
+
+  <preference id="browser.safebrowsing.downloads.remote.block_potentially_unwanted"
+              name="browser.safebrowsing.downloads.remote.block_potentially_unwanted"
+              type="bool"/>
+  <preference id="browser.safebrowsing.downloads.remote.block_uncommon"
+              name="browser.safebrowsing.downloads.remote.block_uncommon"
               type="bool"/>
 
   <!-- Passwords -->
@@ -61,14 +77,33 @@
 
   <separator class="thin"/>
   <vbox align="start">
-    <checkbox id="blockAttackSites"
-              label="&blockAttackSites.label;"
-              accesskey="&blockAttackSites.accesskey;"
-              preference="browser.safebrowsing.malware.enabled" />
-    <checkbox id="blockWebForgeries"
-              label="&blockWebForgeries.label;"
-              accesskey="&blockWebForgeries.accesskey;"
-              preference="browser.safebrowsing.enabled" />
+    <checkbox id="enableSafeBrowsing"
+              label="&enableSafeBrowsing.label;"
+              accesskey="&enableSafeBrowsing.accesskey;" />
+    <vbox class="indent">
+      <checkbox id="blockDownloads"
+                label="&blockDownloads.label;"
+                accesskey="&blockDownloads.accesskey;" />
+      <checkbox id="blockUncommonUnwanted"
+                label="&blockUncommonUnwanted.label;"
+                accesskey="&blockUncommonUnwanted.accesskey;" />
+    </vbox>
+
+    <!-- HTTPS Everywhere -->
+    <vbox id="httpsEverywhereGroup" hidden="true">
+      <checkbox id="httpsEverywhereEnable"
+                label="&httpsEverywhere.label;"
+                accesskey="&httpsEverywhere.accesskey;"
+                oncommand="gSecurityPane.toggleHttpsEverywhere();"
+                />
+      <hbox align="start">
+        <label>&httpsEverywhereDesc.label;</label>
+        <label class="text-link"
+               style="padding-left: 10px;"
+               value="&httpsEverywhereMore.label;"
+               href="https://www.eff.org/https-everywhere"/>
+      </hbox>
+    </vbox>
   </vbox>
 </groupbox>
 
@@ -112,4 +147,12 @@
       </row>
     </rows>
   </grid>
+
+  <vbox flex="1" class="view-pane password-managers" tabindex="0">
+    <caption><label>&passwordManager.title;</label></caption>
+    <caption>&passwordManager.desc1;</caption>
+    <caption>&passwordManager.desc2;</caption>
+    <caption> </caption>
+    <richlistbox id="features-list" class="list" flex="1"></richlistbox>
+  </vbox>
 </groupbox>

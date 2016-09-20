@@ -16,11 +16,11 @@
 <!ENTITY helpMenuWin.accesskey    "H">
 <!ENTITY aboutProduct2.label      "About &brandShorterName;">
 <!ENTITY aboutProduct2.accesskey  "A">
-<!ENTITY productHelp2.label       "&brandShorterName; Help">
+<!ENTITY productHelp2.label       "Mozilla Help">
 <!ENTITY productHelp2.accesskey   "H">
 <!ENTITY helpMac.commandkey       "?">
 
-<!ENTITY helpKeyboardShortcuts.label     "Keyboard Shortcuts">
+<!ENTITY helpKeyboardShortcuts.label     "Keyboard Shortcuts (Firefox)">
 <!ENTITY helpKeyboardShortcuts.accesskey "K">
 
 <!ENTITY helpSafeMode.label       "Restart in safe mode…">

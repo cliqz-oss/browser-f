@@ -159,7 +159,7 @@
 	<key>CFBundleShortVersionString</key>
         <string>%APP_VERSION_DISPLAY%</string>
 	<key>CFBundleSignature</key>
-	<string>MOZB</string>
+	<string>CLQZ</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>

@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+# Copyright Cliqz GmbH, 2016.
+-->
+<!DOCTYPE html [
+  <!ENTITY % htmlDTD PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "DTD/xhtml1-strict.dtd">
+  %htmlDTD;
+  <!ENTITY % globalDTD SYSTEM "chrome://global/locale/global.dtd">
+  %globalDTD;
+  <!ENTITY % aboutPrivateBrowsingDTD SYSTEM "chrome://browser/locale/cliqzPrivateBrowsing.dtd">
+  %aboutPrivateBrowsingDTD;
+]>
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head>
+    <link
+        rel="stylesheet" type="text/css" media="all"
+        href="chrome://browser/content/aboutPrivateBrowsing.css"
+        />
+    <title>&cliqzPrivateBrowsing.title;</title>
+  </head>
+
+  <body dir="&locale.dir;" class="private">
+    <div id="header">
+      <p>&cliqzPrivateBrowsing.header;</p>
+    </div>
+    <div id="logo">
+    </div>
+    <div id="main">
+      <p id="explanation">&cliqzPrivateBrowsing.explanation;</p>
+      <p id="note">&cliqzPrivateBrowsing.note;</p>
+      <a href="&cliqzPrivateBrowsing.learnMoreLink;">
+        &cliqzPrivateBrowsing.learnMore;
+      </a>
+    </div>
+  </body>
+</html>

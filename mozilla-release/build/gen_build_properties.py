@@ -68,9 +68,9 @@ class BuildProperties:
             self.properties['properties']['platform'] = supported_platforms[all_props['moz_pkg_platform']]
         else:
             raise ValueError("Not supported platform [%s]" % all_props['moz_pkg_platform'])
-        self.properties['properties']['locale'] = os.environ.get('CQZ_UI_LOCALE', None)
+        self.properties['properties']['locale'] = os.environ.get('LANG', None)
         if not self.properties['properties']['locale']:
-            raise ValueError("Environment variable CQZ_UI_LOCALE must be set")
+            raise ValueError("Environment variable LANG must be set")
         self.properties['properties']['branch'] = os.environ.get('CQZ_RELEASE_CHANNEL', 'master')
 
 if __name__ == '__main__':

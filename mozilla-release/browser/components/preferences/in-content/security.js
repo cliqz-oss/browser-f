@@ -3,6 +3,8 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
+var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
 var gSecurityPane = {
   _pane: null,
@@ -20,6 +22,16 @@ var gSecurityPane = {
 
     this._pane = document.getElementById("paneSecurity");
     this._initMasterPasswordUI();
+    this._initSafeBrowsing();
+
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
+      if(addon && addon.isActive){
+        var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
+
+        document.getElementById("httpsEverywhereGroup").hidden = false;
+        document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
+      }
+    })
 
 #if 0
     setEventListener("addonExceptions", "command",
@@ -33,6 +45,13 @@ var gSecurityPane = {
       gSecurityPane.changeMasterPassword);
     setEventListener("showPasswords", "command",
       gSecurityPane.showPasswords);
+  },
+
+  toggleHttpsEverywhere: function(){
+    var HTTPSEverywhere = Components.classes["@eff.org/https-everywhere;1"]
+                      .getService(Components.interfaces.nsISupports)
+                      .wrappedJSObject;
+    HTTPSEverywhere.toggleEnabledState();
   },
 
   // ADD-ONS
@@ -146,6 +165,81 @@ var gSecurityPane = {
 
     var checkbox = document.getElementById("useMasterPassword");
     checkbox.checked = !noMP;
+
+    gPasswordManagers.init();
+  },
+
+  _initSafeBrowsing() {
+    let enableSafeBrowsing = document.getElementById("enableSafeBrowsing");
+    let blockDownloads = document.getElementById("blockDownloads");
+    let blockUncommonUnwanted = document.getElementById("blockUncommonUnwanted");
+
+    let safeBrowsingPhishingPref = document.getElementById("browser.safebrowsing.enabled");
+    let safeBrowsingMalwarePref = document.getElementById("browser.safebrowsing.malware.enabled");
+
+    let blockDownloadsPref = document.getElementById("browser.safebrowsing.downloads.enabled");
+    let malwareTable = document.getElementById("urlclassifier.malwareTable");
+
+    let blockUnwantedPref = document.getElementById("browser.safebrowsing.downloads.remote.block_potentially_unwanted");
+    let blockUncommonPref = document.getElementById("browser.safebrowsing.downloads.remote.block_uncommon");
+
+    enableSafeBrowsing.addEventListener("command", function() {
+      safeBrowsingPhishingPref.value = enableSafeBrowsing.checked;
+      safeBrowsingMalwarePref.value = enableSafeBrowsing.checked;
+
+      if (enableSafeBrowsing.checked) {
+        blockDownloads.removeAttribute("disabled");
+        if (blockDownloads.checked) {
+          blockUncommonUnwanted.removeAttribute("disabled");
+        }
+      } else {
+        blockDownloads.setAttribute("disabled", "true");
+        blockUncommonUnwanted.setAttribute("disabled", "true");
+      }
+    });
+
+    blockDownloads.addEventListener("command", function() {
+      blockDownloadsPref.value = blockDownloads.checked;
+      if (blockDownloads.checked) {
+        blockUncommonUnwanted.removeAttribute("disabled");
+      } else {
+        blockUncommonUnwanted.setAttribute("disabled", "true");
+      }
+    });
+
+    blockUncommonUnwanted.addEventListener("command", function() {
+      blockUnwantedPref.value = blockUncommonUnwanted.checked;
+      blockUncommonPref.value = blockUncommonUnwanted.checked;
+
+      let malware = malwareTable.value
+        .split(",")
+        .filter(x => x !== "goog-unwanted-shavar" && x !== "test-unwanted-simple");
+
+      if (blockUncommonUnwanted.checked) {
+        malware.push("goog-unwanted-shavar");
+        malware.push("test-unwanted-simple");
+      }
+
+      // sort alphabetically to keep the pref consistent
+      malware.sort();
+
+      malwareTable.value = malware.join(",");
+    });
+
+    // set initial values
+
+    enableSafeBrowsing.checked = safeBrowsingPhishingPref.value && safeBrowsingMalwarePref.value;
+    if (!enableSafeBrowsing.checked) {
+      blockDownloads.setAttribute("disabled", "true");
+      blockUncommonUnwanted.setAttribute("disabled", "true");
+    }
+
+    blockDownloads.checked = blockDownloadsPref.value;
+    if (!blockDownloadsPref.value) {
+      blockUncommonUnwanted.setAttribute("disabled", "true");
+    }
+
+    blockUncommonUnwanted.checked = blockUnwantedPref.value && blockUncommonPref.value;
   },
 
   /**
@@ -234,3 +328,72 @@ var gSecurityPane = {
   }
 
 };
+
+var gPasswordManagers = {
+  init: function(){
+    this._listBox = document.getElementById("features-list");
+
+    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results){
+      var available = results[0],
+          existing  = results[1],
+          existingIDs = [];
+
+      //clean the view
+      while (this._listBox.firstChild && this._listBox.firstChild.localName == "richlistitem")
+        this._listBox.removeChild(this._listBox.firstChild);
+
+      // add already installed password managers
+      for (let addon of existing){
+        this._listBox.appendChild(this.createItem(addon, "installed"));
+        existingIDs.push(addon.id);
+      }
+
+      //remove the ones already installed
+      var available = available.filter(function(addon){ return existingIDs.indexOf(addon.id) == -1 });
+      for (let addon of available){
+         this._listBox.appendChild(this.createItem(addon, "new"));
+      }
+
+    }).bind(this));
+  },
+
+  getExisting: function(){
+    let KNOWN_PW_MANAGERS = ["support@lastpass.com"];
+
+    return new Promise(function(resolve, reject){
+      AddonManager.getAllAddons(function(all){
+        // filter only installed extensions
+        var extensions = all.filter(function(addon){
+          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
+        });
+
+        resolve(extensions);
+      });
+    });
+  },
+  // can be a promise if we decide to move the list to backend
+  getAvailable: function(){
+    return [{
+      "id": "support@lastpass.com",
+      "icons": {
+       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/8/8542-64.png?modified=1457436015"
+      },
+      "name": "LastPass",
+      "homepageURL": "https://lastpass.com/",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/support@lastpass.com/latest.xpi"
+    }];
+  },
+  createItem: function(aObj, status) {
+    let item = document.createElement("richlistitem");
+
+    item.setAttribute("class", "cliqz-feature");
+    item.setAttribute("name", aObj.name);
+    item.setAttribute("description", aObj.description);
+    item.setAttribute("type", aObj.type);
+    item.setAttribute("value", aObj.id);
+    item.setAttribute("status", status);
+
+    item.mAddon = aObj;
+    return item;
+  }
+}

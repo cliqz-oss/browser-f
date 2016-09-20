@@ -5,7 +5,7 @@
 <!ENTITY  trackingProtectionHeader.label       "Schutz vor Aktivitätenverfolgung verwenden">
 <!ENTITY  trackingProtectionAlways.label       "Immer">
 <!ENTITY  trackingProtectionAlways.accesskey   "m">
-<!ENTITY  trackingProtectionPrivate.label      "Nur in Privaten Fenstern">
+<!ENTITY  trackingProtectionPrivate.label      "Nur in Vergessen Fenstern">
 <!ENTITY  trackingProtectionPrivate.accesskey  "P">
 <!ENTITY  trackingProtectionNever.label        "Nie">
 <!ENTITY  trackingProtectionNever.accesskey    "N">
@@ -14,7 +14,7 @@
 <!ENTITY  trackingProtectionExceptions.accesskey "u">
 
 <!ENTITY tracking.label                 "Verfolgung von Nutzeraktivitäten">
-<!ENTITY trackingProtectionPBM5.label         "Schutz vor Aktivitätenverfolgung in privaten Fenstern verwenden">
+<!ENTITY trackingProtectionPBM5.label         "Schutz vor Aktivitätenverfolgung in Vergessen Fenstern verwenden">
 <!ENTITY trackingProtectionPBM5.accesskey     "p">
 <!ENTITY trackingProtectionPBMLearnMore.label "Weitere Informationen">
 <!ENTITY changeBlockList.label          "Blockierliste ändern">
@@ -23,7 +23,7 @@
 <!-- LOCALIZATION NOTE (doNotTrack.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (doNotTrack.post.label): include a starting space as needed -->
 <!ENTITY  doNotTrack.pre.label          "Sie können auch ">
-<!ENTITY  doNotTrack.settings.label     "Ihre Einstellungen zum Schutz vor Aktivitätenverfolgung verwalten">
+<!ENTITY  doNotTrack.settings.label     "Websites mitteilen, Ihre Aktivitäten nicht zu verfolgen">
 <!ENTITY  doNotTrack.post.label         ".">
 
 <!ENTITY  history.label                 "Chronik">
@@ -82,7 +82,7 @@
 <!ENTITY  rememberActions.removeCookies.label "einzelne Cookies">
 <!ENTITY  rememberActions.post.label          " löschen.">
 
-<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.">
+<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzt.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (dontrememberActions.post.label): include a starting space as needed -->
@@ -90,7 +90,7 @@
 <!ENTITY  dontrememberActions.clearHistory.label "gesamte bisherige Chronik">
 <!ENTITY  dontrememberActions.post.label         " löschen.">
 
-<!ENTITY  privateBrowsingPermanent2.label "Immer den privaten Modus verwenden">
+<!ENTITY  privateBrowsingPermanent2.label "Immer den Vergessen Modus verwenden">
 <!ENTITY  privateBrowsingPermanent2.accesskey "p">
 
 <!ENTITY  rememberHistory2.label      "Besuchte Seiten und Download-Chronik speichern">
@@ -104,3 +104,11 @@
 
 <!ENTITY  clearOnCloseSettings.label     "Einstellungen…">
 <!ENTITY  clearOnCloseSettings.accesskey "E">
+
+<!-- Forget mode -->
+<!ENTITY  forgetMode.caption "Vergessen Modus">
+<!ENTITY  forgetMode.enableCheckboxLabel "Automatischen Vergessen Modus aktivieren">
+<!ENTITY  forgetMode.explanation1 "Der automatische Vergessen Modus öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im vergessen Modus, so dass sie nicht in der Chronik gespeichert werden und keine temporären Dateien, inklusive Cookies, auf dem Computer hinterlassen.">
+<!ENTITY  forgetMode.explanation2 "Im Tab Kontext-Menü kannst du selbst wählen, welche Websites automatisch im Vergessen Modus geöffnet werden sollen oder auch nicht. Das Tab Kontext-Menü öffnet sich durch einen Klick mit der rechten Maustaste auf den aktuellen Tab.">
+<!ENTITY  forgetMode.learnMore "Mehr erfahren">
+<!ENTITY  forgetMode.learnMoreLink " https://cliqz.com/support/automatischer-vergessen-modus">

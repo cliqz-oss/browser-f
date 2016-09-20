@@ -999,6 +999,12 @@ ${EndIf}
     RmDir /r /REBOOTOK "$INSTDIR\extensions\talkback@cliqz.com"
   ${EndIf}
 
+  ; Remove CLIQZ extension from distribution\extensions because now it must be
+  ; in System Addon (browser\feature)
+  ${If} ${FileExists} "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
+    Delete "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
+  ${EndIf}
+
   ; Remove the Java Console extension (bug 1165156)
   ${If} ${FileExists} "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0031-ABCDEFFEDCBA}"
     RmDir /r /REBOOTOK "$INSTDIR\extensions\{CAFEEFAC-0016-0000-0031-ABCDEFFEDCBA}"
@@ -1128,17 +1134,24 @@ ${EndIf}
       ClearErrors
       WriteIniStr "$0" "TASKBAR" "Migrated" "true"
       ${If} ${AtLeastWin7}
-        ; No need to check the default on Win8 and later
-        ${If} ${AtMostWin2008R2}
-          ; Check if the Firefox is the http handler for this user
-          SetShellVarContext current ; Set SHCTX to the current user
-          ${IsHandlerForInstallDir} "http" $R9
-          ${If} $TmpVal == "HKLM"
-            SetShellVarContext all ; Set SHCTX to all users
+        ; If we didn't run the stub installer, AddTaskbarSC will be empty.
+        ; We determine whether to pin based on whether we're the default
+        ; browser, or if we're on win8 or later, we always pin.
+        ${If} $AddTaskbarSC == ""
+          ; No need to check the default on Win8 and later
+          ${If} ${AtMostWin2008R2}
+            ; Check if the Firefox is the http handler for this user
+            SetShellVarContext current ; Set SHCTX to the current user
+            ${IsHandlerForInstallDir} "http" $R9
+            ${If} $TmpVal == "HKLM"
+              SetShellVarContext all ; Set SHCTX to all users
+            ${EndIf}
           ${EndIf}
-        ${EndIf}
-        ${If} "$R9" == "true"
-        ${OrIf} ${AtLeastWin8}
+          ${If} "$R9" == "true"
+          ${OrIf} ${AtLeastWin8}
+            ${PinToTaskBar}
+          ${EndIf}
+        ${ElseIf} $AddTaskbarSC == "1"
           ${PinToTaskBar}
         ${EndIf}
       ${EndIf}
@@ -1484,7 +1497,7 @@ Function SetAsDefaultAppUserHKCU
     ${EndUnless}
   ${EndIf}
   ${RemoveDeprecatedKeys}
-  ${PinToTaskBar}
+  ${MigrateTaskBarShortcut}
 FunctionEnd
 
 ; Helper for updating the shortcut application model IDs.

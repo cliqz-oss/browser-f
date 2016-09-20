@@ -1,4 +1,5 @@
 #filter substitution
+#include @TOPOBJDIR@/source-repo.h
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -68,13 +69,6 @@ this.AppConstants = Object.freeze({
 
   MOZ_DATA_REPORTING:
 #ifdef MOZ_DATA_REPORTING
-  true,
-#else
-  false,
-#endif
-
-  MOZ_DEVICES:
-#ifdef MOZ_DEVICES
   true,
 #else
   false,
@@ -226,15 +220,15 @@ this.AppConstants = Object.freeze({
   false,
 #endif
 
-  MOZ_B2GDROID:
-#ifdef MOZ_B2GDROID
+  MOZ_GRAPHENE:
+#ifdef MOZ_GRAPHENE
   true,
 #else
   false,
 #endif
 
-  MOZ_GRAPHENE:
-#ifdef MOZ_GRAPHENE
+  MOZ_SYSTEM_NSS:
+#ifdef MOZ_SYSTEM_NSS
   true,
 #else
   false,
@@ -248,7 +242,7 @@ this.AppConstants = Object.freeze({
 #endif
 
   MOZ_REQUIRE_SIGNING:
-#ifdef MOZ_REQUIRE_SIGNING
+#if MOZ_REQUIRE_SIGNING
   true,
 #else
   false,
@@ -270,6 +264,20 @@ this.AppConstants = Object.freeze({
 
   MOZ_ANDROID_HISTORY:
 #ifdef MOZ_ANDROID_HISTORY
+  true,
+#else
+  false,
+#endif
+
+  MOZ_TOOLKIT_SEARCH:
+#ifdef MOZ_TOOLKIT_SEARCH
+  true,
+#else
+  false,
+#endif
+
+  MOZ_ENABLE_PROFILER_SPS:
+#ifdef MOZ_ENABLE_PROFILER_SPS
   true,
 #else
   false,
@@ -301,7 +309,10 @@ this.AppConstants = Object.freeze({
   // URL to the hg revision this was built from (e.g.
   // "https://hg.mozilla.org/mozilla-central/rev/6256ec9113c1")
   // On unofficial builds, this is an empty string.
-  SOURCE_REVISION_URL: "@SOURCE_REV_URL@",
+#ifndef MOZ_SOURCE_URL
+#define MOZ_SOURCE_URL
+#endif
+  SOURCE_REVISION_URL: "@MOZ_SOURCE_URL@",
 
   MOZ_NUWA_PROCESS:
 #ifdef MOZ_NUWA_PROCESS

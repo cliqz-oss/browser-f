@@ -204,7 +204,7 @@
           <label flex="1">&healthReportIntro.label;</label>
         </hbox>
       </groupbox>
-#ifdef MOZ_SERVICES_HEALTHREPORT
+#ifdef MOZ_TELEMETRY_REPORTING
       <groupbox>
         <caption>
           <checkbox id="submitHealthReportBox" label="&enableHealthReport.label;"
@@ -217,7 +217,6 @@
             <label id="FHRLearnMore"
                    class="text-link">&healthReportLearnMore.label;</label>
           </hbox>
-#ifdef MOZ_TELEMETRY_REPORTING
           <hbox class="indent">
             <groupbox flex="1">
               <caption>
@@ -233,7 +232,6 @@
               </hbox>
             </groupbox>
           </hbox>
-#endif
         </vbox>
       </groupbox>
 #endif

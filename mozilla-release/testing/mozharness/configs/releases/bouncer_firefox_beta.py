@@ -4,6 +4,7 @@ config = {
     "products": {
         "installer": {
             "product-name": "Firefox-%(version)s",
+            "check_uptake": True,
             "alias": "firefox-beta-latest",
             "ssl-only": False,
             "add-locales": True,
@@ -32,6 +33,7 @@ config = {
         },
         "installer-ssl": {
             "product-name": "Firefox-%(version)s-SSL",
+            "check_uptake": True,
             "ssl-only": True,
             "add-locales": True,
             "paths": {
@@ -59,6 +61,7 @@ config = {
         },
         "stub-installer": {
             "product-name": "Firefox-%(version)s-stub",
+            "check_uptake": True,
             "alias": "firefox-beta-stub",
             "ssl-only": True,
             "add-locales": True,
@@ -69,8 +72,24 @@ config = {
                 },
             },
         },
+        "sha1-installer": {
+            "product-name": "Firefox-%(version)s-sha1",
+            # TODO: enable when sha1 installers are automated in bug 1290179
+            "check_uptake": False,
+            # TODO: enable when sha1 installers are automated in bug 1290179
+            # "alias": "firefox-beta-sha1",
+            "ssl-only": True,
+            "add-locales": True,
+            "paths": {
+                "win32": {
+                    "path": "/firefox/releases/%(version)s/win32-sha1/:lang/Firefox%%20Setup%%20%(version)s.exe",
+                    "bouncer-platform": "win",
+                },
+            },
+        },
         "complete-mar": {
             "product-name": "Firefox-%(version)s-Complete",
+            "check_uptake": True,
             "ssl-only": False,
             "add-locales": True,
             "paths": {
@@ -100,6 +119,7 @@ config = {
     "partials": {
         "releases-dir": {
             "product-name": "Firefox-%(version)s-Partial-%(prev_version)s",
+            "check_uptake": True,
             "ssl-only": False,
             "add-locales": True,
             "paths": {

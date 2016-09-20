@@ -41,7 +41,7 @@ When submitting the bug report please include the following information:
 
 * OS version, eg. Windox 8.1, Mac OS X 10.10.4
 * system architecture (32/64 bit)
-* browser version, eg. CLIQZ 0.8, based on Firefox 39
+* browser version, eg. CLIQZ 1.5.0, based on Firefox 47
 
 ## Repository structure
 
@@ -54,3 +54,15 @@ repositories:
 * `build-tools` - https://github.com/mozilla/build-tools
 
 CLIQZ changes are applied to original Mozilla code.
+
+## Localization
+
+Firefox localization files (production version) placed in https://hg.mozilla.org/releases/l10n/mozilla-release. Early for each released FF version it was possible to find appropriate tag in localization. Now looks like FF stop adding new tags for release in localization. In new reality, to find proper commit for some released FF version, please, do next:
+* Check in `candidate` folder https://ftp.mozilla.org/pub/firefox/candidates/ for `l10n_changesets.txt` file (for example, for version 47.0 - https://ftp.mozilla.org/pub/firefox/candidates/47.0-candidates/build3/l10n_changesets.txt)
+* Find commit id in this file for needed language
+* Checkout this commit from mercurial
+* Replace files in our `l10n` folder with new one
+
+Some more interesting FF's localization resources:
+* Main localization site: https://l10n.mozilla.org/
+* Information about DE localization status: https://l10n.mozilla.org/teams/de

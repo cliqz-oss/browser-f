@@ -50,7 +50,7 @@ static NS_DEFINE_CID(kThisImplCID, NS_THIS_DOCLOADER_IMPL_CID);
 // this enables LogLevel::Debug level information and places all output in
 // the file nspr.log
 //
-PRLogModuleInfo* gDocLoaderLog = nullptr;
+mozilla::LazyLogModule gDocLoaderLog("DocLoader");
 
 
 #if defined(DEBUG)
@@ -115,10 +115,6 @@ nsDocLoader::nsDocLoader()
     mDontFlushLayout(false),
     mIsFlushingLayout(false)
 {
-  if (nullptr == gDocLoaderLog) {
-      gDocLoaderLog = PR_NewLogModule("DocLoader");
-  }
-
   ClearInternalProgress();
 
   MOZ_LOG(gDocLoaderLog, LogLevel::Debug,
@@ -459,7 +455,24 @@ nsDocLoader::OnStartRequest(nsIRequest *request, nsISupports *aCtxt)
   NS_ASSERTION(!mIsLoadingDocument || mDocumentRequest,
                "mDocumentRequest MUST be set for the duration of a page load!");
 
-  doStartURLLoad(request);
+  // This is the only way to catch document request start event after a redirect
+  // has occured without changing inherited Firefox behaviour significantly.
+  // Problem description:
+  // The combination of |STATE_START + STATE_IS_DOCUMENT| is only sent for
+  // initial request (see |doStartDocumentLoad| call above).
+  // And |STATE_REDIRECTING + STATE_IS_DOCUMENT| is sent with old channel, which
+  // makes it impossible to filter by destination URL (see
+  // |AsyncOnChannelRedirect| implementation).
+  // Fixing any of those bugs may cause unpredictable consequences in any part
+  // of the browser, so we just add a custom flag for this exact situation.
+  int32_t extraFlags = 0;
+  if (mIsLoadingDocument
+      && !bJustStartedLoading
+      && (loadFlags & nsIChannel::LOAD_DOCUMENT_URI)
+      && (loadFlags & nsIChannel::LOAD_REPLACE)) {
+    extraFlags = nsIWebProgressListener::STATE_IS_REDIR_DOC;
+  }
+  doStartURLLoad(request, extraFlags);
 
   return NS_OK;
 }
@@ -761,7 +774,7 @@ void nsDocLoader::doStartDocumentLoad(void)
                     NS_OK);
 }
 
-void nsDocLoader::doStartURLLoad(nsIRequest *request)
+void nsDocLoader::doStartURLLoad(nsIRequest *request, int32_t aExtraFlags)
 {
 #if defined(DEBUG)
   nsAutoCString buffer;
@@ -776,7 +789,8 @@ void nsDocLoader::doStartURLLoad(nsIRequest *request)
   FireOnStateChange(this,
                     request,
                     nsIWebProgressListener::STATE_START |
-                    nsIWebProgressListener::STATE_IS_REQUEST,
+                    nsIWebProgressListener::STATE_IS_REQUEST |
+                    aExtraFlags,
                     NS_OK);
 }
 
@@ -879,7 +893,7 @@ nsDocLoader::RemoveProgressListener(nsIWebProgressListener *aListener)
 }
 
 NS_IMETHODIMP
-nsDocLoader::GetDOMWindow(nsIDOMWindow **aResult)
+nsDocLoader::GetDOMWindow(mozIDOMWindowProxy **aResult)
 {
   return CallGetInterface(this, aResult);
 }
@@ -889,11 +903,11 @@ nsDocLoader::GetDOMWindowID(uint64_t *aResult)
 {
   *aResult = 0;
 
-  nsCOMPtr<nsIDOMWindow> window;
+  nsCOMPtr<mozIDOMWindowProxy> window;
   nsresult rv = GetDOMWindow(getter_AddRefs(window));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsCOMPtr<nsPIDOMWindow> piwindow = do_QueryInterface(window);
+  nsCOMPtr<nsPIDOMWindowOuter> piwindow = nsPIDOMWindowOuter::From(window);
   NS_ENSURE_STATE(piwindow);
 
   MOZ_ASSERT(piwindow->IsOuterWindow());
@@ -906,13 +920,13 @@ nsDocLoader::GetIsTopLevel(bool *aResult)
 {
   *aResult = false;
 
-  nsCOMPtr<nsIDOMWindow> window;
+  nsCOMPtr<mozIDOMWindowProxy> window;
   GetDOMWindow(getter_AddRefs(window));
   if (window) {
-    nsCOMPtr<nsPIDOMWindow> piwindow = do_QueryInterface(window);
+    nsCOMPtr<nsPIDOMWindowOuter> piwindow = nsPIDOMWindowOuter::From(window);
     NS_ENSURE_STATE(piwindow);
 
-    nsCOMPtr<nsPIDOMWindow> topWindow = piwindow->GetTop();
+    nsCOMPtr<nsPIDOMWindowOuter> topWindow = piwindow->GetTop();
     *aResult = piwindow == topWindow;
   }
 
@@ -1370,6 +1384,25 @@ NS_IMETHODIMP nsDocLoader::AsyncOnChannelRedirect(nsIChannel *aOldChannel,
                                                   uint32_t aFlags,
                                                   nsIAsyncVerifyRedirectCallback *cb)
 {
+  if (MOZ_LOG_TEST(gDocLoaderLog, LogLevel::Debug)) {
+    nsIURI* oldURI = nullptr;
+    if (aOldChannel)
+      aOldChannel->GetURI(&oldURI);
+    nsAutoCString oldURL;
+    if (oldURI)
+      oldURI->GetSpec(oldURL);
+
+    nsIURI* newURI = nullptr;
+    if (aNewChannel)
+      aNewChannel->GetURI(&newURI);
+    nsAutoCString newURL;
+    if (newURI)
+      newURI->GetSpec(newURL);
+
+    MOZ_LOG(gDocLoaderLog, LogLevel::Debug,
+           ("DocLoader:%p: AsyncOnChannelRedirect (%s -> %s) flags=%x",
+           this, oldURL.get(), newURL.get(), aFlags));
+  }
   if (aOldChannel)
   {
     nsLoadFlags loadFlags = 0;

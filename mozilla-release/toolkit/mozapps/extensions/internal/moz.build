@@ -15,7 +15,6 @@ EXTRA_JS_MODULES.addons += [
     'ProductAddonChecker.jsm',
     'SpellCheckDictionaryBootstrap.js',
     'WebExtensionBootstrap.js',
-    'XPIProvider.jsm',
     'XPIProviderUtils.js',
 ]
 
@@ -27,10 +26,5 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
 
 EXTRA_PP_JS_MODULES.addons += [
     'AddonConstants.jsm',
+    'XPIProvider.jsm',
 ]
-
-if CONFIG['MOZ_ADDON_SIGNING']:
-    DEFINES['MOZ_ADDON_SIGNING'] = 1
-
-if CONFIG['MOZ_REQUIRE_SIGNING']:
-    DEFINES['MOZ_REQUIRE_SIGNING'] = 1

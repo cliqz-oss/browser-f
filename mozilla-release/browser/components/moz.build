@@ -21,6 +21,7 @@ DIRS += [
     'sessionstore',
     'shell',
     'selfsupport',
+    'syncedtabs',
     'uitour',
     'translation',
 ]
@@ -33,6 +34,9 @@ XPIDL_SOURCES += [
 ]
 
 XPIDL_MODULE = 'browsercompsbase'
+
+if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
+    EXTRA_COMPONENTS += ['AutoPrivateTab.js']
 
 EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
@@ -47,8 +51,16 @@ EXTRA_JS_MODULES += [
     'distribution.js',
 ]
 
+EXTRA_PP_JS_MODULES += [
+
+]
+
 BROWSER_CHROME_MANIFESTS += [
-    'test/browser.ini'
+    'tests/browser/browser.ini'
+]
+
+XPCSHELL_TESTS_MANIFESTS += [
+    'tests/unit/xpcshell.ini'
 ]
 
 if CONFIG['MOZ_SAFE_BROWSING']:

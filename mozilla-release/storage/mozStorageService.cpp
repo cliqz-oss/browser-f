@@ -54,7 +54,7 @@
 // db/sqlite3/src/Makefile.in.
 #define PREF_TS_PAGESIZE_DEFAULT 32768
 
-PRLogModuleInfo* gStorageLog = nullptr;
+mozilla::LazyLogModule gStorageServiceLog("mozStorageService");
 
 namespace mozilla {
 namespace storage {
@@ -283,8 +283,6 @@ Service::Service()
 , mRegistrationMutex("Service::mRegistrationMutex")
 , mConnections()
 {
-  if (!gStorageLog)
-    gStorageLog = ::PR_NewLogModule("mozStorage");
 }
 
 Service::~Service()
@@ -336,8 +334,7 @@ Service::unregisterConnection(Connection *aConnection)
         // Ensure the connection is released on its opening thread.  Note, we
         // must use .forget().take() so that we can manually cast to an
         // unambiguous nsISupports type.
-        NS_ProxyRelease(thread,
-          static_cast<mozIStorageConnection*>(mConnections[i].forget().take()));
+        NS_ProxyRelease(thread, mConnections[i].forget());
 
         mConnections.RemoveElementAt(i);
         return;
@@ -712,7 +709,7 @@ public:
           &Connection::AsyncClose,
           nullptr);
       MOZ_ASSERT(closeRunnable);
-      MOZ_ALWAYS_TRUE(NS_SUCCEEDED(NS_DispatchToMainThread(closeRunnable)));
+      MOZ_ALWAYS_SUCCEEDS(NS_DispatchToMainThread(closeRunnable));
 
       return DispatchResult(rv, nullptr);
     }
@@ -737,23 +734,13 @@ private:
 
   ~AsyncInitDatabase()
   {
-    nsCOMPtr<nsIThread> thread;
-    DebugOnly<nsresult> rv = NS_GetMainThread(getter_AddRefs(thread));
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
-    (void)NS_ProxyRelease(thread, mStorageFile);
-
-    // Handle ambiguous nsISupports inheritance.
-    Connection *rawConnection = nullptr;
-    mConnection.swap(rawConnection);
-    (void)NS_ProxyRelease(thread, NS_ISUPPORTS_CAST(mozIStorageConnection *,
-                                                    rawConnection));
+    NS_ReleaseOnMainThread(mStorageFile.forget());
+    NS_ReleaseOnMainThread(mConnection.forget());
 
     // Generally, the callback will be released by CallbackComplete.
     // However, if for some reason Run() is not executed, we still
     // need to ensure that it is released here.
-    mozIStorageCompletionCallback *rawCallback = nullptr;
-    mCallback.swap(rawCallback);
-    (void)NS_ProxyRelease(thread, rawCallback);
+    NS_ReleaseOnMainThread(mCallback.forget());
   }
 
   RefPtr<Connection> mConnection;
@@ -971,7 +958,7 @@ Service::Observe(nsISupports *, const char *aTopic, const char16_t *)
       getConnections(connections);
       for (uint32_t i = 0, n = connections.Length(); i < n; i++) {
         if (!connections[i]->isClosed()) {
-          MOZ_LOG(gStorageLog, LogLevel::Error,
+          MOZ_LOG(gStorageServiceLog, LogLevel::Error,
                   ("Leaked connection to %s",
                    connections[i]->getFilename().get()));
           MOZ_CRASH();

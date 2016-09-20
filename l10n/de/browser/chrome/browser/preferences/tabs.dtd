@@ -11,9 +11,6 @@
 <!ENTITY warnOpenManyTabs.label       "Warnen, wenn das gleichzeitige Öffnen mehrerer Tabs &brandShortName; verlangsamen könnte">
 <!ENTITY warnOpenManyTabs.accesskey   "a">
 
-<!ENTITY restoreTabsOnDemand.label        "Tabs erst laden, wenn sie angewählt werden">
-<!ENTITY restoreTabsOnDemand.accesskey    "e">
-
 <!ENTITY switchToNewTabs.label        "Tabs im Vordergrund öffnen">
 <!ENTITY switchToNewTabs.accesskey    "s">
 

@@ -51,19 +51,8 @@ var gPrivacyPane = {
    * Initialize autocomplete to ensure prefs are in sync.
    */
   _initAutocomplete: function () {
-    let unifiedCompletePref = false;
-    try {
-      unifiedCompletePref =
-        Services.prefs.getBoolPref("browser.urlbar.unifiedcomplete");
-    } catch (ex) {}
-
-    if (unifiedCompletePref) {
-      Components.classes["@mozilla.org/autocomplete/search;1?name=unifiedcomplete"]
-                .getService(Components.interfaces.mozIPlacesAutoComplete);
-    } else {
-      Components.classes["@mozilla.org/autocomplete/search;1?name=history"]
-                .getService(Components.interfaces.mozIPlacesAutoComplete);
-    }
+    Components.classes["@mozilla.org/autocomplete/search;1?name=unifiedcomplete"]
+              .getService(Components.interfaces.mozIPlacesAutoComplete);
   },
 
   /**
@@ -88,6 +77,12 @@ var gPrivacyPane = {
     this._initTrackingProtectionPBM();
 #endif
     this._initAutocomplete();
+
+#if CQZ_AUTO_PRIVATE_TAB
+    const AutoPrivateTab = Cc["@cliqz.com/browser/auto_private_tab;1"].
+        getService(Ci.nsISupports).wrappedJSObject;
+    document.getElementById("forgetMode").hidden = !AutoPrivateTab.hasDatabase;
+#endif
 
     setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
                      gPrivacyPane._updateSanitizeSettingsButton);

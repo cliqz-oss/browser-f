@@ -11,7 +11,7 @@
 <!ENTITY accountPasswordTitle.label   "Passwort">
 <!ENTITY accountPasswordInfo.label    "Geben Sie Ihr Password in das folgende Feld ein.">
 <!ENTITY accountPasswordField.label   "Passwort:">
-<!ENTITY accountPasswordManager.label "Das hier eingegebene Passwort wird im Passwort-Manager gespeichert. Lassen Sie das Feld frei, wenn Sie bei jeder Verbindung mit dem Konto nach dem Passwort gefragt werden möchten.">
+<!ENTITY accountPasswordManager.label "Das hier eingegebene Passwort wird in der Passwortverwaltung gespeichert. Lassen Sie das Feld frei, wenn Sie bei jeder Verbindung mit dem Konto nach dem Passwort gefragt werden möchten.">
 
 <!ENTITY accountAdvancedTitle.label   "Erweiterte Einstellungen">
 <!ENTITY accountAdvancedInfo.label    "Dieser Schritt ist freiwillig und kann übersprungen werden.">

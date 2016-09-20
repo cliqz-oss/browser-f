@@ -136,7 +136,7 @@ protected:
     // list.  But to deal with frames it's better to make it a bit
     // longer, and it's always a stack temporary so there's no real
     // reason not to.
-    typedef nsAutoTArray<RefPtr<nsDocLoader>, 8> WebProgressList;
+    typedef AutoTArray<RefPtr<nsDocLoader>, 8> WebProgressList;
     void GatherAncestorWebProgresses(WebProgressList& aList);
 
     void FireOnStateChange(nsIWebProgress *aProgress,
@@ -181,7 +181,7 @@ protected:
                                        uint32_t aStateFlags) {}
 
     void doStartDocumentLoad();
-    void doStartURLLoad(nsIRequest *request);
+    void doStartURLLoad(nsIRequest *request, int32_t aExtraFlags);
     void doStopURLLoad(nsIRequest *request, nsresult aStatus);
     void doStopDocumentLoad(nsIRequest *request, nsresult aStatus);
 

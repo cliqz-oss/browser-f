@@ -2,19 +2,19 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY certmgr.title                       "Zertifikat-Manager">
+<!ENTITY certmgr.title                       "Zertifikateverwaltung">
 
-<!ENTITY certmgr.tab.mine                     "Ihre Zertifikate">
+<!ENTITY certmgr.tab.mine                     "Deine Zertifikate">
 <!ENTITY certmgr.tab.others2                  "Personen">
 <!ENTITY certmgr.tab.websites3                "Server">
 <!ENTITY certmgr.tab.ca                       "Zertifizierungsstellen">
 <!ENTITY certmgr.tab.orphan2                  "Andere">
 
-<!ENTITY certmgr.mine                         "Sie haben Zertifikate dieser Organisationen, die Sie identifizieren:">
-<!ENTITY certmgr.others                       "Sie haben Zertifikate gespeichert, die diese Personen identifizieren:">
-<!ENTITY certmgr.websites2                    "Sie haben Zertifikate gespeichert, die diese Server identifizieren:">
-<!ENTITY certmgr.cas                          "Sie haben Zertifikate gespeichert, die diese Zertifizierungsstellen identifizieren:">
-<!ENTITY certmgr.orphans                      "Sie haben Zertifikate gespeichert, die in keine der übrigen Kategorien passen:">
+<!ENTITY certmgr.mine                         "Du hast Zertifikate dieser Organisationen, die dich identifizieren:">
+<!ENTITY certmgr.others                       "Du hast Zertifikate gespeichert, die diese Personen identifizieren:">
+<!ENTITY certmgr.websites2                    "Du hast Zertifikate gespeichert, die diese Server identifizieren:">
+<!ENTITY certmgr.cas                          "Du hast Zertifikate gespeichert, die diese Zertifizierungsstellen identifizieren:">
+<!ENTITY certmgr.orphans                      "Du hast Zertifikate gespeichert, die in keine der übrigen Kategorien passen:">
 
 <!ENTITY certmgr.detail.general_tab.title     "Allgemein">
 <!ENTITY certmgr.detail.general_tab.accesskey "A">
@@ -81,7 +81,7 @@
 <!ENTITY exceptionMgr.title                   "Sicherheits-Ausnahmeregel hinzufügen">
 <!ENTITY exceptionMgr.exceptionButton.label   "Sicherheits-Ausnahmeregel bestätigen">
 <!ENTITY exceptionMgr.exceptionButton.accesskey "S">
-<!ENTITY exceptionMgr.supplementalWarning     "Seriöse Banken, Geschäfte und andere öffentliche Seiten werden Sie nicht bitten, Derartiges zu tun.">
+<!ENTITY exceptionMgr.supplementalWarning     "Seriöse Banken, Geschäfte und andere öffentliche Seiten werden dich nicht bitten, Derartiges zu tun.">
 <!ENTITY exceptionMgr.certlocation.caption2   "Server">
 <!ENTITY exceptionMgr.certlocation.url        "Adresse:">
 <!ENTITY exceptionMgr.certlocation.download   "Zertifikat herunterladen">
