@@ -99,7 +99,7 @@ withEnv([
 
                     sh '''#!/bin/bash -x
                         mkdir $CQZ_CERT_DB_PATH
-                        cd /usr/local/Cellar/nss/3.24/bin
+                        cd `brew --prefix nss`/bin
                         ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
                         set +x
                         ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
