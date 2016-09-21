@@ -23,7 +23,7 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::  CQZ_BUILD_DE_LOCALIZATION - set it to 1 if you need DE localization together with en-US
 :::::::::::::::::::::::::::::::::::
 IF "%CQZ_BUILD_ID%"=="" (
-  ECHO "BUILD_ID must be specified. Format YYYYMMDDHHMMSS, like 20160705124211"
+  ECHO "CQZ_BUILD_ID must be specified. Format YYYYMMDDHHMMSS, like 20160705124211"
   EXIT 1
 )
 IF "%CQZ_WORKSPACE%"=="" (
@@ -35,7 +35,7 @@ SET LANG=en-US
 IF "%CQZ_RELEASE_CHANNEL%" == "" SET CQZ_RELEASE_CHANNEL=beta
 
 SET CQZ_CERT_DB_PATH=C:\certdb
-SET WIN32_REDIST_DIR=C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\redist\x86\Microsoft.VC120.CRT\
+SET WIN32_REDIST_DIR=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\redist\x86\Microsoft.VC140.CRT\
 SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\8.1\bin\x86\signtool.exe
 
 ECHO INFO: Build configuration - %CQZ_RELEASE_CHANNEL% win32 (Localization: %CQZ_BUILD_DE_LOCALIZATION%)
@@ -55,7 +55,7 @@ certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 :: BUILD
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Starting build
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber | call C:\mozilla-build\start-shell-msvc2013.bat
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber | call C:\mozilla-build\start-shell-msvc2015.bat
 
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Build failed! Exiting.
@@ -117,7 +117,7 @@ IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
 :: UPLOAD AND SUBMIT
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Injected tag area successful. Uploading...
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_upload_files.sh | call C:\mozilla-build\start-shell-msvc2013.bat
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_upload_files.sh | call C:\mozilla-build\start-shell-msvc2015.bat
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Upload failed! Exiting.
   EXIT 1
