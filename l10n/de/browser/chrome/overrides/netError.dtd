@@ -165,8 +165,8 @@ was trying to connect. -->
 <!ENTITY cspBlocked.title "Blockiert von der Inhaltsicherheitsrichtlinie (CSP)">
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat diese Webseite daran gehindert, auf diese Weise geladen zu werden, weil die Webseite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, die dies nicht erlaubt.</p>">
 
-<!ENTITY corruptedContentError.title "Fehler: Beschädigte Inhalte">
-<!ENTITY corruptedContentError.longDesc "<p>Die Seite, die Sie anzusehen versuchen, kann nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p><ul><li>Bitte kontaktieren Sie die Website-Betreiber, um sie über dieses Problem zu verständigen.</li></ul>">
+<!ENTITY corruptedContentErrorv2.title "Fehler: Beschädigte Inhalte">
+<!ENTITY corruptedContentErrorv2.longDesc "<p>Die Seite, die Sie anzusehen versuchen, kann nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p><ul><li>Bitte kontaktieren Sie die Website-Betreiber, um sie über dieses Problem zu verständigen.</li></ul>">
 
 
 <!ENTITY securityOverride.exceptionButtonLabel "Ausnahme hinzufügen…">
@@ -190,6 +190,10 @@ was trying to connect. -->
 <!ENTITY weakCryptoAdvanced.longDesc "<span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten.">
 <!ENTITY weakCryptoAdvanced.override "(Nicht sicher) <span class='hostname'></span> mit veralteter Sicherheitstechnologie laden">
 
+<!-- LOCALIZATION NOTE (certerror.wrongSystemTime) - The <span id='..' /> tags will be injected with actual values,
+     please leave them unchanged. -->
+<!ENTITY certerror.wrongSystemTime "<p>Es konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufgebaut werden, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtige Uhrzeit, um das Problem zu beheben.</p>">
+
 <!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">
 <!ENTITY certerror.copyToClipboard.label "In Zwischenablage kopieren">
@@ -198,3 +202,6 @@ was trying to connect. -->
 <!-- LOCALIZATION NOTE (inadequateSecurityError.longDesc) - Do not translate
      "NS_ERROR_NET_INADEQUATE_SECURITY". -->
 <!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor Sie die Seite aufrufen können.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">
+
+<!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
+<!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">

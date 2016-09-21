@@ -59,8 +59,6 @@
 <!ENTITY updateCheck.accesskey           "N">
 <!ENTITY updateManual.label              "Nicht nach Updates suchen (nicht empfohlen: Sicherheitsrisiko)">
 <!ENTITY updateManual.accesskey          "d">
-<!ENTITY updateAutoAddonWarn.label       "Warnen, falls dadurch Add-ons deaktiviert werden">
-<!ENTITY updateAutoAddonWarn.accesskey   "W">
 <!ENTITY updateHistory.label             "Update-Chronik anzeigen">
 <!ENTITY updateHistory.accesskey         "C">
 

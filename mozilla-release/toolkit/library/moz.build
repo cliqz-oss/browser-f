@@ -96,19 +96,11 @@ if CONFIG['OS_ARCH'] == 'WINNT' and not CONFIG['GNU_CC']:
 
 DIRS += ['gtest']
 
-if CONFIG['OS_ARCH'] == 'WINNT':
-  DIRS += ['dummydll']
-
 # js needs to come after xul for now, because it is an archive and its content
 # is discarded when it comes first.
 USE_LIBS += [
     'js',
 ]
-
-if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_ARCH'] == 'WINNT':
-    USE_LIBS += [
-        'sandboxbroker',
-    ]
 
 USE_LIBS += [
     'gkmedias',
@@ -160,7 +152,8 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     OS_LIBS += [
         '-framework OpenGL',
         '-framework SystemConfiguration',
-        '-framework QTKit',
+        '-framework AVFoundation',
+        '-framework CoreMedia',
         '-framework IOKit',
         '-F%s' % CONFIG['MACOS_PRIVATE_FRAMEWORKS_DIR'],
         '-framework CoreUI',
