@@ -161,28 +161,14 @@ nsContextMenu.prototype = {
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     const isTabPrivate = this.browser.docShell.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
-<<<<<<< HEAD
+
     this.showItem("context-openlink",
         shouldShow && !isWindowPrivate && !isTabPrivate);
-||||||| merged common ancestors
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
-=======
-
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
->>>>>>> origin/upstream-releases
     this.showItem("context-openlinkprivate", shouldShow);
-<<<<<<< HEAD
-    this.showItem("context-openlinkintab", shouldShow && !isTabPrivate);
-    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
-    this.showItem("context-openlinkinusercontext-menu", shouldShow && showContainers);
-||||||| merged common ancestors
-    this.showItem("context-openlinkintab", shouldShow);
-    this.showItem("context-openlinkinusercontext-menu", shouldShow && showContainers);
-=======
-    this.showItem("context-openlinkintab", shouldShow && !inContainer);
+    this.showItem("context-openlinkintab", shouldShow && !inContainer && !isTabPrivate);
+    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);  // maxim@ - && !inContainer?
     this.showItem("context-openlinkincontainertab", shouldShow && inContainer);
     this.showItem("context-openlinkinusercontext-menu", shouldShow && !isWindowPrivate && showContainers);
->>>>>>> origin/upstream-releases
     this.showItem("context-openlinkincurrent", this.onPlainTextLink);
     this.showItem("context-sep-open", shouldShow);
   },
@@ -987,18 +973,10 @@ nsContextMenu.prototype = {
     let params = { charset: gContextMenuContentData.charSet,
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
-<<<<<<< HEAD
                    noReferrer: this.linkHasNoReferrer,
                    private: this.browser.docShell.usePrivateBrowsing
     };
-    for (let p in extra)
-||||||| merged common ancestors
-                   noReferrer: this.linkHasNoReferrer };
-    for (let p in extra)
-=======
-                   noReferrer: this.linkHasNoReferrer };
     for (let p in extra) {
->>>>>>> origin/upstream-releases
       params[p] = extra[p];
     }
 

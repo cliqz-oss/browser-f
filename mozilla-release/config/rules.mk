@@ -1145,8 +1145,8 @@ endif # SDK_LIBRARY
 # variant for downloading XPI.
 # NEW:
 ifdef CQZ_BUILD_ID
-CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/cliqz@cliqz.com.xpi"
-HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/https-everywhere@cliqz.com.xpi"
+CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/cliqz@cliqz.com.xpi"
+HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/https-everywhere@cliqz.com.xpi"
 endif  # CQZ_BUILD_ID
 
 # OLD:

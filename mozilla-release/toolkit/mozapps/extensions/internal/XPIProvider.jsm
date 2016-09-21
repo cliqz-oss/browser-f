@@ -57,14 +57,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "UpdateUtils",
                                   "resource://gre/modules/UpdateUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
                                   "resource://gre/modules/AppConstants.jsm");
-<<<<<<< HEAD
-XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
-                                 'resource://gre/modules/Timer.jsm');
-||||||| merged common ancestors
-=======
 XPCOMUtils.defineLazyModuleGetter(this, "isAddonPartOfE10SRollout",
                                   "resource://gre/modules/addons/E10SAddonsRollout.jsm");
->>>>>>> origin/upstream-releases
+XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
+                                 'resource://gre/modules/Timer.jsm');
 
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",

@@ -5,17 +5,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-<<<<<<< HEAD
-    'pdfjs'
-||||||| merged common ancestors
-    'e10srollout',
-    'loop',
     'pdfjs',
-    'pocket',
-=======
-    'e10srollout',
-    'pdfjs',
-    'pocket',
-    'webcompat',
->>>>>>> origin/upstream-releases
+    'webcompat'
 ]

@@ -691,17 +691,7 @@
 @RESPATH@/defaults/pref/channel-prefs.js
 
 ; Services (gre) prefs
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_NOTIFICATIONS
-@RESPATH@/defaults/pref/services-notifications.js
-#endif
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-#ifdef MOZ_SERVICES_NOTIFICATIONS
-@RESPATH@/defaults/pref/services-notifications.js
-#endif
-=======
->>>>>>> origin/upstream-releases
 @RESPATH@/defaults/pref/services-sync.js
 #endif
 

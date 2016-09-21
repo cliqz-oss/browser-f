@@ -415,44 +415,7 @@
         <button id="ctrlTab-showAll" class="ctrlTab-preview" noicon="true"/>
       </hbox>
     </panel>
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-    <!-- Sync Panel -->
-    <panel id="sync-start-panel" class="sync-panel" type="arrow" hidden="true"
-           noautofocus="true" onclick="this.hidePopup();"
-           flip="slide">
-      <hbox class="sync-panel-outer">
-        <image class="sync-panel-icon"/>
-        <vbox class="sync-panel-inner">
-          <description id="sync-start-panel-title"
-                       value="&syncStartPanel2.heading;"/>
-          <description id="sync-start-panel-subtitle"
-                       value="&syncStartPanel2.subTitle;"/>
-        </vbox>
-      </hbox>
-    </panel>
-#endif
 
-||||||| merged common ancestors
-
-    <!-- Sync Panel -->
-    <panel id="sync-start-panel" class="sync-panel" type="arrow" hidden="true"
-           noautofocus="true" onclick="this.hidePopup();"
-           flip="slide">
-      <hbox class="sync-panel-outer">
-        <image class="sync-panel-icon"/>
-        <vbox class="sync-panel-inner">
-          <description id="sync-start-panel-title"
-                       value="&syncStartPanel2.heading;"/>
-          <description id="sync-start-panel-subtitle"
-                       value="&syncStartPanel2.subTitle;"/>
-        </vbox>
-      </hbox>
-    </panel>
-
-=======
-
->>>>>>> origin/upstream-releases
     <!-- Bookmarks and history tooltip -->
     <tooltip id="bhTooltip"/>
 

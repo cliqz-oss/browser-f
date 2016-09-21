@@ -65,23 +65,12 @@ nsChannelClassifier::ShouldEnableTrackingProtection(nsIChannel *aChannel,
 
     NS_ENSURE_ARG(result);
     *result = false;
-<<<<<<< HEAD
     return NS_OK;
 #if 0
-    if (!Preferences::GetBool("privacy.trackingprotection.enabled", false) &&
-        (!Preferences::GetBool("privacy.trackingprotection.pbmode.enabled",
-                               false) || !NS_UsePrivateBrowsing(aChannel))) {
-||||||| merged common ancestors
-
-    if (!Preferences::GetBool("privacy.trackingprotection.enabled", false) &&
-        (!Preferences::GetBool("privacy.trackingprotection.pbmode.enabled",
-                               false) || !NS_UsePrivateBrowsing(aChannel))) {
-=======
 
     nsCOMPtr<nsILoadContext> loadContext;
     NS_QueryNotificationCallbacks(aChannel, loadContext);
     if (!loadContext || !(loadContext->UseTrackingProtection())) {
->>>>>>> origin/upstream-releases
       return NS_OK;
     }
 

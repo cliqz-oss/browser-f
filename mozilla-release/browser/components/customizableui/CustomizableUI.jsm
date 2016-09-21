@@ -241,13 +241,7 @@ var CustomizableUIInternal = {
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",
-<<<<<<< HEAD
-      "loop-button",
       "antitracking-button",
-||||||| merged common ancestors
-      "loop-button",
-=======
->>>>>>> origin/upstream-releases
     ];
 
     if (AppConstants.MOZ_DEV_EDITION) {

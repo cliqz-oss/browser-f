@@ -5589,20 +5589,14 @@ function handleLinkClick(event, href, linkNode) {
                  allowMixedContent: persistAllowMixedContentInChildTab,
                  referrerURI: referrerURI,
                  referrerPolicy: referrerPolicy,
-<<<<<<< HEAD
                  noReferrer: BrowserUtils.linkHasNoReferrer(linkNode),
                  private: privateTab};
-||||||| merged common ancestors
-                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
-=======
-                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
 
   // The new tab/window must use the same userContextId
   if (doc.nodePrincipal.originAttributes.userContextId) {
     params.userContextId = doc.nodePrincipal.originAttributes.userContextId;
   }
 
->>>>>>> origin/upstream-releases
   openLinkIn(href, where, params);
   event.preventDefault();
   return true;
