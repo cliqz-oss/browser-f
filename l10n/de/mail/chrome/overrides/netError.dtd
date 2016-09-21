@@ -167,11 +167,8 @@
 <!ENTITY cspBlocked.title "Durch Inhaltsicherheitsrichtlinie (CSP) blockiert">
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat das Laden dieser Seite auf diese Art blockiert, weil diese Seite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, das nicht erlaubt.</p>">
 
-<!ENTITY corruptedContentError.title "Fehler: Beschädigte Inhalte">
-<!ENTITY corruptedContentError.longDesc "
-<p>Die Inhalte, die Sie anzusehen versuchen, können nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p>
-<ul><li>Bitte kontaktieren Sie die Eigentümer, um sie über dieses Problem zu verständigen.</li></ul>
-">
+<!ENTITY corruptedContentErrorv2.title "Fehler: Beschädigte Inhalte">
+<!ENTITY corruptedContentErrorv2.longDesc "<p>Die Seite, die Sie anzusehen versuchen, kann nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p><ul><li>Bitte kontaktieren Sie die Website-Betreiber, um sie über dieses Problem zu verständigen.</li></ul>">
 
 <!ENTITY securityOverride.linkText "Oder Sie können eine Ausnahme hinzufügen…">
 <!ENTITY securityOverride.getMeOutOfHereButton "Website verlassen!">
@@ -191,3 +188,8 @@ functionality specific to thunderbird. -->
 
 <!ENTITY remoteXUL.title "Remote XUL">
 <!ENTITY remoteXUL.longDesc "<p><ul><li>Bitte informieren Sie die Website-Eigentümer über dieses Problem.</li></ul></p>">
+
+<!ENTITY inadequateSecurityError.title "Diese Verbindung ist nicht sicher">
+<!-- LOCALIZATION NOTE (inadequateSecurityError.longDesc) - Do not translate
+     "NS_ERROR_NET_INADEQUATE_SECURITY". -->
+<!ENTITY inadequateSecurityError.longDesc "<p><span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten. Der Website-Administrator muss dieses Problem auf dem Server beheben, bevor Sie die Seite aufrufen können.</p><p>Fehlercode: NS_ERROR_NET_INADEQUATE_SECURITY</p>">

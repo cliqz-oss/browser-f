@@ -110,8 +110,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fxaSignedIn.tooltip "&syncBrand.shortName.label;-Einstellungen öffnen">
 <!ENTITY fxaSignInError.label "Mit &syncBrand.shortName.label; neu verbinden">
 <!ENTITY fxaUnverified.label "Bestätigen Sie Ihr Konto">
-<!ENTITY syncStartPanel2.heading "&syncBrand.shortName.label; aktiviert">
-<!ENTITY syncStartPanel2.subTitle "&brandShortName; beginnt sofort mit dem Synchronisieren.">
 
 
 <!ENTITY fullScreenMinimize.tooltip "Minimieren">
@@ -171,6 +169,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY recentBookmarks.label "Kürzlich als Lesezeichen gesetzt">
 <!ENTITY otherBookmarksCmd.label "Weitere Lesezeichen">
 <!ENTITY bookmarksToolbarChevron.tooltip "Weitere Lesezeichen anzeigen">
+<!ENTITY showRecentlyBookmarked.label     "Kürzlich hinzugefügte Lesezeichen anzeigen">
+<!ENTITY showRecentlyBookmarked.accesskey "z">
+<!ENTITY hideRecentlyBookmarked.label     "Kürzlich hinzugefügte Lesezeichen ausblenden">
+<!ENTITY hideRecentlyBookmarked.accesskey "b">
 
 <!ENTITY backCmd.label                "Zurück">
 <!ENTITY backButton.tooltip           "Eine Seite zurück">
@@ -228,6 +230,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY viewBookmarksSidebar2.label        "Lesezeichen-Sidebar anzeigen">
 <!ENTITY viewBookmarksToolbar.label         "Lesezeichen-Symbolleiste anzeigen">
 
+<!ENTITY containersMenu.label "Umgebungen">
+
 <!-- LOCALIZATION NOTE (bookmarksSidebarGtkCmd.commandkey): This command
   -  key should not contain the letters A-F, since these are reserved
   -  shortcut keys on Linux. -->
@@ -261,14 +265,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fileMenu.accesskey       "D">
 <!ENTITY newUserContext.label             "Neuer Tab in Umgebung">
 <!ENTITY newUserContext.accesskey         "m">
-<!ENTITY userContextPersonal.label        "Privat">
-<!ENTITY userContextPersonal.accesskey    "P">
-<!ENTITY userContextWork.label            "Arbeit">
-<!ENTITY userContextWork.accesskey        "A">
-<!ENTITY userContextBanking.label         "Banking">
-<!ENTITY userContextBanking.accesskey     "B">
-<!ENTITY userContextShopping.label        "Einkaufen">
-<!ENTITY userContextShopping.accesskey    "E">
 <!ENTITY newNavigatorCmd.label        "&#xad;Neues Fenster">
 <!ENTITY newNavigatorCmd.key        "N">
 <!ENTITY newNavigatorCmd.accesskey      "N">
@@ -560,19 +556,23 @@ items are mutually exclusive. -->
 <!ENTITY mediaMute.accesskey         "T">
 <!ENTITY mediaUnmute.label           "Ton an">
 <!ENTITY mediaUnmute.accesskey       "T">
-<!ENTITY mediaPlaybackRate.label     "Wiedergabegeschwindigkeit">
-<!ENTITY mediaPlaybackRate.accesskey "g">
-<!ENTITY mediaPlaybackRate050x.label "Zeitlupe (0.5×)">
-<!ENTITY mediaPlaybackRate050x.accesskey "Z">
-<!ENTITY mediaPlaybackRate100x.label "Normale Geschwindigkeit">
-<!ENTITY mediaPlaybackRate100x.accesskey "N">
-<!ENTITY mediaPlaybackRate150x.label "Schnell (1.5×)">
-<!ENTITY mediaPlaybackRate150x.accesskey "S">
-<!-- LOCALIZATION NOTE: "Ludicrous Speed" is a reference to the
+<!ENTITY mediaPlaybackRate2.label     "Wiedergabegeschwindigkeit">
+<!ENTITY mediaPlaybackRate2.accesskey "g">
+<!ENTITY mediaPlaybackRate050x2.label "Langsam (0.5×)">
+<!ENTITY mediaPlaybackRate050x2.accesskey "L">
+<!ENTITY mediaPlaybackRate100x2.label "Normal">
+<!ENTITY mediaPlaybackRate100x2.accesskey "N">
+<!ENTITY mediaPlaybackRate125x2.label "Schnell (1.25×)">
+<!ENTITY mediaPlaybackRate125x2.accesskey "S">
+<!ENTITY mediaPlaybackRate150x2.label "Sehr schnell (1.5×)">
+<!ENTITY mediaPlaybackRate150x2.accesskey "h">
+<!-- LOCALIZATION NOTE: "Ludicrous" is a reference to the
 movie "Space Balls" and is meant to say that this speed is very
 fast. -->
-<!ENTITY mediaPlaybackRate200x.label "Doppelte Geschwindigkeit (2×)">
-<!ENTITY mediaPlaybackRate200x.accesskey "D">
+<!ENTITY mediaPlaybackRate200x2.label "Doppelte Geschwindigkeit (2×)">
+<!ENTITY mediaPlaybackRate200x2.accesskey "D">
+<!ENTITY mediaLoop.label             "Endlosschleife">
+<!ENTITY mediaLoop.accesskey         "f">
 <!-- LOCALIZATION NOTE: The access keys for "Show Controls" and
 "Hide Controls" are the same because the two context-menu
 items are mutually exclusive. -->
@@ -680,7 +680,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
 <!ENTITY identity.connectionNotSecure "Verbindung ist nicht sicher">
 <!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
-<!ENTITY identity.connectionVerified1 "Sie sind derzeit mit dieser Website verbunden, welche betrieben wird von:">
+<!ENTITY identity.connectionVerified2 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
 <!ENTITY identity.insecureLoginForms2 "Ihre Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
 
