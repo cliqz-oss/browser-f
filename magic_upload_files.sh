@@ -41,7 +41,6 @@ echo '***** Uploading MAR and package files *****'
 $MAKE upload
 
 echo '***** Genereting build_properties.json *****'
-export LANG='en-US'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
 if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
