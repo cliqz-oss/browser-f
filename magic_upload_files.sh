@@ -38,6 +38,7 @@ if [ $CQZ_CERT_DB_PATH ]; then
 fi
 
 echo '***** Uploading MAR and package files *****'
+export LANG=$LANG
 $MAKE upload
 
 echo '***** Genereting build_properties.json *****'
