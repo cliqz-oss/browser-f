@@ -49,7 +49,7 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
-def withVagrant(vagrantFilePath, memory, cpu, vnc_port, rebuild = false, Closure body) {
+def withVagrant(String vagrantFilePath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
     def nodeId = "${env.BUILD_TAG}"
     createNode(nodeId)
     try {
@@ -57,8 +57,8 @@ def withVagrant(vagrantFilePath, memory, cpu, vnc_port, rebuild = false, Closure
 
         withEnv([
             "VAGRANT_VAGRANTFILE=${vagrantFilePath}",
-            "NODE_MEMORY=${memory}",
             "NODE_CPU_COUNT=${cpu}",
+            "NODE_MEMORY=${memory}",
             "NODE_VNC_PORT=${vnc_port}",
             "NODE_SECRET=${nodeSecret}",
             "NODE_ID=${nodeId}",
