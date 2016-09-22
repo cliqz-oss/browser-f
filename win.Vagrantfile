@@ -2,7 +2,7 @@
 # vi: set ft=ruby :
 
 Vagrant.configure(2) do |config|
-  config.vm.box = "browser-f|windows10|37"
+  config.vm.box = "browser-f|windows10|39"
 
   config.vm.network "public_network"
 
