@@ -37,7 +37,9 @@ CQZ_BUILD_ID
 COMMIT_ID
 REPO_URL
 CQZ_BUILD_DE_LOCALIZATION
-REBUILD_IMAGE
+LIN_BUILD_IMAGE
+MAC_BUILD_IMAGE
+WIN_BUILD_IMAGE
 CQZ_GOOGLE_API_KEY_CREDENTIAL_ID
 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
 CQZ_AWS_CREDENTIAL_ID
@@ -72,7 +74,6 @@ def getBaseBuildParams(jobName, entryPoint) {
       string(name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID', value: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID),
       string(name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID', value: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID),
       string(name: 'CQZ_AWS_CREDENTIAL_ID', value: CQZ_AWS_CREDENTIAL_ID),
-      booleanParam(name: 'REBUILD_IMAGE', value: REBUILD_IMAGE.toBoolean()),
       string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
       string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
       string(name: 'CQZ_BUILD_ID', value: CQZ_BUILD_ID),
@@ -86,6 +87,7 @@ def getBaseBuildParams(jobName, entryPoint) {
 def getBaseMacBuildParams() {
   def buildParams  = getBaseBuildParams('browser-f-mac', 'mac.Jenkinsfile')
   buildParams.parameters += [
+    booleanParam(name: 'MAC_REBUILD_IMAGE', value: MAC_REBUILD_IMAGE.toBoolean()),
     string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
     string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
     string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
@@ -94,6 +96,8 @@ def getBaseMacBuildParams() {
     string(name: 'MAR_CERT_CREDENTIAL_ID', value: MAR_CERT_CREDENTIAL_ID),
     string(name: 'MAR_CERT_PASS_CREDENTIAL_ID', value: MAR_CERT_PASS_CREDENTIAL_ID),
     string(name: 'VAGRANTFILE', value: 'mac.Vagrantfile'),
+    string(name: 'NODE_MEMORY', value: '8000'),
+    string(name: 'NODE_CPU_COUNT', value: '4'),
   ]
   return buildParams
 }
@@ -107,6 +111,7 @@ stage('Build') {
         'linux en': {
             def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
             buildParams.parameters += [
+              booleanParam(name: 'LIN_REBUILD_IMAGE', value: LIN_REBUILD_IMAGE.toBoolean()),
               string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
               string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
               string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
@@ -120,24 +125,41 @@ stage('Build') {
             def buildParams = getBaseMacBuildParams()
             buildParams.parameters += [
               string(name: 'CQZ_LANG', value: 'de'),
+              string(name: 'NODE_VNC_PORT', value: '7901'),
             ]
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         },
         'mac en': {
             def buildParams = getBaseMacBuildParams()
+            buildParams.parameters += [
+              string(name: 'NODE_VNC_PORT', value: '7900'),
+            ]
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
         },
         'win': {
             def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
             buildParams.parameters += [
+              booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
+              string(name: 'NODE_VNC_PORT', value: '7900'),
               string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
               string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
               string(name: 'WIN_BUILD_NODE', value: 'master'),
               string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
               string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
             ]
+            if (CQZ_RELEASE_CHANNEL == "release") {
+              buildParams.parameters += [
+                string(name: 'NODE_MEMORY', value: '16000'),
+                string(name: 'NODE_CPU_COUNT', value: '8'),
+              ]
+            } else {
+              buildParams.parameters += [
+                string(name: 'NODE_MEMORY', value: '8000'),
+                string(name: 'NODE_CPU_COUNT', value: '8'),
+              ]
+            }
             job = build buildParams
             submitBalrog(buildParams.job, job.id, 'obj/en_build_properties.json')
             submitBalrog(buildParams.job, job.id, 'obj/de_build_properties.json')
