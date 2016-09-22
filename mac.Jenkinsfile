@@ -21,7 +21,7 @@ node(MAC_BUILD_NODE) {
 
     def helpers = load "artifacts/build-helpers.groovy"
 
-    helpers.withVagrant("artifacts/${VAGRANTFILE}", MAC_REBUILD_IMAGE) { nodeId ->
+    helpers.withVagrant("artifacts/${VAGRANTFILE}", NODE_CPU_COUNT, NODE_MEMORY, NODE_VNC_PORT, MAC_REBUILD_IMAGE) { nodeId ->
       node(nodeId) {
         stage("Checkout") {
             helpers.checkoutSCM(REPO_URL, COMMIT_ID)
