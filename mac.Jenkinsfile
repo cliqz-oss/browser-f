@@ -1,5 +1,11 @@
 #!/usr/bin/env groovy
 
+// Check for required variables
+MAC_REBUILD_IMAGE
+NODE_MEMORY
+NODE_CPU_COUNT
+NODE_VNC_PORT
+
 /*
  TRIGGERING JOB
 
@@ -15,7 +21,7 @@ node(MAC_BUILD_NODE) {
 
     def helpers = load "artifacts/build-helpers.groovy"
 
-    helpers.withVagrant("artifacts/${VAGRANTFILE}") { nodeId ->
+    helpers.withVagrant("artifacts/${VAGRANTFILE}", MAC_REBUILD_IMAGE) { nodeId ->
       node(nodeId) {
         stage("Checkout") {
             helpers.checkoutSCM(REPO_URL, COMMIT_ID)

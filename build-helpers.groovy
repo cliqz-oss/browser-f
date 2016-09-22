@@ -20,27 +20,6 @@ def checkoutSCM(URL, COMMIT) {
     )
 }
 
-def startVagrantAgent(vagrantFileName='Vagrantfile') {
-    withEnv([
-        "VAGRANT_VAGRANTFILE=$vagrantFileName"]) {
-
-        sh """#!/bin/bash -l -x
-            vagrant halt
-            vagrant up
-        """
-
-        withCredentials([[
-            $class: 'StringBinding',
-            credentialsId: 'caf0ec30-fcc7-40c4-9f71-a6f96fdbf511',
-            variable: 'SLAVE_CREDS']]) {
-
-            sh """#!/bin/bash -l
-                vagrant ssh -c 'nohup java -jar slave.jar  -jnlpUrl http://magrathea:8080/computer/browser-f-mac-builder/slave-agent.jnlp -secret ${env.SLAVE_CREDS} > /dev/null 2>&1 &'
-            """
-        }
-    }
-}
-
 @NonCPS
 def createNode(nodeId) {
     def launcher = new JNLPLauncher()
@@ -70,7 +49,7 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
-def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
+def withVagrant(vagrantFilePath = "Vagrantfile", rebuild = false, Closure body) {
     def nodeId = "${env.BUILD_TAG}"
     createNode(nodeId)
     try {
@@ -83,6 +62,9 @@ def withVagrant(vagrantFilePath = "Vagrantfile", Closure body) {
             ]) {
 
             sh 'vagrant halt --force'
+            if (rebuild) {
+              sh 'vagrant destroy --force'
+            }
             sh  'vagrant up'
         }
 
