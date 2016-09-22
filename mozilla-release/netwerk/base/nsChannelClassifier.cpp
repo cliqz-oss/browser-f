@@ -35,17 +35,17 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
 
-using mozilla::ArrayLength;
-using mozilla::Preferences;
+namespace mozilla {
+namespace net {
 
 //
 // NSPR_LOG_MODULES=nsChannelClassifier:5
 //
-static mozilla::LazyLogModule gChannelClassifierLog("nsChannelClassifier");
+static LazyLogModule gChannelClassifierLog("nsChannelClassifier");
 
 #undef LOG
-#define LOG(args)     MOZ_LOG(gChannelClassifierLog, mozilla::LogLevel::Debug, args)
-#define LOG_ENABLED() MOZ_LOG_TEST(gChannelClassifierLog, mozilla::LogLevel::Debug)
+#define LOG(args)     MOZ_LOG(gChannelClassifierLog, LogLevel::Debug, args)
+#define LOG_ENABLED() MOZ_LOG_TEST(gChannelClassifierLog, LogLevel::Debug)
 
 NS_IMPL_ISUPPORTS(nsChannelClassifier,
                   nsIURIClassifierCallback)
@@ -67,9 +67,10 @@ nsChannelClassifier::ShouldEnableTrackingProtection(nsIChannel *aChannel,
     *result = false;
     return NS_OK;
 #if 0
-    if (!Preferences::GetBool("privacy.trackingprotection.enabled", false) &&
-        (!Preferences::GetBool("privacy.trackingprotection.pbmode.enabled",
-                               false) || !NS_UsePrivateBrowsing(aChannel))) {
+
+    nsCOMPtr<nsILoadContext> loadContext;
+    NS_QueryNotificationCallbacks(aChannel, loadContext);
+    if (!loadContext || !(loadContext->UseTrackingProtection())) {
       return NS_OK;
     }
 
@@ -233,8 +234,8 @@ nsChannelClassifier::NotifyTrackingProtectionDisabled(nsIChannel *aChannel)
     if (!docShell) {
       return NS_OK;
     }
-    nsCOMPtr<nsIDocument> doc = do_GetInterface(docShell, &rv);
-    NS_ENSURE_SUCCESS(rv, NS_OK);
+    nsCOMPtr<nsIDocument> doc = docShell->GetDocument();
+    NS_ENSURE_TRUE(doc, NS_OK);
 
     // Notify nsIWebProgressListeners of this security event.
     // Can be used to change the UI state.
@@ -426,7 +427,7 @@ nsChannelClassifier::MarkEntryClassified(nsresult status)
 
     if (LOG_ENABLED()) {
       nsAutoCString errorName;
-      mozilla::GetErrorName(status, errorName);
+      GetErrorName(status, errorName);
       nsCOMPtr<nsIURI> uri;
       mChannel->GetURI(getter_AddRefs(uri));
       nsAutoCString spec;
@@ -545,8 +546,8 @@ nsChannelClassifier::SetBlockedTrackingContent(nsIChannel *channel)
   if (!docShell) {
     return NS_OK;
   }
-  nsCOMPtr<nsIDocument> doc = do_GetInterface(docShell, &rv);
-  NS_ENSURE_SUCCESS(rv, NS_OK);
+  nsCOMPtr<nsIDocument> doc = docShell->GetDocument();
+  NS_ENSURE_TRUE(doc, NS_OK);
 
   // This event might come after the user has navigated to another page.
   // To prevent showing the TrackingProtection UI on the wrong page, we need to
@@ -668,7 +669,7 @@ nsChannelClassifier::OnClassifyComplete(nsresult aErrorCode)
     if (mSuspendedChannel) {
       nsAutoCString errorName;
       if (LOG_ENABLED()) {
-        mozilla::GetErrorName(aErrorCode, errorName);
+        GetErrorName(aErrorCode, errorName);
         LOG(("nsChannelClassifier[%p]:OnClassifyComplete %s (suspended channel)",
              this, errorName.get()));
       }
@@ -703,3 +704,6 @@ nsChannelClassifier::OnClassifyComplete(nsresult aErrorCode)
 
     return NS_OK;
 }
+
+} // namespace net
+} // namespace mozilla

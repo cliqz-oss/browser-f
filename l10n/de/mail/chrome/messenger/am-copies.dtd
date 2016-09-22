@@ -1,3 +1,7 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!-- extracted from am-copies.xul -->
 
 <!ENTITY copyAndFolderTitle.label "Kopien &amp; Ordner">
@@ -32,7 +36,7 @@
 <!ENTITY archiveInOtherFolder.label "Anderer Ordner:">
 <!ENTITY archiveInOtherFolder.accesskey "d">
 <!ENTITY specialFolders.label "Entwürfe und Vorlagen">
-<!ENTITY keepDrafts.label "Entwürfe speichern unter:">
+<!ENTITY keepDrafts2.label "Entwürfe speichern unter:">
 <!-- LOCALIZATION NOTE (draftsFolderOn.label): OK to translate this, bug #57440 -->
 <!ENTITY draftsFolderOn.label "Ordner &quot;Entwürfe&quot; in:">
 <!ENTITY draftsFolderOn.accesskey "E">

@@ -385,7 +385,7 @@ Service::minimizeMemory()
       // We are on the wrong thread, the query should be executed on the
       // opener thread, so we must dispatch to it.
       nsCOMPtr<nsIRunnable> event =
-        NS_NewRunnableMethodWithArg<const nsCString>(
+        NewRunnableMethod<const nsCString>(
           conn, &Connection::ExecuteSimpleSQL, shrinkPragma);
       conn->threadOpenedOn->Dispatch(event, NS_DISPATCH_NORMAL);
     }
@@ -682,7 +682,7 @@ Service::OpenSpecialDatabase(const char *aStorageKey,
 
 namespace {
 
-class AsyncInitDatabase final : public nsRunnable
+class AsyncInitDatabase final : public Runnable
 {
 public:
   AsyncInitDatabase(Connection* aConnection,
@@ -704,7 +704,7 @@ public:
                                : mConnection->initialize();
     if (NS_FAILED(rv)) {
       nsCOMPtr<nsIRunnable> closeRunnable =
-        NS_NewRunnableMethodWithArg<mozIStorageCompletionCallback*>(
+        NewRunnableMethod<mozIStorageCompletionCallback*>(
           mConnection.get(),
           &Connection::AsyncClose,
           nullptr);
