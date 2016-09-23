@@ -19,6 +19,7 @@ if exist ./pkg_%lang% rmdir /q /s "pkg_%lang%"
 if not exist ./pkg_%lang% (goto :error)
 
 echo %CLZ_SIGNTOOL_PATH%
+set CLZ_CERTIFICATE_PATH=C:\tmp\c.p12
 
 cd pkg_%lang%
 for /R %%f in (
