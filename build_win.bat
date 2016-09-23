@@ -2,9 +2,6 @@
 :: The main build script for CLIQZfox
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-@ECHO OFF
-SETLOCAL
-
 ECHO [%TIME%] BUILD.CMD STARTS =========
 
 :::::::::::::::::::::::::::::::::::
@@ -125,4 +122,3 @@ IF ERRORLEVEL 1 (
 )
 
 ECHO [%TIME%] INFO: Upload successful. We are done here, thanks for watching.
-ENDLOCAL

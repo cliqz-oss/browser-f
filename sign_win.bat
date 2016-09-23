@@ -20,7 +20,8 @@ if not exist ./pkg_%lang% (goto :error)
 echo %CLZ_SIGNTOOL_PATH%
 
 copy %CLZ_CERTIFICATE_PATH% cert.p12
-set %CLZ_CERTIFICATE_PATH%=%CD%\cert.p12
+set CLZ_CERTIFICATE_PATH=%CD%\cert.p12
+echo %CLZ_SIGNTOOL_PATH%
 
 cd pkg_%lang%
 for /R %%f in (
