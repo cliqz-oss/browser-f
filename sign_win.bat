@@ -48,7 +48,7 @@ copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\i
 
 echo %CLZ_CERTIFICATE_PATH% > cert_path_tmp
 echo %CLZ_CERTIFICATE_PATH% > cert.pfx
-powershell -command "Start-Sleep -s 5"
+powershell -command "Start-Sleep -s 500"
 ECHO "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server_sha256% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% /as dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
