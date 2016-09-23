@@ -14,6 +14,7 @@ set timestamp_server_sha1=http://timestamp.verisign.com/scripts/timstamp.dll
 set timestamp_server_sha256=http://timestamp.geotrust.com/tsa
 
 if exist ./pkg_%lang% rmdir /q /s "pkg_%lang%"
+%archivator_exe% l dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 %archivator_exe% x -opkg_%lang% -y dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 if not exist ./pkg_%lang% (goto :error)
 
