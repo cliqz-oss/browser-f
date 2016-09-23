@@ -11,10 +11,11 @@
   - A good criteria is the language in which you'd find the best
   - documentation on web development on the web. -->
 
-<!-- LOCALIZATION NOTE (netmonitorUI.perfNotice1/2): These are the labels displayed
+<!-- LOCALIZATION NOTE (netmonitorUI.perfNotice1/2/3): These are the labels displayed
   -  in the network table when empty to start performance analysis. -->
 <!ENTITY netmonitorUI.perfNotice1         "• Auf die">
 <!ENTITY netmonitorUI.perfNotice2         "-Schaltfläche klicken, um die Netzwerkanalyse zu starten.">
+<!ENTITY netmonitorUI.perfNotice3         "Analysieren">
 
 <!-- LOCALIZATION NOTE (netmonitorUI.reload1/2/3): These are the labels displayed
   -  in the network table when empty to start logging network requests. -->
@@ -37,6 +38,10 @@
 <!-- LOCALIZATION NOTE (netmonitorUI.toolbar.domain): This is the label displayed
   -  in the network table toolbar, above the "domain" column. -->
 <!ENTITY netmonitorUI.toolbar.domain      "Host">
+
+<!-- LOCALIZATION NOTE (netmonitorUI.toolbar.cause): This is the label displayed
+  -  in the network table toolbar, above the "cause" column. -->
+<!ENTITY netmonitorUI.toolbar.cause        "Ursprung">
 
 <!-- LOCALIZATION NOTE (netmonitorUI.toolbar.type): This is the label displayed
   -  in the network table toolbar, above the "type" column. -->

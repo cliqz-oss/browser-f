@@ -2,23 +2,23 @@
 # vi: set ft=ruby :
 
 Vagrant.configure(2) do |config|
-  config.vm.box = "cliqz/cliqzfox-win10-builder_vmware"
+  config.vm.box = "browser-f|windows10|39"
 
   config.vm.network "public_network"
 
   config.vm.guest = :windows
   config.vm.boot_timeout = 500
   config.vm.communicator = "winrm"
-  config.winrm.username = "cliqzfoxer"
-  config.winrm.password = "cliqzfoxer-245"
+  config.winrm.username = "vagrant"
+  config.winrm.password = "vagrant"
   config.winrm.timeout = 21600 # 6 hours
 
   config.vm.provider "vmware_workstation" do |v|
     v.gui = false
-    v.memory = 4048
-    v.cpus = 6
+    v.memory = ENV["NODE_MEMORY"]
+    v.cpus = ENV["NODE_CPU_COUNT"]
     v.vmx["RemoteDisplay.vnc.enabled"] = "true"
-    v.vmx["RemoteDisplay.vnc.port"] = "7905"
+    v.vmx["RemoteDisplay.vnc.port"] = ENV["NODE_VNC_PORT"]
   end
 
   config.vm.provision "shell", run: "always", inline: <<-SHELL

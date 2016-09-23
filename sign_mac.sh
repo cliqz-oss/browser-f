@@ -22,5 +22,3 @@ do
   appdmg CLIQZ-dmg.json $SIGNED_DMG
   cp $SIGNED_DMG $DMG
 done
-
-codesign -s $CQZ_CERT_NAME --force --deep obj/i386/dist/CLIQZ.app

@@ -1,5 +1,11 @@
 #!/usr/bin/env groovy
 
+// Check for required variables
+LIN_REBUILD_IMAGE
+NODE_MEMORY
+NODE_CPU_COUNT
+NODE_VNC_PORT
+
 /*
 * Linux builder
 * Note: Checkout being done by a triggering job
@@ -13,7 +19,7 @@ CQZ_S3_DEBIAN_REPOSITORY_URL
 stage('Build Image') {
 
     // Build params with context
-    def cacheParams = REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
+    def cacheParams = LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
     // Avoiding docker context
     sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'

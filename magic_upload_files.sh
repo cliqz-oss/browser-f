@@ -38,10 +38,10 @@ if [ $CQZ_CERT_DB_PATH ]; then
 fi
 
 echo '***** Uploading MAR and package files *****'
+export LANG=$LANG
 $MAKE upload
 
 echo '***** Genereting build_properties.json *****'
-export LANG='en-US'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
 if [ $CQZ_BUILD_DE_LOCALIZATION ]; then

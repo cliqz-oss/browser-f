@@ -1,5 +1,11 @@
 #!/usr/bin/env groovy
 
+// Check for required variables
+WIN_REBUILD_IMAGE
+NODE_MEMORY
+NODE_CPU_COUNT
+NODE_VNC_PORT
+
 /*
  TRIGGERING JOB
 
@@ -15,7 +21,7 @@ node(WIN_BUILD_NODE) {
 
     def helpers = load "artifacts/build-helpers.groovy"
 
-    helpers.withVagrant("artifacts/${VAGRANTFILE}") { nodeId ->
+    helpers.withVagrant("artifacts/${VAGRANTFILE}", NODE_CPU_COUNT.toInteger(), NODE_MEMORY.toInteger(), NODE_VNC_PORT.toInteger(), WIN_REBUILD_IMAGE.toBoolean()) { nodeId ->
       node(nodeId) {
         stage("Checkout") {
             helpers.checkoutSCM(REPO_URL, COMMIT_ID)

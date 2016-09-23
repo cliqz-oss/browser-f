@@ -6,7 +6,8 @@
 <!ENTITY window.width                 "56em">
 <!ENTITY window.height                "8em">
 
-<!ENTITY doNotTrackCheckbox.label     "Websites mitteilen, meine Nutzeraktivitäten nicht zu verfolgen">
-<!ENTITY doNotTrackCheckbox.accesskey "W">
+<!ENTITY doNotTrackCheckbox2.label    "Websites immer mitteilen, meine Nutzeraktivitäten nicht zu verfolgen">
+<!ENTITY doNotTrackCheckbox2.accesskey "W">
 
+<!ENTITY doNotTrackTPInfo.description "&brandShortName; wird bei aktiviertem Schutz vor Aktivitätenverfolgung ein Signal senden, dass Ihre Aktivitäten im Internet nicht verfolgt werden sollen.">
 <!ENTITY doNotTrackLearnMore.label    "Weitere Informationen">

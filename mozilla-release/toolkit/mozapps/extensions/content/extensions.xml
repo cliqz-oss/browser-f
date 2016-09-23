@@ -1792,7 +1792,7 @@
                         oncommand="document.getBindingParent(this).uninstall();"/>
             <xul:button anonid="install" class="addon-control install"
                         label="&cmd.installAddon.label;"
-                        oncommand="document.getBindingParent(this).install();"/>
+                        oncommand="document.getBindingParent(this).install(this);"/>
           </xul:hbox>
         </xul:vbox>
       </xul:hbox>
@@ -1810,7 +1810,9 @@
          icon.src = this.mAddon.icons["64"] || this.mAddon.icons["32"];
       ]]></constructor>
       <method name="install">
+        <parameter name="button"/>
         <body><![CDATA[
+          button.setAttribute("disabled", "true"); //Disable the button after user clicks on it
           var progress = document.getAnonymousElementByAttribute(this, "anonid", "install");
           AddonManager.getInstallForURL(this.mAddon.sourceURI,
             function(addon) {
