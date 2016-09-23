@@ -19,10 +19,6 @@ if not exist ./pkg_%lang% (goto :error)
 
 echo %CLZ_SIGNTOOL_PATH%
 
-copy %CLZ_CERTIFICATE_PATH% cert.p12
-set CLZ_CERTIFICATE_PATH=%CD%\cert.p12
-echo %CLZ_SIGNTOOL_PATH%
-
 cd pkg_%lang%
 for /R %%f in (
   *.exe *.dll
@@ -46,9 +42,7 @@ del installer.7z
 cd ..
 copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\instgen\app.tag + pkg_%lang%\installer.7z dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 
-echo %CLZ_CERTIFICATE_PATH% > cert_path_tmp
-echo %CLZ_CERTIFICATE_PATH% > cert.pfx
-powershell -command "Start-Sleep -s 500"
+powershell -command "Start-Sleep -s 40"
 ECHO "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server_sha256% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% /as dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
