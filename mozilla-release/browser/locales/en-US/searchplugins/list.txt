@@ -1,7 +1,11 @@
 amazondotcom
 bing
+ecosia
+youtube
 google
 twitter
 wikipedia
 yahoo
+gmaps
+gimages
 yahoo-en-CA:hidden
