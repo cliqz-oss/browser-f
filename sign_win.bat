@@ -45,7 +45,7 @@ copy /b browser\installer\windows\instgen\7zSD.sfx + browser\installer\windows\i
 type %CLZ_CERTIFICATE_PATH%
 copy %CLZ_CERTIFICATE_PATH% cert-new.p12
 type cert-new.p12
-ECHO powershell -ExecutionPolicy bypass -file "%CD%\..\sign_win_file.ps1" %CD%/cert-new.p12 %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
+powershell -ExecutionPolicy bypass -file "%CD%\..\sign_win_file.ps1" %CD%\cert-new.p12 %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 powershell -ExecutionPolicy bypass -file "%CD%\..\sign_win_file.ps1" %CLZ_CERTIFICATE_PATH% %CLZ_CERTIFICATE_PWD% dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server_sha256% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% /as dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
 "%CLZ_SIGNTOOL_PATH%" verify /pa dist\install\sea\CLIQZ-%ff_exe%.win32.installer.exe
