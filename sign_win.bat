@@ -1,4 +1,4 @@
-"%VS140COMNTOOLS%\..\..\VC\vcvarsall.bat"
+call "%VS140COMNTOOLS%\..\..\VC\vcvarsall.bat"
 set
 cd %CQZ_WORKSPACE%\obj
 
