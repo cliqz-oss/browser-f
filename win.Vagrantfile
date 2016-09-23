@@ -21,7 +21,7 @@ Vagrant.configure(2) do |config|
     v.vmx["RemoteDisplay.vnc.port"] = ENV["NODE_VNC_PORT"]
   end
 
-  config.vm.provision "shell", run: "always", inline: <<-SHELL
+  config.vm.provision "shell", privileged: false, run: "always", inline: <<-SHELL
     cd c:/jenkins
     Remove-Item slave.jar -ErrorAction SilentlyContinue
     wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
