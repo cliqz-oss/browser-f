@@ -48,23 +48,17 @@ withCredentials([
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
     ]) {
       stage('build') {
-        try {
         bat '''
           set CQZ_WORKSPACE=%cd%
           build_win.bat
         '''
-        } catch (e) {
-
-        }
-        input "?"
       }
     }
-/*
+
     if (CQZ_BUILD_DE_LOCALIZATION == "1") {
       archiveArtifacts 'obj/en_build_properties.json'
       archiveArtifacts 'obj/de_build_properties.json'
     } else {
       archiveArtifacts 'obj/build_properties.json'
     }
-    */
  }

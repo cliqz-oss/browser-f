@@ -65,7 +65,6 @@ IF ERRORLEVEL 1 (
 ECHO [%TIME%] INFO: Build successful. Signing...
 CD %CQZ_WORKSPACE%
 CALL sign_win.bat
-exit
 
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Signing failed! Exiting.
