@@ -2,9 +2,6 @@
 :: The main build script for CLIQZfox
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 
-@ECHO OFF
-SETLOCAL
-
 ECHO [%TIME%] BUILD.CMD STARTS =========
 
 :::::::::::::::::::::::::::::::::::
@@ -36,7 +33,7 @@ IF "%CQZ_RELEASE_CHANNEL%" == "" SET CQZ_RELEASE_CHANNEL=beta
 
 SET CQZ_CERT_DB_PATH=C:\certdb
 SET WIN32_REDIST_DIR=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\redist\x86\Microsoft.VC140.CRT\
-SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\8.1\bin\x86\signtool.exe
+SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe
 
 ECHO INFO: Build configuration - %CQZ_RELEASE_CHANNEL% win32 (Localization: %CQZ_BUILD_DE_LOCALIZATION%)
 
@@ -124,4 +121,3 @@ IF ERRORLEVEL 1 (
 )
 
 ECHO [%TIME%] INFO: Upload successful. We are done here, thanks for watching.
-ENDLOCAL

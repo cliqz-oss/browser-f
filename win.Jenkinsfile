@@ -21,7 +21,7 @@ node(WIN_BUILD_NODE) {
 
     def helpers = load "artifacts/build-helpers.groovy"
 
-    helpers.withVagrant("artifacts/${VAGRANTFILE}", NODE_CPU_COUNT.toInteger(), NODE_MEMORY.toInteger(), NODE_VNC_PORT.toInteger(), WIN_REBUILD_IMAGE.toBoolean()) { nodeId ->
+    helpers.withVagrant("artifacts/${VAGRANTFILE}", "c:\\jenkins", NODE_CPU_COUNT.toInteger(), NODE_MEMORY.toInteger(), NODE_VNC_PORT.toInteger(), WIN_REBUILD_IMAGE.toBoolean()) { nodeId ->
       node(nodeId) {
         stage("Checkout") {
             helpers.checkoutSCM(REPO_URL, COMMIT_ID)

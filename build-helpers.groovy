@@ -21,11 +21,11 @@ def checkoutSCM(URL, COMMIT) {
 }
 
 @NonCPS
-def createNode(nodeId) {
+def createNode(nodeId, jenkinsFolderPath) {
     def launcher = new JNLPLauncher()
     def node = new DumbSlave(
         nodeId,
-        "/jenkins",
+        jenkinsFolderPath,
         launcher
     )
     Jenkins.instance.addNode(node)
@@ -49,9 +49,9 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
-def withVagrant(String vagrantFilePath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
+def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
     def nodeId = "${env.BUILD_TAG}"
-    createNode(nodeId)
+    createNode(nodeId, jenkinsFolderPath)
     try {
         def nodeSecret = getNodeSecret(nodeId)
 

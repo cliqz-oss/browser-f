@@ -2,7 +2,8 @@
 # vi: set ft=ruby :
 
 Vagrant.configure(2) do |config|
-  config.vm.box = "browser-f|windows10|39"
+  config.vm.box = "cliqz/cliqzfox-win10-builder_vmware"
+
 
   config.vm.network "public_network"
 
