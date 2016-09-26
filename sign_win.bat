@@ -34,9 +34,6 @@ for /R %%f in (
   if ERRORLEVEL 1 (goto :error)
 )
 
-copy /b %CQZ_WORKSPACE%\cliqz-helpers\firefox_files\voucher.bin core\voucher.bin
-copy /b %CQZ_WORKSPACE%\cliqz-helpers\firefox_files\plugin-container.exe core\plugin-container.exe
-
 del installer.7z
 %archivator_exe% a -r -t7z installer.7z -mx -m0=BCJ2 -m1=LZMA:d25 -m2=LZMA:d19 -m3=LZMA:d1 -mb0:1 -mb0s1:2 -mb0s2:3
 cd ..

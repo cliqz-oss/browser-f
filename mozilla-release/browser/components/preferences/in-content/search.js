@@ -13,9 +13,11 @@ XPCOMUtils.defineLazyModuleGetter(this, "Task",
 const ENGINE_FLAVOR = "text/x-moz-search-engine";
 
 document.addEventListener("Initialized", () => {
-  if (!AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+  // CLIQZ. Hide checkbox always, can not be used in Windows10 anymore (DB-872)
+  // I think this will be removed from FF soon
+  //if (!AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
     document.getElementById("redirectSearchCheckbox").hidden = true;
-  }
+  //}
 });
 
 var gEngineView = null;
