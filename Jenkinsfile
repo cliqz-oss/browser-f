@@ -152,12 +152,12 @@ stage('Build') {
             if (CQZ_RELEASE_CHANNEL == "release") {
               buildParams.parameters += [
                 string(name: 'NODE_MEMORY', value: '16000'),
-                string(name: 'NODE_CPU_COUNT', value: '8'),
+                string(name: 'NODE_CPU_COUNT', value: '6'),
               ]
             } else {
               buildParams.parameters += [
                 string(name: 'NODE_MEMORY', value: '8000'),
-                string(name: 'NODE_CPU_COUNT', value: '8'),
+                string(name: 'NODE_CPU_COUNT', value: '6'),
               ]
             }
             job = build buildParams
