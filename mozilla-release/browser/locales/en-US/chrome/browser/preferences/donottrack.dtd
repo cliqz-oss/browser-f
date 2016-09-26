@@ -11,3 +11,4 @@
 
 <!ENTITY doNotTrackTPInfo.description "&brandShortName; will send a signal that you don’t want to be tracked whenever Tracking Protection is on.">
 <!ENTITY doNotTrackLearnMore.label    "Learn More">
+<!ENTITY doNotTrackLearnMore.url    "https://en.wikipedia.org/wiki/Do_Not_Track">
