@@ -1,0 +1,16 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<SearchPlugin xmlns="http://www.mozilla.org/2006/browser/search/">
+<ShortName>Google Images</ShortName>
+<Description>Google Images</Description>
+<InputEncoding>UTF-8</InputEncoding>
+<Image width="16" height="16">data:image/gif;base64,R0lGODlhEgANAOMKAAAAABUVFRoaGisrKzk5OUxMTGRkZLS0tM/Pz9/f3////////////////////////yH5BAEKAA8ALAAAAAASAA0AAART8Ml5Arg3nMkluQIhXMRUYNiwSceAnYAwAkOCGISBJC4mSKMDwpJBHFC/h+xhQAEMSuSo9EFRnSCmEzrDComAgBGbsuF0PHJq9WipnYJB9/UmFyIAOw==</Image>
+<Url type="application/x-suggestions+json" method="GET" template="https://www.google.de/search"/>
+<Url type="text/html" method="GET" template="https://www.google.de/search" rel="searchform">
+  <Param name="q" value="{searchTerms}"/>
+  <Param name="tbm" value="isch"/>
+  <Param name="hl" value="de"/>
+</Url>
+</SearchPlugin>
