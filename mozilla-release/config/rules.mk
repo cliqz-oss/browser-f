@@ -1155,7 +1155,7 @@ ifndef CQZ_BUILD_ID
 CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser_beta/latest.xpi"
 HTTPSE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_beta/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser_beta-signed.xpi"
 ifeq (release, $(CQZ_RELEASE_CHANNEL))
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.9.1.xpi"
+CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.9.2.xpi"
 HTTPSE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi"
 endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
 endif  # CQZ_BUILD_ID
