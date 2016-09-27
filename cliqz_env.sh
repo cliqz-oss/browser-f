@@ -93,4 +93,10 @@ if [ $IS_MAC_OS ]; then
   OBJ_DIR=$I386DIR
 fi
 
+# automatic forget tab - start
+wget -O adult-domains.bin https://s3.amazonaws.com/cdn.cliqz.com/browser-f/APT/adult-domains.bin
+export CQZ_AUTO_PRIVATE_TAB=1
+export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
+# automatic forget tab - end
+
 ROOT_PATH=$PWD
