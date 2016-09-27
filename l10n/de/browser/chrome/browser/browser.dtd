@@ -48,6 +48,7 @@ can reach it easily. -->
 <!ENTITY  undoCloseTab.accesskey      		"G">
 <!ENTITY  closeTab.label         			"Tab schließen">
 <!ENTITY  closeTab.accesskey         		"c">
+<!ENTITY  duplicateTab.label                 "Tab duplizieren">
 
 <!ENTITY  listAllTabs.label      "Alle Tabs auflisten">
 
