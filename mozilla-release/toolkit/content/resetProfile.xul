@@ -29,7 +29,7 @@
   <label value="&refreshProfile.dialog.description2;"/>
 
   <vbox id="migratedItems">
-    <label class="migratedLabel" value="&refreshProfile.dialog.items.label1;"/>
+    <label class="migratedLabel" hidden="true" value="&refreshProfile.dialog.items.label1;"/>
     <label class="migratedLabel" value="&refreshProfile.dialog.items.label2;"/>
   </vbox>
 </dialog>
