@@ -8,4 +8,5 @@ wikipedia
 yahoo
 gmaps
 gimages
+startpage
 yahoo-en-CA:hidden
