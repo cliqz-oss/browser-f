@@ -1039,7 +1039,7 @@ var SessionStoreInternal = {
           this._globalState.setFromState(aInitialState);
 
           let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) &&
-              gSessionStartup.willOverrideHomepage;
+            !this._prefBranch.getBoolPref("startup.addFreshTab");
           let options = {firstWindow: true, overwriteTabs: overwrite};
           this.restoreWindows(aWindow, aInitialState, options);
         }
@@ -2092,10 +2092,14 @@ var SessionStoreInternal = {
     }
 
     // Create a new tab.
+    // CLIQZ (DB-919): Added aTab.private param into addTab so that new tab will be private
+    // if it's duplicated from a private tab
     let userContextId = aTab.getAttribute("usercontextid");
     let newTab = aTab == aWindow.gBrowser.selectedTab ?
-      aWindow.gBrowser.addTab(null, {relatedToCurrent: true, ownerTab: aTab, userContextId}) :
-      aWindow.gBrowser.addTab(null, {userContextId});
+      aWindow.gBrowser.addTab(null,
+        {relatedToCurrent: true, ownerTab: aTab, userContextId, private: aTab.private}) :
+      aWindow.gBrowser.addTab(null,
+        {userContextId, private: aTab.private});
 
     // Set tab title to "Connecting..." and start the throbber to pretend we're
     // doing something while actually waiting for data from the frame script.
