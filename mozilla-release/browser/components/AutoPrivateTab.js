@@ -335,7 +335,13 @@ AutoPrivateTabDatabase.prototype = {
     tab.private = true;
     tabBrowser.reload();
 
-    if (remember) {
+    if (domain) {
+      this._removeDomainData(tab, domain, !remember);
+    }
+  },
+
+  _removeDomainData: function APT__removeDomainData(tab, domain, promptUser) {
+    if (!promptUser) {
       ForgetAboutSite.removeDataFromDomain(domain);
     }
     else {
