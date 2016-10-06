@@ -2,13 +2,13 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <?define ProdLang = "en-US" ?>
   <?define ProdLangCode = "1033" ?>
-  <?define ProdVer = "1.6.1" ?>
+  <?define ProdVer = "1.7.0" ?>
   <?define ProdPlatform = "x86" ?>
   <?define ProdCode = "79435031-a3dc-4210-bf50-11c25ee5509c" ?>
   <?define ProdUpgradeCode = "3cffeecc-4af4-4fbd-8b3a-6f73ab692042" ?>
   <?define ProdSetupFile = ".\CLIQZ-$(var.ProdVer).$(var.ProdLang).win32.installer.exe" ?>
-  <Product Id="$(var.ProdCode)" Name="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" Language="$(var.ProdLangCode)" Version="$(var.ProdVer)" Manufacturer="CLIQZ GmbH" UpgradeCode="$(var.ProdUpgradeCode)">
-    <Package InstallerVersion="200" Compressed="yes" Description="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" InstallScope="perMachine" Keywords="CLIQZ, CLIQZ Browser, Internet, Browser, CLIQZ Browser $(var.ProdVer)" Languages="$(var.ProdLangCode)" Manufacturer="CLIQZ GmbH" Platform="$(var.ProdPlatform)" ReadOnly="yes" InstallPrivileges="elevated" />
+  <Product Id="$(var.ProdCode)" Name="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" Language="$(var.ProdLangCode)" Version="$(var.ProdVer)" Manufacturer="Cliqz GmbH" UpgradeCode="$(var.ProdUpgradeCode)">
+    <Package InstallerVersion="200" Compressed="yes" Description="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" InstallScope="perMachine" Keywords="CLIQZ, CLIQZ Browser, Internet, Browser, CLIQZ Browser $(var.ProdVer)" Languages="$(var.ProdLangCode)" Manufacturer="Cliqz GmbH" Platform="$(var.ProdPlatform)" ReadOnly="yes" InstallPrivileges="elevated" />
     <Feature Id="DefaultFeature" Title="CLIQZ Browser $(var.ProdVer) ($(var.ProdLang))" Level="1" Display="hidden" />
     <Binary Id="FX_SETUP_EXE" SourceFile="$(var.ProdSetupFile)" />
     <MajorUpgrade AllowDowngrades="no" IgnoreRemoveFailure="yes" Schedule="afterInstallInitialize" DowngradeErrorMessage="Downgrading is not allowed. You must manually remove this version in order to install an earlier version." />
@@ -38,6 +38,7 @@
         <Component Feature="DefaultFeature" Guid="fdd0f38b-3c16-4bdb-9f82-363171114f83" Id="comp.CONFIG.INI.ALWAYS" KeyPath="yes">
           <IniFile Id="ini.add.CONFIG.INI.Install.QuickLaunchShortcut" Action="addLine" Key="QuickLaunchShortcut" Name="config.ini" Section="Install" Value="[QUICK_LAUNCH_SHORTCUT]" Directory="TempFolder" />
           <IniFile Id="ini.add.CONFIG.INI.Install.DesktopShortcut" Action="addLine" Key="DesktopShortcut" Name="config.ini" Section="Install" Value="[DESKTOP_SHORTCUT]" Directory="TempFolder" />
+          <IniFile Id="ini.add.CONFIG.INI.Install.TaskbarShortcut" Action="addLine" Key="TaskbarShortcut" Name="config.ini" Section="Install" Value="[TASKBAR_SHORTCUT]" Directory="TempFolder" />
           <IniFile Id="ini.add.CONFIG.INI.Install.StartMenuShortcut" Action="addLine" Key="StartMenuShortcut" Name="config.ini" Section="Install" Value="[START_MENU_SHORTCUT]" Directory="TempFolder" />
           <IniFile Id="ini.add.CONFIG.INI.Install.MaintenanceService" Action="addLine" Key="MaintenanceService" Name="config.ini" Section="Install" Value="[MAINTENANCE_SERVICE]" Directory="TempFolder" />
           <RemoveFile Id="rf.CONFIG.INI" Name="config.ini" On="both" />
@@ -56,6 +57,7 @@
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPURLINFOABOUT" Value="http://cliqz.com/" />
     <Property Id="DESKTOP_SHORTCUT" Value="true" />
+    <Property Id="TASKBAR_SHORTCUT" Value="true" />
     <Property Id="INSTALL_DIRECTORY_NAME" Value="CLIQZ" />
     <Property Id="INSTALL_DIRECTORY_PATH" Value="DEFAULT" />
     <Property Id="LIMITUI" Value="1" />

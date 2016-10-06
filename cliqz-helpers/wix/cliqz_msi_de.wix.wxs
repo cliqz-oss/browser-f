@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <?define ProdLang = "de" ?>
   <?define ProdLangCode = "1033" ?>
-  <?define ProdVer = "1.6.1" ?>
+  <?define ProdVer = "1.7.0" ?>
   <?define ProdPlatform = "x86" ?>
   <?define ProdCode = "620b0a0e-13cf-48a6-be8e-bdf830f68b4c" ?>
   <?define ProdUpgradeCode = "25ff3738-fcce-4fbe-824b-61ba38885709" ?>
@@ -38,6 +38,7 @@
         <Component Feature="DefaultFeature" Guid="9eb0b50f-46dd-46fb-91b6-6e2bd4b8dd2d" Id="comp.CONFIG.INI.ALWAYS" KeyPath="yes">
           <IniFile Id="ini.add.CONFIG.INI.Install.QuickLaunchShortcut" Action="addLine" Key="QuickLaunchShortcut" Name="config.ini" Section="Install" Value="[QUICK_LAUNCH_SHORTCUT]" Directory="TempFolder" />
           <IniFile Id="ini.add.CONFIG.INI.Install.DesktopShortcut" Action="addLine" Key="DesktopShortcut" Name="config.ini" Section="Install" Value="[DESKTOP_SHORTCUT]" Directory="TempFolder" />
+          <IniFile Id="ini.add.CONFIG.INI.Install.TaskbarShortcut" Action="addLine" Key="TaskbarShortcut" Name="config.ini" Section="Install" Value="[TASKBAR_SHORTCUT]" Directory="TempFolder" />
           <IniFile Id="ini.add.CONFIG.INI.Install.StartMenuShortcut" Action="addLine" Key="StartMenuShortcut" Name="config.ini" Section="Install" Value="[START_MENU_SHORTCUT]" Directory="TempFolder" />
           <IniFile Id="ini.add.CONFIG.INI.Install.MaintenanceService" Action="addLine" Key="MaintenanceService" Name="config.ini" Section="Install" Value="[MAINTENANCE_SERVICE]" Directory="TempFolder" />
           <RemoveFile Id="rf.CONFIG.INI" Name="config.ini" On="both" />
@@ -56,6 +57,7 @@
     <Property Id="ARPNOMODIFY" Value="1" />
     <Property Id="ARPURLINFOABOUT" Value="http://cliqz.com/" />
     <Property Id="DESKTOP_SHORTCUT" Value="true" />
+    <Property Id="TASKBAR_SHORTCUT" Value="true" />
     <Property Id="INSTALL_DIRECTORY_NAME" Value="CLIQZ" />
     <Property Id="INSTALL_DIRECTORY_PATH" Value="DEFAULT" />
     <Property Id="LIMITUI" Value="1" />
