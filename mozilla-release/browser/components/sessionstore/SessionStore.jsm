@@ -1039,7 +1039,7 @@ var SessionStoreInternal = {
           this._globalState.setFromState(aInitialState);
 
           let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) &&
-            !this._prefBranch.getBoolPref("startup.addFreshTab");
+              gSessionStartup.willOverrideHomepage;
           let options = {firstWindow: true, overwriteTabs: overwrite};
           this.restoreWindows(aWindow, aInitialState, options);
         }
