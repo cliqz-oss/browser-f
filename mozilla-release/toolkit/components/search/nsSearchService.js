@@ -76,6 +76,12 @@ const SEARCH_ENGINE_LOADED       = "engine-loaded";
 const SEARCH_ENGINE_CURRENT      = "engine-current";
 const SEARCH_ENGINE_DEFAULT      = "engine-default";
 
+// CLIQZ (DB-927): Default search engine alias map
+const SEARCH_ENGINE_ALIAS = {
+  "youtube": "#yt",
+  "youtube-de": "#yt"
+}
+
 // The following constants are left undocumented in nsIBrowserSearchService.idl
 // For the moment, they are meant for testing/debugging purposes only.
 
@@ -3882,6 +3888,18 @@ SearchService.prototype = {
     LOG("getVisibleEngines: getting all visible engines");
     var engines = this._getSortedEngines(false);
     aCount.value = engines.length;
+
+    //CLIQZ (DB-927): Restore alternate search engines' alias
+    engines.forEach(engine => {
+      if(!engine.alias && engine.identifier) {
+        LOG("Set alias for: " + engine.identifier);
+        if (SEARCH_ENGINE_ALIAS[engine.identifier])
+          engine.setAttr("alias", SEARCH_ENGINE_ALIAS[engine.identifier]);
+        else
+          engine.setAttr("alias", "#" + engine.identifier.toLowerCase().substring(0,2));
+      }
+    });
+
     return engines;
   },
 
