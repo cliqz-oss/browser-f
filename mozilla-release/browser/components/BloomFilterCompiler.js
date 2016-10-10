@@ -4,8 +4,13 @@
 // It reads input file line by line, puts each line into a BloomFilter, and then
 // serializes it into a binary file.
 // Arguments:
-// |inFile| - RELATIVE path to input file, containing text records, one per line
-// |outFile| - RELATIVE path to output file with filter data.
+// -i : Path to input file. MUST BE RELATIVE.
+// -o : Path to output file. MUST BE RELATIVE.
+// -v : Database version number to write into the binary.
+// -n : Take top N domains from the input file.
+// -s : Manually set database size. If unspecified, picked automatically.
+// -h : Number of hashes to use. If unspecified, picked automatically.
+// -t : Test mode. Just check -i file against premade database in -o.
 
 "use strict";
 
@@ -28,16 +33,19 @@ if (arguments.length < 3)
   fail("Three arguments expected, but " + arguments.length + " given");
 
 const argDefs = {
-  "-i": {type: String, mandatory: true,  name: "inFileName"},
-  "-o": {type: String, mandatory: true,  name: "outFileName"},
-  "-v": {type: Number, mandatory: true,  name: "dbVersion"},
-  "-t": {type: Number, mandatory: false, name: "topN"},
-  "-s": {type: Number, mandatory: false, name: "explicitSize"},
-  "-h": {type: Number, mandatory: false, name: "explicitHashes"},
+  "-i": {type: String,    mandatory: true,  name: "inFileName"},
+  "-o": {type: String,    mandatory: true,  name: "outFileName"},
+  "-v": {type: Number,    mandatory: true,  name: "dbVersion"},
+  "-n": {type: Number,    mandatory: false, name: "topN"},
+  "-s": {type: Number,    mandatory: false, name: "explicitSize"},
+  "-h": {type: Number,    mandatory: false, name: "explicitHashes"},
+  "-t": {type: undefined, mandatory: false, name: "testOnly"},
 };
 
 function parseArgs(args, argDefs) {
   function parseVal(val, argDef) {
+    if (argDef.type !== undefined && val === undefined)
+      throw new Error("Missing value for argument: " + argDef.name);
     switch (argDef.type) {
       case String:
         return String(val);
@@ -47,6 +55,8 @@ function parseArgs(args, argDefs) {
           throw new Error("Could not parse integer from: " + val);
         return int;
       }
+      case undefined:
+        return true;  // Just a flag argument.
       default:
         throw new Error("Strange arguments definition type: " + argDef.type);
     }
@@ -60,12 +70,11 @@ function parseArgs(args, argDefs) {
     const argDef = argDefs[argKey];
     if (!argDef)
       throw new Error("Unknown argument: " + argKey);
-    const val = args[i + 1];
-    if (val === undefined)
-      throw new Error("Missing value for argument: " + argKey);
-    vals[argKey] = parseVal(val, argDef);
 
-    i += 2;
+    const hasValPart = argDef.type != undefined;
+    vals[argKey] = parseVal(hasValPart ? args[i + 1] : undefined, argDef);
+
+    i += hasValPart ? 2 : 1;
   }
 
   // Check for unspecified mandatory arguments.
@@ -139,32 +148,37 @@ function readTextLines(fileName, encoding = "UTF-8") {
   }
 }
 
+const outFile = FileUtils.getFile("XCurProcD", args.outFileName.split("/"));
 const lines = readTextLines(args.inFileName).slice(0, args.topN);
 print("Input lines count: " + lines.length);
 
-let filter = linesIntoBloomFilter(lines);
-print("Filled filter.")
+if (!args.testOnly) {
+  let filter = linesIntoBloomFilter(lines);
+  print("Filled filter.")
 
-const outFile = FileUtils.getFile("XCurProcD", args.outFileName.split("/"));
-print("Saving filter data into: " + outFile.path);
-BloomFilterUtils.saveToFile(filter, args.dbVersion, outFile);
-
-print("Successfully saved filter data!");
+  print("Saving filter data into: " + outFile.path);
+  BloomFilterUtils.saveToFile(filter, args.dbVersion, outFile);
+  print("Successfully saved filter data!");
+}
 
 print("Checking...");
 let [testFilter, testVersion] = BloomFilterUtils.loadFromFile(outFile);
-print("===========");
-if (args.dbVersion != testVersion)
-  print("Versions don't match", args.dbVersion, testVersion);
+if (args.dbVersion != testVersion) {
+  print("Expected and actual version numbers don't match",
+      args.dbVersion, testVersion);
+}
 let ok = true;
+let foundCount = 0;
+let notFound = [];
 for (let line of lines) {
   const check = testFilter.test(line);
-  ok = ok && check;
+  if (check)
+    foundCount++;
   if (!check)
-    print(line, check);
+    notFound.push(line);
 }
-print("===========");
-print(ok ? "OK" : "Checks for some lines failed!");
+print("Matches: " + foundCount + " of " + lines.length + ". Lines not found:");
+notFound.forEach(v => print(v));
 
 }
 catch (e) {
