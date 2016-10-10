@@ -2,7 +2,8 @@ google
 yahoo-de
 bing
 youtube-de
-ecosia-de
+ecosia
+twitter
 amazondotcom-de
 eBay-de
 wikipedia-de
