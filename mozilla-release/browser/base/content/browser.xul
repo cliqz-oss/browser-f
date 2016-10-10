@@ -97,9 +97,9 @@
           />
 #endif
       <menuseparator/>
-      <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
-                oncommand="gBrowser.duplicateTab(TabContextMenu.contextTab);"/>
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
+      <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
+                oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tabadjacent');"/>
       <menuitem id="context_pinTab" label="&pinTab.label;"
                 accesskey="&pinTab.accesskey;"
                 oncommand="gBrowser.pinTab(TabContextMenu.contextTab);"/>

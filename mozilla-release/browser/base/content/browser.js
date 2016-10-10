@@ -7763,6 +7763,11 @@ function duplicateTabIn(aTab, where, delta) {
       let newTab = SessionStore.duplicateTab(window, aTab, delta);
       gBrowser.selectedTab = newTab;
       break;
+    case "tabadjacent":
+      let newTab2 = SessionStore.duplicateTab(window, aTab, delta);
+      gBrowser.moveTabTo(newTab2, aTab._tPos + 1);
+      gBrowser.selectedTab = newTab2;
+      break;
   }
 }
 
