@@ -6374,10 +6374,10 @@
       </property>
 
       <property name="private"
-          onget="return this._linkedBrowser.loadContext.usePrivateBrowsing;">
+          onget="return this._linkedBrowser.docShell.usePrivateBrowsing;">
         <setter>
         <![CDATA[
-          this._linkedBrowser.loadContext.usePrivateBrowsing = !!val;
+          this._linkedBrowser.docShell.usePrivateBrowsing = !!val;
         ]]>
         </setter>
       </property>
