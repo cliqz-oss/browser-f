@@ -3,6 +3,9 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!ENTITY about.version                "version">
 
+<!ENTITY about.learnMore.beforeLink     "Learn more ">
+<!ENTITY about.learnMore.linkTitle      "about CLIQZ.">
+
 <!-- LOCALIZATION NOTE (about.credits.beforeLink): note that there is no space between this phrase and the linked about.credits.linkTitle phrase, so if your locale needs a space between words, add it at the end of this entity. -->
 <!ENTITY about.credits.beforeLink     "See a list of ">
 <!ENTITY about.credits.linkTitle      "contributors">
