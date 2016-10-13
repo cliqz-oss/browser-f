@@ -143,7 +143,13 @@ FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
 
   // Being a startup-only migrator, we can rely on
   // MigrationUtils.profileStartup being set.
-  let currentProfileDir = MigrationUtils.profileStartup.directory;
+  let currentProfileDir = null;
+  if (!MigrationUtils.isStartupMigration) {
+    currentProfileDir = FileUtils.getDir("ProfD","");
+  }
+  else {
+    currentProfileDir = MigrationUtils.profileStartup.directory;
+  }
 
   // Surely data cannot be imported from the current profile.
   if (sourceProfileDir.equals(currentProfileDir))
