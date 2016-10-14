@@ -303,7 +303,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 };
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
-  get: () => false
+  get: () => true
 });
 
 
