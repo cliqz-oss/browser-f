@@ -1,3 +1,5 @@
+testetestsetset
+
 # CLIQZ Browser
 
 CLIQZ develops novel Internet browsers that incorporate search as primary feature. This repository is about the CLIQZ Browsers based on Mozilla Firefox, available to users as  “CLIQZ for Windows beta” and “CLIQZ for Mac beta”.  Learn more at [cliqz.com](https://cliqz.com).
