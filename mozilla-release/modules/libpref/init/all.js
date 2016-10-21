@@ -2763,13 +2763,8 @@ pref("dom.ipc.plugins.unloadTimeoutSecs", 30);
 // Asynchronous plugin initialization is on hold.
 pref("dom.ipc.plugins.asyncInit.enabled", false);
 
-#ifdef RELEASE_BUILD
-// Allow the AsyncDrawing mode to be used for plugins.
-pref("dom.ipc.plugins.asyncdrawing.enabled", false);
-#else
 // Allow the AsyncDrawing mode to be used for plugins.
 pref("dom.ipc.plugins.asyncdrawing.enabled", true);
-#endif
 
 pref("dom.ipc.processCount", 1);
 
@@ -4572,7 +4567,8 @@ pref("gfx.direct2d.force-enabled", false);
 
 pref("layers.prefer-opengl", false);
 pref("layers.prefer-d3d9", false);
-pref("layers.allow-d3d9-fallback", true);
+// Disable for now due to bug 1304360
+pref("layers.allow-d3d9-fallback", false);
 pref("layers.d3d11.force-warp", false);
 pref("layers.d3d11.disable-warp", true);
 
