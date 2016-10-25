@@ -290,6 +290,11 @@ OfflineCacheUpdateParent::GetOriginAttributes(JS::MutableHandleValue aAttrs)
     return NS_OK;
 }
 
+NS_IMETHODIMP OfflineCacheUpdateParent::AddWeakPrivacyTransitionObserver(
+    nsIPrivacyTransitionObserver *obs) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 NS_IMETHODIMP
 OfflineCacheUpdateParent::IsTrackingProtectionOn(bool* aIsTrackingProtectionOn)
 {

@@ -233,6 +233,10 @@
                 onget="return this.mPrefs.QueryInterface(Components.interfaces.nsIPrefService);"
                 readonly="true"/>
 
+      <property name="asFrameLoaderOwner"
+                onget="return this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);"
+                readonly="true"/>
+
       <field name="_docShell">null</field>
 
       <property name="docShell" readonly="true">
@@ -240,7 +244,7 @@
           if (this._docShell)
             return this._docShell;
 
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
+          let frameLoader = this.asFrameLoaderOwner.frameLoader;
           if (!frameLoader)
             return null;
           this._docShell = frameLoader.docShell;
@@ -255,7 +259,7 @@
           if (this._loadContext)
             return this._loadContext;
 
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
+          let frameLoader = this.asFrameLoaderOwner.frameLoader;
           if (!frameLoader)
             return null;
           this._loadContext = frameLoader.loadContext;
@@ -290,7 +294,7 @@
       <method name="makePrerenderedBrowserActive">
         <body>
         <![CDATA[
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
+          let frameLoader = this.asFrameLoaderOwner.frameLoader;
           if (frameLoader) {
             frameLoader.makePrerenderedLoaderActive();
           }
@@ -322,7 +326,7 @@
                 readonly="true">
         <getter>
           <![CDATA[
-            var owner = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);
+            var owner = this.asFrameLoaderOwner;
             if (!owner.frameLoader) {
               return null;
             }
@@ -1277,8 +1281,7 @@
             PopupNotifications._swapBrowserNotifications(aOtherBrowser, this);
 
           try {
-            this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-                .swapFrameLoaders(aOtherBrowser);
+            this.asFrameLoaderOwner.swapFrameLoaders(aOtherBrowser);
           } catch(ex) {
             // This may not be implemented for browser elements that are not
             // attached to a BrowserDOMWindow.
@@ -1355,7 +1358,7 @@
         <parameter name="aPrintProgressListener"/>
         <body>
           <![CDATA[
-            var owner = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);
+            var owner = this.asFrameLoaderOwner;
             if (!owner.frameLoader) {
               throw Components.Exception("No frame loader.",
                                          Components.results.NS_ERROR_FAILURE);

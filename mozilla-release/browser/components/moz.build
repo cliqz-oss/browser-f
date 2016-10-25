@@ -35,9 +35,6 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browsercompsbase'
 
-if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
-    EXTRA_COMPONENTS += ['AutoPrivateTab.js']
-
 EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
     'nsBrowserGlue.js',
@@ -51,9 +48,12 @@ EXTRA_JS_MODULES += [
     'distribution.js',
 ]
 
-EXTRA_PP_JS_MODULES += [
-
-]
+if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
+    EXTRA_COMPONENTS += ['AutoForgetTabsService.js']
+    EXTRA_JS_MODULES += [
+        'AutoForgetTabs-utils.jsm',
+        'AutoForgetTabsMonitor.jsm',
+    ]
 
 BROWSER_CHROME_MANIFESTS += [
     'tests/browser/browser.ini'

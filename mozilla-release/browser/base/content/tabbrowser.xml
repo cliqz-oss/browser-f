@@ -6293,6 +6293,15 @@
         </setter>
       </property>
 
+      <property name="tabId" readonly="true">
+        <getter>
+        <![CDATA[
+          const frameLoader = this.linkedBrowser.frameLoader;
+          return frameLoader && frameLoader.tabParent.tabId || undefined;
+        ]]>
+        </getter>
+      </property>
+
       <property name="_visuallySelected">
         <setter>
           <![CDATA[
@@ -6373,11 +6382,16 @@
         </getter>
       </property>
 
-      <property name="private"
-          onget="return this._linkedBrowser.docShell.usePrivateBrowsing;">
+      <property name="private">
+        <getter>
+        <![CDATA[
+          // docShell is null for foreign tabs.
+          return this._linkedBrowser.loadContext.usePrivateBrowsing;
+        ]]>
+        </getter>
         <setter>
         <![CDATA[
-          this._linkedBrowser.docShell.usePrivateBrowsing = !!val;
+          throw new Error("Setting private mode directly is impossible!");
         ]]>
         </setter>
       </property>
@@ -6511,9 +6525,7 @@
         <![CDATA[
           if (!this._linkedBrowser)
             return;
-          // Copied from browser/components/sessionstore/content/content-sessionStore.js
-          this._linkedBrowser.loadContext.QueryInterface(Ci.nsIDocShell).
-              addWeakPrivacyTransitionObserver(this);
+          this._linkedBrowser.loadContext.addWeakPrivacyTransitionObserver(this);
         ]]>
         </body>
       </method>
@@ -6529,19 +6541,6 @@
                 private: enabled
               }
           }));
-          this._updatePrivateAttr(enabled);
-        ]]>
-        </body>
-      </method>
-
-      <method name="_updatePrivateAttr">
-        <parameter name="private"/>
-        <body>
-        <![CDATA[
-          if (private)
-            this.setAttribute("private", "true");
-          else
-            this.removeAttribute("private");
         ]]>
         </body>
       </method>
@@ -6590,6 +6589,12 @@
         if (this._overPlayingIcon) {
           this.toggleMuteAudio();
         }
+      ]]>
+      </handler>
+      <handler event="TabRemotenessChange">
+      <![CDATA[
+        this._watchPrivacyEvents();
+        this.privateModeChanged();
       ]]>
       </handler>
     </handlers>

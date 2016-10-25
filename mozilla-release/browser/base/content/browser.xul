@@ -89,11 +89,11 @@
 #if CQZ_AUTO_PRIVATE_TAB
       <menuitem
           id="context_togglePrivate"
-          oncommand="TabContextMenu.toggleTabPrivateMode();"
+          oncommand="TabContextMenu.togglePrivateMode(false);"
           />
       <menuitem
           id="context_togglePrivateAndRememberDomain"
-          oncommand="TabContextMenu.toggleTabPrivateMode(true);"
+          oncommand="TabContextMenu.togglePrivateMode(true);"
           />
 #endif
       <menuseparator/>

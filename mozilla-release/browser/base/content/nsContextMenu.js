@@ -159,14 +159,14 @@ nsContextMenu.prototype = {
 
     var shouldShow = this.onSaveableLink || isMailtoInternal || this.onPlainTextLink;
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-    const isTabPrivate = this.browser.docShell.usePrivateBrowsing;
+    const isTabPrivate = this.browser.loadContext.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
 
     this.showItem("context-openlink",
         shouldShow && !isWindowPrivate && !isTabPrivate);
     this.showItem("context-openlinkprivate", shouldShow);
     this.showItem("context-openlinkintab", shouldShow && !inContainer && !isTabPrivate);
-    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);  // maxim@ - && !inContainer?
+    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
     this.showItem("context-openlinkincontainertab", shouldShow && inContainer);
     this.showItem("context-openlinkinusercontext-menu", shouldShow && !isWindowPrivate && showContainers);
     this.showItem("context-openlinkincurrent", this.onPlainTextLink);

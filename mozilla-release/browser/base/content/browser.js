@@ -228,8 +228,14 @@ XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
 #if CQZ_AUTO_PRIVATE_TAB
-const AutoPrivateTab = Cc["@cliqz.com/browser/auto_private_tab;1"].
+let autoForgetTabs;
+try {
+  autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
+}
+catch (e) {
+  console.log(e);
+}
 
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
@@ -7662,7 +7668,7 @@ var TabContextMenu = {
                          : "apt.tabContext.reloadInForgetMode");
     const addExceptionItem =
         document.getElementById("context_togglePrivateAndRememberDomain");
-    addExceptionItem.hidden = windowIsPrivate || !AutoPrivateTab.active;
+    addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
     addExceptionItem.label =
         gNavigatorBundle.getString(
             tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
@@ -7674,11 +7680,12 @@ var TabContextMenu = {
   },
 
 #if CQZ_AUTO_PRIVATE_TAB
-  toggleTabPrivateMode: function toggleTabPrivateMode(rememberDomain) {
-    AutoPrivateTab.toggleTabPrivateMode(this.contextTab, rememberDomain);
+  togglePrivateMode: function(rememberDomain) {
+    autoForgetTabs.toggleBrowserPrivateMode(
+        this.contextTab.linkedBrowser, rememberDomain);
   },
-
 #endif
+
   handleEvent(aEvent) {
     switch (aEvent.type) {
       case "popuphiding":

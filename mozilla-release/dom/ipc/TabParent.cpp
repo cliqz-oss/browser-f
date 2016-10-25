@@ -2480,6 +2480,12 @@ TabParent::RecvDispatchFocusToTopLevelWindow()
   return true;
 }
 
+bool TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
+  CreateLoadContext();
+  mLoadContext->SetPrivateness(isPrivate);
+  return true;
+}
+
 bool
 TabParent::ReceiveMessage(const nsString& aMessage,
                           bool aSync,
@@ -2760,18 +2766,24 @@ TabParent::RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
 already_AddRefed<nsILoadContext>
 TabParent::GetLoadContext()
 {
-  nsCOMPtr<nsILoadContext> loadContext;
-  if (mLoadContext) {
-    loadContext = mLoadContext;
-  } else {
-    loadContext = new LoadContext(GetOwnerElement(),
-                                  true /* aIsContent */,
-                                  mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW,
-                                  mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
-                                  OriginAttributesRef());
-    mLoadContext = loadContext;
-  }
+  CreateLoadContext();
+  RefPtr<LoadContext> loadContext;
+  loadContext = mLoadContext;
   return loadContext.forget();
+}
+
+void TabParent::CreateLoadContext() {
+  if (mLoadContext) {
+    return;
+  } else {
+    mLoadContext = new LoadContext(
+        GetOwnerElement(),
+        true /* aIsContent */,
+        // FIXME: Mind private tabs in normal windows!
+        mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW,
+        mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
+        OriginAttributesRef());
+  }
 }
 
 NS_IMETHODIMP
@@ -3174,6 +3186,8 @@ public:
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL
   NS_IMETHOD GetAppId(uint32_t*) NO_IMPL
   NS_IMETHOD GetOriginAttributes(JS::MutableHandleValue) NO_IMPL
+  NS_IMETHOD AddWeakPrivacyTransitionObserver(
+      nsIPrivacyTransitionObserver *obs) NO_IMPL
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL
   NS_IMETHOD SetRemoteTabs(bool) NO_IMPL
   NS_IMETHOD IsTrackingProtectionOn(bool*) NO_IMPL
