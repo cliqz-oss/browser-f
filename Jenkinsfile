@@ -1,7 +1,9 @@
 #!/usr/bin/env groovy
 
 node('docker') {
-  sh 'ls'
-  sh 'pwd'
+  stage('checkout') {
+    checkout scm
+  }
+
   load 'linux.Jenkinsfile'
 }
