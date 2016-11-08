@@ -63,6 +63,7 @@
       hidden="true"
       data-category="paneApplications">
   <label class="header-name" flex="1">&paneApplications.title;</label>
+  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
   <button class="help-button"
           aria-label="&helpButton.label;"/>
 </hbox>
