@@ -304,7 +304,7 @@ AutoForgetTabsService.prototype = {
             "apt.cleanupPrompt.learnMoreButton"),
         callback: (notification, descr) => {
           browser.ownerGlobal.openLinkIn(
-              "https://cliqz.com/support/daten-vergessen-modus",
+              "https://cliqz.com/support/automatic-forget-mode",
               "tab",
               {
                 relatedToCurrent: true,
