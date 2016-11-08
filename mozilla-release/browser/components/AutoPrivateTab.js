@@ -365,7 +365,7 @@ AutoPrivateTabDatabase.prototype = {
               "apt.cleanupPrompt.learnMoreButton"),
           callback: (notification, descr) => {
             gBrowser.ownerGlobal.openLinkIn(
-                "https://cliqz.com/support/daten-vergessen-modus",
+                "https://cliqz.com/support/automatischer-vergessen-modus",
                 "tab",
                 {
                   relatedToCurrent: true,
