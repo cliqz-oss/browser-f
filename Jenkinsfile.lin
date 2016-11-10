@@ -1,10 +1,33 @@
 #!/usr/bin/env groovy
 
+/*
+ TRIGGERING JOB
+
+  ```groovy
+node(LINUX_BUILD_NODE) {
+    step([
+        $class: 'CopyArtifact',
+        projectName: TRIGGERING_JOB_NAME,
+        selector: [$class: 'SpecificBuildSelector', buildNumber: TRIGGERING_BUILD_NUMBER],
+        target: 'artifacts'
+    ])
+    def helpers = load "artifacts/build-helpers.groovy"
+
+    stage("Checkout") {
+        helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+    }
+
+    stage("Start build") {
+        load ENTRY_POINT
+    }
+}
+  ```
+
+*/
+
 // Check for required variables
 LIN_REBUILD_IMAGE
-NODE_MEMORY
-NODE_CPU_COUNT
-NODE_VNC_PORT
+CQZ_S3_DEBIAN_REPOSITORY_URL
 
 /*
 * Linux builder
@@ -14,7 +37,6 @@ NODE_VNC_PORT
 def imgName = 'cliqz-oss/browser-f'
 
 // Die early for missing build params
-CQZ_S3_DEBIAN_REPOSITORY_URL
 
 stage('Build Image') {
 

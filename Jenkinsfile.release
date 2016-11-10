@@ -1,12 +1,9 @@
 #!/usr/bin/env groovy
 
 /*
-Jenkins pipeline script to build CLIQZ browser for linux
-It does the following:
-    1. Checks out 'cliqz-oss/browser-f'
-    2. Builds a docker image with dependencies installed
-Checkout code in respective Jenkinsfile
+ TRIGGERING JOB
 
+  ```groovy
 node("master") {
     stage("Checkout") {
         checkout([
@@ -15,7 +12,9 @@ node("master") {
             doGenerateSubmoduleConfigurations: false,
             extensions: [],
             submoduleCfg: [],
-            userRemoteConfigs: [[url: REPO_URL]]
+            userRemoteConfigs: [[credentialsId: '0aededfc-f41d-40bd-9a63-dd4524adb7b6', \
+                                 url: REPO_URL, \
+                                 refspec: '+refs/pull/*:refs/remotes/origin/pr/*']]
         ])
     }
 
@@ -23,6 +22,8 @@ node("master") {
         load ENTRY_POINT
     }
 }
+  ```
+
 */
 
 def helpers = load 'build-helpers.groovy'

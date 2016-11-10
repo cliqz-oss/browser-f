@@ -1,9 +1,27 @@
 #!/usr/bin/env groovy
 
+LIN_REBUILD_IMAGE = false
+CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr'
+CQZ_RELEASE_CHANNEL = BRANCH_NAME
+CQZ_BUILD_ID = BUILD_ID
+CQZ_COMMIT = BUILD_ID
+CQZ_BUILD_DE_LOCALIZATION = ''
+CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
+CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
+CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
+DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
+DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
+
 node('docker') {
+
+  sh 'env'
+
   stage('checkout') {
     checkout scm
   }
 
-  load 'linux.Jenkinsfile'
+  stage("Start build") {
+    load 'Jenkinsfile.lin'
+  }
+
 }
