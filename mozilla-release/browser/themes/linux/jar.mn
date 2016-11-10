@@ -49,6 +49,14 @@ browser.jar:
   skin/classic/browser/Toolbar-inverted@2x.png
   skin/classic/browser/Toolbar-small.png
   skin/classic/browser/webRTC-indicator.css
+  skin/classic/browser/cliqz/close.png                (cliqz/close.png)
+  skin/classic/browser/cliqz/Lato-Regular.ttf         (cliqz/Lato-Regular.ttf)
+  skin/classic/browser/cliqz/loading.png              (cliqz/loading.png)
+  skin/classic/browser/cliqz/menuPanel.svg            (cliqz/menuPanel.svg)
+  skin/classic/browser/cliqz/newtab.png               (cliqz/newtab.png)
+  skin/classic/browser/cliqz/theme.css                (cliqz/theme.css)
+  skin/classic/browser/cliqz/urlbar-arrow.png         (cliqz/urlbar-arrow.png)
+  skin/classic/browser/cliqz/urlbar-arrow@2x.png      (cliqz/urlbar-arrow@2x.png)
 * skin/classic/browser/controlcenter/panel.css        (controlcenter/panel.css)
   skin/classic/browser/customizableui/background-noise-toolbar.png  (customizableui/background-noise-toolbar.png)
   skin/classic/browser/customizableui/customizeMode-gridTexture.png  (customizableui/customizeMode-gridTexture.png)
