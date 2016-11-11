@@ -260,6 +260,7 @@ var SessionHistoryInternal = {
    *        The tabdata including all history entries.
    */
   restore: function (docShell, tabData) {
+    docShell.usePrivateBrowsing = !!tabData.isPrivate;
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
     let history = webNavigation.sessionHistory;
     if (history.count > 0) {
