@@ -391,7 +391,7 @@ var ViewSourceContent = {
                 .loadURIWithOptions(content.location.href,
                                     Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER,
                                     null, Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-                                    null, null, null);
+                                    null, null, null, false);
       }
     }
   },
@@ -778,7 +778,8 @@ var ViewSourceContent = {
     webNav.loadURIWithOptions(uri, loadFlags,
                               null, referrerPolicy,  // referrer
                               null, null,  // postData, headers
-                              Services.io.newURI(baseURI, null, null));
+                              Services.io.newURI(baseURI, null, null),
+                              false);
   },
 
   /**

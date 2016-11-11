@@ -2045,15 +2045,6 @@
             var evt = new CustomEvent("TabOpen", { bubbles: true, detail });
             t.dispatchEvent(evt);
 
-            // CLIQZ (DB-919): We use "private" attribute in the duplicateTab()
-            // function on SessionStore.jsm (line 2086)
-            // This block is moved outside the IF condition below so that it will
-            // be excuted even though the IF condition is not triggered.
-            // Go private before navigating if requested.
-            if (aPrivate) {
-              t.private = true;
-            }
-
             // If we didn't swap docShells with a preloaded browser
             // then let's just continue loading the page normally.
             if (!usingPreloadedContent && !uriIsAboutBlank) {
@@ -2078,6 +2069,7 @@
                                    referrerPolicy: aReferrerPolicy,
                                    charset: aCharset,
                                    postData: aPostData,
+                                   ensurePrivate: aPrivate,
                                    });
               } catch (ex) {
                 Cu.reportError(ex);

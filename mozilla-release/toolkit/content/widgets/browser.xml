@@ -129,6 +129,7 @@
         <parameter name="aReferrerURI"/>
         <parameter name="aCharset"/>
         <parameter name="aPostData"/>
+        <parameter name="aEnsurePrivate"/>
         <body>
           <![CDATA[
             if (!aURI)
@@ -146,12 +147,13 @@
               }
               aCharset = params.charset;
               aPostData = params.postData;
+              aEnsurePrivate = params.ensurePrivate;
             }
 
             this._wrapURIChangeCall(() =>
               this.webNavigation.loadURIWithOptions(
                   aURI, aFlags, aReferrerURI, aReferrerPolicy,
-                  aPostData, null, null));
+                  aPostData, null, null, !!aEnsurePrivate));
           ]]>
         </body>
       </method>

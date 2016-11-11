@@ -855,7 +855,8 @@ function _loadURIWithFlags(browser, uri, params) {
 
       browser.webNavigation.loadURIWithOptions(uri, flags,
                                                referrer, referrerPolicy,
-                                               postData, null, null);
+                                               postData, null, null,
+                                               !!params.ensurePrivate);
     } else {
       if (postData) {
         postData = NetUtil.readInputStreamToString(postData, postData.available());
@@ -890,7 +891,8 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                               postData, null, null);
+                                               postData, null, null,
+                                               !!params.ensurePrivate);
     } else {
       throw e;
     }
@@ -906,6 +908,7 @@ function _loadURIWithFlags(browser, uri, params) {
 // process
 function LoadInOtherProcess(browser, loadOptions, historyIndex = -1) {
   let tab = gBrowser.getTabForBrowser(browser);
+  // TODO: May need to pass privateness here as well.
   SessionStore.navigateAndRestore(tab, loadOptions, historyIndex);
 }
 
