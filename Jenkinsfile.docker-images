@@ -12,13 +12,21 @@ node('ubuntu && docker && !gpu') {
   docker.withRegistry(DOCKER_REGISTRY_URL) {
 
     stage('base image') {
-      def app = docker.build(
-        'browser-f/linux-builder',
-        '--build-arg UID=1000 --build-arg GID=1000 .'
-      )
+      stash name: 'Dockerfile', includes: 'Dockerfile'
 
-      app.push 'latest'
+      // change workspace to prevent docker context sharing
+      ws {
+        unstash name: 'Dockerfile'
+        def app = docker.build(
+          'browser-f',
+          "--build-arg user=`whoami` \
+           --build-arg uid=`id -u` \
+           --build-arg gid=`id -g` \
+           ."
+        )
+
+        app.push 'latest'
+      }
     }
-
   }
 }

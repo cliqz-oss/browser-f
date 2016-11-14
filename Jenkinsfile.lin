@@ -35,12 +35,16 @@ DOCKER_REGISTRY_URL
 * Note: Checkout being done by a triggering job
 */
 
-def imgName = 'browser-f/linux-builder'
+def imgName = 'browser-f'
 
 // Die early for missing build params
 
 // authorize docker deamon to access registry
-sh "`aws ecr get-login --region=$AWS_REGION`"
+try {
+  sh "`aws ecr get-login --region=$AWS_REGION`"
+} catch (e) {
+  // local registry does not require auth
+}
 
 docker.withRegistry(DOCKER_REGISTRY_URL) {
   def image = docker.image(imgName)
