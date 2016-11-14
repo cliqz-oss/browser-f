@@ -1,0 +1,23 @@
+#!/bin/env groovy
+
+node('ubuntu && docker && !gpu') {
+
+  stage('checkout') {
+    checkout scm
+  }
+
+  // authorize docker deamon to access registry
+  sh "`aws ecr get-login --region=$AWS_REGION`"
+
+  docker.withRegistry(DOCKER_REGISTRY_URL) {
+
+    stage('base image') {
+      def app = docker.build(
+        'browser-f/linux-builder',
+        '--build-arg UID=1000 --build-arg GID=1000 .'
+      )
+
+      app.push 'latest'
+    }
+
+}
