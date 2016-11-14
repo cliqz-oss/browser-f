@@ -11,6 +11,8 @@ CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
 CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
 DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
 DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
+AWS_REGION = 'us-east-1'
+DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
 node('docker') {
 

@@ -20,4 +20,5 @@ node('ubuntu && docker && !gpu') {
       app.push 'latest'
     }
 
+  }
 }
