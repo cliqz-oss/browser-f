@@ -27,7 +27,8 @@ class AutoForgetTabsMonitor {
     if (!(msgMgr instanceof Ci.nsIMessageListenerManager))
       throw new TypeError("nsIMessageListenerManager required");
 
-    this._docShell = docShell;
+    this._loadContext = docShell.QueryInterface(Ci.nsILoadContext);
+    this._webNav = docShell.QueryInterface(Ci.nsIWebNavigation);
     this._webProgress = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
         .getInterface(Ci.nsIWebProgress);
 
@@ -62,9 +63,8 @@ class AutoForgetTabsMonitor {
 
   // RPC
   switchPrivateFlag(isPrivate) {
-    this._docShell.usePrivateBrowsing = isPrivate;
-    this._docShell.QueryInterface(Ci.nsIWebNavigation).reload(
-        Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
+    this._loadContext.usePrivateBrowsing = isPrivate;
+    this._webNav.reload(Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
     // TODO: Try experimenting with different flags like:
     //        Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE |
     //        Ci.nsIWebNavigation.LOAD_FLAGS_STOP_CONTENT
@@ -99,7 +99,6 @@ class AutoForgetTabsMonitor {
     if (!this._aftSvc.shouldForget(domain))
       return;
 
-    // TODO: Check if loadContext always matched this._docShell.
     loadContext.usePrivateBrowsing = true;
     // Load flags seem to be unaffected by privateness after request is already
     // created, so we have to make it anonymous here to prevent http headers
