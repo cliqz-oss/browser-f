@@ -228,14 +228,8 @@ XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
 #if CQZ_AUTO_PRIVATE_TAB
-let autoForgetTabs;
-try {
-  autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
-}
-catch (e) {
-  console.log(e);
-}
 
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
