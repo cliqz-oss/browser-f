@@ -6586,7 +6586,7 @@
       <handler event="TabRemotenessChange">
       <![CDATA[
         this._watchPrivacyEvents();
-        this.privateModeChanged();
+        this.privateModeChanged(this.private);
       ]]>
       </handler>
     </handlers>
