@@ -2779,7 +2779,6 @@ void TabParent::CreateLoadContext() {
     mLoadContext = new LoadContext(
         GetOwnerElement(),
         true /* aIsContent */,
-        // FIXME: Mind private tabs in normal windows!
         mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW,
         mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
         OriginAttributesRef());
