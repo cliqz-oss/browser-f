@@ -974,7 +974,7 @@ nsContextMenu.prototype = {
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
                    noReferrer: this.linkHasNoReferrer,
-                   private: this.browser.docShell.usePrivateBrowsing
+                   private: this.browser.loadContext.usePrivateBrowsing
     };
     for (let p in extra) {
       params[p] = extra[p];

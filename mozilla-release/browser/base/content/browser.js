@@ -5527,6 +5527,8 @@ function contentAreaClick(event, isPanelClick)
   // visits across frames should be preserved.
   try {
     const doc = event.target.ownerDocument;
+    // We should never reach this code in e10s mode, as this function is only
+    // called in single-process mode. Hence docShell should be accessible.
     const privateTab = doc && doc.docShell.usePrivateBrowsing;
     if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab)
       PlacesUIUtils.markPageAsFollowedLink(href);
@@ -5547,6 +5549,7 @@ function handleLinkClick(event, href, linkNode) {
     return false;
 
   var doc = event.target.ownerDocument;
+  // We should never reach this code in e10s mode.
   const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
