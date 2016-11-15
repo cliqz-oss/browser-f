@@ -848,9 +848,8 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags,
-                                               referrer, referrerPolicy,
-                                               postData, null, null,
-                                               !!params.ensurePrivate);
+          referrer, referrerPolicy, postData, null, null,
+          !!params.ensurePrivate);
     } else {
       if (postData) {
         postData = NetUtil.readInputStreamToString(postData, postData.available());
@@ -885,8 +884,7 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                               postData, null, null,
-                                               !!params.ensurePrivate);
+          postData, null, null, !!params.ensurePrivate);
     } else {
       throw e;
     }
