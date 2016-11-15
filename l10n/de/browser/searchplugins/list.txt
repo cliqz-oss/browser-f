@@ -1,8 +1,6 @@
-google
-yahoo-de
-bing
 amazondotcom-de
-eBay-de
-wikipedia-de
+bing
+google
 leo_ende_de
-
+wikipedia-de
+yahoo-de

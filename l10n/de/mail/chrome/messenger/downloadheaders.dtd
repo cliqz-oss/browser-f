@@ -2,8 +2,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY all.label          "Lade alle Kopfzeilen herunter">
-<!ENTITY all.accesskey      "L">
+<!ENTITY all.label          "Alle Kopfzeilen herunterladen">
+<!ENTITY all.accesskey      "A">
 <!--LOCALIZATION NOTE (download.label):
     consider the download.label and headers.label as a single sentence
 	 with the number of headers to be downloaded inserted between them:
@@ -11,10 +11,10 @@
 	 Either label could be set to null ("") if required grammatically.
 -->
 
-<!ENTITY download.label     "Lade">
-<!ENTITY download.accesskey "a">
+<!ENTITY download.label     "Nur">
+<!ENTITY download.accesskey "N">
 <!--LOCALIZATION NOTE (headers.label): see note for download.label -->
-<!ENTITY headers.label      "Kopfzeilen herunter">
+<!ENTITY headers.label      "Kopfzeilen herunterladen">
 <!ENTITY headers.accesskey  "K">
 <!ENTITY mark.label         "Restliche Kopfzeilen als gelesen markieren">
 <!ENTITY mark.accesskey     "R">

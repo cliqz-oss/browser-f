@@ -65,6 +65,7 @@
 <!ENTITY update.adminDisabled       "Updates von Ihrem System-Administrator deaktiviert">
 <!-- LOCALIZATION NOTE (update.otherInstanceHandlingUpdates): try to make the localized text short -->
 <!ENTITY update.otherInstanceHandlingUpdates "&brandShortName; wird durch eine andere Instanz aktualisiert.">
+<!ENTITY update.restarting          "Wird neu gestartet…">
 
 <!-- LOCALIZATION NOTE (update.failed.start,update.failed.linkText,update.failed.end):
      update.failed.start, update.failed.linkText, and update.failed.end all go into

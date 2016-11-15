@@ -19,6 +19,7 @@
 <!ENTITY playSound1.accesskey             "K">
 <!ENTITY showAnimatedAlert.label          "Eine Benachrichtigung anzeigen">
 <!ENTITY showAnimatedAlert.accesskey      "B">
+<!ENTITY notificationAlertSettings.label  "Benachrichtigungen können in der Mitteilungen-Ansicht der Systemeinstellungen deaktiviert werden.">
 <!ENTITY customizeMailAlert.label         "Anpassen…">
 <!ENTITY customizeMailAlert.accesskey     "A">
 

@@ -104,3 +104,8 @@
 
 <!ENTITY  clearOnCloseSettings.label     "Einstellungen…">
 <!ENTITY  clearOnCloseSettings.accesskey "E">
+
+<!ENTITY  browserContainersHeader.label         "Tab-Umgebungen">
+<!ENTITY  browserContainersLearnMore.label      "Weitere Informationen">
+<!ENTITY  browserContainersEnabled.label        "Tab-Umgebungen aktivieren">
+<!ENTITY  browserContainersEnabled.accesskey    "a">

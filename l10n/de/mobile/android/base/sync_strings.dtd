@@ -63,7 +63,7 @@
 <!ENTITY fxaccount_status_needs_verification2 'Ihr Konto muss verifiziert werden. Tippen Sie hier zum erneuten Senden der Verifizierungs-E-Mail.'>
 <!ENTITY fxaccount_status_needs_credentials 'Kann nicht verbinden. Tippen Sie zum Anmelden hier.'>
 <!ENTITY fxaccount_status_needs_upgrade 'Aktualisieren Sie &brandShortName;, um sich anmelden zu können.'>
-<!ENTITY fxaccount_status_needs_master_sync_automatically_enabled '&syncBrand.shortName.label; wurde eingerichtet, aber synchronisiert nicht automatisch. Schalten Sie “Daten automatisch synchronisieren” in Androids Systemeinstellungen &gt; Datenverbauch um.'>
+<!ENTITY fxaccount_status_needs_master_sync_automatically_enabled '&syncBrand.shortName.label; wurde eingerichtet, aber synchronisiert nicht automatisch. Schalten Sie “Daten automatisch synchronisieren” in Androids Systemeinstellungen &gt; Datenverbrauch um.'>
 <!ENTITY fxaccount_status_needs_master_sync_automatically_enabled_v21 '&syncBrand.shortName.label; wurde eingerichtet, aber synchronisiert nicht automatisch. Schalten Sie “Daten automatisch synchronisieren” in Androids Systemeinstellungen &gt; Konten um.'>
 <!ENTITY fxaccount_status_needs_finish_migrating 'Tippen Sie hier, um sich mit Ihrem neuen Firefox-Konto anzumelden.'>
 <!ENTITY fxaccount_status_bookmarks 'Lesezeichen'>

@@ -21,3 +21,6 @@
 <!ENTITY prefUseragent.label                 "User-Agent-String">
 <!ENTITY prefFirefoxCompat.label             "Firefox-Kompatibilität ausweisen">
 <!ENTITY prefFirefoxCompat.accesskey         "F">
+<!ENTITY prefLightningShow.label             "Lightning-Installation ausweisen">
+<!ENTITY prefLightningShow.accesskey         "L">
+<!ENTITY prefCompatWarning                   "WARNUNG: Das Deaktivieren dieser Einstellungen kann dazu führen das Webseiten oder Funktionen nicht mehr richtig funktionieren.">
