@@ -342,19 +342,11 @@ this.XPCOMUtils = {
   },
 
   /**
-   * Convenience access to category manager
-   */
-  get categoryManager() {
-    return Components.classes["@mozilla.org/categorymanager;1"]
-           .getService(Ci.nsICategoryManager);
-  },
-
-  /**
    * Helper which iterates over a nsISimpleEnumerator.
    * @param e The nsISimpleEnumerator to iterate over.
    * @param i The expected interface for each element.
    */
-  IterSimpleEnumerator: function XPCU_IterSimpleEnumerator(e, i)
+  IterSimpleEnumerator: function* XPCU_IterSimpleEnumerator(e, i)
   {
     while (e.hasMoreElements())
       yield e.getNext().QueryInterface(i);
@@ -365,10 +357,22 @@ this.XPCOMUtils = {
    * @param e The string enumerator (nsIUTF8StringEnumerator or
    *          nsIStringEnumerator) over which to iterate.
    */
-  IterStringEnumerator: function XPCU_IterStringEnumerator(e)
+  IterStringEnumerator: function* XPCU_IterStringEnumerator(e)
   {
     while (e.hasMore())
       yield e.getNext();
+  },
+
+  /**
+   * Helper which iterates over the entries in a category.
+   * @param aCategory The name of the category over which to iterate.
+   */
+  enumerateCategoryEntries: function* XPCOMUtils_enumerateCategoryEntries(aCategory)
+  {
+    let category = this.categoryManager.enumerateCategory(aCategory);
+    for (let entry of this.IterSimpleEnumerator(category, Ci.nsISupportsCString)) {
+      yield [entry.data, this.categoryManager.getCategoryEntry(aCategory, entry.data)];
+    }
   },
 
   /**
@@ -444,6 +448,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
                                   "resource://gre/modules/Preferences.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Services",
                                   "resource://gre/modules/Services.jsm");
+
+XPCOMUtils.defineLazyServiceGetter(XPCOMUtils, "categoryManager",
+                                   "@mozilla.org/categorymanager;1",
+                                   "nsICategoryManager");
 
 /**
  * Helper for XPCOMUtils.generateQI to avoid leaks - see bug 381651#c1

@@ -432,12 +432,22 @@ Section "-Application" APP_IDX
     ${Else}
       WriteRegDWORD HKCU "$0" "IconsVisible" 0
     ${EndIf}
+<<<<<<< HEAD
   ${If} ${AtLeastWin8}
     ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
                              $AppUserModelID \
                              "CliqzURL" \
                              "CliqzHTML"
   ${EndIf}
+||||||| merged common ancestors
+  ${If} ${AtLeastWin8}
+    ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
+                             $AppUserModelID \
+                             "FirefoxURL" \
+                             "FirefoxHTML"
+  ${EndIf}
+=======
+>>>>>>> origin/upstream-releases
   ${EndIf}
 
 !ifdef MOZ_MAINTENANCE_SERVICE
@@ -547,6 +557,13 @@ Section "-Application" APP_IDX
     ${Else}
       ${LogMsg} "** ERROR Adding Shortcut: $SMPROGRAMS\${BrandFullName}.lnk"
     ${EndIf}
+  ${EndIf}
+
+  ; Update lastwritetime of the Start Menu shortcut to clear the tile cache.
+  ${If} ${AtLeastWin8}
+  ${AndIf} ${FileExists} "$SMPROGRAMS\${BrandFullName}.lnk"
+    FileOpen $0 "$SMPROGRAMS\${BrandFullName}.lnk" a
+    FileClose $0
   ${EndIf}
 
   ${If} $AddDesktopSC == 1

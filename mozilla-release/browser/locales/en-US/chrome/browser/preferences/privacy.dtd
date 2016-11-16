@@ -47,7 +47,7 @@
 <!ENTITY  acceptCookies.accesskey       "A">
 
 <!ENTITY  acceptThirdParty.pre.label      "Accept third-party cookies:">
-<!ENTITY  acceptThirdParty.pre.accesskey  "c">
+<!ENTITY  acceptThirdParty.pre.accesskey  "y">
 <!ENTITY  acceptThirdParty.always.label   "Always">
 <!ENTITY  acceptThirdParty.never.label    "Never">
 <!ENTITY  acceptThirdParty.visited.label  "From visited">
@@ -104,6 +104,7 @@
 
 <!ENTITY  clearOnCloseSettings.label     "Settings…">
 <!ENTITY  clearOnCloseSettings.accesskey "t">
+<<<<<<< HEAD
 
 <!-- Forget mode -->
 <!ENTITY  forgetMode.caption "Forget Mode">
@@ -112,3 +113,11 @@
 <!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in forget mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
 <!ENTITY  forgetMode.learnMore "Learn more">
 <!ENTITY  forgetMode.learnMoreLink "https://cliqz.com/en/support/automatic-forget-mode">
+||||||| merged common ancestors
+=======
+
+<!ENTITY  browserContainersHeader.label         "Container Tabs">
+<!ENTITY  browserContainersLearnMore.label      "Learn more">
+<!ENTITY  browserContainersEnabled.label        "Enable Container Tabs">
+<!ENTITY  browserContainersEnabled.accesskey    "n">
+>>>>>>> origin/upstream-releases

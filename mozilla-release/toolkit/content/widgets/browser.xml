@@ -442,7 +442,6 @@
       </property>
 
       <field name="_lastSearchString">null</field>
-      <field name="_lastSearchHighlight">false</field>
 
       <property name="webProgress"
                 readonly="true"
@@ -1347,7 +1346,7 @@
         <body>
         <![CDATA[
           if (!this.docShell || !this.docShell.contentViewer) {
-            return true;
+            return {permitUnload: true, timedOut: false};
           }
           return {permitUnload: this.docShell.contentViewer.permitUnload(), timedOut: false};
         ]]>

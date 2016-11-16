@@ -26,6 +26,8 @@ const SIGNING_REQUIRED = CONSTANTS.REQUIRE_SIGNING ?
 
 XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
                                   "resource://gre/modules/PluralForm.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Preferences",
+                                  "resource://gre/modules/Preferences.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "Experiments",
   "resource:///modules/experiments/Experiments.jsm");
@@ -879,15 +881,6 @@ var gViewController = {
       },
       doCommand: function() {
         AddonManager.checkUpdateSecurity = true;
-      }
-    },
-
-    cmd_pluginCheck: {
-      isEnabled: function() {
-        return true;
-      },
-      doCommand: function() {
-        openURL(Services.urlFormatter.formatURLPref("plugins.update.url"));
       }
     },
 
@@ -3257,7 +3250,7 @@ var gDetailView = {
         );
         let warningLink = document.getElementById("detail-warning-link");
         warningLink.value = gStrings.ext.GetStringFromName("details.notification.outdated.link");
-        warningLink.href = Services.urlFormatter.formatURLPref("plugins.update.url");
+        warningLink.href = this._addon.blocklistURL;
         warningLink.hidden = false;
       } else if (this._addon.blocklistState == Ci.nsIBlocklistService.STATE_VULNERABLE_UPDATE_AVAILABLE) {
         this.node.setAttribute("notification", "error");

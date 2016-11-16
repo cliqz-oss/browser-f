@@ -384,4 +384,10 @@ AppTrustDomain::NetscapeStepUpMatchesServerAuth(Time /*notBefore*/,
   return Success;
 }
 
+void
+AppTrustDomain::NoteAuxiliaryExtension(AuxiliaryExtension /*extension*/,
+                                       Input /*extensionData*/)
+{
+}
+
 } } // namespace mozilla::psm

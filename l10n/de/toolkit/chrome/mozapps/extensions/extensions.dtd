@@ -37,10 +37,6 @@
 <!ENTITY warning.updatesecurity.enable.label       "Aktivieren">
 <!ENTITY warning.updatesecurity.enable.tooltip     "Überprüfung auf Sicherheitsupdates für Add-ons aktivieren">
 
-<!-- global informations -->
-<!ENTITY info.plugincheck.label                 "Überprüfen Sie, ob Ihre Plugins aktuell sind">
-<!ENTITY info.plugincheck.tooltip               "Überprüfen Sie, ob Ihre Plugins aktuell sind">
-
 <!-- categories / views -->
 <!ENTITY view.search.label                    "Suchen">
 <!ENTITY view.discover.label                  "Add-ons suchen">

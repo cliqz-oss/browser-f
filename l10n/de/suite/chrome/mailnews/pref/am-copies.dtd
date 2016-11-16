@@ -36,7 +36,7 @@
 <!ENTITY archiveInOtherFolder.label "Anderer Ordner:">
 <!ENTITY archiveInOtherFolder.accesskey "r">
 <!ENTITY specialFolders.label "Entwürfe und Vorlagen">
-<!ENTITY keepDrafts.label "Nachrichten-Entwürfe behalten in:">
+<!ENTITY keepDrafts2.label "Nachrichten-Entwürfe behalten in:">
 <!-- LOCALIZATION NOTE (draftsFolderOn.label): OK to translate this, bug #57440 -->
 <!ENTITY draftsFolderOn.label "&quot;Entwürfe&quot;-Ordner auf:">
 <!ENTITY draftsFolderOn.accesskey "E">

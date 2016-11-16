@@ -278,6 +278,7 @@ Section "Uninstall"
     ${un.SetAppLSPCategories}
   ${EndIf}
 
+<<<<<<< HEAD
   ${If} ${AtLeastWin8}
     ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
                              $AppUserModelID \
@@ -287,6 +288,20 @@ Section "Uninstall"
 
   ${un.RegCleanAppHandler} "CliqzURL"
   ${un.RegCleanAppHandler} "CliqzHTML"
+||||||| merged common ancestors
+  ${If} ${AtLeastWin8}
+    ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
+                             $AppUserModelID \
+                             "FirefoxURL" \
+                             "FirefoxHTML"
+  ${EndIf}
+
+  ${un.RegCleanAppHandler} "FirefoxURL"
+  ${un.RegCleanAppHandler} "FirefoxHTML"
+=======
+  ${un.RegCleanAppHandler} "FirefoxURL"
+  ${un.RegCleanAppHandler} "FirefoxHTML"
+>>>>>>> origin/upstream-releases
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"

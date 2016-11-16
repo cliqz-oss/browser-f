@@ -30,6 +30,7 @@
 <!ENTITY selectDescription.accesskey "B">
 <!ENTITY acctName.label           "Name:">
 <!ENTITY acctName.accesskey       "N">
+<!ENTITY noModulesFound.label     "Programm oder dessen zu importierende Daten nicht gefunden.">
 
 <!ENTITY back.label               "&lt; Zurück">
 <!ENTITY forward.label            "Weiter &gt;">

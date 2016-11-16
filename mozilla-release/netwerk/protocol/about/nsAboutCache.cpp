@@ -146,6 +146,7 @@ NS_IMETHODIMP nsAboutCache::Channel::AsyncOpen(nsIStreamListener *aListener, nsI
     rv = VisitNextStorage();
     if (NS_FAILED(rv)) return rv;
 
+<<<<<<< HEAD
     MOZ_ASSERT(!aContext, "asyncOpen2() does not take a context argument");
 
     nsCOMPtr<nsILoadInfo> loadInfo = mChannel->GetLoadInfo();
@@ -154,6 +155,12 @@ NS_IMETHODIMP nsAboutCache::Channel::AsyncOpen(nsIStreamListener *aListener, nsI
     } else {
       rv = mChannel->AsyncOpen(aListener, nullptr);
     }
+||||||| merged common ancestors
+    rv = mChannel->AsyncOpen(aListener, aContext);
+=======
+    MOZ_ASSERT(!aContext, "asyncOpen2() does not take a context argument");
+    rv = NS_MaybeOpenChannelUsingAsyncOpen2(mChannel, aListener);
+>>>>>>> origin/upstream-releases
     if (NS_FAILED(rv)) return rv;
 
     return NS_OK;
@@ -483,7 +490,7 @@ nsAboutCache::Channel::OnCacheEntryInfo(nsIURI *aURI, const nsACString & aIdEnha
         PrintTimeString(buf, sizeof(buf), aLastModified);
         mBuffer.Append(buf);
     } else {
-        mBuffer.AppendLiteral("No last modified time (bug 1000338)");
+        mBuffer.AppendLiteral("No last modified time");
     }
     mBuffer.AppendLiteral("</td>\n");
 

@@ -42,13 +42,13 @@ static NS_DEFINE_CID(kThisImplCID, NS_THIS_DOCLOADER_IMPL_CID);
 //
 // Log module for nsIDocumentLoader logging...
 //
-// To enable logging (see prlog.h for full details):
+// To enable logging (see mozilla/Logging.h for full details):
 //
-//    set NSPR_LOG_MODULES=DocLoader:5
-//    set NSPR_LOG_FILE=nspr.log
+//    set MOZ_LOG=DocLoader:5
+//    set MOZ_LOG_FILE=debug.log
 //
 // this enables LogLevel::Debug level information and places all output in
-// the file nspr.log
+// the file 'debug.log'.
 //
 mozilla::LazyLogModule gDocLoaderLog("DocLoader");
 
@@ -673,6 +673,7 @@ void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout)
     }
 
     NS_ASSERTION(!mIsFlushingLayout, "Someone screwed up");
+    NS_ASSERTION(mDocumentRequest, "No Document Request!");
 
     // The load group for this DocumentLoader is idle.  Flush if we need to.
     if (aFlushLayout && !mDontFlushLayout) {
@@ -699,7 +700,9 @@ void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout)
 
     // And now check whether we're really busy; that might have changed with
     // the layout flush.
-    if (!IsBusy()) {
+    // Note, mDocumentRequest can be null if the flushing above re-entered this
+    // method.
+    if (!IsBusy() && mDocumentRequest) {
       // Clear out our request info hash, now that our load really is done and
       // we don't need it anymore to CalculateMaxProgress().
       ClearInternalProgress();
@@ -709,7 +712,6 @@ void nsDocLoader::DocLoaderIsEmpty(bool aFlushLayout)
 
       nsCOMPtr<nsIRequest> docRequest = mDocumentRequest;
 
-      NS_ASSERTION(mDocumentRequest, "No Document Request!");
       mDocumentRequest = 0;
       mIsLoadingDocument = false;
 
@@ -954,7 +956,6 @@ int64_t nsDocLoader::GetMaxTotalProgress()
   int64_t newMaxTotal = 0;
 
   uint32_t count = mChildList.Length();
-  nsCOMPtr<nsIWebProgress> webProgress;
   for (uint32_t i=0; i < count; i++)
   {
     int64_t individualProgress = 0;
