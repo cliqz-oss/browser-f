@@ -109,9 +109,12 @@ public:
   explicit LoadContext(nsIPrincipal* aPrincipal,
                        nsILoadContext* aOptionalBase = nullptr);
 
+  void SetPrivateness(bool);
+
 private:
   ~LoadContext() {}
 
+  nsTObserverArray<nsWeakPtr> mPrivacyObservers;
   nsWeakPtr mTopFrameElement;
   uint64_t mNestedFrameId;
   bool mIsContent;

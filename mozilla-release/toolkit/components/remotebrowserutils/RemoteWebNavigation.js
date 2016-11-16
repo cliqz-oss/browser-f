@@ -73,10 +73,10 @@ RemoteWebNavigation.prototype = {
   loadURI: function(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
     this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
                             Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-                            aPostData, aHeaders, null);
+                            aPostData, aHeaders, null, false);
   },
   loadURIWithOptions: function(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                               aPostData, aHeaders, aBaseURI) {
+                               aPostData, aHeaders, aBaseURI, aEnsurePrivate) {
     this._sendMessage("WebNavigation:LoadURI", {
       uri: aURI,
       flags: aLoadFlags,
@@ -85,6 +85,7 @@ RemoteWebNavigation.prototype = {
       postData: aPostData ? readInputStreamToString(aPostData) : null,
       headers: aHeaders ? readInputStreamToString(aHeaders) : null,
       baseURI: aBaseURI ? aBaseURI.spec : null,
+      ensurePrivate: !!aEnsurePrivate
     });
   },
   setOriginAttributesBeforeLoading: function(aOriginAttributes) {

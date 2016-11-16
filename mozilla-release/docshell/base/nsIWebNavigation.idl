@@ -279,6 +279,8 @@ interface nsIWebNavigation : nsISupports
    *        that at present this argument is only used with view-source aURIs
    *        and cannot be used to resolve aURI.
    *        This parameter is optional and may be null.
+   * @param aEnsurePrivate
+   *        Set whether to switch into private mode before loading.
    */
   void loadURIWithOptions(in wstring        aURI,
                           in unsigned long  aLoadFlags,
@@ -286,7 +288,8 @@ interface nsIWebNavigation : nsISupports
                           in unsigned long  aReferrerPolicy,
                           in nsIInputStream aPostData,
                           in nsIInputStream aHeaders,
-                          in nsIURI         aBaseURI);
+                          in nsIURI         aBaseURI,
+                          in boolean        aEnsurePrivate);
 
   /**
    * Tells the Object to reload the current page.  There may be cases where the

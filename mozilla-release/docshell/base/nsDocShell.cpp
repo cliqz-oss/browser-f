@@ -4635,7 +4635,7 @@ nsDocShell::LoadURI(const char16_t* aURI,
 {
   return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI,
                             mozilla::net::RP_Default, aPostStream,
-                            aHeaderStream, nullptr);
+                            aHeaderStream, nullptr, false);
 }
 
 NS_IMETHODIMP
@@ -4645,7 +4645,8 @@ nsDocShell::LoadURIWithOptions(const char16_t* aURI,
                                uint32_t aReferrerPolicy,
                                nsIInputStream* aPostStream,
                                nsIInputStream* aHeaderStream,
-                               nsIURI* aBaseURI)
+                               nsIURI* aBaseURI,
+                               bool aEnsurePrivate)
 {
   NS_ASSERTION((aLoadFlags & 0xf) == 0, "Unexpected flags");
 
@@ -4767,6 +4768,13 @@ nsDocShell::LoadURIWithOptions(const char16_t* aURI,
     fixupInfo->GetKeywordProviderName(searchProvider);
     fixupInfo->GetKeywordAsSent(keyword);
     MaybeNotifyKeywordSearchLoading(searchProvider, keyword);
+  }
+
+  if (aEnsurePrivate) {
+    rv = SetPrivateBrowsing(true);
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
   }
 
   rv = LoadURI(uri, loadInfo, extraFlags, true);

@@ -228,7 +228,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "LoginManagerParent",
   "resource://gre/modules/LoginManagerParent.jsm");
 
 #if CQZ_AUTO_PRIVATE_TAB
-const AutoPrivateTab = Cc["@cliqz.com/browser/auto_private_tab;1"].
+let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
 
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
@@ -848,8 +848,8 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags,
-                                               referrer, referrerPolicy,
-                                               postData, null, null);
+          referrer, referrerPolicy, postData, null, null,
+          !!params.ensurePrivate);
     } else {
       if (postData) {
         postData = NetUtil.readInputStreamToString(postData, postData.available());
@@ -884,7 +884,7 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-                                               postData, null, null);
+          postData, null, null, !!params.ensurePrivate);
     } else {
       throw e;
     }
@@ -900,6 +900,7 @@ function _loadURIWithFlags(browser, uri, params) {
 // process
 function LoadInOtherProcess(browser, loadOptions, historyIndex = -1) {
   let tab = gBrowser.getTabForBrowser(browser);
+  // TODO: May need to pass privateness here as well.
   SessionStore.navigateAndRestore(tab, loadOptions, historyIndex);
 }
 
@@ -5526,6 +5527,8 @@ function contentAreaClick(event, isPanelClick)
   // visits across frames should be preserved.
   try {
     const doc = event.target.ownerDocument;
+    // We should never reach this code in e10s mode, as this function is only
+    // called in single-process mode. Hence docShell should be accessible.
     const privateTab = doc && doc.docShell.usePrivateBrowsing;
     if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab)
       PlacesUIUtils.markPageAsFollowedLink(href);
@@ -5546,6 +5549,7 @@ function handleLinkClick(event, href, linkNode) {
     return false;
 
   var doc = event.target.ownerDocument;
+  // We should never reach this code in e10s mode.
   const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
@@ -7662,7 +7666,7 @@ var TabContextMenu = {
                          : "apt.tabContext.reloadInForgetMode");
     const addExceptionItem =
         document.getElementById("context_togglePrivateAndRememberDomain");
-    addExceptionItem.hidden = windowIsPrivate || !AutoPrivateTab.active;
+    addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
     addExceptionItem.label =
         gNavigatorBundle.getString(
             tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
@@ -7674,11 +7678,12 @@ var TabContextMenu = {
   },
 
 #if CQZ_AUTO_PRIVATE_TAB
-  toggleTabPrivateMode: function toggleTabPrivateMode(rememberDomain) {
-    AutoPrivateTab.toggleTabPrivateMode(this.contextTab, rememberDomain);
+  togglePrivateMode: function(rememberDomain) {
+    autoForgetTabs.toggleBrowserPrivateMode(
+        this.contextTab.linkedBrowser, rememberDomain);
   },
-
 #endif
+
   handleEvent(aEvent) {
     switch (aEvent.type) {
       case "popuphiding":

@@ -2429,6 +2429,7 @@ NS_CompareLoadInfoAndLoadContext(nsIChannel *aChannel)
                "The value of mUserContextId in the loadContext and in the "
                "loadInfo are not the same!");
 
+    // TODO: Fix this assertion for "forget" tabs
     MOZ_ASSERT(loadInfoUsePB == loadContextUsePB,
                "The value of usePrivateBrowsing in the loadContext and in the loadInfo "
                "are not the same!");
