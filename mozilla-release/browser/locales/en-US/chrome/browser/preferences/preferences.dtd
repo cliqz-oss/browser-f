@@ -21,6 +21,7 @@
 <!ENTITY  panePrivacy.title       "Privacy">
 <!ENTITY  paneSecurity.title      "Security">
 <!ENTITY  paneAdvanced.title      "Advanced">
+<!ENTITY  mozillaSupportHelp.label      "Visit Mozilla Support">
 
 <!-- LOCALIZATION NOTE (paneSync.title): This should match syncBrand.shortName.label in ../syncBrand.dtd -->
 <!ENTITY  paneSync.title          "Sync">

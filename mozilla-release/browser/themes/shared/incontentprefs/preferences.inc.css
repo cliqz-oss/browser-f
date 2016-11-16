@@ -308,6 +308,17 @@ description > html|a {
   margin-bottom: 0;
 }
 
+.mozilla-support-label-drm {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: #999;
+}
+
+.mozilla-support-label-notification {
+  padding-left: 4px;
+  color: #999;
+}
+
 #showUpdateHistory {
   margin-inline-start: 0;
 }
