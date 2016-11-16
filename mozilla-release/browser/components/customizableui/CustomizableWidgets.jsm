@@ -612,24 +612,8 @@ const CustomizableWidgets = [
     tooltiptext: "add-ons-button.tooltiptext3",
     defaultArea: CustomizableUI.AREA_PANEL,
     onCommand: function(aEvent) {
-<<<<<<< HEAD
-      let win = aEvent.target &&
-                aEvent.target.ownerDocument &&
-                aEvent.target.ownerDocument.defaultView;
-      if (win && typeof win.BrowserOpenAddonsMgr == "function") {
-        win.BrowserOpenAddonsMgr("addons://list/plugin");
-      }
-||||||| merged common ancestors
-      let win = aEvent.target &&
-                aEvent.target.ownerDocument &&
-                aEvent.target.ownerDocument.defaultView;
-      if (win && typeof win.BrowserOpenAddonsMgr == "function") {
-        win.BrowserOpenAddonsMgr();
-      }
-=======
       let win = aEvent.target.ownerGlobal;
-      win.BrowserOpenAddonsMgr();
->>>>>>> origin/upstream-releases
+      win.BrowserOpenAddonsMgr("addons://list/plugin");
     }
   }, {
     id: "zoom-controls",

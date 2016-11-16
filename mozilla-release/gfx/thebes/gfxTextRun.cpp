@@ -631,13 +631,8 @@ gfxTextRun::Draw(Range aRange, gfxPoint aPt, const DrawParams& aParams) const
     params.direction = direction;
     params.strokeOpts = aParams.strokeOpts;
     params.textStrokeColor = aParams.textStrokeColor;
-<<<<<<< HEAD
-    params.drawOpts = aParams.drawOpts;
-||||||| merged common ancestors
-=======
     params.textStrokePattern = aParams.textStrokePattern;
     params.drawOpts = aParams.drawOpts;
->>>>>>> origin/upstream-releases
     params.drawMode = aParams.drawMode;
     params.callbacks = aParams.callbacks;
     params.runContextPaint = aParams.contextPaint;

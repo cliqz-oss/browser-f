@@ -1182,15 +1182,7 @@ nsUrlClassifierDBService::Init()
 #if 0
     Preferences::GetBool(CHECK_TRACKING_PREF, CHECK_TRACKING_DEFAULT) ||
     Preferences::GetBool(CHECK_TRACKING_PB_PREF, CHECK_TRACKING_PB_DEFAULT);
-<<<<<<< HEAD
 #endif
-  mCheckForbiddenURIs = Preferences::GetBool(CHECK_FORBIDDEN_PREF,
-    CHECK_FORBIDDEN_DEFAULT);
-||||||| merged common ancestors
-  mCheckForbiddenURIs = Preferences::GetBool(CHECK_FORBIDDEN_PREF,
-    CHECK_FORBIDDEN_DEFAULT);
-=======
->>>>>>> origin/upstream-releases
   mCheckBlockedURIs = Preferences::GetBool(CHECK_BLOCKED_PREF,
     CHECK_BLOCKED_DEFAULT);
   uint32_t gethashNoise = Preferences::GetUint(GETHASH_NOISE_PREF,

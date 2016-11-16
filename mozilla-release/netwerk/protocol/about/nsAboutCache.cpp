@@ -146,21 +146,8 @@ NS_IMETHODIMP nsAboutCache::Channel::AsyncOpen(nsIStreamListener *aListener, nsI
     rv = VisitNextStorage();
     if (NS_FAILED(rv)) return rv;
 
-<<<<<<< HEAD
-    MOZ_ASSERT(!aContext, "asyncOpen2() does not take a context argument");
-
-    nsCOMPtr<nsILoadInfo> loadInfo = mChannel->GetLoadInfo();
-    if (loadInfo && loadInfo->GetSecurityMode() != 0) {
-      rv = mChannel->AsyncOpen2(aListener);
-    } else {
-      rv = mChannel->AsyncOpen(aListener, nullptr);
-    }
-||||||| merged common ancestors
-    rv = mChannel->AsyncOpen(aListener, aContext);
-=======
     MOZ_ASSERT(!aContext, "asyncOpen2() does not take a context argument");
     rv = NS_MaybeOpenChannelUsingAsyncOpen2(mChannel, aListener);
->>>>>>> origin/upstream-releases
     if (NS_FAILED(rv)) return rv;
 
     return NS_OK;

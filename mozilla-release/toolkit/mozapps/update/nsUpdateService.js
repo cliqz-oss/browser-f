@@ -1698,14 +1698,10 @@ function Update(update) {
     }
   }
 
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-=======
   // Don't allow the background interval to be greater than 10 minutes.
   this.backgroundInterval = Math.min(this.backgroundInterval, 600);
 
->>>>>>> origin/upstream-releases
   // The Update Name is either the string provided by the <update> element, or
   // the string: "<App Name> <Update App Version>"
   var name = "";

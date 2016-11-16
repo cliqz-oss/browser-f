@@ -43,41 +43,17 @@ function getLists(prefName) {
     .map(function(value) { return value.trim(); });
 }
 
-<<<<<<< HEAD
-// These may be a comma-separated lists of tables.
-const phishingLists = getLists("urlclassifier.phishTable");
-const malwareLists = getLists("urlclassifier.malwareTable");
-const downloadBlockLists = getLists("urlclassifier.downloadBlockTable");
-const downloadAllowLists = getLists("urlclassifier.downloadAllowTable");
-#if 0
-const trackingProtectionLists = getLists("urlclassifier.trackingTable");
-const trackingProtectionWhitelists = getLists("urlclassifier.trackingWhitelistTable");
-#endif
-const trackingProtectionLists = [];
-const trackingProtectionWhitelists = [];
-const forbiddenLists = getLists("urlclassifier.forbiddenTable");
-const blockedLists = getLists("urlclassifier.blockedTable");
-||||||| merged common ancestors
-// These may be a comma-separated lists of tables.
-const phishingLists = getLists("urlclassifier.phishTable");
-const malwareLists = getLists("urlclassifier.malwareTable");
-const downloadBlockLists = getLists("urlclassifier.downloadBlockTable");
-const downloadAllowLists = getLists("urlclassifier.downloadAllowTable");
-const trackingProtectionLists = getLists("urlclassifier.trackingTable");
-const trackingProtectionWhitelists = getLists("urlclassifier.trackingWhitelistTable");
-const forbiddenLists = getLists("urlclassifier.forbiddenTable");
-const blockedLists = getLists("urlclassifier.blockedTable");
-=======
 const tablePreferences = [
   "urlclassifier.phishTable",
   "urlclassifier.malwareTable",
   "urlclassifier.downloadBlockTable",
   "urlclassifier.downloadAllowTable",
+#if 0
   "urlclassifier.trackingTable",
   "urlclassifier.trackingWhitelistTable",
+#endif
   "urlclassifier.blockedTable"
 ];
->>>>>>> origin/upstream-releases
 
 this.SafeBrowsing = {
 

@@ -2077,46 +2077,10 @@ function shouldRunServiceTest() {
   }
 
   // Check to make sure the service is installed
-<<<<<<< HEAD
-  let helperBin = getTestDirFile(FILE_HELPER_BIN);
   let args = ["wait-for-service-stop", "CliqzMaintenance", "10"];
-  let process = Cc["@mozilla.org/process/util;1"].
-                createInstance(Ci.nsIProcess);
-  process.init(helperBin);
-  process.run(true, args, args.length);
-  Assert.notEqual(process.exitValue, 0xEE, "the maintenance service should " +
-                  "be installed (if not, build system configuration bug?)");
-
-  // If this is the first test in the series, then there is no reason the
-  // service should be anything but stopped, so be strict here and fail the
-  // test.
-  if (aFirstTest) {
-    Assert.equal(process.exitValue, 0,
-                 "the service should not be running for the first test");
-  }
-||||||| merged common ancestors
-  let helperBin = getTestDirFile(FILE_HELPER_BIN);
-  let args = ["wait-for-service-stop", "MozillaMaintenance", "10"];
-  let process = Cc["@mozilla.org/process/util;1"].
-                createInstance(Ci.nsIProcess);
-  process.init(helperBin);
-  process.run(true, args, args.length);
-  Assert.notEqual(process.exitValue, 0xEE, "the maintenance service should " +
-                  "be installed (if not, build system configuration bug?)");
-
-  // If this is the first test in the series, then there is no reason the
-  // service should be anything but stopped, so be strict here and fail the
-  // test.
-  if (aFirstTest) {
-    Assert.equal(process.exitValue, 0,
-                 "the service should not be running for the first test");
-  }
-=======
-  let args = ["wait-for-service-stop", "MozillaMaintenance", "10"];
   let exitValue = runTestHelperSync(args);
   Assert.notEqual(exitValue, 0xEE, "the maintenance service should be " +
                   "installed (if not, build system configuration bug?)");
->>>>>>> origin/upstream-releases
 
   if (IS_AUTHENTICODE_CHECK_ENABLED) {
     // The test registry key exists and IS_AUTHENTICODE_CHECK_ENABLED is true
@@ -2505,70 +2469,6 @@ function runUpdateUsingService(aExpectedStatus, aSwitchApp, aCheckSvcLog) {
     file.append("maintenanceservice.log");
     return readFile(file);
   }
-<<<<<<< HEAD
-  function waitServiceApps() {
-    // maintenanceservice_installer.exe is started async during updates.
-    waitForApplicationStop("maintenanceservice_installer.exe");
-    // maintenanceservice_tmp.exe is started async from the service installer.
-    waitForApplicationStop("maintenanceservice_tmp.exe");
-    // In case the SCM thinks the service is stopped, but process still exists.
-    waitForApplicationStop("maintenanceservice.exe");
-  }
-  function waitForServiceStop(aFailTest) {
-    waitServiceApps();
-    debugDump("waiting for service to stop if necessary...");
-    // Use the helper bin to ensure the service is stopped. If not
-    // stopped then wait for the service to be stopped (at most 120 seconds)
-    let helperBin = getTestDirFile(FILE_HELPER_BIN);
-    let helperBinArgs = ["wait-for-service-stop",
-                         "CliqzMaintenance",
-                         "120"];
-    let helperBinProcess = Cc["@mozilla.org/process/util;1"].
-                           createInstance(Ci.nsIProcess);
-    helperBinProcess.init(helperBin);
-    debugDump("stopping service...");
-    helperBinProcess.run(true, helperBinArgs, helperBinArgs.length);
-    Assert.notEqual(helperBinProcess.exitValue, 0xEE,
-                    "the maintenance service should exist");
-
-    if (helperBinProcess.exitValue != 0) {
-      if (aFailTest) {
-        Assert.ok(false, "the maintenance service should stop, process exit " +
-                  "value: " + helperBinProcess.exitValue);
-      }
-||||||| merged common ancestors
-  function waitServiceApps() {
-    // maintenanceservice_installer.exe is started async during updates.
-    waitForApplicationStop("maintenanceservice_installer.exe");
-    // maintenanceservice_tmp.exe is started async from the service installer.
-    waitForApplicationStop("maintenanceservice_tmp.exe");
-    // In case the SCM thinks the service is stopped, but process still exists.
-    waitForApplicationStop("maintenanceservice.exe");
-  }
-  function waitForServiceStop(aFailTest) {
-    waitServiceApps();
-    debugDump("waiting for service to stop if necessary...");
-    // Use the helper bin to ensure the service is stopped. If not
-    // stopped then wait for the service to be stopped (at most 120 seconds)
-    let helperBin = getTestDirFile(FILE_HELPER_BIN);
-    let helperBinArgs = ["wait-for-service-stop",
-                         "MozillaMaintenance",
-                         "120"];
-    let helperBinProcess = Cc["@mozilla.org/process/util;1"].
-                           createInstance(Ci.nsIProcess);
-    helperBinProcess.init(helperBin);
-    debugDump("stopping service...");
-    helperBinProcess.run(true, helperBinArgs, helperBinArgs.length);
-    Assert.notEqual(helperBinProcess.exitValue, 0xEE,
-                    "the maintenance service should exist");
-
-    if (helperBinProcess.exitValue != 0) {
-      if (aFailTest) {
-        Assert.ok(false, "the maintenance service should stop, process exit " +
-                  "value: " + helperBinProcess.exitValue);
-      }
-=======
->>>>>>> origin/upstream-releases
 
   function checkServiceUpdateFinished() {
     if (isProcessRunning(FILE_MAINTENANCE_SERVICE_BIN)) {

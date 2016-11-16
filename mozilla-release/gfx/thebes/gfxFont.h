@@ -2191,14 +2191,9 @@ struct TextRunDrawParams {
     gfxFloat                 direction;
     double                   devPerApp;
     nscolor                  textStrokeColor;
-<<<<<<< HEAD
-    const mozilla::gfx::DrawOptions *drawOpts;
-||||||| merged common ancestors
-=======
     gfxPattern              *textStrokePattern;
     const mozilla::gfx::StrokeOptions *strokeOpts;
     const mozilla::gfx::DrawOptions   *drawOpts;
->>>>>>> origin/upstream-releases
     DrawMode                 drawMode;
     bool                     isVerticalRun;
     bool                     isRTL;

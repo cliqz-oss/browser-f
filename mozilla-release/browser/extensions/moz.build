@@ -5,24 +5,17 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-<<<<<<< HEAD
-    'pdfjs'
-||||||| merged common ancestors
-    'e10srollout',
-    'pdfjs',
-    'pocket',
-    'webcompat',
-=======
     'aushelper',
-    'e10srollout',
+#    'e10srollout',
     'pdfjs',
-    'pocket',
-    'webcompat',
->>>>>>> origin/upstream-releases
+#    'pocket',
+#    'webcompat',
 ]
 
+''' disabled by CLIQZ
 # Only include the following system add-ons if building Aurora or Nightly
 if 'a' in CONFIG['GRE_MILESTONE']:
     DIRS += [
         'flyweb',
     ]
+'''

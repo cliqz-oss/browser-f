@@ -3849,89 +3849,6 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor : public nsBidiPresUtils::BidiProcess
 
     mCtx->EnsureTarget();
 
-<<<<<<< HEAD
-    // If the operation is 'fill' with a simple color, we defer to gfxTextRun
-    // which will handle color/svg-in-ot fonts appropriately. Such fonts will
-    // not render well via the code below.
-    if (mOp == CanvasRenderingContext2D::TextDrawOperation::FILL &&
-        mState->StyleIsColor(CanvasRenderingContext2D::Style::FILL)) {
-      AdjustedTarget target(mCtx);
-      RefPtr<gfxContext> thebes =
-        gfxContext::ForDrawTargetWithTransform(target);
-      nscolor fill = mState->colorStyles[CanvasRenderingContext2D::Style::FILL];
-      thebes->SetColor(Color::FromABGR(fill));
-      gfxTextRun::DrawParams params(thebes);
-      const ContextState& state = *mState;
-      DrawOptions drawOpts;
-      drawOpts.mAlpha = state.globalAlpha;
-      drawOpts.mCompositionOp = mCtx->UsedOperation();
-      params.drawOpts = &drawOpts;
-      mTextRun->Draw(gfxTextRun::Range(mTextRun.get()), point, params);
-      return;
-    }
-
-    uint32_t numRuns;
-    const gfxTextRun::GlyphRun *runs = mTextRun->GetGlyphRuns(&numRuns);
-    const int32_t appUnitsPerDevUnit = mAppUnitsPerDevPixel;
-    const double devUnitsPerAppUnit = 1.0/double(appUnitsPerDevUnit);
-    Point baselineOrigin =
-      Point(point.x * devUnitsPerAppUnit, point.y * devUnitsPerAppUnit);
-
-    float advanceSum = 0;
-
-    for (uint32_t c = 0; c < numRuns; c++) {
-      gfxFont *font = runs[c].mFont;
-
-      bool verticalFont =
-        runs[c].mOrientation == gfxTextRunFactory::TEXT_ORIENT_VERTICAL_UPRIGHT;
-
-      const float& baselineOriginInline =
-        verticalFont ? baselineOrigin.y : baselineOrigin.x;
-      const float& baselineOriginBlock =
-        verticalFont ? baselineOrigin.x : baselineOrigin.y;
-
-      uint32_t endRun = 0;
-      if (c + 1 < numRuns) {
-        endRun = runs[c + 1].mCharacterOffset;
-||||||| merged common ancestors
-    // If the operation is 'fill' with a simple color, we defer to gfxTextRun
-    // which will handle color/svg-in-ot fonts appropriately. Such fonts will
-    // not render well via the code below.
-    if (mOp == CanvasRenderingContext2D::TextDrawOperation::FILL &&
-        mState->StyleIsColor(CanvasRenderingContext2D::Style::FILL)) {
-      RefPtr<gfxContext> thebes =
-        gfxContext::ForDrawTargetWithTransform(mCtx->mTarget);
-      nscolor fill = mState->colorStyles[CanvasRenderingContext2D::Style::FILL];
-      thebes->SetColor(Color::FromABGR(fill));
-      gfxTextRun::DrawParams params(thebes);
-      mTextRun->Draw(gfxTextRun::Range(mTextRun.get()), point, params);
-      return;
-    }
-
-    uint32_t numRuns;
-    const gfxTextRun::GlyphRun *runs = mTextRun->GetGlyphRuns(&numRuns);
-    const int32_t appUnitsPerDevUnit = mAppUnitsPerDevPixel;
-    const double devUnitsPerAppUnit = 1.0/double(appUnitsPerDevUnit);
-    Point baselineOrigin =
-      Point(point.x * devUnitsPerAppUnit, point.y * devUnitsPerAppUnit);
-
-    float advanceSum = 0;
-
-    for (uint32_t c = 0; c < numRuns; c++) {
-      gfxFont *font = runs[c].mFont;
-
-      bool verticalFont =
-        runs[c].mOrientation == gfxTextRunFactory::TEXT_ORIENT_VERTICAL_UPRIGHT;
-
-      const float& baselineOriginInline =
-        verticalFont ? baselineOrigin.y : baselineOrigin.x;
-      const float& baselineOriginBlock =
-        verticalFont ? baselineOrigin.x : baselineOrigin.y;
-
-      uint32_t endRun = 0;
-      if (c + 1 < numRuns) {
-        endRun = runs[c + 1].mCharacterOffset;
-=======
     // Defer the tasks to gfxTextRun which will handle color/svg-in-ot fonts
     // appropriately.
     StrokeOptions strokeOpts;
@@ -3948,7 +3865,6 @@ struct MOZ_STACK_CLASS CanvasBidiProcessor : public nsBidiPresUtils::BidiProcess
       nscolor fontColor = mState->colorStyles[style];
       if (style == Style::FILL) {
         params.context->SetColor(Color::FromABGR(fontColor));
->>>>>>> origin/upstream-releases
       } else {
         params.textStrokeColor = fontColor;
       }

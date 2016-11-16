@@ -10,13 +10,7 @@
 
   <Description about="urn:mozilla:install-manifest">
     <em:id>e10srollout@mozilla.org</em:id>
-<<<<<<< HEAD
-    <em:version>1.3</em:version>
-||||||| merged common ancestors
-    <em:version>1.2</em:version>
-=======
     <em:version>1.5</em:version>
->>>>>>> origin/upstream-releases
     <em:type>2</em:type>
     <em:bootstrap>true</em:bootstrap>
 

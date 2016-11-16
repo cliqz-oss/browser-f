@@ -537,15 +537,9 @@ BrowserGlue.prototype = {
 #ifdef MOZ_SERVICES_SYNC
     os.addObserver(this, "weave:service:ready", false);
     os.addObserver(this, "fxaccounts:onverified", false);
-<<<<<<< HEAD
-    os.addObserver(this, "weave:engine:clients:display-uri", false);
-#endif
-||||||| merged common ancestors
-    os.addObserver(this, "weave:engine:clients:display-uri", false);
-=======
     os.addObserver(this, "fxaccounts:device_disconnected", false);
     os.addObserver(this, "weave:engine:clients:display-uris", false);
->>>>>>> origin/upstream-releases
+#endif
     os.addObserver(this, "session-save", false);
     os.addObserver(this, "places-init-complete", false);
     this._isPlacesInitObserver = true;
@@ -598,15 +592,9 @@ BrowserGlue.prototype = {
 #ifdef MOZ_SERVICES_SYNC
     os.removeObserver(this, "weave:service:ready");
     os.removeObserver(this, "fxaccounts:onverified");
-<<<<<<< HEAD
-    os.removeObserver(this, "weave:engine:clients:display-uri");
-#endif
-||||||| merged common ancestors
-    os.removeObserver(this, "weave:engine:clients:display-uri");
-=======
     os.removeObserver(this, "fxaccounts:device_disconnected");
     os.removeObserver(this, "weave:engine:clients:display-uris");
->>>>>>> origin/upstream-releases
+#endif
     os.removeObserver(this, "session-save");
     if (this._bookmarksBackupIdleTime) {
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);

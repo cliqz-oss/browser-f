@@ -1,27 +1,13 @@
-<<<<<<< HEAD
 google
 yahoo-de
 bing
 youtube-de
 ecosia
 twitter
-||||||| merged common ancestors
-google
-yahoo-de
-bing
-=======
->>>>>>> origin/upstream-releases
 amazondotcom-de
-bing
-google
+eBay-de
+wikipedia-de
 leo_ende_de
-<<<<<<< HEAD
 gmaps-de
 gimages-de
 startpage
-||||||| merged common ancestors
-
-=======
-wikipedia-de
-yahoo-de
->>>>>>> origin/upstream-releases

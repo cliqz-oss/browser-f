@@ -589,22 +589,10 @@ ExecuteServiceCommand(int argc, LPWSTR *argv)
 
   BOOL result = FALSE;
   if (!lstrcmpi(argv[2], L"software-update")) {
-<<<<<<< HEAD
-
-    // Use the passed in command line arguments for the update, except for the
-    // path to updater.exe.  We copy updater.exe to a the directory of the
-    // CliqzMaintenance service so that a low integrity process cannot
-||||||| merged common ancestors
-
-    // Use the passed in command line arguments for the update, except for the
-    // path to updater.exe.  We copy updater.exe to a the directory of the
-    // MozillaMaintenance service so that a low integrity process cannot
-=======
     // Use the passed in command line arguments for the update, except for the
     // path to updater.exe. We always look for updater.exe in the installation
     // directory, then we copy updater.exe to a the directory of the
-    // MozillaMaintenance service so that a low integrity process cannot
->>>>>>> origin/upstream-releases
+    // CliqzMaintenance service so that a low integrity process cannot
     // replace the updater.exe at any point and use that for the update.
     // It also makes DLL injection attacks harder.
     WCHAR installDir[MAX_PATH + 1] = { L'\0' };

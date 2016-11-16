@@ -163,16 +163,9 @@ nsContextMenu.prototype = {
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     const isTabPrivate = this.browser.loadContext.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
-<<<<<<< HEAD
 
     this.showItem("context-openlink",
         shouldShow && !isWindowPrivate && !isTabPrivate);
-||||||| merged common ancestors
-
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
-=======
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
->>>>>>> origin/upstream-releases
     this.showItem("context-openlinkprivate", shouldShow);
     this.showItem("context-openlinkintab", shouldShow && !inContainer && !isTabPrivate);
     this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);

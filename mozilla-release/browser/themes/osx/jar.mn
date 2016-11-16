@@ -42,19 +42,7 @@ browser.jar:
   skin/classic/browser/page-livemarks.png
   skin/classic/browser/page-livemarks@2x.png
   skin/classic/browser/pageInfo.css
-<<<<<<< HEAD
-  skin/classic/browser/pointerLock-16.png
-  skin/classic/browser/pointerLock-16@2x.png
-  skin/classic/browser/pointerLock-64.png
-  skin/classic/browser/pointerLock-64@2x.png
   skin/classic/browser/privatebrowsing-eraser.svg
-||||||| merged common ancestors
-  skin/classic/browser/pointerLock-16.png
-  skin/classic/browser/pointerLock-16@2x.png
-  skin/classic/browser/pointerLock-64.png
-  skin/classic/browser/pointerLock-64@2x.png
-=======
->>>>>>> origin/upstream-releases
   skin/classic/browser/privatebrowsing-mask.png
   skin/classic/browser/privatebrowsing-mask@2x.png
   skin/classic/browser/privatebrowsing-mask-short.png
@@ -143,16 +131,6 @@ browser.jar:
   skin/classic/browser/places/livemark-item.png             (places/livemark-item.png)
   skin/classic/browser/preferences/alwaysAsk.png            (preferences/alwaysAsk.png)
   skin/classic/browser/preferences/application.png          (preferences/application.png)
-<<<<<<< HEAD
-  skin/classic/browser/preferences/Options.png              (preferences/Options.png)
-#ifdef MOZ_SERVICES_SYNC
-  skin/classic/browser/preferences/Options-sync.png         (preferences/Options-sync.png)
-#endif
-||||||| merged common ancestors
-  skin/classic/browser/preferences/Options.png              (preferences/Options.png)
-  skin/classic/browser/preferences/Options-sync.png         (preferences/Options-sync.png)
-=======
->>>>>>> origin/upstream-releases
   skin/classic/browser/preferences/saveFile.png             (preferences/saveFile.png)
 * skin/classic/browser/preferences/preferences.css          (preferences/preferences.css)
 * skin/classic/browser/preferences/in-content/preferences.css (preferences/in-content/preferences.css)

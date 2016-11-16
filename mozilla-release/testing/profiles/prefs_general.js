@@ -345,16 +345,10 @@ user_pref("dom.audiochannel.mutedByDefault", false);
 user_pref("webextensions.tests", true);
 user_pref("startup.homepage_welcome_url", "about:blank");
 user_pref("startup.homepage_welcome_url.additional", "");
-<<<<<<< HEAD
-user_pref("browser.usedOnWindows10.introURL", "");
-
-// CLIQZ ignore onboarding
-user_pref("extensions.cliqz.browserOnboarding", true);
-||||||| merged common ancestors
-user_pref("browser.usedOnWindows10.introURL", "");
-=======
 
 // Don't block old libavcodec libraries when testing, because our test systems
 // cannot easily be upgraded.
 user_pref("media.libavcodec.allow-obsolete", true);
->>>>>>> origin/upstream-releases
+
+// CLIQZ ignore onboarding
+user_pref("extensions.cliqz.browserOnboarding", true);

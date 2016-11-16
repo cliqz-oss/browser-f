@@ -824,16 +824,7 @@ TabChild::Init()
       mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME);
   nsCOMPtr<nsILoadContext> loadContext = do_GetInterface(WebNavigation());
   MOZ_ASSERT(loadContext);
-<<<<<<< HEAD
-
-  loadContext->SetPrivateBrowsing(
-      mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW);
-||||||| merged common ancestors
-  loadContext->SetPrivateBrowsing(
-      mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW);
-=======
   loadContext->SetPrivateBrowsing(OriginAttributesRef().mPrivateBrowsingId > 0);
->>>>>>> origin/upstream-releases
   loadContext->SetRemoteTabs(
       mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW);
   NS_ENSURE_SUCCESS(

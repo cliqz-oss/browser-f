@@ -3403,21 +3403,13 @@ nsDocShell::SetDocLoaderParent(nsDocLoader* aParent)
   }
 
   nsCOMPtr<nsILoadContext> parentAsLoadContext(do_QueryInterface(parent));
-<<<<<<< HEAD
-  if (parentAsLoadContext &&
+  if (parentAsLoadContext && mInheritPrivateBrowsingId &&
       NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value)) &&
       // Never switch from private to non-private mode. This happens when
       // DocShells are swapped during tab being dragged between windows, and
       // we don't want private tabs to lose their privacy flag.
       // See DB-911.
       value) {
-||||||| merged common ancestors
-  if (parentAsLoadContext &&
-      NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value))) {
-=======
-  if (parentAsLoadContext && mInheritPrivateBrowsingId &&
-      NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value))) {
->>>>>>> origin/upstream-releases
     SetPrivateBrowsing(value);
   }
 

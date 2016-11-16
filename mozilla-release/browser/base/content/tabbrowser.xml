@@ -1885,15 +1885,6 @@
             let uniqueId = this._generateUniquePanelID();
             notificationbox.id = uniqueId;
             aTab.linkedPanel = uniqueId;
-<<<<<<< HEAD
-||||||| merged common ancestors
-            aTab.linkedBrowser = browser;
-            this._tabForBrowser.set(browser, aTab);
-=======
-            aTab.linkedBrowser = browser;
-            aTab.hasBrowser = true;
-            this._tabForBrowser.set(browser, aTab);
->>>>>>> origin/upstream-releases
 
             // Inject the <browser> into the DOM if necessary.
             if (!notificationbox.parentNode) {
@@ -1905,10 +1896,11 @@
               this.mPanelContainer.appendChild(notificationbox);
             }
 
-            // Passing underinitialized browser element (before binding
+            // CLIQZ. Passing underinitialized browser element (before binding
             // constructor has finished) is highly undesired. That's why it's
             // done after browser's notificationbox in inserted into DOM tree.
             aTab.linkedBrowser = browser;
+            aTab.hasBrowser = true;
             this._tabForBrowser.set(browser, aTab);
 
             // wire up a progress listener for the new browser object.
@@ -6301,7 +6293,6 @@
       </xul:stack>
     </content>
 
-<<<<<<< HEAD
     <implementation
         implements="nsIPrivacyTransitionObserver, nsISupportsWeakReference"
         >
@@ -6331,16 +6322,11 @@
         ]]>
         </getter>
       </property>
-||||||| merged common ancestors
-    <implementation>
-=======
-    <implementation>
       <constructor><![CDATA[
         if (!("_lastAccessed" in this)) {
           this.updateLastAccessed();
         }
       ]]></constructor>
->>>>>>> origin/upstream-releases
 
       <property name="_visuallySelected">
         <setter>

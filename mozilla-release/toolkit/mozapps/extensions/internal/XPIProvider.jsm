@@ -6055,17 +6055,11 @@ AddonInstall.prototype = {
               onUpdateFinished: aAddon => this.downloadCompleted(),
             }, AddonManager.UPDATE_WHEN_ADDON_INSTALLED);
           }
-<<<<<<< HEAD
         }, ([error, message, manifest]) => {
           manifest = manifest || this.addon;
           XPIDatabase.reportAddonInstallationAttempt(manifest.id, manifest.type,
               "download");
-||||||| merged common ancestors
-        }, ([error, message]) => {
-=======
-        }, ([error, message]) => {
           this.removeTemporaryFile();
->>>>>>> origin/upstream-releases
           this.downloadFailed(error, message);
         });
       }

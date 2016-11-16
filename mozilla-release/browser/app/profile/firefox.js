@@ -1116,18 +1116,14 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
 
-<<<<<<< HEAD
-#endif  // MOZ_SERVICES_SYNC
-
-||||||| merged common ancestors
-=======
 #ifdef NIGHTLY_BUILD
 pref("services.sync.sendTabToDevice.enabled", true);
 #else
 pref("services.sync.sendTabToDevice.enabled", false);
 #endif
 
->>>>>>> origin/upstream-releases
+#endif  // MOZ_SERVICES_SYNC
+
 // Developer edition preferences
 #ifdef MOZ_DEV_EDITION
 sticky_pref("lightweightThemes.selectedThemeID", "firefox-devedition@mozilla.org");

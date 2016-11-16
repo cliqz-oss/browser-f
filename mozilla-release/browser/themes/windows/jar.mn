@@ -142,22 +142,6 @@ browser.jar:
   skin/classic/browser/preferences/alwaysAsk-XP.png            (preferences/alwaysAsk-XP.png)
   skin/classic/browser/preferences/application.png             (preferences/application.png)
   skin/classic/browser/preferences/application-XP.png          (preferences/application-XP.png)
-<<<<<<< HEAD
-  skin/classic/browser/preferences/mail.png                    (preferences/mail.png)
-  skin/classic/browser/preferences/mail-XP.png                 (preferences/mail-XP.png)
-  skin/classic/browser/preferences/Options.png                 (preferences/Options.png)
-  skin/classic/browser/preferences/Options-XP.png              (preferences/Options-XP.png)
-#ifdef MOZ_SERVICES_SYNC
-  skin/classic/browser/preferences/Options-sync.png            (preferences/Options-sync.png)
-#endif
-||||||| merged common ancestors
-  skin/classic/browser/preferences/mail.png                    (preferences/mail.png)
-  skin/classic/browser/preferences/mail-XP.png                 (preferences/mail-XP.png)
-  skin/classic/browser/preferences/Options.png                 (preferences/Options.png)
-  skin/classic/browser/preferences/Options-XP.png              (preferences/Options-XP.png)
-  skin/classic/browser/preferences/Options-sync.png            (preferences/Options-sync.png)
-=======
->>>>>>> origin/upstream-releases
   skin/classic/browser/preferences/saveFile.png                (preferences/saveFile.png)
   skin/classic/browser/preferences/saveFile-XP.png             (preferences/saveFile-XP.png)
   skin/classic/browser/preferences/preferences.css             (preferences/preferences.css)
