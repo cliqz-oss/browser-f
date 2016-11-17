@@ -37,8 +37,6 @@ DOCKER_REGISTRY_URL
 
 def imgName = 'browser-f'
 
-// Die early for missing build params
-
 // authorize docker deamon to access registry
 try {
   sh "`aws ecr get-login --region=$AWS_REGION`"
@@ -49,8 +47,10 @@ try {
 docker.withRegistry(DOCKER_REGISTRY_URL) {
   def image = docker.image(imgName)
   image.pull()
-  docker.image(image.imageName()).inside("-v ${pwd()}:/build:rw -w /build") {
-     dir('/build') {
+  def userName = sh returnStdout: true, script: 'id -u -n'
+  def buildDir = "/home/$userName/build"
+  docker.image(image.imageName()).inside("-v ${pwd()}:/$buildDir:rw") {
+     dir(buildDir) {
 
      stage('Update Dependencies') {
           // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
