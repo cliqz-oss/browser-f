@@ -55,8 +55,9 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   try {
     // authorize docker deamon to access registry
     sh "`aws ecr get-login --region=$AWS_REGION`"
+
     docker.withRegistry(DOCKER_REGISTRY_URL) {
-      def image = docker.image(imgName)
+      def image = docker.image(imageName)
       image.pull()
       imageName = image.imageName()
     }
