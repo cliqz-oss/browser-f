@@ -16,14 +16,17 @@ DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
 node('browser') {
 
-  sh 'env'
-
-  stage('checkout') {
-    checkout scm
-  }
-
   stage("Start build") {
-    load 'Jenkinsfile.lin'
+    def helpers = load 'build-helpers.groovy'
+    helpers.withDocker(imageName, '/home/ubuntu/build') { nodeId ->
+      node(nodeId) {
+        stage('checkout') {
+          checkout scm
+        }
+
+        load 'Jenkinsfile.lin'
+      }
+    }
   }
 
 }
