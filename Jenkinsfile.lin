@@ -50,7 +50,7 @@ docker.withRegistry(DOCKER_REGISTRY_URL) {
   def userName = sh(returnStdout: true, script: 'id -u -n').trim()
   def buildDir = "/home/$userName/build"
   docker.image(image.imageName()).inside("-v ${pwd()}:/$buildDir:rw") {
-     dir(buildDir) {
+     ws(buildDir) {
 
      stage('Update Dependencies') {
           // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
