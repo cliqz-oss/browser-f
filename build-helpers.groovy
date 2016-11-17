@@ -85,6 +85,7 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
     }
   } catch (e) {
     removeNode(nodeId)
+    throw e
   }
 }
 
