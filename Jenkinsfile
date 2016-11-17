@@ -20,16 +20,7 @@ node('browser') {
   }
 
   stage("Start build") {
-    def helpers = load 'build-helpers.groovy'
-    helpers.withDocker('browser-f', '/home/ubuntu/build') { nodeId ->
-      node(nodeId) {
-        stage('checkout') {
-          checkout scm
-        }
-
-        load 'Jenkinsfile.lin'
-      }
-    }
+    load 'Jenkinsfile.lin'
   }
 
 }
