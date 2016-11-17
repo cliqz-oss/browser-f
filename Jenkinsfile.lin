@@ -49,12 +49,13 @@ try {
 docker.withRegistry(DOCKER_REGISTRY_URL) {
   def image = docker.image(imgName)
   image.pull()
-  docker.image(image.imageName()).inside() {
+  docker.image(image.imageName()).inside("-v ${pwd()}:/build:rw -w /build") {
+     dir('/build') {
 
      stage('Update Dependencies') {
           // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
           sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
-      }
+     }
 
       withEnv([
           "CQZ_BUILD_ID=$CQZ_BUILD_ID",
@@ -106,6 +107,7 @@ docker.withRegistry(DOCKER_REGISTRY_URL) {
                   archiveArtifacts 'obj/build_properties.json'
               }
           }
+      }
       }
   }
 }
