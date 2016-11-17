@@ -15,6 +15,9 @@ AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
 node('browser') {
+  stage('checkout') {
+    checkout scm
+  }
 
   stage("Start build") {
     def helpers = load 'build-helpers.groovy'
