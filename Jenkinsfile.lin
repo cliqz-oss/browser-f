@@ -47,7 +47,7 @@ try {
 docker.withRegistry(DOCKER_REGISTRY_URL) {
   def image = docker.image(imgName)
   image.pull()
-  def userName = sh returnStdout: true, script: 'id -u -n'
+  def userName = sh(returnStdout: true, script: 'id -u -n').trim()
   def buildDir = "/home/$userName/build"
   docker.image(image.imageName()).inside("-v ${pwd()}:/$buildDir:rw") {
      dir(buildDir) {
