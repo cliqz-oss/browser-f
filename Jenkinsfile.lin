@@ -50,8 +50,6 @@ docker.withRegistry(DOCKER_REGISTRY_URL) {
   def userName = sh(returnStdout: true, script: 'id -u -n').trim()
   def buildDir = "/home/$userName/build"
   docker.image(image.imageName()).inside("-v ${pwd()}:/$buildDir:rw") {
-     ws(buildDir) {
-
      stage('Update Dependencies') {
           // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
           sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
@@ -69,7 +67,10 @@ docker.withRegistry(DOCKER_REGISTRY_URL) {
                   [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                   try {
-                    sh './magic_build_and_package.sh  --clobber'
+                    sh """
+                      cd $buildDir
+                      ./magic_build_and_package.sh  --clobber
+                    """
                   } catch (e) {
                     archive 'obj/config.log'
                     throw e
