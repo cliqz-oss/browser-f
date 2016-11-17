@@ -465,6 +465,7 @@ function internalSave(aURL, aDocument, aDefaultFileName, aContentDisposition,
       isPrivate = aInitiatingDocument instanceof Components.interfaces.nsIDOMDocument
         ? PrivateBrowsingUtils.isContentWindowPrivate(
               aInitiatingDocument.defaultView) ||
+              // TODO: This needs testing.
               aInitiatingDocument.docShell.usePrivateBrowsing
         : aInitiatingDocument.isPrivate;
     }

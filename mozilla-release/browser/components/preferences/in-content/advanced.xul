@@ -120,6 +120,7 @@
       hidden="true"
       data-category="paneAdvanced">
   <label class="header-name" flex="1">&paneAdvanced.title;</label>
+  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
   <button class="help-button"
           aria-label="&helpButton.label;"/>
 </hbox>

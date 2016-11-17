@@ -66,6 +66,8 @@ var ContentClick = {
     // pages loaded in frames are embed visits and lost with the session, while
     // visits across frames should be preserved.
     try {
+      // TODO: Should we do a similar check for single private tabs?
+      // So far it seems, history doesn't leak anyway.
       if (!PrivateBrowsingUtils.isWindowPrivate(window))
         PlacesUIUtils.markPageAsFollowedLink(json.href);
     } catch (ex) { /* Skip invalid URIs. */ }

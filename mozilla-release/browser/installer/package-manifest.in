@@ -364,7 +364,7 @@
 @RESPATH@/components/FeedProcessor.js
 @RESPATH@/components/PackagedAppUtils.js
 @RESPATH@/components/PackagedAppUtils.manifest
-@RESPATH@/browser/components/AutoPrivateTab.js
+@RESPATH@/browser/components/AutoForgetTabsService.js
 @RESPATH@/browser/components/BrowserFeeds.manifest
 @RESPATH@/browser/components/FeedConverter.js
 @RESPATH@/browser/components/FeedWriter.js

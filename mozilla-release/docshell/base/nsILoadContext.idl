@@ -8,6 +8,7 @@
 
 interface mozIDOMWindowProxy;
 interface nsIDOMElement;
+interface nsIPrivacyTransitionObserver;
 
 %{C++
 #ifdef MOZILLA_INTERNAL_API
@@ -135,6 +136,8 @@ interface nsILoadContext : nsISupports
    * nsILoadContext.
    */
   readonly attribute jsval originAttributes;
+
+  void addWeakPrivacyTransitionObserver(in nsIPrivacyTransitionObserver obs);
 
 %{C++
 #ifdef MOZILLA_INTERNAL_API

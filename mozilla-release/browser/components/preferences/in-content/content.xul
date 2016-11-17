@@ -37,6 +37,7 @@
       hidden="true"
       data-category="paneContent">
   <label class="header-name" flex="1">&paneContent.title;</label>
+  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
   <button class="help-button"
           aria-label="&helpButton.label;"/>
 </hbox>
@@ -56,6 +57,7 @@
         </vbox>
         <hbox pack="end" align="center">
           <label id="playDRMContentLink" class="text-link" value="&playDRMContent.learnMore.label;"/>
+          <label class="mozilla-support-label-drm">&mozillaSupportLearnMore.label;</label>
         </hbox>
       </row>
     </rows>
@@ -76,6 +78,7 @@
           <label id="notificationsPolicyLearnMore"
                  class="text-link"
                  value="&notificationsPolicyLearnMore.label;"/>
+          <label class="mozilla-support-label-notification">&mozillaSupportLearnMore.label;</label>
         </hbox>
         <hbox pack="end">
           <button id="notificationsPolicyButton" label="&notificationsPolicyButton.label;"

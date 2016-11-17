@@ -53,6 +53,7 @@
       hidden="true"
       data-category="paneSecurity">
   <label class="header-name" flex="1">&paneSecurity.title;</label>
+  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
   <button class="help-button"
           aria-label="&helpButton.label;"/>
 </hbox>
@@ -150,8 +151,8 @@
 
   <vbox flex="1" class="view-pane password-managers" tabindex="0">
     <caption><label>&passwordManager.title;</label></caption>
-    <caption>&passwordManager.desc1;</caption>
-    <caption>&passwordManager.desc2;</caption>
+    <label>&passwordManager.desc1;</label>
+    <label>&passwordManager.desc2;</label>
     <caption> </caption>
     <richlistbox id="features-list" class="list" flex="1"></richlistbox>
   </vbox>

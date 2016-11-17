@@ -35,6 +35,7 @@
       hidden="true"
       data-category="paneSync">
   <label class="header-name" flex="1">&paneSync.title;</label>
+  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
   <button class="help-button"
           aria-label="&helpButton.label;"/>
 </hbox>

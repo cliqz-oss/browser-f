@@ -79,9 +79,9 @@ var gPrivacyPane = {
     this._initAutocomplete();
 
 #if CQZ_AUTO_PRIVATE_TAB
-    const AutoPrivateTab = Cc["@cliqz.com/browser/auto_private_tab;1"].
+    const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
         getService(Ci.nsISupports).wrappedJSObject;
-    document.getElementById("forgetMode").hidden = !AutoPrivateTab.hasDatabase;
+    document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
     setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
