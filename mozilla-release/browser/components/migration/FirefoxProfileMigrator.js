@@ -619,6 +619,9 @@ Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
   get: () => false
 });
 
+Object.defineProperty(CliqzProfileMigrator.prototype, "startupOnlyMigrator", {
+  get: () => true
+});
 
 FirefoxProfileMigrator.prototype.classDescription = "Firefox Profile Migrator";
 FirefoxProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=firefox";
