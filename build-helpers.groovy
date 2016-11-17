@@ -50,6 +50,8 @@ def getNodeSecret(nodeId) {
 }
 
 def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
+  def nodeId = "${env.BUILD_TAG}"
+  def error
 
   // Prepare image
   try {
@@ -66,9 +68,7 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 
   // Create Jenkins node
-  def nodeId = "${env.BUILD_TAG}"
   createNode(nodeId, jenkinsFolderPath)
-
   try {
     def nodeSecret = getNodeSecret(nodeId)
 
@@ -76,6 +76,8 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
     docker.image(imageName).inside() {
       sh """
         rm -f slave.jar
+        # TODO: move to docker image
+        sudo apt-get install openjdk-7-jre -y
         wget $JENKINS_URL/jnlpJars/slave.jar
         nohup java -jar slave.jar -jnlpUrl ${env.JENKINS_URL}/computer/$nodeId/slave-agent.jnlp -secret $nodeSecret &
       """
@@ -84,8 +86,12 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
       body(nodeId)
     }
   } catch (e) {
+    error = e
+  } finally {
     removeNode(nodeId)
-    throw e
+    if (error) {
+      throw error
+    }
   }
 }
 
