@@ -56,7 +56,7 @@ docker.image(imageName).inside() {
           [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
         try {
-          //sh './magic_build_and_package.sh  --clobber'
+          sh './magic_build_and_package.sh  --clobber'
         } catch (e) {
           archive 'obj/config.log'
           throw e

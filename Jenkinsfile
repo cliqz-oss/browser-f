@@ -1,7 +1,7 @@
 #!/usr/bin/env groovy
 
 LIN_REBUILD_IMAGE = false
-CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr'
+CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr/'+BUILD_ID
 CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
 CQZ_BUILD_ID = ''
 COMMIT_ID = BUILD_ID
@@ -15,7 +15,7 @@ AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
 node('browser') {
-  ws('x') {
+  ws('build') {
     stage('checkout') {
       checkout scm
     }
