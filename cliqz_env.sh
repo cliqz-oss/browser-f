@@ -78,7 +78,7 @@ export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 # this condition only for transaction period between old and new build system
 if [ -z $CQZ_BUILD_ID ]; then
-  export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION`
+  export S3_UPLOAD_PATH=`echo dist/pr/$MOZ_UPDATE_CHANNEL`
 else
   # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
   # build artifacts back (to locale folder, same as FF)
