@@ -14,7 +14,7 @@ gpg --allow-secret-key-import --import $DEBIAN_GPG_KEY
 #   :user ID packet: "Debian PR <debian-pr@cliqz.com>"
 # gives:
 #   debian-pr@cliqz.com
-GPG_KEY_NAME=`gpg --list-packets  debian-pr@cliqz.com.key | grep "user ID packet" | head -1 | grep -Po "<\K([^>]+)"`
+GPG_KEY_NAME=`gpg --list-packets $DEBIAN_GPG_KEY | grep "user ID packet" | head -1 | grep -Po "<\K([^>]+)"`
 rm -rf debian ~/.aptly aptly
 mkdir debian
 cp dist/*.deb debian/
