@@ -14,14 +14,35 @@ DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
 AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
-node('browser') {
-  ws('x') {
-    stage('checkout') {
-      checkout scm
-    }
+parallel 
+def jobs = [:]
 
-    stage("Start build") {
-      load 'Jenkinsfile.lin'
+jobs['linux'] = {
+    node('browser') {
+      ws('x') {
+        stage('checkout') {
+          checkout scm
+        }
+
+        stage("Start build") {
+          load 'Jenkinsfile.lin'
+        }
+      }
     }
-  }
 }
+
+jobs['windows'] = {
+    node('browser-windows-pr') {
+        ws('x') {
+            stage('checkout') {
+                checkout scm
+            }
+
+            stage("Start build") {
+                load 'Jenkinsfile.lin'
+            }
+        }      
+    }
+}
+
+parallel jobs
