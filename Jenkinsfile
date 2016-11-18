@@ -17,20 +17,20 @@ DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 parallel 
 def jobs = [:]
 
-jobs['linux'] = {
-    node('browser') {
-      ws('x') {
-        stage('checkout') {
-          checkout scm
-        }
-
-        stage("Start build") {
-          load 'Jenkinsfile.lin'
-        }
-      }
-    }
-}
-
+#jobs['linux'] = {
+#    node('browser') {
+#      ws('x') {
+#        stage('checkout') {
+#          checkout scm
+#        }
+#
+#        stage("Start build") {
+#          load 'Jenkinsfile.lin'
+#        }
+#      }
+#    }
+#}
+#
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
@@ -39,7 +39,7 @@ jobs['windows'] = {
             }
 
             stage("Start build") {
-                load 'Jenkinsfile.lin'
+                load 'Jenkinsfile.win'
             }
         }      
     }
