@@ -67,7 +67,7 @@ desktop-file-install \
     %{SOURCE0}
 
 # copy pref file
-cp %{_sourcedir}/no-updates.js $RPM_BUILD_ROOT/%{_libdir}/%{name}-%{moz_app_version}/defaults/pref/
+cat %{_sourcedir}/no-updates.js > $RPM_BUILD_ROOT/%{_libdir}/%{name}-%{moz_app_version}/cliqz.cfg
 
 #In order to make branding work in a generic way, We find
 #all the icons that are likely to be used for desktop files
