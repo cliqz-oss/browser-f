@@ -26,10 +26,18 @@ node("master") {
 */
 
 def helpers = load 'build-helpers.groovy'
+def submitResultList = []
 
 import org.codehaus.groovy.runtime.*;
 
 CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
+CQZ_VERSION = ""
+
+BUILD_STATUS_FAILED = 'Failed'
+BUILD_STATUS_SUCCESSFUL = 'Successful'
+
+EMAIL_LIST = 'alexander@cliqz.com'
+EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com'
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
@@ -102,72 +110,93 @@ def getBaseMacBuildParams() {
   return buildParams
 }
 
-archive 'build-helpers.groovy'
-archive 'win.Vagrantfile'
-archive 'mac.Vagrantfile'
-
-stage('Build') {
-    parallel (
-        'linux en': {
-            def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
-            buildParams.parameters += [
-              booleanParam(name: 'LIN_REBUILD_IMAGE', value: LIN_REBUILD_IMAGE.toBoolean()),
-              string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
-              string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
-              string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
-              string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
-              string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
-            ]
-            job = build buildParams
-            submitBalrog(buildParams.job, job.id)
-        },
-        'mac de': {
-            def buildParams = getBaseMacBuildParams()
-            buildParams.parameters += [
-              string(name: 'CQZ_LANG', value: 'de'),
-              string(name: 'NODE_VNC_PORT', value: '7901'),
-            ]
-            job = build buildParams
-            submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
-        },
-        'mac en': {
-            def buildParams = getBaseMacBuildParams()
-            buildParams.parameters += [
-              string(name: 'NODE_VNC_PORT', value: '7900'),
-            ]
-            job = build buildParams
-            submitBalrog(buildParams.job, job.id, 'obj/i386/build_properties.json')
-        },
-        'win': {
-            def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
-            buildParams.parameters += [
-              booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
-              string(name: 'NODE_VNC_PORT', value: '7900'),
-              string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
-              string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
-              string(name: 'WIN_BUILD_NODE', value: 'master'),
-              string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
-              string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
-            ]
-            if (CQZ_RELEASE_CHANNEL == "release") {
-              buildParams.parameters += [
-                string(name: 'NODE_MEMORY', value: '16000'),
-                string(name: 'NODE_CPU_COUNT', value: '6'),
-              ]
-            } else {
-              buildParams.parameters += [
-                string(name: 'NODE_MEMORY', value: '8000'),
-                string(name: 'NODE_CPU_COUNT', value: '6'),
-              ]
-            }
-            job = build buildParams
-            submitBalrog(buildParams.job, job.id, 'obj/en_build_properties.json')
-            submitBalrog(buildParams.job, job.id, 'obj/de_build_properties.json')
+def prepareBuildConfig() {
+  return [
+    'linux en': {
+        def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
+        buildParams.parameters += [
+          booleanParam(name: 'LIN_REBUILD_IMAGE', value: LIN_REBUILD_IMAGE.toBoolean()),
+          string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
+          string(name: 'LINUX_BUILD_NODE', value: LINUX_BUILD_NODE),
+          string(name: 'DEBIAN_GPG_KEY_CREDENTIAL_ID', value: DEBIAN_GPG_KEY_CREDENTIAL_ID),
+          string(name: 'DEBIAN_GPG_PASS_CREDENTIAL_ID', value: DEBIAN_GPG_PASS_CREDENTIAL_ID),
+          string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
+        ]
+        job = build buildParams
+        submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+    },
+    'mac de': {
+        def buildParams = getBaseMacBuildParams()
+        buildParams.parameters += [
+          string(name: 'CQZ_LANG', value: 'de'),
+          string(name: 'NODE_VNC_PORT', value: '7901'),
+        ]
+        job = build buildParams
+        submitResultList.add([buildParams.job, job.id, 'obj/i386/build_properties.json'])
+    },
+    'mac en': {
+        def buildParams = getBaseMacBuildParams()
+        buildParams.parameters += [
+          string(name: 'NODE_VNC_PORT', value: '7900'),
+        ]
+        job = build buildParams
+        submitResultList.add([buildParams.job, job.id, 'obj/i386/build_properties.json'])
+    },
+    'win': {
+        def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
+        buildParams.parameters += [
+          booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
+          string(name: 'NODE_VNC_PORT', value: '7900'),
+          string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
+          string(name: 'VAGRANTFILE', value: 'win.Vagrantfile'),
+          string(name: 'WIN_BUILD_NODE', value: 'master'),
+          string(name: 'WIN_CERT_PATH_CREDENTIAL_ID', value: WIN_CERT_PATH_CREDENTIAL_ID),
+          string(name: 'WIN_CERT_PASS_CREDENTIAL_ID', value: WIN_CERT_PASS_CREDENTIAL_ID),
+        ]
+        if (CQZ_RELEASE_CHANNEL == "release") {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '16000'),
+            string(name: 'NODE_CPU_COUNT', value: '6'),
+          ]
+        } else {
+          buildParams.parameters += [
+            string(name: 'NODE_MEMORY', value: '8000'),
+            string(name: 'NODE_CPU_COUNT', value: '6'),
+          ]
         }
-    )
+        job = build buildParams
+        if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        } else {
+          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        }
+    }
+  ]
 }
 
-def submitBalrog(jobName, id, propsPath = 'obj/build_properties.json') {
+stage('Prepare files for nested jobs') {
+  archive 'build-helpers.groovy'
+  archive 'win.Vagrantfile'
+  archive 'mac.Vagrantfile'
+}
+
+stage('Build') {
+  try {
+    parallel prepareBuildConfig()
+  } catch (e) {
+    sendEmail(BUILD_STATUS_FAILED)
+    throw e
+  }
+
+  for (item in submitResultList) {
+    submitBalrog(item[0], item[1], item[2])
+  }
+
+  sendEmail(BUILD_STATUS_SUCCESSFULL)
+}
+
+def submitBalrog(jobName, id, propsPath) {
     def folder = "artifacts/$jobName/$id"
     step([
         $class: 'CopyArtifact',
@@ -182,4 +211,24 @@ def submitBalrog(jobName, id, propsPath = 'obj/build_properties.json') {
             --api-root http://$CQZ_BALROG_DOMAIN/api \
             --build-properties ${folder + '/' + propsPath}
     """
+}
+
+def sendEmail(String buildStatus) {
+  def recepient_list = EMAIL_LIST
+  if (buildStatus == BUILD_STATUS_SUCCESSFUL) {
+    recepient_list += ','
+    recepient_list += EMAIL_LIST_SUCCESSFUL
+  }
+
+  def bodytxt = '$PROJECT_NAME - Build # $BUILD_NUMBER - ' + buildStatus + ':'
+  bodytxt += '\n\nCheck console output at http://magrathea:8080/job/' + env.JOB_NAME + '/' + env.BUILD_NUMBER + '/ to view the results.'
+  bodytxt += '\n\nBuildID: ' + CQZ_BUILD_ID
+  bodytxt += '\n\nUploaded to: http://repository.cliqz.com/?prefix=dist/' + CQZ_RELEASE_CHANNEL + '/' + CQZ_VERSION + '/' + CQZ_BUILD_ID
+  bodytxt += '\n\n\n $CHANGES_SINCE_LAST_SUCCESS'
+
+  emailext(
+    to: recepient_list,
+    subject: '$PROJECT_NAME - Build # $BUILD_NUMBER - ' + buildStatus,
+    body: bodytxt
+  )
 }

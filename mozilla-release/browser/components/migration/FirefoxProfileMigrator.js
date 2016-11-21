@@ -39,27 +39,23 @@ XPCOMUtils.defineLazyModuleGetter(this, "Sqlite",
                                   "resource://gre/modules/Sqlite.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
                                   "resource://gre/modules/FormHistory.jsm");
+XPCOMUtils.defineLazyServiceGetter(this, "INIParserFactory",
+    "@mozilla.org/xpcom/ini-processor-factory;1", "nsIINIParserFactory");
 
-
-/* start CLIQZ helpers */
+const myProductDir = FileUtils.getDir("AppRegD", []);
+const fxProductDir = myProductDir.parent;
+fxProductDir.append(
+#if defined(XP_WIN) || defined(XP_MACOSX)
+    "Firefox"
+#else
+    "firefox"
+#endif
+);
 
 function getFile(path) {
   let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   file.initWithPath(path);
   return file;
-}
-
-function getFFFolder() {
-  let ffFolder = FileUtils.getDir(
-#ifdef XP_WIN
-    "AppData", ["Mozilla", "Firefox"]
-#elifdef XP_MACOSX
-    "ULibDir", ["Application Support", "Firefox"]
-#else
-    "Home", [".mozilla", "firefox"]
-#endif
-    , false);
-  return ffFolder.exists() ? ffFolder : null;
 }
 
 function insertWholeBookmarkFolder(db, aId, aGuid) {
@@ -115,63 +111,64 @@ function isValidUrl(aUrl) {
   return true;
 }
 
-/* end CLIQZ helpers */
-
 function FirefoxProfileMigrator() {
   this.wrappedJSObject = this; // for testing...
 }
 
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
-// FirefoxProfileMigrator.prototype._getAllProfiles = function () {
-//   let allProfiles = new Map();
-//   let profiles =
-//     Components.classes["@mozilla.org/toolkit/profile-service;1"]
-//               .getService(Components.interfaces.nsIToolkitProfileService)
-//               .profiles;
-//   while (profiles.hasMoreElements()) {
-//     let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
-//     let rootDir = profile.rootDir;
-
-//     if (rootDir.exists() && rootDir.isReadable() &&
-//         !rootDir.equals(MigrationUtils.profileStartup.directory)) {
-//       allProfiles.set(profile.name, rootDir);
-//     }
-//   }
-//   return allProfiles;
-// };
-
 FirefoxProfileMigrator.prototype._getAllProfiles = function () {
-  let profileRoot = getFFFolder().clone();
-  profileRoot.append("profiles.ini");
+  const profiles = new Map();
 
-  var profiles = new Map();
-  var iniParser = Cc["@mozilla.org/xpcom/ini-processor-factory;1"].
-                    getService(Ci.nsIINIParserFactory).
-                    createINIParser(profileRoot);
+  const profilesIni = fxProductDir.clone();
+  profilesIni.append("profiles.ini");
+  if (!(profilesIni.exists() &&
+        profilesIni.isFile() &&
+        profilesIni.isReadable()))
+    return profiles;
+  const iniParser = INIParserFactory.createINIParser(profilesIni);
 
   var sections = iniParser.getSections();
   while(sections.hasMore()) {
     try {
-      var profile = sections.getNext();
-      var profilePath = iniParser.getString(profile, "Path");
-      var path = OS.Path.join(getFFFolder().clone().path, profilePath);
-
-#ifdef XP_WIN
-      path = path.replace("/", "\\");
-#endif
-
-      profiles.set(
-        iniParser.getString(profile, "Name"),
-        getFile(path)
-      );
-    } catch (e) {
-
+      const section = sections.getNext();
+      const profileDir = fxProductDir.clone();
+      const path = iniParser.getString(section, "Path");
+      profileDir.appendRelativePath(path);
+      profiles.set(iniParser.getString(section, "Name"), profileDir);
+    }
+    catch (e) {
+      dump(e + "\n");
     }
   }
 
   return profiles;
+};
+
+function CliqzProfileMigrator() {
+  FirefoxProfileMigrator.apply(this);
 }
+
+CliqzProfileMigrator.prototype =
+    Object.create(FirefoxProfileMigrator.prototype);
+
+CliqzProfileMigrator.prototype._getAllProfiles = function () {
+  let allProfiles = new Map();
+  let profiles =
+    Components.classes["@mozilla.org/toolkit/profile-service;1"]
+              .getService(Components.interfaces.nsIToolkitProfileService)
+              .profiles;
+  while (profiles.hasMoreElements()) {
+    let profile = profiles.getNext().QueryInterface(Ci.nsIToolkitProfile);
+    let rootDir = profile.rootDir;
+
+    if (rootDir.exists() && rootDir.isReadable() &&
+        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
+      allProfiles.set(profile.name, rootDir);
+    }
+  }
+  return allProfiles;
+};
 
 function sorter(a, b) {
   return a.id.toLocaleLowerCase().localeCompare(b.id.toLocaleLowerCase());
@@ -624,9 +621,21 @@ Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
   get: () => false
 });
 
+Object.defineProperty(CliqzProfileMigrator.prototype, "startupOnlyMigrator", {
+  get: () => true
+});
 
 FirefoxProfileMigrator.prototype.classDescription = "Firefox Profile Migrator";
 FirefoxProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=firefox";
 FirefoxProfileMigrator.prototype.classID = Components.ID("{91185366-ba97-4438-acba-48deaca63386}");
 
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([FirefoxProfileMigrator]);
+CliqzProfileMigrator.prototype.classDescription = "CLIQZ Profile Migrator";
+CliqzProfileMigrator.prototype.contractID =
+    "@mozilla.org/profile/migrator;1?app=browser&type=CLIQZ";
+CliqzProfileMigrator.prototype.classID =
+    Components.ID("{f8cfe235-2127-4f42-894f-f8fdf2969233}");
+
+this.NSGetFactory = XPCOMUtils.generateNSGetFactory([
+    FirefoxProfileMigrator,
+    CliqzProfileMigrator
+]);
