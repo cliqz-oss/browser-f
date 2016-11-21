@@ -15,9 +15,7 @@ def checkoutSCM(URL, COMMIT) {
                 [$class: 'CloneOption', depth: 0, noTags: true, reference: '', shallow: false, timeout: 30, honorRefspec: true],
             ],
             submoduleCfg: [],
-            userRemoteConfigs: [[credentialsId: '0aededfc-f41d-40bd-9a63-dd4524adb7b6', \
-                                url: URL, \
-                                refspec: '+refs/pull/*:refs/remotes/origin/pr/*']]
+            userRemoteConfigs: [[credentialsId: '0aededfc-f41d-40bd-9a63-dd4524adb7b6', url: URL]]
         ]
     )
 }
