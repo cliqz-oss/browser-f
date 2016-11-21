@@ -497,9 +497,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
     let places = getHistoryAndBookmarksResource("places.sqlite");
     let cookies = getCookiesResource("cookies.sqlite");
-    let passwords = getPasswordsResource("logins.json");
     let formData = getFormDataResource("formhistory.sqlite");
-    return [places, cookies, passwords, formData].filter(r => r);
+    return [places, cookies, formData].filter(r => r);
   }
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
   let cookies = getFileResource(types.COOKIES, ["cookies.sqlite"]);
