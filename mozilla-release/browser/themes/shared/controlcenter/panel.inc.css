@@ -315,28 +315,6 @@ description#identity-popup-content-verifier,
   margin-inline-end: 0;
 }
 
-/* HTTPS Everywhere */
-#httpsEverywhereGroup {
-  padding: 0.5em 0 1em;
-  -moz-padding-start: calc(2em + 24px);
-  -moz-padding-end: 1em;
-  background-repeat: no-repeat;
-  background-position: 1em 1em;
-  background-size: 24px auto;
-}
-
-#httpsEverywhereGroup description {
-  margin: 0px;
-}
-
-#httpsEverywhereGroup[state="enabled"] {
-  background-image: url("chrome://browser/skin/controlcenter/https-everywhere-enabled.svg");
-}
-
-#httpsEverywhereGroup[state="disabled"] {
-  background-image: url("chrome://browser/skin/controlcenter/https-everywhere-disabled.svg");
-}
-
 /* TRACKING PROTECTION */
 
 #tracking-protection-content {
