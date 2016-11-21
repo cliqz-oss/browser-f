@@ -54,7 +54,7 @@ LoadContext::LoadContext(nsIPrincipal* aPrincipal,
 {
   PrincipalOriginAttributes poa = BasePrincipal::Cast(aPrincipal)->OriginAttributesRef();
   mOriginAttributes.InheritFromDocToChildDocShell(poa);
-
+  mOriginAttributes.SyncAttributesWithPrivateBrowsing(mUsePrivateBrowsing);
   if (!aOptionalBase) {
     return;
   }

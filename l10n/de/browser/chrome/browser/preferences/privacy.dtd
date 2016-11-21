@@ -111,3 +111,9 @@
 <!ENTITY  forgetMode.explanation1 "Der automatische Vergessen Modus öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im vergessen Modus, so dass sie nicht in der Chronik gespeichert werden und keine temporären Dateien, inklusive Cookies, auf dem Computer hinterlassen.">
 <!ENTITY  forgetMode.explanation2 "Im Tab Kontext-Menü kannst du selbst wählen, welche Websites automatisch im Vergessen Modus geöffnet werden sollen oder auch nicht. Das Tab Kontext-Menü öffnet sich durch einen Klick mit der rechten Maustaste auf den aktuellen Tab.">
 <!ENTITY  forgetMode.learnMore "Mehr erfahren">
+
+<!ENTITY  browserContainersHeader.label         "Tab-Umgebungen">
+<!ENTITY  browserContainersLearnMore.label      "Weitere Informationen">
+<!ENTITY  browserContainersEnabled.label        "Tab-Umgebungen aktivieren">
+<!ENTITY  browserContainersEnabled.accesskey    "a">
+

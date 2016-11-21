@@ -278,13 +278,6 @@ Section "Uninstall"
     ${un.SetAppLSPCategories}
   ${EndIf}
 
-  ${If} ${AtLeastWin8}
-    ${RemoveDEHRegistration} ${DELEGATE_EXECUTE_HANDLER_ID} \
-                             $AppUserModelID \
-                             "CliqzURL" \
-                             "CliqzHTML"
-  ${EndIf}
-
   ${un.RegCleanAppHandler} "CliqzURL"
   ${un.RegCleanAppHandler} "CliqzHTML"
   ${un.RegCleanProtocolHandler} "ftp"

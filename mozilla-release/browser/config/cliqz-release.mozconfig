@@ -8,7 +8,7 @@ ac_add_options --enable-release
 if echo $OSTYPE | grep -q "darwin"; then
   # Enable universal MacOS executable build
   . $topsrcdir/build/macosx/universal/mozconfig
-  ac_add_options --enable-warnings-as-errors
+#  ac_add_options --enable-warnings-as-errors
 fi
 
 if echo $OSTYPE | grep -q "msys"; then

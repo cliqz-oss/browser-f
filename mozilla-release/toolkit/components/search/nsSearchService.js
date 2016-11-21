@@ -1778,6 +1778,13 @@ Engine.prototype = {
         + this.name + "\".");
     // Only accept remote icons from http[s] or ftp
     switch (uri.scheme) {
+      case "resource":
+      case "chrome":
+        // We only allow chrome and resource icon URLs for built-in search engines
+        if (!this._isDefault) {
+          return;
+        }
+        // Fall through to the data case
       case "data":
         if (!this._hasPreferredIcon || aIsPreferred) {
           this._iconURI = uri;
@@ -2883,7 +2890,6 @@ SearchService.prototype = {
     if (this._batchTask)
       this._batchTask.disarm();
 
-    TelemetryStopwatch.start("SEARCH_SERVICE_BUILD_CACHE_MS");
     let cache = {};
     let locale = getLocale();
     let buildID = Services.appinfo.platformBuildID;
@@ -2927,7 +2933,6 @@ SearchService.prototype = {
     } catch (ex) {
       LOG("_buildCache: Could not write to cache file: " + ex);
     }
-    TelemetryStopwatch.finish("SEARCH_SERVICE_BUILD_CACHE_MS");
   },
 
   _syncLoadEngines: function SRCH_SVC__syncLoadEngines(cache) {

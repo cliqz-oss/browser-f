@@ -44,9 +44,11 @@
      They are automatically converted to all caps by the Android platform. -->
 <!ENTITY  bookmarks_title "Lesezeichen">
 <!ENTITY  history_title "Chronik">
-<!ENTITY  recent_tabs_title "Kürzlich verwendete Tabs">
 
 <!ENTITY  switch_to_tab "Zu Tab wechseln">
+
+<!-- Localization note: Shown in a snackbar when tab is loaded from cache while device was offline. -->
+<!ENTITY  tab_offline_version "Offline-Version wird angezeigt">
 
 <!ENTITY  crash_reporter_title "&brandShortName;-Absturzmelder">
 <!ENTITY  crash_message2 "&brandShortName; hatte ein Problem und ist abgestürzt. Ihre Tabs sollten auf der &brandShortName;-Startseite angezeigt werden, wenn Sie neu starten.">
@@ -270,6 +272,20 @@
 <!ENTITY pref_whats_new_notification "Neu in &brandShortName;">
 <!ENTITY pref_whats_new_notification_summary "Erfahren Sie mehr über die nach einem Update zur Verfügung stehenden neuen Funktionen">
 
+<!-- Localization note (pref_category_experimental): Title of a sub category in the 'advanced' category
+     for experimental features. -->
+<!ENTITY pref_category_experimental "Experimentelle Funktionen">
+
+<!-- Custom Tabs is an Android API for allowing third-party apps to open URLs in a customized UI.
+     Instead of switching to the browser it appears as if the user stays in the third-party app.
+     For more see: https://developer.chrome.com/multidevice/android/customtabs -->
+<!ENTITY pref_custom_tabs "Angepasste Tabs">
+<!ENTITY pref_custom_tabs_summary "Anderen Apps das Öffnen von Adressen mit angepasster Darstellung und angepasstem Verhalten erlauben">
+
+<!-- Localization note (pref_activity_stream): Experimental feature, see https://testpilot.firefox.com/experiments/activity-stream  -->
+<!ENTITY pref_activity_stream "Aktivitätenübersicht">
+<!ENTITY pref_activity_stream_summary "Eine übersichtliche Darstellung der zuletzt besuchten Seiten und eine überarbeitete Startseite erleichtern das Auffinden in &brandShortName;.">
+
 <!ENTITY tracking_protection_prompt_title "Nun mit Schutz vor Aktivitätenverfolgung">
 <!ENTITY tracking_protection_prompt_text "Blockiert selbständig Inhalte zur Aktivitätenverfolgung, damit Sie sich keine Sorgen machen müssen.">
 <!ENTITY tracking_protection_prompt_tip_text "Rufen Sie die Datenschutz-Einstellungen auf, um mehr zu erfahren">
@@ -382,6 +398,7 @@ size. -->
 <!ENTITY pref_private_data_syncedTabs "Synchronisierte Tabs">
 
 <!ENTITY pref_default_browser "Als Standardbrowser verwenden">
+<!ENTITY pref_default_browser_mozilla_support_tablet "Mozilla-Hilfe aufrufen">
 <!ENTITY pref_about_firefox "Über &brandShortName;">
 <!ENTITY pref_vendor_faqs "Häufig gestellte Fragen">
 <!ENTITY pref_vendor_feedback "Feedback senden">
@@ -570,10 +587,12 @@ size. -->
 <!ENTITY home_clear_history_button "Browser-Chronik löschen">
 <!ENTITY home_clear_history_confirm "Soll die Browser-Chronik mit den besuchten Seiten wirklich gelöscht werden?">
 <!ENTITY home_bookmarks_empty "Angelegte Lesezeichen werden hier angezeigt.">
-<!ENTITY home_closed_tabs_title "Kürzlich geschlossene Tabs">
-<!ENTITY home_last_tabs_title "Tabs der letzten Sitzung">
+<!ENTITY home_closed_tabs_title2 "Kürzlich geschlossen">
 <!ENTITY home_last_tabs_empty "Hier werden die zuletzt verwendeten Tabs angezeigt.">
-<!ENTITY home_open_all "Alle öffnen">
+<!ENTITY home_restore_all "Alle wiederherstellen">
+<!ENTITY home_closed_tabs_number "&formatD; Tabs">
+<!-- Localization note (home_closed_tabs_one): This is the singular version of home_closed_tabs_number, referring to the number of recently closed tabs available. -->
+<!ENTITY home_closed_tabs_one "1 Tab">
 <!ENTITY home_most_recent_empty "Hier werden die zuletzt besuchten Webseiten angezeigt.">
 <!-- Localization note (home_most_recent_emptyhint2): "Psst" is a sound that might be used to attract someone's attention unobtrusively, and intended to hint at Private Browsing to the user.
      The placeholders &formatS1; and &formatS2; are used to mark the location of text underlining. -->
@@ -625,7 +644,6 @@ with that structure, consider a translation which ignores the preceding domain a
 just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY identity_connection_secure "Sichere Verbindung">
 <!ENTITY identity_connection_insecure "Nicht gesicherte Verbindung">
-<!ENTITY identity_login_insecure "Diese Seite ist nicht sicher und Ihre Zugangsdaten könnten gestohlen werden.">
 <!ENTITY identity_connection_chromeui "Dies ist eine sichere &brandShortName;-Seite.">
 
 <!-- Mixed content notifications in site identity popup -->

@@ -9,6 +9,7 @@
 <!ENTITY fullscreenButton.enterfullscreenlabel "Vollbild">
 <!ENTITY fullscreenButton.exitfullscreenlabel "Vollbild-Modus verlassen">
 <!ENTITY castingButton.castingLabel "An Bildschirm weiterleiten">
+<!ENTITY closedCaption.off "Keine">
 
 <!ENTITY stats.media "Medien">
 <!ENTITY stats.size "Größe">
