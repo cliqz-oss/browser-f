@@ -93,7 +93,7 @@ def getBaseBuildParams(jobName, entryPoint) {
 }
 
 def getBaseMacBuildParams() {
-  def buildParams  = getBaseBuildParams('browser-f-mac', 'mac.Jenkinsfile')
+  def buildParams  = getBaseBuildParams('browser-f-mac', 'Jenkinsfile.mac')
   buildParams.parameters += [
     booleanParam(name: 'MAC_REBUILD_IMAGE', value: MAC_REBUILD_IMAGE.toBoolean()),
     string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
@@ -113,7 +113,7 @@ def getBaseMacBuildParams() {
 def prepareBuildConfig() {
   return [
     'linux en': {
-        def buildParams = getBaseBuildParams('browser-f-linux', 'linux.Jenkinsfile')
+        def buildParams = getBaseBuildParams('browser-f-linux', 'Jenkinsfile.lin')
         buildParams.parameters += [
           booleanParam(name: 'LIN_REBUILD_IMAGE', value: LIN_REBUILD_IMAGE.toBoolean()),
           string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: CQZ_BUILD_DE_LOCALIZATION),
@@ -143,7 +143,7 @@ def prepareBuildConfig() {
         submitResultList.add([buildParams.job, job.id, 'obj/i386/build_properties.json'])
     },
     'win': {
-        def buildParams = getBaseBuildParams('browser-f-win', 'win.Jenkinsfile')
+        def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
         buildParams.parameters += [
           booleanParam(name: 'WIN_REBUILD_IMAGE', value: WIN_REBUILD_IMAGE.toBoolean()),
           string(name: 'NODE_VNC_PORT', value: '7900'),
