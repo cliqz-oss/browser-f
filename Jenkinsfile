@@ -16,20 +16,21 @@ DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
 def jobs = [:]
 
-#jobs['linux'] = {
-#    node('browser') {
-#      ws('x') {
-#        stage('checkout') {
-#          checkout scm
-#        }
-#
-#        stage("Start build") {
-#          load 'Jenkinsfile.lin'
-#        }
-#      }
-#    }
-#}
-#
+/*
+jobs['linux'] = {
+    node('browser') {
+      ws('x') {
+        stage('checkout') {
+          checkout scm
+        }
+
+        stage("Start build") {
+          load 'Jenkinsfile.lin'
+        }
+      }
+    }
+}
+*/
 
 jobs['windows'] = {
     node('browser-windows-pr') {
