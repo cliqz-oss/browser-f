@@ -51,6 +51,52 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
+def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
+  def nodeId = "${env.BUILD_TAG}"
+  def error
+
+  // Prepare image
+  try {
+    // authorize docker deamon to access registry
+    sh "`aws ecr get-login --region=$AWS_REGION`"
+
+    docker.withRegistry(DOCKER_REGISTRY_URL) {
+      def image = docker.image(imageName)
+      image.pull()
+      imageName = image.imageName()
+    }
+  } catch (e) {
+    // local registry does not require auth
+  }
+
+  // Create Jenkins node
+  createNode(nodeId, jenkinsFolderPath)
+  try {
+    def nodeSecret = getNodeSecret(nodeId)
+
+      // Start agent
+    docker.image(imageName).inside() {
+      sh """
+        rm -f slave.jar
+        # TODO: move to docker image
+        sudo apt-get install openjdk-7-jre -y
+        wget $JENKINS_URL/jnlpJars/slave.jar
+        nohup java -jar slave.jar -jnlpUrl ${env.JENKINS_URL}/computer/$nodeId/slave-agent.jnlp -secret $nodeSecret &
+      """
+
+      // Run the closure
+      body(nodeId)
+    }
+  } catch (e) {
+    error = e
+  } finally {
+    removeNode(nodeId)
+    if (error) {
+      throw error
+    }
+  }
+}
+
 def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
     def nodeId = "${env.BUILD_TAG}"
     createNode(nodeId, jenkinsFolderPath)

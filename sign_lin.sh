@@ -10,6 +10,11 @@ cd $OBJ_DIR
 
 echo '***** Generate DEBIAN repository *****'
 gpg --allow-secret-key-import --import $DEBIAN_GPG_KEY
+# get key name from the key, example:
+#   :user ID packet: "Debian PR <debian-pr@cliqz.com>"
+# gives:
+#   debian-pr@cliqz.com
+GPG_KEY_NAME=`gpg --list-packets  debian-pr@cliqz.com.key | grep "user ID packet" | head -1 | grep -Po "<\K([^>]+)"`
 rm -rf debian ~/.aptly aptly
 mkdir debian
 cp dist/*.deb debian/
@@ -18,7 +23,7 @@ aptly repo add cliqz-$CQZ_RELEASE_CHANNEL ./debian/
 aptly publish repo \
   -architectures=i386,amd64 \
   -batch=true \
-  -gpg-key=debian-$CQZ_RELEASE_CHANNEL@cliqz.com \
+  -gpg-key=$GPG_KEY_NAME \
   -passphrase-file=../debian.gpg.pass \
   cliqz-$CQZ_RELEASE_CHANNEL
 mv ~/.aptly/public aptly
