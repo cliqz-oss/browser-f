@@ -2,7 +2,7 @@
 # vi: set ft=ruby :
 
 Vagrant.configure(2) do |config|
-  config.vm.box = "cliqz/cliqzfox-win10-builder_vmware"
+  config.vm.box = "browser-f-windows10"
 
 
   config.vm.network "public_network"
@@ -10,8 +10,8 @@ Vagrant.configure(2) do |config|
   config.vm.guest = :windows
   config.vm.boot_timeout = 500
   config.vm.communicator = "winrm"
-  config.winrm.username = "cliqzfoxer"
-  config.winrm.password = "cliqzfoxer-245"
+  config.winrm.username = "vagrant"
+  config.winrm.password = "vagrant"
   config.winrm.timeout = 21600 # 6 hours
 
   config.vm.provider "vmware_workstation" do |v|
