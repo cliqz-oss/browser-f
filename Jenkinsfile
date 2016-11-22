@@ -1,4 +1,4 @@
-uso !/usr/bin/env groovy
+#!/usr/bin/env groovy
 
 LIN_REBUILD_IMAGE = false
 WIN_REBUILD_IMAGE = false
