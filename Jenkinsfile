@@ -1,9 +1,7 @@
-uso !/usr/bin/env groovy
+#!/usr/bin/env groovy
 
 LIN_REBUILD_IMAGE = false
 WIN_REBUILD_IMAGE = false
-CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr'
->>>>>>> b32b15f... Vagrant different config and started to work on a jenkins file
 CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
 CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr/'+CQZ_RELEASE_CHANNEL+'/'+BUILD_ID
 CQZ_BUILD_ID = ''
