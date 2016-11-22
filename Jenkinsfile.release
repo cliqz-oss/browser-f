@@ -25,10 +25,11 @@ node("master") {
 }
 */
 
-def helpers = load 'build-helpers.groovy'
-def submitResultList = []
 
 import org.codehaus.groovy.runtime.*;
+
+helpers = load 'build-helpers.groovy'
+submitResultList = []
 
 CQZ_BUILD_ID = DateGroovyMethods.format(new Date(), 'yyyyMMddHHmmss')
 CQZ_VERSION = ""
