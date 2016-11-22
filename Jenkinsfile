@@ -1,6 +1,9 @@
-#!/usr/bin/env groovy
+uso !/usr/bin/env groovy
 
 LIN_REBUILD_IMAGE = false
+WIN_REBUILD_IMAGE = false
+CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr'
+>>>>>>> b32b15f... Vagrant different config and started to work on a jenkins file
 CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
 CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr/'+CQZ_RELEASE_CHANNEL+'/'+BUILD_ID
 CQZ_BUILD_ID = ''
@@ -14,14 +17,48 @@ DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
 AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
-node('browser') {
-  ws('build') {
-    stage('checkout') {
-      checkout scm
+def jobs = [:]
+def helpers = load 'build-helpers.groovy'
+
+/*
+jobs['linux'] = {
+    node('browser') {
+      ws('x') {
+        stage('checkout') {
+          checkout scm
+        }
+
+        stage("Start build") {
+          load 'Jenkinsfile.lin'
+        }
+      }
     }
 
     stage("Start build") {
       load 'Jenkinsfile.lin'
+    }
+}
+*/
+
+jobs['windows'] = {
+    node('browser-windows-pr') {
+        ws('x') {
+            stage('checkout') {
+                checkout scm
+            }
+            helpers.withVagrant("artifacts/${VAGRANTFILE}", "/jenkins", 4, 8192, 5901, true) {
+                nodeId ->
+                    node(nodeId) {
+                        stage("Checkout") {
+                            helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+                        }
+
+                        stage("Start build") {
+                            load 'Jenkinsfile.win'
+                        }
+                    }
+            }
+        }      
     }
   }
 }
