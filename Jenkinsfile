@@ -42,7 +42,7 @@ jobs['linux'] = {
 jobs['windows'] = {
     node('browser-windows-pr') {
         helpers = load 'build-helpers.groovy'
-        def VAGRANTFILE =  "win.Vagrantfile""
+        def VAGRANTFILE =  "win.Vagrantfile"
 
         ws('x') {
             stage('checkout') {
