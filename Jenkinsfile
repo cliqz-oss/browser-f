@@ -1,5 +1,6 @@
 #!/usr/bin/env groovy
 
+
 LIN_REBUILD_IMAGE = false
 WIN_REBUILD_IMAGE = false
 CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
@@ -16,7 +17,7 @@ AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 
 def jobs = [:]
-def helpers = load 'build-helpers.groovy'
+def helpers 
 
 /*
 jobs['linux'] = {
@@ -40,6 +41,8 @@ jobs['linux'] = {
 
 jobs['windows'] = {
     node('browser-windows-pr') {
+        helpers = load 'build-helpers.groovy'
+
         ws('x') {
             stage('checkout') {
                 checkout scm
