@@ -59,4 +59,5 @@ jobs['windows'] = {
         }      
     }
   }
-}
+
+parallel jobs
