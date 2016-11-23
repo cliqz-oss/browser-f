@@ -17,7 +17,6 @@ AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 //REPO_URL = 'git@github.com:cliqz-oss/browser-f.git'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
-COMMIT_ID = env.BRANCH_NAME
 
 def jobs = [:]
 def helpers 
