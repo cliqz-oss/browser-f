@@ -39,10 +39,6 @@ jobs['linux'] = {
 }
 */
 
-stage('checkout') {
-       checkout scm
-}
-
 jobs['windows'] = {
     node('browser-windows-pr') {
         def VAGRANTFILE =  "win.Vagrantfile"
