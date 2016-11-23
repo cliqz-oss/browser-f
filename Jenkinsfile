@@ -15,7 +15,7 @@ DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
 DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
 AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
-REPO_URL = 'http://jenkins-master-v2-gp.clyqz.com:8080'
+REPO_URL = 'git@github.com:cliqz-oss/browser-f.git'
 COMMIT_ID = env.BRANCH_NAME
 
 def jobs = [:]
