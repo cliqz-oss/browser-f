@@ -50,10 +50,7 @@ jobs['windows'] = {
                 checkout scm
             }
             helpers = load 'build-helpers.groovy'
-            sh 'env > env.txt'
-            readFile('env.txt').split('\n').each {
-                print it
-            }
+            print "${env.BRANCH_NAME}"
             /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 4, 8192, 5901, false) {
                 nodeId ->
