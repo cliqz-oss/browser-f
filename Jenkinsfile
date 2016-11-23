@@ -50,7 +50,7 @@ jobs['windows'] = {
                 checkout scm
             }
             helpers = load 'build-helpers.groovy'
-            print "${COMMIT_ID}"
+            print "${env}"
             /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 4, 8192, 5901, false) {
                 nodeId ->
