@@ -65,9 +65,16 @@ jobs['windows'] = {
                                 userRemoteConfigs: scm.userRemoteConfigs
                             ])
                         }
+                        stage('Load Config') {
+                            CLZ_CERTIFICATE_PATH = 'c:\\certs\\OmahaTestCert.pfx'
+                            CLZ_CERTIFICATE_PWD = 'test'
+                            CQZ_RELEASE_CHANNEL = 'pr'
+                            CQZ_GOOGLE_API_KEY = 'AIzaSyDxAm11-Q2fFycxT2WRizsKRqdJIv0GPLo'
+                            MOZ_MOZILLA_API_KEY = '4fb80dd9-1969-49e8-bec7-501de9f0cd39'
 
-                        print "Loading Windows configuration"
-                        load 'Jenkinsfile.win'
+                            print "Loading Windows configuration"
+                            load 'Jenkinsfile.win'
+                        }
                     }
             }
         }      
