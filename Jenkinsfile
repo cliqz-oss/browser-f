@@ -66,6 +66,7 @@ jobs['windows'] = {
                             ])
                         }
 
+                        print "Loading Windows configuration"
                         load 'Jenkinsfile.win'
                     }
             }
