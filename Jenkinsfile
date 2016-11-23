@@ -50,13 +50,13 @@ jobs['windows'] = {
                 checkout scm
             }
             helpers = load 'build-helpers.groovy'
-            print "${env.BRANCH_NAME}"
-            /*
+            
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 4, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
                         stage("Host Checkout") {
-                            helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+                            //helpers.checkoutSCM(REPO_URL, COMMIT_ID)
+                            checkout scm
                         }
 
                         stage("Start build") {
