@@ -55,8 +55,15 @@ jobs['windows'] = {
                 nodeId ->
                     node(nodeId) {
                         stage("Host Checkout") {
-                            //helpers.checkoutSCM(REPO_URL, COMMIT_ID)
-                            checkout scm
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: scm.branches,
+                                extensions: scm.extensions + [
+                                    [$class: 'CheckoutOption', timeout: 60],
+                                    [$class: 'CleanCheckout']
+                                ],
+                                userRemoteConfigs: scm.userRemoteConfigs
+                            ])
                         }
 
                         stage("Start build") {
