@@ -66,13 +66,14 @@ jobs['windows'] = {
                             ])
                         }
                         stage('Load Config') {
-                            CLZ_CERTIFICATE_PATH = 'c:\\certs\\OmahaTestCert.pfx'
+                            WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
+                            WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
                             CLZ_CERTIFICATE_PWD = 'test'
                             CQZ_RELEASE_CHANNEL = 'pr'
-                            CQZ_GOOGLE_API_KEY = 'AIzaSyDxAm11-Q2fFycxT2WRizsKRqdJIv0GPLo'
-                            MOZ_MOZILLA_API_KEY = '4fb80dd9-1969-49e8-bec7-501de9f0cd39'
+                            CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
+                            CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
+                            CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
 
-                            print "Loading Windows configuration"
                             load 'Jenkinsfile.win'
                         }
                     }
