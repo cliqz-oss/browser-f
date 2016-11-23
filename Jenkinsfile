@@ -48,7 +48,7 @@ jobs['windows'] = {
                 checkout scm
             }
             helpers = load 'build-helpers.groovy'
-            helpers.withVagrant("artifacts/${VAGRANTFILE}", "/jenkins", 4, 8192, 5901, true) {
+            helpers.withVagrant("${VAGRANTFILE}", "/jenkins", 4, 8192, 5901, true) {
                 nodeId ->
                     node(nodeId) {
                         stage("Checkout") {
