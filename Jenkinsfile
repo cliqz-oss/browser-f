@@ -66,9 +66,7 @@ jobs['windows'] = {
                             ])
                         }
 
-                        stage("Start build") {
-                            load 'Jenkinsfile.win'
-                        }
+                        load 'Jenkinsfile.win'
                     }
             }
         }      
