@@ -47,13 +47,23 @@ jobs['windows'] = {
 
         ws('x') {
             stage('checkout') {
-                checkout scm
+                checkout([
+                                $class: 'GitSCM',
+                                branches: scm.branches,
+                                extensions: scm.extensions + [
+                                    [$class: 'CheckoutOption', timeout: 60],
+                                    [$class: 'CloneOption', depth: 0, honorRefspec: true, noTags: true, reference: '', shallow: true, timeout: 60]
+                                ],
+                                userRemoteConfigs: scm.userRemoteConfigs
+                            ])
+
             }
             helpers = load 'build-helpers.groovy'
             
             helpers.withVagrant("${VAGRANTFILE}", "//?/c:/jenkins", 4, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
+
                         stage("Host Checkout") {
                             checkout([
                                 $class: 'GitSCM',
