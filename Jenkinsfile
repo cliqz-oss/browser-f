@@ -66,32 +66,33 @@ jobs['windows'] = {
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 4, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
+                        ws('a') {
+                            stage("Host Checkout") {
+                                checkout([
+                                    $class: 'GitSCM',
+                                    branches: scm.branches,
+                                    extensions: scm.extensions + [
+                                        [$class: 'CheckoutOption', timeout: 60],
+                                        [$class: 'CloneOption', depth: 0, honorRefspec: true, noTags: true, reference: '', shallow: true, timeout: 60]
+                                    ],
+                                    userRemoteConfigs: scm.userRemoteConfigs
+                                ])
+                            }
+                            /*
+                            stage('Load Config') {
+                                WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
+                                WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
+                                CLZ_CERTIFICATE_PWD = 'test'
+                                CQZ_RELEASE_CHANNEL = 'pr'
+                                CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
+                                CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
+                                CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
 
-                        stage("Host Checkout") {
-                            checkout([
-                                $class: 'GitSCM',
-                                branches: scm.branches,
-                                extensions: scm.extensions + [
-                                    [$class: 'CheckoutOption', timeout: 60],
-                                    [$class: 'CloneOption', depth: 0, honorRefspec: true, noTags: true, reference: '', shallow: true, timeout: 60]
-                                ],
-                                userRemoteConfigs: scm.userRemoteConfigs
-                            ])
+                                load 'Jenkinsfile.win'
+                            }
+                            */
                         }
-                        /*
-                        stage('Load Config') {
-                            WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
-                            WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
-                            CLZ_CERTIFICATE_PWD = 'test'
-                            CQZ_RELEASE_CHANNEL = 'pr'
-                            CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
-                            CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
-                            CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
-
-                            load 'Jenkinsfile.win'
-                        }
-                        */
-                }
+                    }
             }
         }      
     }
