@@ -63,7 +63,7 @@ jobs['windows'] = {
             }
             helpers = load 'build-helpers.groovy'
             
-            helpers.withVagrant("${VAGRANTFILE}", "//?/c:/jenkins", 4, 8192, 5901, false) {
+            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 4, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
 
