@@ -86,6 +86,7 @@ jobs['windows'] = {
                                 CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
                                 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
                                 CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
+                                CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
                                 load 'Jenkinsfile.win'
                             }
