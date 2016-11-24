@@ -78,7 +78,6 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             }
-                            /*
                             stage('Load Config') {
                                 WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
                                 WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
@@ -90,7 +89,6 @@ jobs['windows'] = {
 
                                 load 'Jenkinsfile.win'
                             }
-                            */
                         }
                     }
             }
