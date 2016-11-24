@@ -73,7 +73,7 @@ jobs['windows'] = {
                                     branches: scm.branches,
                                     extensions: scm.extensions + [
                                         [$class: 'CheckoutOption', timeout: 60],
-                                        [$class: 'CloneOption', depth: 0, honorRefspec: true, noTags: true, reference: '', shallow: true, timeout: 60]
+                                        [$class: 'CloneOption', timeout: 60]
                                     ],
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
