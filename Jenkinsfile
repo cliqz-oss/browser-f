@@ -47,6 +47,7 @@ jobs['windows'] = {
 
         ws('x') {
             stage('checkout') {
+                /*
                 checkout([
                                 $class: 'GitSCM',
                                 branches: scm.branches,
@@ -56,6 +57,8 @@ jobs['windows'] = {
                                 ],
                                 userRemoteConfigs: scm.userRemoteConfigs
                             ])
+                */
+                checkout scm
 
             }
             helpers = load 'build-helpers.groovy'
