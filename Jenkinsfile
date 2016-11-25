@@ -18,6 +18,25 @@ DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 //REPO_URL = 'git@github.com:cliqz-oss/browser-f.git'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 
+
+
+WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
+WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
+CLZ_CERTIFICATE_PWD = 'test'
+CQZ_RELEASE_CHANNEL = 'pr'
+CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
+CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
+CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
+CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
+
+CQZ_EXTENSIONS_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
+CQZ_HTTPSE_EXTENSIONS_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
+
+
+
+
+
+
 def jobs = [:]
 def helpers 
 
@@ -46,6 +65,7 @@ jobs['windows'] = {
         def VAGRANTFILE =  "win.Vagrantfile"
 
         ws('x') {
+            helpers = load 'build-helpers.groovy'
             stage('checkout') {
                 /*
                 checkout([
@@ -61,8 +81,10 @@ jobs['windows'] = {
                 checkout scm
 
             }
-            helpers = load 'build-helpers.groovy'
-            
+            stage('upload extensions') {
+                helpers.uploadExtensions(CQZ_AWS_CREDENTIAL_ID, CQZ_RELEASE_CHANNEL, CQZ_BUILD_ID, CQZ_EXTENSIONS_URL, CQZ_HTTPSE_EXTENSIONS_URL)
+            }
+
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
@@ -79,20 +101,6 @@ jobs['windows'] = {
                                 ])
                             }
                             stage('Load Config') {
-                                WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
-                                WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
-                                CLZ_CERTIFICATE_PWD = 'test'
-                                CQZ_RELEASE_CHANNEL = 'pr'
-                                CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
-                                CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
-                                CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
-                                CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
-
-                                CQZ_EXTENSIONS_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
-                                CQZ_HTTPSE_EXTENSIONS_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
-                            
-                                helpers.uploadExtensions(CQZ_AWS_CREDENTIAL_ID, CQZ_RELEASE_CHANNEL, CQZ_BUILD_ID, CQZ_EXTENSIONS_URL, CQZ_HTTPSE_EXTENSIONS_URL)
-
                                 load 'Jenkinsfile.win'
                             }
                         }
