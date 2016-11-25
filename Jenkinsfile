@@ -66,7 +66,7 @@ jobs['windows'] = {
 
         ws('x') {
             helpers = load 'build-helpers.groovy'
-            stage('checkout') {
+            stage('Hypervizor Checkout') {
                 /*
                 checkout([
                                 $class: 'GitSCM',
@@ -81,15 +81,16 @@ jobs['windows'] = {
                 checkout scm
 
             }
-            stage('upload extensions') {
+            stage('Upload Extensions') {
                 helpers.uploadExtensions(CQZ_AWS_CREDENTIAL_ID, CQZ_RELEASE_CHANNEL, CQZ_BUILD_ID, CQZ_EXTENSIONS_URL, CQZ_HTTPSE_EXTENSIONS_URL)
             }
 
+            /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
-                            stage("Host Checkout") {
+                            stage("VM Checkout") {
                                 checkout([
                                     $class: 'GitSCM',
                                     branches: scm.branches,
@@ -100,14 +101,28 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             }
-                            stage('Load Config') {
-                                load 'Jenkinsfile.win'
-                            }
+                            load 'Jenkinsfile.win'
                         }
                     }
             }
+            */
         }      
     }
 }
+
+jobs['mac'] = {
+	node('browser-mac-pr') {
+		ws('x') {
+			stage('Hypervisor Checkout') {
+				checkout scm
+			}
+
+			stage("Start Build") {
+				load 'Jenkinsfile.mac'
+			}
+		}
+	}
+}
+
 
 parallel jobs
