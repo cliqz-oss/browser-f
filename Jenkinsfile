@@ -110,6 +110,7 @@ jobs['windows'] = {
     }
 }
 
+/*
 jobs['mac'] = {
 	node('browser-mac-pr') {
 		ws('x') {
@@ -123,6 +124,6 @@ jobs['mac'] = {
 		}
 	}
 }
-
+*/
 
 parallel jobs
