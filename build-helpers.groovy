@@ -126,6 +126,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+@NonCPS
 def uploadExtensions(String aws_credential_id, String release_channel, String cqz_version, String cqz_build_id, String cqz_extension_url, String httpse_extension_url ) {
         cqz_version=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
         upload_path="s3://repository.cliqz.com/dist/$release_channel/$cqz_version/$cqz_build_id/cliqz@cliqz.com.xpi"
