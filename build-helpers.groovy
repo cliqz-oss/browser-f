@@ -130,6 +130,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_extension_url, httpse_extension_url ) {
         cqz_version = sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
         echo "versio  $cqz_version"
+        /*
         upload_path="s3://repository.cliqz.com/dist/$release_channel/$cqz_version/$cqz_build_id/cliqz@cliqz.com.xpi"
         httpse_upload_path="s3://repository.cliqz.com/dist/$release_channel/$cqz_version/$cqz_build_id/https-everywhere@cliqz.com.xpi"
 
@@ -145,6 +146,7 @@ def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_exten
         }
         echo "url $cqz_extension_url to path  $upload_path"
         echo "url $httpse_extension_url path  $httpse_upload_path"
+        */
 }
 
 
