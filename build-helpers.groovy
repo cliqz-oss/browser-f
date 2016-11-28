@@ -126,4 +126,26 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+
+@NonCPS
+def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_extension_url, httpse_extension_url ) {
+        cqz_version = sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+        echo "version  ${cqz_version}"
+        upload_path="s3://repository.cliqz.com/dist/${release_channel}/${cqz_version}/${cqz_build_id}/cliqz@cliqz.com.xpi"
+        httpse_upload_path="s3://repository.cliqz.com/dist/${release_channel}/${cqz_version}/${cqz_build_id}/https-everywhere@cliqz.com.xpi"
+
+        echo "Uploading ${upload_path} and ${httpse_extension_url}"
+
+        withCredentials([[
+            $class: 'UsernamePasswordMultiBinding',
+            credentialsId: aws_credential_id, 
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+            usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+                sh "s3cmd cp ${cqz_extension_url} ${upload_path}"
+                sh "s3cmd cp ${httpse_extension_url} ${httpse_upload_path}"
+        }
+        echo "Finished"
+}
+
 return this
