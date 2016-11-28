@@ -22,9 +22,6 @@ WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
 WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
 CLZ_CERTIFICATE_PWD = 'test'
 CQZ_RELEASE_CHANNEL = 'pr'
-CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
-CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
-CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
 CQZ_EXTENSION_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
