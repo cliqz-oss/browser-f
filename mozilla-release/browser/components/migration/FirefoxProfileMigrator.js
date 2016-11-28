@@ -42,15 +42,15 @@ XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
 XPCOMUtils.defineLazyServiceGetter(this, "INIParserFactory",
     "@mozilla.org/xpcom/ini-processor-factory;1", "nsIINIParserFactory");
 
-const myProductDir = FileUtils.getDir("AppRegD", []);
-const fxProductDir = myProductDir.parent;
-fxProductDir.append(
-#if defined(XP_WIN) || defined(XP_MACOSX)
-    "Firefox"
+let fxProductDir = FileUtils.getDir(
+#if defined(XP_WIN)
+    "AppData", ["Mozilla", "Firefox"]
+#elif defined(XP_MACOSX)
+    "ULibDir", ["Application Support", "Firefox"]
 #else
-    "firefox"
+    "Home", [".mozilla", "firefox"]
 #endif
-);
+    , false);
 
 function getFile(path) {
   let file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
@@ -128,17 +128,30 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function () {
     return profiles;
   const iniParser = INIParserFactory.createINIParser(profilesIni);
 
-  var sections = iniParser.getSections();
-  while(sections.hasMore()) {
+  const sections = iniParser.getSections();
+  const profileSectionNameRE = /^Profile\d+$/;
+  while (sections.hasMore()) {
+    const section = sections.getNext();
+    if (!profileSectionNameRE.test(section))
+      continue;
     try {
-      const section = sections.getNext();
-      const profileDir = fxProductDir.clone();
+      // The following code tries to replicate one in
+      // toolkit/profile/nsToolkitProfileService.cpp, Init() method.
       const path = iniParser.getString(section, "Path");
-      profileDir.appendRelativePath(path);
+      const isRelative = iniParser.getString(section, "IsRelative") == "1";
+      let profileDir = fxProductDir.clone();
+      if (isRelative) {
+        profileDir.setRelativeDescriptor(fxProductDir, path);
+      }
+      else {
+        // TODO: Never saw absolute paths and never tested this.
+        profileDir.persistentDescriptor = path;
+      }
+
       profiles.set(iniParser.getString(section, "Name"), profileDir);
     }
     catch (e) {
-      dump(e + "\n");
+      dump("Profiles.ini section: '" + section + "', error: " + e + "\n");
     }
   }
 
