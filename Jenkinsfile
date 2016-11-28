@@ -18,8 +18,6 @@ DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 //REPO_URL = 'git@github.com:cliqz-oss/browser-f.git'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 
-
-
 WIN_CERT_PATH_CREDENTIAL_ID = '54335c2c-be98-4f2a-b207-80c4e4069140'
 WIN_CERT_PASS_CREDENTIAL_ID = 'c16b8eb2-ddd0-4034-bfcf-e52fa9663edd'
 CLZ_CERTIFICATE_PWD = 'test'
@@ -31,11 +29,6 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
 CQZ_EXTENSIONS_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
 CQZ_HTTPSE_EXTENSIONS_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
-
-
-
-
-
 
 def jobs = [:]
 def helpers 
