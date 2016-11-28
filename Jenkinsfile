@@ -56,9 +56,9 @@ jobs['linux'] = {
 jobs['windows'] = {
     node('browser-windows-pr') {
         def VAGRANTFILE =  "win.Vagrantfile"
+        helpers = load "build-helpers.groovy"
 
         ws('x') {
-            helpers = load "build-helpers.groovy"
             stage('Hypervizor Checkout') {
                 /*
                 checkout([
