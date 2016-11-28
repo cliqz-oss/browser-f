@@ -89,11 +89,11 @@ jobs['windows'] = {
 
 
 
-            withCredentials([usernamePassword(credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
-                sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                sh "s3cmd cp -d -v $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                withCredentials([usernamePassword(credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
+                    sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                    sh "s3cmd cp -d -v $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                }
             }
-
 
             /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
