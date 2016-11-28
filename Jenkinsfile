@@ -79,7 +79,7 @@ jobs['windows'] = {
                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
                 withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding', 
+                    $class: 'UsernamePasswordMultiBinding', 
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                     credentialsId: CQZ_AWS_CREDENTIAL_ID, 
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
