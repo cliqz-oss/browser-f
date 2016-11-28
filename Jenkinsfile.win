@@ -49,8 +49,15 @@ withCredentials([
     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-    echo "cert path ${CLZ_CERTIFICATE_PATH}"
-    echo "pwd ${CLZ_CERTIFICATE_PWD}"
+
+    writeFile file: 'path.txt', text: "cert path ${CLZ_CERTIFICATE_PATH}"
+    writeFile pwd: 'pwd.txt', text: "pwd ${CLZ_CERTIFICATE_PWD}"
+
+    def cert = readFile('path.txt')
+    echo "cert ${cert}"
+
+    def pwd = readFile('pwd.txt')
+    echo "pwd #{pwd}"
 /*
     withEnv([
       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
