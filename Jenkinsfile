@@ -95,7 +95,6 @@ jobs['windows'] = {
                 }
             }
 
-            /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
@@ -115,7 +114,6 @@ jobs['windows'] = {
                         }
                     }
             }
-            */
         }      
     }
 }
