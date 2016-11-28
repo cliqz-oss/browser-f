@@ -50,16 +50,7 @@ withCredentials([
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
 
-    writeFile file: 'path.txt', text: "cert path ${CLZ_CERTIFICATE_PATH}"
-    writeFile pwd: 'pwd.txt', text: "pwd ${CLZ_CERTIFICATE_PWD}"
-
-    def cert = readFile('path.txt')
-    echo "cert ${cert}"
-
-    def pwd = readFile('pwd.txt')
-    echo "pwd #{pwd}"
-/*
-    withEnv([
+     withEnv([
       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
@@ -78,5 +69,4 @@ withCredentials([
     } else {
       archiveArtifacts 'obj/build_properties.json'
     }
- */
  }
