@@ -73,11 +73,9 @@ jobs['windows'] = {
                 checkout scm
 
             }
-            /*
             stage('Upload Extensions') {
                 helpers.uploadExtensions(CQZ_AWS_CREDENTIAL_ID, CQZ_RELEASE_CHANNEL, CQZ_BUILD_ID, CQZ_EXTENSIONS_URL, CQZ_HTTPSE_EXTENSIONS_URL)
             }
-            */
             /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
