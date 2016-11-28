@@ -126,6 +126,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+/*
 @NonCPS
 def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_extension_url, httpse_extension_url ) {
         //def cqz_version = "1.9.0" //sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim() 
@@ -143,8 +144,8 @@ def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_exten
                 sh "s3cmd cp $cqz_extension_url $upload_path"
                 sh "s3cmd cp ${httpse_extension_url} $httpse_upload_path"
         }
-        */
         echo "Finished uploading"
 }
 
+*/
 return this
