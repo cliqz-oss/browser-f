@@ -194,7 +194,7 @@ stage('Build') {
     submitBalrog(item[0], item[1], item[2])
   }
 
-  sendEmail(BUILD_STATUS_SUCCESSFULL)
+  sendEmail(BUILD_STATUS_SUCCESSFUL)
 }
 
 def submitBalrog(jobName, id, propsPath) {
