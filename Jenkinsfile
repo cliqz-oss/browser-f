@@ -31,6 +31,7 @@ CQZ_EXTENSIONS_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
 CQZ_HTTPSE_EXTENSIONS_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
 
 def jobs = [:]
+def helpers
 
 /*
 jobs['linux'] = {
