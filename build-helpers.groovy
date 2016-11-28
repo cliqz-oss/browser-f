@@ -130,7 +130,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_extension_url, httpse_extension_url ) {
         cqz_version = sh "`bash get_version.sh`"
         
-        echo "version ${cqz_version}"
+        echo cqz_version
 
 
         /*
