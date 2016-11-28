@@ -332,7 +332,7 @@
   ${If} ${Errors}
     WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}"  "" "CliqzHTML"
   ${EndIf}
-  WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}\OpenWithProgids" "FirefoxHTML" ""
+  WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}\OpenWithProgids" "CliqzHTML" ""
 !macroend
 !define AddAssociationIfNoneExist "!insertmacro AddAssociationIfNoneExist"
 
