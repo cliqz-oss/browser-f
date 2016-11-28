@@ -56,7 +56,6 @@ jobs['linux'] = {
 jobs['windows'] = {
     node('browser-windows-pr') {
         def VAGRANTFILE =  "win.Vagrantfile"
-        helpers = load "build-helpers.groovy"
 
         ws('x') {
             stage('Hypervizor Checkout') {
@@ -72,7 +71,7 @@ jobs['windows'] = {
                             ])
                 */
                 checkout scm
-
+                helpers = load "build-helpers.groovy"
             }
             stage("Copy XPI") {
                 CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
