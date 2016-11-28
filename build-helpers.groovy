@@ -130,7 +130,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_extension_url, httpse_extension_url ) {
         def cqz_version = sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim() 
         
-        echo cqz_version
+        echo "${cqz_version}"
 
 
         /*
