@@ -142,6 +142,7 @@ def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_exten
                 sh "s3cmd cp ${httpse_extension_url} ${httpse_upload_path}"
         }
         echo "Finished uploading"
+        return true
 }
 
 
