@@ -132,6 +132,7 @@ def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_exten
         upload_path="s3://repository.cliqz.com/dist/$release_channel/$cqz_version/$cqz_build_id/cliqz@cliqz.com.xpi"
         httpse_upload_path="s3://repository.cliqz.com/dist/$release_channel/$cqz_version/$cqz_build_id/https-everywhere@cliqz.com.xpi"
 
+        println "Uploading $upload_path and $httpse_extension_url"
         withCredentials([[
             $class: 'UsernamePasswordMultiBinding',
             credentialsId: aws_credential_id, 
