@@ -73,8 +73,20 @@ jobs['windows'] = {
                 checkout scm
 
             }
-            stage('Upload Extensions') {
-                helpers.uploadExtensions(CQZ_AWS_CREDENTIAL_ID, CQZ_RELEASE_CHANNEL, CQZ_BUILD_ID, CQZ_EXTENSIONS_URL, CQZ_HTTPSE_EXTENSIONS_URL)
+            stage("Copy XPI") {
+                CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
+                withCredentials([[
+                            $class: 'UsernamePasswordMultiBinding',
+                            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                            passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                            usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+                    sh "s3cmd cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                    sh "s3cmd cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                }
             }
             /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
