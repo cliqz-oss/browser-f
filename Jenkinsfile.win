@@ -49,7 +49,9 @@ withCredentials([
     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-
+    echo "cert path ${CLZ_CERTIFICATE_PATH}"
+    echo "pwd ${CLZ_CERTIFICATE_PWD}"
+/*
     withEnv([
       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
@@ -69,4 +71,5 @@ withCredentials([
     } else {
       archiveArtifacts 'obj/build_properties.json'
     }
+ */
  }
