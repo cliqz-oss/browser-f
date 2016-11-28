@@ -56,17 +56,6 @@ jobs['windows'] = {
 
         ws('x') {
             stage('Hypervizor Checkout') {
-                /*
-                checkout([
-                                $class: 'GitSCM',
-                                branches: scm.branches,
-                                extensions: scm.extensions + [
-                                    [$class: 'CheckoutOption', timeout: 60],
-                                    [$class: 'CloneOption', depth: 0, honorRefspec: true, noTags: true, reference: '', shallow: true, timeout: 60]
-                                ],
-                                userRemoteConfigs: scm.userRemoteConfigs
-                            ])
-                */
                 checkout scm
                 helpers = load "build-helpers.groovy"
             }
@@ -74,20 +63,6 @@ jobs['windows'] = {
                 CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-
-            /*
-                withCredentials([[
-                    $class: 'AmazonWebServicesCredentialsBinding', 
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                    credentialsId: CQZ_AWS_CREDENTIAL_ID, 
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                        sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                        sh "s3cmd cp -d -v $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-                }
-            }
-            */
-
-
 
                 withCredentials([usernamePassword(credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
                     sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
