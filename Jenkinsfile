@@ -27,8 +27,8 @@ CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
 CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
-CQZ_EXTENSIONS_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
-CQZ_HTTPSE_EXTENSIONS_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
+CQZ_EXTENSION_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
+CQZ_HTTPSE_EXTENSION_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
 
 def jobs = [:]
 def helpers
