@@ -10,7 +10,7 @@ COMMIT_ID = BUILD_ID
 CQZ_BUILD_DE_LOCALIZATION = ''
 CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
-CQZ_AWS_CREDENTIAL_ID = 'aws-creds'
+CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
 DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
 DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
 AWS_REGION = 'us-east-1'
@@ -75,6 +75,7 @@ jobs['windows'] = {
                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
+            /*
                 withCredentials([[
                     $class: 'AmazonWebServicesCredentialsBinding', 
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
@@ -84,6 +85,16 @@ jobs['windows'] = {
                         sh "s3cmd cp -d -v $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
                 }
             }
+            */
+
+
+
+            withCredentials([usernamePassword(credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
+                sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                sh "s3cmd cp -d -v $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+            }
+
+
             /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
