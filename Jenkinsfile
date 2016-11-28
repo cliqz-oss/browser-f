@@ -10,7 +10,7 @@ COMMIT_ID = BUILD_ID
 CQZ_BUILD_DE_LOCALIZATION = ''
 CQZ_GOOGLE_API_KEY_CREDENTIAL_ID = 'google-api-key'
 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID = 'mozilla-api-key'
-CQZ_AWS_CREDENTIAL_ID = 'aws-username-and-pass'
+CQZ_AWS_CREDENTIAL_ID = 'aws-creds'
 DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
 DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
 AWS_REGION = 'us-east-1'
@@ -79,7 +79,7 @@ jobs['windows'] = {
                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
                 withCredentials([[
-                    $class: 'UsernamePasswordMultiBinding', 
+                    $class: 'AmazonWebServicesCredentialsBinding', 
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                     credentialsId: CQZ_AWS_CREDENTIAL_ID, 
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
