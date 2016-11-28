@@ -57,7 +57,7 @@ jobs['windows'] = {
         def VAGRANTFILE =  "win.Vagrantfile"
 
         ws('x') {
-            //helpers = load 'build-helpers.groovy'
+            helpers = load "build-helpers.groovy"
             stage('Hypervizor Checkout') {
                 /*
                 checkout([
