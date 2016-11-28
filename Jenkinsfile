@@ -78,17 +78,14 @@ jobs['windows'] = {
                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-                echo "Upload path: ${UPLOAD_PATH}"
-                echo "HTTPSe upload path: ${HTTPSE_UPLOAD_PATH}"
-
                 withCredentials([[
                             $class: 'UsernamePasswordMultiBinding',
                             credentialsId: CQZ_AWS_CREDENTIAL_ID,
                             passwordVariable: 'AWS_SECRET_ACCESS_KEY',
                             usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-                    sh "s3cmd cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                    sh "s3cmd cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                    sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                    sh "s3cmd cp -d -v $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
                 }
             }
             /*
