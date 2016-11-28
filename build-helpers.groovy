@@ -126,6 +126,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+/*
 
 @NonCPS
 def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_extension_url, httpse_extension_url ) {
@@ -147,8 +148,8 @@ def uploadExtensions(aws_credential_id, release_channel, cqz_build_id, cqz_exten
                 sh "s3cmd cp ${httpse_extension_url} ${httpse_upload_path}"
         }
         echo "Finished"
-        */
 }
 
+        */
 
 return this
