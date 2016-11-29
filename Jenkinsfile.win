@@ -2,7 +2,7 @@
 
 // Check for required variables
 WIN_REBUILD_IMAGE
-WIN_CERT_PATH_CREDENTIAL_ID = 'c:/jenkins/certs/browser-pr.p12'
+WIN_CERT_PATH_CREDENTIAL_ID = 'c:/jenkins/certs/wincerts/CliqzDevTestSPC.pfx'
 WIN_CERT_PASS_CREDENTIAL_ID
 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
 CQZ_GOOGLE_API_KEY_CREDENTIAL_ID
