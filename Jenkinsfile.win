@@ -48,7 +48,7 @@ withCredentials([
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
     writeFile file: 'creds.txt', text: "${env.CLZ_CERTIFICATE_PATH} ${env.CLZ_CERTIFICATE_PWD}"
-
+    input 'wait'
 
      withEnv([
       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
