@@ -181,8 +181,10 @@ this.SafeBrowsing = {
      this.malwareLists,
      this.downloadBlockLists,
      this.downloadAllowLists,
+#if 0
      this.trackingProtectionLists,
      this.trackingProtectionWhitelists,
+#endif
      this.blockedLists] = tablePreferences.map(getLists);
 
     this.updateProviderURLs();
