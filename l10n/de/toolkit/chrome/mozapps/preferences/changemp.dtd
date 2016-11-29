@@ -5,5 +5,5 @@
 <!ENTITY setPassword.reenterPassword.label "Neues Passwort (nochmals):">
 <!ENTITY setPassword.meter.label           "Passwort-Qualitätsmessung">
 <!ENTITY setPassword.meter.loading         "Laden">
-<!ENTITY masterPasswordDescription.label   "Das Master-Passwort wird verwendet, um Ihre sensiblen Daten (z. B. Passwörter) zu schützen. Wenn Sie ein Master-Passwort festlegen, werden Sie einmal pro Sitzung danach gefragt, sobald &brandShortName; auf die geschützten Daten zugreifen muss.">
-<!ENTITY masterPasswordWarning.label       "Bitte stellen Sie sicher, dass Sie das Master-Passwort nicht vergessen. Falls Sie das Master-Passwort vergessen sollten, gibt es keine Möglichkeit, an die Daten zu gelangen, die davon geschützt werden.">
+<!ENTITY masterPasswordDescription.label   "Das Master-Passwort wird verwendet, um deine sensiblen Daten (z. B. Passwörter) zu schützen. Wenn du ein Master-Passwort festlegst, wirst du einmal pro Sitzung danach gefragt, sobald &brandShortName; auf die geschützten Daten zugreifen muss.">
+<!ENTITY masterPasswordWarning.label       "Bitte stell sicher, dass du das Master-Passwort nicht vergisst. Falls du das Master-Passwort vergessen solltest, gibt es keine Möglichkeit, an die Daten zu gelangen, die davon geschützt werden.">
