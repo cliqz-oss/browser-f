@@ -2,7 +2,7 @@
 
 // Check for required variables
 WIN_REBUILD_IMAGE
-WIN_CERT_PATH_CREDENTIAL_ID
+WIN_CERT_PATH_CREDENTIAL_ID = 'c:/jenkins/certs/browser-pr.p12'
 WIN_CERT_PASS_CREDENTIAL_ID
 CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
 CQZ_GOOGLE_API_KEY_CREDENTIAL_ID
@@ -43,7 +43,6 @@ node(WIN_BUILD_NODE) {
 */
 
 withCredentials([
-    [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
     [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
     [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
