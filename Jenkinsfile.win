@@ -59,7 +59,7 @@ withCredentials([
       stage('build') {
         bat '''
           set CQZ_WORKSPACE=%cd%
-                    build_win.bat
+                    sign_win.bat
           
         '''
       }
