@@ -79,7 +79,7 @@ var gFxAccounts = {
   },
 
   get sendTabToDeviceEnabled() {
-    return Services.prefs.getBoolPref("services.sync.sendTabToDevice.enabled");
+    return !!Preferences.get("services.sync.sendTabToDevice.enabled", false);
   },
 
   get remoteClients() {
@@ -196,7 +196,8 @@ var gFxAccounts = {
   updateAppMenuItem: function () {
     let profileInfoEnabled = false;
     try {
-      profileInfoEnabled = Services.prefs.getBoolPref("identity.fxaccounts.profile_image.enabled");
+      profileInfoEnabled =
+          !!Preferences.get("identity.fxaccounts.profile_image.enabled", false);
     } catch (e) { }
 
     // Bail out if FxA is disabled.
