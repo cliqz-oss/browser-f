@@ -615,7 +615,7 @@ Section "-InstallEndCleanup"
       ${EndIf}
     ${Else}
       ${LogHeader} "Writing default-browser opt-out"
-      WriteRegStr HKCU "Software\Mozilla\Firefox" "DefaultBrowserOptOut" "True"
+      WriteRegStr HKCU "Software\CLIQZ" "DefaultBrowserOptOut" "True"
       ${If} ${Errors}
         ${LogHeader} "Error writing default-browser opt-out"
       ${EndIf}
