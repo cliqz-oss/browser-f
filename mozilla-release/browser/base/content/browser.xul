@@ -14,7 +14,7 @@
 <?xml-stylesheet href="chrome://browser/skin/customizableui/panelUI.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/browser-lightweightTheme.css" type="text/css"?>
-
+<?xml-stylesheet href="chrome://browser/skin/cliqz/theme.css" type="text/css"?>
 <?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
 <?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
 <?xul-overlay href="chrome://browser/content/places/placesOverlay.xul"?>
@@ -60,7 +60,8 @@
         fullscreenbutton="true"
         sizemode="normal"
         retargetdocumentfocus="urlbar"
-        persist="screenX screenY width height sizemode">
+        persist="screenX screenY width height sizemode"
+        cliqzBrowser="true">
 
 # All JS files which are not content (only) dependent that browser.xul
 # wishes to include *must* go into the global-scripts.inc file
@@ -683,13 +684,14 @@
                          onclick="checkForMiddleClick(this, event);"
                          tooltip="back-button-tooltip"
                          context="backForwardMenu"/>
+          <!-- CLIQZ: Forward button must be here in CLIQZ browser with custom theme -->
+          <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
+                         label="&forwardCmd.label;"
+                         command="Browser:ForwardOrForwardDuplicate"
+                         onclick="checkForMiddleClick(this, event);"
+                         tooltip="forward-button-tooltip"
+                         context="backForwardMenu"/>
           <hbox id="urlbar-wrapper" flex="1">
-            <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                           label="&forwardCmd.label;"
-                           command="Browser:ForwardOrForwardDuplicate"
-                           onclick="checkForMiddleClick(this, event);"
-                           tooltip="forward-button-tooltip"
-                           context="backForwardMenu"/>
             <textbox id="urlbar" flex="1"
                      placeholder="&urlbar.placeholder2;"
                      type="autocomplete"

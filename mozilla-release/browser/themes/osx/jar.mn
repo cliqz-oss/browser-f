@@ -67,6 +67,14 @@ browser.jar:
   skin/classic/browser/webRTC-sharingScreen-menubar.png
   skin/classic/browser/webRTC-sharingScreen-menubar@2x.png
   skin/classic/browser/webRTC-indicator.css
+  skin/classic/browser/cliqz/close.png                (cliqz/close.png)
+  skin/classic/browser/cliqz/close@2x.png             (cliqz/close@2x.png)
+  skin/classic/browser/cliqz/Lato-Regular.ttf         (cliqz/Lato-Regular.ttf)
+  skin/classic/browser/cliqz/newtab.png               (cliqz/newtab.png)
+  skin/classic/browser/cliqz/newtab@2x.png            (cliqz/newtab@2x.png)
+  skin/classic/browser/cliqz/theme.css                (cliqz/theme.css)
+  skin/classic/browser/cliqz/urlbar-arrow.png         (cliqz/urlbar-arrow.png)
+  skin/classic/browser/cliqz/urlbar-arrow@2x.png      (cliqz/urlbar-arrow@2x.png)
 * skin/classic/browser/controlcenter/panel.css        (controlcenter/panel.css)
   skin/classic/browser/customizableui/background-noise-toolbar.png  (customizableui/background-noise-toolbar.png)
   skin/classic/browser/customizableui/customize-titleBar-toggle.png  (customizableui/customize-titleBar-toggle.png)
