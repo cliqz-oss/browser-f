@@ -19,6 +19,9 @@ if not exist ./pkg_%lang% (goto :error)
 
 echo %CLZ_SIGNTOOL_PATH%
 
+echo %CLZ_CERTIFICATE_PATH%
+echo %CLZ_CERTIFICATE_PWD%
+
 cd pkg_%lang%
 for /R %%f in (
   *.exe *.dll
