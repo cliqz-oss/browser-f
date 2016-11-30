@@ -24,6 +24,7 @@ Vagrant.configure(2) do |config|
 
   config.vm.provision "shell", run: "always", inline: <<-SHELL
     cd c:/jenkins
+    Set-MpPreference -DisableRealtimeMonitoring $true
     Remove-Item slave.jar -ErrorAction SilentlyContinue
     wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
     Start-Process java -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}'
