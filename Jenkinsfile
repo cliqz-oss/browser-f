@@ -50,6 +50,27 @@ jobs['linux'] = {
 */
 
 jobs['windows'] = {
+    node('windows-build-pr-slave') {
+        ws('a') {
+            stage("VM Checkout") {
+                checkout([
+                      $class: 'GitSCM',
+                      branches: scm.branches,
+                      extensions: scm.extensions + [
+                          [$class: 'CheckoutOption', timeout: 60],
+                          [$class: 'CloneOption', timeout: 60]
+                      ],
+                      userRemoteConfigs: scm.userRemoteConfigs
+                  ])
+              }
+              load 'Jenkinsfile.win'
+        }
+    }
+}
+ 
+
+/*
+jobs['windows'] = {
     node('browser-windows-pr') {
         def VAGRANTFILE =  "win.Vagrantfile"
 
@@ -91,7 +112,7 @@ jobs['windows'] = {
         }      
     }
 }
-
+*/
 /*
 jobs['mac'] = {
 	node('browser-mac-pr') {
