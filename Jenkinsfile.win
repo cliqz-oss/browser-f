@@ -52,7 +52,8 @@ withCredentials([
     def cert_path = CLZ_CERTIFICATE_PATH.replaceAll("/", "\\\\")
     stage('grant permissions') {
         bat '''
-            icacls "C:\\jenkins\\a@tmp\" /grant vagrant:(OI)(CI)F /T"
+
+            icacls "C:\\jenkins\\a@tmp\" /grant Everyone:(OI)(CI)F /T"
         '''
     }
 
