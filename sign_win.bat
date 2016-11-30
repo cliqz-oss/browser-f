@@ -29,6 +29,12 @@ for /R %%f in (
   rem Check does file already have a digital sign. If not - try to create one
   echo Check and sign %%f
   "%CLZ_SIGNTOOL_PATH%" verify /pa %%f
+  
+  (
+    echo "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
+
+  ) > test_output.txt
+
   if ERRORLEVEL 1 (
     "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
     "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server_sha256% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% /as %%f
