@@ -26,8 +26,8 @@ Vagrant.configure(2) do |config|
     cd c:/jenkins
     Set-MpPreference -DisableRealtimeMonitoring $true
     Remove-Item slave.jar -ErrorAction SilentlyContinue
-    Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows Defender" -Name "DisableAntiSpyware" -Value 1
-    Set-ItemProperty -Path "HKLM:\Software\Policies\Microsoft\Windows Defender" -Name "DisableRoutinelyTakingAction" -Value 1
+    Set-ItemProperty -Path "HKLM:\\Software\\Policies\\Microsoft\\Windows Defender" -Name "DisableAntiSpyware" -Value 1
+    Set-ItemProperty -Path "HKLM:\\Software\\Policies\\Microsoft\\Windows Defender" -Name "DisableRoutinelyTakingAction" -Value 1
     wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
     Start-Process java -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}'
   SHELL
