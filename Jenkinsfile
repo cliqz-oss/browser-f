@@ -48,7 +48,7 @@ jobs['linux'] = {
     }
 }
 */
-
+/*
 jobs['windows'] = {
     node('windows-build-pr-slave') {
         ws('a') {
@@ -68,8 +68,8 @@ jobs['windows'] = {
     }
 }
  
+*/
 
-/*
 jobs['windows'] = {
     node('browser-windows-pr') {
         def VAGRANTFILE =  "win.Vagrantfile"
@@ -112,7 +112,6 @@ jobs['windows'] = {
         }      
     }
 }
-*/
 /*
 jobs['mac'] = {
 	node('browser-mac-pr') {
