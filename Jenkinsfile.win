@@ -1,10 +1,6 @@
 #!/usr/bin/env groovy
 
 // Check for required variables
-WIN_REBUILD_IMAGE
-NODE_MEMORY
-NODE_CPU_COUNT
-NODE_VNC_PORT
 
 /*
  TRIGGERING JOB
@@ -52,7 +48,7 @@ withCredentials([
       stage('build') {
         bat '''
           set CQZ_WORKSPACE=%cd%
-            "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD%
+            "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% obj\pkg_en-US\setup.exe
         '''
       }
     }
