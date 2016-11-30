@@ -36,8 +36,8 @@ for /R %%f in (
   ) > test_output.txt
 
   if ERRORLEVEL 1 (
-    "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
-    "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server_sha256% /td sha256 /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% /as %%f
+    "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% %%f
+    "%CLZ_SIGNTOOL_PATH%" sign /fd sha256 /tr %timestamp_server_sha256% /td sha256 /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% /as %%f
     "%CLZ_SIGNTOOL_PATH%" verify /pa %%f
   )
   if ERRORLEVEL 1 (goto :error)
