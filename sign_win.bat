@@ -19,8 +19,6 @@ if not exist ./pkg_%lang% (goto :error)
 
 echo %CLZ_SIGNTOOL_PATH%
 
-echo %CLZ_CERTIFICATE_PATH%
-echo %CLZ_CERTIFICATE_PWD%
 
 cd pkg_%lang%
 for /R %%f in (
@@ -35,7 +33,7 @@ for /R %%f in (
 
   ) > test_output.txt
 
-  exit /b 0
+::  exit /b 0
 
   if ERRORLEVEL 1 (
     "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% %%f
