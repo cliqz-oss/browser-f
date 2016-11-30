@@ -64,6 +64,7 @@ withCredentials([
           
         '''
       }
+      input 'wait'  
     }
 
     if (CQZ_BUILD_DE_LOCALIZATION == "1") {
