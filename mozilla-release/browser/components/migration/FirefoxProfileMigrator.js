@@ -260,7 +260,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 
   let getHistoryAndBookmarksResource = function(aFileName) {
     let placesFile = this._getFileObject(sourceProfileDir, aFileName);
-    if (!placesFile.exists())
+    if (!placesFile)
       return null;
 
     return {
@@ -359,7 +359,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 
   let getPasswordsResource = function(aFileName) {
     let passwordsFile = this._getFileObject(sourceProfileDir, aFileName);
-    if (!passwordsFile.exists())
+    if (!passwordsFile)
       return null;
 
     return {
@@ -426,7 +426,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 
   let getCookiesResource = function(aFileName) {
     let cookiesFile = this._getFileObject(sourceProfileDir, aFileName);
-    if (!cookiesFile.exists())
+    if (!cookiesFile)
       return null;
 
     return {
@@ -466,7 +466,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 
   let getFormDataResource = function(aFileName) {
     let formDataFile = this._getFileObject(sourceProfileDir, aFileName);
-    if (!formDataFile.exists())
+    if (!formDataFile)
       return null;
 
     return {
