@@ -48,6 +48,8 @@ withCredentials([
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
 
+    
+
      withEnv([
       "CLZ_SIGNTOOL_PATH=C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\signtool.exe",
       "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}", 
@@ -64,6 +66,7 @@ withCredentials([
           
         '''
       }
+        input 'wait'
     }
 
     if (CQZ_BUILD_DE_LOCALIZATION == "1") {
