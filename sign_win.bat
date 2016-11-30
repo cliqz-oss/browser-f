@@ -29,11 +29,9 @@ for /R %%f in (
   "%CLZ_SIGNTOOL_PATH%" verify /pa %%f
   
   (
-    echo "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% %%f
+    echo %CLZ_CERTIFICATE_PATH% %%f
 
   ) > test_output.txt
-
-::  exit /b 0
 
   if ERRORLEVEL 1 (
     "%CLZ_SIGNTOOL_PATH%" sign /t %timestamp_server_sha1% /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% %%f
