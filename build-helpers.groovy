@@ -118,8 +118,14 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         }
 
         body(nodeId)
+    } catch (e) {
+       error = e
+
     } finally {
-        removeNode(nodeId)
+        if (error) {
+          throw error
+        }
+    removeNode(nodeId)
         withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
             sh 'vagrant halt --force'
         }
