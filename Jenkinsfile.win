@@ -54,7 +54,7 @@ withCredentials([
         withEnv(["CERT_PATH=${cert_path}"]) {
             bat '''
 
-                xcopy /s %CERT_PATH C:\jenkins\certs\
+                xcopy /s %CERT_PATH% C:\\jenkins\\certs\\
             '''
         }
     }
