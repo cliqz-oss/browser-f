@@ -101,12 +101,12 @@ withCredentials([
     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
+      stage('build') {
     withEnv([
       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
     ]) {
-      stage('build') {
         bat '''
            set CLZ_SIGNTOOL_PATH=C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\signtool.exe
           set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
