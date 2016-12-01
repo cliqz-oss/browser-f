@@ -109,7 +109,7 @@ withCredentials([
               set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
               set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
               set CLZ_CERTIFICATE_PWD=Cliqz245
-                "%CLZ_SIGNTOOL_PATH%" sign /t %TIMESTAMP_SERVER_SHA1% /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
+                "%CLZ_SIGNTOOL_PATH%" sign /t %TIMESTAMP_SERVER_SHA1% /f "C:\\jenkins\\certs\\CliqzDevTestSPC.pfx" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
 
             '''
         
