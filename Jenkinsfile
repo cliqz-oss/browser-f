@@ -105,7 +105,7 @@ withCredentials([
 
       stage('build') {
                     bat '''
-               set CLZ_SIGNTOOL_PATH=C:\\Program Files (x86)\\Windows Kits\\8.1\\bin\\x64\\signtool.exe
+               set CLZ_SIGNTOOL_PATH=C:\\Program Files (x86)\\Windows Kits\\8.1\\bin\\x86\\signtool.exe
               set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
               set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
               set CLZ_CERTIFICATE_PWD=Cliqz245
