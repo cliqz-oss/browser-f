@@ -12,8 +12,9 @@ Vagrant.configure(2) do |config|
   config.vm.communicator = "winrm"
   config.winrm.username = "vagrant"
   config.winrm.password = "vagrant"
-  config.winrm.transport = "ssl"
   config.winrm.timeout = 21600 # 6 hours
+  config.winrm.transport = "ssl"
+  config.winrm.ssl_peer_verification = false
 
   config.vm.provider "vmware_workstation" do |v|
     v.gui = false
