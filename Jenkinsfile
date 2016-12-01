@@ -104,17 +104,16 @@ withCredentials([
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
     stage('build') {
-        bat '''
-            set CLZ_SIGNTOOL_PATH=\"C:\\Program Files (x86)\\Windows Kits\\8.1\\bin\\x86\\signtool.exe\"
-            set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
-            set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
-            set CLZ_CERTIFICATE_PWD=Cliqz245
-            ::%CLZ_SIGNTOOL_PATH% sign /tr %TIMESTAMP_SERVER_SHA1%  /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
-            cd "C:\\"
-            start /WAIT /d "C:\\jenkins\\sign.bat"
-        '''
-        
-
+        dir('c:\\jenkins\\') {
+            bat '''
+                set CLZ_SIGNTOOL_PATH=\"C:\\Program Files (x86)\\Windows Kits\\8.1\\bin\\x86\\signtool.exe\"
+                set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
+                set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
+                set CLZ_CERTIFICATE_PWD=Cliqz245
+                ::%CLZ_SIGNTOOL_PATH% sign /tr %TIMESTAMP_SERVER_SHA1%  /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
+                start /WAIT /d "C:\\jenkins\\sign.bat"
+            '''
+        }
     }
 }
 
