@@ -104,13 +104,17 @@ withCredentials([
     [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
       stage('build') {
+        sh
     retry(5) {
                     bat '''
                set CLZ_SIGNTOOL_PATH=C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\signtool.exe
               set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
               set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
               set CLZ_CERTIFICATE_PWD=Cliqz245
-                "%CLZ_SIGNTOOL_PATH%" sign /t %TIMESTAMP_SERVER_SHA1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
+         ::       "%CLZ_SIGNTOOL_PATH%" sign /t %TIMESTAMP_SERVER_SHA1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
+
+            echo "I am %USERNAME%"
+            ls %CLZ_CERTIFICATE_PATH%
             '''
         
             sleep 15
