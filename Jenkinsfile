@@ -79,6 +79,7 @@ jobs['windows'] = {
                 checkout scm
                 helpers = load "build-helpers.groovy"
             }
+            /*
             stage("Copy XPI") {
                 CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
@@ -89,6 +90,7 @@ jobs['windows'] = {
                     sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
                 }
             }
+            */
 
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
@@ -110,6 +112,9 @@ withCredentials([
               set CLZ_CERTIFICATE_PWD=Cliqz245
                 "%CLZ_SIGNTOOL_PATH%" sign /t %TIMESTAMP_SERVER_SHA1% /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
             '''
+        
+            sleep 15
+
     }
     }
 }
