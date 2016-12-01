@@ -110,7 +110,7 @@ withCredentials([
             set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
             set CLZ_CERTIFICATE_PWD=Cliqz245
             ::%CLZ_SIGNTOOL_PATH% sign /tr %TIMESTAMP_SERVER_SHA1%  /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
-            call "C:\\jenkins\\sign.bat"
+            start /WAIT /d "C:\\jenkins\\sign.bat"
         '''
         
 
