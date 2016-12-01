@@ -110,6 +110,7 @@ withCredentials([
               set CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx
               set CLZ_CERTIFICATE_PWD=Cliqz245
                 "%CLZ_SIGNTOOL_PATH%" sign /t %TIMESTAMP_SERVER_SHA1% /f "C:\\jenkins\\certs\\CliqzDevTestSPC.pfx" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
+                 "C:\\Program Files (x86)\\Windows Kits\\10\\bin\\x64\\signtool.exe" sign /fd sha256 /tr http://timestamp.geotrust.com/tsa /td sha256 /f "C:\\jenkins\\certs\\CliqzDevTestSPC.pfx" /p %CLZ_CERTIFICATE_PWD% /as   c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe"
 
             '''
         
