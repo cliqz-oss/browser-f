@@ -90,10 +90,11 @@ jobs['windows'] = {
                 }
             }
 
+/*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
-
+*/
 /*
 withCredentials([
     [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
@@ -120,7 +121,7 @@ withCredentials([
 
 
 
-
+                    node('jenkins-cliqz-oss-browser-f-mulibranch-PR-464-314') {
                         ws('a') {
                             stage("VM Checkout") {
                                 checkout([
@@ -138,6 +139,7 @@ withCredentials([
                     }
             }
         }      
+/*
     }
 }
 /*
