@@ -50,28 +50,29 @@ jobs['windows'] = {
                 }
             }
 
-            node('jenkins-cliqz-oss-browser-f-mulibranch-PR-464-314') {
-                    ws('a') {
-                        stage("VM Checkout") {
-                            checkout([
-                                $class: 'GitSCM',
-                                branches: scm.branches,
-                                extensions: scm.extensions + [
-                                    [$class: 'CheckoutOption', timeout: 60],
-                                    [$class: 'CloneOption', timeout: 60]
-                                ],
-                                userRemoteConfigs: scm.userRemoteConfigs
-                            ])
+            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
+                nodeId ->
+                    node(nodeId) {
+                        ws('a') {
+                            stage("VM Checkout") {
+                                checkout([
+                                    $class: 'GitSCM',
+                                    branches: scm.branches,
+                                    extensions: scm.extensions + [
+                                        [$class: 'CheckoutOption', timeout: 60],
+                                        [$class: 'CloneOption', timeout: 60]
+                                    ],
+                                    userRemoteConfigs: scm.userRemoteConfigs
+                                ])
+                            }
+                            load 'Jenkinsfile.win'
                         }
-                        load 'Jenkinsfile.win'
-                    }
-                }
-            }
-        }      
-    }
-/*
-    }
+                    } // node(nodeId)
+            } // withVagrant
+        } // ws
+    } // node
 }
+
 /*
 jobs['mac'] = {
 	node('browser-mac-pr') {
