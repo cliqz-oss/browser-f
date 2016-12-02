@@ -29,46 +29,6 @@ CQZ_HTTPSE_EXTENSION_URL = 's3://cdncliqz/update/browser/https-everywhere/https-
 def jobs = [:]
 def helpers
 
-/*
-jobs['linux'] = {
-    node('browser') {
-      ws('x') {
-        stage('checkout') {
-          checkout scm
-        }
-
-        stage("Start build") {
-          load 'Jenkinsfile.lin'
-        }
-      }
-    }
-
-    stage("Start build") {
-      load 'Jenkinsfile.lin'
-    }
-}
-*/
-/*
-jobs['windows'] = {
-    node('windows-build-pr-slave') {
-        ws('a') {
-            stage("VM Checkout") {
-                checkout([
-                      $class: 'GitSCM',
-                      branches: scm.branches,
-                      extensions: scm.extensions + [
-                          [$class: 'CheckoutOption', timeout: 60],
-                          [$class: 'CloneOption', timeout: 60]
-                      ],
-                      userRemoteConfigs: scm.userRemoteConfigs
-                  ])
-              }
-              load 'Jenkinsfile.win'
-        }
-    }
-}
- 
-*/
 
 jobs['windows'] = {
     node('browser-windows-pr') {
@@ -90,55 +50,25 @@ jobs['windows'] = {
                 }
             }
 
-/*
-            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
-                nodeId ->
-                    node(nodeId) {
-*/
-/*
-withCredentials([
-    [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-    [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
-    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-    [$class: 'UsernamePasswordMultiBinding', credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
-
-    stage('build') {
-        dir('C:\\jenkins\\certs') {
-            bat '''
-                set CLZ_SIGNTOOL_PATH=\"C:\\Program Files (x86)\\Windows Kits\\8.1\\bin\\x86\\signtool.exe\"
-                set TIMESTAMP_SERVER_SHA1=http://timestamp.verisign.com/scripts/timstamp.dll
-                set CLZ_CERTIFICATE_PATH=\"CliqzDevTestSPC.pfx\"
-                set CLZ_CERTIFICATE_PWD=Cliqz245
-                ::%CLZ_SIGNTOOL_PATH% sign /tr %TIMESTAMP_SERVER_SHA1%  /f "%CLZ_CERTIFICATE_PATH%" /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
-                %CLZ_SIGNTOOL_PATH% sign /f %CLZ_CERTIFICATE_PATH% /p %CLZ_CERTIFICATE_PWD% c:\\jenkins\\a\\obj\\pkg_en-US\\setup.exe
-            '''
-        }
-    }
-}
-*/
-
-
-
-
-                    node('jenkins-cliqz-oss-browser-f-mulibranch-PR-464-314') {
-                        ws('a') {
-                            stage("VM Checkout") {
-                                checkout([
-                                    $class: 'GitSCM',
-                                    branches: scm.branches,
-                                    extensions: scm.extensions + [
-                                        [$class: 'CheckoutOption', timeout: 60],
-                                        [$class: 'CloneOption', timeout: 60]
-                                    ],
-                                    userRemoteConfigs: scm.userRemoteConfigs
-                                ])
-                            }
-                            load 'Jenkinsfile.win'
+            node('jenkins-cliqz-oss-browser-f-mulibranch-PR-464-314') {
+                    ws('a') {
+                        stage("VM Checkout") {
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: scm.branches,
+                                extensions: scm.extensions + [
+                                    [$class: 'CheckoutOption', timeout: 60],
+                                    [$class: 'CloneOption', timeout: 60]
+                                ],
+                                userRemoteConfigs: scm.userRemoteConfigs
+                            ])
                         }
+                        load 'Jenkinsfile.win'
                     }
+                }
             }
         }      
+    }
 /*
     }
 }
