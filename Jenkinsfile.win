@@ -42,7 +42,7 @@ withCredentials([
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
       "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-      "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+      "CLZ_CERTIFICATE_PATH=C:\\jenkins\\certs\\CliqzDevTestSPC.pfx"
     ]){
       stage('build') {
         bat '''
