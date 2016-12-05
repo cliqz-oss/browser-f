@@ -50,6 +50,7 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneAdvanced", gAdvancedPane);
+  register_module("panePairing", gPairingPane);
   register_module("paneApplications", gApplicationsPane);
   register_module("paneContent", gContentPane);
 #if MOZ_SERVICES_SYNC

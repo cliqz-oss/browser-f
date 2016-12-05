@@ -36,6 +36,10 @@
   #category-advanced > .category-icon {
     list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#advanced-native");
   }
+
+  #category-pairing > .category-icon {
+    list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#pairing-native");
+  }
 }
 
 .actionsMenu > .menulist-label-box > .menulist-icon {
@@ -47,7 +51,7 @@ filefield + button {
   margin-inline-start: -4px;
 }
 
-#advancedPrefs {
+#advancedPrefs, #pairingPrefs {
   padding-bottom: 0; /* override padding from normal preferences.css */
 }
 

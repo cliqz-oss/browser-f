@@ -52,7 +52,7 @@
   margin-top: 5px;
 }
 
-#advancedPrefs {
+#advancedPrefs, #pairingPrefs {
   margin-left: 0;
   margin-right: 0; 
 }

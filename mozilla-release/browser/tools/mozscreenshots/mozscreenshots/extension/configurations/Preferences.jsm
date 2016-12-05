@@ -25,6 +25,7 @@ this.Preferences = {
       ["panePrivacy", null, DNTDialog],
       ["paneSecurity", null],
       ["paneSync", null],
+      ["panePairing", null],
       ["paneAdvanced", "generalTab"],
       ["paneAdvanced", "dataChoicesTab"],
       ["paneAdvanced", "networkTab"],
