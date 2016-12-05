@@ -26,6 +26,6 @@ Vagrant.configure(2) do |config|
     cd c:/jenkins
     Remove-Item slave.jar -ErrorAction SilentlyContinue
     wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
-    Start-Process "c:/program files/java/jdk1.7.0_79/bin/java" -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}'
+    Start-Process  "c:/program files/java/jdk1.7.0_79/bin/java" -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}' -UseNewEnvironment  -workingdirectory "C:\jenkins" -verb runas
   SHELL
 end
