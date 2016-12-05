@@ -227,6 +227,7 @@
                 <spacer flex="10"/>
                 <label id="telemetryLearnMore"
                        class="text-link">&telemetryLearnMore.label;</label>
+                <label class="mozilla-support-label-telemetry">&mozillaSupportLearnMore.label;</label>
               </hbox>
             </groupbox>
           </hbox>

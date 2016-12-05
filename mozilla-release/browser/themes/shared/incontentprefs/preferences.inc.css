@@ -320,6 +320,12 @@ description > html|a {
   color: #999;
 }
 
+.mozilla-support-label-telemetry {
+  margin-top: 8px;
+  padding-left: 4px;
+  color: #999;
+}
+
 #showUpdateHistory {
   margin-inline-start: 0;
 }
