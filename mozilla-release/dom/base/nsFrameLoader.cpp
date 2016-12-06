@@ -1360,6 +1360,19 @@ nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
     return NS_ERROR_NOT_IMPLEMENTED;
   }
 
+  // TODO: This may not be the perfect place to cary over privateness flag
+  bool otherPrivateness = false;
+  rv = otherDocshell->GetUsePrivateBrowsing(&otherPrivateness);
+  NS_ENSURE_SUCCESS(rv,rv);
+  bool ourPrivateness = false;
+  rv = ourDocshell->GetUsePrivateBrowsing(&ourPrivateness);
+  NS_ENSURE_SUCCESS(rv,rv);
+  // Privateness should be "sticky": once set, it should be preserved untill
+  // manually reset by user.
+  const bool resPrivateness = otherPrivateness || ourPrivateness;
+  ourDocshell->SetPrivateBrowsing(resPrivateness);
+  otherDocshell->SetPrivateBrowsing(resPrivateness);
+
   // When we swap docShells, maybe we have to deal with a new page created just
   // for this operation. In this case, the browser code should already have set
   // the correct userContextId attribute value in the owning XULElement, but our

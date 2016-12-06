@@ -3409,6 +3409,7 @@ nsDocShell::SetDocLoaderParent(nsDocLoader* aParent)
       // DocShells are swapped during tab being dragged between windows, and
       // we don't want private tabs to lose their privacy flag.
       // See DB-911.
+      // Note: this path seems obsolete after merge with Fx-50.
       value) {
     SetPrivateBrowsing(value);
   }

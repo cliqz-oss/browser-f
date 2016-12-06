@@ -1286,6 +1286,7 @@
           } catch(ex) {
             // This may not be implemented for browser elements that are not
             // attached to a BrowserDOMWindow.
+            console.error("nsIFrameLoaderOwner.swapFrameLoaders failed: ", ex);
           }
 
           // Before we swap the actual docShell property we need to detach the
