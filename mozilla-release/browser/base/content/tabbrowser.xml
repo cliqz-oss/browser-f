@@ -2677,8 +2677,19 @@
                 ourFindBar.onFindCommand();
             }
 
+            let wasPrivate = aOurTab.linkedBrowser.loadContext.usePrivateBrowsing;
             // Finish tearing down the tab that's going away.
             remoteBrowser._endRemoveTab(aOtherTab);
+            // FIXME: This should be redone. Just a quick fix, because it's
+            // unclear where privateness flag gets lost. What's even more weird,
+            // is that it's perfectly preserved on the docShell.
+            try {
+              aOurTab.linkedBrowser.loadContext.usePrivateBrowsing |= wasPrivate;
+            }
+            catch (e) {
+              // Fails in e10s mode.
+              console.error(e);
+            }
 
             if (isBusy)
               this.setTabTitleLoading(aOurTab);
