@@ -36,7 +36,16 @@ jobs['windows'] = {
 
         ws('x') {
             stage('Hypervizor Checkout') {
-                checkout scm
+                checkout([
+                    $class: 'GitSCM',
+                    branches: scm.branches,
+                    extensions: scm.extensions + [
+                        [$class: 'CheckoutOption', timeout: 60],
+                        [$class: 'CloneOption', timeout: 60]
+                    ],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
+
                 helpers = load "build-helpers.groovy"
             }
 
