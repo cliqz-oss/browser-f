@@ -39,6 +39,7 @@ jobs['windows'] = {
                 checkout scm
                 helpers = load "build-helpers.groovy"
             }
+
             stage("Copy XPI") {
                 CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
@@ -50,6 +51,25 @@ jobs['windows'] = {
                 }
             }
 
+            node('windows-pr-slave01') {
+                ws('a') {
+                    stage("VM Checkout") {
+                        checkout([
+                            $class: 'GitSCM',
+                            branches: scm.branches,
+                            extensions: scm.extensions + [
+                                [$class: 'CheckoutOption', timeout: 60],
+                                [$class: 'CloneOption', timeout: 60]
+                            ],
+                            userRemoteConfigs: scm.userRemoteConfigs
+                        ])
+                    }
+                    load 'Jenkinsfile.win'
+                }
+            } // node(nodeId)
+
+
+            /*
             helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
                 nodeId ->
                     node(nodeId) {
@@ -69,6 +89,7 @@ jobs['windows'] = {
                         }
                     } // node(nodeId)
             } // withVagrant
+            */
         } // ws
     } // node
 }
