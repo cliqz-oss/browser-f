@@ -25,11 +25,10 @@ endif
 BRANDING_FILES = \
 	branding.nsi \
 	appname.bmp \
+	appname-light.bmp \
 	bgintro.bmp \
-	clock.bmp \
-	particles.bmp \
-	pencil.bmp \
-	pencil-rtl.bmp \
+	magnifier.bmp \
+	shield.bmp \
 	wizHeader.bmp \
 	wizHeaderRTL.bmp \
 	wizWatermark.bmp \
