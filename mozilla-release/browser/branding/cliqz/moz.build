@@ -9,5 +9,9 @@ DIRS += ['content', 'locales']
 DIST_SUBDIR = 'browser'
 export('DIST_SUBDIR')
 
+BRANDING_FILES += [
+  'appname-light.bmp',
+]
+
 include('../branding-common.mozbuild')
 FirefoxBranding()

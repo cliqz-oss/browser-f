@@ -72,18 +72,45 @@ IF ERRORLEVEL 1 (
   EXIT 1
 )
 
+SET OLD_LANG=%LANG%
+SET LANG=de
 IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
-  SET OLD_LANG=%LANG%
-  SET LANG=de
   CD %CQZ_WORKSPACE%
   CALL sign_win.bat
-  SET LANG=%OLD_LANG%
 
   IF ERRORLEVEL 1 (
     ECHO [%TIME%] ERROR: Signing DE failed! Exiting.
     EXIT 1
   )
 )
+SET LANG=%OLD_LANG%
+
+:::::::::::::::::::::::::::::::::::
+:: SIGNING STUB INSTALLER
+:::::::::::::::::::::::::::::::::::
+ECHO [%TIME%] INFO: Build successful. Signing...
+CD %CQZ_WORKSPACE%
+set STUB_PREFIX=-stub
+CALL sign_win.bat
+
+IF ERRORLEVEL 1 (
+  ECHO [%TIME%] ERROR: Signing failed! Exiting.
+  EXIT 1
+)
+
+SET OLD_LANG=%LANG%
+SET LANG=de
+IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
+  CD %CQZ_WORKSPACE%
+  CALL sign_win.bat
+
+  IF ERRORLEVEL 1 (
+    ECHO [%TIME%] ERROR: Signing DE failed! Exiting.
+    EXIT 1
+  )
+)
+SET LANG=%OLD_LANG%
+set STUB_PREFIX=
 
 :::::::::::::::::::::::::::::::::::
 :: INJECT TAG AREA
@@ -98,18 +125,18 @@ IF ERRORLEVEL 1 (
   EXIT 1
 )
 
+SET OLD_LANG=%LANG%
+SET LANG=de
 IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
-  SET OLD_LANG=%LANG%
-  SET LANG=de
   CD %CQZ_WORKSPACE%
   CALL inject_tag_info.bat
-  SET LANG=%OLD_LANG%
 
   IF ERRORLEVEL 1 (
     ECHO [%TIME%] ERROR: Inject tag area into DE failed! Exiting.
     EXIT 1
   )
 )
+SET LANG=%OLD_LANG%
 
 :::::::::::::::::::::::::::::::::::
 :: UPLOAD AND SUBMIT

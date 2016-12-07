@@ -42,19 +42,19 @@ Var CheckboxSendPing
 Var CheckboxInstallMaintSvc
 Var DirRequest
 Var ButtonBrowse
-Var LabelBlurb1
-Var LabelBlurb2
-Var LabelBlurb3
+Var LabelBlurbHead1
+Var LabelBlurbText1
+Var LabelBlurbHead2
+Var LabelBlurbText2
 Var BitmapBlurb1
 Var BitmapBlurb2
-Var BitmapBlurb3
 Var HwndBitmapBlurb1
 Var HwndBitmapBlurb2
-Var HWndBitmapBlurb3
 
 Var FontNormal
 Var FontItalic
 Var FontBlurb
+Var FontBold
 
 Var WasOptionsButtonClicked
 Var CanWriteToInstallDir
@@ -62,6 +62,7 @@ Var HasRequiredSpaceAvailable
 Var IsDownloadFinished
 Var DownloadSizeBytes
 Var HalfOfDownload
+Var SwitchPromotional
 Var DownloadReset
 Var ExistingTopDir
 Var SpaceAvailableBytes
@@ -98,6 +99,7 @@ Var EndDownloadPhaseTickCount
 Var EndPreInstallPhaseTickCount
 Var EndInstallPhaseTickCount
 Var EndFinishPhaseTickCount
+Var SendPingTimestamp
 
 Var InitialInstallRequirementsCode
 Var ExistingProfile
@@ -242,14 +244,15 @@ Var ControlRightPX
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 !ifdef OFFICIAL
-!ifdef BETA_UPDATE_CHANNEL
-!undef URLStubDownload
-!define URLStubDownload "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-!undef URLManualDownload
-!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-!undef Channel
-!define Channel "beta"
-!endif
+  !ifdef BETA_UPDATE_CHANNEL
+    ;CLIQZ for now always use release channels
+    ;!undef URLStubDownload
+    ;!define URLStubDownload "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+    ;!undef URLManualDownload
+    ;!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+    ;!undef Channel
+    ;!define Channel "beta"
+  !endif
 !endif
 
 !include "common.nsh"
@@ -293,10 +296,12 @@ ChangeUI all "nsisui.exe"
   ; Custom strings for en-US. This is done here so they aren't translated.
   !include oneoff_en-US.nsh
 !else
-  !define INTRO_BLURB "$(INTRO_BLURB1)"
-  !define INSTALL_BLURB1 "$(INSTALL_BLURB1)"
-  !define INSTALL_BLURB2 "$(INSTALL_BLURB2)"
-  !define INSTALL_BLURB3 "$(INSTALL_BLURB3)"
+  !define INTRO_BLURB "$(INTRO_BLURB)"
+  !define INSTALL_BLURB_HEAD_1 "$(INSTALL_BLURB_HEAD_1)"
+  !define INSTALL_BLURB_TEXT_1 "$(INSTALL_BLURB_TEXT_1)"
+  !define INSTALL_BLURB_HEAD_2 "$(INSTALL_BLURB_HEAD_2)"
+  !define INSTALL_BLURB_TEXT_2 "$(INSTALL_BLURB_TEXT_2)"
+  !define MINIINSTALLER_ERROR_SUPPORT_PAGE "$(MINIINSTALLER_ERROR_SUPPORT_PAGE)"
 !endif
 
 Caption "$(WIN_CAPTION)"
@@ -392,11 +397,11 @@ Function .onInit
 !endif
 
   SetShellVarContext all ; Set SHCTX to HKLM
-  ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+  ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
 
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
-    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+    ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
 
     ${If} ${RunningX64}
       ; In HKCU there is no WOW64 redirection, which means we may have gotten
@@ -428,7 +433,7 @@ Function .onInit
   StrCpy $InitialInstallDir "$INSTDIR"
 
   ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
+  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" \
                    "Write Test"
 
   ; Only display set as default when there is write access to HKLM and on Win7
@@ -438,7 +443,7 @@ Function .onInit
     StrCpy $CanSetAsDefault "false"
     StrCpy $CheckboxSetAsDefault "0"
   ${Else}
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
     StrCpy $CanSetAsDefault "true"
   ${EndIf}
 
@@ -488,20 +493,16 @@ Function .onInit
   ${EndIf}
 
   CreateFont $FontBlurb "$0" "12" "500"
+  CreateFont $FontBold "$0" "12" "900"
   CreateFont $FontNormal "$0" "11" "500"
   CreateFont $FontItalic "$0" "11" "500" /ITALIC
 
   InitPluginsDir
   File /oname=$PLUGINSDIR\bgintro.bmp "bgintro.bmp"
   File /oname=$PLUGINSDIR\appname.bmp "appname.bmp"
-  File /oname=$PLUGINSDIR\clock.bmp "clock.bmp"
-  File /oname=$PLUGINSDIR\particles.bmp "particles.bmp"
-!ifdef ${AB_CD}_rtl
-  ; The horizontally flipped pencil looks better in RTL
-  File /oname=$PLUGINSDIR\pencil.bmp "pencil-rtl.bmp"
-!else
-  File /oname=$PLUGINSDIR\pencil.bmp "pencil.bmp"
-!endif
+  File /oname=$PLUGINSDIR\appname-light.bmp "appname-light.bmp"
+  File /oname=$PLUGINSDIR\magnifier.bmp "magnifier.bmp"
+  File /oname=$PLUGINSDIR\shield.bmp "shield.bmp"
 FunctionEnd
 
 ; .onGUIInit isn't needed except for RTL locales
@@ -591,6 +592,10 @@ Function SendPing
       StrCpy $EndInstallPhaseTickCount "$EndFinishPhaseTickCount"
     ${EndIf}
 
+    ; Get current time (UTC)
+    ${GetTime} "" "LS" $0 $1 $2 $3 $4 $5 $6
+    StrCpy $SendPingTimestamp "$2$1$0$4$5$6"
+
     ; Get the seconds elapsed from the start of the download phase to the end of
     ; the download phase.
     ${GetSecondsElapsed} "$StartDownloadPhaseTickCount" "$EndDownloadPhaseTickCount" $0
@@ -653,12 +658,12 @@ Function SendPing
     ${EndIf}
 
     ClearErrors
-    WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
+    WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" \
                      "Write Test"
     ${If} ${Errors}
       StrCpy $R8 "0"
     ${Else}
-      DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+      DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
       StrCpy $R8 "1"
     ${EndIf}
 
@@ -674,17 +679,17 @@ Function SendPing
       ${GetParent} "$R2" $R3
       ${GetLongPath} "$R3" $R3
       ${If} $R3 == $INSTDIR
-        StrCpy $R2 "1" ; This Firefox install is set as default.
+        StrCpy $R2 "1" ; This CLIQZ install is set as default.
       ${Else}
-        StrCpy $R2 "$R2" "" -11 # length of firefox.exe
+        StrCpy $R2 "$R2" "" -9 # length of CLIQZ.exe
         ${If} "$R2" == "${FileMainEXE}"
-          StrCpy $R2 "2" ; Another Firefox install is set as default.
+          StrCpy $R2 "2" ; Another CLIQZ install is set as default.
         ${Else}
           StrCpy $R2 "0"
         ${EndIf}
       ${EndIf}
     ${Else}
-      StrCpy $R2 "0" ; Firefox is not set as default.
+      StrCpy $R2 "0" ; CLIQZ is not set as default.
     ${EndIf}
 
     ${If} "$R2" == "0"
@@ -704,17 +709,17 @@ Function SendPing
             ${GetParent} "$R2" $R3
             ${GetLongPath} "$R3" $R3
             ${If} $R3 == $INSTDIR
-              StrCpy $R2 "1" ; This Firefox install is set as default.
+              StrCpy $R2 "1" ; This CLIQZ install is set as default.
             ${Else}
-              StrCpy $R2 "$R2" "" -11 # length of firefox.exe
+              StrCpy $R2 "$R2" "" -9 # length of CLIQZ.exe
               ${If} "$R2" == "${FileMainEXE}"
-                StrCpy $R2 "2" ; Another Firefox install is set as default.
+                StrCpy $R2 "2" ; Another CLIQZ install is set as default.
               ${Else}
                 StrCpy $R2 "0"
               ${EndIf}
             ${EndIf}
           ${Else}
-            StrCpy $R2 "0" ; Firefox is not set as default.
+            StrCpy $R2 "0" ; CLIQZ is not set as default.
           ${EndIf}
         ${EndIf}
       ${EndUnless}
@@ -760,6 +765,7 @@ Function SendPing
                       $\nPreinstall Phase Seconds = $2 \
                       $\nInstall Phase Seconds = $3 \
                       $\nFinish Phase Seconds = $4 \
+                      $\nSeng Ping Timestamp = $SendPingTimestamp \
                       $\nInitial Install Requirements Code = $InitialInstallRequirementsCode \
                       $\nOpened Download Page = $OpenedDownloadPage \
                       $\nExisting Profile = $ExistingProfile \
@@ -779,7 +785,7 @@ Function SendPing
     Call RelativeGotoPage
 !else
     ${NSD_CreateTimer} OnPing ${DownloadIntervalMS}
-    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData" \
+    InetBgDL::Get "${BaseURLStubPing}/${StubURLVersion}${StubURLVersionAppend}/${Channel}/${UpdateChannel}/${AB_CD}/$R0/$R1/$5/$6/$7/$8/$9/$ExitCode/$FirefoxLaunchCode/$DownloadRetryCount/$DownloadedBytes/$DownloadSizeBytes/$IntroPhaseSeconds/$OptionsPhaseSeconds/$0/$1/$DownloadFirstTransferSeconds/$2/$3/$4/$SendPingTimestamp/$InitialInstallRequirementsCode/$OpenedDownloadPage/$ExistingProfile/$ExistingVersion/$ExistingBuildID/$R5/$R6/$R7/$R8/$R2/$R3/$DownloadServerIP/$PostSigningData" \
                   "$PLUGINSDIR\_temp" /END
 !endif
   ${Else}
@@ -1002,7 +1008,7 @@ Function createOptions
   ${NSD_AddExStyle} $DirRequest ${WS_EX_LTRREADING}|${WS_EX_LEFT}
 !endif
 
-  ${NSD_CreateBrowseButton} 280u 116u 50u 14u "$(BROWSE_BUTTON)"
+  ${NSD_CreateBrowseButton} 280u 116u 54u 14u "$(BROWSE_BUTTON)"
   Pop $ButtonBrowse
   SetCtlColors $ButtonBrowse "" ${COMMON_BKGRD_COLOR}
   ${NSD_OnClick} $ButtonBrowse OnClick_ButtonBrowse
@@ -1083,17 +1089,17 @@ Function createOptions
 
   ; Only show the maintenance service checkbox if we have write access to HKLM
   ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
+  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" \
                    "Write Test"
   ${If} ${Errors}
   ${OrIf} $0 != "true"
     StrCpy $CheckboxInstallMaintSvc "0"
   ${Else}
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
     ; Read the registry instead of using ServicesHelper::IsInstalled so the
     ; plugin isn't included in the stub installer to lessen its size.
     ClearErrors
-    ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\MozillaMaintenance" "ImagePath"
+    ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\CliqzMaintenance" "ImagePath"
     ${If} ${Errors}
       ${NSD_CreateCheckbox} ${OPTIONS_ITEM_EDGE_DU} 184u ${OPTIONS_ITEM_WIDTH_DU} \
                             12u "$(INSTALL_MAINT_SERVICE)"
@@ -1206,54 +1212,46 @@ Function createInstall
   ; Allow a maximum text width of half of the Dialog's width
   IntOp $R0 $8 / 2
 
-  ${GetTextWidthHeight} "${INSTALL_BLURB1}" $FontBlurb $R0 $5 $6
+  ${GetTextWidthHeight} "${INSTALL_BLURB_TEXT_1}" $FontBlurb $R0 $5 $6
   IntOp $R1 $1 + $3
   IntOp $R1 $R1 + $5
   IntOp $R1 $8 - $R1
   IntOp $R1 $R1 / 2
-  ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_TOP_DU} 49u 64u ""
+  ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_IMAGE_TOP_DU} 49u 64u ""
   Pop $BitmapBlurb1
-  ${SetStretchedTransparentImage} $BitmapBlurb1 $PLUGINSDIR\clock.bmp $HwndBitmapBlurb1
+  ${SetStretchedTransparentImage} $BitmapBlurb1 $PLUGINSDIR\shield.bmp $HwndBitmapBlurb1
   IntOp $R1 $R1 + $1
   IntOp $R1 $R1 + $3
-  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TOP_DU} $5 $6 "${INSTALL_BLURB1}"
-  Pop $LabelBlurb1
-  SendMessage $LabelBlurb1 ${WM_SETFONT} $FontBlurb 0
-  SetCtlColors $LabelBlurb1 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_HEAD_TOP_DU} $5 $6 "${INSTALL_BLURB_HEAD_1}"
+  Pop $LabelBlurbHead1
+  SendMessage $LabelBlurbHead1 ${WM_SETFONT} $FontBold 0
+  SetCtlColors $LabelBlurbHead1 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TEXT_TOP_DU} $5 $6 "${INSTALL_BLURB_TEXT_1}"
+  Pop $LabelBlurbText1
+  SendMessage $LabelBlurbText1 ${WM_SETFONT} $FontBlurb 0
+  SetCtlColors $LabelBlurbText1 ${INSTALL_BLURB_TEXT_COLOR} transparent
 
-  ${GetTextWidthHeight} "${INSTALL_BLURB2}" $FontBlurb $R0 $5 $6
+  ${GetTextWidthHeight} "${INSTALL_BLURB_TEXT_2}" $FontBlurb $R0 $5 $6
   IntOp $R1 $1 + $3
   IntOp $R1 $R1 + $5
   IntOp $R1 $8 - $R1
   IntOp $R1 $R1 / 2
-  ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_TOP_DU} 49u 64u ""
+  ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_IMAGE_TOP_DU} 49u 64u ""
   Pop $BitmapBlurb2
-  ${SetStretchedTransparentImage} $BitmapBlurb2 $PLUGINSDIR\particles.bmp $HwndBitmapBlurb2
+  ${SetStretchedTransparentImage} $BitmapBlurb2 $PLUGINSDIR\magnifier.bmp $HwndBitmapBlurb2
   IntOp $R1 $R1 + $1
   IntOp $R1 $R1 + $3
-  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TOP_DU} $5 $6 "${INSTALL_BLURB2}"
-  Pop $LabelBlurb2
-  SendMessage $LabelBlurb2 ${WM_SETFONT} $FontBlurb 0
-  SetCtlColors $LabelBlurb2 ${INSTALL_BLURB_TEXT_COLOR} transparent
-  ShowWindow $BitmapBlurb2 ${SW_HIDE}
-  ShowWindow $LabelBlurb2 ${SW_HIDE}
-
-  ${GetTextWidthHeight} "${INSTALL_BLURB3}" $FontBlurb $R0 $5 $6
-  IntOp $R1 $1 + $3
-  IntOp $R1 $R1 + $5
-  IntOp $R1 $8 - $R1
-  IntOp $R1 $R1 / 2
-  ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_TOP_DU} 49u 64u ""
-  Pop $BitmapBlurb3
-  ${SetStretchedTransparentImage} $BitmapBlurb3 $PLUGINSDIR\pencil.bmp $HWndBitmapBlurb3
-  IntOp $R1 $R1 + $1
-  IntOp $R1 $R1 + $3
-  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TOP_DU} $5 $6 "${INSTALL_BLURB3}"
-  Pop $LabelBlurb3
-  SendMessage $LabelBlurb3 ${WM_SETFONT} $FontBlurb 0
-  SetCtlColors $LabelBlurb3 ${INSTALL_BLURB_TEXT_COLOR} transparent
-  ShowWindow $BitmapBlurb3 ${SW_HIDE}
-  ShowWindow $LabelBlurb3 ${SW_HIDE}
+  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_HEAD_TOP_DU} $5 $6 "${INSTALL_BLURB_HEAD_2}"
+  Pop $LabelBlurbHead2
+  SendMessage $LabelBlurbHead2 ${WM_SETFONT} $FontBold 0
+  SetCtlColors $LabelBlurbHead2 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TEXT_TOP_DU} $5 $6 "${INSTALL_BLURB_TEXT_2}"
+  Pop $LabelBlurbText2
+  SendMessage $LabelBlurbText2 ${WM_SETFONT} $FontBlurb 0
+  SetCtlColors $LabelBlurbText2 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ShowWindow $BitmapBlurb2_1 ${SW_HIDE}
+  ShowWindow $LabelBlurbHead2 ${SW_HIDE}
+  ShowWindow $LabelBlurbText2 ${SW_HIDE}
 
   ${NSD_CreateProgressBar} 103u 166u 241u 9u ""
   Pop $Progressbar
@@ -1279,7 +1277,7 @@ Function createInstall
   ${NSD_CreateBitmap} ${APPNAME_BMP_EDGE_DU} ${APPNAME_BMP_TOP_DU} \
                       ${APPNAME_BMP_WIDTH_DU} ${APPNAME_BMP_HEIGHT_DU} ""
   Pop $2
-  ${SetStretchedTransparentImage} $2 $PLUGINSDIR\appname.bmp $0
+  ${SetStretchedTransparentImage} $2 $PLUGINSDIR\appname-light.bmp $0
 
   GetDlgItem $0 $HWNDPARENT 1 ; Install button
   EnableWindow $0 0
@@ -1337,7 +1335,7 @@ Function createInstall
     StrCpy $ExistingBuildID "0"
   ${EndIf}
 
-  ${If} ${FileExists} "$LOCALAPPDATA\Mozilla\Firefox"
+  ${If} ${FileExists} "$LOCALAPPDATA\CLIQZ"
     StrCpy $ExistingProfile "1"
   ${Else}
     StrCpy $ExistingProfile "0"
@@ -1365,7 +1363,6 @@ Function createInstall
   ${NSD_FreeImage} $0
   ${NSD_FreeImage} $HwndBitmapBlurb1
   ${NSD_FreeImage} $HwndBitmapBlurb2
-  ${NSD_FreeImage} $HWndBitmapBlurb3
 FunctionEnd
 
 Function StartDownload
@@ -1465,6 +1462,10 @@ Function OnDownload
     StrCpy $DownloadSizeBytes "$4"
     System::Int64Op $4 / 2
     Pop $HalfOfDownload
+    System::Int64Op $4 / 3
+    Pop $SwitchPromotional
+    System::Int64Op $SwitchPromotional * 2
+    Pop $SwitchPromotional
     System::Int64Op $HalfOfDownload / $InstallTotalSteps
     Pop $InstallStepSize
     SendMessage $Progressbar ${PBM_SETMARQUEE} 0 0 ; start=1|stop=0 interval(ms)=+N
@@ -1538,10 +1539,6 @@ Function OnDownload
       Call SetProgressBars
       ShowWindow $LabelDownloading ${SW_HIDE}
       ShowWindow $LabelInstalling ${SW_SHOW}
-      ShowWindow $LabelBlurb2 ${SW_HIDE}
-      ShowWindow $BitmapBlurb2 ${SW_HIDE}
-      ShowWindow $LabelBlurb3 ${SW_SHOW}
-      ShowWindow $BitmapBlurb3 ${SW_SHOW}
       ; Disable the Cancel button during the install
       GetDlgItem $5 $HWNDPARENT 2
       EnableWindow $5 0
@@ -1645,13 +1642,15 @@ Function OnDownload
       Exec "$\"$PLUGINSDIR\download.exe$\" /INI=$PLUGINSDIR\${CONFIG_INI}"
       ${NSD_CreateTimer} CheckInstall ${InstallIntervalMS}
     ${Else}
-      ${If} $HalfOfDownload != "true"
-      ${AndIf} $3 > $HalfOfDownload
-        StrCpy $HalfOfDownload "true"
+      ${If} $SwitchPromotional != "true"
+      ${AndIf} $3 > $SwitchPromotional
+        StrCpy $SwitchPromotional "true"
         LockWindow on
-        ShowWindow $LabelBlurb1 ${SW_HIDE}
+        ShowWindow $LabelBlurbHead1 ${SW_HIDE}
+        ShowWindow $LabelBlurbText1 ${SW_HIDE}
         ShowWindow $BitmapBlurb1 ${SW_HIDE}
-        ShowWindow $LabelBlurb2 ${SW_SHOW}
+        ShowWindow $LabelBlurbHead2 ${SW_SHOW}
+        ShowWindow $LabelBlurbText2 ${SW_SHOW}
         ShowWindow $BitmapBlurb2 ${SW_SHOW}
         LockWindow off
       ${EndIf}
@@ -2030,8 +2029,8 @@ Function CopyPostSigningData
     ClearErrors
     StrCpy $PostSigningData "0"
   ${Else}
-    CreateDirectory "$LOCALAPPDATA\Mozilla\Firefox"
-    CopyFiles /SILENT "$EXEDIR\postSigningData" "$LOCALAPPDATA\Mozilla\Firefox"
+    CreateDirectory "$LOCALAPPDATA\CLIQZ"
+    CopyFiles /SILENT "$EXEDIR\postSigningData" "$LOCALAPPDATA\CLIQZ"
   ${Endif}
 FunctionEnd
 
@@ -2060,7 +2059,7 @@ Function DisplayDownloadError
 FunctionEnd
 
 Function OpenManualDownloadURL
-  ExecShell "open" "${URLManualDownload}${URLManualDownloadAppend}"
+  ExecShell "open" "${MINIINSTALLER_ERROR_SUPPORT_PAGE}"
 FunctionEnd
 
 Section

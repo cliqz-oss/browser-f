@@ -18,13 +18,15 @@
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 !define OFFICIAL
-!define URLStubDownload "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-latest"
+!define URLStubDownload "https://cdn.cliqz.com/browser-f/download/web0002/CLIQZ.${AB_CD}.win32.installer.exe"
+; CLIQZ. URLManualDownload not used. Instead get an URL from localization file
 !define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=release&installer_lang=${AB_CD}"
+!define URLSystemRequirements "https://cliqz.com/desktop/betriebsystem-voraussetzungen"
 !define Channel "release"
 
 # The installer's certificate name and issuer expected by the stub installer
-!define CertNameDownload   "CLIQZ GmbH"
-!define CertIssuerDownload "DigiCert Assured ID Code Signing CA-1"
+!define CertNameDownload   "Cliqz GmbH"
+!define CertIssuerDownload "DigiCert SHA2 Assured ID Code Signing CA"
 
 # Dialog units are used so the UI displays correctly with the system's DPI
 # settings.
@@ -46,4 +48,4 @@
 !define INSTALL_PROGRESS_TEXT_COLOR_NORMAL 0x666666
 !define COMMON_TEXT_COLOR_NORMAL 0x000000
 !define COMMON_TEXT_COLOR_FADED 0x666666
-!define COMMON_BKGRD_COLOR 0xF0F0F0
+!define COMMON_BKGRD_COLOR 0xF3F3F3
