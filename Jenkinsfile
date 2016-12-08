@@ -60,22 +60,26 @@ jobs['windows'] = {
                 }
             }
 
-            node('windows-pr-slave01') {
-                ws('a') {
-                    stage("VM Checkout") {
-                        checkout([
-                            $class: 'GitSCM',
-                            branches: scm.branches,
-                            extensions: scm.extensions + [
-                                [$class: 'CheckoutOption', timeout: 60],
-                                [$class: 'CloneOption', timeout: 60]
-                            ],
-                            userRemoteConfigs: scm.userRemoteConfigs
-                        ])
-                    }
-                    load 'Jenkinsfile.win'
-                }
-            } // node(nodeId)
+            def nodeId = 'windows-pr-slave02'
+            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, nodeId) {
+                nodeId ->
+                    node(nodeId) {
+                        ws('a') {
+                            stage("VM Checkout") {
+                                checkout([
+                                    $class: 'GitSCM',
+                                    branches: scm.branches,
+                                    extensions: scm.extensions + [
+                                        [$class: 'CheckoutOption', timeout: 60],
+                                        [$class: 'CloneOption', timeout: 60]
+                                    ],
+                                    userRemoteConfigs: scm.userRemoteConfigs
+                                ])
+                            } // stage
+                            //load 'Jenkinsfile.win'
+                        } // ws
+                    } // node(nodeId)
+            } // withVagrant
 
 
             /*

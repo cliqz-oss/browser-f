@@ -95,9 +95,12 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 }
 
-def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
-    def nodeId = "${env.BUILD_TAG}"
-    createNode(nodeId, jenkinsFolderPath)
+def withVagrant(String nodeId, String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, def nodeId=null, Closure body) {
+    if (nodeId == null) { 
+        nodeId = "${env.BUILD_TAG}"
+        createNode(nodeId, jenkinsFolderPath)
+    }
+
     def error
     try {
         def nodeSecret = getNodeSecret(nodeId)
