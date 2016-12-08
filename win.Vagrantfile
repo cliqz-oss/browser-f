@@ -33,5 +33,6 @@ Vagrant.configure(2) do |config|
       ansible.playbook = "playbook.yml"
       ansible.sudo = false
       ansible.limit = 'all'
+      ansible.verbose = '-vvv'
   end
 end
