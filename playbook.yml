@@ -44,4 +44,3 @@
         name: Jenkins
         start_mode: auto
         state: restarted
-
