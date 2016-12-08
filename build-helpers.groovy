@@ -96,9 +96,11 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
 }
 
 def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, String nodeId, Closure body) {
+    def tempNode = false
     if (!nodeId) { 
         nodeId = "${env.BUILD_TAG}"
         createNode(nodeId, jenkinsFolderPath)
+        tempNode = true
     }
 
     def error
@@ -128,7 +130,9 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         if (error) {
             throw error
         }
-        removeNode(nodeId)
+        if (tempNode) {
+            removeNode(nodeId)
+        }
         withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
             sh 'vagrant halt --force'
         }
