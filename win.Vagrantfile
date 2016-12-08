@@ -22,10 +22,16 @@ Vagrant.configure(2) do |config|
     v.vmx["RemoteDisplay.vnc.port"] = ENV["NODE_VNC_PORT"]
   end
 
-  config.vm.provision "shell", run: "always", inline: <<-SHELL
-    cd c:/jenkins
-    Remove-Item slave.jar -ErrorAction SilentlyContinue
-    wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
-    Start-Process  java -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}' -verb runas
-  SHELL
+#  config.vm.provision "shell", run: "always", inline: <<-SHELL
+#    cd c:/jenkins
+#    Remove-Item slave.jar -ErrorAction SilentlyContinue
+#    wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
+#    Start-Process  java -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}' -verb runas
+#  SHELL
+
+  config.vm.provision "ansible", run: "always"  do |ansible|
+      ansible.playbook = "playbook.yml"
+      ansible.sudo = false
+      ansible.limit = 'all'
+  end
 end

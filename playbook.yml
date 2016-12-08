@@ -1,0 +1,47 @@
+---
+
+- hosts: all
+  gather_facts: yes
+
+  tasks:
+    - name: Delete slave.jar
+      win_file:
+        path: C:\jenkins\slave.jar
+        state: "absent"
+      register: file_delete_result
+      ignore_errors: True
+
+    - name: Download slave.jar
+      win_get_url:
+        url: "{{ lookup('env', 'JENKINS_URL') }}/jnlpJars/slave.jar"
+        dest: C:\jenkins\slave.jar
+      when: file_delete_result | success
+
+    - name: Check if directory exists
+      win_command: ls "c:\\java"
+      register: dir_exist_result
+
+    - name: Copy java directory
+      win_robocopy:
+        src: "C:\\Program\ Files\\Java\\jre1.8.0_101"
+        dest: "C:\\java"
+        recurse: true
+      when: dir_exist_result|failed
+
+    - name: install win_nssm
+      win_chocolatey:
+         name: nssm
+
+    - name: Configure Jenkins service
+      win_nssm:
+        name: Jenkins
+        application: C:\java\bin\java.exe
+        app_parameters:
+          "-jar": "c:\\jenkins\\slave.jar -jnlpUrl {{ lookup('env', 'JENKINS_URL') }}/computer/{{ lookup('env', 'NODE_ID') }}/slave-agent.jnlp -secret {{ lookup('env', 'NODE_SECRET') }}"
+
+    - name: Start Jenkins service
+      win_service:
+        name: Jenkins
+        start_mode: auto
+        state: restarted
+
