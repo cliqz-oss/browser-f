@@ -44,3 +44,12 @@
         name: Jenkins
         start_mode: auto
         state: restarted
+
+    - name: Copy certificate
+      win_copy:
+        src: /etc/certs/CliqzDevTestCA.cer
+        dest: "C:\\jenkins\\CliqzDevTestCA.cer"
+
+    - name: Install certificate
+      script: files/cert_install.ps1
+
