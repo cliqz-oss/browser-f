@@ -10074,5 +10074,14 @@
     "bug_numbers": [1284017],
     "description": "When restoring tabs on startup, reading from sessionstore.js failed, even though the file exists and is not containing an explicitly empty window.",
     "cpp_guard": "ANDROID"
+  },
+  "AUTO_FORGET_TAB_NOTIFICATION_STATES": {
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 6,
+    "description": "The states the Auto Forget Tab notification goes through. 0: The notification was displayed. 1: User picked 'Reload in Normal Mode'. 2: User picked 'Always load in Normal Mode'. 3: User picked 'Change Settings'. Other values are reserved for future uses.",
+    "releaseChannelCollection": "opt-out"
   }
 }
