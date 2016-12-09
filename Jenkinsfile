@@ -61,7 +61,7 @@ jobs['windows'] = {
             }
 
             //def slaveName = 'windows-pr-slave02'
-            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, false) {
+            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, null) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
