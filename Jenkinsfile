@@ -60,8 +60,8 @@ jobs['windows'] = {
                 }
             }
 
-            def slaveName = 'windows-pr-slave02'
-            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, slaveName) {
+            //def slaveName = 'windows-pr-slave02'
+            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, false) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
@@ -76,7 +76,7 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             } // stage
-                            load 'Jenkinsfile.win'
+                            //load 'Jenkinsfile.win'
                             //load 'Jenkinsfile.win'
                         } // ws
                     } // node(nodeId)
