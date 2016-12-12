@@ -29,6 +29,18 @@ XPCOMUtils.defineLazyGetter(this, "nsJSON", () => {
 const browserStrings = Services.strings.createBundle(
     "chrome://browser/locale/browser.properties");
 
+var telemetry = {
+  states: {
+    NOTIFICATION_DISPLAYED: 0,
+    USER_PICKED_RELOAD_IN_NORMAL_MODE: 1,
+    USER_PICKED_ALWAYS_LOAD_IN_NORMAL_MODE: 2,
+    USER_PICKED_CHANGE_SETTINGS: 3
+  },
+  updateHistogram: function(state) {
+    Services.telemetry.getHistogramById("AUTO_FORGET_TAB_NOTIFICATION_STATES").add(state);
+  }
+};
+
 /**
  * This is a XPCOM-service providing access to domain database and controls for
  * "Automatic Forget Tabs" feature.
@@ -126,6 +138,7 @@ AutoForgetTabsService.prototype = {
 
   // RPC
   notifyAutoSwitched: function AFTSvc_notifyAutoSwitched(browser) {
+    telemetry.updateHistogram(telemetry.states.NOTIFICATION_DISPLAYED);
     const buttons = [
       {
         label: browserStrings.GetStringFromName("apt.notification.revertButton"),
@@ -134,6 +147,7 @@ AutoForgetTabsService.prototype = {
         popup: null,
         callback: (notification, descr) => {
           this._reloadBrowserAsNormal(browser);
+          telemetry.updateHistogram(telemetry.states.USER_PICKED_RELOAD_IN_NORMAL_MODE);
           return false;
         }
       },
@@ -145,6 +159,7 @@ AutoForgetTabsService.prototype = {
         popup: null,
         callback: (notification, descr) => {
           this._reloadBrowserAsNormal(browser, true);
+          telemetry.updateHistogram(telemetry.states.USER_PICKED_ALWAYS_LOAD_IN_NORMAL_MODE);
           return false;
         }
       },
@@ -155,6 +170,7 @@ AutoForgetTabsService.prototype = {
         popup: null,
         callback: (notification, descr) => {
           browser.ownerGlobal.openPreferences("panePrivacy");
+          telemetry.updateHistogram(telemetry.states.USER_PICKED_CHANGE_SETTINGS);
           return false;
         }
       }
