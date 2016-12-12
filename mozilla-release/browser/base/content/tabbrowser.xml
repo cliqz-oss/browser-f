@@ -2595,10 +2595,11 @@
         <parameter name="aOtherTab"/>
         <body>
           <![CDATA[
-            // Do not allow transfering a private tab to a non-private window
-            // and vice versa.
-            if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerDocument.defaultView))
+            // CLIQZ Auto-Forget-Tabs:
+            // Transfering a private tab to a non-private window is fine.
+            // Transfering a normal tab to a private window is not.
+            if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+                !aOtherTab.private)
               return;
 
             let ourBrowser = this.getBrowserForTab(aOurTab);
@@ -5568,10 +5569,11 @@
                 sourceNode.ownerDocument.defaultView instanceof ChromeWindow &&
                 sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
                 sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
-              // Do not allow transfering a private tab to a non-private window
-              // and vice versa.
-              if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                  PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerDocument.defaultView))
+              // CLIQZ Auto-Forget-Tabs:
+              // Transfering a private tab to a non-private window is fine.
+              // Transfering a normal tab to a private window is not.
+              if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+                  !sourceNode.private)
                 return "none";
 
               if (window.gMultiProcessBrowser !=
@@ -6560,6 +6562,7 @@
         </body>
       </method>
 
+      <!-- nsIPrivacyTransitionObserver -->
       <method name="privateModeChanged">
         <parameter name="enabled"/>
         <body>

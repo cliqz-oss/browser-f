@@ -43,8 +43,11 @@ class PrivateTabUI {
   }
 
   _updateNavToolbox() {
-    this._toolbox.setAttribute(TOOLBOX_PRIVATE_ATTR_NAME,
-        this._browser.selectedTab.private);
+    this._setToolboxPrivateAttr(this._browser.selectedTab.private);
+  }
+
+  _setToolboxPrivateAttr(val) {
+    this._toolbox.setAttribute(TOOLBOX_PRIVATE_ATTR_NAME, !!val);
   }
 }
 
@@ -56,6 +59,6 @@ const tabContainerEvents = {
   "TabPrivateModeChanged": function onTabPrivateModeChanged(event) {
     if (event.originalTarget !== this._browser.selectedTab)
       return;
-    this._toolbox.setAttribute(TOOLBOX_PRIVATE_ATTR_NAME, event.detail.private);
+    this._setToolboxPrivateAttr(event.detail.private);
   }
 };
