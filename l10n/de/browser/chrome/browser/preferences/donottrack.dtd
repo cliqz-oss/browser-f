@@ -9,6 +9,6 @@
 <!ENTITY doNotTrackCheckbox2.label    "Websites immer mitteilen, meine Nutzeraktivitäten nicht zu verfolgen">
 <!ENTITY doNotTrackCheckbox2.accesskey "W">
 
-<!ENTITY doNotTrackTPInfo.description "&brandShortName; wird bei aktiviertem Schutz vor Aktivitätenverfolgung ein Signal senden, dass Ihre Aktivitäten im Internet nicht verfolgt werden sollen.">
+<!ENTITY doNotTrackTPInfo.description "&brandShortName; wird bei aktiviertem Schutz vor Aktivitätenverfolgung ein Signal senden, dass deine Aktivitäten im Internet nicht verfolgt werden sollen.">
 <!ENTITY doNotTrackLearnMore.label    "Weitere Informationen">
 <!ENTITY doNotTrackLearnMore.url    "https://de.wikipedia.org/wiki/Do_Not_Track_(Software)">
