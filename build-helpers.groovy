@@ -49,6 +49,20 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
+@NonCPS
+def setNodeLabel(nodeId, label) {
+    def allNodes = Jenkins.getInstance().getNodes()
+    for (int i =0; i < allNodes.size(); i++) {
+        Slave node = allNodes[i]
+
+        if (node.name.toString() == nodeId) {
+          node.setLabelString('windows pr')
+          return
+        }
+    }
+}
+
+
 def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   def nodeId = "${env.BUILD_TAG}"
   def error
@@ -138,5 +152,53 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         }
     }
 }
+
+def createEC2Slave(aws_credentials_id, aws_region, Closure body) {
+    nodeId = "${env.BUILD_TAG}"
+    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+    def nodeIP
+
+    createNode(nodeId, jenkinsFolderPath)
+    setNodeLabel(nodeId, 'windows pr')
+    nodeSecret = getNodeSecret(nodeId)
+    
+    ֿ
+    withCredentials([
+        [$class: 'AmazonWebServicesCredentialsBinding',
+        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+        credentialsId: aws_credentials_id,
+        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+        
+        withEnv([
+            "aws_access_key=${AWS_ACCESS_KEY_ID}",
+            "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+            "instance_name=${nodeId}",]) {
+                sh "ansible-playbook bootstrap.yml"
+        }
+    } // withCredentials
+
+    withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          credentialsId: aws_credentials_id,
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+              withEnv([
+                  "AWS_DEFAULT_REGION=${aws_region}"    
+                  ]) {
+                  nodeIP = sh(returnStdout: true, script: "${command}").trim()
+              }
+    } // withCredentials
+    
+    withEnv([
+            "instance_name=${nodeId}",
+            "JENKINS_URL=${env.JENKINS_URL}",
+            "NODE_ID=${nodeId}",
+            "NODE_SECRET=${nodeSecret}"]) {
+                sh "ansible-playbook -i ${nodeIP}, playbook.yml"
+        }
+
+    body(nodeId)
+}
+
 
 return this
