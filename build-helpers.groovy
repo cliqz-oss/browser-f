@@ -163,10 +163,10 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     def nodeSecret = getNodeSecret(nodeId)
     
     withCredentials([
-        [$class: 'UsernamePasswordMultiBinding', 
-          credentialsId: aws_credentials_id, 
-          passwordVariable: 'AWS_SECRET_ACCESS_KEY', 
-          usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+        [$class: 'AmazonWebServicesCredentialsBinding',
+        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+        credentialsId: aws_credentials_id,
+        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
         
         withEnv([
             "aws_access_key=${AWS_ACCESS_KEY_ID}",
@@ -177,10 +177,10 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     } // withCredentials
 
     withCredentials([
-          [$class: 'UsernamePasswordMultiBinding', 
-          credentialsId: aws_credentials_id, 
-          passwordVariable: 'AWS_SECRET_ACCESS_KEY', 
-          usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+          [$class: 'AmazonWebServicesCredentialsBinding',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          credentialsId: aws_credentials_id,
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
               withEnv([
                   "AWS_DEFAULT_REGION=${aws_region}"    
                   ]) {
