@@ -58,7 +58,7 @@ jobs['windows'] = {
                 }
             }
 
-            helpers.createEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION) {
+            helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
