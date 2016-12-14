@@ -163,24 +163,24 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     def nodeSecret = getNodeSecret(nodeId)
     
     withCredentials([
-        [$class: 'AmazonWebServicesCredentialsBinding',
-        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-        credentialsId: aws_credentials_id,
-        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+        [$class: 'UsernamePasswordMultiBinding', 
+          credentialsId: aws_credentials_id, 
+          passwordVariable: 'AWS_SECRET_ACCESS_KEY', 
+          usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
         
         withEnv([
             "aws_access_key=${AWS_ACCESS_KEY_ID}",
             "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
             "instance_name=${nodeId}",]) {
-                sh "ansible-playbook bootstrap.yml"
+                sh "ansible-playbook provisioning/bootstrap.yml"
         }
     } // withCredentials
 
     withCredentials([
-          [$class: 'AmazonWebServicesCredentialsBinding',
-          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-          credentialsId: aws_credentials_id,
-          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+          [$class: 'UsernamePasswordMultiBinding', 
+          credentialsId: aws_credentials_id, 
+          passwordVariable: 'AWS_SECRET_ACCESS_KEY', 
+          usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
               withEnv([
                   "AWS_DEFAULT_REGION=${aws_region}"    
                   ]) {
@@ -193,7 +193,7 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
             "JENKINS_URL=${env.JENKINS_URL}",
             "NODE_ID=${nodeId}",
             "NODE_SECRET=${nodeSecret}"]) {
-                sh "ansible-playbook -i ${nodeIP}, playbook.yml"
+                sh "ansible-playbook -i ${nodeIP}, provisioning/playbook.yml"
         }
 
     body(nodeId)
