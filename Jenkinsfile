@@ -58,7 +58,7 @@ jobs['windows'] = {
                 }
             }
 
-            helpers.withEC2Slave("c:/jenkins", 'aws-creds', AWS_REGION) {
+            helpers.withEC2Slave("c:/jenkins", 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b', AWS_REGION) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
