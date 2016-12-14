@@ -60,8 +60,7 @@ jobs['windows'] = {
                 }
             }
 
-            //def slaveName = 'windows-pr-slave02'
-            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, null) {
+            helpers.createEC2Slave(CQZ_AWS_CREDENTIAL_ID, AWS_REGION) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
@@ -80,7 +79,28 @@ jobs['windows'] = {
                             //load 'Jenkinsfile.win'
                         } // ws
                     } // node(nodeId)
-            } // withVagrant
+            }
+            //def slaveName = 'windows-pr-slave02'
+            // helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, null) {
+            //     nodeId ->
+            //         node(nodeId) {
+            //             ws('a') {
+            //                 stage("VM Checkout") {
+            //                     checkout([
+            //                         $class: 'GitSCM',
+            //                         branches: scm.branches,
+            //                         extensions: scm.extensions + [
+            //                             [$class: 'CheckoutOption', timeout: 60],
+            //                             [$class: 'CloneOption', timeout: 60]
+            //                         ],
+            //                         userRemoteConfigs: scm.userRemoteConfigs
+            //                     ])
+            //                 } // stage
+            //                 load 'Jenkinsfile.win'
+            //                 //load 'Jenkinsfile.win'
+            //             } // ws
+            //         } // node(nodeId)
+            // } // withVagrant
 
 
             /*
