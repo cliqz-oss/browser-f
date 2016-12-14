@@ -1301,6 +1301,9 @@
             aOtherBrowser[field] = ourFieldValues[field];
           }
 
+          // This MUST be reset in order to reflect docShell swap.
+          this._loadContext = null;
+
           // Re-attach the docShells to the form fill controller.
           if (!this.isRemoteBrowser) {
             this.attachFormFill();

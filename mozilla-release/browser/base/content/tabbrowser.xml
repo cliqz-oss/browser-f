@@ -2084,6 +2084,13 @@
                 Cu.reportError(ex);
               }
             }
+            // Reload blank page in private mode, if requested so.
+            else if (aPrivate) {
+              b.loadURIWithFlags(
+                  aURI, {
+                  ensurePrivate: true,
+              });
+            }
 
             // Check if we're opening a tab related to the current tab and
             // move it to after the current tab.
@@ -2678,19 +2685,8 @@
                 ourFindBar.onFindCommand();
             }
 
-            let wasPrivate = aOurTab.linkedBrowser.loadContext.usePrivateBrowsing;
             // Finish tearing down the tab that's going away.
             remoteBrowser._endRemoveTab(aOtherTab);
-            // FIXME: This should be redone. Just a quick fix, because it's
-            // unclear where privateness flag gets lost. What's even more weird,
-            // is that it's perfectly preserved on the docShell.
-            try {
-              aOurTab.linkedBrowser.loadContext.usePrivateBrowsing |= wasPrivate;
-            }
-            catch (e) {
-              // Fails in e10s mode.
-              console.error(e);
-            }
 
             if (isBusy)
               this.setTabTitleLoading(aOurTab);
@@ -3012,6 +3008,9 @@
             var options = "chrome,dialog=no,all";
             for (var name in aOptions)
               options += "," + name + "=" + aOptions[name];
+            // Open private window if tab is private.
+            if (aTab.private)
+              options += ",private"
 
             // tell a new window to take the "dropped" tab
             return window.openDialog(getBrowserURL(), "_blank", options, aTab);
@@ -3127,7 +3126,12 @@
           // Swap the dropped tab with a new one we create and then close
           // it in the other window (making it seem to have moved between
           // windows).
-          let params = { eventDetail: { adoptedTab: aTab } };
+          // We must create private tab in order to swap docShells with another
+          // private tab.
+          let params = {
+            eventDetail: { adoptedTab: aTab },
+            private: !!aTab.private
+          };
           if (aTab.hasAttribute("usercontextid")) {
             // new tab must have the same usercontextid as the old one
             params.userContextId = aTab.getAttribute("usercontextid");
