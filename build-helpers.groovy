@@ -153,14 +153,14 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
-def createEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, Closure body) {
+def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, Closure body) {
     def nodeId = "${env.BUILD_TAG}"
     def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
     def nodeIP
 
     createNode(nodeId, jenkinsFolderPath)
     setNodeLabel(nodeId, 'windows pr')
-    nodeSecret = getNodeSecret(nodeId)
+    def nodeSecret = getNodeSecret(nodeId)
     
     ֿ
     withCredentials([
