@@ -32,8 +32,7 @@ def helpers
 
 jobs['windows'] = {
     node('browser-windows-pr') {
-        def VAGRANTFILE =  "win.Vagrantfile"
-
+        def nodeId = ${env.BUILD_TAG}
         ws('x') {
             stage('Hypervizor Checkout') {
                 checkout([
