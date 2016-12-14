@@ -162,7 +162,6 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     setNodeLabel(nodeId, 'windows pr')
     def nodeSecret = getNodeSecret(nodeId)
     
-    ֿ
     withCredentials([
         [$class: 'AmazonWebServicesCredentialsBinding',
         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
