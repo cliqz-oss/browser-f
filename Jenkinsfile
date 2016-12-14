@@ -32,7 +32,6 @@ def helpers
 
 jobs['windows'] = {
     node('browser-windows-pr') {
-        def nodeId = ${env.BUILD_TAG}
         ws('x') {
             stage('Hypervizor Checkout') {
                 checkout([
