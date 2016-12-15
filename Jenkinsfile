@@ -24,8 +24,8 @@ WIN_CERT_PATH_CREDENTIAL_ID = '44c2aee7-743e-4ede-9411-55ad7219b09c'
 CQZ_RELEASE_CHANNEL = 'pr'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
-CQZ_EXTENSION_URL = 's3://cdncliqz/update/browser/Cliqz.1.9.0.xpi'
-CQZ_HTTPSE_EXTENSION_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.4-browser-signed.xpi'
+CQZ_EXTENSION_URL = 's3://cdncliqz/update/browser/Cliqz.1.11.1.xpi'
+CQZ_HTTPSE_EXTENSION_URL = 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi'
 
 def jobs = [:]
 def helpers
