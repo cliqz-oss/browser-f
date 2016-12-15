@@ -156,36 +156,39 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path, Closure body) {
     def nodeId = null
     for (slave in Hudson.instance.slaves) {
-        if (slave.getLabelString().contains('windows pr')) {
-            if (slave.getComputer().isAcceptingTasks()) {
-                nodeId = slave.name
-            }
-        }     
+      if (slave.getLabelString().contains('windows pr')) {
+        if (slave.getComputer().isAcceptingTasks()) {
+          nodeId = slave.name
+        }
+      }     
     } 
-
-    if (!nodeId) {
-            nodeId = "${env.BUILD_TAG}"
-            createNode(nodeId, jenkinsFolderPath)
-            setNodeLabel(nodeId, 'windows pr')
-    }
-
-    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-    def nodeIP
-    def nodeSecret = getNodeSecret(nodeId)
     
-    withCredentials([
+    // This is a new slave, so we need to bootstrap it
+    if (!nodeId) {
+      nodeId = "${env.BUILD_TAG}"
+      createNode(nodeId, jenkinsFolderPath)
+      setNodeLabel(nodeId, 'windows pr')
+
+      withCredentials([
         [$class: 'AmazonWebServicesCredentialsBinding',
         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
         credentialsId: aws_credentials_id,
         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
         
         withEnv([
-            "aws_access_key=${AWS_ACCESS_KEY_ID}",
-            "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
-            "instance_name=${nodeId}",]) {
-                sh "ansible-playbook ${ansible_path}/bootstrap.yml"
+          "aws_access_key=${AWS_ACCESS_KEY_ID}",
+          "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+          "instance_name=${nodeId}",]) {
+            sh "ansible-playbook ${ansible_path}/bootstrap.yml"
         }
-    } // withCredentials
+      }
+    }
+
+    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+    def nodeIP
+    def nodeSecret = getNodeSecret(nodeId)
+    
+     // withCredentials
 
     withCredentials([
           [$class: 'AmazonWebServicesCredentialsBinding',
