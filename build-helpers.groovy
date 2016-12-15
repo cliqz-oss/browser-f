@@ -158,7 +158,7 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     for (slave in Hudson.instance.slaves) {
         if (slave.getLabelString().contains('windows pr')) {
             if (slave.getComputer().isAcceptingTasks()) {
-                def nodeId = slave.name
+                nodeId = slave.name
             }
         }     
     } 
