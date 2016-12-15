@@ -154,12 +154,24 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 }
 
 def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, Closure body) {
-    def nodeId = "${env.BUILD_TAG}"
+    def nodeId = null
+    for (slave in Hudson.instance.slaves) {
+        if (slave.getLabelString().contains('windows pr')) {
+            if (slave.getComputer().isAcceptingTasks()) {
+                def nodeId = slave.name
+            }
+        }     
+    } 
+
+    if (!nodeId) {
+            nodeId = "${env.BUILD_TAG}"
+            createNode(nodeId, jenkinsFolderPath)
+            setNodeLabel(nodeId, 'windows pr')
+    }
+
     def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
     def nodeIP
 
-    createNode(nodeId, jenkinsFolderPath)
-    setNodeLabel(nodeId, 'windows pr')
     def nodeSecret = getNodeSecret(nodeId)
     
     withCredentials([
