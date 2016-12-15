@@ -171,7 +171,6 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
 
     def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
     def nodeIP
-
     def nodeSecret = getNodeSecret(nodeId)
     
     withCredentials([
