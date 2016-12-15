@@ -56,7 +56,7 @@ def setNodeLabel(nodeId, label) {
         Slave node = allNodes[i]
 
         if (node.name.toString() == nodeId) {
-          node.setLabelString('windows pr')
+          node.setLabelString(label)
           return
         }
     }
@@ -155,8 +155,9 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 
 def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path, Closure body) {
     def nodeId = null
+    def slaveLabel = 'windows pr'
     for (slave in Hudson.instance.slaves) {
-      if (slave.getLabelString().contains('windows pr')) {
+      if (slave.getLabelString().contains(slaveLabel)) {
         if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
           nodeId = slave.name
         } 
@@ -167,7 +168,7 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     if (!nodeId) {
       nodeId = "${env.BUILD_TAG}"
       createNode(nodeId, jenkinsFolderPath)
-      setNodeLabel(nodeId, 'windows pr')
+      setNodeLabel(nodeId, slaveLabel)
 
       withCredentials([
         [$class: 'AmazonWebServicesCredentialsBinding',

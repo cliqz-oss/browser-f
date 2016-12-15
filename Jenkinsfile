@@ -15,7 +15,6 @@ DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
 DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
 AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
-//REPO_URL = 'git@github.com:cliqz-oss/browser-f.git'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 ANSIBLE_PLAYBOOK_PATH = '/home/jenkins/libs/cliqz-builder/ansible/ec2'
 
@@ -75,54 +74,9 @@ jobs['windows'] = {
                                 ])
                             } // stage
                             load 'Jenkinsfile.win'
-                            //load 'Jenkinsfile.win'
-                        } // ws
+                        }// ws
                     } // node(nodeId)
             }
-            //def slaveName = 'windows-pr-slave02'
-            // helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false, null) {
-            //     nodeId ->
-            //         node(nodeId) {
-            //             ws('a') {
-            //                 stage("VM Checkout") {
-            //                     checkout([
-            //                         $class: 'GitSCM',
-            //                         branches: scm.branches,
-            //                         extensions: scm.extensions + [
-            //                             [$class: 'CheckoutOption', timeout: 60],
-            //                             [$class: 'CloneOption', timeout: 60]
-            //                         ],
-            //                         userRemoteConfigs: scm.userRemoteConfigs
-            //                     ])
-            //                 } // stage
-            //                 load 'Jenkinsfile.win'
-            //                 //load 'Jenkinsfile.win'
-            //             } // ws
-            //         } // node(nodeId)
-            // } // withVagrant
-
-
-            /*
-            helpers.withVagrant("${VAGRANTFILE}", "c:/jenkins", 8, 8192, 5901, false) {
-                nodeId ->
-                    node(nodeId) {
-                        ws('a') {
-                            stage("VM Checkout") {
-                                checkout([
-                                    $class: 'GitSCM',
-                                    branches: scm.branches,
-                                    extensions: scm.extensions + [
-                                        [$class: 'CheckoutOption', timeout: 60],
-                                        [$class: 'CloneOption', timeout: 60]
-                                    ],
-                                    userRemoteConfigs: scm.userRemoteConfigs
-                                ])
-                            }
-                            load 'Jenkinsfile.win'
-                        }
-                    } // node(nodeId)
-            } // withVagrant
-            */
         } // ws
     } // node
 }
