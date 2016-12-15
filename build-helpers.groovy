@@ -153,7 +153,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
-def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, Closure body) {
+def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path, Closure body) {
     def nodeId = null
     for (slave in Hudson.instance.slaves) {
         if (slave.getLabelString().contains('windows pr')) {
@@ -183,7 +183,7 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
             "aws_access_key=${AWS_ACCESS_KEY_ID}",
             "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
             "instance_name=${nodeId}",]) {
-                sh "ansible-playbook provisioning/bootstrap.yml"
+                sh "ansible-playbook ${ansible_path}/bootstrap.yml"
         }
     } // withCredentials
 
@@ -204,7 +204,7 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
             "JENKINS_URL=${env.JENKINS_URL}",
             "NODE_ID=${nodeId}",
             "NODE_SECRET=${nodeSecret}"]) {
-                sh "ansible-playbook -i ${nodeIP}, provisioning/playbook.yml"
+                sh "ansible-playbook -i ${nodeIP}, ${ansible_path}/playbook.yml"
         }
 
     body(nodeId)

@@ -17,6 +17,7 @@ AWS_REGION = 'us-east-1'
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 //REPO_URL = 'git@github.com:cliqz-oss/browser-f.git'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
+ANSIBLE_PLAYBOOK_PATH = '/home/jenkins/libs/cliqz-builder/ansible/ec2'
 
 WIN_CERT_PASS_CREDENTIAL_ID = 'c2d53661-8521-47c7-a7b3-73bbb6723c0a'
 WIN_CERT_PATH_CREDENTIAL_ID = '44c2aee7-743e-4ede-9411-55ad7219b09c'
@@ -58,7 +59,7 @@ jobs['windows'] = {
                 }
             }
 
-            helpers.withEC2Slave("c:/jenkins", 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b', AWS_REGION) {
+            helpers.withEC2Slave("c:/jenkins", 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b', AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
                 nodeId ->
                     node(nodeId) {
                         ws('a') {
