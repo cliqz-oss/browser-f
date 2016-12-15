@@ -29,6 +29,9 @@ CQZ_HTTPSE_EXTENSION_URL = 's3://cdncliqz/update/browser/https-everywhere/https-
 def jobs = [:]
 def helpers
 
+properties([
+    parameters([string(defaultValue: 'pr', description: 'Release Channel', name: 'RELEASE_CHANNEL')]),
+])
 
 jobs['windows'] = {
     node('browser-windows-pr') {
