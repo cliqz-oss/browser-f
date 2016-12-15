@@ -157,12 +157,12 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     def nodeId = null
     for (slave in Hudson.instance.slaves) {
       if (slave.getLabelString().contains('windows pr')) {
-        if (slave.getComputer().isAcceptingTasks()) {
+        if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
           nodeId = slave.name
-        }
+        } 
       }     
     } 
-    
+
     // This is a new slave, so we need to bootstrap it
     if (!nodeId) {
       nodeId = "${env.BUILD_TAG}"
