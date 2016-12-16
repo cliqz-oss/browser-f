@@ -84,9 +84,9 @@ jobs['windows'] = {
     } // node
 }
 
-/*
+*
 jobs['mac'] = {
-	node('browser-mac-pr') {
+	node('chromium_mac_buildserver') {
 		ws('x') {
 			stage('Hypervisor Checkout') {
 				checkout scm
