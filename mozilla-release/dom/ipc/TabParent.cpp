@@ -2513,6 +2513,7 @@ TabParent::RecvDispatchFocusToTopLevelWindow()
 }
 
 bool TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
+  SetPrivateBrowsingAttributes(isPrivate);
   CreateLoadContext();
   mLoadContext->SetPrivateness(isPrivate);
   return true;
@@ -2822,12 +2823,14 @@ void TabParent::CreateLoadContext() {
   if (mLoadContext) {
     return;
   } else {
+#if 0  // Privateness is already passed with TabContext to our constructor.
     bool isPrivate = mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
     SetPrivateBrowsingAttributes(isPrivate);
+#endif
     mLoadContext = new LoadContext(
         GetOwnerElement(),
         true /* aIsContent */,
-        isPrivate,
+        OriginAttributesRef().mPrivateBrowsingId != 0,
         mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
         OriginAttributesRef());
   }

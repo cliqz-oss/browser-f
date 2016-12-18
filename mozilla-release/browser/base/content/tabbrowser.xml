@@ -1783,6 +1783,10 @@
               b.setAttribute("usercontextid", aParams.userContextId);
             }
 
+            if (aParams.private) {
+              b.setAttribute("mozprivatebrowsing", 1);
+            }
+
             if (aParams.remote) {
               b.setAttribute("remote", "true");
             }
@@ -1846,7 +1850,7 @@
             "use strict";
 
             // Supported parameters:
-            // forceNotRemote, userContextId
+            // forceNotRemote, userContextId, private
 
             let uriIsAboutBlank = !aURI || aURI == "about:blank";
 
@@ -1865,6 +1869,7 @@
             // icon for the tab would be set incorrectly (see bug 1195981).
             if (aURI == BROWSER_NEW_TAB_URL &&
                 !aParams.userContextId &&
+                !aParams.private &&
                 !PrivateBrowsingUtils.isWindowPrivate(window)) {
               browser = this._getPreloadedBrowser();
               if (browser) {
@@ -1878,7 +1883,8 @@
               browser = this._createBrowser({permanentKey: aTab.permanentKey,
                                              remote: remote,
                                              uriIsAboutBlank: uriIsAboutBlank,
-                                             userContextId: aParams.userContextId});
+                                             userContextId: aParams.userContextId,
+                                             private: !!aParams.private});
             }
 
             let notificationbox = this.getNotificationBox(browser);
@@ -2040,9 +2046,14 @@
             // now this must occur before "TabOpen" event is fired, as that will
             // trigger SessionStore.jsm to run code that expects the existence
             // of tab.linkedBrowser.
+            // "Private" attribute is needed to have the browser ready for being
+            // docShell-swapped right after it's created. Otherwise, it may fail
+            // because of asynchronous nature of "set private" message in
+            // multi-process scenario.
             let browserParams = {
               forceNotRemote: aForceNotRemote,
-              userContextId:  aUserContextId
+              userContextId:  aUserContextId,
+              private: !!aPrivate
             };
             let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
             let b = t.linkedBrowser;

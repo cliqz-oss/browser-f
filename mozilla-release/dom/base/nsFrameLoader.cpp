@@ -143,6 +143,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameLoader)
   NS_INTERFACE_MAP_ENTRY(nsIWebBrowserPersistable)
 NS_INTERFACE_MAP_END
 
+static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
+
 nsFrameLoader::nsFrameLoader(Element* aOwner, bool aNetworkCreated)
   : mOwnerContent(aOwner)
   , mAppIdSentToPermissionManager(nsIScriptSecurityManager::NO_APP_ID)
@@ -1155,8 +1157,6 @@ private:
   nsCOMPtr<EventTarget> mOtherEventTarget;
   MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
 };
-
-static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
 
 nsresult
 nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
@@ -3450,6 +3450,10 @@ nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
   NS_ENSURE_STATE(parentContext);
 
   bool isPrivate = parentContext->UsePrivateBrowsing();
+  if (mOwnerContent->HasAttr(kNameSpaceID_None,
+                             nsGkAtoms::mozprivatebrowsing)) {
+    isPrivate = true;
+  }
   attrs.SyncAttributesWithPrivateBrowsing(isPrivate);
 
   UIStateChangeType showAccelerators = UIStateChangeType_NoChange;
