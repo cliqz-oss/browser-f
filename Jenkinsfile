@@ -47,9 +47,9 @@ properties([
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
-        string(defaultValue: "8000", name: NODE_MEMORY),
-        string(defaultValue: "4", name: NODE_CPU_COUNT),
-        string(defaultValue: "7900", name: NODE_VNC_PORT),
+        string(defaultValue: "8000", name: 'NODE_MEMORY'),
+        string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
+        string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
     ]), 
     pipelineTriggers([])
 ])
