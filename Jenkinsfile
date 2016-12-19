@@ -105,8 +105,8 @@ jobs['mac'] = {
                     credentialsId: CQZ_AWS_CREDENTIAL_ID,
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                    sh '/bin/bash -lc "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"'
-                    sh '/bin/bash -lc "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"'
+                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
+                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
                 }
             }
 
