@@ -36,7 +36,6 @@ properties([
     pipelineTriggers([])
 ])
 
-node {
     stage("Copy XPI") {
         CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
         UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
@@ -53,7 +52,6 @@ node {
         }
     }
 
-}
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
