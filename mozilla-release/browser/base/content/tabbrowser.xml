@@ -6322,7 +6322,7 @@
     </content>
 
     <implementation
-        implements="nsIPrivacyTransitionObserver, nsISupportsWeakReference"
+        implements="nsISupportsWeakReference"
         >
       <property
           name="linkedBrowser"
@@ -6337,7 +6337,6 @@
             Cu.reportError((new Error()).stack);
           }
           this._linkedBrowser = val;
-          this._watchPrivacyEvents();
         ]]>
         </setter>
       </property>
@@ -6563,32 +6562,6 @@
           }
 
           ContextualIdentityService.setTabStyle(this);
-        ]]>
-        </body>
-      </method>
-
-      <method name="_watchPrivacyEvents">
-        <body>
-        <![CDATA[
-          if (!this._linkedBrowser)
-            return;
-          this._linkedBrowser.loadContext.addWeakPrivacyTransitionObserver(this);
-        ]]>
-        </body>
-      </method>
-
-      <!-- nsIPrivacyTransitionObserver -->
-      <method name="privateModeChanged">
-        <parameter name="enabled"/>
-        <body>
-        <![CDATA[
-          this.dispatchEvent(new CustomEvent("TabPrivateModeChanged", {
-              bubbles: true,
-              cancelable: false,
-              detail: {
-                private: enabled
-              }
-          }));
         ]]>
         </body>
       </method>

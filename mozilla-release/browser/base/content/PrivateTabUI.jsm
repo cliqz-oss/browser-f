@@ -24,20 +24,18 @@ class PrivateTabUI {
 
   start() {
     this._updateNavToolbox();
-    for (let eventName in tabContainerEvents) {
-      this._browser.tabContainer.addEventListener(eventName, this);
-    }
+    this._browser.tabContainer.addEventListener("TabSelect", this);
+    this._browser.addEventListener("TabPrivateModeChanged", this);
   }
 
   stop() {
-    for (let eventName in tabContainerEvents) {
-      this._browser.tabContainer.removeEventListener(eventName, this);
-    }
     this._toolbox.removeAttribute(TOOLBOX_PRIVATE_ATTR_NAME);
+    this._browser.tabContainer.removeEventListener("TabSelect", this);
+    this._browser.removeEventListener("TabPrivateModeChanged", this);
   }
 
   handleEvent(event) {
-    const handler = tabContainerEvents[event.type];
+    const handler = eventHandlers[event.type];
     if (handler)
       handler.call(this, event);
   }
@@ -51,13 +49,13 @@ class PrivateTabUI {
   }
 }
 
-const tabContainerEvents = {
+const eventHandlers = {
   "TabSelect": function onTabSelect(event) {
     this._updateNavToolbox();
   },
 
   "TabPrivateModeChanged": function onTabPrivateModeChanged(event) {
-    if (event.originalTarget !== this._browser.selectedTab)
+    if (event.originalTarget !== this._browser.selectedBrowser)
       return;
     this._setToolboxPrivateAttr(event.detail.private);
   }
