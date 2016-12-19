@@ -54,8 +54,8 @@ withEnv([
 
     stage('build') {
         withCredentials([
-            [$class: 'StringBinding', credentialsId: 'e2c7ea0a-285e-4199-9667-af2223d3b14a', variable: 'CQZ_GOOGLE_API_KEY'],
-            [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
+            [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+            [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
             sh "./magic_build_and_package.sh --clobber ${LANG_PARAM}"
         }
