@@ -51,6 +51,7 @@ properties([
     pipelineTriggers([])
 ])
 
+/*
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
@@ -73,12 +74,10 @@ jobs['windows'] = {
                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-                /*
-                withCredentials([usernamePassword(credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
-                    sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                    sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-                }
-                */
+                //withCredentials([usernamePassword(credentialsId: CQZ_AWS_CREDENTIAL_ID, passwordVariable: 'AWS_SECRET_ACCESS_KEY', usernameVariable: 'AWS_ACCESS_KEY_ID')]) {
+                //    sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                //    sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                //}
 
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding',
@@ -114,8 +113,8 @@ jobs['windows'] = {
         } // ws
     } // node
 }
+*/
 
-/*
 jobs['mac'] = {
 	node('chromium_mac_buildserver') {
 		ws('x') {
@@ -129,5 +128,4 @@ jobs['mac'] = {
 		}
 	}
 }
-*/
 parallel jobs
