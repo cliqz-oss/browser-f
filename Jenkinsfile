@@ -53,9 +53,6 @@ node {
         }
     }
 
-    stage('Load helpers') {
-        helpers = load "build-helpers.groovy"
-    }
 }
 jobs['windows'] = {
     node('browser-windows-pr') {
@@ -64,6 +61,7 @@ jobs['windows'] = {
                 checkout scm
             }
 
+            helpers = load "build-helpers.groovy"
             helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
                 nodeId ->
                     node(nodeId) {
