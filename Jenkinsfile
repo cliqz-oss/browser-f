@@ -36,24 +36,26 @@ properties([
     pipelineTriggers([])
 ])
 
-stage("Copy XPI") {
-    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+node {
+    stage("Copy XPI") {
+        CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-    withCredentials([
-        [$class: 'AmazonWebServicesCredentialsBinding',
-        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-        credentialsId: CQZ_AWS_CREDENTIAL_ID,
-        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-        sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-        sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+            sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+            sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+        }
     }
-}
 
-stage('Load helpers') {
-    helpers = load "build-helpers.groovy"
+    stage('Load helpers') {
+        helpers = load "build-helpers.groovy"
+    }
 }
 jobs['windows'] = {
     node('browser-windows-pr') {
