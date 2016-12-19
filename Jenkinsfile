@@ -42,8 +42,8 @@ properties([
     parameters([string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi', name: 'CQZ_HTTPSE_EXTENSION_URL')]),
     parameters([string(defaultValue: 'us-east-1', name: 'AWS_REGION')]),
     parameters([string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', name: 'ANSIBLE_PLAYBOOK_PATH')]),
-    parameters([booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE')])
-    parameters([booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE')])
+    parameters([booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE')]),
+    parameters([booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE')]),
     parameters([booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE')])
 ])
 
