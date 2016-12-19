@@ -46,7 +46,7 @@ properties([
         string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', name: 'ANSIBLE_PLAYBOOK_PATH'),
         string(defaultValue: "8000", name: 'NODE_MEMORY'),
         string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
-        string(defaultValue: "7900", name: 'NODE_VNC_PORT')
+        string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
