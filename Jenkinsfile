@@ -34,6 +34,7 @@ def jobs = [:]
 def helpers
 
 properties([
+    [$class: 'JobRestrictionProperty'], 
     parameters([string(defaultValue: 'pr', name: 'RELEASE_CHANNEL')]),
     parameters([string(defaultValue: 'google-api-key', name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID')]),
     parameters([string(defaultValue: 'mozilla-api-key', name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID')]),
@@ -44,8 +45,11 @@ properties([
     parameters([string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', name: 'ANSIBLE_PLAYBOOK_PATH')]),
     parameters([booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE')]),
     parameters([booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE')]),
-    parameters([booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE')])
+    parameters([booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE')]),
+    pipelineTriggers([])
 ])
+
+println "Param ${CQZ_AWS_CREDENTIAL_ID}"
 
 jobs['windows'] = {
     node('browser-windows-pr') {
@@ -113,4 +117,4 @@ jobs['mac'] = {
 	}
 }
 */
-parallel jobs
+//parallel jobs
