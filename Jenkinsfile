@@ -35,21 +35,21 @@ def helpers
 
 properties([
     [$class: 'JobRestrictionProperty'], 
-    parameters([string(defaultValue: 'pr', name: 'RELEASE_CHANNEL')]),
-    parameters([string(defaultValue: 'google-api-key', name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID')]),
-    parameters([string(defaultValue: 'mozilla-api-key', name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID')]),
-    parameters([string(defaultValue: 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b', name: 'CQZ_AWS_CREDENTIAL_ID')]),
-    parameters([string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi', name: 'CQZ_EXTENSION_URL')]),
-    parameters([string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi', name: 'CQZ_HTTPSE_EXTENSION_URL')]),
-    parameters([string(defaultValue: 'us-east-1', name: 'AWS_REGION')]),
-    parameters([string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', name: 'ANSIBLE_PLAYBOOK_PATH')]),
-    parameters([booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE')]),
-    parameters([booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE')]),
-    parameters([booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE')]),
+    parameters([
+        string(defaultValue: 'pr', name: 'RELEASE_CHANNEL'),
+        string(defaultValue: 'google-api-key', name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID'),
+        string(defaultValue: 'mozilla-api-key', name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID'),
+        string(defaultValue: 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b', name: 'CQZ_AWS_CREDENTIAL_ID'),
+        string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi', name: 'CQZ_EXTENSION_URL'),
+        string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi', name: 'CQZ_HTTPSE_EXTENSION_URL'),
+        string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
+        string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', name: 'ANSIBLE_PLAYBOOK_PATH'),
+        booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
+        booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
+        booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
+    ]), 
     pipelineTriggers([])
 ])
-
-println "Param ${CQZ_AWS_CREDENTIAL_ID}"
 
 jobs['windows'] = {
     node('browser-windows-pr') {
