@@ -68,22 +68,12 @@ stage("Copy XPI") {
         sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
         sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
     }
-
 }
 
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
             stage('Hypervizor Checkout') {
-                // checkout([
-                //     $class: 'GitSCM',
-                //     branches: scm.branches,
-                //     extensions: scm.extensions + [
-                //         [$class: 'CheckoutOption', timeout: 60],
-                //         [$class: 'CloneOption', timeout: 60]
-                //     ],
-                //     userRemoteConfigs: scm.userRemoteConfigs
-                // ])
                 checkout scm
             }
 
@@ -109,7 +99,7 @@ jobs['windows'] = {
         } // ws
     } // node
 }
-*/
+
 
 jobs['mac'] = {
 	node('chromium_mac_buildserver') {
@@ -124,4 +114,5 @@ jobs['mac'] = {
 		}
 	}
 }
+
 parallel jobs
