@@ -29,6 +29,8 @@ properties([
         string(defaultValue: "8000", name: 'NODE_MEMORY'),
         string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
         string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
+        string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a", name: "WIN_CERT_PASS_CREDENTIAL_ID"),
+        string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c", name: "WIN_CERT_PATH_CREDENTIAL_ID")
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
@@ -81,6 +83,8 @@ jobs['windows'] = {
         } // ws
     } // node
 }
+
+
 jobs['mac'] = {
 	node('chromium_mac_buildserver') {
 		ws('x') {
