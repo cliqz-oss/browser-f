@@ -13,7 +13,7 @@ REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
 def jobs = [:]
-def helpers = load "build-helpers.groovy"
+def helpers
 
 properties([
     [$class: 'JobRestrictionProperty'], 
@@ -52,6 +52,9 @@ stage("Copy XPI") {
     }
 }
 
+stage('Load helpers') {
+    helpers = load "build-helpers.groovy"
+}
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
