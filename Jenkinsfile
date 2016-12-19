@@ -98,6 +98,7 @@ jobs['windows'] = {
     } // node
 }
 
+/*
 jobs['mac'] = {
 	node('chromium_mac_buildserver') {
 		ws('x') {
@@ -111,5 +112,5 @@ jobs['mac'] = {
 		}
 	}
 }
-
+*/
 parallel jobs
