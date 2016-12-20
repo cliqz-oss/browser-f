@@ -1,6 +1,7 @@
 #!/usr/bin/env groovy
 
 import org.codehaus.groovy.runtime.*;
+import groovy.transform.Field
 
 CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
 CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr/'+CQZ_RELEASE_CHANNEL+'/'+BUILD_ID
@@ -14,8 +15,9 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
 def jobs = [:]
 def helpers
-def uploaded_lock = 0
-def uploaded = false
+
+uploaded_lock = 0
+uploaded = false
 
 properties([
     [$class: 'JobRestrictionProperty'], 
@@ -46,6 +48,7 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
         if (uploaded_lock == 0) {
             if (uploaded) {
                 echo 'Extension uploaded. Skipping'
+                retry_times = 0
             } else {
                 uploaded_lock++
                 body()
