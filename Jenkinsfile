@@ -42,6 +42,29 @@ properties([
 ])
 
 
+def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
+    def uploaded_lock = 0
+    def uploaded = false
+
+    retry(retry_times) {
+        if (uploaded_lock == 0) {
+            if (uploaded) {
+                echo 'Extension uploaded. Skipping'
+            } else {
+                uploaded_lock++
+                body()
+                uploaded = true
+                uploaded_lock--
+            }
+        } else if (!uploaded){
+            echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
+            sleep wait_sleep
+            throw new Exception("Could not acquire lock")
+      }
+    }
+}
+
+
 
 jobs['windows'] = {
     node('browser-windows-pr') {
@@ -51,7 +74,7 @@ jobs['windows'] = {
             }
 
             helpers = load "build-helpers.groovy"
-            helpers.withLock(5, 30) {
+            withLock(5, 30) {
                 stage("Copy XPI") {
                     CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
                     UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
@@ -134,7 +157,7 @@ jobs['mac'] = {
 			}
 
             helpers = load "build-helpers.groovy"
-            helpers.withLock(5, 30) {
+            withLock(5, 30) {
             // retry(5) {
             //     if (uploaded_lock == 0) {
             //         if (uploaded) {

@@ -215,27 +215,4 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
 }
 
 
-def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
-    def uploaded_lock = 0
-    def uploaded = false
-
-    retry(retry_times) {
-        if (uploaded_lock == 0) {
-            if (uploaded) {
-                echo 'Extension uploaded. Skipping'
-            } else {
-                uploaded_lock++
-                body()
-                uploaded = true
-                uploaded_lock--
-            }
-        } else if (!uploaded){
-            echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
-            sleep wait_sleep
-            throw new Exception("Could not acquire lock")
-        }
-    }
-}
-
-
 return this
