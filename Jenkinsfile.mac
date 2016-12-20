@@ -52,6 +52,7 @@ withEnv([
     "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
     "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
+    /*
     stage('build') {
         withCredentials([
             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
@@ -60,7 +61,7 @@ withEnv([
             sh '/bin/bash -lc "./magic_build_and_package.sh  ${LANG_PARAM}"'
         }
     }
-
+    */
     stage('sign') {
         // remove old package - important if clobber was not done
         sh 'rm -rf obj/pkg || true'

@@ -128,7 +128,6 @@ jobs['mac'] = {
 				checkout scm
 			}
 
-            helpers = load "build-helpers.groovy"
             withLock(5, 30) {
                 stage("Copy XPI") {
                     CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
