@@ -35,6 +35,8 @@ properties([
         string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a", name: "WIN_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c", name: "WIN_CERT_PATH_CREDENTIAL_ID"),
+        string(defaultValue: "dba19ffd-d256-4f3d-8ccf-a340fb35aceb", name: "MAC_CERT_CREDENTIAL_ID"),
+        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
@@ -54,6 +56,7 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
                 body()
                 uploaded = true
                 uploaded_lock--
+                retry_times = 0
             }
         } else if (!uploaded){
             echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
@@ -93,58 +96,27 @@ jobs['windows'] = {
                     }
                 }
             }
-            // retry(5) {
-            //     if (uploaded_lock == 0) {
-            //         if (uploaded) {
-            //             echo 'Extension uploaded. Skipping'
-            //         } else {
-            //             uploaded_lock++
-            //             stage("Copy XPI") {
-            //                 CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-            //                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-            //                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-            //                 withCredentials([
-            //                     [$class: 'AmazonWebServicesCredentialsBinding',
-            //                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-            //                     credentialsId: CQZ_AWS_CREDENTIAL_ID,
-            //                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-            //                     sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-            //                     sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-            //                 }
-            //             }
-            //            uploaded = true
-            //             uploaded_lock--
-            //         }
-            //     } else if (!uploaded){
-            //         echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
-            //         sleep wait_sleep
-            //         throw new Exception("Could not acquire lock")
-            //     }
-            // }
-
-
-            // helpers = load "build-helpers.groovy"
-            // helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
-            //     nodeId ->
-            //         node(nodeId) {
-            //             ws('a') {
-            //                 stage("VM Checkout") {
-            //                     checkout([
-            //                         $class: 'GitSCM',
-            //                         branches: scm.branches,
-            //                         extensions: scm.extensions + [
-            //                             [$class: 'CheckoutOption', timeout: 60],
-            //                             [$class: 'CloneOption', timeout: 60]
-            //                         ],
-            //                         userRemoteConfigs: scm.userRemoteConfigs
-            //                     ])
-            //                 } // stage
-            //                 load 'Jenkinsfile.win'
-            //             }// ws
-            //         } // node(nodeId)
-            // }
+            helpers = load "build-helpers.groovy"
+            helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
+                nodeId ->
+                    node(nodeId) {
+                        ws('a') {
+                            stage("VM Checkout") {
+                                checkout([
+                                    $class: 'GitSCM',
+                                    branches: scm.branches,
+                                    extensions: scm.extensions + [
+                                        [$class: 'CheckoutOption', timeout: 60],
+                                        [$class: 'CloneOption', timeout: 60]
+                                    ],
+                                    userRemoteConfigs: scm.userRemoteConfigs
+                                ])
+                            } // stage
+                            load 'Jenkinsfile.win'
+                        }// ws
+                    } // node(nodeId)
+            }
         } // ws
     } // node
 }
@@ -160,45 +132,30 @@ jobs['mac'] = {
 
             helpers = load "build-helpers.groovy"
             withLock(5, 30) {
-            // retry(5) {
-            //     if (uploaded_lock == 0) {
-            //         if (uploaded) {
-            //             echo 'Extension uploaded. Skipping'
-            //         } else {
-            //             uploaded_lock++
-                        stage("Copy XPI") {
-                            CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                            UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                            HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+                stage("Copy XPI") {
+                    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-                            withEnv([
-                                "UPLOAD_PATH=$UPLOAD_PATH",
-                                "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
-                                ]) {
-                                withCredentials([
-                                    [$class: 'AmazonWebServicesCredentialsBinding',
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    withEnv([
+                        "UPLOAD_PATH=$UPLOAD_PATH",
+                        "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
+                        ]) {
+                        withCredentials([
+                            [$class: 'AmazonWebServicesCredentialsBinding',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                                        sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
-                                        sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
-                                }
-                            }
+                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
+                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
                         }
-                //         uploaded = true
-                //         uploaded_lock--
-                //     }
-                // } else if (!uploaded){
-                //     echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
-                //     sleep wait_sleep
-                //     throw new Exception("Could not acquire lock")
-                // }
+                    }
+                }
             }
-
-			// stage("Start Build") {
-			// 	load 'Jenkinsfile.mac'
-			// }
+			stage("Start Build") {
+				load 'Jenkinsfile.mac'
+			}
 		}
 	}
 }
