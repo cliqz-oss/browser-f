@@ -69,8 +69,7 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
     }
 }
 
-
-
+/*
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
@@ -120,8 +119,7 @@ jobs['windows'] = {
         } // ws
     } // node
 }
-
-
+*/
 
 jobs['mac'] = {
 	node('chromium_mac_buildserver') {
