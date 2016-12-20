@@ -113,6 +113,7 @@ withEnv([
                             set +x
                             ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
                         '''
+                    }
                 }
 
                 withCredentials([[
@@ -131,6 +132,5 @@ withEnv([
                 // remove certs
                 sh 'rm -r $CQZ_CERT_DB_PATH || true'
             }
-        }
     }
 }
