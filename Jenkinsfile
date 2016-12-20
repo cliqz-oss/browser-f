@@ -50,36 +50,54 @@ jobs['windows'] = {
                 checkout scm
             }
 
-            retry(5) {
-                if (uploaded_lock == 0) {
-                    if (uploaded) {
-                        echo 'Extension uploaded. Skipping'
-                    } else {
-                        uploaded_lock++
-                        stage("Copy XPI") {
-                            CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                            UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                            HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+            helpers = load "build-helpers.groovy"
+            helpers.withLock(5, 30) {
+                stage("Copy XPI") {
+                    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-                            withCredentials([
-                                [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                    withCredentials([
+                        [$class: 'AmazonWebServicesCredentialsBinding',
+                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                        credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                                sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                                sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-                            }
-                        }
-                       uploaded = true
-                        uploaded_lock--
+                        sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                        sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
                     }
-                } else if (!uploaded){
-                    echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
-                    sleep wait_sleep
-                    throw new Exception("Could not acquire lock")
                 }
             }
+            // retry(5) {
+            //     if (uploaded_lock == 0) {
+            //         if (uploaded) {
+            //             echo 'Extension uploaded. Skipping'
+            //         } else {
+            //             uploaded_lock++
+            //             stage("Copy XPI") {
+            //                 CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+            //                 UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+            //                 HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
+            //                 withCredentials([
+            //                     [$class: 'AmazonWebServicesCredentialsBinding',
+            //                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            //                     credentialsId: CQZ_AWS_CREDENTIAL_ID,
+            //                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+
+            //                     sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+            //                     sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+            //                 }
+            //             }
+            //            uploaded = true
+            //             uploaded_lock--
+            //         }
+            //     } else if (!uploaded){
+            //         echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
+            //         sleep wait_sleep
+            //         throw new Exception("Could not acquire lock")
+            //     }
+            // }
 
 
             // helpers = load "build-helpers.groovy"
@@ -115,12 +133,14 @@ jobs['mac'] = {
 				checkout scm
 			}
 
-            retry(5) {
-                if (uploaded_lock == 0) {
-                    if (uploaded) {
-                        echo 'Extension uploaded. Skipping'
-                    } else {
-                        uploaded_lock++
+            helpers = load "build-helpers.groovy"
+            helpers.withLock(5, 30) {
+            // retry(5) {
+            //     if (uploaded_lock == 0) {
+            //         if (uploaded) {
+            //             echo 'Extension uploaded. Skipping'
+            //         } else {
+            //             uploaded_lock++
                         stage("Copy XPI") {
                             CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
                             UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
@@ -141,14 +161,14 @@ jobs['mac'] = {
                                 }
                             }
                         }
-                        uploaded = true
-                        uploaded_lock--
-                    }
-                } else if (!uploaded){
-                    echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
-                    sleep wait_sleep
-                    throw new Exception("Could not acquire lock")
-                }
+                //         uploaded = true
+                //         uploaded_lock--
+                //     }
+                // } else if (!uploaded){
+                //     echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
+                //     sleep wait_sleep
+                //     throw new Exception("Could not acquire lock")
+                // }
             }
 
 			// stage("Start Build") {
