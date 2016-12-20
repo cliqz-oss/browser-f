@@ -56,8 +56,8 @@ withEnv([
         withCredentials([
             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
             [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
-
-            sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+            //sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+            sh '/bin/bash -lc "./magic_build_and_package.sh  ${LANG_PARAM}"'
         }
     }
 
@@ -85,6 +85,8 @@ withEnv([
                 withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
                     sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
                 }
+            } catch (e) {
+                echo "error $e"
             } finally {
                 sh '''#!/bin/bash -l -x
                     security delete-keychain cliqz
