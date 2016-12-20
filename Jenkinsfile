@@ -61,11 +61,9 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
             retry_times--
         }
     }
-    if (retry_times == 0 && !uploded) {
+    if (retry_times == 0 && !uploaded) {
         throw new RuntimeException("Could not upload extensions")
     }
-        
-    
 }
 
 
