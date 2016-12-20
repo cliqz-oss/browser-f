@@ -35,7 +35,7 @@ properties([
         string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a", name: "WIN_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c", name: "WIN_CERT_PATH_CREDENTIAL_ID"),
-        string(defaultValue: "dba19ffd-d256-4f3d-8ccf-a340fb35aceb", name: "MAC_CERT_CREDENTIAL_ID"),
+        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165", name: "MAC_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
