@@ -100,20 +100,19 @@ withEnv([
     }
 
     stage('upload') {
-        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
             try {
                 //expose certs
                 withCredentials([
                     [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
                     [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
-
-                    sh '''#!/bin/bash -x
-                        mkdir $CQZ_CERT_DB_PATH
-                        cd `brew --prefix nss`/bin
-                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                        set +x
-                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                    '''
+                    withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+                        sh '''#!/bin/bash -x
+                            mkdir -p $CQZ_CERT_DB_PATH
+                            cd `brew --prefix nss`/bin
+                            ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+                            set +x
+                            ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                        '''
                 }
 
                 withCredentials([[
