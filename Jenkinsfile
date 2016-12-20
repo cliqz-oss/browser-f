@@ -44,7 +44,7 @@ properties([
 
 
 def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
-    while (retry_times >= 0) {
+    while (retry_times > 0) {
         if (uploaded_lock == 0) {
             if (uploaded) {
                 echo 'Extension uploaded. Skipping'
