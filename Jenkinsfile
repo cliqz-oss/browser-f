@@ -16,7 +16,6 @@ def jobs = [:]
 def helpers
 def uploaded_lock = 0
 def uploaded = false
-def wait_sleep = 60
 
 properties([
     [$class: 'JobRestrictionProperty'], 
@@ -43,10 +42,7 @@ properties([
 
 
 def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
-    def uploaded_lock = 0
-    def uploaded = false
-
-    retry(retry_times) {
+    while (retry_times >= 0) {
         if (uploaded_lock == 0) {
             if (uploaded) {
                 echo 'Extension uploaded. Skipping'
@@ -59,9 +55,14 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
         } else if (!uploaded){
             echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
             sleep wait_sleep
-            throw new Exception("Could not acquire lock")
-      }
+            retry_times--
+        }
     }
+    if (retry_times == 0 && !uploded) {
+        throw new RuntimeException("Could not upload extensions")
+    }
+        
+    
 }
 
 
