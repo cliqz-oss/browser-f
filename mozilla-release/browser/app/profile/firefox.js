@@ -915,7 +915,7 @@ pref("browser.flash-protected-mode-flip.done", false);
 pref("dom.ipc.shims.enabledWarnings", false);
 
 // Start the browser in e10s mode
-pref("browser.tabs.remote.autostart", false);
+pref("browser.tabs.remote.autostart", true);
 pref("browser.tabs.remote.desktopbehavior", true);
 
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
