@@ -133,7 +133,7 @@ jobs['windows'] = {
                     }
                 }
             }
-
+            /*
             helpers = load "build-helpers.groovy"
             helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
                 nodeId ->
@@ -150,9 +150,10 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             } // stage
-                            //load 'Jenkinsfile.win'    
+                            load 'Jenkinsfile.win'    
                         }// ws
                     } // node(nodeId)
+            */
             }
         } // ws
     } // node
