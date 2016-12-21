@@ -1783,6 +1783,10 @@
               b.setAttribute("usercontextid", aParams.userContextId);
             }
 
+            if (aParams.private) {
+              b.setAttribute("mozprivatebrowsing", 1);
+            }
+
             if (aParams.remote) {
               b.setAttribute("remote", "true");
             }
@@ -1846,7 +1850,7 @@
             "use strict";
 
             // Supported parameters:
-            // forceNotRemote, userContextId
+            // forceNotRemote, userContextId, private
 
             let uriIsAboutBlank = !aURI || aURI == "about:blank";
 
@@ -1865,6 +1869,7 @@
             // icon for the tab would be set incorrectly (see bug 1195981).
             if (aURI == BROWSER_NEW_TAB_URL &&
                 !aParams.userContextId &&
+                !aParams.private &&
                 !PrivateBrowsingUtils.isWindowPrivate(window)) {
               browser = this._getPreloadedBrowser();
               if (browser) {
@@ -1878,7 +1883,8 @@
               browser = this._createBrowser({permanentKey: aTab.permanentKey,
                                              remote: remote,
                                              uriIsAboutBlank: uriIsAboutBlank,
-                                             userContextId: aParams.userContextId});
+                                             userContextId: aParams.userContextId,
+                                             private: !!aParams.private});
             }
 
             let notificationbox = this.getNotificationBox(browser);
@@ -2040,9 +2046,14 @@
             // now this must occur before "TabOpen" event is fired, as that will
             // trigger SessionStore.jsm to run code that expects the existence
             // of tab.linkedBrowser.
+            // "Private" attribute is needed to have the browser ready for being
+            // docShell-swapped right after it's created. Otherwise, it may fail
+            // because of asynchronous nature of "set private" message in
+            // multi-process scenario.
             let browserParams = {
               forceNotRemote: aForceNotRemote,
-              userContextId:  aUserContextId
+              userContextId:  aUserContextId,
+              private: !!aPrivate
             };
             let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
             let b = t.linkedBrowser;
@@ -2083,6 +2094,13 @@
               } catch (ex) {
                 Cu.reportError(ex);
               }
+            }
+            // Reload blank page in private mode, if requested so.
+            else if (aPrivate) {
+              b.loadURIWithFlags(
+                  aURI, {
+                  ensurePrivate: true,
+              });
             }
 
             // Check if we're opening a tab related to the current tab and
@@ -2595,10 +2613,11 @@
         <parameter name="aOtherTab"/>
         <body>
           <![CDATA[
-            // Do not allow transfering a private tab to a non-private window
-            // and vice versa.
-            if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerDocument.defaultView))
+            // CLIQZ Auto-Forget-Tabs:
+            // Transfering a private tab to a non-private window is fine.
+            // Transfering a normal tab to a private window is not.
+            if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+                !aOtherTab.private)
               return;
 
             let ourBrowser = this.getBrowserForTab(aOurTab);
@@ -2677,19 +2696,8 @@
                 ourFindBar.onFindCommand();
             }
 
-            let wasPrivate = aOurTab.linkedBrowser.loadContext.usePrivateBrowsing;
             // Finish tearing down the tab that's going away.
             remoteBrowser._endRemoveTab(aOtherTab);
-            // FIXME: This should be redone. Just a quick fix, because it's
-            // unclear where privateness flag gets lost. What's even more weird,
-            // is that it's perfectly preserved on the docShell.
-            try {
-              aOurTab.linkedBrowser.loadContext.usePrivateBrowsing |= wasPrivate;
-            }
-            catch (e) {
-              // Fails in e10s mode.
-              console.error(e);
-            }
 
             if (isBusy)
               this.setTabTitleLoading(aOurTab);
@@ -3011,6 +3019,9 @@
             var options = "chrome,dialog=no,all";
             for (var name in aOptions)
               options += "," + name + "=" + aOptions[name];
+            // Open private window if tab is private.
+            if (aTab.private)
+              options += ",private"
 
             // tell a new window to take the "dropped" tab
             return window.openDialog(getBrowserURL(), "_blank", options, aTab);
@@ -3126,7 +3137,12 @@
           // Swap the dropped tab with a new one we create and then close
           // it in the other window (making it seem to have moved between
           // windows).
-          let params = { eventDetail: { adoptedTab: aTab } };
+          // We must create private tab in order to swap docShells with another
+          // private tab.
+          let params = {
+            eventDetail: { adoptedTab: aTab },
+            private: !!aTab.private
+          };
           if (aTab.hasAttribute("usercontextid")) {
             // new tab must have the same usercontextid as the old one
             params.userContextId = aTab.getAttribute("usercontextid");
@@ -5568,10 +5584,11 @@
                 sourceNode.ownerDocument.defaultView instanceof ChromeWindow &&
                 sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
                 sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
-              // Do not allow transfering a private tab to a non-private window
-              // and vice versa.
-              if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                  PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerDocument.defaultView))
+              // CLIQZ Auto-Forget-Tabs:
+              // Transfering a private tab to a non-private window is fine.
+              // Transfering a normal tab to a private window is not.
+              if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+                  !sourceNode.private)
                 return "none";
 
               if (window.gMultiProcessBrowser !=
@@ -6305,7 +6322,7 @@
     </content>
 
     <implementation
-        implements="nsIPrivacyTransitionObserver, nsISupportsWeakReference"
+        implements="nsISupportsWeakReference"
         >
       <property
           name="linkedBrowser"
@@ -6320,7 +6337,6 @@
             Cu.reportError((new Error()).stack);
           }
           this._linkedBrowser = val;
-          this._watchPrivacyEvents();
         ]]>
         </setter>
       </property>
@@ -6550,31 +6566,6 @@
         </body>
       </method>
 
-      <method name="_watchPrivacyEvents">
-        <body>
-        <![CDATA[
-          if (!this._linkedBrowser)
-            return;
-          this._linkedBrowser.loadContext.addWeakPrivacyTransitionObserver(this);
-        ]]>
-        </body>
-      </method>
-
-      <method name="privateModeChanged">
-        <parameter name="enabled"/>
-        <body>
-        <![CDATA[
-          this.dispatchEvent(new CustomEvent("TabPrivateModeChanged", {
-              bubbles: true,
-              cancelable: false,
-              detail: {
-                private: enabled
-              }
-          }));
-        ]]>
-        </body>
-      </method>
-
     </implementation>
 
     <handlers>
@@ -6619,12 +6610,6 @@
         if (this._overPlayingIcon) {
           this.toggleMuteAudio();
         }
-      ]]>
-      </handler>
-      <handler event="TabRemotenessChange">
-      <![CDATA[
-        this._watchPrivacyEvents();
-        this.privateModeChanged(this.private);
       ]]>
       </handler>
     </handlers>

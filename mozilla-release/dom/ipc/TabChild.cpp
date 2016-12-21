@@ -3116,6 +3116,7 @@ TabChild::OnHideTooltip()
 
 NS_IMETHODIMP
 TabChild::PrivateModeChanged(bool enabled) {
+  SetPrivateBrowsingAttributes(enabled);
   SendLoadContextPrivatenessChanged(enabled);
   return NS_OK;
 }

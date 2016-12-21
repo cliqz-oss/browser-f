@@ -945,6 +945,8 @@
             this.messageManager.addMessageListener("AudioPlayback:Start", this);
             this.messageManager.addMessageListener("AudioPlayback:Stop", this);
           }
+
+          this._resetPrivateBrowsingObserver();
         ]]>
       </constructor>
 
@@ -1301,6 +1303,11 @@
             aOtherBrowser[field] = ourFieldValues[field];
           }
 
+          // This MUST be reset in order to reflect docShell swap.
+          this._loadContext = null;
+
+          this._resetPrivateBrowsingObserver();
+
           // Re-attach the docShells to the form fill controller.
           if (!this.isRemoteBrowser) {
             this.attachFormFill();
@@ -1369,6 +1376,54 @@
             owner.frameLoader.print(aOuterWindowID, aPrintSettings,
                                     aPrintProgressListener);
           ]]>
+        </body>
+      </method>
+
+      <field name="_pbObserver">null</field>
+      <method name="_resetPrivateBrowsingObserver">
+        <body>
+          <![CDATA[
+            // Since there's no API to remove existing observer, we get rid of
+            // the old one and hope it's GCed. Even if it's kept alive for some
+            // duration, it should be deactivated in order not to deliver us
+            // irrelevant events, which may come from old load context (e.g. one
+            // used before docShell swapping).
+
+            // Deactivate previous observer.
+            if (this._pbObserver)
+              this._pbObserver._browser = null;
+
+            // Set new observer.
+            this._pbObserver = {
+              QueryInterface: XPCOMUtils.generateQI([
+                Ci.nsISupportsWeakReference,
+                Ci.nsIPrivacyTransitionObserver
+              ]),
+
+              privateModeChanged: function(enabled) {
+                if (this._browser)
+                  this._browser._onPrivateModeChanged(enabled);
+              },
+
+              _browser: this
+            };
+            this.loadContext.addWeakPrivacyTransitionObserver(this._pbObserver);
+          ]]>
+        </body>
+      </method>
+
+      <method name="_onPrivateModeChanged">
+        <parameter name="enabled"/>
+        <body>
+        <![CDATA[
+          this.dispatchEvent(new CustomEvent("TabPrivateModeChanged", {
+              bubbles: true,
+              cancelable: false,
+              detail: {
+                private: enabled
+              }
+          }));
+        ]]>
         </body>
       </method>
 

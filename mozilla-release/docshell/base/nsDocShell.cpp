@@ -268,9 +268,7 @@ static uint32_t gValidateOrigin = 0xffffffff;
 // Can be overridden with docshell.event_starvation_delay_hint pref.
 #define NS_EVENT_STARVATION_DELAY_HINT 2000
 
-#ifdef DEBUG
 static mozilla::LazyLogModule gDocShellLog("nsDocShell");
-#endif
 static mozilla::LazyLogModule gDocShellLeakLog("nsDocShellLeak");;
 
 const char kBrandBundleURL[]      = "chrome://branding/locale/brand.properties";
@@ -846,6 +844,8 @@ nsDocShell::~nsDocShell()
 {
   MOZ_ASSERT(!mObserved);
 
+  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::DTOR!!!\n", this));
+
   Destroy();
 
   nsCOMPtr<nsISHistoryInternal> shPrivate(do_QueryInterface(mSessionHistory));
@@ -877,6 +877,8 @@ nsDocShell::~nsDocShell()
 nsresult
 nsDocShell::Init()
 {
+  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Init", this));
+
   nsresult rv = nsDocLoader::Init();
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -2201,6 +2203,11 @@ NS_IMETHODIMP
 nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing)
 {
   bool changed = aUsePrivateBrowsing != (mPrivateBrowsingId > 0);
+
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::SetPrivateBrowsing(%d), changed = %d\n",
+           this, aUsePrivateBrowsing, changed));
+
   if (changed) {
     mPrivateBrowsingId = aUsePrivateBrowsing ? 1 : 0;
 
@@ -5707,6 +5714,8 @@ nsDocShell::Create()
     return NS_OK;
   }
 
+  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Create", this));
+
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
 
@@ -5753,6 +5762,14 @@ nsDocShell::Destroy()
 {
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
+
+#if defined(DEBUG)
+  nsAutoCString uri;
+  if (mCurrentURI.get())
+    mCurrentURI->GetSpec(uri);
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+         ("nsDocShell[%p]::Destroy() %s\n", this, uri.get()));
+#endif
 
   if (!mIsBeingDestroyed) {
     nsCOMPtr<nsIObserverService> serv = services::GetObserverService();
@@ -9808,6 +9825,12 @@ nsDocShell::InternalLoad(nsIURI* aURI,
   nsCOMPtr<Element> requestingElement =
     scriptGlobal->AsOuter()->GetFrameElementInternal();
 
+#if defined(DEBUG)
+  nsAutoCString logSpec;
+  aURI->GetSpec(logSpec);
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::InternalLoad(%s)\n", this, logSpec.get()));
+#endif
 
   int16_t shouldLoad = nsIContentPolicy::ACCEPT;
   uint32_t contentType;
@@ -14272,6 +14295,10 @@ nsDocShell::SetOriginAttributes(const DocShellOriginAttributes& aAttrs)
   if (!mChildList.IsEmpty()) {
     return NS_ERROR_FAILURE;
   }
+
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
+           this, aAttrs.mPrivateBrowsingId));
 
   // TODO: Bug 1273058 - mContentViewer should be null when setting origin
   // attributes.

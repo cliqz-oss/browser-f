@@ -143,6 +143,8 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameLoader)
   NS_INTERFACE_MAP_ENTRY(nsIWebBrowserPersistable)
 NS_INTERFACE_MAP_END
 
+static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
+
 nsFrameLoader::nsFrameLoader(Element* aOwner, bool aNetworkCreated)
   : mOwnerContent(aOwner)
   , mAppIdSentToPermissionManager(nsIScriptSecurityManager::NO_APP_ID)
@@ -1233,6 +1235,9 @@ nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
 
   RefPtr<nsDocShell> ourDocshell = static_cast<nsDocShell*>(GetExistingDocShell());
   RefPtr<nsDocShell> otherDocshell = static_cast<nsDocShell*>(aOther->GetExistingDocShell());
+  MOZ_LOG(gFrameLoaderLog, LogLevel::Info,
+      ("Swapping DocShells %p and %p \n",
+       ourDocshell.get(), otherDocshell.get()));
   if (!ourDocshell || !otherDocshell) {
     // How odd
     return NS_ERROR_NOT_IMPLEMENTED;
@@ -1359,19 +1364,6 @@ nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
       ourDocshell->GetIsApp() != otherDocshell->GetIsApp()) {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
-
-  // TODO: This may not be the perfect place to cary over privateness flag
-  bool otherPrivateness = false;
-  rv = otherDocshell->GetUsePrivateBrowsing(&otherPrivateness);
-  NS_ENSURE_SUCCESS(rv,rv);
-  bool ourPrivateness = false;
-  rv = ourDocshell->GetUsePrivateBrowsing(&ourPrivateness);
-  NS_ENSURE_SUCCESS(rv,rv);
-  // Privateness should be "sticky": once set, it should be preserved untill
-  // manually reset by user.
-  const bool resPrivateness = otherPrivateness || ourPrivateness;
-  ourDocshell->SetPrivateBrowsing(resPrivateness);
-  otherDocshell->SetPrivateBrowsing(resPrivateness);
 
   // When we swap docShells, maybe we have to deal with a new page created just
   // for this operation. In this case, the browser code should already have set
@@ -3458,6 +3450,12 @@ nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
   NS_ENSURE_STATE(parentContext);
 
   bool isPrivate = parentContext->UsePrivateBrowsing();
+  isPrivate = isPrivate ||
+      // Remote browser could switch into private mode automatically.
+      (mRemoteBrowser &&
+       mRemoteBrowser->OriginAttributesRef().mPrivateBrowsingId > 0) ||
+      // Normally, this is inly needed for tab browser initialization.
+      mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::mozprivatebrowsing);
   attrs.SyncAttributesWithPrivateBrowsing(isPrivate);
 
   UIStateChangeType showAccelerators = UIStateChangeType_NoChange;
