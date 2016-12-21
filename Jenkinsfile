@@ -74,12 +74,15 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
 
 
 
-jobs['mac'] = {
-	node('chromium_mac_buildserver') {
-		ws('x') {
-			stage('Hypervisor Checkout') {
-				checkout scm
-			}
+
+
+@NonCPS
+def mac_build() {
+    node('chromium_mac_buildserver') {
+        ws('x') {
+            stage('Hypervisor Checkout') {
+                checkout scm
+            }
 
             withLock(5, 30) {
                 stage("Copy XPI") {
@@ -104,11 +107,12 @@ jobs['mac'] = {
                 }
             }
             load 'Jenkinsfile.mac'
-		}
-	}
+        }
+    }
 }
 
-jobs['windows'] = {
+@NonCPS
+def windows_build() {
     node('browser-windows-pr') {
         ws('x') {
             stage('Hypervizor Checkout') {
@@ -133,7 +137,7 @@ jobs['windows'] = {
                     }
                 }
             }
-            /*
+            
             helpers = load "build-helpers.groovy"
             helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
                 nodeId ->
@@ -154,9 +158,12 @@ jobs['windows'] = {
                         }// ws
                     } // node(nodeId)
             }
-            */
+            
         } // ws
     } // node
 }
 
-parallel jobs
+parallel(
+    mac: mac_build,
+    windows: windows_build
+    ) 
