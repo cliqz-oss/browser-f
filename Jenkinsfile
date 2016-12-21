@@ -115,9 +115,7 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             } // stage
-                            stage("Start Build") {
-                                load 'Jenkinsfile.win'    
-                            }        
+                            load 'Jenkinsfile.win'    
                         }// ws
                     } // node(nodeId)
             }
@@ -154,9 +152,7 @@ jobs['mac'] = {
                     }
                 }
             }
-			stage("Start Build") {    
-			    load 'Jenkinsfile.mac'
-			}
+            load 'Jenkinsfile.mac'
 		}
 	}
 }
