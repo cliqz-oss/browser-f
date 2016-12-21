@@ -116,11 +116,7 @@ jobs['windows'] = {
                                 ])
                             } // stage
                             stage("Start Build") {
-                                try {
-                                    load 'Jenkinsfile.win'
-                                } catch (e) {
-                                    throw e
-                                }
+                                load 'Jenkinsfile.win'    
                             }        
                         }// ws
                     } // node(nodeId)
@@ -158,12 +154,8 @@ jobs['mac'] = {
                     }
                 }
             }
-			stage("Start Build") {
-                try {
-				    load 'Jenkinsfile.mac'
-                } catch (e) {
-                    throw e
-                }
+			stage("Start Build") {    
+			    load 'Jenkinsfile.mac'
 			}
 		}
 	}
