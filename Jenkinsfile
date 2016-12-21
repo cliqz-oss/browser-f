@@ -72,6 +72,7 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
     }
 }
 
+
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
@@ -114,7 +115,13 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             } // stage
-                            load 'Jenkinsfile.win'
+                            stage("Start Build") {
+                                try {
+                                    load 'Jenkinsfile.win'
+                                } catch (e) {
+                                    throw e
+                                }
+                            }        
                         }// ws
                     } // node(nodeId)
             }
@@ -152,7 +159,11 @@ jobs['mac'] = {
                 }
             }
 			stage("Start Build") {
-				load 'Jenkinsfile.mac'
+                try {
+				    load 'Jenkinsfile.mac'
+                } catch (e) {
+                    throw e
+                }
 			}
 		}
 	}
