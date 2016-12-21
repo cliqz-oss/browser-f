@@ -73,94 +73,93 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
 }
 
 
-
-
-
-@NonCPS
 def mac_build() {
-    node('chromium_mac_buildserver') {
-        ws('x') {
-            stage('Hypervisor Checkout') {
-                checkout scm
+    return {
+        node('chromium_mac_buildserver') {
+            ws('x') {
+                stage('Hypervisor Checkout') {
+                    checkout scm
+                }
+
+                withLock(5, 30) {
+                    stage("Copy XPI") {
+                        CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
+                        withEnv([
+                            "UPLOAD_PATH=$UPLOAD_PATH",
+                            "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
+                            ]) {
+                            withCredentials([
+                                [$class: 'AmazonWebServicesCredentialsBinding',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+
+                                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
+                                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
+                            }
+                        }
+                    }
+                }
+                load 'Jenkinsfile.mac'
             }
+        }
+    }
+}
 
-            withLock(5, 30) {
-                stage("Copy XPI") {
-                    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+def windows_build() {
+    return {
+        node('browser-windows-pr') {
+            ws('x') {
+                stage('Hypervizor Checkout') {
+                    checkout scm
+                }
 
-                    withEnv([
-                        "UPLOAD_PATH=$UPLOAD_PATH",
-                        "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
-                        ]) {
+                helpers = load "build-helpers.groovy"
+                withLock(5, 30) {
+                    stage("Copy XPI") {
+                        CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
                         withCredentials([
                             [$class: 'AmazonWebServicesCredentialsBinding',
                             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                             credentialsId: CQZ_AWS_CREDENTIAL_ID,
                             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
-                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
+                            sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                            sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
                         }
                     }
                 }
-            }
-            load 'Jenkinsfile.mac'
-        }
-    }
-}
-
-@NonCPS
-def windows_build() {
-    node('browser-windows-pr') {
-        ws('x') {
-            stage('Hypervizor Checkout') {
-                checkout scm
-            }
-
-            helpers = load "build-helpers.groovy"
-            withLock(5, 30) {
-                stage("Copy XPI") {
-                    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-
-                    withCredentials([
-                        [$class: 'AmazonWebServicesCredentialsBinding',
-                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                        credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-                        sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                        sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-                    }
+                
+                helpers = load "build-helpers.groovy"
+                helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
+                    nodeId ->
+                        node(nodeId) {
+                            ws('a') {
+                                stage("VM Checkout") {
+                                    checkout([
+                                        $class: 'GitSCM',
+                                        branches: scm.branches,
+                                        extensions: scm.extensions + [
+                                            [$class: 'CheckoutOption', timeout: 60],
+                                            [$class: 'CloneOption', timeout: 60]
+                                        ],
+                                        userRemoteConfigs: scm.userRemoteConfigs
+                                    ])
+                                } // stage
+                                load 'Jenkinsfile.win'    
+                            }// ws
+                        } // node(nodeId)
                 }
-            }
-            
-            helpers = load "build-helpers.groovy"
-            helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
-                nodeId ->
-                    node(nodeId) {
-                        ws('a') {
-                            stage("VM Checkout") {
-                                checkout([
-                                    $class: 'GitSCM',
-                                    branches: scm.branches,
-                                    extensions: scm.extensions + [
-                                        [$class: 'CheckoutOption', timeout: 60],
-                                        [$class: 'CloneOption', timeout: 60]
-                                    ],
-                                    userRemoteConfigs: scm.userRemoteConfigs
-                                ])
-                            } // stage
-                            load 'Jenkinsfile.win'    
-                        }// ws
-                    } // node(nodeId)
-            }
-            
-        } // ws
-    } // node
+                
+            } // ws
+        } // node
+    }
 }
 
 parallel(
