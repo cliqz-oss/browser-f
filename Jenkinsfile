@@ -150,7 +150,7 @@ jobs['windows'] = {
                                     userRemoteConfigs: scm.userRemoteConfigs
                                 ])
                             } // stage
-                            load 'Jenkinsfile.win'    
+                            //load 'Jenkinsfile.win'    
                         }// ws
                     } // node(nodeId)
             }
