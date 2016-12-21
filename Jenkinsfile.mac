@@ -1,39 +1,5 @@
 #!/usr/bin/env groovy
 
-// Check for required variables
-MAC_REBUILD_IMAGE
-NODE_MEMORY
-NODE_CPU_COUNT
-NODE_VNC_PORT
-
-/*
- TRIGGERING JOB
-
-  ```groovy
-node(MAC_BUILD_NODE) {
-
-    step([
-        $class: 'CopyArtifact',
-        projectName: TRIGGERING_JOB_NAME,
-        selector: [$class: 'SpecificBuildSelector', buildNumber: TRIGGERING_BUILD_NUMBER],
-        target: 'artifacts'
-    ])
-
-    def helpers = load "artifacts/build-helpers.groovy"
-
-    helpers.withVagrant("artifacts/${VAGRANTFILE}", "/jenkins", NODE_CPU_COUNT.toInteger(), NODE_MEMORY.toInteger(), NODE_VNC_PORT.toInteger(), MAC_REBUILD_IMAGE.toBoolean()) { nodeId ->
-      node(nodeId) {
-        stage("Checkout") {
-            helpers.checkoutSCM(REPO_URL, COMMIT_ID)
-        }
-
-        load ENTRY_POINT
-      }
-    }
-}
-  ```
-*/
-
 def LANG_PARAM = ""
 try {
   if (CQZ_LANG) {

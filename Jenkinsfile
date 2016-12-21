@@ -73,6 +73,41 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
 }
 
 
+
+jobs['mac'] = {
+	node('chromium_mac_buildserver') {
+		ws('x') {
+			stage('Hypervisor Checkout') {
+				checkout scm
+			}
+
+            withLock(5, 30) {
+                stage("Copy XPI") {
+                    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
+                    withEnv([
+                        "UPLOAD_PATH=$UPLOAD_PATH",
+                        "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
+                        ]) {
+                        withCredentials([
+                            [$class: 'AmazonWebServicesCredentialsBinding',
+                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+
+                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
+                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
+                        }
+                    }
+                }
+            }
+            load 'Jenkinsfile.mac'
+		}
+	}
+}
+
 jobs['windows'] = {
     node('browser-windows-pr') {
         ws('x') {
@@ -121,40 +156,6 @@ jobs['windows'] = {
             }
         } // ws
     } // node
-}
-
-jobs['mac'] = {
-	node('chromium_mac_buildserver') {
-		ws('x') {
-			stage('Hypervisor Checkout') {
-				checkout scm
-			}
-
-            withLock(5, 30) {
-                stage("Copy XPI") {
-                    CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                    UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                    HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-
-                    withEnv([
-                        "UPLOAD_PATH=$UPLOAD_PATH",
-                        "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
-                        ]) {
-                        withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
-                                sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
-                        }
-                    }
-                }
-            }
-            load 'Jenkinsfile.mac'
-		}
-	}
 }
 
 parallel jobs
