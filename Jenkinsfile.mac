@@ -133,5 +133,6 @@ withEnv([
                     sh 'rm -r $CQZ_CERT_DB_PATH || true'
                 }
             }
+        }
     }
 }
