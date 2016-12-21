@@ -39,6 +39,7 @@ properties([
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165", name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAR_CERT_PASS_CREDENTIAL_ID"),
+        string(defaultValue: "4757E2EB2FE332E076F294D0230F41B6009968E5", name: "CQZ_CERT_NAME"),
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
