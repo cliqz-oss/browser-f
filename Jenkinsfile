@@ -164,6 +164,6 @@ def windows_build() {
 }
 
 parallel(
-    mac: mac_build,
-    windows: windows_build
+    mac: mac_build(),
+    windows: windows_build()
     ) 
