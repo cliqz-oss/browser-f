@@ -21,7 +21,8 @@ Cu.import("resource:///modules/AutoForgetTabs-utils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "ForgetAboutSite",
     "resource://gre/modules/ForgetAboutSite.jsm");
-
+XPCOMUtils.defineLazyModuleGetter(this, "Sanitizer",
+    "resource:///modules/Sanitizer.jsm");
 XPCOMUtils.defineLazyGetter(this, "nsJSON", () => {
   return Cc["@mozilla.org/dom/json;1"].createInstance(Ci.nsIJSON);
 });
@@ -293,7 +294,7 @@ AutoForgetTabsService.prototype = {
       return;
 
     if (remember) {
-      ForgetAboutSite.removeDataFromDomain(domain);
+      cleanup(domain);
     }
     else {
       this._confirmCleanup(browser, domain);
@@ -306,7 +307,7 @@ AutoForgetTabsService.prototype = {
         label: browserStrings.GetStringFromName(
             "apt.cleanupPrompt.cleanButton"),
         callback: (notification, descr) => {
-          ForgetAboutSite.removeDataFromDomain(domain);
+          cleanup(domain);
           return false;
         }
       },
@@ -354,6 +355,14 @@ AutoForgetTabsService.prototype = {
 };
 
 const NSGetFactory = XPCOMUtils.generateNSGetFactory([AutoForgetTabsService]);
+
+function cleanup(domain) {
+  ForgetAboutSite.removeDataFromDomain(domain);
+  const sanitizer = new Sanitizer();
+  sanitizer.range = Sanitizer.getClearRange(Sanitizer.TIMESPAN_5MIN);
+  sanitizer.ignoreTimespan = false;
+  sanitizer.sanitize(["formdata"]);
+}
 
 function addOrReplaceNotification (browser, id, priName, iconURL, text, buttons) {
   const gBrowser = browser.ownerGlobal.gBrowser;
