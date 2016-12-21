@@ -153,8 +153,8 @@ jobs['windows'] = {
                             load 'Jenkinsfile.win'    
                         }// ws
                     } // node(nodeId)
-            */
             }
+            */
         } // ws
     } // node
 }
