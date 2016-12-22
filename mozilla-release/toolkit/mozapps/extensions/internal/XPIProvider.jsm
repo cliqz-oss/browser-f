@@ -4383,6 +4383,10 @@ this.XPIProvider = {
    * @return true if enabling the add-on should block e10s
    */
   isBlockingE10s: function(aAddon) {
+    // In CLIQZ only owned addons can be installed, so trust em.
+    if (aAddon.multiprocessCompatible)
+      return false;
+
     if (aAddon.type != "extension" &&
         aAddon.type != "webextension" &&
         aAddon.type != "theme")
