@@ -2,7 +2,7 @@
 
 def LANG_PARAM = ""
 try {
-  if (CQZ_LANG) {
+  if (env.CQZ_LANG) {
     LANG_PARAM = "-lang ${CQZ_LANG}"
   }
 } catch(e) {}
@@ -23,7 +23,8 @@ withEnv([
             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
             [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-            sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+            sh '/bin/bash -lc "./magic_build_and_package.sh"'
+            //sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
         }
     }
 
@@ -63,7 +64,7 @@ withEnv([
     }
 
     stage('OSX Upload') {
-        if (RELEASE_CHANNEL == 'pr') {
+        if (env.RELEASE_CHANNEL == 'pr') {
             sh '/bin/bash -lc "./magic_upload_files.sh"'
         } else {
             withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
