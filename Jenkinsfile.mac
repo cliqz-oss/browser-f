@@ -7,7 +7,7 @@ try {
   }
 } catch(e) {}
 
-stage('bootstrap') {
+stage('OSX Bootstrap') {
     sh '/bin/bash -lc "pip install compare-locales"'
     sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
     sh '/bin/bash -lc "brew uninstall terminal-notifier"'
@@ -18,7 +18,7 @@ withEnv([
     "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
     "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-    stage('build') {
+    stage('OSX Build') {
         withCredentials([
             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
             [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
@@ -27,7 +27,7 @@ withEnv([
         }
     }
 
-    stage('sign') {
+    stage('OSX Sign') {
         // remove old package - important if clobber was not done
         sh 'rm -rf obj/pkg || true'
 
@@ -62,7 +62,7 @@ withEnv([
         }
     }
 
-    stage('upload') {
+    stage('OSX Upload') {
         if (RELEASE_CHANNEL == 'pr') {
             sh '/bin/bash -lc "./magic_upload_files.sh"'
         } else {

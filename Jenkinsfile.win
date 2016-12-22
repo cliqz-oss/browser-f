@@ -45,7 +45,7 @@ withCredentials([
       "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
       "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
     ]){
-      stage('build') {
+      stage('WIN Build') {
         bat '''
             set CQZ_WORKSPACE=%cd%
             build_win.bat

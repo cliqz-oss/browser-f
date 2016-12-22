@@ -77,7 +77,7 @@ def mac_build() {
     return {
         node('chromium_mac_buildserver') {
             ws('x') {
-                stage('Hypervisor Checkout') {
+                stage('OSX Hypervisor Checkout') {
                     checkout scm
                 }
 
@@ -113,11 +113,10 @@ def windows_build() {
     return {
         node('browser-windows-pr') {
             ws('x') {
-                stage('Hypervizor Checkout') {
+                stage('Windows Hypervizor Checkout') {
                     checkout scm
                 }
 
-                helpers = load "build-helpers.groovy"
                 withLock(5, 30) {
                     stage("Copy XPI") {
                         CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
@@ -141,7 +140,7 @@ def windows_build() {
                     nodeId ->
                         node(nodeId) {
                             ws('a') {
-                                stage("VM Checkout") {
+                                stage("EC2 SCM Checkout") {
                                     checkout([
                                         $class: 'GitSCM',
                                         branches: scm.branches,
