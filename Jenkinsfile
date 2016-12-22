@@ -161,7 +161,25 @@ def windows_build() {
     }
 }
 
+
+def linux_build() {
+    return {
+        node('browser') {
+          ws('build') {
+            stage('checkout') {
+              checkout scm
+            }
+
+            stage("Start build") {
+              load 'Jenkinsfile.lin'
+            }
+          }
+        }
+    }
+}
+
 parallel(
     mac: mac_build(),
-    windows: windows_build()
+    windows: windows_build(),
+    linux: linux_build()
     ) 

@@ -104,3 +104,5 @@ docker.image(imageName).inside() {
     }
   }
 }
+
+return this
