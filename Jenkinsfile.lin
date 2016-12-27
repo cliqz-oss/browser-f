@@ -73,10 +73,7 @@ docker.image(imageName).inside() {
     }
 
     withCredentials([[
-        $class: 'UsernamePasswordMultiBinding',
-        credentialsId: CQZ_AWS_CREDENTIAL_ID,
-        passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-        usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+        $class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
       stage('Publisher (Debian Repo)') {
         try {
