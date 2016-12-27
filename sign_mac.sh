@@ -7,7 +7,7 @@ echo "***** MAC SIGNING *****"
 
 PKG_DIR=obj/pkg
 
-mkdir $PKG_DIR
+mkdir  $PKG_DIR
 for DMG in obj/i386/dist/*.dmg
 do
   echo "Processing $DMG..."
@@ -19,6 +19,12 @@ do
   done
   hdiutil detach /Volumes/CLIQZ
   SIGNED_DMG="${DMG%.dmg}-signed.dmg"
-  appdmg CLIQZ-dmg.json $SIGNED_DMG
+
+  if [ -f $SIGNED_DMG ]; then
+      echo "File ${SIGNED_DMG} exists. Removing to continue"
+      rm $SIGNED_DMG
+  fi 
+
+  appdmg -v CLIQZ-dmg.json $SIGNED_DMG
   cp $SIGNED_DMG $DMG
 done

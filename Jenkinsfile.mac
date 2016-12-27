@@ -29,7 +29,7 @@ withEnv([
 
     stage('OSX Sign') {
         // remove old package - important if clobber was not done
-        sh 'rm -rf obj/pkg || true'
+        sh '/bin/bash -lc "rm -rf obj/pkg"'
 
         withCredentials([
             [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
