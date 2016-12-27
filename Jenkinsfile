@@ -180,6 +180,6 @@ def linux_build() {
 
 parallel(
     mac: mac_build(),
-    //windows: windows_build(),
-    //linux: linux_build()
+    windows: windows_build(),
+    linux: linux_build()
     ) 
