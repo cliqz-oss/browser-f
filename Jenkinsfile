@@ -75,35 +75,37 @@ def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
 
 def mac_build() {
     return {
-        node('chromium_mac_buildserver') {
-            ws('x') {
-                stage('OSX Hypervisor Checkout') {
-                    checkout scm
-                }
+        retry(3) {
+            node('chromium_mac_buildserver') {
+                ws('x') {
+                    stage('OSX Hypervisor Checkout') {
+                        checkout scm
+                    }
 
-                withLock(5, 30) {
-                    stage("Copy XPI") {
-                        CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+                    withLock(5, 30) {
+                        stage("Copy XPI") {
+                            CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                            UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                            HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-                        withEnv([
-                            "UPLOAD_PATH=$UPLOAD_PATH",
-                            "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
-                            ]) {
-                            withCredentials([
-                                [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                            withEnv([
+                                "UPLOAD_PATH=$UPLOAD_PATH",
+                                "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
+                                ]) {
+                                withCredentials([
+                                    [$class: 'AmazonWebServicesCredentialsBinding',
+                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
-                                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
+                                        sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
+                                        sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
+                                }
                             }
                         }
                     }
+                    load 'Jenkinsfile.mac'
                 }
-                load 'Jenkinsfile.mac'
             }
         }
     }
@@ -111,69 +113,73 @@ def mac_build() {
 
 def windows_build() {
     return {
-        node('browser-windows-pr') {
-            ws('x') {
-                stage('Windows Hypervizor Checkout') {
-                    checkout scm
-                }
+        retry(3) {
+            node('browser-windows-pr') {
+                ws('x') {
+                    stage('Windows Hypervizor Checkout') {
+                        checkout scm
+                    }
 
-                withLock(5, 30) {
-                    stage("Copy XPI") {
-                        CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+                    withLock(5, 30) {
+                        stage("Copy XPI") {
+                            CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
+                            UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                            HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
-                        withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding',
-                            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                            credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                            withCredentials([
+                                [$class: 'AmazonWebServicesCredentialsBinding',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                            sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                            sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                                sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                                sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                            }
                         }
                     }
-                }
-                
-                helpers = load "build-helpers.groovy"
-                helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
-                    nodeId ->
-                        node(nodeId) {
-                            ws('a') {
-                                stage("EC2 SCM Checkout") {
-                                    checkout([
-                                        $class: 'GitSCM',
-                                        branches: scm.branches,
-                                        extensions: scm.extensions + [
-                                            [$class: 'CheckoutOption', timeout: 60],
-                                            [$class: 'CloneOption', timeout: 60]
-                                        ],
-                                        userRemoteConfigs: scm.userRemoteConfigs
-                                    ])
-                                } // stage
-                                load 'Jenkinsfile.win'    
-                            }// ws
-                        } // node(nodeId)
-                }
-                
-            } // ws
-        } // node
+                    
+                    helpers = load "build-helpers.groovy"
+                    helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
+                        nodeId ->
+                            node(nodeId) {
+                                ws('a') {
+                                    stage("EC2 SCM Checkout") {
+                                        checkout([
+                                            $class: 'GitSCM',
+                                            branches: scm.branches,
+                                            extensions: scm.extensions + [
+                                                [$class: 'CheckoutOption', timeout: 60],
+                                                [$class: 'CloneOption', timeout: 60]
+                                            ],
+                                            userRemoteConfigs: scm.userRemoteConfigs
+                                        ])
+                                    } // stage
+                                    load 'Jenkinsfile.win'    
+                                }// ws
+                            } // node(nodeId)
+                    }
+                    
+                } // ws
+            } // node
+        }
     }
 }
 
 
 def linux_build() {
     return {
-        node('browser') {
-          ws('build') {
-            stage('checkout') {
-              checkout scm
-            }
+        retry(3) {
+            node('browser') {
+              ws('build') {
+                stage('checkout') {
+                  checkout scm
+                }
 
-            stage("Start build") {
-              load 'Jenkinsfile.lin'
+                stage("Start build") {
+                  load 'Jenkinsfile.lin'
+                }
+              }
             }
-          }
         }
     }
 }
@@ -181,5 +187,5 @@ def linux_build() {
 parallel(
     mac: mac_build(),
     windows: windows_build(),
-    //linux: linux_build()
+    linux: linux_build()
     ) 
