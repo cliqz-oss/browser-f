@@ -49,6 +49,20 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
+@NonCPS
+def setNodeLabel(nodeId, label) {
+    def allNodes = Jenkins.getInstance().getNodes()
+    for (int i =0; i < allNodes.size(); i++) {
+        Slave node = allNodes[i]
+
+        if (node.name.toString() == nodeId) {
+          node.setLabelString(label)
+          return
+        }
+    }
+}
+
+
 def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   def nodeId = "${env.BUILD_TAG}"
   def error
@@ -95,9 +109,15 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 }
 
-def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
-    def nodeId = "${env.BUILD_TAG}"
-    createNode(nodeId, jenkinsFolderPath)
+def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, String nodeId, Closure body) {
+    def tempNode = false
+    if (!nodeId) { 
+        nodeId = "${env.BUILD_TAG}"
+        createNode(nodeId, jenkinsFolderPath)
+        tempNode = true
+    }
+
+    def error
     try {
         def nodeSecret = getNodeSecret(nodeId)
 
@@ -118,12 +138,81 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         }
 
         body(nodeId)
+    } catch (e) {
+        error = e
     } finally {
-        removeNode(nodeId)
+        if (error) {
+            throw error
+        }
+        if (tempNode) {
+            removeNode(nodeId)
+        }
         withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
             sh 'vagrant halt --force'
         }
     }
 }
+
+def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path, Closure body) {
+    def nodeId = null
+    def slaveLabel = 'windows pr'
+    for (slave in Hudson.instance.slaves) {
+      if (slave.getLabelString().contains(slaveLabel)) {
+        if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
+          nodeId = slave.name
+        } 
+      }     
+    } 
+
+    // This is a new slave, so we need to bootstrap it
+    if (!nodeId) {
+      nodeId = "${env.BUILD_TAG}"
+      createNode(nodeId, jenkinsFolderPath)
+      setNodeLabel(nodeId, slaveLabel)
+
+      withCredentials([
+        [$class: 'AmazonWebServicesCredentialsBinding',
+        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+        credentialsId: aws_credentials_id,
+        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+        
+        withEnv([
+          "aws_access_key=${AWS_ACCESS_KEY_ID}",
+          "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+          "instance_name=${nodeId}",]) {
+            sh "ansible-playbook ${ansible_path}/bootstrap.yml"
+        }
+      }
+    }
+
+    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+    def nodeIP
+    def nodeSecret = getNodeSecret(nodeId)
+    
+     // withCredentials
+
+    withCredentials([
+          [$class: 'AmazonWebServicesCredentialsBinding',
+          accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+          credentialsId: aws_credentials_id,
+          secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+              withEnv([
+                  "AWS_DEFAULT_REGION=${aws_region}"    
+                  ]) {
+                  nodeIP = sh(returnStdout: true, script: "${command}").trim()
+              }
+    } // withCredentials
+    
+    withEnv([
+            "instance_name=${nodeId}",
+            "JENKINS_URL=${env.JENKINS_URL}",
+            "NODE_ID=${nodeId}",
+            "NODE_SECRET=${nodeSecret}"]) {
+                sh "ansible-playbook -i ${nodeIP}, ${ansible_path}/playbook.yml"
+        }
+
+    body(nodeId)
+}
+
 
 return this

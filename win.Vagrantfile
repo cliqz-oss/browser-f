@@ -2,7 +2,7 @@
 # vi: set ft=ruby :
 
 Vagrant.configure(2) do |config|
-  config.vm.box = "cliqz/cliqzfox-win10-builder_vmware"
+  config.vm.box = "browser-f-windows10"
 
 
   config.vm.network "public_network"
@@ -10,22 +10,29 @@ Vagrant.configure(2) do |config|
   config.vm.guest = :windows
   config.vm.boot_timeout = 500
   config.vm.communicator = "winrm"
-  config.winrm.username = "cliqzfoxer"
-  config.winrm.password = "cliqzfoxer-245"
+  config.winrm.username = "vagrant"
+  config.winrm.password = "vagrant"
   config.winrm.timeout = 21600 # 6 hours
 
   config.vm.provider "vmware_workstation" do |v|
     v.gui = false
     v.memory = ENV["NODE_MEMORY"]
-    v.cpus = ENV["NODE_CPU_COUNT"]
+    v.vmx['numvcpus'] = ENV["NODE_CPU_COUNT"]
     v.vmx["RemoteDisplay.vnc.enabled"] = "true"
     v.vmx["RemoteDisplay.vnc.port"] = ENV["NODE_VNC_PORT"]
   end
 
-  config.vm.provision "shell", run: "always", inline: <<-SHELL
-    cd c:/jenkins
-    Remove-Item slave.jar -ErrorAction SilentlyContinue
-    wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
-    Start-Process java -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}'
-  SHELL
+#  config.vm.provision "shell", run: "always", inline: <<-SHELL
+#    cd c:/jenkins
+#    Remove-Item slave.jar -ErrorAction SilentlyContinue
+#    wget #{ENV['JENKINS_URL']}/jnlpJars/slave.jar -o slave.jar
+#    Start-Process  java -ArgumentList '-jar slave.jar -jnlpUrl #{ENV["JENKINS_URL"]}/computer/#{ENV["NODE_ID"]}/slave-agent.jnlp -secret #{ENV["NODE_SECRET"]}' -verb runas
+#  SHELL
+
+  config.vm.provision "ansible", run: "always"  do |ansible|
+      ansible.playbook = "playbook.yml"
+      ansible.sudo = false
+      ansible.limit = 'all'
+      ansible.verbose = '-vvv'
+  end
 end

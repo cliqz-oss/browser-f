@@ -42,9 +42,9 @@ try {
 } catch(e) {}
 
 stage('bootstrap') {
-    sh 'pip install compare-locales'
-    sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
-    sh 'brew uninstall terminal-notifier'
+    sh '/bin/bash -lc "pip install compare-locales"'
+    sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+    sh '/bin/bash -lc "brew uninstall terminal-notifier"'
 }
 
 withEnv([
@@ -54,10 +54,10 @@ withEnv([
 
     stage('build') {
         withCredentials([
-            [$class: 'StringBinding', credentialsId: 'e2c7ea0a-285e-4199-9667-af2223d3b14a', variable: 'CQZ_GOOGLE_API_KEY'],
-            [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
+            [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+            [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-            sh "./magic_build_and_package.sh --clobber ${LANG_PARAM}"
+            sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
         }
     }
 
@@ -83,7 +83,7 @@ withEnv([
                 '''
 
                 withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
-                    sh "./sign_mac.sh ${LANG_PARAM}"
+                    sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
                 }
             } finally {
                 sh '''#!/bin/bash -l -x
@@ -97,37 +97,41 @@ withEnv([
     }
 
     stage('upload') {
-        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-            try {
-                //expose certs
-                withCredentials([
-                    [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                    [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
+        if (RELEASE_CHANNEL == 'pr') {
+            sh '/bin/bash -lc "./magic_upload_files.sh"'
+        } else {
+            withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+                try {
+                    //expose certs
+                    withCredentials([
+                        [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                        [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                    sh '''#!/bin/bash -x
-                        mkdir $CQZ_CERT_DB_PATH
-                        cd `brew --prefix nss`/bin
-                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                        set +x
-                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                    '''
+                        sh '''#!/bin/bash -x
+                            mkdir $CQZ_CERT_DB_PATH
+                            cd `brew --prefix nss`/bin
+                            ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+                            set +x
+                            ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                        '''
+                    }
+
+                    withCredentials([[
+                        $class: 'UsernamePasswordMultiBinding',
+                        credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                        passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                        usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+                        sh """#!/bin/bash -l -x
+                            ./magic_upload_files.sh ${LANG_PARAM}
+                        """
+
+                        archiveArtifacts 'obj/i386/build_properties.json'
+                    }
+                } finally {
+                    // remove certs
+                    sh 'rm -r $CQZ_CERT_DB_PATH || true'
                 }
-
-                withCredentials([[
-                    $class: 'UsernamePasswordMultiBinding',
-                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                    passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-                    usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
-
-                    sh """#!/bin/bash -l -x
-                        ./magic_upload_files.sh ${LANG_PARAM}
-                    """
-
-                    archiveArtifacts 'obj/i386/build_properties.json'
-                }
-            } finally {
-                // remove certs
-                sh 'rm -r $CQZ_CERT_DB_PATH || true'
             }
         }
     }
