@@ -60,5 +60,3 @@ withCredentials([
       archiveArtifacts 'obj/build_properties.json'
     }
  }
-
- return this
