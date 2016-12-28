@@ -49,9 +49,8 @@ properties([
 ])
 
 
-def mac_build() {
-    return {
-        retry(1) {
+def mac_build = { ->
+    retry(1) {
             node('chromium_mac_buildserver') {
                 ws('x') {
                     stage('OSX Hypervisor Checkout') {
@@ -165,10 +164,9 @@ def mac_build() {
             }
         }
     }
-}
 
-def windows_build() {
-    return {
+
+def windows_build = { ->
         retry(1) {
             node('browser-windows-pr') {
                 ws('x') {
@@ -236,11 +234,10 @@ def windows_build() {
             } // node
         }
     }
-}
 
 
-def linux_build() {
-    return {
+
+def linux_build = { ->
         retry(1) {
             node('browser') {
                 ws('build') {
@@ -281,7 +278,7 @@ def linux_build() {
             }
         }
     }
-}
+
 
 
 
@@ -309,7 +306,7 @@ node('docker') {
 }
 
 parallel(
-    mac: mac_build(),
-    windows: windows_build(),
-    linux: linux_build()
+    mac: mac_build,
+    windows: windows_build,
+    linux: linux_build
     ) 
