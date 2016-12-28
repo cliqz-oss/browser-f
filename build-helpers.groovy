@@ -82,7 +82,12 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 
   // Create Jenkins node
-  createNode(nodeId, jenkinsFolderPath)
+  try {
+    createNode(nodeId, jenkinsFolderPath)
+  } catch(e) {
+    echo "Could not create slave for Docker"
+  }
+
   try {
     def nodeSecret = getNodeSecret(nodeId)
 
@@ -113,8 +118,12 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     def tempNode = false
     if (!nodeId) { 
         nodeId = "${env.BUILD_TAG}"
-        createNode(nodeId, jenkinsFolderPath)
-        tempNode = true
+        try {
+          createNode(nodeId, jenkinsFolderPath)
+          tempNode = true
+        } catch(e) {
+           echo "Could not create slave for Vagrant"
+           throw e
     }
 
     def error
@@ -167,7 +176,13 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
     // This is a new slave, so we need to bootstrap it
     if (!nodeId) {
       nodeId = "${env.BUILD_TAG}"
-      createNode(nodeId, jenkinsFolderPath)
+      try {
+         createNode(nodeId, jenkinsFolderPath)
+      } catch (e) {
+          echo "Could not create node for ec2"
+          throw e
+      }
+
       setNodeLabel(nodeId, slaveLabel)
 
       withCredentials([
