@@ -1,13 +1,15 @@
 #!/usr/bin/env groovy
 
-def LANG_PARAM = ""
-try {
-  if (env.CQZ_LANG) {
-    LANG_PARAM = "-lang ${CQZ_LANG}"
-  }
-} catch(e) {}
+
 
 def build() {
+    def LANG_PARAM = ""
+    try {
+      if (env.CQZ_LANG) {
+        LANG_PARAM = "-lang ${CQZ_LANG}"
+      }
+    } catch(e) {}
+    
     stage('OSX Bootstrap') {
         sh '/bin/bash -lc "pip install compare-locales"'
         sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
