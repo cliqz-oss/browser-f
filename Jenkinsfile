@@ -57,11 +57,14 @@ def mac_build() {
                     stage('OSX Hypervisor Checkout') {
                         checkout scm
                     }
-
-                    stage('OSX Load Jenkinsfile') {
+                    try {
                         def mac_j = load 'Jenkinsfile.mac'    
-                        mac_j.build()
+                        mac_j.build()    
+                    } catch(e) {
+                        echo "Could not load Jenkinsfile.mac"
+                        throw e
                     }
+                    
                 }
             }
         }
@@ -99,16 +102,14 @@ def windows_build() {
                                             userRemoteConfigs: scm.userRemoteConfigs
                                         ])
                                     } // stage
-                                    stage('Windows Load Jenkinsfile') {
-                                        try {
-                                            def win_j = load 'Jenkinsfile.win'
-                                            win_j.build()
-                                        } catch(e) {
-                                            echo "Could not load Jenkinsfile.win"
-                                            throw e
-                                        }    
-                                    }
-                                    
+
+                                    try {
+                                        def win_j = load 'Jenkinsfile.win'
+                                        win_j.build()
+                                    } catch(e) {
+                                        echo "Could not load Jenkinsfile.win"
+                                        throw e
+                                    }                                        
                                 }// ws
                             } // node(nodeId)
                     }
@@ -128,11 +129,14 @@ def linux_build() {
                 stage('checkout') {
                   checkout scm
                 }
-
-                stage("Start build") {
-                  def lin_j = load 'Jenkinsfile.lin'
-                  lin_j.build()
+                try {
+                    def lin_j = load 'Jenkinsfile.lin'
+                    lin_j.build()    
+                } catch(e) {
+                    echo "Could not load Jenkinsfile.lin"
+                    throw e
                 }
+                
               }
             }
         }
