@@ -51,7 +51,7 @@ properties([
 
 def mac_build() {
     return {
-        retry(2) {
+        retry(1) {
             node('chromium_mac_buildserver') {
                 ws('x') {
                     stage('OSX Hypervisor Checkout') {
@@ -70,7 +70,7 @@ def mac_build() {
 
 def windows_build() {
     return {
-        retry(2) {
+        retry(1) {
             node('browser-windows-pr') {
                 ws('x') {
                     stage('Windows Hypervizor Checkout') {
@@ -122,7 +122,7 @@ def windows_build() {
 
 def linux_build() {
     return {
-        retry(2) {
+        retry(1) {
             node('browser') {
               ws('build') {
                 stage('checkout') {
