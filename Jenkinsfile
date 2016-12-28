@@ -135,8 +135,8 @@ node('docker') {
     docker.image('garland/docker-s3cmd').inside() {
         stage('Build Browser') {
             stage("Copy XPI") {
-                UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${env.CQZ_VERSION}/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${env.CQZ_VERSION}/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+                UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$env.CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$env.CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
 
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding',
