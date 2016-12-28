@@ -57,15 +57,9 @@ def mac_build() {
                     stage('OSX Hypervisor Checkout') {
                         checkout scm
                     }
-                    try {
-                        def mac_j = load 'Jenkinsfile.mac'    
-                        mac_j.build()        
-                    } catch(e) {
-                        echo "Could not load Jenkinsfile.mac"
-                        e.printStackTrace()
-                        println e
-                    }
                     
+                    def mac_j = load 'Jenkinsfile.mac'    
+                    mac_j.build()                            
                 }
             }
         }
@@ -104,14 +98,10 @@ def windows_build() {
                                         ])
                                     } // stage
 
-                                    try {
-                                        def win_j = load 'Jenkinsfile.win'
-                                        win_j.build()                            
-                                    } catch(e) {
-                                        echo "Could not load Jenkinsfile.win"
-                                        e.printStackTrace()
-                                        println e
-                                    }                                        
+                                    
+                                    def win_j = load 'Jenkinsfile.win'
+                                    win_j.build()                            
+                            
                                 }// ws
                             } // node(nodeId)
                     }
@@ -130,15 +120,9 @@ def linux_build() {
                     stage('checkout') {
                       checkout scm
                     }
-                   
-                    try {
-                        def lin_j = load 'Jenkinsfile.lin'
-                        lin_j.build()   
-                    } catch(e) {
-                        echo "Could not load Jenkinsfile.lin"
-                        e.printStackTrace()
-                        println e
-                    }    
+                    def lin_j = load 'Jenkinsfile.lin'
+                    lin_j.build()   
+
                 }
             }
         }
