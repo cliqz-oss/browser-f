@@ -30,7 +30,8 @@ node(WIN_BUILD_NODE) {
   ```
 */
 
-withCredentials([
+def build() {
+  withCredentials([
     [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
     [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
     [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
@@ -59,6 +60,7 @@ withCredentials([
     } else {
       archiveArtifacts 'obj/build_properties.json'
     }
- }
+  }
+}
 
- return this
+return this

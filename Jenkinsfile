@@ -59,7 +59,8 @@ def mac_build() {
                     }
 
                     stage('OSX Load Jenkinsfile') {
-                        load 'Jenkinsfile.mac'    
+                        def mac_j = load 'Jenkinsfile.mac'    
+                        mac_j.build()
                     }
                 }
             }
@@ -100,7 +101,8 @@ def windows_build() {
                                     } // stage
                                     stage('Windows Load Jenkinsfile') {
                                         try {
-                                            load 'Jenkinsfile.win'    
+                                            def win_j = load 'Jenkinsfile.win'
+                                            win_j.build()
                                         } catch(e) {
                                             echo "Could not load Jenkinsfile.win"
                                             throw e
@@ -128,7 +130,8 @@ def linux_build() {
                 }
 
                 stage("Start build") {
-                  load 'Jenkinsfile.lin'
+                  def lin_j = load 'Jenkinsfile.lin'
+                  lin_j.build()
                 }
               }
             }
