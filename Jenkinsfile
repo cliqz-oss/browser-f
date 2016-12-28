@@ -58,7 +58,9 @@ def mac_build() {
                         checkout scm
                     }
 
-                    load 'Jenkinsfile.mac'
+                    stage('OSX Load Jenkinsfile') {
+                        load 'Jenkinsfile.mac'    
+                    }
                 }
             }
         }
@@ -96,12 +98,15 @@ def windows_build() {
                                             userRemoteConfigs: scm.userRemoteConfigs
                                         ])
                                     } // stage
-                                    try {
-                                        load 'Jenkinsfile.win'    
-                                    } catch(e) {
-                                        echo "Could not load Jenkinsfile.win"
-                                        throw e
+                                    stage('Windows Load Jenkinsfile') {
+                                        try {
+                                            load 'Jenkinsfile.win'    
+                                        } catch(e) {
+                                            echo "Could not load Jenkinsfile.win"
+                                            throw e
+                                        }    
                                     }
+                                    
                                 }// ws
                             } // node(nodeId)
                     }
