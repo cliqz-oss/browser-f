@@ -63,6 +63,7 @@ def mac_build() {
                     } catch(e) {
                         echo "Could not load Jenkinsfile.mac"
                         e.printStackTrace()
+                        println e
                     }
                     
                 }
@@ -109,6 +110,7 @@ def windows_build() {
                                     } catch(e) {
                                         echo "Could not load Jenkinsfile.win"
                                         e.printStackTrace()
+                                        println e
                                     }                                        
                                 }// ws
                             } // node(nodeId)
@@ -135,6 +137,7 @@ def linux_build() {
                     } catch(e) {
                         echo "Could not load Jenkinsfile.lin"
                         e.printStackTrace()
+                        println e
                     }    
                 }
             }
