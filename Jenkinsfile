@@ -68,13 +68,11 @@ def mac_build() {
                         echo "Mac sleeping for $random seconds"
                         sleep(random) {
                             def mac_j = load 'Jenkinsfile.mac'    
-                            ansiColor('xterm') {
-                                mac_j.build()        
-                            }
+                            mac_j.build()        
                         }
                     } catch(e) {
                         echo "Could not load Jenkinsfile.mac"
-                        throw e
+                        e.printStackTrace()
                     }
                     
                 }
@@ -120,13 +118,10 @@ def windows_build() {
 
                                         try {
                                             def win_j = load 'Jenkinsfile.win'
-                                            ansiColor('xterm') {
-                                                win_j.build()    
-                                            }
-                                            
+                                            win_j.build()                            
                                         } catch(e) {
                                             echo "Could not load Jenkinsfile.win"
-                                            throw e
+                                            e.printStackTrace()
                                         }                                        
                                     }// ws
                                 } // node(nodeId)
@@ -153,13 +148,10 @@ def linux_build() {
                 sleep(random) {
                     try {
                         def lin_j = load 'Jenkinsfile.lin'
-                        
-                        ansiColor('xterm') {
-                            lin_j.build() 
-                        }
+                        lin_j.build()   
                     } catch(e) {
                         echo "Could not load Jenkinsfile.lin"
-                        throw e
+                        e.printStackTrace()
                     }    
                 }
                 
