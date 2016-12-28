@@ -138,7 +138,13 @@ def windows_build() {
                         }
                     }
                     
-                    helpers = load "build-helpers.groovy"
+                    try {
+                       helpers = load "build-helpers.groovy"
+                    } catch(e) {
+                        echo "Could not load build-helpers"
+                        throw e
+                    }
+                    
                     helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
                         nodeId ->
                             node(nodeId) {
@@ -154,7 +160,12 @@ def windows_build() {
                                             userRemoteConfigs: scm.userRemoteConfigs
                                         ])
                                     } // stage
-                                    load 'Jenkinsfile.win'    
+                                    try {
+                                        load 'Jenkinsfile.win'    
+                                    } catch(e) {
+                                        echo "Could not load Jenkinsfile.win"
+                                        throw e
+                                    }
                                 }// ws
                             } // node(nodeId)
                     }
