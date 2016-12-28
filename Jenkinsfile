@@ -57,9 +57,110 @@ def mac_build() {
                     stage('OSX Hypervisor Checkout') {
                         checkout scm
                     }
+                                 
+                    def LANG_PARAM = ""
+                    try {
+                      if (env.CQZ_LANG) {
+                        LANG_PARAM = "-lang ${CQZ_LANG}"
+                      }
+                    } catch(e) {}
                     
-                    def mac_j = load 'Jenkinsfile.mac'    
-                    mac_j.build()                            
+                    stage('OSX Bootstrap') {
+                        sh '/bin/bash -lc "pip install compare-locales"'
+                        sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+                        sh '/bin/bash -lc "brew uninstall terminal-notifier"'
+                    }
+
+                    withEnv([
+                        "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+                        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
+                        "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
+
+                         stage('OSX Build') {
+                             withCredentials([
+                                 [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                                 [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+
+                                 sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+                             }
+                         }
+
+                        stage('OSX Sign') {
+                            // remove old package - important if clobber was not done
+                            sh '/bin/bash -lc "rm -rf obj/pkg"'
+
+                            withCredentials([
+                                [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
+                                [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
+                            ]) {
+                                try {
+                                    // create temporary keychain and make it a default one
+                                    sh '''#!/bin/bash -l -x
+                                        security create-keychain -p cliqz cliqz
+                                        security list-keychains -s cliqz
+                                        security default-keychain -s cliqz
+                                        security unlock-keychain -p cliqz cliqz
+                                    '''
+
+                                    sh '''#!/bin/bash -l +x
+                                        security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+                                    '''
+
+                                    withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
+                                        sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                                    }
+                                } finally {
+                                    sh '''#!/bin/bash -l -x
+                                        security delete-keychain cliqz
+                                        security list-keychains -s login.keychain
+                                        security default-keychain -s login.keychain
+                                        true
+                                    '''
+                                }
+                            }
+                        }
+
+                        stage('OSX Upload') {
+                            if (env.RELEASE_CHANNEL == 'pr') {
+                                sh '/bin/bash -lc "./magic_upload_files.sh"'
+                            } else {
+                                withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+                                    try {
+                                        //expose certs
+                                        withCredentials([
+                                            [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                                            [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
+
+                                            sh '''#!/bin/bash -l -x
+                                                mkdir $CQZ_CERT_DB_PATH
+                                                cd `brew --prefix nss`/bin
+                                                ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+                                                set +x
+                                                ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                                            '''
+                                        }
+
+                                        withCredentials([[
+                                            $class: 'UsernamePasswordMultiBinding',
+                                            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                                            passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                                            usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+                                            sh """#!/bin/bash -l -x
+                                                ./magic_upload_files.sh ${LANG_PARAM}
+                                            """
+
+                                            archiveArtifacts 'obj/i386/build_properties.json'
+                                        }
+                                    } finally {
+                                        // remove certs
+                                        sh 'rm -r $CQZ_CERT_DB_PATH || true'
+                                    }
+                                }
+                            }
+                        }
+                    }
+
                 }
             }
         }
@@ -98,10 +199,36 @@ def windows_build() {
                                         ])
                                     } // stage
 
-                                    
-                                    def win_j = load 'Jenkinsfile.win'
-                                    win_j.build()                            
-                            
+                                    withCredentials([
+                                        [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                                        [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+                                        [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+                                        [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                                        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                                        ]) {
+
+                                        withEnv([
+                                          "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+                                          "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+                                          "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+                                          "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
+                                          "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+                                        ]){
+                                          stage('WIN Build') {
+                                            bat '''
+                                                set CQZ_WORKSPACE=%cd%
+                                                build_win.bat
+                                            '''
+                                          }
+                                        }
+
+                                        if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                                          archiveArtifacts 'obj/en_build_properties.json'
+                                          archiveArtifacts 'obj/de_build_properties.json'
+                                        } else {
+                                          archiveArtifacts 'obj/build_properties.json'
+                                        }
+                                    }
                                 }// ws
                             } // node(nodeId)
                     }
@@ -120,14 +247,42 @@ def linux_build() {
                     stage('checkout') {
                       checkout scm
                     }
-                    def lin_j = load 'Jenkinsfile.lin'
-                    lin_j.build()   
+                    withCredentials([
+                        [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                        [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+                        [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+                        [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                        ]) {
 
+                        withEnv([
+                          "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+                          "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+                          "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+                          "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
+                          "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+                        ]){
+                          stage('WIN Build') {
+                            bat '''
+                                set CQZ_WORKSPACE=%cd%
+                                build_win.bat
+                            '''
+                          }
+                        }
+
+                        if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                          archiveArtifacts 'obj/en_build_properties.json'
+                          archiveArtifacts 'obj/de_build_properties.json'
+                        } else {
+                          archiveArtifacts 'obj/build_properties.json'
+                        }
+                    }
                 }
             }
         }
     }
 }
+
 
 
 
