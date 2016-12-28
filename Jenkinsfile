@@ -166,6 +166,6 @@ node('docker') {
 
 parallel(
     mac: mac_build(),
-    windows: windows_build(),
+    //windows: windows_build(),
     linux: linux_build()
     ) 
