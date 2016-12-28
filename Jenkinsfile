@@ -40,37 +40,13 @@ properties([
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165", name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAR_CERT_PASS_CREDENTIAL_ID"),
+        string(defaultValue: "1.10.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'LIN_REBUILD_IMAGE'),
     ]), 
     pipelineTriggers([])
 ])
-
-
-def withLock(Integer retry_times, Integer wait_sleep, Closure body) {
-    while (retry_times > 0) {
-        if (uploaded_lock == 0) {
-            if (uploaded) {
-                echo 'Extension uploaded. Skipping'
-                retry_times = 0
-            } else {
-                uploaded_lock++
-                body()
-                uploaded = true
-                uploaded_lock--
-                retry_times = 0
-            }
-        } else if (!uploaded){
-            echo "Extensions not uploaded but could not acquire lock. Waiting ${wait_sleep} seconds"
-            sleep wait_sleep
-            retry_times--
-        }
-    }
-    if (retry_times == 0 && !uploaded) {
-        throw new RuntimeException("Could not upload extensions")
-    }
-}
 
 
 def mac_build() {
@@ -82,28 +58,6 @@ def mac_build() {
                         checkout scm
                     }
 
-                    withLock(5, 30) {
-                        stage("Copy XPI") {
-                            CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                            UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                            HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-
-                            withEnv([
-                                "UPLOAD_PATH=$UPLOAD_PATH",
-                                "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
-                                ]) {
-                                withCredentials([
-                                    [$class: 'AmazonWebServicesCredentialsBinding',
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-                                        sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
-                                        sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
-                                }
-                            }
-                        }
-                    }
                     load 'Jenkinsfile.mac'
                 }
             }
@@ -120,24 +74,6 @@ def windows_build() {
                         checkout scm
                     }
 
-                    withLock(5, 30) {
-                        stage("Copy XPI") {
-                            CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                            UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                            HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-
-                            withCredentials([
-                                [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-                                sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                                sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
-                            }
-                        }
-                    }
-                    
                     try {
                        helpers = load "build-helpers.groovy"
                     } catch(e) {
@@ -182,29 +118,6 @@ def linux_build() {
         retry(2) {
             node('browser') {
               ws('build') {
-                withLock(5, 30) {
-                    stage("Copy XPI") {
-                        CQZ_VERSION=sh(returnStdout: true, script: "awk -F '=' '/version/ {print \$2}' ./repack/distribution/distribution.ini | head -n1").trim()
-                        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
-
-                        withEnv([
-                            "UPLOAD_PATH=$UPLOAD_PATH",
-                            "HTTPSE_UPLOAD_PATH=$HTTPSE_UPLOAD_PATH"
-                            ]) {
-                            withCredentials([
-                                [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
-                                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_EXTENSION_URL} ${UPLOAD_PATH}"'
-                                    sh '/bin/bash -lc "s3cmd cp -d -v ${CQZ_HTTPSE_EXTENSION_URL} ${HTTPSE_UPLOAD_PATH}"'
-                            }
-                        }
-                    }
-                }
-
                 stage('checkout') {
                   checkout scm
                 }
@@ -214,6 +127,27 @@ def linux_build() {
                 }
               }
             }
+        }
+    }
+}
+
+node('docker') {
+    docker.image('garland/docker-s3cmd').inside() {
+        stage('Build Browser') {
+            stage("Copy XPI") {
+                UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${env.CQZ_VERSION}/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
+                HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${env.CQZ_VERSION}/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+
+                withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+
+                    sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
+                    sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                }
+            }       
         }
     }
 }
