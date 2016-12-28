@@ -124,6 +124,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         } catch(e) {
            echo "Could not create slave for Vagrant"
            throw e
+        }
     }
 
     def error
