@@ -48,7 +48,8 @@ properties([
     pipelineTriggers([])
 ])
 
-def random_sleep() {
+@NonCPS
+def get_random_sleep() {
     Random random = new Random()
     return random.nextInt(60)
 }
