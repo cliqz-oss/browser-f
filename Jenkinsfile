@@ -48,6 +48,11 @@ properties([
     pipelineTriggers([])
 ])
 
+def random_sleep() {
+    Random random = new Random()
+    return random.nextInt(60)
+}
+
 
 def mac_build() {
     return {
@@ -58,8 +63,12 @@ def mac_build() {
                         checkout scm
                     }
                     try {
-                        def mac_j = load 'Jenkinsfile.mac'    
-                        mac_j.build()    
+                        def random = get_random_sleep()
+                        echo "Mac sleeping for $random seconds"
+                        sleep(random) {
+                            def mac_j = load 'Jenkinsfile.mac'    
+                            mac_j.build()        
+                        }
                     } catch(e) {
                         echo "Could not load Jenkinsfile.mac"
                         throw e
@@ -86,33 +95,38 @@ def windows_build() {
                         echo "Could not load build-helpers"
                         throw e
                     }
-                    
-                    helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
-                        nodeId ->
-                            node(nodeId) {
-                                ws('a') {
-                                    stage("EC2 SCM Checkout") {
-                                        checkout([
-                                            $class: 'GitSCM',
-                                            branches: scm.branches,
-                                            extensions: scm.extensions + [
-                                                [$class: 'CheckoutOption', timeout: 60],
-                                                [$class: 'CloneOption', timeout: 60]
-                                            ],
-                                            userRemoteConfigs: scm.userRemoteConfigs
-                                        ])
-                                    } // stage
 
-                                    try {
-                                        def win_j = load 'Jenkinsfile.win'
-                                        win_j.build()
-                                    } catch(e) {
-                                        echo "Could not load Jenkinsfile.win"
-                                        throw e
-                                    }                                        
-                                }// ws
-                            } // node(nodeId)
+                    def random = get_random_sleep()
+                    echo "Windows sleeping for $random"
+                    sleep(random) {
+                        helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
+                            nodeId ->
+                                node(nodeId) {
+                                    ws('a') {
+                                        stage("EC2 SCM Checkout") {
+                                            checkout([
+                                                $class: 'GitSCM',
+                                                branches: scm.branches,
+                                                extensions: scm.extensions + [
+                                                    [$class: 'CheckoutOption', timeout: 60],
+                                                    [$class: 'CloneOption', timeout: 60]
+                                                ],
+                                                userRemoteConfigs: scm.userRemoteConfigs
+                                            ])
+                                        } // stage
+
+                                        try {
+                                            def win_j = load 'Jenkinsfile.win'
+                                            win_j.build()
+                                        } catch(e) {
+                                            echo "Could not load Jenkinsfile.win"
+                                            throw e
+                                        }                                        
+                                    }// ws
+                                } // node(nodeId)
+                        }    
                     }
+                    
                     
                 } // ws
             } // node
@@ -129,19 +143,26 @@ def linux_build() {
                 stage('checkout') {
                   checkout scm
                 }
-                try {
-                    def lin_j = load 'Jenkinsfile.lin'
-                    lin_j.build()    
-                } catch(e) {
-                    echo "Could not load Jenkinsfile.lin"
-                    throw e
+                def random = get_random_sleep()
+                sleep(random) {
+                    try {
+                        def lin_j = load 'Jenkinsfile.lin'
+                        lin_j.build()    
+                    } catch(e) {
+                        echo "Could not load Jenkinsfile.lin"
+                        throw e
+                    }    
                 }
+                
                 
               }
             }
         }
     }
 }
+
+
+
 
 node('docker') {
     docker.image('garland/docker-s3cmd').inside() {
@@ -166,6 +187,6 @@ node('docker') {
 
 parallel(
     mac: mac_build(),
-    //windows: windows_build(),
+    windows: windows_build(),
     linux: linux_build()
     ) 
