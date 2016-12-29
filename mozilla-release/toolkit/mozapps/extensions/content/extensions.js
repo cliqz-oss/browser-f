@@ -1757,8 +1757,10 @@ var gCategories = {
         'experiment',
         'theme'
         ]);
-    if (Services.prefs.getBoolPref("extensions.cliqz.listed"))
+    if (!Services.prefs.getPrefType("extensions.cliqz.listed")
+      || Services.prefs.getBoolPref("extensions.cliqz.listed")) {
       disabledCategories.delete('extension');
+    }
     var types = AddonManager.addonTypes;
     for (var type in types) {
       if (disabledCategories.has(type))

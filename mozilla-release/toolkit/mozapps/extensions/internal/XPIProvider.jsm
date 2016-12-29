@@ -7514,7 +7514,8 @@ AddonWrapper.prototype = {
     if (addon._installLocation.name == KEY_APP_TEMPORARY)
       return false;
 
-    if (Services.prefs.getBoolPref("extensions.cliqz.listed", false))
+    if (!Services.prefs.getPrefType("extensions.cliqz.listed")
+      || Services.prefs.getBoolPref("extensions.cliqz.listed", false))
       return false;
 
     return (addon._installLocation.name == KEY_APP_SYSTEM_DEFAULTS ||
