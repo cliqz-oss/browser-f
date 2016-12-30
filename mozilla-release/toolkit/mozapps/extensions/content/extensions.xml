@@ -1814,6 +1814,24 @@
         <body><![CDATA[
           button.setAttribute("disabled", "true"); //Disable the button after user clicks on it
           var progress = document.getAnonymousElementByAttribute(this, "anonid", "install");
+          const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
+          const doc = Services.wm.getMostRecentWindow("navigator:browser").document;
+          const nIframe = doc.getElementsByTagName('iframe').length;
+          var nTry = 10;
+
+          function openPopup() {
+            var lpBtn = doc.getElementById("toggle-button--supportlastpasscom-lastpass-button");
+            if(lpBtn) {
+              lpBtn.click();
+              if(doc.getElementsByTagName('iframe').length > nIframe) {
+                return;
+              }
+            }
+            nTry--;
+            if (nTry > 0) {
+              timer.initWithCallback(openPopup, 500, Ci.nsITimer.TYPE_ONE_SHOT);
+            }
+          }
           AddonManager.getInstallForURL(this.mAddon.sourceURI,
             function(addon) {
               addon.addListener({
@@ -1829,7 +1847,10 @@
                   setTimeout(window.location.reload, 2000);
                 },
                 onInstallEnded: function(aInstall, aAddon) {
-                  window.location.reload()
+                  setTimeout(function() {
+                    timer.initWithCallback(openPopup, 1500, Ci.nsITimer.TYPE_ONE_SHOT);
+                    window.location.reload();
+                  }, 1000);
                 }
               });
               addon.install();
