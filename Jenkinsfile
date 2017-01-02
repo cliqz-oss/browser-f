@@ -287,42 +287,82 @@ node {
     }
     
     jobs["linux"] = {
-        node('browser') {
-            ws('build') {
-                retry(2) {
-                    stage('checkout') {
-                      checkout scm
-                    }    
-                }
-                
-                withCredentials([
-                    [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                    [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-                    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
-                    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                    [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                    ]) {
+        def imageName = 'browser-f'
 
-                    withEnv([
-                      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-                      "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-                      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-                      "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-                      "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
-                    ]){
-                      stage('WIN Build') {
-                        bat '''
-                            set CQZ_WORKSPACE=%cd%
-                            build_win.bat
-                        '''
-                      }
+        try {
+          // authorize docker deamon to access registry
+            sh "`aws ecr get-login --region=$AWS_REGION`"
+
+            docker.withRegistry(DOCKER_REGISTRY_URL) {
+                def image = docker.image(imageName)
+                image.pull()
+                imageName = image.imageName()
+            }
+        } catch (e) {
+          // if registry fails, build image localy
+          // Build params with context
+            def cacheParams = LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
+
+          // Avoiding docker context
+            sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+
+          // Build image with a specific user
+            sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+        }
+
+        docker.image(imageName).inside() {
+            stage('Update Dependencies') {
+            // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
+                sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+            }
+
+            withEnv([
+                "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+                "CQZ_COMMIT=$COMMIT_ID",
+                "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
+                "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+
+                stage('Build Browser') {
+                    withCredentials([
+                        [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                        [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+
+                        try {
+                            sh './magic_build_and_package.sh  --clobber'
+                        } catch (e) {
+                            archive 'obj/config.log'
+                            throw e
+                        }
+                    }
+                }
+
+                withCredentials([[
+                    $class: 'UsernamePasswordMultiBinding',
+                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                    passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+                    usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+
+                    stage('Publisher (Debian Repo)') {
+                        try {
+                            withCredentials([
+                                [$class: 'FileBinding', credentialsId: DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
+                                [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
+
+                                sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
+
+                                withEnv([
+                                    "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
+                                    sh './sign_lin.sh'
+                                }
+                            }
+                        } finally {
+                            sh 'rm -rf debian.gpg.pass'
+                        }
                     }
 
-                    if (CQZ_BUILD_DE_LOCALIZATION == "1") {
-                      archiveArtifacts 'obj/en_build_properties.json'
-                      archiveArtifacts 'obj/de_build_properties.json'
-                    } else {
-                      archiveArtifacts 'obj/build_properties.json'
+                    stage('Publisher (Internal)') {
+                        sh './magic_upload_files.sh'
+                        archiveArtifacts 'obj/build_properties.json'
                     }
                 }
             }
