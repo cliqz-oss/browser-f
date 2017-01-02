@@ -163,10 +163,6 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
-class EC2Slave {
-  boolean created
-  String nodeId
-}
 
 @NonCPS
 def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {

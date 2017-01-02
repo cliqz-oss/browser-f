@@ -289,9 +289,12 @@ node {
     jobs["linux"] = {
         node('browser') {
             ws('build') {
-                stage('checkout') {
-                  checkout scm
+                retry(2) {
+                    stage('checkout') {
+                      checkout scm
+                    }    
                 }
+                
                 withCredentials([
                     [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
                     [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
