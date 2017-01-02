@@ -169,68 +169,37 @@ class EC2Slave {
 }
 
 @NonCPS
-EC2Slave getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {
+def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {
     def nodeId = null
     def slaveLabel = 'windows pr'
+    def result = [:]
+
     for (slave in Hudson.instance.slaves) {
       if (slave.getLabelString().contains(slaveLabel)) {
         if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
           nodeId = slave.name
+          result['created'] = false
         } 
       }     
     } 
 
     // This is a new slave, so we need to bootstrap it
     if (!nodeId) {
-      nodeId = "${env.BUILD_TAG}"
+      nodeId = "${env.JOB_BASE_NAME}"
       try {
           createNode(nodeId, jenkinsFolderPath)
           setNodeLabel(nodeId, slaveLabel)
-          return new EC2Slave(created: true, nodeId: nodeId)
+          result['created'] = true
       } catch (e) {
           echo "Could not create node for ec2"
-          echo "${e}"
           throw e
       }
-  
-      withCredentials([
-        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: aws_credentials_id, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-        withEnv([
-          "aws_access_key=${env.AWS_ACCESS_KEY_ID}",
-          "aws_secret_key=${env.AWS_SECRET_ACCESS_KEY}",
-          "instance_name=${nodeId}",]) {
-            sh "ansible-playbook ${ansible_path}/bootstrap.yml"
-        }
-      }
     }
 
-    return new EC2Slave(created: false, nodeId: nodeId)
+    result['nodeId'] = nodeId
+    result['secret'] = getNodeSecret(nodeId)
+    return result
 
-    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-    def nodeIP
-    def nodeSecret = getNodeSecret(nodeId)
-    
-    withCredentials([
-      [$class: 'AmazonWebServicesCredentialsBinding',
-      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-      credentialsId: aws_credentials_id,
-      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-          withEnv([
-              "AWS_DEFAULT_REGION=${aws_region}"    
-              ]) {
-              nodeIP = sh(returnStdout: true, script: "${command}").trim()
-          }
-    } // withCredentials
-    
-    withEnv([
-      "instance_name=${nodeId}",
-      "JENKINS_URL=${env.JENKINS_URL}",
-      "NODE_ID=${nodeId}",
-      "NODE_SECRET=${nodeSecret}"]) {
-          sh "ansible-playbook -i ${nodeIP}, ${ansible_path}/playbook.yml"
-    }
-
-    return nodeId
 }
 
 

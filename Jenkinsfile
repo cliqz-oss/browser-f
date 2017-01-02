@@ -198,22 +198,21 @@ node {
                 }
 
                 def ec2_node = helpers.getEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH)
-                if (ec2_node.created) {
+                if (ec2_node.get('created')) {
                     echo "Node is just created needs to be provisioned"
                     withCredentials([
                         [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: env.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         withEnv([
                           "aws_access_key=${env.AWS_ACCESS_KEY_ID}",
                           "aws_secret_key=${env.AWS_SECRET_ACCESS_KEY}",
-                          "instance_name=${nodeId}",]) {
-                            sh "ansible-playbook ${ansible_path}/bootstrap.yml"
+                          "instance_name=${ec2_node.get('nodeId')}",]) {
+                            sh "ansible-playbook ${env.ANSIBLE_PLAYBOOK_PATH}/bootstrap.yml"
                         }
                     }
                     
 
-                    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                     def nodeIP
-                    def nodeSecret = getNodeSecret(nodeId)
                     
                     withCredentials([
                       [$class: 'AmazonWebServicesCredentialsBinding',
@@ -228,11 +227,11 @@ node {
                     } // withCredentials
                     
                     withEnv([
-                      "instance_name=${ec2_node.nodeId}",
+                      "instance_name=${ec2_node.get('nodeId')}",
                       "JENKINS_URL=${env.JENKINS_URL}",
-                      "NODE_ID=${ec2_node.nodeId}",
-                      "NODE_SECRET=${nodeSecret}"]) {
-                          sh "ansible-playbook -i ${nodeIP}, ${ansible_path}/playbook.yml"
+                      "NODE_ID=${ec2_node.get('nodeId')}",
+                      "NODE_SECRET=${ec2_node.get('secret')}"]) {
+                          sh "ansible-playbook -i ${nodeIP}, ${env.ANSIBLE_PLAYBOOK_PATH}/playbook.yml"
                     }
                 }
                 
