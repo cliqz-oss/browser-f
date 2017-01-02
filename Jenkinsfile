@@ -197,8 +197,46 @@ node {
                     throw e
                 }
 
-                def nodeId = helpers.getEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH)
-                node(nodeId) {
+                def ec2_node = helpers.getEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH)
+                if (ec2_node.created) {
+                    echo "Node is just created needs to be provisioned"
+                    withCredentials([
+                        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: env.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                        withEnv([
+                          "aws_access_key=${env.AWS_ACCESS_KEY_ID}",
+                          "aws_secret_key=${env.AWS_SECRET_ACCESS_KEY}",
+                          "instance_name=${nodeId}",]) {
+                            sh "ansible-playbook ${ansible_path}/bootstrap.yml"
+                        }
+                    }
+                    
+
+                    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.nodeId}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                    def nodeIP
+                    def nodeSecret = getNodeSecret(nodeId)
+                    
+                    withCredentials([
+                      [$class: 'AmazonWebServicesCredentialsBinding',
+                      accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                      credentialsId: env.CQZ_AWS_CREDENTIAL_ID,
+                      secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                          withEnv([
+                              "AWS_DEFAULT_REGION=${env.AWS_REGION}"    
+                              ]) {
+                              nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                          }
+                    } // withCredentials
+                    
+                    withEnv([
+                      "instance_name=${ec2_node.nodeId}",
+                      "JENKINS_URL=${env.JENKINS_URL}",
+                      "NODE_ID=${ec2_node.nodeId}",
+                      "NODE_SECRET=${nodeSecret}"]) {
+                          sh "ansible-playbook -i ${nodeIP}, ${ansible_path}/playbook.yml"
+                    }
+                }
+                
+                node(ec2_node.nodeId) {
                     ws('a') {
                         stage("EC2 SCM Checkout") {
                             checkout([
@@ -248,45 +286,45 @@ node {
         }
     }
     
-    // jobs["linux"] = {
-    //     node('browser') {
-    //             ws('build') {
-    //                 stage('checkout') {
-    //                   checkout scm
-    //                 }
-    //                 withCredentials([
-    //                     [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-    //                     [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-    //                     [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
-    //                     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-    //                     [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-    //                     ]) {
+    jobs["linux"] = {
+        node('browser') {
+            ws('build') {
+                stage('checkout') {
+                  checkout scm
+                }
+                withCredentials([
+                    [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                    [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+                    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+                    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                    [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                    ]) {
 
-    //                     withEnv([
-    //                       "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-    //                       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-    //                       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-    //                       "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-    //                       "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
-    //                     ]){
-    //                       stage('WIN Build') {
-    //                         bat '''
-    //                             set CQZ_WORKSPACE=%cd%
-    //                             build_win.bat
-    //                         '''
-    //                       }
-    //                     }
+                    withEnv([
+                      "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+                      "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+                      "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+                      "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
+                      "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+                    ]){
+                      stage('WIN Build') {
+                        bat '''
+                            set CQZ_WORKSPACE=%cd%
+                            build_win.bat
+                        '''
+                      }
+                    }
 
-    //                     if (CQZ_BUILD_DE_LOCALIZATION == "1") {
-    //                       archiveArtifacts 'obj/en_build_properties.json'
-    //                       archiveArtifacts 'obj/de_build_properties.json'
-    //                     } else {
-    //                       archiveArtifacts 'obj/build_properties.json'
-    //                     }
-    //                 }
-    //             }
-    //     }
-    // }
+                    if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                      archiveArtifacts 'obj/en_build_properties.json'
+                      archiveArtifacts 'obj/de_build_properties.json'
+                    } else {
+                      archiveArtifacts 'obj/build_properties.json'
+                    }
+                }
+            }
+        }
+    }
 
     parallel jobs
 } 
