@@ -70,118 +70,118 @@ node('docker') {
 }
 
 node {
-    jobs["mac"] = {   
-        node('chromium_mac_buildserver') {
-            ws('x') {
-                stage('OSX Hypervisor Checkout') {
-                    checkout scm
-                }
+    // jobs["mac"] = {   
+    //     node('chromium_mac_buildserver') {
+    //         ws('x') {
+    //             stage('OSX Hypervisor Checkout') {
+    //                 checkout scm
+    //             }
                                  
-                def LANG_PARAM = ""
-                try {
-                    if (env.CQZ_LANG) {
-                        LANG_PARAM = "-lang ${CQZ_LANG}"
-                    }
-                } catch(e) {}
+    //             def LANG_PARAM = ""
+    //             try {
+    //                 if (env.CQZ_LANG) {
+    //                     LANG_PARAM = "-lang ${CQZ_LANG}"
+    //                 }
+    //             } catch(e) {}
                     
-                stage('OSX Bootstrap') {
-                    sh '/bin/bash -lc "pip install compare-locales"'
-                    sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                    sh '/bin/bash -lc "brew uninstall terminal-notifier"'
-                }
+    //             stage('OSX Bootstrap') {
+    //                 sh '/bin/bash -lc "pip install compare-locales"'
+    //                 sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+    //                 sh '/bin/bash -lc "brew uninstall terminal-notifier"'
+    //             }
 
-                withEnv([
-                    "CQZ_BUILD_ID=$CQZ_BUILD_ID",
-                    "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
-                    "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
+    //             withEnv([
+    //                 "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+    //                 "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
+    //                 "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-                    stage('OSX Build') {
-                         withCredentials([
-                             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                             [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+    //                 stage('OSX Build') {
+    //                      withCredentials([
+    //                          [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+    //                          [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                             sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                             }
-                    }
+    //                          sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+    //                          }
+    //                 }
 
-                    stage('OSX Sign') {
-                            // remove old package - important if clobber was not done
-                        sh '/bin/bash -lc "rm -rf obj/pkg"'
+    //                 stage('OSX Sign') {
+    //                         // remove old package - important if clobber was not done
+    //                     sh '/bin/bash -lc "rm -rf obj/pkg"'
 
-                        withCredentials([
-                            [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
-                            [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
-                        ]) {
-                            try {
-                                // create temporary keychain and make it a default one
-                                sh '''#!/bin/bash -l -x
-                                    security create-keychain -p cliqz cliqz
-                                    security list-keychains -s cliqz
-                                    security default-keychain -s cliqz
-                                    security unlock-keychain -p cliqz cliqz
-                                '''
+    //                     withCredentials([
+    //                         [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
+    //                         [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
+    //                     ]) {
+    //                         try {
+    //                             // create temporary keychain and make it a default one
+    //                             sh '''#!/bin/bash -l -x
+    //                                 security create-keychain -p cliqz cliqz
+    //                                 security list-keychains -s cliqz
+    //                                 security default-keychain -s cliqz
+    //                                 security unlock-keychain -p cliqz cliqz
+    //                             '''
 
-                                sh '''#!/bin/bash -l +x
-                                    security import $CERT_FILE -P $CERT_PASS -k cliqz -A
-                                '''
+    //                             sh '''#!/bin/bash -l +x
+    //                                 security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+    //                             '''
 
-                                withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
-                                    sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
-                                }
-                            } finally {
-                                sh '''#!/bin/bash -l -x
-                                    security delete-keychain cliqz
-                                    security list-keychains -s login.keychain
-                                    security default-keychain -s login.keychain
-                                    true
-                                '''
-                            }
-                        }
-                    }
+    //                             withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
+    //                                 sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+    //                             }
+    //                         } finally {
+    //                             sh '''#!/bin/bash -l -x
+    //                                 security delete-keychain cliqz
+    //                                 security list-keychains -s login.keychain
+    //                                 security default-keychain -s login.keychain
+    //                                 true
+    //                             '''
+    //                         }
+    //                     }
+    //                 }
 
-                    stage('OSX Upload') {
-                        if (env.RELEASE_CHANNEL == 'pr') {
-                            sh '/bin/bash -lc "./magic_upload_files.sh"'
-                        } else {
-                            withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-                                try {
-                                    //expose certs
-                                    withCredentials([
-                                        [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                                        [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
+    //                 stage('OSX Upload') {
+    //                     if (env.RELEASE_CHANNEL == 'pr') {
+    //                         sh '/bin/bash -lc "./magic_upload_files.sh"'
+    //                     } else {
+    //                         withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+    //                             try {
+    //                                 //expose certs
+    //                                 withCredentials([
+    //                                     [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+    //                                     [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                                        sh '''#!/bin/bash -l -x
-                                            mkdir $CQZ_CERT_DB_PATH
-                                            cd `brew --prefix nss`/bin
-                                            ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                                            set +x
-                                            ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                                        '''
-                                    }
+    //                                     sh '''#!/bin/bash -l -x
+    //                                         mkdir $CQZ_CERT_DB_PATH
+    //                                         cd `brew --prefix nss`/bin
+    //                                         ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+    //                                         set +x
+    //                                         ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+    //                                     '''
+    //                                 }
 
-                                    withCredentials([[
-                                        $class: 'UsernamePasswordMultiBinding',
-                                        credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                        passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-                                        usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+    //                                 withCredentials([[
+    //                                     $class: 'UsernamePasswordMultiBinding',
+    //                                     credentialsId: CQZ_AWS_CREDENTIAL_ID,
+    //                                     passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+    //                                     usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-                                        sh """#!/bin/bash -l -x
-                                            ./magic_upload_files.sh ${LANG_PARAM}
-                                        """
+    //                                     sh """#!/bin/bash -l -x
+    //                                         ./magic_upload_files.sh ${LANG_PARAM}
+    //                                     """
 
-                                        archiveArtifacts 'obj/i386/build_properties.json'
-                                    }
-                                } finally {
-                                    // remove certs
-                                    sh 'rm -r $CQZ_CERT_DB_PATH || true'
-                                }
-                            }
-                        }
-                    }
-                }
-            }   
-        }
-    }
+    //                                     archiveArtifacts 'obj/i386/build_properties.json'
+    //                                 }
+    //                             } finally {
+    //                                 // remove certs
+    //                                 sh 'rm -r $CQZ_CERT_DB_PATH || true'
+    //                             }
+    //                         }
+    //                     }
+    //                 }
+    //             }
+    //         }   
+    //     }
+    // }
 
     jobs["windows"] = {
         node('browser-windows-pr') {

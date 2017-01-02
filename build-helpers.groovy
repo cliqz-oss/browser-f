@@ -179,13 +179,12 @@ def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_
     if (!nodeId) {
       nodeId = "${env.BUILD_TAG}"
       try {
-         createNode(nodeId, jenkinsFolderPath)
+          createNode(nodeId, jenkinsFolderPath)
+          setNodeLabel(nodeId, slaveLabel)
       } catch (e) {
           echo "Could not create node for ec2"
           throw e
       }
-
-      setNodeLabel(nodeId, slaveLabel)
 
       withCredentials([
           [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: aws_credentials_id, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
