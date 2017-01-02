@@ -169,7 +169,7 @@ class EC2Slave {
 }
 
 @NonCPS
-def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {
+EC2Slave getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {
     def nodeId = null
     def slaveLabel = 'windows pr'
     for (slave in Hudson.instance.slaves) {
