@@ -189,6 +189,7 @@ def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_
           return new EC2Slave(created: true, nodeId: nodeId)
       } catch (e) {
           echo "Could not create node for ec2"
+          echo "${e}"
           throw e
       }
   
