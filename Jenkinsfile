@@ -68,9 +68,11 @@ node('docker') {
         }
     }
 }
+def jobs[:]
 
-parallel(
-    mac: {   
+
+node {
+    jobs["mac"] = {   
         node('chromium_mac_buildserver') {
             ws('x') {
                 stage('OSX Hypervisor Checkout') {
@@ -181,8 +183,9 @@ parallel(
                 }
             }   
         }
-    },
-    windows: {
+    }
+
+    jobs["windows"] = {
         node('browser-windows-pr') {
             ws('x') {
                 stage('Windows Hypervizor Checkout') {
@@ -247,8 +250,9 @@ parallel(
                     }
                 } // ws
             }
-    },
-    linux:  {
+    }
+    
+    jobs["linux"] = {
         node('browser') {
                 ws('build') {
                     stage('checkout') {
@@ -285,6 +289,8 @@ parallel(
                         }
                     }
                 }
-            }
+        }
     }
-) 
+
+    parallel jobs
+} 
