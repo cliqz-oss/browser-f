@@ -245,6 +245,7 @@ node {
                     }// ws
                 } // node(nodeId)
             }
+        }
     }
     
     jobs["linux"] = {
