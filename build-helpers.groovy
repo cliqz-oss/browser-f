@@ -189,8 +189,8 @@ def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_
       withCredentials([
           [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: aws_credentials_id, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
           withEnv([
-            "aws_access_key=${AWS_ACCESS_KEY_ID}",
-            "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+            "aws_access_key=${env.AWS_ACCESS_KEY_ID}",
+            "aws_secret_key=${env.AWS_SECRET_ACCESS_KEY}",
             "instance_name=${nodeId}",]) {
               sh "ansible-playbook ${ansible_path}/bootstrap.yml"
           }
