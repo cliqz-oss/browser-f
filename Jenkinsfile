@@ -68,8 +68,6 @@ node('docker') {
         }
     }
 }
-def jobs[:]
-
 
 node {
     jobs["mac"] = {   
