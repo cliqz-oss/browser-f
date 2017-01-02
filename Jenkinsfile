@@ -237,17 +237,18 @@ node {
                 
                 node(ec2_node.get('nodeId')) {
                     ws('a') {
-                        stage("EC2 SCM Checkout") {
-                            checkout([
-                                $class: 'GitSCM',
-                                branches: scm.branches,
-                                extensions: scm.extensions + [
-                                    [$class: 'CheckoutOption', timeout: 60],
-                                    [$class: 'CloneOption', timeout: 60]
-                                ],
-                                userRemoteConfigs: scm.userRemoteConfigs
-                            ])
-                        } // stage
+                        retry(2) {}
+                            stage("EC2 SCM Checkout") {
+                                checkout([
+                                    $class: 'GitSCM',
+                                    branches: scm.branches,
+                                    extensions: scm.extensions + [
+                                        [$class: 'CheckoutOption', timeout: 60],
+                                        [$class: 'CloneOption', timeout: 60]
+                                    ],
+                                    userRemoteConfigs: scm.userRemoteConfigs
+                                ])
+                            } // stage
 
                         withCredentials([
                             [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],

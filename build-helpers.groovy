@@ -185,7 +185,7 @@ def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_
 
     // This is a new slave, so we need to bootstrap it
     if (!nodeId) {
-      nodeId = "${env.JOB_BASE_NAME}"
+      nodeId = "browser-f-${env.JOB_BASE_NAME}"
       try {
           createNode(nodeId, jenkinsFolderPath)
           setNodeLabel(nodeId, slaveLabel)
@@ -196,7 +196,7 @@ def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_
       }
     }
 
-    result['nodeId'] = nodeId
+    result['nodeId'] = nodeId.toString()
     result['secret'] = getNodeSecret(nodeId)
     return result
 
