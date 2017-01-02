@@ -163,7 +163,8 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
-def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path, Closure body) {
+@NonCPS
+def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {
     def nodeId = null
     def slaveLabel = 'windows pr'
     for (slave in Hudson.instance.slaves) {
@@ -223,7 +224,7 @@ def withEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws
                 sh "ansible-playbook -i ${nodeIP}, ${ansible_path}/playbook.yml"
         }
 
-    body(nodeId)
+    return nodeId
 }
 
 

@@ -197,56 +197,53 @@ node {
                     throw e
                 }
 
-                    helpers.withEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH) {
-                        nodeId ->
-                            node(nodeId) {
-                                ws('a') {
-                                    stage("EC2 SCM Checkout") {
-                                        checkout([
-                                            $class: 'GitSCM',
-                                            branches: scm.branches,
-                                            extensions: scm.extensions + [
-                                                [$class: 'CheckoutOption', timeout: 60],
-                                                [$class: 'CloneOption', timeout: 60]
-                                            ],
-                                            userRemoteConfigs: scm.userRemoteConfigs
-                                        ])
-                                    } // stage
+                def nodeId = helpers.getEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH)
+                node(nodeId) {
+                    ws('a') {
+                        stage("EC2 SCM Checkout") {
+                            checkout([
+                                $class: 'GitSCM',
+                                branches: scm.branches,
+                                extensions: scm.extensions + [
+                                    [$class: 'CheckoutOption', timeout: 60],
+                                    [$class: 'CloneOption', timeout: 60]
+                                ],
+                                userRemoteConfigs: scm.userRemoteConfigs
+                            ])
+                        } // stage
 
-                                    withCredentials([
-                                        [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                                        [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-                                        [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
-                                        [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                                        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                                        ]) {
+                        withCredentials([
+                            [$class: 'FileBinding', credentialsId: WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                            [$class: 'StringBinding', credentialsId: WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+                            [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+                            [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                            [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                            ]) {
 
-                                        withEnv([
-                                          "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-                                          "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-                                          "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-                                          "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-                                          "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
-                                        ]){
-                                          stage('WIN Build') {
-                                            bat '''
-                                                set CQZ_WORKSPACE=%cd%
-                                                build_win.bat
-                                            '''
-                                          }
-                                        }
+                            withEnv([
+                              "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+                              "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+                              "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+                              "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
+                              "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+                            ]){
+                              stage('WIN Build') {
+                                bat '''
+                                    set CQZ_WORKSPACE=%cd%
+                                    build_win.bat
+                                '''
+                              }
+                            }
 
-                                        if (CQZ_BUILD_DE_LOCALIZATION == "1") {
-                                          archiveArtifacts 'obj/en_build_properties.json'
-                                          archiveArtifacts 'obj/de_build_properties.json'
-                                        } else {
-                                          archiveArtifacts 'obj/build_properties.json'
-                                        }
-                                    }
-                                }// ws
-                            } // node(nodeId)
-                    }
-                } // ws
+                            if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                              archiveArtifacts 'obj/en_build_properties.json'
+                              archiveArtifacts 'obj/de_build_properties.json'
+                            } else {
+                              archiveArtifacts 'obj/build_properties.json'
+                            }
+                        }
+                    }// ws
+                } // node(nodeId)
             }
     }
     
