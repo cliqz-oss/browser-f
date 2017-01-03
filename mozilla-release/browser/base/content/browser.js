@@ -1971,6 +1971,7 @@ function BrowserOpenTab()
 #if CQZ_AUTO_PRIVATE_TAB
 function BrowserOpenPrivateTab() {
   openUILinkIn("about:privatebrowsing", "tab", {private: true});
+  gURLBar.focus();
 }
 #endif
 
