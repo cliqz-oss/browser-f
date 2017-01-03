@@ -165,7 +165,7 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 
 
 @NonCPS
-def getEC2Slave(String jenkinsFolderPath, String aws_credentials_id, String aws_region, String ansible_path) {
+def getEC2Slave(String jenkinsFolderPath) {
     def nodeId = null
     def slaveLabel = 'windows pr'
     def result = [:]
