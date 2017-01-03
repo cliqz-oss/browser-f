@@ -13,6 +13,7 @@ do
   echo "Processing $DMG..."
   hdiutil attach -nobrowse $DMG
   cp -r /Volumes/CLIQZ/*.app $PKG_DIR
+  xattr -rc $PKG_DIR/
   for app in $PKG_DIR/*.app
   do
     codesign -s $CQZ_CERT_NAME --force --deep $app
