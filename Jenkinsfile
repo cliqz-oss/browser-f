@@ -159,11 +159,12 @@ node {
                                         '''
                                     }
 
+
                                     withCredentials([[
-                                        $class: 'UsernamePasswordMultiBinding',
+                                        $class: 'AmazonWebServicesCredentialsBinding',
+                                        accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                                         credentialsId: CQZ_AWS_CREDENTIAL_ID,
-                                        passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-                                        usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+                                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
                                         sh """#!/bin/bash -l -x
                                             ./magic_upload_files.sh ${LANG_PARAM}
@@ -343,7 +344,7 @@ node {
                                 }
                             }
 
-                            withCredentials([[
+                            withCredentials([
                                 [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                                 stage('Publisher (Debian Repo)') {
                                     try {
