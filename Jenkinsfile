@@ -58,11 +58,11 @@ node('docker') {
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding',
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                    credentialsId: env.CQZ_AWS_CREDENTIAL_ID,
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                    sh "s3cmd cp -d -v  $CQZ_EXTENSION_URL $UPLOAD_PATH"
-                    sh "s3cmd cp -d -v $CQZ_HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+                    sh "s3cmd cp -d -v  ${env.CQZ_EXTENSION_URL} $UPLOAD_PATH"
+                    sh "s3cmd cp -d -v ${env.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
                 }
             }       
         }
@@ -97,8 +97,8 @@ node {
 
                     stage('OSX Build') {
                          withCredentials([
-                             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                             [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+                             [$class: 'StringBinding', credentialsId: env.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                             [$class: 'StringBinding', credentialsId: env.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                              sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
                              }
@@ -109,8 +109,8 @@ node {
                         sh '/bin/bash -lc "rm -rf obj/pkg"'
 
                         withCredentials([
-                            [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
-                            [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
+                            [$class: 'FileBinding', credentialsId: env.MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
+                            [$class: 'StringBinding', credentialsId: env.MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
                         ]) {
                             try {
                                 // create temporary keychain and make it a default one
@@ -147,8 +147,8 @@ node {
                                 try {
                                     //expose certs
                                     withCredentials([
-                                        [$class: 'FileBinding', credentialsId: MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                                        [$class: 'StringBinding', credentialsId: MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
+                                        [$class: 'FileBinding', credentialsId: env.MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                                        [$class: 'StringBinding', credentialsId: env.MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
 
                                         sh '''#!/bin/bash -l -x
                                             mkdir $CQZ_CERT_DB_PATH
@@ -163,7 +163,7 @@ node {
                                     withCredentials([[
                                         $class: 'AmazonWebServicesCredentialsBinding',
                                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                        credentialsId: CQZ_AWS_CREDENTIAL_ID,
+                                        credentialsId: env.CQZ_AWS_CREDENTIAL_ID,
                                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
                                         sh """#!/bin/bash -l -x
@@ -198,7 +198,7 @@ node {
                     throw e
                 }
 
-                def ec2_node = helpers.getEC2Slave("c:/jenkins", CQZ_AWS_CREDENTIAL_ID, AWS_REGION, ANSIBLE_PLAYBOOK_PATH)
+                def ec2_node = helpers.getEC2Slave("c:/jenkins")
                 if (ec2_node.get('created')) {
                     echo "Node is just created needs to be provisioned"
                     withCredentials([
