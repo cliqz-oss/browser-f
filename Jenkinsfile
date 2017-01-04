@@ -7,8 +7,7 @@ CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
 CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr/'+CQZ_RELEASE_CHANNEL+'/'+BUILD_ID
 COMMIT_ID = BUILD_ID
 CQZ_BUILD_DE_LOCALIZATION = ''
-DEBIAN_GPG_KEY_CREDENTIAL_ID = 'debian-gpg-key'
-DEBIAN_GPG_PASS_CREDENTIAL_ID = 'debian-gpg-pass'
+
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
@@ -40,6 +39,8 @@ properties([
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165", name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", name: "MAR_CERT_PASS_CREDENTIAL_ID"),
+        string(defaultValue: "debian-gpg-key", name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
+        string(defaultValue: "debian-gpg-pass", name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "1.11.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: false, description: '', name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', name: 'WIN_REBUILD_IMAGE'),
@@ -229,7 +230,7 @@ node {
                     
                     withEnv([
                       "instance_name=${ec2_node.get('nodeId')}",
-                      "JENKINS_URL=${params.JENKINS_URL}",
+                      "JENKINS_URL=${env.JENKINS_URL}",
                       "NODE_ID=${ec2_node.get('nodeId')}",
                       "NODE_SECRET=${ec2_node.get('secret')}"]) {
                           sh "ansible-playbook -i ${nodeIP}, ${params.ANSIBLE_PLAYBOOK_PATH}/playbook.yml"
