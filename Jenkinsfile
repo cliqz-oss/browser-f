@@ -289,11 +289,11 @@ node {
     jobs["linux"] = {
         node('browser') {
             ws('build') {
-                stage('checkout') {
+                stage('Linux Docker Checkout') {
                     checkout scm
                 }
 
-                stage("Start build") {
+                stage("Linux Build") {
                     def imageName = 'browser-f'
 
                     try {
@@ -318,7 +318,7 @@ node {
                     }
 
                     docker.image(imageName).inside() {
-                        stage('Update Dependencies') {
+                        stage('Linux Update Dependencies') {
                         // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
                             sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
                         }
@@ -329,7 +329,7 @@ node {
                             "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
                             "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
 
-                            stage('Build Browser') {
+                            stage('Linux Build Browser') {
                                 withCredentials([
                                     [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
                                     [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
@@ -363,7 +363,7 @@ node {
                                     }
                                 }
 
-                                stage('Publisher (Internal)') {
+                                stage('Linux Publisher (Internal)') {
                                     sh './magic_upload_files.sh'
                                     archiveArtifacts 'obj/build_properties.json'
                                 }
