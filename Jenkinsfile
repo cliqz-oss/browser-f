@@ -52,17 +52,17 @@ node('docker') {
     docker.image('garland/docker-s3cmd').inside() {
         stage('Build Browser') {
             stage("Copy XPI") {
-                UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$env.CQZ_VERSION/$CQZ_BUILD_ID/cliqz@cliqz.com.xpi"
-                HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/$env.CQZ_VERSION/$CQZ_BUILD_ID/https-everywhere@cliqz.com.xpi"
+                UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
+                HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
 
                 withCredentials([
                     [$class: 'AmazonWebServicesCredentialsBinding',
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    credentialsId: env.CQZ_AWS_CREDENTIAL_ID,
+                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                    sh "s3cmd cp -d -v  ${env.CQZ_EXTENSION_URL} $UPLOAD_PATH"
-                    sh "s3cmd cp -d -v ${env.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
+                    sh "s3cmd cp -d -v  ${params.CQZ_EXTENSION_URL} $UPLOAD_PATH"
+                    sh "s3cmd cp -d -v ${params.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
                 }
             }       
         }
@@ -97,8 +97,8 @@ node {
 
                     stage('OSX Build') {
                          withCredentials([
-                             [$class: 'StringBinding', credentialsId: env.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                             [$class: 'StringBinding', credentialsId: env.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+                             [$class: 'StringBinding', credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                             [$class: 'StringBinding', credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                              sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
                              }
@@ -109,8 +109,8 @@ node {
                         sh '/bin/bash -lc "rm -rf obj/pkg"'
 
                         withCredentials([
-                            [$class: 'FileBinding', credentialsId: env.MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
-                            [$class: 'StringBinding', credentialsId: env.MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
+                            [$class: 'FileBinding', credentialsId: params.MAC_CERT_CREDENTIAL_ID, variable: 'CERT_FILE'],
+                            [$class: 'StringBinding', credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID, variable: 'CERT_PASS']
                         ]) {
                             try {
                                 // create temporary keychain and make it a default one
@@ -140,15 +140,15 @@ node {
                     }
 
                     stage('OSX Upload') {
-                        if (env.RELEASE_CHANNEL == 'pr') {
+                        if (params.RELEASE_CHANNEL == 'pr') {
                             sh '/bin/bash -lc "./magic_upload_files.sh"'
                         } else {
                             withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
                                 try {
                                     //expose certs
                                     withCredentials([
-                                        [$class: 'FileBinding', credentialsId: env.MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                                        [$class: 'StringBinding', credentialsId: env.MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
+                                        [$class: 'FileBinding', credentialsId: params.MAR_CERT_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                                        [$class: 'StringBinding', credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD']]) {
 
                                         sh '''#!/bin/bash -l -x
                                             mkdir $CQZ_CERT_DB_PATH
@@ -163,7 +163,7 @@ node {
                                     withCredentials([[
                                         $class: 'AmazonWebServicesCredentialsBinding',
                                         accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                        credentialsId: env.CQZ_AWS_CREDENTIAL_ID,
+                                        credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                                         secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
                                         sh """#!/bin/bash -l -x
@@ -202,12 +202,12 @@ node {
                 if (ec2_node.get('created')) {
                     echo "Node is just created needs to be provisioned"
                     withCredentials([
-                        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: env.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                        [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         withEnv([
-                          "aws_access_key=${env.AWS_ACCESS_KEY_ID}",
-                          "aws_secret_key=${env.AWS_SECRET_ACCESS_KEY}",
+                          "aws_access_key=${params.AWS_ACCESS_KEY_ID}",
+                          "aws_secret_key=${params.AWS_SECRET_ACCESS_KEY}",
                           "instance_name=${ec2_node.get('nodeId')}",]) {
-                            sh "ansible-playbook ${env.ANSIBLE_PLAYBOOK_PATH}/bootstrap.yml"
+                            sh "ansible-playbook ${params.ANSIBLE_PLAYBOOK_PATH}/bootstrap.yml"
                         }
                     }
                     
@@ -218,10 +218,10 @@ node {
                     withCredentials([
                       [$class: 'AmazonWebServicesCredentialsBinding',
                       accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                      credentialsId: env.CQZ_AWS_CREDENTIAL_ID,
+                      credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                       secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                           withEnv([
-                              "AWS_DEFAULT_REGION=${env.AWS_REGION}"    
+                              "AWS_DEFAULT_REGION=${params.AWS_REGION}"    
                               ]) {
                               nodeIP = sh(returnStdout: true, script: "${command}").trim()
                           }
@@ -229,10 +229,10 @@ node {
                     
                     withEnv([
                       "instance_name=${ec2_node.get('nodeId')}",
-                      "JENKINS_URL=${env.JENKINS_URL}",
+                      "JENKINS_URL=${params.JENKINS_URL}",
                       "NODE_ID=${ec2_node.get('nodeId')}",
                       "NODE_SECRET=${ec2_node.get('secret')}"]) {
-                          sh "ansible-playbook -i ${nodeIP}, ${env.ANSIBLE_PLAYBOOK_PATH}/playbook.yml"
+                          sh "ansible-playbook -i ${nodeIP}, ${params.ANSIBLE_PLAYBOOK_PATH}/playbook.yml"
                     }
                 }
                 
@@ -251,11 +251,11 @@ node {
                         } // stage
 
                         withCredentials([
-                            [$class: 'FileBinding', credentialsId: env.WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                            [$class: 'StringBinding', credentialsId: env.WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-                            [$class: 'StringBinding', credentialsId: env.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
-                            [$class: 'StringBinding', credentialsId: env.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                            [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: env.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                            [$class: 'FileBinding', credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                            [$class: 'StringBinding', credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+                            [$class: 'StringBinding', credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+                            [$class: 'StringBinding', credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                            [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                             ]) {
 
                             withEnv([
@@ -331,8 +331,8 @@ node {
 
                             stage('Linux Build Browser') {
                                 withCredentials([
-                                    [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                                    [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+                                    [$class: 'StringBinding', credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                                    [$class: 'StringBinding', credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                                     try {
                                         sh './magic_build_and_package.sh  --clobber'
@@ -344,12 +344,12 @@ node {
                             }
 
                             withCredentials([
-                                [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                                [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                                 stage('Publisher (Debian Repo)') {
                                     try {
                                         withCredentials([
-                                            [$class: 'FileBinding', credentialsId: DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
-                                            [$class: 'StringBinding', credentialsId: DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
+                                            [$class: 'FileBinding', credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID, variable: 'DEBIAN_GPG_KEY'],
+                                            [$class: 'StringBinding', credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID, variable: 'DEBIAN_GPG_PASS']]) {
 
                                             sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
 
