@@ -15,13 +15,8 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
-
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 IMAGE_NAME = 'cliqz/ansible:latest'
-AWS_REGION = 'us-east-1'
-
-
-
 
 properties([
     [$class: 'JobRestrictionProperty'], 
@@ -205,7 +200,6 @@ jobs["windows"] = {
     if (ec2_node.get('created')) {
         echo "New slave created. Starting provisioning"
 
-
         node('docker') {
             withCredentials([
             [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
@@ -215,9 +209,7 @@ jobs["windows"] = {
                 docker.withRegistry(DOCKER_REGISTRY_URL) {
                     timeout(60) {
                         def image = docker.image(IMAGE_NAME)
-                        docker.image(image.imageName()).inside(bootstrap_args) {
-                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
-                        }
+                        docker.image(image.imageName()).run(bootstrap_args, "cd /playbooks && ansible-playbook ec2/bootstrap.yml")
                     }
                 }
             }
