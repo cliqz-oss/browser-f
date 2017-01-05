@@ -209,7 +209,9 @@ jobs["windows"] = {
                 docker.withRegistry(DOCKER_REGISTRY_URL) {
                     timeout(60) {
                         def image = docker.image(IMAGE_NAME)
-                        docker.image(image.imageName()).run([bootstrap_args, "cd /playbooks && ansible-playbook ec2/bootstrap.yml"])
+                        docker.image(image.imageName()).inside(bootstrap_args) {
+                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
+                        }
                     }
                 }
             }
