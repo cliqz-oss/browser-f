@@ -188,7 +188,7 @@ jobs["mac"] = {
 jobs["windows"] = {
     node('docker') {
         ws() {
-            stage('Linux Docker Checkout') {
+            stage('GPU Slave Docker Checkout') {
                 checkout scm
             }
             try {
@@ -201,7 +201,11 @@ jobs["windows"] = {
     }
     
     def ec2_node = helpers.getEC2Slave("c:/jenkins")
+
     if (ec2_node.get('created')) {
+        echo "New slave created. Starting provisioning"
+
+
         node('docker') {
             withCredentials([
             [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
@@ -383,9 +387,5 @@ jobs["linux"] = {
         }
     }
 }
-
-jobs['mac'] = {}
-jobs['linux'] = {}
-
 
 parallel jobs
