@@ -186,16 +186,20 @@ jobs["mac"] = {
 }
     
 jobs["windows"] = {
-    node {
-        try {
-           helpers = load "build-helpers.groovy"
-        } catch(e) {
-            echo "Could not load build-helpers"
-            throw e
-        }    
+    node('docker') {
+        ws() {
+            stage('Linux Docker Checkout') {
+                checkout scm
+            }
+            try {
+               helpers = load "build-helpers.groovy"
+            } catch(e) {
+                echo "Could not load build-helpers"
+                throw e
+            }    
+        }
     }
     
-
     def ec2_node = helpers.getEC2Slave("c:/jenkins")
     if (ec2_node.get('created')) {
         node('docker') {
