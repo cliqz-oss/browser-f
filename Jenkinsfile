@@ -380,8 +380,8 @@ jobs["linux"] = {
     }
 }
 
-jobs.remove('mac')
-jobs.remove('linux')
+jobs['mac'] = {}
+jobs['linux'] = {}
 
 
 
