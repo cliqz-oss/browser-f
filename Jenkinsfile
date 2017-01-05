@@ -212,7 +212,7 @@ jobs["windows"] = {
                     timeout(60) {
                         def image = docker.image(IMAGE_NAME)
                         docker.image(image.imageName()).inside(bootstrap_args) {
-                            sh "cd /playbooks && sh ansible-playbook ec2/bootstrap.yml"
+                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
                         }
                     }
                 }
@@ -240,7 +240,7 @@ jobs["windows"] = {
                 timeout(60) {
                     def image = docker.image(IMAGE_NAME)
                     docker.image(image.imageName()).inside(prov_args) {
-                        sh "cd /playbooks && sh ansible-playbook ec2/bootstrap.yml"
+                        sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
                     }
                 }
             }
@@ -386,8 +386,6 @@ jobs["linux"] = {
 
 jobs['mac'] = {}
 jobs['linux'] = {}
-
-
 
 
 parallel jobs
