@@ -66,6 +66,122 @@ node('docker') {
     }       
 }
 
+jobs["windows"] = {
+    node('docker') {
+        ws() {
+            stage('GPU Slave Docker Checkout') {
+                checkout scm
+            }
+            try {
+               helpers = load "build-helpers.groovy"
+            } catch(e) {
+                echo "Could not load build-helpers"
+                throw e
+            }    
+        }
+    }
+    // Try to get a jenkins slave. If the slave was created by this action
+    // we need to bootstrap it with ansible
+    def ec2_node = helpers.getEC2Slave("c:/jenkins")
+
+    if (ec2_node.get('created')) {
+        echo "New slave created. Starting provisioning"
+
+        node('docker') {
+            withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                def bootstrap_args = "-e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
+                echo "Running with ${bootstrap_args} params"
+                sh "`aws ecr get-login --region=$AWS_REGION`"
+                docker.withRegistry(DOCKER_REGISTRY_URL) {
+                    timeout(60) {
+                        def image = docker.image(IMAGE_NAME)
+                        docker.image(image.imageName()).inside(bootstrap_args) {
+                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
+                        }
+                    }
+                } // withRegistry
+            } // withCredentials
+
+            // Get an IP address of the newly created slave
+            def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+            def nodeIP
+                
+            withCredentials([
+              [$class: 'AmazonWebServicesCredentialsBinding',
+              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+              credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                  withEnv([
+                      "AWS_DEFAULT_REGION=${params.AWS_REGION}"    
+                      ]) {
+                      nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                  }
+            } // withCredentials
+        
+            // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
+            def prov_args = "-e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
+            echo "Running with prov params ${prov_args}"
+            docker.withRegistry(DOCKER_REGISTRY_URL) {
+                timeout(60) {
+                    def image = docker.image(IMAGE_NAME)
+                    docker.image(image.imageName()).inside(prov_args) {
+                        sh "cd /playbooks && ansible-playbook -i ${nodeIP},  ec2/playbook.yml"
+                    }
+                }
+            } // withRegistry
+        } // node
+    } // endIf
+
+    // We can now use the slave to do a windows build
+    node(ec2_node.get('nodeId')) {
+        ws('a') {
+            stage("EC2 SCM Checkout") {
+                checkout([
+                    $class: 'GitSCM',
+                    branches: scm.branches,
+                    extensions: scm.extensions + [
+                        [$class: 'CheckoutOption', timeout: 60],
+                        [$class: 'CloneOption', timeout: 60]
+                    ],
+                    userRemoteConfigs: scm.userRemoteConfigs
+                ])
+            } // stage
+
+            withCredentials([
+                [$class: 'FileBinding', credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
+                [$class: 'StringBinding', credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
+                [$class: 'StringBinding', credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+                [$class: 'StringBinding', credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+                [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                ]) {
+
+                withEnv([
+                  "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
+                  "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
+                  "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
+                  "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
+                  "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+                ]){
+                  stage('WIN Build') {
+                    bat '''
+                        set CQZ_WORKSPACE=%cd%
+                        build_win.bat
+                    '''
+                  }
+                }
+
+                if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                  archiveArtifacts 'obj/en_build_properties.json'
+                  archiveArtifacts 'obj/de_build_properties.json'
+                } else {
+                  archiveArtifacts 'obj/build_properties.json'
+                }
+            } // withCredentials
+        } // ws
+    }
+}
+
 // jobs["mac"] = {   
 //     node('chromium_mac_buildserver') {
 //         ws('x') {
@@ -180,118 +296,7 @@ node('docker') {
 //     }
 // }
     
-jobs["windows"] = {
-    node('docker') {
-        ws() {
-            stage('GPU Slave Docker Checkout') {
-                checkout scm
-            }
-            try {
-               helpers = load "build-helpers.groovy"
-            } catch(e) {
-                echo "Could not load build-helpers"
-                throw e
-            }    
-        }
-    }
-    
-    def ec2_node = helpers.getEC2Slave("c:/jenkins")
 
-    if (ec2_node.get('created')) {
-        echo "New slave created. Starting provisioning"
-
-        node('docker') {
-            withCredentials([
-            [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                def bootstrap_args = "-e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
-                echo "Running with ${bootstrap_args} params"
-                sh "`aws ecr get-login --region=$AWS_REGION`"
-                docker.withRegistry(DOCKER_REGISTRY_URL) {
-                    timeout(60) {
-                        def image = docker.image(IMAGE_NAME)
-                        docker.image(image.imageName()).inside(bootstrap_args) {
-                            sh "cd /playbooks && ansible-playbook -vvvv ec2/bootstrap.yml"
-                        }
-                    }
-                } // withRegistry
-            } // withCredentials
-
-
-            def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-            def nodeIP
-                
-            withCredentials([
-              [$class: 'AmazonWebServicesCredentialsBinding',
-              accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-              credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-              secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                  withEnv([
-                      "AWS_DEFAULT_REGION=${params.AWS_REGION}"    
-                      ]) {
-                      nodeIP = sh(returnStdout: true, script: "${command}").trim()
-                  }
-            } // withCredentials
-        
-            def prov_args = "-e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
-            echo "Running with prov params ${prov_args}"
-            docker.withRegistry(DOCKER_REGISTRY_URL) {
-                timeout(60) {
-                    def image = docker.image(IMAGE_NAME)
-                    docker.image(image.imageName()).inside(prov_args) {
-                        sh "cd /playbooks && ansible-playbook -i ${nodeIP}, -vvvv ec2/bootstrap.yml"
-                    }
-                }
-            } // withRegistry
-        } // node
-    } // endIf
-
-    node(ec2_node.get('nodeId')) {
-        ws('a') {
-            stage("EC2 SCM Checkout") {
-                checkout([
-                    $class: 'GitSCM',
-                    branches: scm.branches,
-                    extensions: scm.extensions + [
-                        [$class: 'CheckoutOption', timeout: 60],
-                        [$class: 'CloneOption', timeout: 60]
-                    ],
-                    userRemoteConfigs: scm.userRemoteConfigs
-                ])
-            } // stage
-
-            withCredentials([
-                [$class: 'FileBinding', credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PATH'],
-                [$class: 'StringBinding', credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID, variable: 'CLZ_CERTIFICATE_PWD'],
-                [$class: 'StringBinding', credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
-                [$class: 'StringBinding', credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-                [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                ]) {
-
-                withEnv([
-                  "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
-                  "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
-                  "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-                  "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-                  "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
-                ]){
-                  stage('WIN Build') {
-                    bat '''
-                        set CQZ_WORKSPACE=%cd%
-                        build_win.bat
-                    '''
-                  }
-                }
-
-                if (CQZ_BUILD_DE_LOCALIZATION == "1") {
-                  archiveArtifacts 'obj/en_build_properties.json'
-                  archiveArtifacts 'obj/de_build_properties.json'
-                } else {
-                  archiveArtifacts 'obj/build_properties.json'
-                }
-            } // withCredentials
-        } // ws
-    }
-}
 
 // jobs["linux"] = {
 //     node('browser') {
