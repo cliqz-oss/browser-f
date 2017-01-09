@@ -90,12 +90,13 @@ jobs["windows"] = {
         node('docker') {
             withCredentials([
             [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                def bootstrap_args = "-e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
+                def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
                 echo "Running with ${bootstrap_args} params"
                 sh "`aws ecr get-login --region=$AWS_REGION`"
                 docker.withRegistry(DOCKER_REGISTRY_URL) {
                     timeout(60) {
                         def image = docker.image(IMAGE_NAME)
+                        image.pull()
                         docker.image(image.imageName()).inside(bootstrap_args) {
                             sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
                         }
@@ -120,11 +121,12 @@ jobs["windows"] = {
             } // withCredentials
         
             // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-            def prov_args = "-e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
+            def prov_args = "-u 0 -e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
             echo "Running with prov params ${prov_args}"
             docker.withRegistry(DOCKER_REGISTRY_URL) {
                 timeout(60) {
                     def image = docker.image(IMAGE_NAME)
+
                     docker.image(image.imageName()).inside(prov_args) {
                         sh "cd /playbooks && ansible-playbook -i ${nodeIP},  ec2/playbook.yml"
                     }
