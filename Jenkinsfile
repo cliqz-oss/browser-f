@@ -213,8 +213,8 @@ jobs["windows"] = {
                             sh "cd /playbooks && ansible-playbook -vvvv ec2/bootstrap.yml"
                         }
                     }
-                }
-            }
+                } // withRegistry
+            } // withCredentials
 
 
             def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
@@ -241,9 +241,9 @@ jobs["windows"] = {
                         sh "cd /playbooks && ansible-playbook -i ${nodeIP}, -vvvv ec2/bootstrap.yml"
                     }
                 }
-            }
-        }
-    }
+            } // withRegistry
+        } // node
+    } // endIf
 
     node(ec2_node.get('nodeId')) {
         ws('a') {
@@ -288,8 +288,8 @@ jobs["windows"] = {
                 } else {
                   archiveArtifacts 'obj/build_properties.json'
                 }
-            }
-        }// ws
+            } // withCredentials
+        } // ws
     }
 }
 
