@@ -7,16 +7,13 @@ CQZ_RELEASE_CHANNEL = JOB_BASE_NAME.replaceAll("-", "")
 CQZ_S3_DEBIAN_REPOSITORY_URL = 's3://repository.cliqz.com/dist/debian-pr/'+CQZ_RELEASE_CHANNEL+'/'+BUILD_ID
 COMMIT_ID = BUILD_ID
 CQZ_BUILD_DE_LOCALIZATION = ''
-
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
+IMAGE_NAME = 'cliqz/ansible:latest'
 
 def jobs = [:]
 def helpers
-
-DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
-IMAGE_NAME = 'cliqz/ansible:latest'
 
 properties([
     [$class: 'JobRestrictionProperty'], 
