@@ -12,6 +12,7 @@ REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 IMAGE_NAME = 'cliqz/ansible:latest'
 
+
 def jobs = [:]
 def helpers
 
