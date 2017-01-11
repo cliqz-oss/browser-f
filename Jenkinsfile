@@ -91,7 +91,7 @@ jobs["windows"] = {
                 [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                     def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
                     echo "Running with ${bootstrap_args} params"
-                    sh "`aws ecr get-login --region=$AWS_REGION`"
+                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                     docker.withRegistry(DOCKER_REGISTRY_URL) {
                         timeout(60) {
                             def image = docker.image(IMAGE_NAME)
@@ -312,7 +312,7 @@ jobs["linux"] = {
 
                 try {
                   // authorize docker deamon to access registry
-                    sh "`aws ecr get-login --region=$AWS_REGION`"
+                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
                     docker.withRegistry(DOCKER_REGISTRY_URL) {
                         def image = docker.image(imageName)
