@@ -317,6 +317,12 @@ this.MigratorPrototype = {
       }
     });
 
+#if 0
+    // CLIQZ. This piece of code doesn't work properly with FF importer for first
+    // launch. Mozilla expected that for Firefox this code will never used.
+    // For CLIQZ it lead to problem with password import from FF. NSS initialize
+    // in doStartup() function and later key3.db file copied on top of just
+    // created one. This make this file broken forever.
     if (MigrationUtils.isStartupMigration && !this.startupOnlyMigrator) {
       MigrationUtils.profileStartup.doStartup();
 
@@ -342,6 +348,8 @@ this.MigratorPrototype = {
         return;
       }
     }
+#endif
+
     doMigrate();
   },
 
