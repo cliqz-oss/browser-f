@@ -10,7 +10,7 @@ CQZ_BUILD_DE_LOCALIZATION = ''
 DOCKER_REGISTRY_URL = 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com'
 REPO_URL = 'https://github.com/cliqz-oss/browser-f.git'
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
-IMAGE_NAME = 'cliqz/ansible:latest'
+IMAGE_NAME = 'cliqz/ansible:1101201701'
 
 
 def jobs = [:]
