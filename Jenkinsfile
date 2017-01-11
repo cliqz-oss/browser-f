@@ -86,7 +86,7 @@ jobs["windows"] = {
         echo "New slave created. Starting provisioning"
 
         node('docker') {
-            ws('b') {
+            ws() {
                 withCredentials([
                 [$class: 'AmazonWebServicesCredentialsBinding', accessKeyVariable: 'AWS_ACCESS_KEY_ID', credentialsId: params.CQZ_AWS_CREDENTIAL_ID, secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                     def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
