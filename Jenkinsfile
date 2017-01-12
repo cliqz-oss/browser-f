@@ -233,7 +233,7 @@ jobs["mac"] = {
             } catch(e) {}
                 
             stage('OSX Bootstrap') {
-                sh '/bin/bash -lc "pip install compare-locales"'
+                sh 'pip install compare-locales'
                 sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
                 sh '/bin/bash -lc "brew uninstall terminal-notifier"'
             }
