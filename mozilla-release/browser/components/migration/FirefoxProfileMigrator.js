@@ -629,7 +629,15 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
           session, times, telemetry].filter(r => r);
 };
 
+Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {
+  // CLIQZ
+  // This is FF migrator (need to correct migration process in MigrationUtils.jsm)
+  get: () => true
+});
+
 Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
+  // CLIQZ
+  // Use not only as startup migrator, but as option to import from FF later
   get: () => false
 });
 
