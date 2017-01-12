@@ -28,9 +28,6 @@ EXTRA_PP_COMPONENTS += [
 
 EXTRA_JS_MODULES += [
     'AutoMigrate.jsm',
-]
-
-EXTRA_PP_JS_MODULES += [
     'MigrationUtils.jsm',
 ]
 
