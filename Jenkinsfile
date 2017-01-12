@@ -136,7 +136,11 @@ jobs["windows"] = {
                       withEnv([
                           "AWS_DEFAULT_REGION=${params.AWS_REGION}"    
                           ]) {
-                          nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                            // Retry three times to get the IP from amazon...
+                            retry(3) {
+                                nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                                sleep 15
+                            }
                       }
                 } // withCredentials
             
@@ -230,7 +234,7 @@ jobs["mac"] = {
             } catch(e) {}
                 
             stage('OSX Bootstrap') {
-                sh '''#!/bin/bash -lc 
+                sh '''#!/bin/bash  
                     pip install compare-locales
                     python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive
                     brew uninstall terminal-notifier
