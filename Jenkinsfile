@@ -9,7 +9,6 @@ COMMIT_ID = BUILD_ID
 CQZ_BUILD_DE_LOCALIZATION = ''
 CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 
-
 def jobs = [:]
 def helpers
 
