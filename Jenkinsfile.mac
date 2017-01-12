@@ -44,6 +44,7 @@ try {
 stage('bootstrap') {
     sh 'pip install compare-locales'
     sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+    sh 'brew install --force nss'
     sh 'brew uninstall terminal-notifier'
 }
 
