@@ -16,7 +16,11 @@ Cu.import("resource://gre/modules/XPathGenerator.jsm");
  * fields that contain serialized session store data.
  */
 function isRestorationPage(url) {
-  return url == "about:sessionrestore" || url == "about:welcomeback";
+  return url in {
+    "about:sessionrestore": 1,
+    "about:welcomeback": 1,
+    "about:importedtabs": 1
+  };
 }
 
 /**
