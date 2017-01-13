@@ -70,7 +70,13 @@ AutoForgetTabsService.prototype = {
   toggleBrowserPrivateMode: function AFTSvc_toggleBrowserPrivateMode(
       browser, rememberDomain) {
     if (browser.loadContext.usePrivateBrowsing) {
-      this._reloadBrowserAsNormal(browser, rememberDomain);
+      try {
+        removeNotificationIfAny(browser, this._consts.HIST_CLEANUP_CONFIRM);
+        removeNotificationIfAny(browser, this._consts.AUTO_SWITCHED_TO_FORGET);
+      }
+      finally {
+        this._reloadBrowserAsNormal(browser, rememberDomain);
+      }
     }
     else {
       this._reloadBrowserAsPrivate(browser, rememberDomain);
@@ -364,7 +370,18 @@ function cleanup(domain) {
   sanitizer.sanitize(["formdata"]);
 }
 
-function addOrReplaceNotification (browser, id, priName, iconURL, text, buttons) {
+function removeNotificationIfAny(browser, id) {
+  const gBrowser = browser.ownerGlobal.gBrowser;
+  const notificationBox = gBrowser && gBrowser.getNotificationBox(browser);
+  if (!notificationBox)
+    return;  // Who knows.
+  let notification = notificationBox.getNotificationWithValue(id);
+  if (notification)
+    notificationBox.removeNotification(notification);
+}
+
+function addOrReplaceNotification (browser, id, priName, iconURL, text,
+    buttons) {
   const gBrowser = browser.ownerGlobal.gBrowser;
   const notificationBox = gBrowser && gBrowser.getNotificationBox(browser);
   if (!notificationBox)
