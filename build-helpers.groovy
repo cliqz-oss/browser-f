@@ -49,6 +49,20 @@ def getNodeSecret(nodeId) {
     return jenkins.slaves.JnlpSlaveAgentProtocol.SLAVE_SECRET.mac(nodeId)
 }
 
+@NonCPS
+def setNodeLabel(nodeId, label) {
+    def allNodes = Jenkins.getInstance().getNodes()
+    for (int i =0; i < allNodes.size(); i++) {
+        Slave node = allNodes[i]
+
+        if (node.name.toString() == nodeId) {
+          node.setLabelString(label)
+          return
+        }
+    }
+}
+
+
 def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   def nodeId = "${env.BUILD_TAG}"
   def error
@@ -68,7 +82,12 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 
   // Create Jenkins node
-  createNode(nodeId, jenkinsFolderPath)
+  try {
+    createNode(nodeId, jenkinsFolderPath)
+  } catch(e) {
+    echo "Could not create slave for Docker"
+  }
+
   try {
     def nodeSecret = getNodeSecret(nodeId)
 
@@ -95,9 +114,20 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 }
 
-def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
-    def nodeId = "${env.BUILD_TAG}"
-    createNode(nodeId, jenkinsFolderPath)
+def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, String nodeId, Closure body) {
+    def tempNode = false
+    if (!nodeId) { 
+        nodeId = "${env.BUILD_TAG}"
+        try {
+          createNode(nodeId, jenkinsFolderPath)
+          tempNode = true
+        } catch(e) {
+           echo "Could not create slave for Vagrant"
+           throw e
+        }
+    }
+
+    def error
     try {
         def nodeSecret = getNodeSecret(nodeId)
 
@@ -118,12 +148,55 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         }
 
         body(nodeId)
+    } catch (e) {
+        error = e
     } finally {
-        removeNode(nodeId)
+        if (error) {
+            throw error
+        }
+        if (tempNode) {
+            removeNode(nodeId)
+        }
         withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
             sh 'vagrant halt --force'
         }
     }
 }
+
+
+@NonCPS
+def getEC2Slave(String jenkinsFolderPath) {
+    def nodeId = null
+    def slaveLabel = 'windows pr'
+    def result = [:]
+
+    for (slave in Hudson.instance.slaves) {
+      if (slave.getLabelString().contains(slaveLabel)) {
+        if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
+          nodeId = slave.name
+          result['created'] = false
+        } 
+      }     
+    } 
+
+    // This is a new slave, so we need to bootstrap it
+    if (!nodeId) {
+      nodeId = "browser-f-${env.JOB_BASE_NAME}"
+      try {
+          createNode(nodeId, jenkinsFolderPath)
+          setNodeLabel(nodeId, slaveLabel)
+          result['created'] = true
+      } catch (e) {
+          echo "Could not create node for ec2"
+          throw e
+      }
+    }
+
+    result['nodeId'] = nodeId.toString()
+    result['secret'] = getNodeSecret(nodeId)
+    return result
+
+}
+
 
 return this
