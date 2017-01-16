@@ -62,6 +62,21 @@ def setNodeLabel(nodeId, label) {
     }
 }
 
+@NonCPS
+def getIdleslave(slaveLabel) {
+    while(1) {
+        for (slave in Hudson.instance.slaves) {
+            sleep(1000)
+            if (slave.getLabelString().contains(slaveLabel)) {
+                if (!slave.getComputer().isOffline() && slave.getComputer().countBusy()==0 ) {
+                    return slave.name 
+                } 
+            }     
+        } 
+        sleep(1000)
+    }
+}
+
 
 def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   def nodeId = "${env.BUILD_TAG}"
