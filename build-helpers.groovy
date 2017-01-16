@@ -114,20 +114,10 @@ def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   }
 }
 
-def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, String nodeId, Closure body) {
-    def tempNode = false
-    if (!nodeId) { 
-        nodeId = "${env.BUILD_TAG}"
-        try {
-          createNode(nodeId, jenkinsFolderPath)
-          tempNode = true
-        } catch(e) {
-           echo "Could not create slave for Vagrant"
-           throw e
-        }
-    }
+def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, Integer memory, Integer vnc_port, Boolean rebuild, Closure body) {
+    def nodeId = "${env.BUILD_TAG}"
+    createNode(nodeId, jenkinsFolderPath)
 
-    def error
     try {
         def nodeSecret = getNodeSecret(nodeId)
 
@@ -148,15 +138,8 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
         }
 
         body(nodeId)
-    } catch (e) {
-        error = e
     } finally {
-        if (error) {
-            throw error
-        }
-        if (tempNode) {
-            removeNode(nodeId)
-        }
+        removeNode(nodeId)
         withEnv(["VAGRANT_VAGRANTFILE=${vagrantFilePath}"]) {
             sh 'vagrant halt --force'
         }

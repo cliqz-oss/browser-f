@@ -360,7 +360,7 @@ jobs["linux"] = {
                   // authorize docker deamon to access registry
                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
-                    docker.withRegistry(DOCKER_REGISTRY_URL) {
+                    docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         def image = docker.image(imageName)
                         image.pull()
                         imageName = image.imageName()
@@ -368,7 +368,7 @@ jobs["linux"] = {
                 } catch (e) {
                   // if registry fails, build image localy
                   // Build params with context
-                    def cacheParams = LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
+                    def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
                   // Avoiding docker context
                     sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
