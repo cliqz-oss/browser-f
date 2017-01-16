@@ -36,7 +36,7 @@ var SessionMigrationInternal = {
    * The complete state is then wrapped into the "about:welcomeback" page as
    * form field info to be restored when restoring the state.
    */
-  convertState: function(aStateObj) {
+  convertState: function(aStateObj, aRestorePageURL) {
     let state = {
       selectedWindow: aStateObj.selectedWindow,
       _closedWindows: []
@@ -58,7 +58,7 @@ var SessionMigrationInternal = {
       win._closedTabs = [];
       return win;
     });
-    let url = "about:welcomeback";
+    let url = aRestorePageURL;
     let formdata = {id: {sessionData: state}, url};
     return {windows: [{tabs: [{entries: [{url}], formdata}]}]};
   },
@@ -86,10 +86,11 @@ var SessionMigration = {
   /**
    * Migrate a limited set of session data from one path to another.
    */
-  migrate: function(aFromPath, aToPath) {
+  migrate: function(aFromPath, aToPath, aRestorePageURL) {
     return Task.spawn(function() {
       let inState = yield SessionMigrationInternal.readState(aFromPath);
-      let outState = SessionMigrationInternal.convertState(inState);
+      let outState =
+          SessionMigrationInternal.convertState(inState, aRestorePageURL);
       // Unfortunately, we can't use SessionStore's own SessionFile to
       // write out the data because it has a dependency on the profile dir
       // being known. When the migration runs, there is no guarantee that

@@ -12,6 +12,13 @@ const kIPStartup = Ci.nsIProfileStartup;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource:///modules/MigrationUtils.jsm");
 
+// For yet undiscovered reason `Cu.reportError()` doesn't work in this file.
+// Same as `dump()` :-/
+function logError(e) {
+  Services.console.logStringMessage("Error during migration: " + e + "\n" +
+      e.stack);
+}
+
 var MigrationWizard = {
   _source: "",                  // Source Profile Migrator ContractID suffix
   _itemsFlags: kIMig.ALL,       // Selected Import Data Sources (16-bit bitfield)
@@ -135,8 +142,7 @@ var MigrationWizard = {
     }
   },
 
-  onImportSourcePageAdvanced: function ()
-  {
+  maybeTakeUserSelectedMigrator: function () {
     var newSource = document.getElementById("importSourceGroup").selectedItem.id;
 
     if (newSource == "nothing") {
@@ -157,6 +163,14 @@ var MigrationWizard = {
       this._selectedProfile = null;
     }
     this._source = newSource;
+
+    return true;
+  },
+
+  onImportSourcePageAdvanced: function () {
+    // Only change explicitly set migrator if manual selection is allowed.
+    if (!this._skipImportSourcePage && !this.maybeTakeUserSelectedMigrator())
+      return false;
 
     // check for more than one source profile
     var sourceProfiles = this._migrator.sourceProfiles;
@@ -302,6 +316,7 @@ var MigrationWizard = {
     }
     catch (e) {
       this._wiz.advance();
+      logError(e);
       return;
     }
 
@@ -342,7 +357,9 @@ var MigrationWizard = {
       var radioGroup = document.getElementById("homePageRadiogroup");
 
       this._newHomePage = radioGroup.selectedItem.value;
-    } catch(ex) {}
+    } catch(ex) {
+      logError(ex);
+    }
   },
 
   // 5 - Migrating
@@ -399,9 +416,7 @@ var MigrationWizard = {
           items.appendChild(label);
         }
         catch (e) {
-          // if the block above throws, we've enumerated all the import data types we
-          // currently support and are now just wasting time, break.
-          break;
+          logError(e);
         }
       }
     }
@@ -429,7 +444,7 @@ var MigrationWizard = {
         try {
           this.reportDataRecencyTelemetry();
         } catch (ex) {
-          Cu.reportError(ex);
+          logError(ex);
         }
       }
       if (this._autoMigrate) {
@@ -461,7 +476,7 @@ var MigrationWizard = {
             prefFile.append("prefs.js");
             prefSvc.savePrefFile(prefFile);
           } catch(ex) {
-            dump(ex);
+            logError(ex);
           }
         }
 
@@ -503,8 +518,7 @@ var MigrationWizard = {
         type = "misc. data";
         break;
       }
-      Cc["@mozilla.org/consoleservice;1"]
-        .getService(Ci.nsIConsoleService)
+      Services.console
         .logStringMessage("some " + type + " did not successfully migrate.");
       Services.telemetry.getKeyedHistogramById("FX_MIGRATION_ERRORS")
                         .add(this._source, Math.log2(numericType));

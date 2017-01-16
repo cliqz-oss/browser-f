@@ -32,7 +32,7 @@
 <!ENTITY welcomeback2.tabtitle      "Erfolg!">
 
 <!ENTITY welcomeback2.pageTitle     "Erfolgreich abgeschlossen!">
-<!ENTITY welcomeback2.pageInfo1     "&brandShortName; ist bereit und kann jetzt verwendet werden.">
+<!ENTITY welcomeback2.pageInfo1     "&brandShortName; ist startklar.">
 
 <!ENTITY welcomeback2.label.restoreAll  "Alle Fenster und Tabs wiederherstellen">
 <!ENTITY welcomeback2.label.restoreSome "Wiederherzustellende Fenster und Tabs auswählen">
@@ -44,10 +44,24 @@ before and after the the "learn more" link (welcomeback2.link.pageInfo2).
 Localizers can use one of them, or both, to better adapt this sentence to
 their language.
 -->
-<!ENTITY welcomeback2.beforelink.pageInfo2  "Deine Add-ons und Anpassungen wurden entfernt und deine Browser-Einstellungen auf die Standardvorgaben zurückgesetzt. Falls das Problem dadurch nicht behoben wurde, ">
+<!ENTITY welcomeback2.beforelink.pageInfo2
+    "Deine Anpassungen wurden entfernt und deine Browser-Einstellungen wurden
+    auf den Standard zurückgesetzt. Falls das dein Problem nicht behoben hat,
+    kontaktiere bitte ">
 <!ENTITY welcomeback2.afterlink.pageInfo2   ".">
 
-<!ENTITY welcomeback2.link.pageInfo2        "so gibt es weitere Möglichkeiten, was du tun kannst">
+<!ENTITY welcomeback2.link.pageInfo2        "unser Support Team">
+
+<!-- about:importedtabs strings -->
+<!ENTITY importedtabs.pageTitle "Erfolg!">
+<!ENTITY importedtabs.tabTitle "&importedtabs.pageTitle;">
+<!ENTITY importedtabs.pageInfo1 "&brandShortName; ist startklar.">
+<!ENTITY importedtabs.beforelink.pageInfo2
+    "Deine Daten wurden importiert. Nun kannst du wählen, mit welchen Fenstern
+    oder Tabs du starten möchtest. Wenn du dabei Probleme bemerkst, kontaktiere
+    bitte ">
+<!ENTITY importedtabs.afterlink.pageInfo2 ".">
+<!ENTITY importedtabs.link.pageInfo2 "unser Support Team">
 
 <!-- LOCALIZATION NOTE: The following 'tabgroupsmigration' strings are for
      the tab groups (panorama) migration page, not about:sessionrestore -->
