@@ -158,6 +158,7 @@ FirefoxProfileMigrator.prototype._getAllProfiles = function () {
   return profiles;
 };
 
+// This migrator is used for profile refresh.
 function CliqzProfileMigrator() {
   FirefoxProfileMigrator.apply(this);
 }
@@ -527,13 +528,15 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   let sessionFile = this._getFileObject(sourceProfileDir, "sessionstore.js");
   let session;
   if (sessionFile) {
+    let tabsRestoreURL = this.tabsRestoreURL;
     session = {
       type: types.SESSION,
       migrate: function(aCallback) {
         sessionCheckpoints.copyTo(currentProfileDir, "sessionCheckpoints.json");
         let newSessionFile = currentProfileDir.clone();
         newSessionFile.append("sessionstore.js");
-        let migrationPromise = SessionMigration.migrate(sessionFile.path, newSessionFile.path);
+        let migrationPromise = SessionMigration.migrate(sessionFile.path,
+            newSessionFile.path, tabsRestoreURL);
         migrationPromise.then(function() {
           let buildID = Services.appinfo.platformBuildID;
           let mstone = Services.appinfo.platformVersion;
@@ -557,6 +560,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   }
 
   // Telemetry related migrations.
+  const doingProfileReset = this instanceof CliqzProfileMigrator;
   let times = {
     name: "times", // name is used only by tests.
     type: types.OTHERDATA,
@@ -565,6 +569,11 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
       if (file) {
         file.copyTo(currentProfileDir, "");
       }
+
+      // Don't record profile reset when just importing from Firefox.
+      if (!doingProfileReset)
+        return aCallback(true);
+
       // And record the fact a migration (ie, a reset) happened.
       let timesAccessor = new ProfileAge(currentProfileDir.path);
       timesAccessor.recordProfileReset().then(
@@ -633,6 +642,14 @@ Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {
   // CLIQZ
   // This is FF migrator (need to correct migration process in MigrationUtils.jsm)
   get: () => true
+});
+
+Object.defineProperty(FirefoxProfileMigrator.prototype, "tabsRestoreURL", {
+  get: () => "about:importedtabs"
+});
+
+Object.defineProperty(CliqzProfileMigrator.prototype, "tabsRestoreURL", {
+  get: () => "about:welcomeback"
 });
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
