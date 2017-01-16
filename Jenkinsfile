@@ -12,6 +12,17 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
+def getIdleSlave(slaveLabel) {
+    for (slave in Hudson.instance.slaves) {
+        if (slave.getLabelString().contains(slaveLabel)) {
+            if (!slave.getComputer().isOffline() && slave.getComputer().countBusy()==0 ) {
+                return slave.name 
+            } 
+        }     
+    } 
+    return null
+}
+
 properties([
     [$class: 'JobRestrictionProperty'], 
     parameters([
@@ -219,7 +230,16 @@ jobs["windows"] = {
 }
 
 jobs["mac"] = {   
-    osx_slave = helpers.getIdleSlave('osx pr')
+    def osx_slave 
+    
+    retry(3) {
+        osx_slave = getIdleSlave('osx pr')
+        
+        if (osx_slave == null) {
+            sleep 1000
+            error("Could not get an executor on OSX slave")
+        }
+    }
 
     node(osx_slave) {
         ws('x') {
