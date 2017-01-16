@@ -219,7 +219,9 @@ jobs["windows"] = {
 }
 
 jobs["mac"] = {   
-    node('chromium_mac_buildserver') {
+    osx_slave = helpers.getIdleSlave('osx pr')
+
+    node(osx_slave) {
         ws('x') {
             stage('OSX Hypervisor Checkout') {
                 checkout scm
