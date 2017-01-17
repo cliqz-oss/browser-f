@@ -76,7 +76,7 @@ properties([
     pipelineTriggers([])
 ])
 
-node('docker') {    
+node('docker && us-east-1') {    
     stage("Copy XPI") {
         UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
         HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
@@ -94,7 +94,7 @@ node('docker') {
 }
 
 jobs["windows"] = {
-    node('docker') {
+    node('docker && us-east-1') {
         ws() {
             stage('GPU Slave Docker Checkout') {
                 checkout scm
@@ -114,7 +114,7 @@ jobs["windows"] = {
     if (ec2_node.get('created')) {
         echo "New slave created. Starting provisioning"
 
-        node('docker') {
+        node('docker && us-east-1') {
             ws() {
                 withCredentials([
                 [$class: 'AmazonWebServicesCredentialsBinding', 
