@@ -137,6 +137,9 @@ jobs["windows"] = {
                 // Get an IP address of the newly created slave
                 def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                 def nodeIP
+                
+                writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
+                sh "chmod 0600 /home/ubuntu/.aws/config"
                     
                 withCredentials([
                   [$class: 'AmazonWebServicesCredentialsBinding',
