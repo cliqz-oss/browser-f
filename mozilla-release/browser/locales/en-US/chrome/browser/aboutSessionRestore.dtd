@@ -60,6 +60,9 @@ their language.
     start with. If you experience any issues, please ">
 <!ENTITY importedtabs.afterlink.pageInfo2 ".">
 <!ENTITY importedtabs.link.pageInfo2 "contact our Support Team">
+<!ENTITY importedtabs.label.openAll
+    "Open all Windows and Tabs from last imported session">
+<!ENTITY importedtabs.label.openSome "Choose which ones you want to open">
 
 <!-- LOCALIZATION NOTE: The following 'tabgroupsmigration' strings are for
      the tab groups (panorama) migration page, not about:sessionrestore -->
