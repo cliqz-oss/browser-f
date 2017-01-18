@@ -98,3 +98,4 @@ export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 
 ROOT_PATH=$PWD
+
