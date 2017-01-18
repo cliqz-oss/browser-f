@@ -281,7 +281,7 @@ jobs["mac"] = {
                                 security import $CERT_FILE -P $CERT_PASS -k cliqz -A
                             '''
 
-                            withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
+                            withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
                                 sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
                             }
                         } finally {
