@@ -175,7 +175,7 @@ jobs["windows"] = {
     // We can now use the slave to do a windows build
     node(ec2_node.get('nodeId')) {
         ws('a') {
-            stage("EC2 SCM Checkout") {
+            stage("Windows EC2 SCM Checkout") {
                 checkout([
                     $class: 'GitSCM',
                     branches: scm.branches,
@@ -213,7 +213,7 @@ jobs["windows"] = {
                   "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
                   "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
                 ]){
-                  stage('WIN Build') {
+                  stage('Windows Build') {
                     bat '''
                         set CQZ_WORKSPACE=%cd%
                         build_win.bat
