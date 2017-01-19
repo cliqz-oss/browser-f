@@ -49,16 +49,14 @@ else
   MAKE=make
 fi
 
-if [ -z $CQZ_RELEASE_CHANNEL ]; then
-  export MOZ_UPDATE_CHANNEL=beta
-else
-  export MOZ_UPDATE_CHANNEL=$CQZ_RELEASE_CHANNEL
-  # turn on PGO only for release Windows build on new server
+# by default use beta update channel, except Release
+export MOZ_UPDATE_CHANNEL=beta
+if [ "$CQZ_RELEASE_CHANNEL" = "release" ]; then
+  export MOZ_UPDATE_CHANNEL=release
+  # turn on PGO only for Release Windows build
   if [ $IS_WIN ]; then
     if [ $CQZ_BUILD_ID ]; then
-      if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
-        export MOZ_PGO=1 # release build optimization
-      fi
+      export MOZ_PGO=1 # release build optimization flag
     fi
   fi
 fi
@@ -78,11 +76,11 @@ export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 # this condition only for transaction period between old and new build system
 if [ -z $CQZ_BUILD_ID ]; then
-  export S3_UPLOAD_PATH=`echo dist/pr/$MOZ_UPDATE_CHANNEL`
+  export S3_UPLOAD_PATH=`echo dist/pr/$CQZ_RELEASE_CHANNEL`
 else
   # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
   # build artifacts back (to locale folder, same as FF)
-  export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
+  export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
   # set our own BUILD_ID in new build system, must be specified in format %Y%m%d%H%M%S
   export MOZ_BUILD_DATE=$CQZ_BUILD_ID
 fi
@@ -100,3 +98,4 @@ export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 
 ROOT_PATH=$PWD
+
