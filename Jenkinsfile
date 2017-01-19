@@ -96,7 +96,7 @@ node('docker && us-east-1') {
 jobs["windows"] = {
     node('docker && us-east-1') {
         ws() {
-            stage('GPU Slave Docker Checkout') {
+            stage('Windows Docker Checkout') {
                 checkout scm
             }
             try {
