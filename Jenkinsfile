@@ -12,6 +12,17 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
+def getIdleSlave(slaveLabel) {
+    for (slave in Hudson.instance.slaves) {
+        if (slave.getLabelString().contains(slaveLabel)) {
+            if (!slave.getComputer().isOffline() && slave.getComputer().countBusy()==0 ) {
+                return slave.name 
+            } 
+        }     
+    } 
+    return null
+}
+
 properties([
     [$class: 'JobRestrictionProperty'], 
     parameters([
@@ -65,7 +76,7 @@ properties([
     pipelineTriggers([])
 ])
 
-node('docker') {    
+node('docker && us-east-1') {    
     stage("Copy XPI") {
         UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
         HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
@@ -83,7 +94,7 @@ node('docker') {
 }
 
 jobs["windows"] = {
-    node('docker') {
+    node('docker && us-east-1') {
         ws() {
             stage('GPU Slave Docker Checkout') {
                 checkout scm
@@ -103,7 +114,7 @@ jobs["windows"] = {
     if (ec2_node.get('created')) {
         echo "New slave created. Starting provisioning"
 
-        node('docker') {
+        node('docker && us-east-1') {
             ws() {
                 withCredentials([
                 [$class: 'AmazonWebServicesCredentialsBinding', 
@@ -126,6 +137,9 @@ jobs["windows"] = {
                 // Get an IP address of the newly created slave
                 def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                 def nodeIP
+                
+                writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
+                sh "chmod 0600 /home/ubuntu/.aws/config"
                     
                 withCredentials([
                   [$class: 'AmazonWebServicesCredentialsBinding',
@@ -219,7 +233,18 @@ jobs["windows"] = {
 }
 
 jobs["mac"] = {   
-    node('chromium_mac_buildserver') {
+    def osx_slave 
+    
+    retry(3) {
+        osx_slave = getIdleSlave('osx pr')
+        
+        if (osx_slave == null) {
+            sleep 1000
+            error("Could not get an executor on OSX slave")
+        }
+    }
+
+    node(osx_slave) {
         ws('x') {
             stage('OSX Hypervisor Checkout') {
                 checkout scm

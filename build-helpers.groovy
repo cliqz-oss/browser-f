@@ -62,7 +62,6 @@ def setNodeLabel(nodeId, label) {
     }
 }
 
-
 def withDocker(String imageName, String jenkinsFolderPath, Closure body) {
   def nodeId = "${env.BUILD_TAG}"
   def error
