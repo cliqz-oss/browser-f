@@ -12,6 +12,7 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
+@NonCPS
 def getIdleSlave(slaveLabel) {
     for (slave in Hudson.instance.slaves) {
         if (slave.getLabelString().contains(slaveLabel)) {
