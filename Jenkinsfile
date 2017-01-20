@@ -12,6 +12,7 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
+@NonCPS
 def getIdleSlave(slaveLabel) {
     for (slave in Hudson.instance.slaves) {
         if (slave.getLabelString().contains(slaveLabel)) {
@@ -61,7 +62,7 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:1101201701', 
+        string(defaultValue: 'cliqz/ansible:1901201701', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -96,7 +97,7 @@ node('docker && us-east-1') {
 jobs["windows"] = {
     node('docker && us-east-1') {
         ws() {
-            stage('GPU Slave Docker Checkout') {
+            stage('Windows Docker Checkout') {
                 checkout scm
             }
             try {
@@ -175,7 +176,7 @@ jobs["windows"] = {
     // We can now use the slave to do a windows build
     node(ec2_node.get('nodeId')) {
         ws('a') {
-            stage("EC2 SCM Checkout") {
+            stage("Windows EC2 SCM Checkout") {
                 checkout([
                     $class: 'GitSCM',
                     branches: scm.branches,
@@ -213,7 +214,7 @@ jobs["windows"] = {
                   "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
                   "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
                 ]){
-                  stage('WIN Build') {
+                  stage('Windows Build') {
                     bat '''
                         set CQZ_WORKSPACE=%cd%
                         build_win.bat
