@@ -756,8 +756,10 @@ var View = {
         }
       });
 
+      // list of addons we don't allow to disable or uninstall
+      let unremovable_addons = ["cliqz@cliqz.com", "https-everywhere@cliqz.com"];
       // Add buttons
-      if (nature == "addons") {
+      if (nature == "addons" && !unremovable_addons.includes(delta.fullName)) {
         eltSpan.appendChild(document.createElement("br"));
         let eltDisable = document.createElement("button");
         eltDisable.textContent = "Disable";
