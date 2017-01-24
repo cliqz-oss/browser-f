@@ -154,6 +154,14 @@
     <label>&passwordManager.desc1;</label>
     <label>&passwordManager.desc2;</label>
     <caption> </caption>
-    <richlistbox id="features-list" class="list" flex="1"></richlistbox>
+    <richlistbox id="password-managers-list" class="list" flex="1"></richlistbox>
+  </vbox>
+
+  <vbox flex="1" class="view-pane privacy-managers" tabindex="1">
+    <caption><label>&ghostery.title;</label></caption>
+    <label>&ghostery.desc1;</label>
+    <label>&ghostery.desc2;</label>
+    <caption> </caption>
+    <richlistbox id="privacy-managers-list" class="list" flex="1"></richlistbox>
   </vbox>
 </groupbox>

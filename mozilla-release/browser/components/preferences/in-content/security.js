@@ -13,7 +13,7 @@ var gSecurityPane = {
   _pane: null,
 
   /**
-   * Initializes master password UI.
+   * Initializes security related UI content (master password, safe browsing, ghostery, etc.)
    */
   init: function ()
   {
@@ -26,6 +26,7 @@ var gSecurityPane = {
     this._pane = document.getElementById("paneSecurity");
     this._initMasterPasswordUI();
     this._initSafeBrowsing();
+    this._initGhosteryUI();
 
     AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
       if(addon && addon.isActive){
@@ -172,6 +173,14 @@ var gSecurityPane = {
     gPasswordManagers.init();
   },
 
+  /**
+   * Initialize Ghostery addon UI box
+   */
+  _initGhosteryUI: function ()
+  {
+    gPrivacyManagers.init();
+  },
+
   _initSafeBrowsing() {
     let enableSafeBrowsing = document.getElementById("enableSafeBrowsing");
     let blockDownloads = document.getElementById("blockDownloads");
@@ -315,7 +324,7 @@ var gSecurityPane = {
 
 var gPasswordManagers = {
   init: function(){
-    this._listBox = document.getElementById("features-list");
+    this._listBox = document.getElementById("password-managers-list");
 
     Promise.all([this.getAvailable(), this.getExisting()]).then((function(results){
       var available = results[0],
@@ -365,6 +374,75 @@ var gPasswordManagers = {
       "name": "LastPass",
       "homepageURL": "https://lastpass.com/",
       "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/support@lastpass.com/latest.xpi"
+    }];
+  },
+  createItem: function(aObj, status) {
+    let item = document.createElement("richlistitem");
+
+    item.setAttribute("class", "cliqz-feature");
+    item.setAttribute("name", aObj.name);
+    item.setAttribute("description", aObj.description);
+    item.setAttribute("type", aObj.type);
+    item.setAttribute("value", aObj.id);
+    item.setAttribute("status", status);
+
+    item.mAddon = aObj;
+    return item;
+  }
+}
+
+var gPrivacyManagers = {
+  init: function(){
+    this._listBox = document.getElementById("privacy-managers-list");
+
+    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results){
+      var available = results[0],
+          existing  = results[1],
+          existingIDs = [];
+
+      //clean the view
+      while (this._listBox.firstChild && this._listBox.firstChild.localName == "richlistitem")
+        this._listBox.removeChild(this._listBox.firstChild);
+
+      // add already installed privacy managers
+      for (let addon of existing){
+        this._listBox.appendChild(this.createItem(addon, "installed"));
+        existingIDs.push(addon.id);
+      }
+
+      //remove the ones already installed
+      var available = available.filter(function(addon){ return existingIDs.indexOf(addon.id) == -1 });
+      for (let addon of available){
+         this._listBox.appendChild(this.createItem(addon, "new"));
+      }
+
+    }).bind(this));
+  },
+
+  getExisting: function(){
+    let KNOWN_PW_MANAGERS = ["firefox@ghostery.com"];
+
+    return new Promise(function(resolve, reject){
+      AddonManager.getAllAddons(function(all){
+        // filter only installed extensions
+        var extensions = all.filter(function(addon){
+          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
+        });
+
+        resolve(extensions);
+      });
+    });
+  },
+  // can be a promise if we decide to move the list to backend
+  getAvailable: function(){
+    return [{
+      "id": "firefox@ghostery.com",
+      "icons": {
+       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/9/9609-64.png?modified=1480432819"
+      },
+      "name": "Ghostery",
+      "homepageURL": "https://ghostery.com/",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/firefox@ghostery.com/latest.xpi"
     }];
   },
   createItem: function(aObj, status) {
