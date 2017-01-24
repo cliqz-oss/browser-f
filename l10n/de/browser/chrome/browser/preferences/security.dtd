@@ -47,3 +47,7 @@
 <!ENTITY  passwordManager.title          "Passwort Manager">
 <!ENTITY  passwordManager.desc1          "CLIQZ unterstützt die Einbindung von LastPass, einer Fremdsoftware für Passwort Management.">
 <!ENTITY  passwordManager.desc2          "Bitte beachte, dass CLIQZ keine Kontrolle darüber hat, auf welche Daten diese Fremdsoftware Zugriff hat.">
+
+<!ENTITY  ghostery.title                 "Erweiterte Kontrolle der Privatsphäre">
+<!ENTITY  ghostery.desc1                 "TBD">
+<!ENTITY  ghostery.desc2                 "TBD">
