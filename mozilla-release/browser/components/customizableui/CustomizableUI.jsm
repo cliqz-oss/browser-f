@@ -278,14 +278,12 @@ var CustomizableUIInternal = {
           if (AppConstants.MENUBAR_CAN_AUTOHIDE) {
             if (AppConstants.platform == "linux") {
               return true;
-            } else {
-              // This is duplicated logic from /browser/base/jar.mn
-              // for win6BrowserOverlay.xul.
-              return AppConstants.isPlatformAndVersionAtLeast("win", 6);
             }
-          } else {
-            return false;
+            // This is duplicated logic from /browser/base/jar.mn
+            // for win6BrowserOverlay.xul.
+            return AppConstants.isPlatformAndVersionAtLeast("win", 6);
           }
+          return false;
         }
       }, true);
     }
@@ -1081,7 +1079,7 @@ var CustomizableUIInternal = {
       }
     }
 
-    for (let [,widget] of gPalette) {
+    for (let [, widget] of gPalette) {
       widget.instances.delete(document);
       this.notifyListeners("onWidgetInstanceRemoved", widget.id, document);
     }
@@ -1365,6 +1363,9 @@ var CustomizableUIInternal = {
       }
       node.setAttribute("removable", aWidget.removable);
       node.setAttribute("overflows", aWidget.overflows);
+      if (aWidget.tabSpecific) {
+        node.setAttribute("tabspecific", aWidget.tabSpecific);
+      }
       node.setAttribute("label", this.getLocalizedProperty(aWidget, "label"));
       let additionalTooltipArguments = [];
       if (aWidget.shortcutId) {
@@ -1451,7 +1452,7 @@ var CustomizableUIInternal = {
           aFormatArgs.length) || def;
       }
       return gWidgetsBundle.GetStringFromName(name) || def;
-    } catch(ex) {
+    } catch (ex) {
       // If an empty string was explicitly passed, treat it as an actual
       // value rather than a missing property.
       if (!def && (name != "" || kReqStringProps.includes(aProp))) {
@@ -1522,7 +1523,7 @@ var CustomizableUIInternal = {
     if (aWidget.onClick) {
       try {
         aWidget.onClick.call(null, aEvent);
-      } catch(e) {
+      } catch (e) {
         Cu.reportError(e);
       }
     } else {
@@ -1956,7 +1957,7 @@ var CustomizableUIInternal = {
       if (typeof gSavedState != "object" || gSavedState === null) {
         throw "Invalid saved state";
       }
-    } catch(e) {
+    } catch (e) {
       Services.prefs.clearUserPref(kPrefCustomizationState);
       gSavedState = {};
       log.debug("Error loading saved UI customization state, falling back to defaults.");
@@ -1985,7 +1986,7 @@ var CustomizableUIInternal = {
       let restored = false;
       if (placementsPreexisted) {
         log.debug("Restoring " + aArea + " from pre-existing placements");
-        for (let [position, id] in Iterator(gPlacements.get(aArea))) {
+        for (let [position, id] of gPlacements.get(aArea).entries()) {
           this.moveWidgetWithinArea(id, position);
         }
         gDirty = false;
@@ -2317,6 +2318,7 @@ var CustomizableUIInternal = {
       overflows: true,
       defaultArea: null,
       shortcutId: null,
+      tabSpecific: false,
       tooltiptext: null,
       showInPrivateBrowsing: true,
       _introducedInVersion: -1,
@@ -2347,7 +2349,7 @@ var CustomizableUIInternal = {
       }
     }
 
-    const kOptBoolProps = ["removable", "showInPrivateBrowsing", "overflows"];
+    const kOptBoolProps = ["removable", "showInPrivateBrowsing", "overflows", "tabSpecific"];
     for (let prop of kOptBoolProps) {
       if (typeof aData[prop] == "boolean") {
         widget[prop] = aData[prop];
@@ -2536,7 +2538,7 @@ var CustomizableUIInternal = {
       gUIStateBeforeReset.drawInTitlebar = Services.prefs.getBoolPref(kPrefDrawInTitlebar);
       gUIStateBeforeReset.uiCustomizationState = Services.prefs.getCharPref(kPrefCustomizationState);
       gUIStateBeforeReset.currentTheme = LightweightThemeManager.currentTheme;
-    } catch(e) { }
+    } catch (e) { }
 
     this._resetExtraToolbars();
 
@@ -2552,7 +2554,7 @@ var CustomizableUIInternal = {
     // Clear the saved state to ensure that defaults will be used.
     gSavedState = null;
     // Restore the state for each area to its defaults
-    for (let [areaId,] of gAreas) {
+    for (let [areaId, ] of gAreas) {
       this.restoreStateForArea(areaId);
     }
   },
@@ -2672,7 +2674,7 @@ var CustomizableUIInternal = {
 
       if (!widgetNode) {
         // Pick any of the build windows to look at.
-        let [window,] = [...gBuildWindows][0];
+        let [window, ] = [...gBuildWindows][0];
         [, widgetNode] = this.getWidgetNode(widgetId, window);
       }
       // If we don't have a node, we assume it's removable. This can happen because
@@ -2798,7 +2800,7 @@ var CustomizableUIInternal = {
       return false;
     }
 
-    if(LightweightThemeManager.currentTheme) {
+    if (LightweightThemeManager.currentTheme) {
       log.debug(LightweightThemeManager.currentTheme + " theme is non-default");
       return false;
     }
@@ -2906,7 +2908,7 @@ this.CustomizableUI = {
    */
   windows: {
     *[Symbol.iterator]() {
-      for (let [window,] of gBuildWindows)
+      for (let [window, ] of gBuildWindows)
         yield window;
     }
   },
@@ -3240,7 +3242,17 @@ this.CustomizableUI = {
    * - onClick(aEvt): Attached to all widgets; a function that will be invoked
    *                  when the user clicks the widget.
    * - onViewShowing(aEvt): Only useful for views; a function that will be
-   *                  invoked when a user shows your view.
+   *                  invoked when a user shows your view. If any event
+   *                  handler calls aEvt.preventDefault(), the view will
+   *                  not be shown.
+   *
+   *                  The event's `detail` property is an object with an
+   *                  `addBlocker` method. Handlers which need to
+   *                  perform asynchronous operations before the view is
+   *                  shown may pass this method a Promise, which will
+   *                  prevent the view from showing until it resolves.
+   *                  Additionally, if the promise resolves to the exact
+   *                  value `false`, the view will not be shown.
    * - onViewHiding(aEvt): Only useful for views; a function that will be
    *                  invoked when a user hides your view.
    * - tooltiptext:   string to use for the tooltip of the widget
@@ -3778,7 +3790,7 @@ function WidgetGroupWrapper(aWidget) {
   this.__defineSetter__("disabled", function(aValue) {
     aValue = !!aValue;
     aWidget.disabled = aValue;
-    for (let [,instance] of aWidget.instances) {
+    for (let [, instance] of aWidget.instances) {
       instance.disabled = aValue;
     }
   });
@@ -4097,7 +4109,7 @@ OverflowableToolbar.prototype = {
   },
 
   handleEvent: function(aEvent) {
-    switch(aEvent.type) {
+    switch (aEvent.type) {
       case "aftercustomization":
         this._enable();
         break;
@@ -4332,31 +4344,26 @@ OverflowableToolbar.prototype = {
       // fire afterwards; that's ok!
     }
     // If it used to be overflowed...
-    else {
+    else if (!nowOverflowed) {
       // ... and isn't anymore, let's remove our bookkeeping:
-      if (!nowOverflowed) {
-        this._collapsed.delete(aNode.id);
-        aNode.removeAttribute("cui-anchorid");
-        aNode.removeAttribute("overflowedItem");
-        CustomizableUIInternal.notifyListeners("onWidgetUnderflow", aNode, this._target);
+      this._collapsed.delete(aNode.id);
+      aNode.removeAttribute("cui-anchorid");
+      aNode.removeAttribute("overflowedItem");
+      CustomizableUIInternal.notifyListeners("onWidgetUnderflow", aNode, this._target);
 
-        if (!this._collapsed.size) {
-          this._toolbar.removeAttribute("overflowing");
-          CustomizableUI.removeListener(this);
-        }
+      if (!this._collapsed.size) {
+        this._toolbar.removeAttribute("overflowing");
+        CustomizableUI.removeListener(this);
       }
+    } else if (aNode.previousSibling) {
       // but if it still is, it must have changed places. Bookkeep:
-      else {
-        if (aNode.previousSibling) {
-          let prevId = aNode.previousSibling.id;
-          let minSize = this._collapsed.get(prevId);
-          this._collapsed.set(aNode.id, minSize);
-        } else {
-          // If it's now the first item in the overflow list,
-          // maybe we can return it:
-          this._moveItemsBackToTheirOrigin();
-        }
-      }
+      let prevId = aNode.previousSibling.id;
+      let minSize = this._collapsed.get(prevId);
+      this._collapsed.set(aNode.id, minSize);
+    } else {
+      // If it's now the first item in the overflow list,
+      // maybe we can return it:
+      this._moveItemsBackToTheirOrigin();
     }
   },
 

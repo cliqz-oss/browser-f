@@ -29,7 +29,7 @@
 <!ENTITY     treehead.sitename.label        "Website">
 <!ENTITY     treehead.scheme.label          "Schema">
 <!ENTITY     treehead.status.label          "Status">
-<!ENTITY     windowtitle.label              "Cookie-Manager">
+<!ENTITY     windowtitle.label              "Cookie-Verwaltung">
 
 <!ENTITY     blockSite.label                "Blockieren">
 <!ENTITY     blockSite.accesskey            "B">

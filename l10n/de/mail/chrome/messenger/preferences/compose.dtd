@@ -37,7 +37,7 @@
 <!ENTITY languagePopup.accessKey              "p">
 <!ENTITY downloadDictionaries.label           "Weitere Wörterbücher herunterladen">
 
-<!ENTITY warnOnSendAccelKey.label             "Bestätigen, wenn das Tastaturkürzel zum Senden einer Nachricht verwendet wird">
+<!ENTITY warnOnSendAccelKey.label             "Bestätigen, wenn die Tastenkombination zum Senden einer Nachricht verwendet wird">
 <!ENTITY warnOnSendAccelKey.accesskey         "B">
 <!ENTITY autoSave.label                       "Alle">
 <!ENTITY autoSave.accesskey                   "A">

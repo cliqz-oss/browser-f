@@ -500,7 +500,7 @@ DrawTargetD2D1::Fill(const Path *aPath,
                      const Pattern &aPattern,
                      const DrawOptions &aOptions)
 {
-  if (aPath->GetBackendType() != BackendType::DIRECT2D1_1) {
+  if (!aPath || aPath->GetBackendType() != BackendType::DIRECT2D1_1) {
     gfxDebug() << *this << ": Ignoring drawing call for incompatible path.";
     return;
   }
@@ -750,6 +750,10 @@ void
 DrawTargetD2D1::PopClip()
 {
   mCurrentClippedGeometry = nullptr;
+  if (CurrentLayer().mPushedClips.empty()) {
+    gfxDevCrash(LogReason::UnbalancedClipStack) << "DrawTargetD2D1::PopClip: No clip to pop.";
+    return;
+  }
 
   if (CurrentLayer().mClipsArePushed) {
     if (CurrentLayer().mPushedClips.back().mPath) {
@@ -936,6 +940,24 @@ already_AddRefed<FilterNode>
 DrawTargetD2D1::CreateFilter(FilterType aType)
 {
   return FilterNodeD2D1::Create(mDC, aType);
+}
+
+void
+DrawTargetD2D1::GetGlyphRasterizationMetrics(ScaledFont *aScaledFont, const uint16_t* aGlyphIndices,
+                                             uint32_t aNumGlyphs, GlyphMetrics* aGlyphMetrics)
+{
+  MOZ_ASSERT(aScaledFont->GetType() == FontType::DWRITE);
+
+  aScaledFont->GetGlyphDesignMetrics(aGlyphIndices, aNumGlyphs, aGlyphMetrics);
+
+  // GetDesignGlyphMetrics returns 'ideal' glyph metrics, we need to pad to
+  // account for antialiasing.
+  for (uint32_t i = 0; i < aNumGlyphs; i++) {
+    if (aGlyphMetrics[i].mWidth > 0 && aGlyphMetrics[i].mHeight > 0) {
+      aGlyphMetrics[i].mWidth += 2.0f;
+      aGlyphMetrics[i].mXBearing -= 1.0f;
+    }
+  }
 }
 
 bool
@@ -1296,7 +1318,9 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
       return;
     }
 
-    RefPtr<ID2D1Image> tmpImage = GetImageForLayerContent();
+    // We don't need to preserve the current content of this layer as the output
+    // of the blend effect should completely replace it.
+    RefPtr<ID2D1Image> tmpImage = GetImageForLayerContent(false);
 
     blendEffect->SetInput(0, tmpImage);
     blendEffect->SetInput(1, source);
@@ -1316,6 +1340,11 @@ DrawTargetD2D1::FinalizeDrawing(CompositionOp aOp, const Pattern &aPattern)
   const RadialGradientPattern *pat = static_cast<const RadialGradientPattern*>(&aPattern);
   if (pat->mCenter1 == pat->mCenter2 && pat->mRadius1 == pat->mRadius2) {
     // Draw nothing!
+    return;
+  }
+
+  if (!pat->mStops) {
+    // Draw nothing because of no color stops
     return;
   }
 
@@ -1385,7 +1414,7 @@ DrawTargetD2D1::GetDeviceSpaceClipRect(D2D1_RECT_F& aClipRect, bool& aIsPixelAli
 }
 
 already_AddRefed<ID2D1Image>
-DrawTargetD2D1::GetImageForLayerContent()
+DrawTargetD2D1::GetImageForLayerContent(bool aShouldPreserveContent)
 {
   PopAllClips();
 
@@ -1410,7 +1439,11 @@ DrawTargetD2D1::GetImageForLayerContent()
 
     RefPtr<ID2D1Bitmap1> tmpBitmap;
     if (mDidComplexBlendWithListInList) {
-      mDC->CreateBitmap(mBitmap->GetPixelSize(), nullptr, 0, &D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET, D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)), getter_AddRefs(tmpBitmap));
+      D2D1_BITMAP_PROPERTIES1 props =
+        D2D1::BitmapProperties1(D2D1_BITMAP_OPTIONS_TARGET,
+                                D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM,
+                                                  D2D1_ALPHA_MODE_PREMULTIPLIED));
+      mDC->CreateBitmap(mBitmap->GetPixelSize(), nullptr, 0, &props, getter_AddRefs(tmpBitmap));
       mDC->SetTransform(D2D1::IdentityMatrix());
       mDC->SetTarget(tmpBitmap);
       mDC->DrawImage(list, D2D1_INTERPOLATION_MODE_NEAREST_NEIGHBOR, D2D1_COMPOSITE_MODE_BOUNDED_SOURCE_COPY);
@@ -1418,9 +1451,11 @@ DrawTargetD2D1::GetImageForLayerContent()
     }
 
     DCCommandSink sink(mDC);
-    list->Stream(&sink);
 
-    PushAllClips();
+    if (aShouldPreserveContent) {
+      list->Stream(&sink);
+      PushAllClips();
+    }
 
     if (mDidComplexBlendWithListInList) {
       return tmpBitmap.forget();

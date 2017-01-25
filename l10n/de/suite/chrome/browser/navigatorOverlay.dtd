@@ -135,11 +135,11 @@
 <!ENTITY popupsManage.label "Pop-ups verwalten">
 <!ENTITY popupsManage.accesskey "v">
 
-<!ENTITY cookieCookieManager.label "Cookie-Manager">
+<!ENTITY cookieCookieManager.label "Cookie-Verwaltung">
 <!ENTITY cookieCookieManager.accesskey "C">
-<!ENTITY cookieImageManager.label "Grafik-Manager">
+<!ENTITY cookieImageManager.label "Grafikverwaltung">
 <!ENTITY cookieImageManager.accesskey "G">
-<!ENTITY popupsManager.label "Pop-up-Manager">
+<!ENTITY popupsManager.label "Pop-up-Verwaltung">
 <!ENTITY popupsManager.accesskey "o">
 
 <!ENTITY clearPrivateDataCmd.label "Private Daten löschen…">

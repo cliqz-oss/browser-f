@@ -10,8 +10,8 @@
 <!ENTITY siteIcons.label                        "Website-Symbole">
 <!ENTITY useSiteIcons.label                     "Website-Symbole anzeigen">
 <!ENTITY useSiteIcons.accesskey                 "W">
-<!ENTITY useFavIcons.label                      "Aggressiv nach Website-Symbolen suchen, wenn die Seite keines definiert">
-<!ENTITY useFavIcons.accesskey                  "A">
+<!ENTITY useFavIcons2.label                     "Favicon-Symbol des Servers verwenden, wenn die Seite kein Symbol definiert">
+<!ENTITY useFavIcons2.accesskey                 "F">
 
 <!ENTITY scrolling.label                        "Scrolling">
 <!ENTITY useAutoScroll.label                    "Autoscrolling verwenden">

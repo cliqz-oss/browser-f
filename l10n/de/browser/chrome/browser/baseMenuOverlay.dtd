@@ -20,7 +20,13 @@
 <!ENTITY productHelp2.accesskey   "H">
 <!ENTITY helpMac.commandkey       "?">
 
+<<<<<<< HEAD
 <!ENTITY helpKeyboardShortcuts.label     "Tastaturkürzel (Firefox)">
+||||||| merged common ancestors
+<!ENTITY helpKeyboardShortcuts.label     "Tastaturkürzel">
+=======
+<!ENTITY helpKeyboardShortcuts.label     "Tastenkombinationen">
+>>>>>>> origin/upstream-releases
 <!ENTITY helpKeyboardShortcuts.accesskey "T">
 
 <!ENTITY helpSafeMode.label       "Im abgesicherten Modus neu starten…">

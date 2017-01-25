@@ -90,7 +90,7 @@ var pktApi = (function() {
         return out;
     }
 
-    var parseJSON = function(jsonString){
+    var parseJSON = function(jsonString) {
         try {
             var o = JSON.parse(jsonString);
 
@@ -261,7 +261,7 @@ var pktApi = (function() {
 
         var request = Components.classes["@mozilla.org/xmlextras/xmlhttprequest;1"].createInstance(Components.interfaces.nsIXMLHttpRequest);
         request.open("POST", url, true);
-        request.onreadystatechange = function(e){
+        request.onreadystatechange = function(e) {
             if (request.readyState == 4) {
                 if (request.status === 200) {
                     // There could still be an error if the response is no valid json
@@ -295,11 +295,11 @@ var pktApi = (function() {
 
         // Set headers
         request.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-        request.setRequestHeader('X-Accept',' application/json');
+        request.setRequestHeader('X-Accept', ' application/json');
 
         // Serialize and Fire off the request
         var str = [];
-        for(var p in data) {
+        for (var p in data) {
             if (data.hasOwnProperty(p)) {
                 str.push(encodeURIComponent(p) + "=" + encodeURIComponent(data[p]));
             }

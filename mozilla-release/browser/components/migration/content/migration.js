@@ -357,9 +357,15 @@ var MigrationWizard = {
       var radioGroup = document.getElementById("homePageRadiogroup");
 
       this._newHomePage = radioGroup.selectedItem.value;
+<<<<<<< HEAD
     } catch(ex) {
       logError(ex);
     }
+||||||| merged common ancestors
+    } catch(ex) {}
+=======
+    } catch (ex) {}
+>>>>>>> origin/upstream-releases
   },
 
   // 5 - Migrating
@@ -475,8 +481,16 @@ var MigrationWizard = {
             var prefFile = dirSvc.get("ProfDS", Components.interfaces.nsIFile);
             prefFile.append("prefs.js");
             prefSvc.savePrefFile(prefFile);
+<<<<<<< HEAD
           } catch(ex) {
             logError(ex);
+||||||| merged common ancestors
+          } catch(ex) {
+            dump(ex);
+=======
+          } catch (ex) {
+            dump(ex);
+>>>>>>> origin/upstream-releases
           }
         }
 
