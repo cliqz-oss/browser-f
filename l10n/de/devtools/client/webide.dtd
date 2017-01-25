@@ -136,7 +136,7 @@
 <!ENTITY prefs_options_autocomplete_tooltip "Autovervollständigung aktivieren">
 <!ENTITY prefs_options_autoclosebrackets "Klammern automatisch schließen">
 <!ENTITY prefs_options_autoclosebrackets_tooltip "Automatisch schließende Klammern einfügen">
-<!ENTITY prefs_options_keybindings "Tastaturkürzel">
+<!ENTITY prefs_options_keybindings "Tastenkombinationen">
 <!ENTITY prefs_options_keybindings_default "Standard">
 <!ENTITY prefs_options_autosavefiles "Dateien automatisch speichern">
 <!ENTITY prefs_options_autosavefiles_tooltip "Veränderte Dateien vor dem Ausführen des Projekts automatisch speichern">

@@ -36,12 +36,12 @@
 <!ENTITY focus1.commandkey     "l">
 <!ENTITY focus2.commandkey     "d">
 
-<!ENTITY menuBar.tooltip       "Menu Bar">
-<!ENTITY modeToolbar.tooltip   "Mode Toolbar">
-<!ENTITY entryToolbar.tooltip  "Javascript Entry Toolbar">
-<!ENTITY toolbarsCmd.label     "Show/Hide">
-<!ENTITY toolbarsCmd.accesskey "w">
-<!ENTITY toolbarMode.label     "Mode">
+<!ENTITY menuBar.tooltip       "Menüleiste">
+<!ENTITY modeToolbar.tooltip   "Modus-Symbolleiste">
+<!ENTITY entryToolbar.tooltip  "Symbolleiste für JavaScript-Eingaben">
+<!ENTITY toolbarsCmd.label     "Anzeigen/Verstecken">
+<!ENTITY toolbarsCmd.accesskey "z">
+<!ENTITY toolbarMode.label     "Modus">
 <!ENTITY toolbarMode.accesskey "M">
-<!ENTITY toolbarEval.label     "JavaScript Entry">
+<!ENTITY toolbarEval.label     "JavaScript-Eingabe">
 <!ENTITY toolbarEval.accesskey "J">

@@ -9,7 +9,7 @@
      width of the letter 'm' in the selected font.
      XUL/FE DEVELOPERS: DO NOT MODIFY THIS VALUE. It represents the correct
      size of this window for en-US. -->
-<!ENTITY  prefWindow.size             "width: 58em; height: 45em;">
+<!ENTITY  prefWindow.size             "width: 102ch; height: 45em;">
 
 <!-- pref-tabs.xul -->
 <!ENTITY urlbar.label                 "Strg+Enter in der Adressleiste">

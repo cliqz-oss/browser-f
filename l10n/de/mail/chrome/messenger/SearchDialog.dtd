@@ -40,7 +40,7 @@
 <!ENTITY threadColumn.label "Thema">
 <!ENTITY fromColumn.label "Von">
 <!ENTITY recipientColumn.label "Empfänger">
-<!ENTITY correspondentColumn.label "Gegenseite">
+<!ENTITY correspondentColumn.label "Beteiligte">
 <!ENTITY subjectColumn.label "Betreff">
 <!ENTITY dateColumn.label "Datum">
 <!ENTITY priorityColumn.label "Priorität">
@@ -62,7 +62,7 @@
 <!ENTITY threadColumn2.tooltip "Themenbäume anzeigen">
 <!ENTITY fromColumn2.tooltip "Nach Von sortieren">
 <!ENTITY recipientColumn2.tooltip "Nach Empfänger sortieren">
-<!ENTITY correspondentColumn2.tooltip "Nach Gegenseite sortieren">
+<!ENTITY correspondentColumn2.tooltip "Nach Beteiligten sortieren">
 <!ENTITY subjectColumn2.tooltip "Nach Betreff sortieren">
 <!ENTITY dateColumn2.tooltip "Nach Datum sortieren">
 <!ENTITY priorityColumn2.tooltip "Nach Priorität sortieren">

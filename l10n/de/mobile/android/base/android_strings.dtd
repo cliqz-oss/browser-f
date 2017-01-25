@@ -828,3 +828,8 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY helper_triple_readerview_open_message "Fügen Sie Seiten in der Leseansicht als Lesezeichen hinzu, um sie auch offline lesen zu können.">
 <!ENTITY helper_triple_readerview_open_button "Zu Lesezeichen hinzufügen">
 
+<!ENTITY activity_stream_topsites "Meistbesuchte Seiten">
+<!ENTITY activity_stream_highlights "Wichtige Seiten">
+<!-- LOCALIZATION NOTE (activity_stream_more): Link that opens the detailed bookmark/history lists
+     when pressed. -->
+<!ENTITY activity_stream_more "Mehr">

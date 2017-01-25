@@ -9,7 +9,6 @@
 <!ENTITY select.all.label "Alle Datentypen">
 <!ENTITY select.cookies.label "Nur Cookies">
 <!ENTITY select.permissions.label "Nur Berechtigungen">
-<!ENTITY select.permissionspwd.label "Nur Passwort-Berechtigungen">
 <!ENTITY select.preferences.label "Nur Einstellungen">
 <!ENTITY select.passwords.label "Nur Passwörter">
 <!ENTITY select.storage.label "Nur Speicher">
@@ -28,7 +27,6 @@
 
 <!ENTITY tab.cookies.label "Cookies">
 <!ENTITY tab.permissions.label "Berechtigungen">
-<!ENTITY tab.permissionspwd.label "Passwort-Berechtigungen">
 <!ENTITY tab.preferences.label "Einstellungen">
 <!ENTITY tab.passwords.label "Passwörter">
 <!ENTITY tab.storage.label "Speicher">
@@ -75,15 +73,6 @@
 <!ENTITY perm.host.placeholder "Einen Hostnamen eingeben">
 <!ENTITY perm.button.add.label "Hinzufügen">
 <!ENTITY perm.button.add.accesskey "H">
-
-<!-- password permissions -->
-<!ENTITY permpwd.UseDefault "Standard verwenden">
-<!ENTITY permpwd.AskAlways "Immer nachfragen">
-<!ENTITY permpwd.NeverSave "Nie speichern">
-
-<!ENTITY permpwd.host.placeholder "Einen Hostnamen eingeben">
-<!ENTITY permpwd.button.add.label "Hinzufügen">
-<!ENTITY permpwd.button.add.accesskey "H">
 
 <!-- preferences -->
 <!ENTITY prefs.description "Inhalts-Einstellungen sind ein Weg für &brandShortName;, um Einstellungen wie Zoom-Stufen spezifisch für eine Website zu speichern.">
@@ -154,8 +143,6 @@
 <!ENTITY forget.cookies.accesskey "C">
 <!ENTITY forget.permissions.label "Berechtigungen">
 <!ENTITY forget.permissions.accesskey "B">
-<!ENTITY forget.permissionspwd.label "Passwort-Berechtigungen">
-<!ENTITY forget.permissionspwd.accesskey "a">
 <!ENTITY forget.preferences.label "Inhalts-Einstellungen">
 <!ENTITY forget.preferences.accesskey "E">
 <!ENTITY forget.passwords.label "Passwörter">

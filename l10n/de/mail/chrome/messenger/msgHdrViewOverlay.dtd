@@ -5,6 +5,7 @@
 <!ENTITY toField4.label "An">
 <!ENTITY fromField4.label "Von">
 <!ENTITY senderField4.label "Sender">
+<!ENTITY author.label "Von">
 <!ENTITY organizationField4.label "Organisation">
 <!ENTITY replyToField4.label "Antwort an">
 
@@ -23,6 +24,8 @@
 
 <!ENTITY hdrArchiveButton1.label "Archivieren">
 <!ENTITY hdrArchiveButton1.tooltip "Diese Nachricht archivieren">
+<!ENTITY hdrOpenConversationButton1.label "Themenbaum">
+<!ENTITY hdrOpenConversationButton1.tooltip "Themenbaum dieser Nachricht anzeigen">
 <!ENTITY hdrSmartReplyButton1.label "Smart antworten">
 <!ENTITY hdrReplyButton1.label "Antworten">
 <!ENTITY hdrReplyButton2.tooltip "Dem Absender antworten">

@@ -194,8 +194,8 @@
 <!ENTITY sortByFromCmd.accesskey "V">
 <!ENTITY sortByRecipientCmd.label "Empfänger">
 <!ENTITY sortByRecipientCmd.accesskey "E">
-<!ENTITY sortByCorrespondentCmd.label "Gegenseite">
-<!ENTITY sortByCorrespondentCmd.accesskey "G">
+<!ENTITY sortByCorrespondentCmd.label "Beteiligte">
+<!ENTITY sortByCorrespondentCmd.accesskey "g">
 <!ENTITY sortByUnreadCmd.label "Gelesen / Ungelesen">
 <!ENTITY sortByUnreadCmd.accesskey "l">
 <!ENTITY sortByOrderReceivedCmd.label "Eingangsreihenfolge">
@@ -505,6 +505,7 @@
 <!ENTITY forwardButton.label "Weiterleiten">
 <!ENTITY fileButton.label "Ablegen">
 <!ENTITY archiveButton.label "Archivieren">
+<!ENTITY openConversationButton.label "Themenbaum">
 <!ENTITY nextButton.label "Nächste">
 <!ENTITY nextButtonToolbarItem.label "Nächste ungelesene">
 <!ENTITY nextMsgButton.label "Nächste">
@@ -547,6 +548,7 @@
 <!ENTITY forwardAsAttachment.tooltip "Ausgewählte Nachricht als Anhang weiterleiten">
 <!ENTITY fileButton.tooltip "Gewählte Nachricht(en) ablegen">
 <!ENTITY archiveButton.tooltip "Gewählte Nachricht(en) archivieren">
+<!ENTITY openConversationButton.tooltip "Themenbaum der Nachricht anzeigen">
 <!ENTITY nextButton.tooltip "Gehe zur nächsten ungelesenen Nachricht">
 <!ENTITY nextMsgButton.tooltip "Gehe zur nächsten Nachricht">
 <!ENTITY previousButton.tooltip "Gehe zur vorherigen ungelesenen Nachricht">
@@ -664,7 +666,7 @@
 <!ENTITY threadColumn.label "Thema">
 <!ENTITY fromColumn.label "Von">
 <!ENTITY recipientColumn.label "Empfänger">
-<!ENTITY correspondentColumn.label "Gegenseite">
+<!ENTITY correspondentColumn.label "Beteiligte">
 <!ENTITY subjectColumn.label "Betreff">
 <!ENTITY dateColumn.label "Datum">
 <!ENTITY priorityColumn.label "Priorität">
@@ -687,7 +689,7 @@
 <!ENTITY threadColumn2.tooltip "Themenbäume anzeigen">
 <!ENTITY fromColumn2.tooltip "Nach Von sortieren">
 <!ENTITY recipientColumn2.tooltip "Nach Empfänger sortieren">
-<!ENTITY correspondentColumn2.tooltip "Nach Gegenseite sortieren">
+<!ENTITY correspondentColumn2.tooltip "Nach Beteiligten sortieren">
 <!ENTITY subjectColumn2.tooltip "Nach Betreff sortieren">
 <!ENTITY dateColumn2.tooltip "Nach Datum sortieren">
 <!ENTITY priorityColumn2.tooltip "Nach Priorität sortieren">

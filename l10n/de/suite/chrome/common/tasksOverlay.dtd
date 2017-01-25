@@ -30,7 +30,7 @@
 <!ENTITY datamanCmd.label "Datenverwaltung">
 <!ENTITY datamanCmd.accesskey "D">
 
-<!ENTITY passwordManagerCmd.label "Passwort-Manager">
+<!ENTITY passwordManagerCmd.label "Passwortverwaltung">
 <!ENTITY passwordManagerCmd.accesskey "P">
 
 <!ENTITY passwordDisplayCmd.label "Gespeicherte Passwörter verwalten">
@@ -39,11 +39,11 @@
 <!ENTITY passwordExpireCmd.label "Abmelden (Log Out)">
 <!ENTITY passwordExpireCmd.accesskey "A">
 
-<!ENTITY downloadManagerCmd.label "Download-Manager">
+<!ENTITY downloadManagerCmd.label "Download-Verwaltung">
 <!ENTITY downloadManagerCmd.accesskey "M">
 <!ENTITY downloadManagerCmd.commandkey "j">
 
-<!ENTITY addOnsManagerCmd.label "Add-on-Manager">
+<!ENTITY addOnsManagerCmd.label "Add-on-Verwaltung">
 <!ENTITY addOnsManagerCmd.accesskey "A">
 <!ENTITY addOnsManagerCmd.commandkey "a">
 

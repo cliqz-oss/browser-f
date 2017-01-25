@@ -12,6 +12,8 @@
 <!ENTITY feedLocation.label          "Feed-URL:">
 <!ENTITY feedLocation.accesskey      "U">
 <!ENTITY feedLocation.placeholder    "Gültige Feed-URL eingeben">
+<!ENTITY locationValidate.label      "Validieren">
+<!ENTITY validateText.label          "Prüfe Gültigkeit und rufe gültige URL ab.">
 
 <!ENTITY feedFolder.label            "Artikel speichern in:">
 <!ENTITY feedFolder.accesskey        "s">
@@ -25,13 +27,10 @@
 <!ENTITY autotagUsePrefix.accesskey  "b">
 <!ENTITY autoTagPrefix.placeholder   "Anfangstext für Schlagwörter eingeben">
 
-<!ENTITY locationValidate.label      "Validieren">
-<!ENTITY validateText.label          "Prüfe Gültigkeit und rufe gültige URL ab.">
-
 <!ENTITY button.addFeed.label        "Hinzufügen">
 <!ENTITY button.addFeed.accesskey    "H">
-<!ENTITY button.editFeed.label       "Bearbeiten">
-<!ENTITY button.editFeed.accesskey   "B">
+<!ENTITY button.updateFeed.label     "Speichern">
+<!ENTITY button.updateFeed.accesskey "p">
 <!ENTITY button.removeFeed.label     "Entfernen">
 <!ENTITY button.removeFeed.accesskey "E">
 <!ENTITY button.importOPML.label     "Importieren">

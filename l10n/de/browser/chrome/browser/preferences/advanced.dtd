@@ -12,7 +12,7 @@
 <!ENTITY useCursorNavigation.accesskey   "M">
 <!ENTITY searchStartTyping.label         "Suche bereits beim Eintippen starten">
 <!ENTITY searchStartTyping.accesskey     "u">
-<!ENTITY blockAutoRefresh.label          "Warnen, wenn Webseiten versuchen umzuleiten oder neuzuladen">
+<!ENTITY blockAutoRefresh.label          "Warnen, wenn Webseiten versuchen umzuleiten oder neu zu laden">
 <!ENTITY blockAutoRefresh.accesskey      "W">
 <!ENTITY useOnScreenKeyboard.label       "Bildschirmtastatur falls notwendig anzeigen">
 <!ENTITY useOnScreenKeyboard.accesskey   "B">
@@ -30,7 +30,7 @@
 
 <!ENTITY dataChoicesTab.label            "Datenübermittlung">
 
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browserstatus an &vendorShortName;.">
+<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browser-Status an &vendorShortName;.">
 <!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
 <!ENTITY enableHealthReport.accesskey    "S">
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
@@ -40,9 +40,9 @@
 <!ENTITY enableTelemetryData.accesskey   "Z">
 <!ENTITY telemetryLearnMore.label        "Weitere Informationen">
 
-<!ENTITY crashReporterDesc.label         "&brandShortName; übermittelt Absturzberichte, um &vendorShortName; dabei zu helfen, den Browser stabiler und sicherer zu machen.">
-<!ENTITY enableCrashReporter.label       "Absturzmelder aktivieren">
-<!ENTITY enableCrashReporter.accesskey   "A">
+<!ENTITY crashReporterDesc2.label         "Absturzberichte helfen &vendorShortName; dabei, Probleme zu beheben und den Browser stabiler und sicherer zu machen.">
+<!ENTITY alwaysSubmitCrashReports.label   "&brandShortName; erlauben, bislang nicht gesendete Absturzberichte zu übermitteln">
+<!ENTITY alwaysSubmitCrashReports.accesskey "e">
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
 
 <!ENTITY networkTab.label                "Netzwerk">
@@ -75,7 +75,7 @@
 
 <!ENTITY updateTab.label                 "Update">
 
-<!ENTITY updateApp.label                 "&brandShortName;-Updates:">
+<!ENTITY updateApp.label                 "&brandShortName;-Updates">
 <!ENTITY updateAuto1.label               "Updates automatisch installieren (empfohlen: erhöhte Sicherheit)">
 <!ENTITY updateAuto1.accesskey           "U">
 <!ENTITY updateCheck.label               "Nach Updates suchen, aber vor der Installation nachfragen">
@@ -89,11 +89,11 @@
 <!ENTITY useService.label                "Einen Hintergrunddienst verwenden, um Updates zu installieren">
 <!ENTITY useService.accesskey            "g">
 
-<!ENTITY updateOthers.label              "Automatisch aktualisieren:">
+<!ENTITY updateOthers.label              "Automatisch aktualisieren">
 <!ENTITY enableSearchUpdate.label        "Suchmaschinen">
 <!ENTITY enableSearchUpdate.accesskey    "S">
 
-<!ENTITY offlineNotify.label             "Nachfragen, wenn Websites Daten für die Verwendung im Offline-Modus speichern möchten.">
+<!ENTITY offlineNotify.label             "Nachfragen, wenn Websites Daten für die Verwendung im Offline-Modus speichern möchten">
 <!ENTITY offlineNotify.accesskey         "w">
 <!ENTITY offlineNotifyExceptions.label   "Ausnahmen…">
 <!ENTITY offlineNotifyExceptions.accesskey "A">

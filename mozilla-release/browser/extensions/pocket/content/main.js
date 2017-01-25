@@ -487,7 +487,7 @@ var pktUI = (function() {
             var strings = {};
             var bundle = Services.strings.createBundle("chrome://pocket/locale/pocket.properties");
             var e = bundle.getSimpleEnumeration();
-            while(e.hasMoreElements()) {
+            while (e.hasMoreElements()) {
                 var str = e.getNext().QueryInterface(Components.interfaces.nsIPropertyElement);
                 if (str.key in data) {
                     strings[str.key] = bundle.formatStringFromName(str.key, data[str.key], data[str.key].length);

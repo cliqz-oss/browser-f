@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  managecerts.caption      "Zertifikate verwalten">
-<!ENTITY  managecerts.text         "Verwenden Sie den Zertifikat-Manager, um Ihre persönlichen Zertifikate sowie jene von anderen Personen und Zertifizierungsstellen zu verwalten.">
+<!ENTITY  managecerts.text         "Verwenden Sie den Zertifikatverwaltung, um Ihre persönlichen Zertifikate sowie jene von anderen Personen und Zertifizierungsstellen zu verwalten.">
 <!ENTITY  managecerts.button       "Zertifikate verwalten…">
 <!ENTITY  managecerts.accesskey    "Z">
 <!ENTITY  managedevices.caption    "Kryptographie-Module verwalten">
