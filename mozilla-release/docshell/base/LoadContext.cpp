@@ -62,9 +62,10 @@ LoadContext::LoadContext(nsIPrincipal* aPrincipal,
 }
 
 void LoadContext::SetPrivateness(bool enable) {
-  if (mUsePrivateBrowsing == enable)
+  const bool privateness = mOriginAttributes.mPrivateBrowsingId > 0;
+  if (privateness == enable)
     return;
-  mUsePrivateBrowsing = enable;
+  mOriginAttributes.mPrivateBrowsingId = enable ? 1 : 0;
   nsTObserverArray<nsWeakPtr>::ForwardIterator iter(mPrivacyObservers);
   while (iter.HasMore()) {
     nsWeakPtr ref = iter.GetNext();
@@ -72,7 +73,7 @@ void LoadContext::SetPrivateness(bool enable) {
     if (!obs) {
       mPrivacyObservers.RemoveElement(ref);
     } else {
-      obs->PrivateModeChanged(mUsePrivateBrowsing);
+      obs->PrivateModeChanged(mOriginAttributes.mPrivateBrowsingId > 0);
     }
   }
 }
