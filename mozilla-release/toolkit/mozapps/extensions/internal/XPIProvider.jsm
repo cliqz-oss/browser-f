@@ -59,14 +59,10 @@ XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
                                   "resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "isAddonPartOfE10SRollout",
                                   "resource://gre/modules/addons/E10SAddonsRollout.jsm");
-<<<<<<< HEAD
-XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
-                                 'resource://gre/modules/Timer.jsm');
-||||||| merged common ancestors
-=======
 XPCOMUtils.defineLazyModuleGetter(this, "LegacyExtensionsUtils",
                                   "resource://gre/modules/LegacyExtensionsUtils.jsm");
->>>>>>> origin/upstream-releases
+XPCOMUtils.defineLazyModuleGetter(this, 'setTimeout',
+                                 'resource://gre/modules/Timer.jsm');
 
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
@@ -264,14 +260,10 @@ const SIGNED_TYPES = new Set([
   "webextension",
   "extension",
   "experiment",
-<<<<<<< HEAD
+  "apiextension",
   "theme",
   "locale",
   "multipackage",
-||||||| merged common ancestors
-=======
-  "apiextension",
->>>>>>> origin/upstream-releases
 ]);
 
 // This is a random number array that can be used as "salt" when generating

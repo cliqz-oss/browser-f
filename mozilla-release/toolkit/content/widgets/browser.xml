@@ -235,13 +235,10 @@
                 onget="return this.mPrefs.QueryInterface(Components.interfaces.nsIPrefService);"
                 readonly="true"/>
 
-<<<<<<< HEAD
       <property name="asFrameLoaderOwner"
                 onget="return this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);"
                 readonly="true"/>
 
-||||||| merged common ancestors
-=======
       <!--
         Weak reference to the related browser (see
         nsIBrowser.getRelatedBrowser).
@@ -256,7 +253,6 @@
         ]]></setter>
       </property>
 
->>>>>>> origin/upstream-releases
       <field name="_docShell">null</field>
 
       <property name="docShell" readonly="true">
@@ -1265,18 +1261,8 @@
             PopupNotifications._swapBrowserNotifications(aOtherBrowser, this);
 
           try {
-<<<<<<< HEAD
             this.asFrameLoaderOwner.swapFrameLoaders(aOtherBrowser);
-          } catch(ex) {
-||||||| merged common ancestors
-            this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-                .swapFrameLoaders(aOtherBrowser);
-          } catch(ex) {
-=======
-            this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-                .swapFrameLoaders(aOtherBrowser);
           } catch (ex) {
->>>>>>> origin/upstream-releases
             // This may not be implemented for browser elements that are not
             // attached to a BrowserDOMWindow.
             console.error("nsIFrameLoaderOwner.swapFrameLoaders failed: ", ex);
@@ -1287,17 +1273,11 @@
             aOtherBrowser[field] = ourFieldValues[field];
           }
 
-<<<<<<< HEAD
           // This MUST be reset in order to reflect docShell swap.
           this._loadContext = null;
 
           this._resetPrivateBrowsingObserver();
 
-          // Re-attach the docShells to the form fill controller.
-||||||| merged common ancestors
-          // Re-attach the docShells to the form fill controller.
-=======
->>>>>>> origin/upstream-releases
           if (!this.isRemoteBrowser) {
             // Null the current nsITypeAheadFind instances so that they're
             // lazily re-created on access. We need to do this because they
@@ -1369,7 +1349,6 @@
           ]]>
         </body>
       </method>
-<<<<<<< HEAD
 
       <field name="_pbObserver">null</field>
       <method name="_resetPrivateBrowsingObserver">
@@ -1418,15 +1397,6 @@
         ]]>
         </body>
       </method>
-
-      <!-- This will go away if the binding has been removed for some reason. -->
-      <field name="_alive">true</field>
-||||||| merged common ancestors
-
-      <!-- This will go away if the binding has been removed for some reason. -->
-      <field name="_alive">true</field>
-=======
->>>>>>> origin/upstream-releases
     </implementation>
 
     <handlers>

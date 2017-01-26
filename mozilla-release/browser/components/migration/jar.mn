@@ -5,11 +5,5 @@
 browser.jar:
 *  content/browser/migration/migration.xul                    (content/migration.xul)
    content/browser/migration/migration.js                     (content/migration.js)
-<<<<<<< HEAD
-   content/browser/migration/automigration.properties         (content/automigration.properties)
    content/browser/aboutImportedTabs.xhtml                    (content/aboutImportedTabs.xhtml)
-||||||| merged common ancestors
-   content/browser/migration/automigration.properties         (content/automigration.properties)
-=======
->>>>>>> origin/upstream-releases
    content/browser/aboutWelcomeBack.xhtml                     (content/aboutWelcomeBack.xhtml)

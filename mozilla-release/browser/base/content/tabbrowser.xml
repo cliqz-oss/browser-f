@@ -1514,12 +1514,8 @@
               aForceNotRemote       = params.forceNotRemote;
               aNoReferrer           = params.noReferrer;
               aUserContextId        = params.userContextId;
-<<<<<<< HEAD
-              aPrivate              = params.private;
-||||||| merged common ancestors
-=======
               aRelatedBrowser       = params.relatedBrowser;
->>>>>>> origin/upstream-releases
+              aPrivate              = params.private;
             }
 
             var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -1538,15 +1534,9 @@
                                   allowMixedContent: aAllowMixedContent,
                                   forceNotRemote: aForceNotRemote,
                                   noReferrer: aNoReferrer,
-<<<<<<< HEAD
                                   userContextId: aUserContextId,
+                                  relatedBrowser: aRelatedBrowser,
                                   private: aPrivate });
-||||||| merged common ancestors
-                                  userContextId: aUserContextId });
-=======
-                                  userContextId: aUserContextId,
-                                  relatedBrowser: aRelatedBrowser });
->>>>>>> origin/upstream-releases
             if (!bgLoad)
               this.selectedTab = tab;
 
@@ -1932,15 +1922,9 @@
               browser = this._createBrowser({permanentKey: aTab.permanentKey,
                                              remote: remote,
                                              uriIsAboutBlank: uriIsAboutBlank,
-<<<<<<< HEAD
                                              userContextId: aParams.userContextId,
+                                             relatedBrowser: aParams.relatedBrowser,
                                              private: !!aParams.private});
-||||||| merged common ancestors
-                                             userContextId: aParams.userContextId});
-=======
-                                             userContextId: aParams.userContextId,
-                                             relatedBrowser: aParams.relatedBrowser});
->>>>>>> origin/upstream-releases
             }
 
             let notificationbox = this.getNotificationBox(browser);
@@ -2018,12 +2002,8 @@
             var aNoReferrer;
             var aUserContextId;
             var aEventDetail;
-<<<<<<< HEAD
-            var aPrivate;
-||||||| merged common ancestors
-=======
             var aRelatedBrowser;
->>>>>>> origin/upstream-releases
+            var aPrivate;
             if (arguments.length == 2 &&
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2042,12 +2022,8 @@
               aNoReferrer           = params.noReferrer;
               aUserContextId        = params.userContextId;
               aEventDetail          = params.eventDetail;
-<<<<<<< HEAD
-              aPrivate              = params.private;
-||||||| merged common ancestors
-=======
               aRelatedBrowser       = params.relatedBrowser;
->>>>>>> origin/upstream-releases
+              aPrivate              = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2118,15 +2094,9 @@
             // multi-process scenario.
             let browserParams = {
               forceNotRemote: aForceNotRemote,
-<<<<<<< HEAD
               userContextId:  aUserContextId,
+              relatedBrowser: aRelatedBrowser,
               private: !!aPrivate
-||||||| merged common ancestors
-              userContextId:  aUserContextId
-=======
-              userContextId:  aUserContextId,
-              relatedBrowser: aRelatedBrowser
->>>>>>> origin/upstream-releases
             };
             let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
             let b = t.linkedBrowser;
@@ -6461,13 +6431,7 @@
           <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
                     class="tab-background-end"/>
         </xul:hbox>
-<<<<<<< HEAD
-        <xul:hbox xbl:inherits="pinned,selected,visuallyselected,titlechanged,attention,private"
-||||||| merged common ancestors
-        <xul:hbox xbl:inherits="pinned,selected,visuallyselected,titlechanged,attention"
-=======
-        <xul:hbox xbl:inherits="pinned,selected=visuallyselected,titlechanged,attention"
->>>>>>> origin/upstream-releases
+        <xul:hbox xbl:inherits="pinned,selected=visuallyselected,titlechanged,attention,private"
                   class="tab-content" align="center">
           <xul:image xbl:inherits="fadein,pinned,busy,progress,selected=visuallyselected"
                      class="tab-throbber"

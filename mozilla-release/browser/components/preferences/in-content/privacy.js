@@ -187,13 +187,9 @@ var gPrivacyPane = {
                      gPrivacyPane.showBlockLists);
     setEventListener("changeBlockListPBM", "command",
                      gPrivacyPane.showBlockLists);
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
     setEventListener("browserContainersCheckbox", "command",
                      gPrivacyPane._checkBrowserContainers);
->>>>>>> origin/upstream-releases
   },
 
   // TRACKING PROTECTION MODE

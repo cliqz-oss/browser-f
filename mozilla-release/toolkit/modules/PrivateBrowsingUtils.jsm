@@ -43,12 +43,8 @@ this.PrivateBrowsingUtils = {
       // content window, which is in another process.
       return this.isWindowPrivate(chromeWin);
     }
-<<<<<<< HEAD
-    */
-||||||| merged common ancestors
-=======
     return this.privacyContextFromWindow(aBrowser.contentWindow).usePrivateBrowsing;
->>>>>>> origin/upstream-releases
+    */
   },
 
   privacyContextFromWindow: function pbu_privacyContextFromWindow(aWindow) {

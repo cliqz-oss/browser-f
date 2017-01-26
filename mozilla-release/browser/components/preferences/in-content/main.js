@@ -49,33 +49,6 @@ var gMainPane = {
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this), false);
 
-<<<<<<< HEAD
-#ifdef XP_WIN
-    // Functionality for "Show tabs in taskbar" on Windows 7 and up.
-    try {
-      let sysInfo = Cc["@mozilla.org/system-info;1"].
-                    getService(Ci.nsIPropertyBag2);
-      let ver = parseFloat(sysInfo.getProperty("version"));
-      let showTabsInTaskbar = document.getElementById("showTabsInTaskbar");
-      showTabsInTaskbar.hidden = ver < 6.1;
-    } catch (ex) {}
-#endif
-||||||| merged common ancestors
-    this.updateBrowserStartupLastSession();
-
-#ifdef XP_WIN
-    // Functionality for "Show tabs in taskbar" on Windows 7 and up.
-    try {
-      let sysInfo = Cc["@mozilla.org/system-info;1"].
-                    getService(Ci.nsIPropertyBag2);
-      let ver = parseFloat(sysInfo.getProperty("version"));
-      let showTabsInTaskbar = document.getElementById("showTabsInTaskbar");
-      showTabsInTaskbar.hidden = ver < 6.1;
-    } catch (ex) {}
-#endif
-=======
-    this.updateBrowserStartupLastSession();
-
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
       try {
@@ -86,7 +59,6 @@ var gMainPane = {
         showTabsInTaskbar.hidden = ver < 6.1;
       } catch (ex) {}
     }
->>>>>>> origin/upstream-releases
 
     // The "closing multiple tabs" and "opening multiple tabs might slow down
     // &brandShortName;" warnings provide options for not showing these

@@ -218,16 +218,12 @@ var gContentSearchController;
 
 function setupSearch()
 {
-<<<<<<< HEAD
-  return; // disable search engine
-||||||| merged common ancestors
-=======
+  return; // CLIQZ. Disable search engine
   // Set submit button label for when CSS background are disabled (e.g.
   // high contrast mode).
   document.getElementById("searchSubmit").value =
     document.body.getAttribute("dir") == "ltr" ? "\u25B6" : "\u25C0";
 
->>>>>>> origin/upstream-releases
   // The "autofocus" attribute doesn't focus the form element
   // immediately when the element is first drawn, so the
   // attribute is also used for styling when the page first loads.
@@ -259,7 +255,7 @@ function loadCompleted()
  */
 function loadSnippets()
 {
-  return; // disable snippets
+  return; // CLIQZ. Disable snippets
   if (!gSnippetsMap)
     throw new Error("Snippets map has not properly been initialized");
 
@@ -318,7 +314,7 @@ function loadSnippets()
 var _snippetsShown = false;
 function showSnippets()
 {
-  return; // disable snippets
+  return; // CLIQZ. Disable snippets
   let snippetsElt = document.getElementById("snippets");
 
   // Show about:rights notification, if needed.
@@ -370,7 +366,7 @@ function showSnippets()
  */
 function showDefaultSnippets()
 {
-  return; // disable snippets
+  return; // CLIQZ. Disable snippets
   // Clear eventual contents...
   let snippetsElt = document.getElementById("snippets");
   snippetsElt.innerHTML = "";

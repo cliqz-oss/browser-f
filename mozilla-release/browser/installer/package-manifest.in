@@ -366,10 +366,6 @@
 @RESPATH@/components/FeedProcessor.js
 @RESPATH@/components/PackagedAppUtils.js
 @RESPATH@/components/PackagedAppUtils.manifest
-<<<<<<< HEAD
-@RESPATH@/browser/components/AutoForgetTabsService.js
-||||||| merged common ancestors
-=======
 @RESPATH@/components/WellKnownOpportunisticUtils.js
 @RESPATH@/components/WellKnownOpportunisticUtils.manifest
 #ifndef XP_MACOSX
@@ -377,7 +373,7 @@
 @BINPATH@/components/nsDNSServiceDiscovery.manifest
 @BINPATH@/components/nsDNSServiceDiscovery.js
 #endif
->>>>>>> origin/upstream-releases
+@RESPATH@/browser/components/AutoForgetTabsService.js
 @RESPATH@/browser/components/BrowserFeeds.manifest
 @RESPATH@/browser/components/FeedConverter.js
 @RESPATH@/browser/components/FeedWriter.js

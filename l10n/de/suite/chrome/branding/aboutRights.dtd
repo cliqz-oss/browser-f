@@ -33,7 +33,7 @@
 <!ENTITY rights.intro-point3c ".">
 
 <!-- point 4 text for official branded builds -->
-<!ENTITY rights2.intro-point4a "Einige &brandShortName;-Funktionen verwenden web-basierte Informationsdienste, wie Add-on- oder SafeBrowsing-Dienste. Allerdings können wir keine Garantie dafür übernehmen, dass sie 100&#37; genau und fehlerfrei sind. Weitere Details, inklusive Informationen darüber, wie du diese Funktionen deaktivieren kannst, findest du in den 
+<!ENTITY rights2.intro-point4a "Einige &brandShortName;-Funktionen verwenden web-basierte Informationsdienste, wie Add-on- oder SafeBrowsing-Dienste. Allerdings können wir keine Garantie dafür übernehmen, dass sie 100&#37; genau und fehlerfrei sind. Weitere Details, inklusive Informationen darüber, wie du diese Funktionen deaktivieren kannst, findest du in den
 ">
 <!ENTITY rights.intro-point4b "Service-Bedingungen">
 <!ENTITY rights.intro-point4c ".">
@@ -45,19 +45,9 @@
      so that we can refer to text the user sees in the UI, without
      this page being forgotten every time those strings are updated.  -->
 <!-- intro paragraph for branded builds -->
-<<<<<<< HEAD
-<!ENTITY rights2.webservices-a "&brandFullName; verwendet web-basierte Informationsdienste (&quot;Services&quot;), wie Add-on-Empfehlungen und -Updates oder die SafeBrowsing-Funktion, die dir für den Gebrauch mit der Binaryversion von &brandShortName; unter den unten angegebenen Bedingungen zur Verfügung gestellt werden. Diese Dienste sind standardmäßig aktiviert. Falls du die Dienste nicht verwenden möchtest oder die Bedingungen für dich nicht akzeptabel sind, kannst du Anleitungen dafür, wie du eine bestimmte Funktion oder einen Service deaktivieren kannst, ">
-<!ENTITY rights2.webservices-b "hier">
-<!ENTITY rights2.webservices-c "finden. Andere Funktionen und Dienste können in den Anwendungseinstellungen deaktiviert werden.">
-||||||| merged common ancestors
-<!ENTITY rights2.webservices-a "&brandFullName; verwendet web-basierte Informationsdienste (&quot;Services&quot;), wie Add-on-Empfehlungen und -Updates oder die SafeBrowsing-Funktion, die Ihnen für den Gebrauch mit der Binaryversion von &brandShortName; unter den unten angegebenen Bedingungen zur Verfügung gestellt werden. Diese Dienste sind standardmäßig aktiviert. Falls Sie die Dienste nicht verwenden möchten oder die Bedingungen für Sie nicht akzeptabel sind, können Sie Anleitungen dafür, wie Sie eine bestimmte Funktion oder einen Service deaktivieren können, ">
-<!ENTITY rights2.webservices-b "hier">
-<!ENTITY rights2.webservices-c "finden. Andere Funktionen und Dienste können in den Anwendungseinstellungen deaktiviert werden.">
-=======
-<!ENTITY rights3.webservices-a "&brandFullName; bietet optionale Web-basierte Dienste an (&quot;Dienste&quot;), die für Ihre Verwendung mit dieser Binärversion von &brandShortName; wie unten angeführt zur Verfügung stehen.  Manche dieser Dienste (wie Add-on-Vorschläge und -Aktualisierungsdienste, der SafeBrowsing-Dienst oder die Funktion zur Mitteilungen zu standortbezogenem Browsen) sind standardmäßig aktiviert. Wenn Sie keine der untenstehenden Dienste verwenden wollen oder die Bedingungen nicht akzeptabel sind, finden Sie Anleitungen, wie bestimmte Funktionen oder Dienste deaktiviert werden können, ">
+<!ENTITY rights3.webservices-a "&brandFullName; bietet optionale Web-basierte Dienste an (&quot;Dienste&quot;), die für deine Verwendung mit dieser Binärversion von &brandShortName; wie unten angeführt zur Verfügung stehen. Manche dieser Dienste (wie Add-on-Vorschläge und -Aktualisierungsdienste, der SafeBrowsing-Dienst oder die Funktion zur Mitteilungen zu standortbezogenem Browsen) sind standardmäßig aktiviert. Wenn du keine der untenstehenden Dienste verwenden möchtest oder die Bedingungen nicht akzeptabel sind, findest du Anleitungen, wie bestimmte Funktionen oder Dienste deaktiviert werden können, ">
 <!ENTITY rights3.webservices-b "hier">
 <!ENTITY rights3.webservices-c ". Andere Funktionen und Dienste können in den Anwendungseinstellungen aktiviert oder deaktiviert werden.">
->>>>>>> origin/upstream-releases
 
 <!-- add-on related points for branded builds -->
 <!ENTITY rights.addons-a "Add-on-Dienste:">

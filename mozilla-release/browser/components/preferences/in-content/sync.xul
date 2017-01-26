@@ -35,16 +35,8 @@
       hidden="true"
       data-category="paneSync">
   <label class="header-name" flex="1">&paneSync.title;</label>
-<<<<<<< HEAD
   <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
-  <button class="help-button"
-          aria-label="&helpButton.label;"/>
-||||||| merged common ancestors
-  <button class="help-button"
-          aria-label="&helpButton.label;"/>
-=======
   <html:a class="help-button text-link" target="_blank" aria-label="&helpButton.label;"></html:a>
->>>>>>> origin/upstream-releases
 </hbox>
 
 <deck id="weavePrefsDeck" data-category="paneSync" hidden="true">

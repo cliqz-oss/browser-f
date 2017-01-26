@@ -2411,82 +2411,6 @@ NS_CompareLoadInfoAndLoadContext(nsIChannel *aChannel)
     return NS_ERROR_UNEXPECTED;
   }
 
-<<<<<<< HEAD
-    bool loadInfoUsePB = false;
-    rv = loadInfo->GetUsePrivateBrowsing(&loadInfoUsePB);
-    if (NS_FAILED(rv)) {
-      return NS_ERROR_UNEXPECTED;
-    }
-    bool loadContextUsePB = false;
-    rv = loadContext->GetUsePrivateBrowsing(&loadContextUsePB);
-    if (NS_FAILED(rv)) {
-      return NS_ERROR_UNEXPECTED;
-    }
-
-    LOG(("NS_CompareLoadInfoAndLoadContext - loadInfo: %d, %d, %d, %d; "
-         "loadContext: %d %d, %d, %d. [channel=%p]",
-         originAttrsLoadInfo.mAppId, originAttrsLoadInfo.mInIsolatedMozBrowser,
-         originAttrsLoadInfo.mUserContextId, loadInfoUsePB,
-         loadContextAppId, loadContextUsePB,
-         originAttrsLoadContext.mUserContextId, loadContextIsInBE,
-         aChannel));
-
-    MOZ_ASSERT(originAttrsLoadInfo.mAppId == loadContextAppId,
-               "AppId in the loadContext and in the loadInfo are not the "
-               "same!");
-
-    MOZ_ASSERT(originAttrsLoadInfo.mInIsolatedMozBrowser ==
-               loadContextIsInBE,
-               "The value of InIsolatedMozBrowser in the loadContext and in "
-               "the loadInfo are not the same!");
-
-    MOZ_ASSERT(originAttrsLoadInfo.mUserContextId ==
-               originAttrsLoadContext.mUserContextId,
-               "The value of mUserContextId in the loadContext and in the "
-               "loadInfo are not the same!");
-
-    // TODO: Fix this assertion for "forget" tabs
-    MOZ_ASSERT(loadInfoUsePB == loadContextUsePB,
-               "The value of usePrivateBrowsing in the loadContext and in the loadInfo "
-               "are not the same!");
-||||||| merged common ancestors
-    bool loadInfoUsePB = false;
-    rv = loadInfo->GetUsePrivateBrowsing(&loadInfoUsePB);
-    if (NS_FAILED(rv)) {
-      return NS_ERROR_UNEXPECTED;
-    }
-    bool loadContextUsePB = false;
-    rv = loadContext->GetUsePrivateBrowsing(&loadContextUsePB);
-    if (NS_FAILED(rv)) {
-      return NS_ERROR_UNEXPECTED;
-    }
-
-    LOG(("NS_CompareLoadInfoAndLoadContext - loadInfo: %d, %d, %d, %d; "
-         "loadContext: %d %d, %d, %d. [channel=%p]",
-         originAttrsLoadInfo.mAppId, originAttrsLoadInfo.mInIsolatedMozBrowser,
-         originAttrsLoadInfo.mUserContextId, loadInfoUsePB,
-         loadContextAppId, loadContextUsePB,
-         originAttrsLoadContext.mUserContextId, loadContextIsInBE,
-         aChannel));
-
-    MOZ_ASSERT(originAttrsLoadInfo.mAppId == loadContextAppId,
-               "AppId in the loadContext and in the loadInfo are not the "
-               "same!");
-
-    MOZ_ASSERT(originAttrsLoadInfo.mInIsolatedMozBrowser ==
-               loadContextIsInBE,
-               "The value of InIsolatedMozBrowser in the loadContext and in "
-               "the loadInfo are not the same!");
-
-    MOZ_ASSERT(originAttrsLoadInfo.mUserContextId ==
-               originAttrsLoadContext.mUserContextId,
-               "The value of mUserContextId in the loadContext and in the "
-               "loadInfo are not the same!");
-
-    MOZ_ASSERT(loadInfoUsePB == loadContextUsePB,
-               "The value of usePrivateBrowsing in the loadContext and in the loadInfo "
-               "are not the same!");
-=======
   bool loadContextIsInBE = false;
   rv = loadContext->GetIsInIsolatedMozBrowserElement(&loadContextIsInBE);
   if (NS_FAILED(rv)) {
@@ -2502,7 +2426,6 @@ NS_CompareLoadInfoAndLoadContext(nsIChannel *aChannel)
   rv = loadContext->GetUsePrivateBrowsing(&loadContextUsePB);
   if (NS_FAILED(rv)) {
     return NS_ERROR_UNEXPECTED;
->>>>>>> origin/upstream-releases
   }
 
   LOG(("NS_CompareLoadInfoAndLoadContext - loadInfo: %d, %d, %d, %d, %d; "

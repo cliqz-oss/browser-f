@@ -1617,15 +1617,11 @@ function Update(update) {
     }
   }
 
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-=======
   if (!this.displayVersion) {
     this.displayVersion = this.appVersion;
   }
 
->>>>>>> origin/upstream-releases
+#if 0
   // Don't allow the background interval to be greater than 10 minutes.
   this.backgroundInterval = Math.min(this.backgroundInterval, 600);
 

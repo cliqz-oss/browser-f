@@ -133,14 +133,10 @@ browser.jar:
 *       content/browser/newtab/newTab.js              (content/newtab/newTab.js)
         content/browser/newtab/newTab.css             (content/newtab/newTab.css)
         content/browser/newtab/newTab.inadjacent.json         (content/newtab/newTab.inadjacent.json)
-<<<<<<< HEAD
+        content/browser/newtab/alternativeDefaultSites.json   (content/newtab/alternativeDefaultSites.json)
 #if CQZ_AUTO_PRIVATE_TAB
         content/browser/PrivateTabUI.jsm              (content/PrivateTabUI.jsm)
 #endif
-||||||| merged common ancestors
-=======
-        content/browser/newtab/alternativeDefaultSites.json   (content/newtab/alternativeDefaultSites.json)
->>>>>>> origin/upstream-releases
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)
