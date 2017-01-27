@@ -61,7 +61,7 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
 
 function setAttributes(aNode, aAttrs) {
   let doc = aNode.ownerDocument;
-  for (let [name, value] of Iterator(aAttrs)) {
+  for (let [name, value] of Object.entries(aAttrs)) {
     if (!value) {
       if (aNode.hasAttribute(name))
         aNode.removeAttribute(name);
@@ -181,7 +181,7 @@ const CustomizableWidgets = [
     onViewShowing: function(aEvent) {
       // Populate our list of history
       const kMaxResults = 15;
-      let doc = aEvent.detail.ownerDocument;
+      let doc = aEvent.target.ownerDocument;
       let win = doc.defaultView;
 
       let options = PlacesUtils.history.getNewQueryOptions();
@@ -553,14 +553,8 @@ const CustomizableWidgets = [
       let win = doc.defaultView;
       let menu = doc.getElementById("viewSidebarMenu");
 
-      // First clear any existing menuitems then populate. Social sidebar
-      // options may not have been added yet, so we do that here. Add it to the
+      // First clear any existing menuitems then populate. Add it to the
       // standard menu first, then copy all sidebar options to the panel.
-      win.SocialSidebar.clearProviderMenus();
-      let providerMenuSeps = menu.getElementsByClassName("social-provider-menu");
-      if (providerMenuSeps.length > 0)
-        win.SocialSidebar.populateProviderMenu(providerMenuSeps[0]);
-
       let sidebarItems = doc.getElementById("PanelUI-sidebarItems");
       clearSubview(sidebarItems);
       fillSubviewFromMenuItems([...menu.children], sidebarItems);
@@ -577,7 +571,7 @@ const CustomizableWidgets = [
       node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
       node.setAttribute("tooltiptext", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
       node.setAttribute("removable", "true");
-      node.setAttribute("observes", "Social:PageShareOrMark");
+      node.setAttribute("observes", "Social:PageShareable");
       node.setAttribute("command", "Social:SharePage");
 
       let listener = {
@@ -913,7 +907,7 @@ const CustomizableWidgets = [
       }
     },
     onViewShowing: function(aEvent) {
-      let doc = aEvent.detail.ownerDocument;
+      let doc = aEvent.target.ownerDocument;
       let container = doc.getElementById("PanelUI-feeds");
       let gotView = doc.defaultView.FeedHandler.buildFeedList(container, true);
 
@@ -1132,7 +1126,7 @@ const CustomizableWidgets = [
       }
     },
     onViewShowing: function(aEvent) {
-      let doc = aEvent.detail.ownerDocument;
+      let doc = aEvent.target.ownerDocument;
 
       let items = doc.getElementById("PanelUI-containersItems");
 

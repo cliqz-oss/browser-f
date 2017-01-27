@@ -33,10 +33,10 @@
 <!ENTITY fontColor.accesskey                  "T">
 <!ENTITY bgColor.label                        "Hintergrund:">
 <!ENTITY bgColor.accesskey                    "H">
-<!ENTITY defaultCompose.label                 "Vorgaben für Formatierung bei Texterstellung:">
-<!ENTITY defaultBodyText.label                "Nachrichten Text (Die ENTER Taste fügt eine neue Zeile hinzu)">
-<!ENTITY defaultBodyText.accesskey            "r">
-<!ENTITY defaultParagraph.label               "Absatz (Die ENTER Taste fügt eine neue Absatz hinzu)">
+<!ENTITY defaultCompose.label                 "Standardfomat für Verfassen:">
+<!ENTITY defaultBodyText.label                "Nachrichtentext (Eingabetaste erzeugt eine neue Zeile)">
+<!ENTITY defaultBodyText.accesskey            "c">
+<!ENTITY defaultParagraph.label               "Absatz (Eingabetaste erzeugt einen neuen Absatz)">
 <!ENTITY defaultParagraph.accesskey           "b">
 
 <!ENTITY selectHeaderType.label               "Antwort-Kopfzeilen-Typ auswählen:">

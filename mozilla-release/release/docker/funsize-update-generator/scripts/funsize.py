@@ -23,6 +23,7 @@ ALLOWED_URL_PREFIXES = [
     "https://queue.taskcluster.net/",
     "http://ftp.mozilla.org/",
     "http://download.mozilla.org/",
+    "https://archive.mozilla.org/",
 ]
 
 DEFAULT_FILENAME_TEMPLATE = "{appName}-{branch}-{version}-{platform}-" \
@@ -210,8 +211,8 @@ def main():
             complete_mars["%s_size" % mar_type] = os.path.getsize(dest)
             complete_mars["%s_hash" % mar_type] = get_hash(dest)
             unpack(work_env, dest, unpack_dir)
-            log.info("AV-scanning %s ...", unpack_dir)
-            sh.clamscan("-r", unpack_dir, _timeout=600, _err_to_out=True)
+            log.info("Skipping AV-scanning %s ...", unpack_dir)
+            # sh.clamscan("-r", unpack_dir, _timeout=600, _err_to_out=True)
             log.info("Done.")
 
         path = os.path.join(work_env.workdir, "to")

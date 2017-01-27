@@ -8,11 +8,11 @@
 <!ENTITY zoomWindow.label         "Zoom">
 <!ENTITY windowMenu.label         "Fenster">
 
-<!ENTITY helpMenu.label           "Hilfe"> 
-<!ENTITY helpMenu.accesskey       "H"> 
+<!ENTITY helpMenu.label           "Hilfe">
+<!ENTITY helpMenu.accesskey       "H">
 <!-- LOCALIZATION NOTE some localizations of Windows (ex:french, german) use "?"
                        for the help button in the menubar but Gnome does not.   -->
-<!ENTITY helpMenuWin.label        "Hilfe"> 
+<!ENTITY helpMenuWin.label        "Hilfe">
 <!ENTITY helpMenuWin.accesskey    "H">
 <!ENTITY aboutProduct2.label      "Über &brandShorterName;">
 <!ENTITY aboutProduct2.accesskey  "e">
@@ -20,7 +20,7 @@
 <!ENTITY productHelp2.accesskey   "H">
 <!ENTITY helpMac.commandkey       "?">
 
-<!ENTITY helpKeyboardShortcuts.label     "Tastaturkürzel (Firefox)">
+<!ENTITY helpKeyboardShortcuts.label     "Tastenkombinationen (Firefox)">
 <!ENTITY helpKeyboardShortcuts.accesskey "T">
 
 <!ENTITY helpSafeMode.label       "Im abgesicherten Modus neu starten…">

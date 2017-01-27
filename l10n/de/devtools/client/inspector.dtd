@@ -20,3 +20,8 @@
 <!-- LOCALIZATION NOTE (inspectorEyeDropper.label): A string displayed as the tooltip of
      a button in the inspector which toggles the Eyedropper tool -->
 <!ENTITY inspectorEyeDropper.label       "Eine Farbe auf der Seite identifizieren">
+
+<!-- LOCALIZATION NOTE (inspectorBreadcrumbsGroup): A string visible only to a
+     screen reader and is used to label (using aria-label attribute) a container
+     for inspector breadcrumbs -->
+<!ENTITY inspectorBreadcrumbsGroup       "Ausschnitt">

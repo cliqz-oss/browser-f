@@ -46,7 +46,6 @@ LoadContext::LoadContext(nsIPrincipal* aPrincipal,
   : mTopFrameElement(nullptr)
   , mNestedFrameId(0)
   , mIsContent(true)
-  , mUsePrivateBrowsing(false)
   , mUseRemoteTabs(false)
 #ifdef DEBUG
   , mIsNotNull(true)
@@ -54,20 +53,19 @@ LoadContext::LoadContext(nsIPrincipal* aPrincipal,
 {
   PrincipalOriginAttributes poa = BasePrincipal::Cast(aPrincipal)->OriginAttributesRef();
   mOriginAttributes.InheritFromDocToChildDocShell(poa);
-  mOriginAttributes.SyncAttributesWithPrivateBrowsing(mUsePrivateBrowsing);
   if (!aOptionalBase) {
     return;
   }
 
   MOZ_ALWAYS_SUCCEEDS(aOptionalBase->GetIsContent(&mIsContent));
-  MOZ_ALWAYS_SUCCEEDS(aOptionalBase->GetUsePrivateBrowsing(&mUsePrivateBrowsing));
   MOZ_ALWAYS_SUCCEEDS(aOptionalBase->GetUseRemoteTabs(&mUseRemoteTabs));
 }
 
 void LoadContext::SetPrivateness(bool enable) {
-  if (mUsePrivateBrowsing == enable)
+  const bool privateness = mOriginAttributes.mPrivateBrowsingId > 0;
+  if (privateness == enable)
     return;
-  mUsePrivateBrowsing = enable;
+  mOriginAttributes.mPrivateBrowsingId = enable ? 1 : 0;
   nsTObserverArray<nsWeakPtr>::ForwardIterator iter(mPrivacyObservers);
   while (iter.HasMore()) {
     nsWeakPtr ref = iter.GetNext();
@@ -75,7 +73,7 @@ void LoadContext::SetPrivateness(bool enable) {
     if (!obs) {
       mPrivacyObservers.RemoveElement(ref);
     } else {
-      obs->PrivateModeChanged(mUsePrivateBrowsing);
+      obs->PrivateModeChanged(mOriginAttributes.mPrivateBrowsingId > 0);
     }
   }
 }
@@ -156,7 +154,7 @@ LoadContext::GetUsePrivateBrowsing(bool* aUsePrivateBrowsing)
 
   NS_ENSURE_ARG_POINTER(aUsePrivateBrowsing);
 
-  *aUsePrivateBrowsing = mUsePrivateBrowsing;
+  *aUsePrivateBrowsing = mOriginAttributes.mPrivateBrowsingId > 0;
   return NS_OK;
 }
 
@@ -238,7 +236,7 @@ LoadContext::IsTrackingProtectionOn(bool* aIsTrackingProtectionOn)
 
   if (Preferences::GetBool("privacy.trackingprotection.enabled", false)) {
     *aIsTrackingProtectionOn = true;
-  } else if (mUsePrivateBrowsing &&
+  } else if ((mOriginAttributes.mPrivateBrowsingId > 0) &&
              Preferences::GetBool("privacy.trackingprotection.pbmode.enabled", false)) {
     *aIsTrackingProtectionOn = true;
   } else {

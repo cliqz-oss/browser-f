@@ -62,8 +62,8 @@
 <!ENTITY cmd.copyDownloadLink.accesskey   "D">
 <!ENTITY cmd.removeFromHistory.label      "Aus Chronik entfernen">
 <!ENTITY cmd.removeFromHistory.accesskey  "e">
-<!ENTITY cmd.clearList.label              "Liste leeren">
-<!ENTITY cmd.clearList.accesskey          "L">
+<!ENTITY cmd.clearList2.label             "Schnellzugriffsliste leeren">
+<!ENTITY cmd.clearList2.accesskey         "S">
 <!ENTITY cmd.clearDownloads.label         "Liste leeren">
 <!ENTITY cmd.clearDownloads.accesskey     "L">
 <!-- LOCALIZATION NOTE (cmd.unblock2.label):
@@ -108,6 +108,8 @@
      -->
 <!ENTITY downloadsHistory.label           "Alle Downloads anzeigen">
 <!ENTITY downloadsHistory.accesskey       "w">
+
+<!ENTITY openDownloadsFolder.label       "Ordner &quot;Downloads&quot; öffnen">
 
 <!ENTITY clearDownloadsButton.label       "Liste leeren">
 <!ENTITY clearDownloadsButton.tooltip     "Entfernt abgeschlossene, abgebrochene und fehlgeschlagene Downloads aus der Liste">

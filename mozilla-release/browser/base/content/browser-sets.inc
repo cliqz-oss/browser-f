@@ -20,7 +20,8 @@
     <command id="cmd_handleBackspace" oncommand="BrowserHandleBackspace();" />
     <command id="cmd_handleShiftBackspace" oncommand="BrowserHandleShiftBackspace();" />
 
-    <command id="cmd_newNavigatorTab" oncommand="BrowserOpenNewTabOrWindow(event);" reserved="true"/>
+    <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);" reserved="true"/>
+    <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();" reserved="true"/>
     <command id="cmd_newForgetTab"
         reserved="true"
         oncommand="BrowserOpenPrivateTab();"/>
@@ -110,12 +111,9 @@
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
     <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
     <command id="Social:SharePage" oncommand="SocialShare.sharePage();"/>
-    <command id="Social:ToggleSidebar" oncommand="SocialSidebar.toggleSidebar();" hidden="true"/>
-    <command id="Social:ToggleNotifications" oncommand="Social.toggleNotifications();" hidden="true"/>
 #if 0
     <command id="Social:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/service');"/>
 #endif
-    <command id="Chat:Focus" oncommand="Cu.import('resource:///modules/Chat.jsm', {}).Chat.focus(window);"/>
   </commandset>
 
   <commandset id="placesCommands">
@@ -126,7 +124,7 @@
   </commandset>
 
   <broadcasterset id="mainBroadcasterSet">
-    <broadcaster id="Social:PageShareOrMark" disabled="true"/>
+    <broadcaster id="Social:PageShareable" disabled="true"/>
     <broadcaster id="viewBookmarksSidebar" autoCheck="false" label="&bookmarksButton.label;"
                  type="checkbox" group="sidebar" sidebarurl="chrome://browser/content/bookmarks/bookmarksPanel.xul"
                  oncommand="SidebarUI.toggle('viewBookmarksSidebar');"/>
@@ -189,7 +187,6 @@
 #endif
 
     <broadcaster id="workOfflineMenuitemState"/>
-    <broadcaster id="socialSidebarBroadcaster" hidden="true"/>
 
     <broadcaster id="devtoolsMenuBroadcaster_PageSource"
                  label="&pageSourceCmd.label;"
@@ -204,7 +201,7 @@
          key="&newNavigatorCmd.key;"
          command="cmd_newNavigator"
          modifiers="accel"/>
-    <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel" command="cmd_newNavigatorTab"/>
+    <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel" command="cmd_newNavigatorTabNoEvent"/>
     <key id="key_newForgetTab"
         key="&forgetTabCmd.commandkey;"
         modifiers="accel,shift"
@@ -326,17 +323,6 @@
 # overridden for other purposes there.
     <key id="viewBookmarksSidebarWinKb" key="&bookmarksWinCmd.commandkey;" command="viewBookmarksSidebar" modifiers="accel"/>
 #endif
-
-    <!--<key id="markPage" key="&markPageCmd.commandkey;" command="Social:TogglePageMark" modifiers="accel,shift"/>-->
-    <key id="focusChatBar" key="&social.chatBar.commandkey;" command="Chat:Focus"
-#ifdef XP_MACOSX
-# Sadly the devtools uses shift-accel-c on non-mac and alt-accel-c everywhere else
-# So we just use the other
-         modifiers="accel,shift"
-#else
-         modifiers="accel,alt"
-#endif
-    />
 
     <key id="key_stop" keycode="VK_ESCAPE" command="Browser:Stop"/>
 
