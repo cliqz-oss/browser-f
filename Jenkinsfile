@@ -122,7 +122,7 @@ jobs["windows"] = {
                 accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
+                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=jenkins-slave-browser-f"
                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         timeout(60) {
