@@ -36,6 +36,10 @@ listitem.offlineapp {
   margin-top: 10px;
 }
 
+.privacy-managers {
+  margin-top: 30px;
+}
+
 .cliqz-feature {
   -moz-box-orient: vertical;
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#cliqz-feature");
