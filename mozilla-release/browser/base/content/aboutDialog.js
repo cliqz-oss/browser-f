@@ -42,6 +42,8 @@ function init(aEvent)
     // Pref is unset
   }
 
+// CLIQZ. We don't use "version" element in CLIQZ browser at all
+/*
   // Include the build ID and display warning if this is an "a#" (nightly or aurora) build
   let versionField = document.getElementById("version");
   let version = Services.appinfo.version;
@@ -63,7 +65,7 @@ function init(aEvent)
                      : "aboutDialog.architecture.thirtyTwoBit";
   let arch = bundle.GetStringFromName(archResource);
   versionField.textContent += ` (${arch})`;
-
+*/
   if (AppConstants.MOZ_UPDATER) {
     gAppUpdater = new appUpdater();
 
