@@ -163,7 +163,7 @@ def getEC2Slave(String jenkinsFolderPath) {
 
     // This is a new slave, so we need to bootstrap it
     if (!nodeId) {
-      nodeId = "browser-f-${env.JOB_BASE_NAME}"
+      nodeId = "jenkins-slave-browser-f-${env.JOB_BASE_NAME}"
       try {
           createNode(nodeId, jenkinsFolderPath)
           setNodeLabel(nodeId, slaveLabel)
