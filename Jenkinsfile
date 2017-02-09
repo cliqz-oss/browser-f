@@ -62,7 +62,7 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:1901201701', 
+        string(defaultValue: 'cliqz/ansible:3101201703', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -122,7 +122,7 @@ jobs["windows"] = {
                 accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
+                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=browser-f -e jenkins_id=${ec2_node.get('nodeId')}"
                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         timeout(60) {
@@ -136,7 +136,7 @@ jobs["windows"] = {
                 } // withCredentials
 
                 // Get an IP address of the newly created slave
-                def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                 def nodeIP
                 
                 writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
@@ -159,7 +159,7 @@ jobs["windows"] = {
                 } // withCredentials
             
                 // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-                def prov_args = "-u 0 -e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
+                def prov_args = "-u 0 -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
                 docker.withRegistry(DOCKER_REGISTRY_URL) {
                     timeout(60) {
                         def image = docker.image(IMAGE_NAME)
@@ -370,8 +370,6 @@ jobs["mac"] = {
     }
 }
     
-
-
 jobs["linux"] = {
     node('browser') {
         ws('build') {
