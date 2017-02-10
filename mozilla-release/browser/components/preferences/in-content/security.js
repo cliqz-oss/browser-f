@@ -337,6 +337,7 @@ var gSecurityPane = {
 var gPasswordManagers = {
   init: function(){
     this._listBox = document.getElementById("password-managers-list");
+    this._listBox.initBinding = gPasswordManagers.init.bind(this);
 
     Promise.all([this.getAvailable(), this.getExisting()]).then((function(results){
       var available = results[0],
@@ -406,6 +407,7 @@ var gPasswordManagers = {
 var gPrivacyManagers = {
   init: function(){
     this._listBox = document.getElementById("privacy-managers-list");
+    this._listBox.initBinding = gPrivacyManagers.init.bind(this);
 
     Promise.all([this.getAvailable(), this.getExisting()]).then((function(results){
       var available = results[0],

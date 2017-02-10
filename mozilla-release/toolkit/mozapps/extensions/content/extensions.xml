@@ -1821,6 +1821,22 @@
           const nIframe = doc.getElementsByTagName('iframe').length;
           var nTry = 10;
 
+          // This guy is in charge on calling the init() (as dereferenced) of the installed
+          // element richlistitem container (currently gPrivacyManager | gPasswordManager)
+          function refreshElement(button) {
+            let parentContainer = button.closest('.list');
+            parentContainer.initBinding();
+          }
+
+          function isLastPassContainer(button) {
+            // TODO: the lastpass container (gPrivacyManager) can contain other addons
+            //       we should implement addon level init() (not only group-container level init()),
+            //       identify the exact addon that was changed and init() only it
+
+            let parentContainer = button.closest('.list');
+            return parentContainer.children.some(childEntry => childEntry.value == 'support@lastpass.com')
+          }
+
           function openPopup() {
             var lpBtn = doc.getElementById("toggle-button--supportlastpasscom-lastpass-button");
             if(lpBtn) {
@@ -1842,16 +1858,18 @@
                 },
                 onDownloadFailed: function() {
                   progress.textContent = gStrings.GetStringFromName("installDownloadFailed");
-                  setTimeout(window.location.reload, 2000);
+                  setTimeout(refreshElement(button), 2000);
                 },
                 onInstallFailed: function() {
                   progress.textContent = gStrings.GetStringFromName("installFailed");
-                  setTimeout(window.location.reload, 2000);
+                  setTimeout(refreshElement(button), 2000);
                 },
                 onInstallEnded: function(aInstall, aAddon) {
                   setTimeout(function() {
-                    timer.initWithCallback(openPopup, 1500, Ci.nsITimer.TYPE_ONE_SHOT);
-                    window.location.reload();
+                    if (isLastPassContainer(button)) {
+                      timer.initWithCallback(openPopup, 1500, Ci.nsITimer.TYPE_ONE_SHOT);
+                    }
+                    refreshElement(button);
                   }, 1000);
                 }
               });
