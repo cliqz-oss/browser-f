@@ -125,31 +125,33 @@ jobs["windows"] = {
                 accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
-                    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} \
-                        -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
-                    def prov_args = "-u 0 -e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
+                    def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                    def bootstrap_args = "-u 0 "
+                    def prov_args = "-u 0 "
                     def nodeIP
+
                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         timeout(60) {
                             def image = docker.image(params.IMAGE_NAME)
                             image.pull()
                             docker.image(image.imageName()).inside(bootstrap_args) {
-                                sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
+                                withEnv([
+                                    "aws_access_key=${AWS_ACCESS_KEY_ID}",
+                                    "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+                                    "instance_id=${ec2_node.get('nodeId')}",
+                                    "instance_name=browser-f"
+                                    ]) {
+                                       sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
+                                }
                             }
                         }
                     } // withRegistry
-                    
-                    // Get an IP address of the newly created slave
-                    withEnv([
-                          "AWS_DEFAULT_REGION=${params.AWS_REGION}"    
-                          ]) {
-                            // Retry three times to get the IP from amazon...
-                            retry(3) {
-                                nodeIP = sh(returnStdout: true, script: "${command}").trim()
-                                sleep 15
-                            }
+
+                    // Retry three times to get the IP from amazon...
+                    retry(3) {
+                        nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                        sleep 15
                     }
                     // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
                     docker.withRegistry(DOCKER_REGISTRY_URL) {
@@ -157,7 +159,14 @@ jobs["windows"] = {
                             def image = docker.image(IMAGE_NAME)
 
                             docker.image(image.imageName()).inside(prov_args) {
-                                sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                withEnv([
+                                    "instance_name=${ec2_node.get('nodeId')}",
+                                    "JENKINS_URL=${env.JENKINS_URL}",
+                                    "NODE_ID=${ec2_node.get('nodeId')}",
+                                    "NODE_SECRET=${ec2_node.get('secret')}"
+                                    ]){
+                                    sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                }
                             }
                         }
                     } // withRegistry
