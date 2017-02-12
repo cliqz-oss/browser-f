@@ -26,6 +26,7 @@ def getIdleSlave(slaveLabel) {
 
 properties([
     [$class: 'JobRestrictionProperty'], 
+    disableConcurrentBuilds(),
     parameters([
         string(defaultValue: 'pr', name: 'RELEASE_CHANNEL'),
         string(defaultValue: 'google-api-key', 
@@ -108,6 +109,11 @@ jobs["windows"] = {
             }    
         }
     }
+    // Check if there are later jobs wating in a queue and abort 
+    if (helpers.hasNewerQueuedJobs()) {
+        error("Has Jobs in queue, aborting")
+    }
+
     // Try to get a jenkins slave. If the slave was created by this action
     // we need to bootstrap it with ansible
     def ec2_node = helpers.getEC2Slave("windows pr", "c:/jenkins")
@@ -117,63 +123,63 @@ jobs["windows"] = {
 
         node('docker && us-east-1') {
             ws() {
-                writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
-                sh "chmod 0600 /home/ubuntu/.aws/config"
+                stage("EC2 Slave Provisionning") {
+                    writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
+                    sh "chmod 0600 /home/ubuntu/.aws/config"
 
-                withCredentials([
-                [$class: 'AmazonWebServicesCredentialsBinding', 
-                accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
-                    def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-                    def bootstrap_args = "-u 0 "
-                    def prov_args = "-u 0 "
-                    def nodeIP
+                    withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', 
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
+                        def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                        def bootstrap_args = "-u 0 "
+                        def prov_args = "-u 0 "
+                        def nodeIP
 
-                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
-                    docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                        timeout(60) {
-                            def image = docker.image(params.IMAGE_NAME)
-                            image.pull()
-                            docker.image(image.imageName()).inside(bootstrap_args) {
-                                withEnv([
-                                    "aws_access_key=${AWS_ACCESS_KEY_ID}",
-                                    "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
-                                    "jenkins_id=${ec2_node.get('nodeId')}",
-                                    "instance_name=browser-f"
-                                    ]) {
-                                       sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
+                        sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                        docker.withRegistry(params.DOCKER_REGISTRY_URL) {
+                            timeout(60) {
+                                def image = docker.image(params.IMAGE_NAME)
+                                image.pull()
+                                docker.image(image.imageName()).inside(bootstrap_args) {
+                                    withEnv([
+                                        "aws_access_key=${AWS_ACCESS_KEY_ID}",
+                                        "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+                                        "jenkins_id=${ec2_node.get('nodeId')}",
+                                        "instance_name=browser-f"
+                                        ]) {
+                                           sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
+                                    }
                                 }
                             }
+                        } // withRegistry
+
+                        // Retry three times to get the IP from amazon...
+                        retry(3) {
+                            nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                            sleep 15
                         }
-                    } // withRegistry
+                        // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
+                        docker.withRegistry(DOCKER_REGISTRY_URL) {
+                            timeout(60) {
+                                def image = docker.image(IMAGE_NAME)
 
-                    // Retry three times to get the IP from amazon...
-                    retry(3) {
-                        nodeIP = sh(returnStdout: true, script: "${command}").trim()
-                        sleep 15
-                    }
-                    // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-                    docker.withRegistry(DOCKER_REGISTRY_URL) {
-                        timeout(60) {
-                            def image = docker.image(IMAGE_NAME)
-
-                            docker.image(image.imageName()).inside(prov_args) {
-                                withEnv([
-                                    "instance_name=${ec2_node.get('nodeId')}",
-                                    "JENKINS_URL=${env.JENKINS_URL}",
-                                    "NODE_ID=${ec2_node.get('nodeId')}",
-                                    "NODE_SECRET=${ec2_node.get('secret')}"
-                                    ]){
-                                    sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                docker.image(image.imageName()).inside(prov_args) {
+                                    withEnv([
+                                        "instance_name=${ec2_node.get('nodeId')}",
+                                        "JENKINS_URL=${env.JENKINS_URL}",
+                                        "NODE_ID=${ec2_node.get('nodeId')}",
+                                        "NODE_SECRET=${ec2_node.get('secret')}"
+                                        ]){
+                                        sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                    }
                                 }
                             }
-                        }
-                    } // withRegistry
-                } // withCredentials
-                
-              
-            }
+                        } // withRegistry
+                    } // withCredentials
+                } // stage
+            } // ws
         } // node
     } // endIf
 

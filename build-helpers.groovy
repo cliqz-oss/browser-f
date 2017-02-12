@@ -145,6 +145,16 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+def hasNewerQueuedJobs() {
+  def queue = jenkins.model.Jenkins.getInstance().getQueue().getItems()
+  for (int i=0; i < queue.length; i++) {
+    if (queue[i].task.getName() == env.JOB_NAME ) {
+      echo "Jobs in queue, aborting"
+      return true
+    }
+  }
+  return false
+}
 
 @NonCPS
 def getEC2Slave(String slaveLabel, String jenkinsFolderPath) {
