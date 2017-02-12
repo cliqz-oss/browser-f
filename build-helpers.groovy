@@ -163,9 +163,11 @@ def getEC2Slave(String slaveLabel, String jenkinsFolderPath) {
 
     for (slave in Hudson.instance.slaves) {
       if (slave.getLabelString().contains(slaveLabel)) {
-        if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
-          nodeId = slave.name
-          result['created'] = false
+        if (!slave.getComputer().isOffline()) {
+          if (node.getComputer().countBusy() == 0) {
+            nodeId = slave.name
+            result['created'] = false
+          } 
         } 
       }     
     } 
