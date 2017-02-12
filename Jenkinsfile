@@ -117,12 +117,6 @@ jobs["windows"] = {
 
         node('docker && us-east-1') {
             ws() {
-                def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-                def nodeIP
-                def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} \
-                    -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
-                def prov_args = "-u 0 -e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
-
                 writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
                 sh "chmod 0600 /home/ubuntu/.aws/config"
 
@@ -130,8 +124,12 @@ jobs["windows"] = {
                 [$class: 'AmazonWebServicesCredentialsBinding', 
                 accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                    
+                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
+                    def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} \
+                        -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
+                    def prov_args = "-u 0 -e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
+                    def nodeIP
                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                         timeout(60) {
