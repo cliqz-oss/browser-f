@@ -62,7 +62,7 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:1202201701', 
+        string(defaultValue: 'cliqz/ansible:1202201702', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -139,7 +139,7 @@ jobs["windows"] = {
                                 withEnv([
                                     "aws_access_key=${AWS_ACCESS_KEY_ID}",
                                     "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
-                                    "instance_id=${ec2_node.get('nodeId')}",
+                                    "jenkins_id=${ec2_node.get('nodeId')}",
                                     "instance_name=browser-f"
                                     ]) {
                                        sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
