@@ -147,9 +147,8 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
 
 
 @NonCPS
-def getEC2Slave(String jenkinsFolderPath) {
+def getEC2Slave(String slaveLabel, String jenkinsFolderPath) {
     def nodeId = null
-    def slaveLabel = 'windows pr'
     def result = [:]
 
     for (slave in Hudson.instance.slaves) {
@@ -179,6 +178,10 @@ def getEC2Slave(String jenkinsFolderPath) {
     return result
 
 }
+
+
+
+
 
 
 return this
