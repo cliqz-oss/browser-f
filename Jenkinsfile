@@ -186,14 +186,7 @@ jobs["windows"] = {
                 ])
             } // stage
             stage("Fix git windows file-endings") {
-                def fix_git_exec = """
-                    git config core.autocrlf false
-                    git config core.eof lf
-                    git rm --cached -r .
-                    git reset --hard
-                """
-                sh fix_git_exec
-
+                sh "git config core.autocrlf false && git config core.eof lf && git rm --cached -r . &&  git reset --hard"
             }
             withCredentials([
                 [$class: 'FileBinding', 
