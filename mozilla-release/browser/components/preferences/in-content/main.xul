@@ -118,8 +118,11 @@
       hidden="true"
       data-category="paneGeneral">
   <label class="header-name" flex="1">&paneGeneral.title;</label>
-  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
-  <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
+  <label class="header-mozilla-support-label">
+    &mozillaSupportHelp.label;
+    <html:a class="help-button" target="_blank" style="margin-bottom: -3px;" aria-label="&helpButton.label;"></html:a>
+  </label>
+
 </hbox>
 
 <!-- Startup -->
