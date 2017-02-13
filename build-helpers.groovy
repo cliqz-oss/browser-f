@@ -159,7 +159,7 @@ def hasNewerQueuedJobs() {
 @NonCPS
 def getIdleSlave(label) {
   for (slave in Hudson.instance.slaves) {
-    if (slave.getLabelString().contains(slaveLabel)) {
+    if (slave.getLabelString().contains(label)) {
       if (!slave.getComputer().isOffline()) {
         if (slave.getComputer().countBusy() == 0) {
           return slave.name
@@ -173,9 +173,9 @@ def getIdleSlave(label) {
 
 
 @NonCPS
-def getEC2Slave(String slaveLabel, String jenkinsFolderPath) {
+def getEC2Slave(String label, String jenkinsFolderPath) {
     def result = [:]
-    def nodeId = getIdleSlave(slaveLabel)
+    def nodeId = getIdleSlave(label)
 
     if (nodeId) {
       result['created'] = false
