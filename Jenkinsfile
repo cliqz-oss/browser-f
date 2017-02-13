@@ -83,20 +83,21 @@ node('docker && us-east-1') {
     }       
 }
 
-jobs["windows"] = {
-    node('docker && us-east-1') {
-        ws() {
-            stage('Windows Docker Checkout') {
-                checkout scm
-            }
-            try {
-               helpers = load "build-helpers.groovy"
-            } catch(e) {
-                echo "Could not load build-helpers"
-                throw e
-            }    
+node('docker && us-east-1') {
+    ws() {
+        stage('Helpers Checkout') {
+            checkout scm
         }
+        try {
+           helpers = load "build-helpers.groovy"
+        } catch(e) {
+            echo "Could not load build-helpers"
+            throw e
+        }    
     }
+}
+
+jobs["windows"] = {
     // Check if there are later jobs wating in a queue and abort 
     if (helpers.hasNewerQueuedJobs()) {
         error("Has Jobs in queue, aborting")
@@ -236,13 +237,6 @@ jobs["windows"] = {
 
 jobs["mac"] = {   
     def osx_slave 
-
-    try {
-        helpers = load "build-helpers.groovy"
-    } catch(e) {
-        echo "Could not load build-helpers"
-        throw e
-    }    
 
     retry(3) {
         osx_slave = helpers.getIdleSlave('osx pr')
