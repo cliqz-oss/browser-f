@@ -12,20 +12,9 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
-@NonCPS
-def getIdleSlave(slaveLabel) {
-    for (slave in Hudson.instance.slaves) {
-        if (slave.getLabelString().contains(slaveLabel)) {
-            if (!slave.getComputer().isOffline() && slave.getComputer().countBusy()==0 ) {
-                return slave.name 
-            } 
-        }     
-    } 
-    return null
-}
-
 properties([
     [$class: 'JobRestrictionProperty'], 
+    disableConcurrentBuilds(),
     parameters([
         string(defaultValue: 'pr', name: 'RELEASE_CHANNEL'),
         string(defaultValue: 'google-api-key', 
@@ -62,11 +51,11 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:1901201701', 
+        string(defaultValue: 'cliqz/ansible:1202201702', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
-        string(defaultValue: "1.11.0", name: "CQZ_VERSION"),
+        string(defaultValue: "1.12.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: false, description: '', 
                     name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', 
@@ -94,88 +83,101 @@ node('docker && us-east-1') {
     }       
 }
 
-jobs["windows"] = {
-    node('docker && us-east-1') {
-        ws() {
-            stage('Windows Docker Checkout') {
-                checkout scm
-            }
-            try {
-               helpers = load "build-helpers.groovy"
-            } catch(e) {
-                echo "Could not load build-helpers"
-                throw e
-            }    
+node('docker && us-east-1') {
+    ws() {
+        stage('Helpers Checkout') {
+            checkout scm
         }
+        try {
+           helpers = load "build-helpers.groovy"
+        } catch(e) {
+            echo "Could not load build-helpers"
+            throw e
+        }    
     }
+}
+
+jobs["windows"] = {
+    // Check if there are later jobs wating in a queue and abort 
+    if (helpers.hasNewerQueuedJobs()) {
+        error("Has Jobs in queue, aborting")
+    }
+
     // Try to get a jenkins slave. If the slave was created by this action
     // we need to bootstrap it with ansible
-    def ec2_node = helpers.getEC2Slave("c:/jenkins")
+    def ec2_node = helpers.getEC2Slave("windows pr", "c:/jenkins")
 
     if (ec2_node.get('created')) {
         echo "New slave created. Starting provisioning"
 
         node('docker && us-east-1') {
             ws() {
-                withCredentials([
-                [$class: 'AmazonWebServicesCredentialsBinding', 
-                accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                    def bootstrap_args = "-u 0 -e aws_access_key=${AWS_ACCESS_KEY_ID} -e aws_secret_key=${AWS_SECRET_ACCESS_KEY} -e instance_name=${ec2_node.get('nodeId')}"
-                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
-                    docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                        timeout(60) {
-                            def image = docker.image(params.IMAGE_NAME)
-                            image.pull()
-                            docker.image(image.imageName()).inside(bootstrap_args) {
-                                sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
-                            }
-                        }
-                    } // withRegistry
-                } // withCredentials
+                stage("EC2 Slave Provisionning") {
+                    writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
+                    sh "chmod 0600 /home/ubuntu/.aws/config"
 
-                // Get an IP address of the newly created slave
-                def command = "aws ec2 describe-instances --filters \"Name=tag:Name,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-                def nodeIP
-                
-                writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
-                sh "chmod 0600 /home/ubuntu/.aws/config"
-                    
-                withCredentials([
-                  [$class: 'AmazonWebServicesCredentialsBinding',
-                  accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                  credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                  secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                      withEnv([
-                          "AWS_DEFAULT_REGION=${params.AWS_REGION}"    
-                          ]) {
-                            // Retry three times to get the IP from amazon...
-                            retry(3) {
-                                nodeIP = sh(returnStdout: true, script: "${command}").trim()
-                                sleep 15
-                            }
-                      }
-                } // withCredentials
-            
-                // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-                def prov_args = "-u 0 -e instance_name=${ec2_node.get('nodeId')} -e JENKINS_URL=${env.JENKINS_URL} -e NODE_ID=${ec2_node.get('nodeId')} -e NODE_SECRET=${ec2_node.get('secret')}"
-                docker.withRegistry(DOCKER_REGISTRY_URL) {
-                    timeout(60) {
-                        def image = docker.image(IMAGE_NAME)
+                    withCredentials([
+                    [$class: 'AmazonWebServicesCredentialsBinding', 
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
+                        def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
+                        def bootstrap_args = "-u 0 "
+                        def prov_args = "-u 0 "
+                        def nodeIP
 
-                        docker.image(image.imageName()).inside(prov_args) {
-                            sh "cd /playbooks && ansible-playbook -i ${nodeIP},  ec2/playbook.yml"
+                        sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+                        docker.withRegistry(params.DOCKER_REGISTRY_URL) {
+                            timeout(60) {
+                                def image = docker.image(params.IMAGE_NAME)
+                                image.pull()
+                                docker.image(image.imageName()).inside(bootstrap_args) {
+                                    withEnv([
+                                        "aws_access_key=${AWS_ACCESS_KEY_ID}",
+                                        "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
+                                        "jenkins_id=${ec2_node.get('nodeId')}",
+                                        "instance_name=browser-f"
+                                        ]) {
+                                           sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
+                                    }
+                                }
+                            }
+                        } // withRegistry
+
+                        // Retry three times to get the IP from amazon...
+                        retry(3) {
+                            nodeIP = sh(returnStdout: true, script: "${command}").trim()
+                            sleep 15
                         }
-                    }
-                } // withRegistry
-            }
+                        // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
+                        docker.withRegistry(DOCKER_REGISTRY_URL) {
+                            timeout(60) {
+                                def image = docker.image(IMAGE_NAME)
+
+                                docker.image(image.imageName()).inside(prov_args) {
+                                    withEnv([
+                                        "instance_name=${ec2_node.get('nodeId')}",
+                                        "JENKINS_URL=${env.JENKINS_URL}",
+                                        "NODE_ID=${ec2_node.get('nodeId')}",
+                                        "NODE_SECRET=${ec2_node.get('secret')}"
+                                        ]){
+                                        sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                    }
+                                }
+                            }
+                        } // withRegistry
+                    } // withCredentials
+                } // stage
+            } // ws
         } // node
     } // endIf
 
     // We can now use the slave to do a windows build
     node(ec2_node.get('nodeId')) {
         ws('a') {
+            stage("Fix git windows file-endings") {
+                bat "git config core.autocrlf false && git config core.eof lf"
+            }
             stage("Windows EC2 SCM Checkout") {
                 checkout([
                     $class: 'GitSCM',
@@ -187,7 +189,7 @@ jobs["windows"] = {
                     userRemoteConfigs: scm.userRemoteConfigs
                 ])
             } // stage
-
+            
             withCredentials([
                 [$class: 'FileBinding', 
                     credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, 
@@ -235,9 +237,9 @@ jobs["windows"] = {
 
 jobs["mac"] = {   
     def osx_slave 
-    
+
     retry(3) {
-        osx_slave = getIdleSlave('osx pr')
+        osx_slave = helpers.getIdleSlave('osx pr')
         
         if (osx_slave == null) {
             sleep 1000
@@ -370,8 +372,6 @@ jobs["mac"] = {
     }
 }
     
-
-
 jobs["linux"] = {
     node('browser') {
         ws('build') {

@@ -145,31 +145,48 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+@NonCPS
+def hasNewerQueuedJobs() {
+  def queue = jenkins.model.Jenkins.getInstance().getQueue().getItems()
+  for (int i=0; i < queue.length; i++) {
+    if (queue[i].task.getName() == env.JOB_NAME ) {
+      return true
+    }
+  }
+  return false
+}
 
 @NonCPS
-def getEC2Slave(String jenkinsFolderPath) {
-    def nodeId = null
-    def slaveLabel = 'windows pr'
+def getIdleSlave(label) {
+  for (slave in Hudson.instance.slaves) {
+    if (slave.getLabelString().contains(label)) {
+      if (!slave.getComputer().isOffline()) {
+        if (slave.getComputer().countBusy() == 0) {
+          return slave.name
+        }
+      }
+    }
+  }
+
+  return false
+}
+
+
+@NonCPS
+def getEC2Slave(String label, String jenkinsFolderPath) {
     def result = [:]
+    def nodeId = getIdleSlave(label)
 
-    for (slave in Hudson.instance.slaves) {
-      if (slave.getLabelString().contains(slaveLabel)) {
-        if (!slave.getComputer().isOffline() && slave.getComputer().isAcceptingTasks()) {
-          nodeId = slave.name
-          result['created'] = false
-        } 
-      }     
-    } 
-
-    // This is a new slave, so we need to bootstrap it
-    if (!nodeId) {
+    if (nodeId) {
+      result['created'] = false
+    } else {
+      // This is a new slave, so we need to bootstrap it
       nodeId = "browser-f-${env.JOB_BASE_NAME}"
       try {
           createNode(nodeId, jenkinsFolderPath)
-          setNodeLabel(nodeId, slaveLabel)
+          setNodeLabel(nodeId, label)
           result['created'] = true
       } catch (e) {
-          echo "Could not create node for ec2"
           throw e
       }
     }
@@ -177,8 +194,6 @@ def getEC2Slave(String jenkinsFolderPath) {
     result['nodeId'] = nodeId.toString()
     result['secret'] = getNodeSecret(nodeId)
     return result
-
 }
-
 
 return this
