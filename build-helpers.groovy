@@ -168,7 +168,7 @@ def getIdleSlave(label) {
     }
   }
 
-  return null
+  return false
 }
 
 
