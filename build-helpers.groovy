@@ -157,23 +157,30 @@ def hasNewerQueuedJobs() {
 }
 
 @NonCPS
+def getIdleSlave(label) {
+  for (slave in Hudson.instance.slaves) {
+    if (slave.getLabelString().contains(slaveLabel)) {
+      if (!slave.getComputer().isOffline()) {
+        if (slave.getComputer().countBusy() == 0) {
+          return slave.name
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+
+@NonCPS
 def getEC2Slave(String slaveLabel, String jenkinsFolderPath) {
-    def nodeId = null
     def result = [:]
+    def nodeId = getIdleSlave(slaveLabel)
 
-    for (slave in Hudson.instance.slaves) {
-      if (slave.getLabelString().contains(slaveLabel)) {
-        if (!slave.getComputer().isOffline()) {
-          if (slave.getComputer().countBusy() == 0) {
-            nodeId = slave.name
-            result['created'] = false
-          } 
-        } 
-      }     
-    } 
-
-    // This is a new slave, so we need to bootstrap it
-    if (!nodeId) {
+    if (nodeId) {
+      result['created'] = false
+    } else {
+      // This is a new slave, so we need to bootstrap it
       nodeId = "browser-f-${env.JOB_BASE_NAME}"
       try {
           createNode(nodeId, jenkinsFolderPath)
@@ -188,7 +195,6 @@ def getEC2Slave(String slaveLabel, String jenkinsFolderPath) {
     result['nodeId'] = nodeId.toString()
     result['secret'] = getNodeSecret(nodeId)
     return result
-
 }
 
 

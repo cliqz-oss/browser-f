@@ -236,9 +236,16 @@ jobs["windows"] = {
 
 jobs["mac"] = {   
     def osx_slave 
-    
+
+    try {
+        helpers = load "build-helpers.groovy"
+    } catch(e) {
+        echo "Could not load build-helpers"
+        throw e
+    }    
+
     retry(3) {
-        osx_slave = getIdleSlave('osx pr')
+        osx_slave = helpers.getIdleSlave('osx pr')
         
         if (osx_slave == null) {
             sleep 1000
@@ -373,104 +380,104 @@ jobs["mac"] = {
     
 
 
-jobs["linux"] = {
-    node('browser') {
-        ws('build') {
-            stage('Linux Docker Checkout') {
-                checkout scm
-            }
+// jobs["linux"] = {
+//     node('browser') {
+//         ws('build') {
+//             stage('Linux Docker Checkout') {
+//                 checkout scm
+//             }
 
-            stage("Linux Build") {
-                def imageName = 'browser-f'
+//             stage("Linux Build") {
+//                 def imageName = 'browser-f'
 
-                try {
-                  // authorize docker deamon to access registry
-                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+//                 try {
+//                   // authorize docker deamon to access registry
+//                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
-                    docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                        def image = docker.image(imageName)
-                        image.pull()
-                        imageName = image.imageName()
-                    }
-                } catch (e) {
-                  // if registry fails, build image localy
-                  // Build params with context
-                    def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
+//                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
+//                         def image = docker.image(imageName)
+//                         image.pull()
+//                         imageName = image.imageName()
+//                     }
+//                 } catch (e) {
+//                   // if registry fails, build image localy
+//                   // Build params with context
+//                     def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-                  // Avoiding docker context
-                    sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+//                   // Avoiding docker context
+//                     sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
 
-                  // Build image with a specific user
-                    sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
-                }
+//                   // Build image with a specific user
+//                     sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+//                 }
 
-                docker.image(imageName).inside() {
-                    stage('Linux Update Dependencies') {
-                    // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-                        sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
-                    }
+//                 docker.image(imageName).inside() {
+//                     stage('Linux Update Dependencies') {
+//                     // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
+//                         sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+//                     }
 
-                    withEnv([
-                        "CQZ_BUILD_ID=$CQZ_BUILD_ID",
-                        "CQZ_COMMIT=$COMMIT_ID",
-                        "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
-                        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+//                     withEnv([
+//                         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+//                         "CQZ_COMMIT=$COMMIT_ID",
+//                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
+//                         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
 
-                        stage('Linux Build Browser') {
-                            withCredentials([
-                                [$class: 'StringBinding', 
-                                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
-                                    variable: 'CQZ_GOOGLE_API_KEY'],
-                                [$class: 'StringBinding', 
-                                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
-                                    variable: 'MOZ_MOZILLA_API_KEY']]) {
+//                         stage('Linux Build Browser') {
+//                             withCredentials([
+//                                 [$class: 'StringBinding', 
+//                                     credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+//                                     variable: 'CQZ_GOOGLE_API_KEY'],
+//                                 [$class: 'StringBinding', 
+//                                     credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+//                                     variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                                try {
-                                    sh './magic_build_and_package.sh  --clobber'
-                                } catch (e) {
-                                    archive 'obj/config.log'
-                                    throw e
-                                }
-                            }
-                        }
+//                                 try {
+//                                     sh './magic_build_and_package.sh  --clobber'
+//                                 } catch (e) {
+//                                     archive 'obj/config.log'
+//                                     throw e
+//                                 }
+//                             }
+//                         }
 
-                        withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding', 
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                            stage('Publisher (Debian Repo)') {
-                                try {
-                                    withCredentials([
-                                        [$class: 'FileBinding', 
-                                            credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID, 
-                                            variable: 'DEBIAN_GPG_KEY'],
-                                        [$class: 'StringBinding', 
-                                            credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID, 
-                                            variable: 'DEBIAN_GPG_PASS']]) {
+//                         withCredentials([
+//                             [$class: 'AmazonWebServicesCredentialsBinding', 
+//                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+//                                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+//                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+//                             stage('Publisher (Debian Repo)') {
+//                                 try {
+//                                     withCredentials([
+//                                         [$class: 'FileBinding', 
+//                                             credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID, 
+//                                             variable: 'DEBIAN_GPG_KEY'],
+//                                         [$class: 'StringBinding', 
+//                                             credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID, 
+//                                             variable: 'DEBIAN_GPG_PASS']]) {
 
-                                        sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
+//                                         sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
 
-                                        withEnv([
-                                            "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
-                                            sh './sign_lin.sh'
-                                        }
-                                    }
-                                } finally {
-                                    sh 'rm -rf debian.gpg.pass'
-                                }
-                            }
+//                                         withEnv([
+//                                             "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
+//                                             sh './sign_lin.sh'
+//                                         }
+//                                     }
+//                                 } finally {
+//                                     sh 'rm -rf debian.gpg.pass'
+//                                 }
+//                             }
 
-                            stage('Linux Publisher (Internal)') {
-                                sh './magic_upload_files.sh'
-                                archiveArtifacts 'obj/build_properties.json'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+//                             stage('Linux Publisher (Internal)') {
+//                                 sh './magic_upload_files.sh'
+//                                 archiveArtifacts 'obj/build_properties.json'
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
 parallel jobs
