@@ -145,11 +145,11 @@ def withVagrant(String vagrantFilePath, String jenkinsFolderPath, Integer cpu, I
     }
 }
 
+@NonCPS
 def hasNewerQueuedJobs() {
   def queue = jenkins.model.Jenkins.getInstance().getQueue().getItems()
   for (int i=0; i < queue.length; i++) {
     if (queue[i].task.getName() == env.JOB_NAME ) {
-      echo "Jobs in queue, aborting"
       return true
     }
   }
@@ -187,7 +187,6 @@ def getEC2Slave(String label, String jenkinsFolderPath) {
           setNodeLabel(nodeId, label)
           result['created'] = true
       } catch (e) {
-          echo "Could not create node for ec2"
           throw e
       }
     }
@@ -196,10 +195,5 @@ def getEC2Slave(String label, String jenkinsFolderPath) {
     result['secret'] = getNodeSecret(nodeId)
     return result
 }
-
-
-
-
-
 
 return this
