@@ -184,7 +184,7 @@ def getEC2Slave(String label, String jenkinsFolderPath) {
       nodeId = "browser-f-${env.JOB_BASE_NAME}"
       try {
           createNode(nodeId, jenkinsFolderPath)
-          setNodeLabel(nodeId, slaveLabel)
+          setNodeLabel(nodeId, label)
           result['created'] = true
       } catch (e) {
           echo "Could not create node for ec2"
