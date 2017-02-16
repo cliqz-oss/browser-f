@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY ctrlTabRecentlyUsedOrder.label       "Bei Strg+Tab die Tabs nach letzter Nutzung in absteigender Reihenfolge anzeigen">
+<!ENTITY ctrlTabRecentlyUsedOrder.label       "Strg+Tab zeigt die Tabs nach letzter Nutzung geordnet an.">
 <!ENTITY ctrlTabRecentlyUsedOrder.accesskey   "z">
 
 <!ENTITY newWindowsAsTabs.label       "Statt neuem Fenster neuen Tab öffnen">
