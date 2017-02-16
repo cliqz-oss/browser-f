@@ -65,7 +65,7 @@
 <!ENTITY  showCookies.accesskey         "o">
 
 <!ENTITY  historyHeader.pre.label          "&brandShortName; wird eine Chronik:">
-<!ENTITY  historyHeader.pre.accesskey      "F">
+<!ENTITY  historyHeader.pre.accesskey      "C">
 <!ENTITY  historyHeader.remember.label     "anlegen">
 <!ENTITY  historyHeader.dontremember.label "niemals anlegen">
 <!ENTITY  historyHeader.custom.label       "nach benutzerdefinierten Einstellungen anlegen">
@@ -91,7 +91,7 @@
 <!ENTITY  dontrememberActions.post.label         " löschen.">
 
 <!ENTITY  privateBrowsingPermanent2.label "Immer den Vergessen Modus verwenden">
-<!ENTITY  privateBrowsingPermanent2.accesskey "p">
+<!ENTITY  privateBrowsingPermanent2.accesskey "V">
 
 <!ENTITY  rememberHistory2.label      "Besuchte Seiten und Download-Chronik speichern">
 <!ENTITY  rememberHistory2.accesskey  "w">
