@@ -453,7 +453,7 @@ var gPrivacyManagers = {
        "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/9/9609-64.png?modified=1480432819"
       },
       "name": "Ghostery",
-      "homepageURL": "https://cliqz.com/support/cliqz-ghostery",
+      "homepageURL": "https://www.ghostery.com",
       "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/firefox@ghostery.com/latest.xpi"
     }];
   },
