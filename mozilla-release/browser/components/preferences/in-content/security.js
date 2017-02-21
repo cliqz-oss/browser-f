@@ -507,7 +507,8 @@ ItemHandler.prototype = {
   },
 
   onInstallClick: function() {
-    var self = this;
+    let self = this;
+    let reloadTimeout = 3000;
 
     AddonManager.getInstallForURL(this.listItemDesc.sourceURI,
       function(addon) {
@@ -519,10 +520,12 @@ ItemHandler.prototype = {
           onDownloadFailed: function() {
             let showText = gStrings.GetStringFromName("installDownloadFailed");
             self.listItem.updateDownloadFailed(showText);
+            self.onFaliure(self, reloadTimeout);
           },
           onInstallFailed: function() {
-            let showText = gStrings.GetStringFromName("installDownloadFailed");
+            let showText = gStrings.GetStringFromName("installFailed");
             self.listItem.updateInstallFailed(showText);
+            self.onFaliure(self, reloadTimeout);
           },
           onInstallEnded: function(aInstall, aAddon) {
             // redrawing the listItem as *installed*
@@ -548,5 +551,14 @@ ItemHandler.prototype = {
     this.listContainer.removeChild(this.listItem);
     let newItem = new ItemHandler(this.listContainer, this.listItemDesc, undefined, 'new');
     this.listContainer.appendChild(newItem.listItem);
+  },
+
+  // reload the item in "new" state after reloadTimeout seconds
+  onFaliure: function(failedItem, reloadTimeout) {
+    setTimeout(function() {
+      failedItem.listContainer.removeChild(failedItem.listItem);
+      let renewItem = new ItemHandler(failedItem.listContainer, failedItem.listItemDesc, undefined, 'new');
+      failedItem.listContainer.appendChild(renewItem.listItem);
+    }, reloadTimeout);
   }
 }
