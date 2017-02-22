@@ -185,15 +185,13 @@ stage('Prepare files for nested jobs') {
 stage('Build') {
   try {
     parallel prepareBuildConfig()
+    for (item in submitResultList) {
+      submitBalrog(item[0], item[1], item[2])
+    }
   } catch (e) {
     sendEmail(BUILD_STATUS_FAILED)
     throw e
   }
-
-  for (item in submitResultList) {
-    submitBalrog(item[0], item[1], item[2])
-  }
-
   sendEmail(BUILD_STATUS_SUCCESSFUL)
 }
 
