@@ -47,6 +47,14 @@ const OBSERVING = [
   "idle-daily",
 ];
 
+// A mapping of known internal URLs.
+// Needed to detect homepages already present in the stored session with their
+// final URLs after redirections.
+// See DB-1219.
+const redirectedURLs = {
+  "about:cliqz": "resource://cliqz/fresh-tab-frontend/index.html",
+};
+
 // XUL Window properties to (re)store
 // Restored in restoreDimensions()
 const WINDOW_ATTRIBUTES = ["width", "height", "screenX", "screenY", "sizemode"];
@@ -2953,7 +2961,11 @@ var SessionStoreInternal = {
     // This is intended to work when both tab restore and fresh tab features
     // are enabled.
     if (!overwriteTabs) {
-      let homePages = aWindow.gHomeButton.getHomePage().split("|");
+      let homePages = aWindow.gHomeButton.getHomePage().split("|")
+        // Use final URLs that get into session after redirection (see DB-1219).
+        .map(url => {
+          return redirectedURLs[url] || url;
+        });
       winData.tabs = winData.tabs.filter(function (tabData) {
         if (!tabData.entries || !tabData.entries.length) {
           return true;
