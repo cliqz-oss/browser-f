@@ -1789,12 +1789,12 @@
         <xul:vbox class="status-control-wrapper">
           <xul:hbox anonid="control-container" class="control-container">
 
-            <xul:button anonid="remove-btn" class="addon-control remove"
-                        label="&cmd.uninstallAddon.label;"
-                        oncommand="document.getBindingParent(this).uninstall();"/>
-            <xul:button anonid="install" class="addon-control install"
+            <xul:button anonid="installBtn" class="addon-control install"
                         label="&cmd.installAddon.label;"
-                        oncommand="document.getBindingParent(this).install(this);"/>
+                        oncommand="document.getBindingParent(this).installClicked();"/>
+            <xul:button anonid="uninstallBtn" class="addon-control remove"
+                        label="&cmd.uninstallAddon.label;"
+                        oncommand="document.getBindingParent(this).unInstallClicked();"/>
           </xul:hbox>
         </xul:vbox>
       </xul:hbox>
@@ -1811,66 +1811,59 @@
          homepage.href = this.mAddon.homepageURL;
          icon.src = this.mAddon.icons["64"] || this.mAddon.icons["32"];
       ]]></constructor>
-      <method name="install">
-        <parameter name="button"/>
+      <method name="installClicked">
         <body><![CDATA[
-          button.setAttribute("disabled", "true"); //Disable the button after user clicks on it
-          var progress = document.getAnonymousElementByAttribute(this, "anonid", "install");
-          const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
-          const doc = Services.wm.getMostRecentWindow("navigator:browser").document;
-          const nIframe = doc.getElementsByTagName('iframe').length;
-          var nTry = 10;
+          let installButton = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          installButton.setAttribute("disabled", "true")
 
-          function openPopup() {
-            var lpBtn = doc.getElementById("toggle-button--supportlastpasscom-lastpass-button");
-            if(lpBtn) {
-              lpBtn.click();
-              if(doc.getElementsByTagName('iframe').length > nIframe) {
-                return;
-              }
-            }
-            nTry--;
-            if (nTry > 0) {
-              timer.initWithCallback(openPopup, 500, Ci.nsITimer.TYPE_ONE_SHOT);
-            }
-          }
-          AddonManager.getInstallForURL(this.mAddon.sourceURI,
-            function(addon) {
-              addon.addListener({
-                onDownloadProgress: function(aInstall) {
-                  progress.textContent = gStrings.GetStringFromName("installDownloading") + ' ' + parseInt(aInstall.progress / aInstall.maxProgress * 100) + "%";
-                },
-                onDownloadFailed: function() {
-                  progress.textContent = gStrings.GetStringFromName("installDownloadFailed");
-                  setTimeout(window.location.reload, 2000);
-                },
-                onInstallFailed: function() {
-                  progress.textContent = gStrings.GetStringFromName("installFailed");
-                  setTimeout(window.location.reload, 2000);
-                },
-                onInstallEnded: function(aInstall, aAddon) {
-                  setTimeout(function() {
-                    timer.initWithCallback(openPopup, 1500, Ci.nsITimer.TYPE_ONE_SHOT);
-                    window.location.reload();
-                  }, 1000);
-                }
+          let installEvent = new CustomEvent("installClicked", {
+                bubbles: true,
+                cancelable: false,
+                detail: {}
               });
-              addon.install();
-            },
-            "application/x-xpinstall"
-          );
-        ]]></body>
+          this.dispatchEvent(installEvent);
+        ]]>
+        </body>
       </method>
-      <method name="uninstall">
+      <method name="unInstallClicked">
         <body><![CDATA[
-          this.mAddon.uninstall();
-          window.location.reload();
-        ]]></body>
+          let unInstallEvent = new CustomEvent("unInstallClicked", {
+                bubbles: true,
+                cancelable: false,
+                detail: {}
+              });
+          this.dispatchEvent(unInstallEvent);
+        ]]>
+        </body>
       </method>
+      <method name="updateInstallationProgress">
+        <parameter name="percentage"/>
+        <body><![CDATA[
+          let progressHolder = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          progressHolder.textContent = percentage
+        ]]>
+        </body>
+      </method>
+      <method name="updateDownloadFailed">
+        <parameter name="showText"/>
+        <body><![CDATA[
+          let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          button.textContent = showText;
+        ]]>
+        </body>
+      </method>
+      <method name="updateInstallFailed">
+        <parameter name="showText"/>
+        <body><![CDATA[
+          let button = document.getAnonymousElementByAttribute(this, "anonid", "installBtn");
+          button.textContent = showText;
+        ]]>
+        </body>
+      </method>
+
       <property name="control">
         <getter><![CDATA[
-          // mask default listbox - disable selection
-
+          // overriding the default listbox onClick selection - disable selection
           return null;
         ]]></getter>
       </property>
