@@ -241,7 +241,7 @@ jobs["mac"] = {
     retry(3) {
         osx_slave = helpers.getIdleSlave('osx pr')
         
-        if (osx_slave == null) {
+        if (!osx_slave) {
             sleep 1000
             error("Could not get an executor on OSX slave")
         }
