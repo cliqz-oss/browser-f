@@ -862,6 +862,9 @@ bin/libfreebl_32int64_3.so
 #include ../../b2g/installer/package-manifest.in
 #endif
 
+; CLIQZ part
 ; Extra distrubution files
 @RESPATH@/distribution/*
 @RESPATH@/cliqz.cfg
+; for DB-1215, DB-1213
+@RESPATH@/voucher.bin
