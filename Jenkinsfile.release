@@ -201,19 +201,17 @@ stage('Build') {
 def uploadBeta(build_id, cqz_version) {
     def locales = ["en-US", "de"] 
     def installers_suffixes = ["win32.installer.exe", "mac.dmg"] 
-    def installers = []
+    def installers = [:]
     
     for (locale in locales) {
         for (inst_suff in installers_suffixes) {
-            installers.push(
-                "CLIQZ-${cqz_version}.${locale}.${inst_suff}"
-            )
+            installers["CLIQZ-${cqz_version}.${locale}.${inst_suff}"] = "CLIQZ.${locale}.${inst_suff}"
         }
     }
     
-    for (installer in installers) {
-        beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${installer}"
-        latest_beta_path = "repository.cliqz.com/dist/beta/latest/${installer}"
+    installers.each { k, v -> 
+        beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${k}"
+        latest_beta_path = "repository.cliqz.com/dist/beta/latest/${v}"
         
         withCredentials([[
             $class: 'UsernamePasswordMultiBinding',
