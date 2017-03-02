@@ -192,7 +192,35 @@ stage('Build') {
     sendEmail(BUILD_STATUS_FAILED)
     throw e
   }
+  uploadBeta(CQZ_BUILD_ID, CQZ_VERSION)
   sendEmail(BUILD_STATUS_SUCCESSFUL)
+}
+
+def uploadBeta(build_id, cqz_version) {
+    def locales = ["en-US", "de"] 
+    def installers_suffixes = ["win32.installer.exe", "mac.dmg"] 
+    def installers = []
+    
+    for (locale in locales) {
+        for (inst_suff in installers_suffixes) {
+            installers.push(
+                "CLIQZ-${cqz_version}.${locale}.${inst_suff}"
+            )
+        }
+    }
+    
+    for (installer in installers) {
+        beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${installer}"
+        latest_beta_path = "repository.cliqz.com/dist/beta/latest/${installer}"
+        
+        withCredentials([[
+            $class: 'UsernamePasswordMultiBinding',
+            credentialsId: CQZ_AWS_CREDENTIAL_ID,
+            passwordVariable: 'AWS_SECRET_ACCESS_KEY',
+            usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+                sh "aws s3 cp s3://${beta_path} s3://${latest_beta_path}"
+        }
+    }
 }
 
 def submitBalrog(jobName, id, propsPath) {
