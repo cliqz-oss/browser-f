@@ -192,7 +192,9 @@ stage('Build') {
     sendEmail(BUILD_STATUS_FAILED)
     throw e
   }
-  uploadBeta(CQZ_BUILD_ID, CQZ_VERSION)
+  if (CQZ_RELEASE_CHANNEL == "beta") {
+      uploadBeta(CQZ_BUILD_ID, CQZ_VERSION)
+  }
   sendEmail(BUILD_STATUS_SUCCESSFUL)
 }
 
