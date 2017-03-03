@@ -214,7 +214,8 @@ jobs["windows"] = {
                   "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
                   "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
                   "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-                  "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
+                  "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}",
+                  "MOZ_MOZILLA_API_KEY=${MOZ_MOZILLA_API_KEY}"
                 ]){
                   stage('Windows Build') {
                     bat '''
@@ -280,8 +281,10 @@ jobs["mac"] = {
                             credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
                             variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                         sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+                         withEnv(["MOZ_MOZILLA_API_KEY=${MOZ_MOZILLA_API_KEY}"]) {
+                             sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
                          }
+                     }
                 }
 
                 stage('OSX Sign') {
