@@ -63,8 +63,10 @@
       hidden="true"
       data-category="paneApplications">
   <label class="header-name" flex="1">&paneApplications.title;</label>
-  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
-  <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
+  <label class="header-mozilla-support-label">
+    &mozillaSupportHelp.label;
+    <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
+  </label>
 </hbox>
 
 <vbox id="applicationsContent"
