@@ -53,8 +53,10 @@
       hidden="true"
       data-category="paneSecurity">
   <label class="header-name" flex="1">&paneSecurity.title;</label>
-  <label class="header-mozilla-support-label">&mozillaSupportHelp.label;</label>
-  <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
+  <label class="header-mozilla-support-label">
+    &mozillaSupportHelp.label;
+    <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
+  </label>
 </hbox>
 
 <!-- addons, forgery (phishing) UI -->

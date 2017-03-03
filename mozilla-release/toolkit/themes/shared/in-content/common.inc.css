@@ -679,6 +679,10 @@ xul|*.radio-label-box {
   color: #999;
 }
 
+*|*.header-mozilla-support-label > html|a.help-button {
+  margin-bottom: -3px;
+}
+
 /* File fields */
 
 xul|filefield {
