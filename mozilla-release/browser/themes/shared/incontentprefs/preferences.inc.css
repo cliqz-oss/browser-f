@@ -100,8 +100,8 @@ treecol {
   list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#advanced");
 }
 
-#category-pairing > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#pairing");
+#category-connect > .category-icon {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#connect");
 }
 
 @media (max-width: 800px) {
@@ -121,7 +121,7 @@ treecol {
   display: none;
 }
 
-#header-advanced, #header-pairing {
+#header-advanced, #header-connect {
   border-bottom: none;
   padding-bottom: 0;
 }

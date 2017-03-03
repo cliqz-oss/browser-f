@@ -50,13 +50,19 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneAdvanced", gAdvancedPane);
-  register_module("panePairing", gPairingPane);
   register_module("paneApplications", gApplicationsPane);
   register_module("paneContent", gContentPane);
 #if MOZ_SERVICES_SYNC
   register_module("paneSync", gSyncPane);
 #endif
   register_module("paneSecurity", gSecurityPane);
+  register_module("paneConnect", gConnectPane);
+  // CLIQZ: DB-1230: Display the rich list item when connect module is available
+  fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
+    if(res.status === 200) {
+      document.getElementById('category-connect').hidden = false;
+    }
+  });
 
   let categories = document.getElementById("categories");
   categories.addEventListener("select", event => gotoPref(event.target.value));
@@ -84,7 +90,7 @@ function init_all() {
   categories = categories.querySelectorAll("richlistitem.category");
   for (let category of categories) {
     let name = internalPrefCategoryNameToFriendlyName(category.value);
-    let helpSelector = `#header-${name} > .help-button`;
+    let helpSelector = `#header-${name} .help-button`;
     let helpButton = document.querySelector(helpSelector);
     helpButton.setAttribute("href", getHelpLinkURL(category.getAttribute("helpTopic")));
   }
@@ -122,6 +128,7 @@ function telemetryBucketForCategory(category) {
     case "privacy":
     case "security":
     case "sync":
+    case "connect":
       return category;
     case "advanced":
       let advancedPaneTabs = document.getElementById("advancedPrefs");
