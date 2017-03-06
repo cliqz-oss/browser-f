@@ -64,7 +64,7 @@
 
 /* Adding padding-bottom prevents the bottom of the tabpanel from being cutoff
    when browser.preferences.animateFadeIn = true */
-#advancedPrefs {
+#advancedPrefs, #connectPrefs {
   padding-bottom: 8px;
 }
 

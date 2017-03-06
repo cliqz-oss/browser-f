@@ -4806,7 +4806,7 @@
     "alert_emails": ["jaws@mozilla.com"],
     "expires_in_version": "56",
     "kind": "categorical",
-    "labels": ["unknown", "general", "search", "content", "applications", "privacy", "security", "sync", "advancedGeneral", "advancedDataChoices", "advancedNetwork", "advancedUpdates", "advancedCerts"],
+    "labels": ["unknown", "general", "search", "content", "applications", "privacy", "security", "sync", "connect", "advancedGeneral", "advancedDataChoices", "advancedNetwork", "advancedUpdates", "advancedCerts"],
     "releaseChannelCollection": "opt-out",
     "description": "Count how often each preference category is opened."
   },
