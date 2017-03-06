@@ -349,7 +349,8 @@ var gPasswordManagers = {
 
       // add already installed password managers
       for (let addonObj of existing) {
-        let _installed_addon = new ItemHandler(this._listBox, undefined, addonObj, 'installed');
+        let addonDescriptor = available.filter(function(addon){ return addon.id == addonObj.id })[0];
+        let _installed_addon = new ItemHandler(this._listBox, addonDescriptor, addonObj, 'installed');
         this._listBox.appendChild(_installed_addon.listItem);
         existingIDs.push(addonObj.id);
       }
@@ -429,7 +430,8 @@ var gPrivacyManagers = {
 
       // add already installed privacy managers
       for (let addonObj of existing) {
-        let _installed_addon = new ItemHandler(this._listBox, undefined, addonObj, 'installed');
+        let addonDescriptor = available.filter(function(addon){ return addon.id == addonObj.id })[0];
+        let _installed_addon = new ItemHandler(this._listBox, addonDescriptor, addonObj, 'installed');
         this._listBox.appendChild(_installed_addon.listItem);
         existingIDs.push(addonObj.id);
       }
