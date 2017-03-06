@@ -7,6 +7,7 @@
 // Services = object with smart getters for common XPCOM services
 Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
 function init(aEvent)
 {
@@ -22,7 +23,16 @@ function init(aEvent)
       distroIdField.value = distroId + " - " + distroVersion;
       distroIdField.style.display = "block";
 
-      /*
+      // DB-1148: Add platform and extension version to About dialog.
+      let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+        let componentsVersion = Services.appinfo.platformVersion;
+        if (cliqzAddon) {
+          componentsVersion += `+${cliqzAddon.version}`;
+        }
+        distroIdField.value += ` (${componentsVersion})`;
+      });
+
+#if 0
       try {
         // This is in its own try catch due to bug 895473 and bug 900925.
         var distroAbout = Services.prefs.getComplexValue("distribution.about",
@@ -35,7 +45,7 @@ function init(aEvent)
         // Pref is unset
         Components.utils.reportError(ex);
       }
-      */
+#endif
     }
   }
   catch (e) {
@@ -43,7 +53,7 @@ function init(aEvent)
   }
 
 // CLIQZ. We don't use "version" element in CLIQZ browser at all
-/*
+#if 0
   // Include the build ID and display warning if this is an "a#" (nightly or aurora) build
   let versionField = document.getElementById("version");
   let version = Services.appinfo.version;
@@ -65,7 +75,8 @@ function init(aEvent)
                      : "aboutDialog.architecture.thirtyTwoBit";
   let arch = bundle.GetStringFromName(archResource);
   versionField.textContent += ` (${arch})`;
-*/
+#endif
+
   if (AppConstants.MOZ_UPDATER) {
     gAppUpdater = new appUpdater();
 
