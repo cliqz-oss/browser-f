@@ -51,7 +51,7 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:20170306132441', 
+        string(defaultValue: 'cliqz/ansible:20170306133845', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -142,7 +142,7 @@ jobs["windows"] = {
                                         "NODE_SECRET=${ec2_node.get('secret')}"
                                         ]) {
                                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
-                                           sh "cd /playbooks && ansible-playbook -i `cat /tmp/${ec2_node.get('nodeId')}`, ec2/playbook.yml"
+                                           sh "cd /playbooks && ansible-playbook -i `cat ${ec2_node.get('nodeId')}`, ec2/playbook.yml"
                                     }
                                 }
                             }
