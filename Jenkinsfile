@@ -30,8 +30,6 @@ properties([
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi', 
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
-        string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', 
-                name: 'ANSIBLE_PLAYBOOK_PATH'),
         string(defaultValue: "8000", name: 'NODE_MEMORY'),
         string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
         string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
