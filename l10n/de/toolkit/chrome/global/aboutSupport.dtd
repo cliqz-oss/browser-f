@@ -8,7 +8,7 @@
 <!ENTITY aboutSupport.pageSubtitle "
   Diese Seite enthält technische Informationen, die nützlich sein könnten,
   wenn du versuchst, ein Problem zu lösen. Wenn du nach Antworten auf häufig
-  gestellte Fragen zu &brandShortName; suchst, besuche bitte die <a href='https://cliqz.com/support'>Cliqz Support-Seite</a> oder auch die <a id='supportLink'>Mozilla Hilfeseiten</a>.
+  gestellte Fragen zu &brandShortName; suchst, besuche bitte die <a href='https://cliqz.com/support' target='_blank'>Cliqz Support-Seite</a> oder auch die <a id='supportLink'>Mozilla Hilfeseiten</a>.
 ">
 
 <!ENTITY aboutSupport.crashes.title "Absturzberichte">
