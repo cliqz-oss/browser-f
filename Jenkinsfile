@@ -142,7 +142,7 @@ jobs["windows"] = {
                                         "NODE_SECRET=${ec2_node.get('secret')}"
                                         ]) {
                                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
-                                           sh "cd /playbooks && ansible-playbook -i `cat ${ec2_node.get('nodeId')}`, ec2/playbook.yml"
+                                           sh "cd /playbooks && ansible-playbook -i `cat /tmp/${ec2_node.get('nodeId')}.txt`, ec2/playbook.yml"
                                     }
                                 }
                             }
