@@ -36,6 +36,10 @@
   #category-advanced > .category-icon {
     list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#advanced-native");
   }
+
+  #category-connect > .category-icon {
+    list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#connect-native");
+  }
 }
 
 .actionsMenu > .menulist-label-box > .menulist-icon {
@@ -47,7 +51,7 @@ filefield + button {
   margin-inline-start: -4px;
 }
 
-#advancedPrefs {
+#advancedPrefs, #connectPrefs {
   padding-bottom: 0; /* override padding from normal preferences.css */
 }
 
