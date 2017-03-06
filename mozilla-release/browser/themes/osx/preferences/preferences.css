@@ -60,7 +60,7 @@ caption {
   margin-top: 10px;
 }
 
-#advancedPrefs {
+#advancedPrefs, #connectPrefs {
   margin: 0 8px;
 }
 
