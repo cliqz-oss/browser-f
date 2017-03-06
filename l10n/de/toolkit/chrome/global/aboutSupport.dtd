@@ -7,8 +7,8 @@
 <!-- LOCALIZATION NOTE (aboutSupport.pageSubtitle): don't change the 'supportLink' id. -->
 <!ENTITY aboutSupport.pageSubtitle "
   Diese Seite enthält technische Informationen, die nützlich sein könnten,
-  wenn Sie versuchen, ein Problem zu lösen. Wenn Sie nach Antworten auf häufig
-  gestellte Fragen zu &brandShortName; suchen, besuchen Sie bitte unsere  <a id='supportLink'>Hilfeseite</a>.
+  wenn du versuchst, ein Problem zu lösen. Wenn du nach Antworten auf häufig
+  gestellte Fragen zu &brandShortName; suchst, besuche bitte die <a href='https://cliqz.com/support'>Cliqz Support-Seite</a> oder auch die <a id='supportLink'>Mozilla Hilfeseiten</a>.
 ">
 
 <!ENTITY aboutSupport.crashes.title "Absturzberichte">

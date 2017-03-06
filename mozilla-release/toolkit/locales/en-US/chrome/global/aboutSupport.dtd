@@ -8,7 +8,7 @@
 <!ENTITY aboutSupport.pageSubtitle "
   This page contains technical information that might be useful when you’re
   trying to solve a problem. If you are looking for answers to common questions
-  about &brandShortName;, check out our <a id='supportLink'>support website</a>.
+  about &brandShortName;, check out our <a href='https://cliqz.com/support'>Cliqz Support page</a> or <a id='supportLink'>Mozilla's support website</a>.
 ">
 
 <!ENTITY aboutSupport.crashes.title "Crash Reports">
