@@ -9,9 +9,9 @@
 <!ENTITY feedTitle.label             "Titel:">
 <!ENTITY feedTitle.accesskey         "T">
 
-<!ENTITY feedLocation.label          "Feed-URL:">
-<!ENTITY feedLocation.accesskey      "U">
-<!ENTITY feedLocation.placeholder    "Gültige Feed-URL eingeben">
+<!ENTITY feedLocation.label          "Feed-Adresse:">
+<!ENTITY feedLocation.accesskey      "d">
+<!ENTITY feedLocation.placeholder    "Gültige Feed-Adresse eingeben">
 <!ENTITY locationValidate.label      "Validieren">
 <!ENTITY validateText.label          "Prüfe Gültigkeit und rufe gültige URL ab.">
 

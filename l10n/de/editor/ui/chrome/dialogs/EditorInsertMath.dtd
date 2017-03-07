@@ -5,7 +5,7 @@
 <!-- Window title -->
 <!ENTITY windowTitle.label "Formel einfügen">
 
-<!ENTITY sourceEditField.label "Geben Sie LaTeX-Quellcode ein:">
+<!ENTITY sourceEditField.label "Geben Sie LaTeX-Quelltext ein:">
 
 <!ENTITY options.label "Optionen">
 <!ENTITY optionInline.label "Eingebetteter Modus">

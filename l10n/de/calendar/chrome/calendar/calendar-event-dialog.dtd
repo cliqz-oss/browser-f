@@ -29,14 +29,18 @@
 <!-- The following entity is for New Task dialog only -->
 <!ENTITY newtodo.percentcomplete.label      "&#037; fertig">
 
-<!-- LOCALIZATON NOTE(newevent.attendees.notify.label,newevent.attendees.notifyundisclosed.label)
-   - These two labels are displayed side by side in the event dialog, make sure
+<!-- LOCALIZATON NOTE(event.attendees.notify.label,event.attendees.notifyundisclosed.label,
+     event.attendees.disallowcounter.label)
+   - These three labels are displayed side by side in the event dialog, make sure
    - they still fit in. -->
 <!ENTITY event.attendees.notify.label               "Teilnehmer benachrichtigen">
 <!ENTITY event.attendees.notify.accesskey           "q">
 <!ENTITY event.attendees.notifyundisclosed.label    "Separate Einladung je Teilnehmer">
 <!ENTITY event.attendees.notifyundisclosed.accesskey  "j">
 <!ENTITY event.attendees.notifyundisclosed.tooltip  "Mit dieser Einstellung erhält jeder Teilnehmer eine separate Einladungs-E-Mail. Jede Einladung nennt dabei nur den jeweiligen Empfänger als Teilnehmer, sodass andere Teilnehmer nicht offengelegt werden.">
+<!ENTITY event.attendees.disallowcounter.label       "Gegenvorschläge verbieten">
+<!ENTITY event.attendees.disallowcounter.accesskey   "v">
+<!ENTITY event.attendees.disallowcounter.tooltip     "Weist darauf hin, dass Sie Gegenvorschläge nicht akzeptieren werden">
 
 <!-- Keyboard Shortcuts -->
 <!ENTITY event.dialog.new.event.key2              "I">
@@ -66,10 +70,25 @@
 <!ENTITY  event.menu.item.new.contact.accesskey           "K">
 <!ENTITY  event.menu.item.close.label                     "Schließen">
 <!ENTITY  event.menu.item.close.accesskey                 "c">
+
+<!-- LOCALIZATION NOTE
+   - event.menu.item.save.accesskey is used for the "Save" menu item
+   - when editing events/tasks in a dialog window.
+   - event.menu.item.save.tab.accesskey is used for the "Save" menu item
+   - when editing events/tasks in a tab. -->
 <!ENTITY  event.menu.item.save.label                      "Speichern">
 <!ENTITY  event.menu.item.save.accesskey                  "p">
+<!ENTITY  event.menu.item.save.tab.accesskey              "x">
+
+<!-- LOCALIZATION NOTE
+    - event.menu.item.saveandclose.accesskey is used for "Save and Close"
+    - menu item when editing events/tasks in a dialog window.
+    - event.menu.item.saveandclose.tab.accesskey is used for "Save and Close"
+    - when editing events/tasks in a tab. -->
 <!ENTITY  event.menu.item.saveandclose.label              "Speichern und schließen">
 <!ENTITY  event.menu.item.saveandclose.accesskey          "s">
+<!ENTITY  event.menu.item.saveandclose.tab.accesskey      "i">
+
 <!ENTITY  event.menu.item.delete.label                    "Löschen…">
 <!ENTITY  event.menu.item.delete.accesskey                "L">
 <!ENTITY  event.menu.item.page.setup.label                "Seite einrichten">
@@ -146,12 +165,14 @@
 <!ENTITY event.remove.attendee.accesskey                  "n">
 
 <!-- Toolbar -->
-<!ENTITY  event.toolbar.save.label                        "Speichern und schließen">
+<!ENTITY  event.toolbar.save.label2                       "Speichern">
+<!ENTITY  event.toolbar.saveandclose.label                "Speichern und schließen">
 <!ENTITY  event.toolbar.delete.label                      "Löschen">
 <!ENTITY  event.toolbar.attendees.label                   "Teilnehmer einladen">
 <!ENTITY  event.toolbar.privacy.label                     "Privatsphäre">
 
-<!ENTITY  event.toolbar.save.tooltip                      "Speichern und schließen">
+<!ENTITY  event.toolbar.save.tooltip2                     "Speichern">
+<!ENTITY  event.toolbar.saveandclose.tooltip              "Speichern und schließen">
 <!ENTITY  event.toolbar.delete.tooltip                    "Löschen">
 <!ENTITY  event.toolbar.attendees.tooltip                 "Teilnehmer einladen">
 <!ENTITY  event.toolbar.attachments.tooltip               "Anhänge anfügen">
@@ -160,7 +181,21 @@
 <!ENTITY  event.toolbar.status.tooltip                    "Status ändern">
 <!ENTITY  event.toolbar.freebusy.tooltip                  "Frei/Gebucht-Informationen ändern">
 
-<!-- Main page -->	
+<!-- Counter box -->
+<!-- LOCALIZATON NOTE(counter.button.*)
+   - This is only visible in the UI if you have received a counterproposal before and are going to
+   - reschedule the event from the imipbar in the email view. Clicking on the buttons will only
+   - populate the form fields in the dialog, there's no other immediate action on clicking like with
+   - the imip bar. Rescheduling will happen after clicking on save&close as usual. This screenshot
+   - illustrates how it might look like: https://bugzilla.mozilla.org/attachment.cgi?id=8810121 -->
+<!ENTITY counter.button.proposal.label                    "Vorschlag anwenden">
+<!ENTITY counter.button.proposal.accesskey                "n">
+<!ENTITY counter.button.proposal.tooltip2                 "Die Werte des Gegenvorschlags werden in die Felder des Termins eingefügt. Nur das Speichern mit oder ohne zusätzliche Änderungen wird alle Teilnehmer darüber informieren.">
+<!ENTITY counter.button.original.label                    "Ursprüngliche Daten verwenden">
+<!ENTITY counter.button.original.accesskey                "U">
+<!ENTITY counter.button.original.tooltip2                 "Die Werte des ursprünglichen Termins bevor der Gegenvorschlag gemacht wurde werden in die Felder eingefügt.">
+
+<!-- Main page -->
 <!ENTITY event.title.textbox.label                        "Titel:">
 <!ENTITY event.title.textbox.accesskey                    "T">
 <!ENTITY event.location.label                             "Ort:">
@@ -377,6 +412,7 @@
 <!ENTITY read.only.tentative.label       "Ich nehme eventuell teil">
 <!ENTITY read.only.needs.action.label    "Ich bestätige später">
 <!ENTITY read.only.reminder.label        "Erinnerung:">
+<!ENTITY read.only.attachments.label     "Anhänge:">
 <!ENTITY read.only.attendees.label       "Teilnehmer">
 <!ENTITY read.only.description.label     "Beschreibung">
 <!ENTITY read.only.link.label            "Zugehöriger Link">

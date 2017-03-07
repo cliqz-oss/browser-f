@@ -1,6 +1,0 @@
-amazondotcom-de
-bing
-google
-leo_ende_de
-wikipedia-de
-yahoo-de

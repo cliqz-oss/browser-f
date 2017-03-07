@@ -5,6 +5,7 @@
 <!ENTITY addressbookWindow.title                        "Adressbuch">
 <!ENTITY blankResultsPaneMessage.label                  "Dieses Adressbuch zeigt Kontakte erst nach einer Suche an.">
 <!ENTITY localResultsOnlyMessage.label                  "Kontakte externer Adressbücher werden erst nach einer Suche angezeigt.">
+
 <!-- File Menu -->
 <!ENTITY fileMenu.label                                 "Datei">
 <!ENTITY fileMenu.accesskey                             "D">
@@ -13,7 +14,7 @@
 <!ENTITY newContact.label                               "Kontakt…">
 <!ENTITY newContact.accesskey                           "K">
 <!ENTITY newContact.key                                 "N">
-<!ENTITY newListCmd.label                               "Verteiler-Liste…">
+<!ENTITY newListCmd.label                               "Verteilerliste…">
 <!ENTITY newListCmd.accesskey                           "V">
 <!ENTITY newAddressBookCmd.label                        "Adressbuch">
 <!ENTITY newAddressBookCmd.accesskey                    "A">
@@ -75,9 +76,15 @@
 <!-- LOCALIZATION NOTE (hideSwapFnLnUI) : DONT_TRANSLATE -->
 <!-- Swap FN/LN UI  Set to "false" to show swap fn/ln UI -->
 <!ENTITY hideSwapFnLnUI "false">
-<!ENTITY propertiesCmd2.label                           "Eigenschaften">
-<!ENTITY propertiesCmd2.accesskey                       "n">
+<!ENTITY propertiesMenu.label                           "Eigenschaften">
+<!ENTITY propertiesMenu.accesskey                       "n">
 <!ENTITY propertiesCmd.key                              "i">
+<!ENTITY abPropertiesMenu.label                         "Adressbucheigenschaften">
+<!ENTITY abPropertiesMenu.accesskey                     "e">
+<!ENTITY contactPropertiesMenu.label                    "Kontakteigenschaften">
+<!ENTITY contactPropertiesMenu.accesskey                "e">
+<!ENTITY mailingListPropertiesMenu.label                "Verteilerlisteeigenschaften">
+<!ENTITY mailingListPropertiesMenu.accesskey            "e">
 
 <!-- View Menu -->
 <!ENTITY viewMenu.label                                 "Ansicht">
@@ -133,8 +140,15 @@
 <!ENTITY newContactButton.accesskey                     "K">
 <!ENTITY newlistButton.label                            "Neue Liste">
 <!ENTITY newlistButton.accesskey                        "L">
-<!ENTITY editButton2.label                              "Eigenschaften">
-<!ENTITY editButton2.accesskey                          "E">
+<!ENTITY editPropertiesButton.label                     "Bearbeiten">
+<!ENTITY propertiesContext.label                        "Eigenschaften">
+<!ENTITY propertiesContext.accesskey                    "E">
+<!ENTITY abPropertiesContext.label                      "Eigenschaften">
+<!ENTITY abPropertiesContext.accesskey                  "E">
+<!ENTITY editContactContext.label                       "Kontakt bearbeiten">
+<!ENTITY editContactContext.accesskey                   "b">
+<!ENTITY editMailingListContext.label                   "Liste bearbeiten">
+<!ENTITY editMailingListContext.accesskey               "b">
 <!ENTITY newmsgButton.label                             "Verfassen">
 <!ENTITY newmsgButton.accesskey                         "V">
 <!ENTITY newIM.label                                    "Messenger">
@@ -146,8 +160,11 @@
 
 <!-- Address Book Toolbar Tooltips -->
 <!ENTITY newContactButton.tooltip                       "Neuen Kontakt erstellen">
-<!ENTITY newlistButton.tooltip                          "Neue Verteiler-Liste erstellen">
-<!ENTITY editButton2.tooltip                            "Gewählten Kontakt bearbeiten">
+<!ENTITY newlistButton.tooltip                          "Neue Verteilerliste erstellen">
+<!ENTITY editPropertiesButton.tooltip                   "Gewählten Eintrag bearbeiten">
+<!ENTITY editAbPropertiesButton.tooltip                 "Eigenschaften des ausgewählten Adressbuchs bearbeiten">
+<!ENTITY editContactPropertiesButton.tooltip            "Eigenschaften des ausgewählten Kontakts bearbeiten">
+<!ENTITY editMailingListPropertiesButton.tooltip        "Eigenschaften der ausgewählten Verteilerliste bearbeiten">
 <!ENTITY newmsgButton.tooltip                           "Neue Nachricht verfassen">
 <!ENTITY newIM.tooltip                                  "Neue Sofortnachricht (instant message) oder neuen Chat verfassen">
 <!ENTITY deleteButton2.tooltip                          "Gewähltes Element löschen">

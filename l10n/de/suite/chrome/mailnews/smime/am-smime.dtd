@@ -30,3 +30,8 @@
 <!ENTITY manageCerts2.accesskey "Z">
 <!ENTITY manageDevices.label "Kryptographie-Module verwalten…">
 <!ENTITY manageDevices.accesskey "K">
+
+<!-- Strings for the cert picker dialog -->
+<!ENTITY certPicker.title "Zertifikat wählen">
+<!ENTITY certPicker.info  "Zertifikat:">
+<!ENTITY certPicker.detailsLabel "Details des gewählten Zertifikats:">

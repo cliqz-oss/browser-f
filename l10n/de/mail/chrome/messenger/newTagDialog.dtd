@@ -3,6 +3,6 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
    
 <!-- New Tag Dialog -->
-<!ENTITY newTagDialog.title      "Neues Schlagwort erstellen">
+<!ENTITY newTagDialog1.title     "Neues Schlagwort">
 <!ENTITY name.label              "Schlagwort und zugeordnete Farbe:">
 <!ENTITY name.accesskey          "S">

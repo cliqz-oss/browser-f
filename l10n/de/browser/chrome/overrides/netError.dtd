@@ -51,6 +51,13 @@
 <p>&brandShortName; konnte die Seite aus unbekanntem Grund nicht laden.</p>
 ">
 
+<!ENTITY captivePortal.title "Anmeldung beim Netzwerk">
+<!ENTITY captivePortal.longDesc "
+<p>Dieses Netzwerk benötigt eventuell Ihre Anmeldung für den Internetzugriff.</p>
+">
+
+<!ENTITY openPortalLoginPage.label "Anmeldeseite öffnen">
+
 <!ENTITY malformedURI.title "Fehler: Ungültige Adresse">
 <!ENTITY malformedURI.longDesc "
 <ul>
