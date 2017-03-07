@@ -25,15 +25,6 @@ if $CLOBBER; then
   ./mach clobber
 fi
 
-# TODO: Use MOZ_GOOGLE_API_KEY directly instead of CQZ_GOOGLE_API_KEY.
-if [ $CQZ_GOOGLE_API_KEY ]; then
-  export MOZ_GOOGLE_API_KEY=$CQZ_GOOGLE_API_KEY  # --with-google-api-keyfile=...
-fi
-
-if [ -z $MOZ_MOZILLA_API_KEY ]; then
-  echo "warning: MOZ_MOZILLA_API_KEY environment variable is missing"
-fi
-
 if [ -z "$LANG" ]; then
   LANG='en-US'
 fi
