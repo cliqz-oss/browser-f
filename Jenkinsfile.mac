@@ -61,9 +61,11 @@ withEnv([
         stage('fix keys') {
 
             sh "if [ ! -d /builds ]; then sudo mkdir -p /builds; fi"
-            sh "sudo chown -R `whoami` /builds"
-            writeFile file: "/builds/mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-            writeFile file: "/builds/google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+            sh '''#!/bin/bash -l 
+                sudo chown -R `whoami` /builds
+                sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
+                sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
+            '''
         }
 
         stage('build') {
