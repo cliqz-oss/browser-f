@@ -58,18 +58,25 @@ docker.image(imageName).inside() {
       "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
       "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
 
-    stage('Build Browser') {
       withCredentials([
-          [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
-          [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
+        [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY'],
+        [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-        try {
-          sh './magic_build_and_package.sh  --clobber'
-        } catch (e) {
-          archive 'obj/config.log'
-          throw e
+        stage('fix keys') {
+            sh "mkdir /builds"
+            writeFile file: "/builds/mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+            writeFile file: "/builds/google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
         }
-      }
+  
+        stage('Build Browser') {
+
+          try {
+            sh './magic_build_and_package.sh  --clobber'
+          } catch (e) {
+            archive 'obj/config.log'
+            throw e
+          }
+        }
     }
 
     withCredentials([[
