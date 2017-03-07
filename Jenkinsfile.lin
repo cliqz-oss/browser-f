@@ -63,7 +63,7 @@ docker.image(imageName).inside() {
         [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
         stage('fix keys') {
-            sh "mkdir /builds"
+            sh "sudo mkdir /builds && chown `whoami` -R /builds"
             writeFile file: "/builds/mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
             writeFile file: "/builds/google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
         }

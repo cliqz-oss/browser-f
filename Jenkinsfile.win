@@ -49,7 +49,7 @@ withCredentials([
     ]) {
 
       stage('fix keys') {
-          sh "mkdir c:\\builds"
+          bat "mkdir c:\\builds"
           writeFile file: "c:\\builds\\mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
           writeFile file: "c:\\builds\\google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
       }
