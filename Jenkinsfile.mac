@@ -59,7 +59,7 @@ withEnv([
         [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
         
         stage('fix keys') {
-            sh "mkdir /builds"
+            sh "sudo mkdir /builds && sudo chown `whoami` -R /builds"
             writeFile file: "/builds/mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
             writeFile file: "/builds/google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
         }
