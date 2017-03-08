@@ -10,17 +10,11 @@ ac_add_app_options x86_64 --target=x86_64-apple-darwin$DARWIN_VERSION
 ac_add_app_options i386 --with-unify-dist=../x86_64/dist
 ac_add_app_options x86_64 --with-unify-dist=../i386/dist
 
-<<<<<<< HEAD
-# This is autodetected.
-# ac_add_options --with-macos-sdk=/Developer/SDKs/MacOSX10.7.sdk
-||||||| merged common ancestors
-ac_add_options --with-macos-sdk=/Developer/SDKs/MacOSX10.7.sdk
-=======
 if ! test `uname -s` = Linux; then
   # Cross-universal builds already do the equivalent of this by setting -isysroot directly
-  ac_add_options --with-macos-sdk=/Developer/SDKs/MacOSX10.7.sdk
+  # This is autodetected.
+  # ac_add_options --with-macos-sdk=/Developer/SDKs/MacOSX10.7.sdk
 fi
->>>>>>> origin/upstream-releases
 
 . $topsrcdir/build/macosx/mozconfig.common
 

@@ -7,14 +7,8 @@ browser.jar:
 *  content/browser/preferences/in-content/preferences.xul
    content/browser/preferences/in-content/subdialogs.js
    content/browser/preferences/in-content/main.js
-<<<<<<< HEAD
 *  content/browser/preferences/in-content/privacy.js
-||||||| merged common ancestors
-   content/browser/preferences/in-content/privacy.js
-=======
-   content/browser/preferences/in-content/privacy.js
    content/browser/preferences/in-content/containers.js
->>>>>>> origin/upstream-releases
    content/browser/preferences/in-content/advanced.js
    content/browser/preferences/in-content/applications.js
    content/browser/preferences/in-content/connect.js

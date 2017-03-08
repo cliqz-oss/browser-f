@@ -1554,13 +1554,9 @@
               aNoReferrer           = params.noReferrer;
               aUserContextId        = params.userContextId;
               aRelatedBrowser       = params.relatedBrowser;
-<<<<<<< HEAD
-              aPrivate              = params.private;
-||||||| merged common ancestors
-=======
               aOriginPrincipal      = params.originPrincipal;
               aOpener               = params.opener;
->>>>>>> origin/upstream-releases
+              aPrivate              = params.private;
             }
 
             var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -1580,16 +1576,10 @@
                                   forceNotRemote: aForceNotRemote,
                                   noReferrer: aNoReferrer,
                                   userContextId: aUserContextId,
-<<<<<<< HEAD
-                                  relatedBrowser: aRelatedBrowser,
-                                  private: aPrivate });
-||||||| merged common ancestors
-                                  relatedBrowser: aRelatedBrowser });
-=======
                                   originPrincipal: aOriginPrincipal,
                                   relatedBrowser: aRelatedBrowser,
-                                  opener: aOpener });
->>>>>>> origin/upstream-releases
+                                  opener: aOpener,
+                                  private: aPrivate });
             if (!bgLoad)
               this.selectedTab = tab;
 
@@ -2087,15 +2077,9 @@
                                              remote: remote,
                                              uriIsAboutBlank: uriIsAboutBlank,
                                              userContextId: aParams.userContextId,
-<<<<<<< HEAD
                                              relatedBrowser: aParams.relatedBrowser,
+                                             opener: aParams.opener,
                                              private: !!aParams.private});
-||||||| merged common ancestors
-                                             relatedBrowser: aParams.relatedBrowser});
-=======
-                                             relatedBrowser: aParams.relatedBrowser,
-                                             opener: aParams.opener});
->>>>>>> origin/upstream-releases
             }
 
             let notificationbox = this.getNotificationBox(browser);
@@ -2174,13 +2158,9 @@
             var aUserContextId;
             var aEventDetail;
             var aRelatedBrowser;
-<<<<<<< HEAD
-            var aPrivate;
-||||||| merged common ancestors
-=======
             var aOriginPrincipal;
             var aOpener;
->>>>>>> origin/upstream-releases
+            var aPrivate;
             if (arguments.length == 2 &&
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2200,13 +2180,9 @@
               aUserContextId        = params.userContextId;
               aEventDetail          = params.eventDetail;
               aRelatedBrowser       = params.relatedBrowser;
-<<<<<<< HEAD
-              aPrivate              = params.private;
-||||||| merged common ancestors
-=======
               aOriginPrincipal      = params.originPrincipal;
               aOpener               = params.opener;
->>>>>>> origin/upstream-releases
+              aPrivate              = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2278,15 +2254,9 @@
             let browserParams = {
               forceNotRemote: aForceNotRemote,
               userContextId:  aUserContextId,
-<<<<<<< HEAD
-              relatedBrowser: aRelatedBrowser,
-              private: !!aPrivate
-||||||| merged common ancestors
-              relatedBrowser: aRelatedBrowser
-=======
               relatedBrowser: aRelatedBrowser,
               opener: aOpener,
->>>>>>> origin/upstream-releases
+              private: !!aPrivate,
             };
             let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
             let b = t.linkedBrowser;
@@ -2321,29 +2291,13 @@
                 flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT;
               try {
                 b.loadURIWithFlags(aURI, {
-<<<<<<< HEAD
-                                   flags: flags,
-                                   referrerURI: aNoReferrer ? null: aReferrerURI,
-                                   referrerPolicy: aReferrerPolicy,
-                                   charset: aCharset,
-                                   postData: aPostData,
-                                   ensurePrivate: aPrivate,
-                                   });
-||||||| merged common ancestors
-                                   flags: flags,
-                                   referrerURI: aNoReferrer ? null: aReferrerURI,
-                                   referrerPolicy: aReferrerPolicy,
-                                   charset: aCharset,
-                                   postData: aPostData,
-                                   });
-=======
                   flags,
                   referrerURI: aNoReferrer ? null: aReferrerURI,
                   referrerPolicy: aReferrerPolicy,
                   charset: aCharset,
                   postData: aPostData,
+                  ensurePrivate: aPrivate,
                 });
->>>>>>> origin/upstream-releases
               } catch (ex) {
                 Cu.reportError(ex);
               }
@@ -6037,58 +5991,6 @@
         <parameter name="event"/>
         <body><![CDATA[
           var dt = event.dataTransfer;
-<<<<<<< HEAD
-          // Disallow dropping multiple items
-          if (dt.mozItemCount > 1)
-            return "none";
-
-          var types = dt.mozTypesAt(0);
-          // tabs are always added as the first type
-          if (types[0] == TAB_DROP_TYPE) {
-            let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
-            if (sourceNode instanceof XULElement &&
-                sourceNode.localName == "tab" &&
-                sourceNode.ownerDocument.defaultView instanceof ChromeWindow &&
-                sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-                sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
-              // CLIQZ Auto-Forget-Tabs:
-              // Transfering a private tab to a non-private window is fine.
-              // Transfering a normal tab to a private window is not.
-              if (PrivateBrowsingUtils.isWindowPrivate(window) &&
-                  !sourceNode.private)
-                return "none";
-
-              if (window.gMultiProcessBrowser !=
-                  sourceNode.ownerDocument.defaultView.gMultiProcessBrowser)
-                return "none";
-
-              return dt.dropEffect == "copy" ? "copy" : "move";
-||||||| merged common ancestors
-          // Disallow dropping multiple items
-          if (dt.mozItemCount > 1)
-            return "none";
-
-          var types = dt.mozTypesAt(0);
-          // tabs are always added as the first type
-          if (types[0] == TAB_DROP_TYPE) {
-            let sourceNode = dt.mozGetDataAt(TAB_DROP_TYPE, 0);
-            if (sourceNode instanceof XULElement &&
-                sourceNode.localName == "tab" &&
-                sourceNode.ownerDocument.defaultView instanceof ChromeWindow &&
-                sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-                sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
-              // Do not allow transfering a private tab to a non-private window
-              // and vice versa.
-              if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                  PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerDocument.defaultView))
-                return "none";
-
-              if (window.gMultiProcessBrowser !=
-                  sourceNode.ownerDocument.defaultView.gMultiProcessBrowser)
-                return "none";
-
-              return dt.dropEffect == "copy" ? "copy" : "move";
-=======
           if (dt.mozItemCount == 1) {
             var types = dt.mozTypesAt(0);
             // tabs are always added as the first type
@@ -6099,10 +6001,11 @@
                   sourceNode.ownerDocument.defaultView instanceof ChromeWindow &&
                   sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
                   sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
-                // Do not allow transfering a private tab to a non-private window
-                // and vice versa.
-                if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                    PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerDocument.defaultView))
+                // CLIQZ Auto-Forget-Tabs:
+                // Transfering a private tab to a non-private window is fine.
+                // Transfering a normal tab to a private window is not.
+                if (PrivateBrowsingUtils.isWindowPrivate(window) &&
+                    !sourceNode.private)
                   return "none";
 
                 if (window.gMultiProcessBrowser !=
@@ -6111,7 +6014,6 @@
 
                 return dt.dropEffect == "copy" ? "copy" : "move";
               }
->>>>>>> origin/upstream-releases
             }
           }
 

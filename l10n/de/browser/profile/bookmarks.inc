@@ -37,15 +37,6 @@
 # link title for https://www.mozilla.org/en-US/about/
 #define firefox_about Über uns
 
-<<<<<<< HEAD
-# CLIQZ links folder
-#define cliqz_heading CLIQZ
-#define cliqz_about Über uns
-#define cliqz_contact Hilfe und Kontakt
-#define cliqz_tips Tipps und Tricks
-
-||||||| merged common ancestors
-=======
 # LOCALIZATION NOTE (nightly_heading):
 # Firefox Nightly links folder name
 #define nightly_heading Ressourcen zu Firefox Nightly
@@ -78,5 +69,10 @@
 # Nightly builds only, link title for https://planet.mozilla.org/
 #define planet Planet Mozilla (englisch)
 
->>>>>>> origin/upstream-releases
+# CLIQZ links folder
+#define cliqz_heading CLIQZ
+#define cliqz_about Über uns
+#define cliqz_contact Hilfe und Kontakt
+#define cliqz_tips Tipps und Tricks
+
 #unfilter emptyLines

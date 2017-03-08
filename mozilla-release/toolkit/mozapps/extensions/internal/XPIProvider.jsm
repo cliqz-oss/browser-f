@@ -5694,83 +5694,12 @@ class AddonInstall {
    * @throws if the add-on does not contain a valid install manifest or the
    *         XPI is incorrectly signed
    */
-<<<<<<< HEAD
-  loadManifest: Task.async(function*(file) {
-    let zipreader = Cc["@mozilla.org/libjar/zip-reader;1"].
-                    createInstance(Ci.nsIZipReader);
-    try {
-      zipreader.open(file);
-    }
-    catch (e) {
-      zipreader.close();
-      return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
-    }
-
-    try {
-      // loadManifestFromZipReader performs the certificate verification for us
-      this.addon = yield loadManifestFromZipReader(zipreader, this.installLocation);
-      logger.debug("Parsed manifest", this.addon);
-    }
-    catch (e) {
-      zipreader.close();
-      return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
-    }
-
-    // A multi-package XPI is a container, the add-ons it holds each
-    // have their own id.  Everything else had better have an id here.
-    if (!this.addon.id && this.addon.type != "multipackage") {
-      let err = new Error(`Cannot find id for addon ${file.path}`);
-      return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, err]);
-    }
-
-    if (this.existingAddon) {
-      // Check various conditions related to upgrades
-      if (this.addon.id != this.existingAddon.id) {
-        zipreader.close();
-        return Promise.reject([AddonManager.ERROR_INCORRECT_ID,
-                               `Refusing to upgrade addon ${this.existingAddon.id} to different ID {this.addon.id}`]);
-||||||| merged common ancestors
-  loadManifest: Task.async(function*(file) {
-    let zipreader = Cc["@mozilla.org/libjar/zip-reader;1"].
-                    createInstance(Ci.nsIZipReader);
-    try {
-      zipreader.open(file);
-    }
-    catch (e) {
-      zipreader.close();
-      return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
-    }
-
-    try {
-      // loadManifestFromZipReader performs the certificate verification for us
-      this.addon = yield loadManifestFromZipReader(zipreader, this.installLocation);
-    }
-    catch (e) {
-      zipreader.close();
-      return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
-    }
-
-    // A multi-package XPI is a container, the add-ons it holds each
-    // have their own id.  Everything else had better have an id here.
-    if (!this.addon.id && this.addon.type != "multipackage") {
-      let err = new Error(`Cannot find id for addon ${file.path}`);
-      return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, err]);
-    }
-
-    if (this.existingAddon) {
-      // Check various conditions related to upgrades
-      if (this.addon.id != this.existingAddon.id) {
-        zipreader.close();
-        return Promise.reject([AddonManager.ERROR_INCORRECT_ID,
-                               `Refusing to upgrade addon ${this.existingAddon.id} to different ID {this.addon.id}`]);
-=======
   loadManifest(file) {
     return Task.spawn((function*() {
       let zipreader = Cc["@mozilla.org/libjar/zip-reader;1"].
           createInstance(Ci.nsIZipReader);
       try {
         zipreader.open(file);
->>>>>>> origin/upstream-releases
       }
       catch (e) {
         zipreader.close();
@@ -5780,92 +5709,20 @@ class AddonInstall {
       try {
         // loadManifestFromZipReader performs the certificate verification for us
         this.addon = yield loadManifestFromZipReader(zipreader, this.installLocation);
+        logger.debug("Parsed manifest", this.addon);
       }
-<<<<<<< HEAD
-    }
-
-    if (mustSign(this.addon.type)) {
-      if (this.addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
-        // This add-on isn't properly signed by a signature that chains to the
-        // trusted root.
-        let state = this.addon.signedState;
-        const manifest = this.addon;
-        this.addon = null;
-||||||| merged common ancestors
-    }
-
-    if (mustSign(this.addon.type)) {
-      if (this.addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
-        // This add-on isn't properly signed by a signature that chains to the
-        // trusted root.
-        let state = this.addon.signedState;
-        this.addon = null;
-=======
       catch (e) {
->>>>>>> origin/upstream-releases
         zipreader.close();
         return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
       }
 
-<<<<<<< HEAD
-        if (state == AddonManager.SIGNEDSTATE_MISSING ||
-            state == AddonManager.SIGNEDSTATE_UNKNOWN)
-          return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                 "signature is required but missing",
-                                 manifest]);
-||||||| merged common ancestors
-        if (state == AddonManager.SIGNEDSTATE_MISSING)
-          return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                 "signature is required but missing"])
-=======
       // A multi-package XPI is a container, the add-ons it holds each
       // have their own id.  Everything else had better have an id here.
       if (!this.addon.id && this.addon.type != "multipackage") {
         let err = new Error(`Cannot find id for addon ${file.path}`);
         return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, err]);
       }
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-        return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                               "signature verification failed",
-                               manifest])
-      }
-    }
-    else if (this.addon.signedState == AddonManager.SIGNEDSTATE_UNKNOWN ||
-             this.addon.signedState == AddonManager.SIGNEDSTATE_NOT_REQUIRED) {
-      // Check object signing certificate, if any
-      let x509 = zipreader.getSigningCert(null);
-      if (x509) {
-        logger.debug("Verifying XPI signature");
-        if (verifyZipSigning(zipreader, x509)) {
-          this.certificate = x509;
-          if (this.certificate.commonName.length > 0) {
-            this.certName = this.certificate.commonName;
-          } else {
-            this.certName = this.certificate.organization;
-          }
-        } else {
-||||||| merged common ancestors
-        return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                               "signature verification failed"])
-      }
-    }
-    else if (this.addon.signedState == AddonManager.SIGNEDSTATE_UNKNOWN ||
-             this.addon.signedState == AddonManager.SIGNEDSTATE_NOT_REQUIRED) {
-      // Check object signing certificate, if any
-      let x509 = zipreader.getSigningCert(null);
-      if (x509) {
-        logger.debug("Verifying XPI signature");
-        if (verifyZipSigning(zipreader, x509)) {
-          this.certificate = x509;
-          if (this.certificate.commonName.length > 0) {
-            this.certName = this.certificate.commonName;
-          } else {
-            this.certName = this.certificate.organization;
-          }
-        } else {
-=======
       if (this.existingAddon) {
         // Check various conditions related to upgrades
         if (this.addon.id != this.existingAddon.id) {
@@ -5881,7 +5738,6 @@ class AddonInstall {
         }
 
         if (this.existingAddon.type == "webextension" && this.addon.type != "webextension") {
->>>>>>> origin/upstream-releases
           zipreader.close();
           return Promise.reject([AddonManager.ERROR_UNEXPECTED_ADDON_TYPE,
                                  "WebExtensions may not be upated to other extension types"]);
@@ -5893,15 +5749,19 @@ class AddonInstall {
           // This add-on isn't properly signed by a signature that chains to the
           // trusted root.
           let state = this.addon.signedState;
+          const manifest = this.addon;
           this.addon = null;
           zipreader.close();
 
-          if (state == AddonManager.SIGNEDSTATE_MISSING)
+          if (state == AddonManager.SIGNEDSTATE_MISSING ||
+              state == AddonManager.SIGNEDSTATE_UNKNOWN)
             return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                   "signature is required but missing"])
+                                   "signature is required but missing",
+                                   manifest]);
 
           return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                                 "signature verification failed"])
+                                 "signature verification failed",
+                                 manifest])
         }
       }
       else if (this.addon.signedState == AddonManager.SIGNEDSTATE_UNKNOWN ||

@@ -59,11 +59,11 @@ function getFile(path) {
 }
 
 function insertWholeBookmarkFolder(db, aId, aGuid) {
-  let query = `SELECT b.id, h.url, COALESCE(b.title, h.title) AS title, 
-    b.type, k.keyword, b.dateAdded, b.lastModified, h.favicon_id 
-    FROM moz_bookmarks b 
-    LEFT JOIN moz_places h ON b.fk = h.id 
-    LEFT JOIN moz_keywords k ON k.id = b.keyword_id 
+  let query = `SELECT b.id, h.url, COALESCE(b.title, h.title) AS title,
+    b.type, k.keyword, b.dateAdded, b.lastModified, h.favicon_id
+    FROM moz_bookmarks b
+    LEFT JOIN moz_places h ON b.fk = h.id
+    LEFT JOIN moz_keywords k ON k.id = b.keyword_id
     WHERE b.type IN (1,2) AND b.parent = ${aId}
     ORDER BY b.position;`;
   let rows = yield db.execute(query);
@@ -117,8 +117,7 @@ function FirefoxProfileMigrator() {
 
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
-<<<<<<< HEAD
-FirefoxProfileMigrator.prototype._getAllProfiles = function () {
+FirefoxProfileMigrator.prototype._getAllProfiles = function() {
   const profiles = new Map();
 
   const profilesIni = fxProductDir.clone();
@@ -167,12 +166,7 @@ function CliqzProfileMigrator() {
 CliqzProfileMigrator.prototype =
     Object.create(FirefoxProfileMigrator.prototype);
 
-CliqzProfileMigrator.prototype._getAllProfiles = function () {
-||||||| merged common ancestors
-FirefoxProfileMigrator.prototype._getAllProfiles = function () {
-=======
-FirefoxProfileMigrator.prototype._getAllProfiles = function() {
->>>>>>> origin/upstream-releases
+CliqzProfileMigrator.prototype._getAllProfiles = function() {
   let allProfiles = new Map();
   let profiles =
     Components.classes["@mozilla.org/toolkit/profile-service;1"]
@@ -314,8 +308,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 
             // IMPORT HISTORY
             let rows = yield db.execute(`SELECT h.url, h.title, v.visit_type, v.visit_date
-                                        FROM moz_places h JOIN moz_historyvisits v 
-                                        ON h.id = v.place_id 
+                                        FROM moz_places h JOIN moz_historyvisits v
+                                        ON h.id = v.place_id
                                         WHERE v.visit_type <= 3;`);
             let places = [];
             for (let row of rows) {
@@ -361,7 +355,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
                   aCallback(false);
                 });
       }
-    };          
+    };
   }.bind(this);
 
   let getPasswordsResource = function(aFileName) {
@@ -428,7 +422,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         }).then(() => aCallback(true),
         e => { Cu.reportError(e); aCallback(false) });
       }
-    };          
+    };
   }.bind(this);
 
   let getCookiesResource = function(aFileName) {
@@ -468,7 +462,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         }).then(() => aCallback(true),
         e => { Cu.reportError(e); aCallback(false) });
       }
-    };          
+    };
   }.bind(this);
 
   let getFormDataResource = function(aFileName) {
@@ -510,7 +504,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         }).then(() => aCallback(true),
         e => { Cu.reportError(e); aCallback(false) });
       }
-    };          
+    };
   }.bind(this);
 
   let types = MigrationUtils.resourceTypes;

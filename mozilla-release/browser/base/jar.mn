@@ -71,14 +71,8 @@ browser.jar:
 *       content/browser/browser.css                   (content/browser.css)
 *       content/browser/browser.js                    (content/browser.js)
 *       content/browser/browser.xul                   (content/browser.xul)
-<<<<<<< HEAD
 *       content/browser/browser-addons.js             (content/browser-addons.js)
-||||||| merged common ancestors
-        content/browser/browser-addons.js             (content/browser-addons.js)
-=======
-        content/browser/browser-addons.js             (content/browser-addons.js)
         content/browser/browser-captivePortal.js      (content/browser-captivePortal.js)
->>>>>>> origin/upstream-releases
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)
         content/browser/browser-customization.js      (content/browser-customization.js)
         content/browser/browser-data-submission-info-bar.js (content/browser-data-submission-info-bar.js)

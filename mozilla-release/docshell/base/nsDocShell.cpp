@@ -9834,15 +9834,6 @@ nsDocShell::InternalLoad(nsIURI* aURI,
     isJavaScript = false;
   }
 
-<<<<<<< HEAD
-  RefPtr<nsGlobalWindow> scriptGlobal = mScriptGlobal;
-
-  // First, notify any nsIContentPolicy listeners about the document load.
-  // Only abort the load if a content policy listener explicitly vetos it!
-  // Use nsPIDOMWindow since we _want_ to cross the chrome boundary if needed
-  nsCOMPtr<Element> requestingElement =
-    scriptGlobal->AsOuter()->GetFrameElementInternal();
-
 #if defined(DEBUG)
   nsAutoCString logSpec;
   aURI->GetSpec(logSpec);
@@ -9850,24 +9841,6 @@ nsDocShell::InternalLoad(nsIURI* aURI,
           ("nsDocShell[%p]::InternalLoad(%s)\n", this, logSpec.get()));
 #endif
 
-  int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  uint32_t contentType;
-  bool isNewDocShell = false;
-||||||| merged common ancestors
-  RefPtr<nsGlobalWindow> scriptGlobal = mScriptGlobal;
-
-  // First, notify any nsIContentPolicy listeners about the document load.
-  // Only abort the load if a content policy listener explicitly vetos it!
-  // Use nsPIDOMWindow since we _want_ to cross the chrome boundary if needed
-  nsCOMPtr<Element> requestingElement =
-    scriptGlobal->AsOuter()->GetFrameElementInternal();
-
-
-  int16_t shouldLoad = nsIContentPolicy::ACCEPT;
-  uint32_t contentType;
-  bool isNewDocShell = false;
-=======
->>>>>>> origin/upstream-releases
   bool isTargetTopLevelDocShell = false;
   nsCOMPtr<nsIDocShell> targetDocShell;
   if (!aWindowTarget.IsEmpty()) {
@@ -14450,10 +14423,6 @@ nsDocShell::CanSetOriginAttributes()
     return false;
   }
 
-  MOZ_LOG(gDocShellLog, LogLevel::Debug,
-          ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
-           this, aAttrs.mPrivateBrowsingId));
-
   // TODO: Bug 1273058 - mContentViewer should be null when setting origin
   // attributes.
   if (mContentViewer) {
@@ -14480,6 +14449,10 @@ nsDocShell::SetOriginAttributes(const DocShellOriginAttributes& aAttrs)
   if (!CanSetOriginAttributes()) {
     return NS_ERROR_FAILURE;
   }
+
+  MOZ_LOG(gDocShellLog, LogLevel::Debug,
+          ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
+           this, aAttrs.mPrivateBrowsingId));
 
   AssertOriginAttributesMatchPrivateBrowsing();
   mOriginAttributes = aAttrs;

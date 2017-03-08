@@ -152,15 +152,9 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameLoader)
   NS_INTERFACE_MAP_ENTRY(nsIWebBrowserPersistable)
 NS_INTERFACE_MAP_END
 
-<<<<<<< HEAD
 static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
 
-nsFrameLoader::nsFrameLoader(Element* aOwner, bool aNetworkCreated)
-||||||| merged common ancestors
-nsFrameLoader::nsFrameLoader(Element* aOwner, bool aNetworkCreated)
-=======
 nsFrameLoader::nsFrameLoader(Element* aOwner, nsPIDOMWindowOuter* aOpener, bool aNetworkCreated)
->>>>>>> origin/upstream-releases
   : mOwnerContent(aOwner)
   , mDetachedSubdocFrame(nullptr)
   , mOpener(aOpener)

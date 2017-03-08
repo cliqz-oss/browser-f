@@ -404,15 +404,9 @@ function openLinkIn(url, where, params) {
       skipAnimation: aSkipTabAnimation,
       allowMixedContent: aAllowMixedContent,
       noReferrer: aNoReferrer,
-<<<<<<< HEAD
-      userContextId: aUserContextId,
-      private: aIsPrivate
-||||||| merged common ancestors
-      userContextId: aUserContextId
-=======
       userContextId: aUserContextId,
       originPrincipal: aPrincipal,
->>>>>>> origin/upstream-releases
+      private: aIsPrivate
     });
     browserUsedForLoad = tabUsedForLoad.linkedBrowser;
     break;

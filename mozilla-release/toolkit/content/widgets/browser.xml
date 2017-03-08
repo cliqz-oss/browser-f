@@ -1356,14 +1356,7 @@
             PopupNotifications._swapBrowserNotifications(aOtherBrowser, this);
 
           try {
-<<<<<<< HEAD
-            this.asFrameLoaderOwner.swapFrameLoaders(aOtherBrowser);
-||||||| merged common ancestors
-            this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner)
-                .swapFrameLoaders(aOtherBrowser);
-=======
             this.swapFrameLoaders(aOtherBrowser);
->>>>>>> origin/upstream-releases
           } catch (ex) {
             // This may not be implemented for browser elements that are not
             // attached to a BrowserDOMWindow.
@@ -1451,7 +1444,26 @@
           ]]>
         </body>
       </method>
-<<<<<<< HEAD
+
+      <method name="dropLinks">
+        <parameter name="aLinksCount"/>
+        <parameter name="aLinks"/>
+        <body><![CDATA[
+          if (!this.droppedLinkHandler) {
+            return false;
+          }
+          let links = [];
+          for (let i = 0; i < aLinksCount; i += 3) {
+            links.push({
+              url: aLinks[i],
+              name: aLinks[i + 1],
+              type: aLinks[i + 2],
+            });
+          }
+          this.droppedLinkHandler(null, links);
+          return true;
+        ]]></body>
+      </method>
 
       <field name="_pbObserver">null</field>
       <method name="_resetPrivateBrowsingObserver">
@@ -1500,29 +1512,6 @@
         ]]>
         </body>
       </method>
-||||||| merged common ancestors
-=======
-
-      <method name="dropLinks">
-        <parameter name="aLinksCount"/>
-        <parameter name="aLinks"/>
-        <body><![CDATA[
-          if (!this.droppedLinkHandler) {
-            return false;
-          }
-          let links = [];
-          for (let i = 0; i < aLinksCount; i += 3) {
-            links.push({
-              url: aLinks[i],
-              name: aLinks[i + 1],
-              type: aLinks[i + 2],
-            });
-          }
-          this.droppedLinkHandler(null, links);
-          return true;
-        ]]></body>
-      </method>
->>>>>>> origin/upstream-releases
     </implementation>
 
     <handlers>

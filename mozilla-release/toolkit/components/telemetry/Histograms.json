@@ -2107,7 +2107,7 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 672,
-    "releaseChannelCollection": "opt-out",      
+    "releaseChannelCollection": "opt-out",
     "description": "SSL handshake result, 0=success, 1-255=NSS error offset, 256-511=SEC error offset + 256, 512-639=NSPR error offset + 512, 640-670=PKIX error, 671=unknown err"
   },
   "SSL_TIME_UNTIL_READY": {
@@ -10956,7 +10956,6 @@
     "n_buckets": 50,
     "description": "Time spent painting the contents of a remote browser (ms).",
     "releaseChannelCollection": "opt-out"
-<<<<<<< HEAD
   },
   "AUTO_FORGET_TAB_NOTIFICATION_STATES": {
     "alert_emails": [],
@@ -10966,8 +10965,6 @@
     "n_values": 6,
     "description": "The states the Auto Forget Tab notification goes through. 0: The notification was displayed. 1: User picked 'Reload in Normal Mode'. 2: User picked 'Always load in Normal Mode'. 3: User picked 'Change Settings'. Other values are reserved for future uses.",
     "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-=======
   },
   "TIME_TO_NON_BLANK_PAINT_MS": {
     "alert_emails": ["hkirschner@mozilla.com"],
@@ -11001,6 +10998,5 @@
     "bug_numbers": [1335365],
     "releaseChannelCollection": "opt-out",
     "description": "XMLHttpRequest.responseType set to moz-chunked-arraybuffer"
->>>>>>> origin/upstream-releases
   }
 }

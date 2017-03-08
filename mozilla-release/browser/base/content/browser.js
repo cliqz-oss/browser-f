@@ -5652,20 +5652,6 @@ function handleLinkClick(event, href, linkNode) {
   }
 
   urlSecurityCheck(href, doc.nodePrincipal);
-<<<<<<< HEAD
-  let params = { charset: doc.characterSet,
-                 allowMixedContent: persistAllowMixedContentInChildTab,
-                 referrerURI: referrerURI,
-                 referrerPolicy: referrerPolicy,
-                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode),
-                 private: privateTab};
-||||||| merged common ancestors
-  let params = { charset: doc.characterSet,
-                 allowMixedContent: persistAllowMixedContentInChildTab,
-                 referrerURI: referrerURI,
-                 referrerPolicy: referrerPolicy,
-                 noReferrer: BrowserUtils.linkHasNoReferrer(linkNode) };
-=======
   let params = {
     charset: doc.characterSet,
     allowMixedContent: persistAllowMixedContentInChildTab,
@@ -5673,8 +5659,8 @@ function handleLinkClick(event, href, linkNode) {
     referrerPolicy: referrerPolicy,
     noReferrer: BrowserUtils.linkHasNoReferrer(linkNode),
     originPrincipal: doc.nodePrincipal,
+    private: privateTab,
   };
->>>>>>> origin/upstream-releases
 
   // The new tab/window must use the same userContextId
   if (doc.nodePrincipal.originAttributes.userContextId) {

@@ -84,12 +84,8 @@
     locale/browser/preferences/containers.properties  (%chrome/browser/preferences/containers.properties)
     locale/browser/preferences/privacy.dtd            (%chrome/browser/preferences/privacy.dtd)
     locale/browser/preferences/security.dtd           (%chrome/browser/preferences/security.dtd)
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
     locale/browser/preferences/containers.dtd         (%chrome/browser/preferences/containers.dtd)
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
     locale/browser/preferences/sync.dtd               (%chrome/browser/preferences/sync.dtd)
 #endif
     locale/browser/preferences/tabs.dtd               (%chrome/browser/preferences/tabs.dtd)

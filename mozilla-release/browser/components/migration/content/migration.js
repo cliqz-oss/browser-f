@@ -14,7 +14,6 @@ const kIPStartup = Ci.nsIProfileStartup;
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource:///modules/MigrationUtils.jsm");
 
-<<<<<<< HEAD
 // For yet undiscovered reason `Cu.reportError()` doesn't work in this file.
 // Same as `dump()` :-/
 function logError(e) {
@@ -22,12 +21,7 @@ function logError(e) {
       e.stack);
 }
 
-var MigrationWizard = {
-||||||| merged common ancestors
-var MigrationWizard = {
-=======
 var MigrationWizard = { /* exported MigrationWizard */
->>>>>>> origin/upstream-releases
   _source: "",                  // Source Profile Migrator ContractID suffix
   _itemsFlags: kIMig.ALL,       // Selected Import Data Sources (16-bit bitfield)
   _selectedProfile: null,       // Selected Profile name to import from
@@ -434,61 +428,7 @@ var MigrationWizard = { /* exported MigrationWizard */
   {
     var label;
     switch (aTopic) {
-<<<<<<< HEAD
-    case "Migration:Started":
-      break;
-    case "Migration:ItemBeforeMigrate":
-      label = document.getElementById(aData + "_migrated");
-      if (label)
-        label.setAttribute("style", "font-weight: bold");
-      break;
-    case "Migration:ItemAfterMigrate":
-      label = document.getElementById(aData + "_migrated");
-      if (label)
-        label.removeAttribute("style");
-      break;
-    case "Migration:Ended":
-      if (this.isInitialMigration) {
-        // Ensure errors in reporting data recency do not affect the rest of the migration.
-        try {
-          this.reportDataRecencyTelemetry();
-        } catch (ex) {
-          logError(ex);
-        }
-      }
-      if (this._autoMigrate) {
-        let hasImportedHomepage = !!(this._newHomePage && this._newHomePage != "DEFAULT");
-        Services.telemetry.getKeyedHistogramById("FX_MIGRATION_IMPORTED_HOMEPAGE")
-                          .add(this._source, hasImportedHomepage);
-        if (this._newHomePage) {
-||||||| merged common ancestors
-    case "Migration:Started":
-      break;
-    case "Migration:ItemBeforeMigrate":
-      label = document.getElementById(aData + "_migrated");
-      if (label)
-        label.setAttribute("style", "font-weight: bold");
-      break;
-    case "Migration:ItemAfterMigrate":
-      label = document.getElementById(aData + "_migrated");
-      if (label)
-        label.removeAttribute("style");
-      break;
-    case "Migration:Ended":
-      if (this.isInitialMigration) {
-        // Ensure errors in reporting data recency do not affect the rest of the migration.
-        try {
-          this.reportDataRecencyTelemetry();
-        } catch (ex) {
-          Cu.reportError(ex);
-        }
-      }
-      if (this._autoMigrate) {
-        let hasImportedHomepage = !!(this._newHomePage && this._newHomePage != "DEFAULT");
-        Services.telemetry.getKeyedHistogramById("FX_MIGRATION_IMPORTED_HOMEPAGE")
-                          .add(this._source, hasImportedHomepage);
-        if (this._newHomePage) {
-=======
+
       case "Migration:Started":
         break;
       case "Migration:ItemBeforeMigrate":
@@ -504,17 +444,10 @@ var MigrationWizard = { /* exported MigrationWizard */
       case "Migration:Ended":
         if (this.isInitialMigration) {
           // Ensure errors in reporting data recency do not affect the rest of the migration.
->>>>>>> origin/upstream-releases
           try {
             this.reportDataRecencyTelemetry();
           } catch (ex) {
-<<<<<<< HEAD
             logError(ex);
-||||||| merged common ancestors
-            dump(ex);
-=======
-            Cu.reportError(ex);
->>>>>>> origin/upstream-releases
           }
         }
         if (this._autoMigrate) {
@@ -594,23 +527,6 @@ var MigrationWizard = { /* exported MigrationWizard */
         Services.telemetry.getKeyedHistogramById("FX_MIGRATION_ERRORS")
                           .add(this._source, Math.log2(numericType));
         break;
-<<<<<<< HEAD
-      }
-      Services.console
-        .logStringMessage("some " + type + " did not successfully migrate.");
-      Services.telemetry.getKeyedHistogramById("FX_MIGRATION_ERRORS")
-                        .add(this._source, Math.log2(numericType));
-      break;
-||||||| merged common ancestors
-      }
-      Cc["@mozilla.org/consoleservice;1"]
-        .getService(Ci.nsIConsoleService)
-        .logStringMessage("some " + type + " did not successfully migrate.");
-      Services.telemetry.getKeyedHistogramById("FX_MIGRATION_ERRORS")
-                        .add(this._source, Math.log2(numericType));
-      break;
-=======
->>>>>>> origin/upstream-releases
     }
   },
 

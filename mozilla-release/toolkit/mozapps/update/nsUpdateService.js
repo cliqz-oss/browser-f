@@ -1604,14 +1604,8 @@ function Update(update) {
     this.displayVersion = this.appVersion;
   }
 
-<<<<<<< HEAD
 #if 0
-  // Don't allow the background interval to be greater than 10 minutes.
-||||||| merged common ancestors
-  // Don't allow the background interval to be greater than 10 minutes.
-=======
   // Don't allow the background download interval to be greater than 10 minutes.
->>>>>>> origin/upstream-releases
   this.backgroundInterval = Math.min(this.backgroundInterval, 600);
 
   // The Update Name is either the string provided by the <update> element, or
