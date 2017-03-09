@@ -38,8 +38,6 @@ export USE_ELF_HACK ELF_HACK_FLAGS
 # set earlier in this file.
 
 stage-package: $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
-	# CLIQZ. DB-1215, DB-1213. Need for existing of voucher.bin file to make some plugins work
-	echo voucher.bin > $(DIST)/bin/voucher.bin
 	OMNIJAR_NAME=$(OMNIJAR_NAME) \
 	NO_PKG_FILES="$(NO_PKG_FILES)" \
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/packager.py $(DEFINES) $(ACDEFINES) \
