@@ -71,11 +71,18 @@ function init_all() {
   register_module("paneSecurity", gSecurityPane);
   register_module("paneConnect", gConnectPane);
   // CLIQZ: DB-1230: Display the rich list item when connect module is available
-  fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
-    if(res.status === 200) {
-      document.getElementById('category-connect').hidden = false;
-    }
-  });
+  const CONNECT_PREF_NAME = 'extensions.cliqz.connect';
+  try {
+    fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
+      if(res.status === 200 &&
+        Services.prefs.getPrefType(CONNECT_PREF_NAME) === 128 &&
+        Services.prefs.getBoolPref(CONNECT_PREF_NAME)) {
+        document.getElementById('category-connect').hidden = false;
+      }
+    });
+  } catch (e) {
+    Cu.reportError(e);
+  }
 
   let categories = document.getElementById("categories");
   categories.addEventListener("select", event => gotoPref(event.target.value));
