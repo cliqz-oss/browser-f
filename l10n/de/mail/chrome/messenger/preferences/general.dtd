@@ -17,9 +17,11 @@
 <!ENTITY newMessagesArrive.label          "Wenn neue Nachrichten eintreffen">
 <!ENTITY playSound.label                  "Einen Klang abspielen">
 <!ENTITY playSound1.accesskey             "K">
+<!ENTITY playSoundMac.label               "Folgende Audiodatei abspielen:">
+<!ENTITY playSoundMac.accesskey           "F">
 <!ENTITY showAnimatedAlert.label          "Eine Benachrichtigung anzeigen">
 <!ENTITY showAnimatedAlert.accesskey      "B">
-<!ENTITY notificationAlertSettings.label  "Benachrichtigungen können in der Mitteilungen-Ansicht der Systemeinstellungen deaktiviert werden.">
+<!ENTITY notificationAlertSettings2.label "Benachrichtigungen und Standardton können in der Mitteilungszentrale der Systemeinstellungen deaktiviert werden.">
 <!ENTITY customizeMailAlert.label         "Anpassen…">
 <!ENTITY customizeMailAlert.accesskey     "A">
 
@@ -29,8 +31,6 @@
 <!ENTITY play.label                       "Probe hören">
 <!ENTITY play.accesskey                   "P">
 <!ENTITY systemsound.label                "Systemklang für neue Nachrichten">
-<!ENTITY systemsoundMac.label             "System-Warnton">
-<!ENTITY systemsoundMac.accesskey         "S">
 <!ENTITY systemsound.accesskey            "S">
 <!ENTITY customsound.label                "Benutzerdefinierter Klang">
 <!ENTITY customsound.accesskey            "e">

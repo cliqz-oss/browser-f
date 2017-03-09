@@ -50,6 +50,8 @@
 <!ENTITY lightning.imipbar.btnDecline2.tooltiptext                "Termineinladung ablehnen">
 <!ENTITY lightning.imipbar.btnDeclineRecurrences.label            "Alle ablehnen">
 <!ENTITY lightning.imipbar.btnDeclineRecurrences2.tooltiptext     "Termineinladung für alle Ereignisse des Termins ablehnen">
+<!ENTITY lightning.imipbar.btnDeclineCounter.label                          "Ablehnen">
+<!ENTITY lightning.imipbar.btnDeclineCounter.tooltiptext                    "Gegenvorschlag ablehnen">
 <!ENTITY lightning.imipbar.btnDelete.label                        "Löschen">
 <!ENTITY lightning.imipbar.btnDelete.tooltiptext                  "Aus Kalender löschen">
 <!ENTITY lightning.imipbar.btnDetails.label                       "Details…">
@@ -58,6 +60,8 @@
 <!ENTITY lightning.imipbar.btnMore.tooltiptext                    "Klicken, um mehr Optionen anzuzeigen">
 <!ENTITY lightning.imipbar.btnReconfirm2.label                    "Erneut bestätigen">
 <!ENTITY lightning.imipbar.btnReconfirm.tooltiptext               "Erneute Bestätigung an Organisator senden">
+<!ENTITY lightning.imipbar.btnReschedule.label                              "Verschieben">
+<!ENTITY lightning.imipbar.btnReschedule.tooltiptext                        "Termin verschieben">
 <!ENTITY lightning.imipbar.btnSaveCopy.label                      "Kopie speichern">
 <!ENTITY lightning.imipbar.btnSaveCopy.tooltiptext                "Eine Kopie des Termins im Kalender speichern, unabhängig von einer Antwort an den Organisator. Die Teilnehmerliste wird geleert werden.">
 <!ENTITY lightning.imipbar.btnTentative.label                     "Vorläufig">

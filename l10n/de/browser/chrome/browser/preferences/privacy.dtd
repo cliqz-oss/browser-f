@@ -90,8 +90,16 @@
 <!ENTITY  dontrememberActions.clearHistory.label "gesamte bisherige Chronik">
 <!ENTITY  dontrememberActions.post.label         " löschen.">
 
+<<<<<<< HEAD
 <!ENTITY  privateBrowsingPermanent2.label "Immer den Vergessen Modus verwenden">
 <!ENTITY  privateBrowsingPermanent2.accesskey "V">
+||||||| merged common ancestors
+<!ENTITY  privateBrowsingPermanent2.label "Immer den Privaten Modus verwenden">
+<!ENTITY  privateBrowsingPermanent2.accesskey "p">
+=======
+<!ENTITY  privateBrowsingPermanent2.label "Immer den Privaten Modus verwenden">
+<!ENTITY  privateBrowsingPermanent2.accesskey "M">
+>>>>>>> origin/upstream-releases
 
 <!ENTITY  rememberHistory2.label      "Besuchte Seiten und Download-Chronik speichern">
 <!ENTITY  rememberHistory2.accesskey  "w">
@@ -116,4 +124,10 @@
 <!ENTITY  browserContainersLearnMore.label      "Weitere Informationen">
 <!ENTITY  browserContainersEnabled.label        "Tab-Umgebungen aktivieren">
 <!ENTITY  browserContainersEnabled.accesskey    "a">
+<<<<<<< HEAD
 
+||||||| merged common ancestors
+=======
+<!ENTITY  browserContainersSettings.label        "Einstellungen…">
+<!ENTITY  browserContainersSettings.accesskey    "u">
+>>>>>>> origin/upstream-releases

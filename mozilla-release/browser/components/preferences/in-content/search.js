@@ -3,8 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
-                                  "resource://gre/modules/AppConstants.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
                                   "resource://gre/modules/PlacesUtils.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "Task",
@@ -12,6 +10,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "Task",
 
 const ENGINE_FLAVOR = "text/x-moz-search-engine";
 
+<<<<<<< HEAD
 document.addEventListener("Initialized", () => {
   // CLIQZ. Hide checkbox always, can not be used in Windows10 anymore (DB-872)
   // I think this will be removed from FF soon
@@ -20,6 +19,15 @@ document.addEventListener("Initialized", () => {
   //}
 });
 
+||||||| merged common ancestors
+document.addEventListener("Initialized", () => {
+  if (!AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
+    document.getElementById("redirectSearchCheckbox").hidden = true;
+  }
+});
+
+=======
+>>>>>>> origin/upstream-releases
 var gEngineView = null;
 
 var gSearchPane = {
@@ -204,9 +212,14 @@ var gSearchPane = {
     }
   },
 
-  onInputBlur: function() {
+  onInputBlur: function(aEvent) {
     let tree = document.getElementById("engineList");
-    tree.stopEditing(false);
+    if (!tree.hasAttribute("editing"))
+      return;
+
+    // Accept input unless discarded.
+    let accept = aEvent.charCode != KeyEvent.DOM_VK_ESCAPE;
+    tree.stopEditing(accept);
   },
 
   onTreeSelect: function() {
@@ -404,9 +417,9 @@ EngineStore.prototype = {
     if (index == -1)
       throw new Error("invalid engine?");
 
-    this._engines.splice(index, 1);
+    let removedEngine = this._engines.splice(index, 1)[0];
 
-    if (this._defaultEngines.some(this._isSameEngine, this._engines[index]))
+    if (this._defaultEngines.some(this._isSameEngine, removedEngine))
       gSearchPane.showRestoreDefaults(true);
     gSearchPane.buildDefaultEngineDropDown();
     return index;

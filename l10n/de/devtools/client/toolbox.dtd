@@ -159,6 +159,15 @@
 <!ENTITY options.timestampMessages.label      "Zeitstempel aktivieren">
 <!ENTITY options.timestampMessages.tooltip    "Nach Aktivierung dieser Einstellung wird bei Befehlen und Ausgaben in der Web-Konsole ein Zeitstempel angezeigt.">
 
+<!-- LOCALIZATION NOTE (options.debugger.label): This is the label for the
+  -  heading of the group of Debugger preferences in the options panel. -->
+<!ENTITY options.debugger.label            "Debugger">
+
+<!-- LOCALIZATION NOTE (options.sourceMap.label): This is the
+   - label for the checkbox that toggles source maps in the Debugger -->
+<!ENTITY options.sourceMaps.label      "Source-Maps aktivieren">
+<!ENTITY options.sourceMaps.tooltip    "Beim Aktivieren dieser Einstellung beziehen sich Quelltextverweise im Debugger und in der Konsole auf entsprechenden, meist lesbareren Quelltext anstatt den eigentlichen, meist minimierten Quelltext.">
+
 <!-- LOCALIZATION NOTE (options.styleeditor.label): This is the label for the
   -  heading of the group of Style Editor preferences in the options
   -  panel. -->

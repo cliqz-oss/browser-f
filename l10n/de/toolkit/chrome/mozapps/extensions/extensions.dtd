@@ -246,3 +246,6 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
 <!ENTITY disabledUnsigned.devInfo.start "An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer ">
 <!ENTITY disabledUnsigned.devInfo.linkToManual "Anleitung">
 <!ENTITY disabledUnsigned.devInfo.end " erfahren.">
+
+<!ENTITY pluginDeprecation.description "Fehlt etwas? Einige Plugins werden nicht mehr von &brandShortName; unterstützt.">
+<!ENTITY pluginDeprecation.learnMore "Weitere Informationen">
