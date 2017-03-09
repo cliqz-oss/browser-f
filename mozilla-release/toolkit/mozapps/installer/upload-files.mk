@@ -422,6 +422,7 @@ endif
 
 ifeq ($(OS_TARGET), WINNT)
   INSTALLER_PACKAGE = $(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME).exe
+  INSTALLER_PACKAGE_CLEAN = $(DIST)/$(PKG_INST_PATH)$(PKG_INST_BASENAME)_clean.exe
 endif
 
 # These are necessary because some of our packages/installers contain spaces
@@ -455,6 +456,7 @@ endif
 UPLOAD_FILES= \
   $(call QUOTED_WILDCARD,$(DIST)/$(PACKAGE)) \
   $(call QUOTED_WILDCARD,$(INSTALLER_PACKAGE)) \
+  $(call QUOTED_WILDCARD,$(INSTALLER_PACKAGE_CLEAN)) \
   $(call QUOTED_WILDCARD,$(DIST)/$(COMPLETE_MAR)) \
   $(call QUOTED_WILDCARD,$(DIST)/$(LANGPACK)) \
   $(call QUOTED_WILDCARD,$(wildcard $(DIST)/$(PARTIAL_MAR))) \
