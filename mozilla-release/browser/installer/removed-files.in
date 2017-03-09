@@ -128,3 +128,6 @@
 #endif
 @DIR_MACOS@searchplugins/*
 @DIR_MACOS@webapprt/components/
+
+# CLIQZ remove old Netflix supporting file
+@DIR_MACOS@voucher.bin
