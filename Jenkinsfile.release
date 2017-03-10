@@ -209,17 +209,17 @@ def uploadBeta(build_id, cqz_version) {
         }
     }
     
-    installers.each { k, v -> 
-        beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${k}"
-        latest_beta_path = "repository.cliqz.com/dist/beta/latest/${v}"
-        
-        withCredentials([[
+	for (path in installers) {
+		beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${path.key}"
+		latest_beta_path = "repository.cliqz.com/dist/beta/latest/${path.value}"
+
+		withCredentials([
             $class: 'UsernamePasswordMultiBinding',
             credentialsId: CQZ_AWS_CREDENTIAL_ID,
             passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-            usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
+            usernameVariable: 'AWS_ACCESS_KEY_ID']) {
                 sh "aws s3 cp s3://${beta_path} s3://${latest_beta_path}"
-        }
+		}
     }
 }
 
