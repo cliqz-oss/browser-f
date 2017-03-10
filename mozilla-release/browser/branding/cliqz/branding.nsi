@@ -18,7 +18,7 @@
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 !define OFFICIAL
-!define URLStubDownload "https://cdn.cliqz.com/browser-f/download/web0002/CLIQZ.${AB_CD}.win32.installer.exe"
+!define URLStubDownload "https://cdn.cliqz.com/browser-f/download/clean/CLIQZ.${AB_CD}.win32.installer.exe"
 ; CLIQZ. URLManualDownload not used. Instead get an URL from localization file
 !define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=release&installer_lang=${AB_CD}"
 !define URLSystemRequirements "https://cliqz.com/desktop/betriebsystem-voraussetzungen"

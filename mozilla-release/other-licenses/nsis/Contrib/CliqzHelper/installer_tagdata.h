@@ -27,6 +27,9 @@ class InstallerTagData {
   static void Reset();
   static InstallerTagData* ForCurrentProcess();
 
+  // return all parameters from tagged area
+  std::string GetAllParams();
+
   // return empty string if not present
   std::string GetParam(const std::string& key);
 

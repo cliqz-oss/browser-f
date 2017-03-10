@@ -27,14 +27,14 @@ int popstring(stack_t **stacktop, TCHAR *str, int len) {
   return 0;
 }
 
-// Read key value from parameters, try to find this key in
-// tagged area of parent process, if exist - check does
-// distribution file exist. If not - save information about
-// brand into distribution file (in CSIDL_APPDATA\\Cliqz folder)
-extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
-                                               int string_size,
-                                               TCHAR *variables,
-                                               stack_t **stacktop) {
+// Try to find data in tagged area in current or one of parent's processes.
+// If data exist, check does distribution file already exist.
+// If not - save all data from tagged area to distribution file 
+// (in CSIDL_APPDATA\\Cliqz folder)
+extern "C" void __declspec(dllexport) saveTaggedParams(HWND hwndParent,
+                                                       int string_size,
+                                                       TCHAR *variables,
+                                                       stack_t **stacktop) {
 #ifdef _DEBUG
   MessageBox(hwndParent, L"1", L"2", MB_OK);
 #endif
@@ -58,21 +58,11 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
   } while (pid != 0 && !tag_found);
 
   if (tag_found) {
-    // two parameters must be passed from NSIS installer 
-    // TODO - check this parameters somehow
-    // First one is install dir
-    // Second - which key must be find in tagged area as brand name
-    TCHAR install_dir[MAX_PATH];
+    // One parameters must be passed from NSIS installer - installation directory
+    TCHAR install_dir[MAX_PATH] = {0};
     popstring(stacktop, install_dir, MAX_PATH);
-
-    // don't forget to change buffer size, if change in parameters with
-    // GO script (used when create a tag area in signed file)
-    TCHAR temp[8192];
-    popstring(stacktop, temp, 8192);
-    std::wstring wparam(temp);
-    std::string param(wparam.begin(), wparam.end());
-    std::string value = InstallerTagData::ForCurrentProcess()->GetParam(param);
-    if (!value.empty()) {
+    std::string value = InstallerTagData::ForCurrentProcess()->GetAllParams();
+    if (install_dir[0]!='\0' && !value.empty()) {
       wcscat_s(install_dir, L"\\defaults\\pref");
       SHCreateDirectory(0, install_dir);
       wcscat_s(install_dir, L"\\distribution.js");
@@ -83,7 +73,7 @@ extern "C" void __declspec(dllexport) setBrand(HWND hwndParent,
         HANDLE hFile = CreateFile(install_dir, GENERIC_WRITE, 0, NULL, CREATE_NEW,
                                   FILE_ATTRIBUTE_NORMAL, NULL);
         if (hFile != INVALID_HANDLE_VALUE) {
-          std::string data = "pref(\"extensions.cliqz.distribution\", \"";
+          std::string data = "pref(\"extensions.cliqz.full_distribution\", \"";
           data += value;
           data += "\");";
           DWORD written = 0;
