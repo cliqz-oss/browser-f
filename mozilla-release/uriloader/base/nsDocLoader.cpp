@@ -470,11 +470,11 @@ nsDocLoader::OnStartRequest(nsIRequest *request, nsISupports *aCtxt)
   // Fixing any of those bugs may cause unpredictable consequences in any part
   // of the browser, so we just add a custom flag for this exact situation.
   int32_t extraFlags = 0;
-  if (mIsLoadingDocument
-      && !bJustStartedLoading
-      && (loadFlags & nsIChannel::LOAD_DOCUMENT_URI)
-      && (loadFlags & nsIChannel::LOAD_REPLACE)) {
-    extraFlags = nsIWebProgressListener::STATE_IS_REDIR_DOC;
+  if (mIsLoadingDocument &&
+      !bJustStartedLoading &&
+      (loadFlags & nsIChannel::LOAD_DOCUMENT_URI) &&
+      (loadFlags & nsIChannel::LOAD_REPLACE)) {
+    extraFlags = nsIWebProgressListener::STATE_IS_REDIRECTED_DOCUMENT;
   }
   doStartURLLoad(request, extraFlags);
 
