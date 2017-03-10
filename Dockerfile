@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
   python-pip \
   desktop-file-utils \
   wget \
+  sudo \
   libgstreamer1.0-dev \
   libgstreamer-plugins-base1.0-dev \
   libgstreamer-plugins-base0.10-0 \
@@ -38,3 +39,5 @@ RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && use
 RUN sed -i.bkp -e \
       's/%sudo\s\+ALL=(ALL\(:ALL\)\?)\s\+ALL/%sudo ALL=NOPASSWD:ALL/g' \
       /etc/sudoers
+
+RUN mkdir /builds

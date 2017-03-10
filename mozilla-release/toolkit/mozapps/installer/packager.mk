@@ -38,8 +38,6 @@ export USE_ELF_HACK ELF_HACK_FLAGS
 # set earlier in this file.
 
 stage-package: $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
-	# CLIQZ. DB-1215, DB-1213. Need for existing of voucher.bin file to make some plugins work
-	echo voucher.bin > $(DIST)/bin/voucher.bin
 	OMNIJAR_NAME=$(OMNIJAR_NAME) \
 	NO_PKG_FILES="$(NO_PKG_FILES)" \
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/packager.py $(DEFINES) $(ACDEFINES) \
@@ -56,7 +54,7 @@ stage-package: $(MOZ_PKG_MANIFEST) $(MOZ_PKG_MANIFEST_DEPS)
 		$(addprefix --unify ,$(UNIFY_DIST)) \
 		$(MOZ_PKG_MANIFEST) $(DIST) $(DIST)/$(STAGEPATH)$(MOZ_PKG_DIR)$(if $(MOZ_PKG_MANIFEST),,$(_BINPATH)) \
 		$(if $(filter omni,$(MOZ_PACKAGER_FORMAT)),$(if $(NON_OMNIJAR_FILES),--non-resource $(NON_OMNIJAR_FILES)))
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py $(DIST)/$(STAGEPATH)$(MOZ_PKG_DIR)
+	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py --warning $(DIST)/$(STAGEPATH)$(MOZ_PKG_DIR)
 ifndef MOZ_THUNDERBIRD
 	# Package mozharness
 	$(call py_action,test_archive, \
@@ -69,6 +67,12 @@ ifdef MOZ_PACKAGE_JSSHELL
 	$(RM) $(PKG_JSSHELL)
 	$(MAKE_JSSHELL)
 endif # MOZ_PACKAGE_JSSHELL
+ifdef MOZ_ARTIFACT_BUILD_SYMBOLS
+	@echo 'Packaging existing crashreporter symbols from artifact build...'
+	$(NSINSTALL) -D $(DIST)/$(PKG_PATH)
+	cd $(DIST)/crashreporter-symbols && \
+          zip -r5D '../$(PKG_PATH)$(SYMBOL_ARCHIVE_BASENAME).zip' . -i '*.sym' -i '*.txt'
+endif # MOZ_ARTIFACT_BUILD_SYMBOLS
 ifdef MOZ_CODE_COVERAGE
 	# Package code coverage gcno tree
 	@echo 'Packaging code coverage data...'
@@ -96,8 +100,7 @@ make-package: FORCE
 GARBAGE += make-package
 
 make-sourcestamp-file::
-	$(NSINSTALL) -D $(DIST)/$(PKG_PATH)
-	@echo '$(BUILDID)' > $(MOZ_SOURCESTAMP_FILE)
+	@awk '$$2 == "MOZ_BUILDID" {print $$3}' $(DEPTH)/buildid.h > $(MOZ_SOURCESTAMP_FILE)
 ifdef MOZ_INCLUDE_SOURCE_INFO
 	@awk '$$2 == "MOZ_SOURCE_URL" {print $$3}' $(DEPTH)/source-repo.h >> $(MOZ_SOURCESTAMP_FILE)
 endif
@@ -227,7 +230,7 @@ source-package:
 	@echo 'Generate the sourcestamp file'
 	# Make sure to have repository information available and then generate the
 	# sourcestamp file.
-	$(MAKE) -C $(DEPTH) 'source-repo.h'
+	$(MAKE) -C $(DEPTH) 'source-repo.h' 'buildid.h'
 	$(MAKE) make-sourcestamp-file
 	@echo 'Packaging source tarball...'
 	# We want to include the sourcestamp file in the source tarball, so copy it

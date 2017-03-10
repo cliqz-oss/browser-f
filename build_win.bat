@@ -12,8 +12,6 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::  CQZ_WORKSPACE - path to source code
 ::  CLZ_CERTIFICATE_PATH - path to certificate for digital signing
 ::  CLZ_CERTIFICATE_PWD - password for certificate
-::  CQZ_GOOGLE_API_KEY - Google API key
-::  MOZ_MOZILLA_API_KEY - Mozilla API key
 ::
 :: Optional parameters:
 ::  CQZ_RELEASE_CHANNEL - if not set will be set to "beta"

@@ -53,11 +53,22 @@ withEnv([
     "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
     "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-    stage('build') {
-        withCredentials([
-            [$class: 'StringBinding', credentialsId: 'e2c7ea0a-285e-4199-9667-af2223d3b14a', variable: 'CQZ_GOOGLE_API_KEY'],
-            [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
 
+    withCredentials([
+        [$class: 'StringBinding', credentialsId: 'e2c7ea0a-285e-4199-9667-af2223d3b14a', variable: 'CQZ_GOOGLE_API_KEY'],
+        [$class: 'StringBinding', credentialsId: '3e57ee4e-4ca7-4d07-aeb6-96422b66b3e8', variable: 'MOZ_MOZILLA_API_KEY']]) {
+        
+        stage('fix keys') {
+
+            sh "if [ ! -d /builds ]; then sudo mkdir -p /builds; fi"
+            sh '''#!/bin/bash -l 
+                sudo chown -R `whoami` /builds
+                sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
+                sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
+            '''
+        }
+
+        stage('build') {
             sh "./magic_build_and_package.sh --clobber ${LANG_PARAM}"
         }
     }

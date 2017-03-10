@@ -4,17 +4,14 @@
 #if AB_CD == ja_jp_mac
 #define AB_CD ja
 #endif
+
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-
 <!DOCTYPE NETSCAPE-Bookmark-file-1>
-<!-- This is an automatically generated file.
-     It will be read and overwritten.
-     DO NOT EDIT! -->
-<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
-<TITLE>@bookmarks_title@</TITLE>
-<H1>@bookmarks_heading@</H1>
+<meta charset="UTF-8">
+<title>@bookmarks_title@</title>
+<h1>@bookmarks_heading@</h1>
 
 <DL><p>
     <DT><H3 PERSONAL_TOOLBAR_FOLDER="true" ID="rdf:#$FvPhC3">@bookmarks_toolbarfolder@</H3>

@@ -13,6 +13,7 @@
 <!ENTITY locationEditField.label "Grafik-Adresse:">
 <!ENTITY locationEditField.accessKey "d">
 <!ENTITY locationEditField.tooltip "Geben Sie Dateinamen oder Adresse der Grafik an">
+<!ENTITY locationEditField.shortenedDataURI "Gekürzte Daten-URI (Kopieren legt die komplette URI in die Zwischenablage)">
 <!ENTITY title.label "Tooltip:">
 <!ENTITY title.accessKey "T">
 <!ENTITY title.tooltip "Das HTML-Attribut 'title', das als Tooltip angezeigt wird">

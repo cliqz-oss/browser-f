@@ -1,8 +1,12 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!ENTITY attachmentReminderDialog.title   "Schlüsselwörter der Anhang-Erinnerung">
 <!ENTITY attachKeywordText.label          "&brandShortName; wird auf fehlende Anhänge hinweisen, wenn Sie eine Nachricht senden möchten, die eines der folgenden Schlüsselwörter enthält.">
-<!ENTITY addKeywordButton.label           "Hinzufügen">
-<!ENTITY addKeywordButton.accesskey       "H">
-<!ENTITY editKeywordButton.label          "Bearbeiten">
-<!ENTITY editKeywordButton.accesskey      "B">
+<!ENTITY newKeywordButton.label           "Hinzufügen…">
+<!ENTITY newKeywordButton.accesskey       "H">
+<!ENTITY editKeywordButton1.label         "Bearbeiten…">
+<!ENTITY editKeywordButton1.accesskey     "B">
 <!ENTITY removeKeywordButton.label        "Löschen">
 <!ENTITY removeKeywordButton.accesskey    "L">

@@ -2,6 +2,18 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this file,
    - You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+// Import globals from the files imported by the .xul files.
+/* import-globals-from subdialogs.js */
+/* import-globals-from advanced.js */
+/* import-globals-from main.js */
+/* import-globals-from search.js */
+/* import-globals-from content.js */
+/* import-globals-from privacy.js */
+/* import-globals-from applications.js */
+/* import-globals-from security.js */
+/* import-globals-from sync.js */
+/* import-globals-from ../../../base/content/utilityOverlay.js */
+
 "use strict";
 
 var Cc = Components.classes;
@@ -49,6 +61,7 @@ function init_all() {
   register_module("paneGeneral", gMainPane);
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
+  register_module("paneContainers", gContainersPane);
   register_module("paneAdvanced", gAdvancedPane);
   register_module("paneApplications", gApplicationsPane);
   register_module("paneContent", gContentPane);
@@ -58,11 +71,18 @@ function init_all() {
   register_module("paneSecurity", gSecurityPane);
   register_module("paneConnect", gConnectPane);
   // CLIQZ: DB-1230: Display the rich list item when connect module is available
-  fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
-    if(res.status === 200) {
-      document.getElementById('category-connect').hidden = false;
-    }
-  });
+  const CONNECT_PREF_NAME = 'extensions.cliqz.connect';
+  try {
+    fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
+      if(res.status === 200 &&
+        Services.prefs.getPrefType(CONNECT_PREF_NAME) === 128 &&
+        Services.prefs.getBoolPref(CONNECT_PREF_NAME)) {
+        document.getElementById('category-connect').hidden = false;
+      }
+    });
+  } catch (e) {
+    Cu.reportError(e);
+  }
 
   let categories = document.getElementById("categories");
   categories.addEventListener("select", event => gotoPref(event.target.value));
@@ -197,10 +217,20 @@ function gotoPref(aCategory) {
 }
 
 function search(aQuery, aAttribute) {
-  let elements = document.getElementById("mainPrefPane").children;
+  let mainPrefPane = document.getElementById("mainPrefPane");
+  let elements = mainPrefPane.children;
   for (let element of elements) {
     let attributeValue = element.getAttribute(aAttribute);
     element.hidden = (attributeValue != aQuery);
+  }
+
+  let keysets = mainPrefPane.getElementsByTagName("keyset");
+  for (let element of keysets) {
+    let attributeValue = element.getAttribute(aAttribute);
+    if (attributeValue == aQuery)
+      element.removeAttribute("disabled");
+    else
+      element.setAttribute("disabled", true);
   }
 }
 

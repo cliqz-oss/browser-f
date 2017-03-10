@@ -3,8 +3,8 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <!ENTITY  updateWizard.title              "Software-Update">
 
-<!ENTITY  checking.title                  "Überprüfe auf verfügbare Updates">
-<!ENTITY  updateCheck.label               "Suche nach neueren Versionen von &brandShortName;…">
+<!ENTITY  checking.title                  "Auf verfügbare Updates wird überprüft…">
+<!ENTITY  updateCheck.label               "Nach neueren Versionen von &brandShortName; wird gesucht…">
 
 <!ENTITY  noupdatesfound.title            "Keine Updates verfügbar">
 <!ENTITY  noupdatesautoenabled.intro      "Es sind keine neuen Updates verfügbar. &brandShortName; wird regelmäßig prüfen,

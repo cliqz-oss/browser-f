@@ -16,4 +16,4 @@
 <!ENTITY editContactPanelDone.label "Fertig">
 <!ENTITY editContactPanelDone.accesskey "F">
 
-<!ENTITY contactMoveDisabledWarning.description "Sie können das Adressbuch nicht wechseln, da sich der Kontakt in einer Verteiler-Liste befindet.">
+<!ENTITY contactMoveDisabledWarning.description "Sie können das Adressbuch nicht wechseln, da sich der Kontakt in einer Verteilerliste befindet.">

@@ -28,7 +28,7 @@
 
 <!ENTITY showTrayIcon.label               "Ein Tray-Symbol anzeigen">
 <!ENTITY showTrayIcon.accesskey           "T">
-<!ENTITY showBalloon.label                "Ballon-Warnung anzeigen">
+<!ENTITY showBalloon.label                "Ballon-Benachrichtigung anzeigen">
 <!ENTITY showBalloon.accesskey            "B">
 <!ENTITY bounceSystemDockIcon.label       "Dock-Icon animieren">
 <!ENTITY bounceSystemDockIcon.accesskey   "D">

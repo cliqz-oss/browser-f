@@ -123,7 +123,7 @@ interface nsIWebProgressListener : nsISupports
    *   flag may be set).  This second STATE_STOP event may be useful as a way
    *   to partition the work that occurs when a document request completes.
    *
-   * STATE_IS_REDIR_DOC
+   * STATE_IS_REDIRECTED_DOCUMENT
    *  Same as STATE_IS_DOCUMENT, but sent only after a redirect has occured.
    *  Introduced in order not to confuse existing code with extra state change
    *  events. See |nsDocLoader::OnStartRequest| for more info.
@@ -132,7 +132,7 @@ interface nsIWebProgressListener : nsISupports
   const unsigned long STATE_IS_DOCUMENT    = 0x00020000;
   const unsigned long STATE_IS_NETWORK     = 0x00040000;
   const unsigned long STATE_IS_WINDOW      = 0x00080000;
-  const unsigned long STATE_IS_REDIR_DOC   = 0x00100000;
+  const unsigned long STATE_IS_REDIRECTED_DOCUMENT = 0x00100000;
 
   /**
    * State Modifier Flags

@@ -47,6 +47,13 @@ withCredentials([
       "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
       "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
     ]) {
+
+      stage('fix keys') {
+          bat 'if not exist "c:\\builds\\" mkdir "c:\\builds\\"'
+          writeFile file: "c:\\builds\\mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+          writeFile file: "c:\\builds\\google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+      }
+
       stage('build') {
         bat '''
           set CQZ_WORKSPACE=%cd%
