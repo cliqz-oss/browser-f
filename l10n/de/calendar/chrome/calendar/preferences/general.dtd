@@ -2,9 +2,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!-- WARNING! This file contains UTF-8 encoded characters!                      
-   - If this ==> … <== doesn't look like an ellipsis (three dots in a row),   
-   - your editor isn't using UTF-8 encoding and may munge up the document!      
+<!-- WARNING! This file contains UTF-8 encoded characters!
+   - If this ==> … <== doesn't look like an ellipsis (three dots in a row),
+   - your editor isn't using UTF-8 encoding and may munge up the document!
   -->
 
 <!ENTITY pref.mainbox.label "Allgemeine Einstellungen">
@@ -40,3 +40,7 @@
 <!ENTITY pref.accessibility.label "Barrierefreiheit">
 <!ENTITY pref.systemcolors.label "Farben für eine barrierefreie Darstellung optimieren">
 <!ENTITY pref.systemcolors.accesskey "F">
+
+<!ENTITY pref.eventsandtasks.label "Termine und Aufgaben" >
+<!ENTITY pref.editInTab.label "Termine und Aufgaben in einem Tab anstatt in einem Dialogfenster bearbeiten" >
+<!ENTITY pref.editInTab.accesskey "T">

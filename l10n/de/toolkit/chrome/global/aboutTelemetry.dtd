@@ -104,6 +104,10 @@ Datensatz
   Skalare
 ">
 
+<!ENTITY aboutTelemetry.keyedScalarsSection "
+  Schlüsselgebundene Skalare
+">
+
 <!ENTITY aboutTelemetry.histogramsSection "
   Histogramme
 ">

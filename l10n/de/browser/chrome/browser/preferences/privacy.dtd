@@ -116,4 +116,5 @@
 <!ENTITY  browserContainersLearnMore.label      "Weitere Informationen">
 <!ENTITY  browserContainersEnabled.label        "Tab-Umgebungen aktivieren">
 <!ENTITY  browserContainersEnabled.accesskey    "a">
-
+<!ENTITY  browserContainersSettings.label        "Einstellungen…">
+<!ENTITY  browserContainersSettings.accesskey    "u">

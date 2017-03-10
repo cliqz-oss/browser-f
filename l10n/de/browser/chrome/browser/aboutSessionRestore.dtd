@@ -67,12 +67,3 @@ their language.
 <!ENTITY importedtabs.label.openSome
     "Auswählen, welche Fenster oder Tabs du öffnen möchtest">
 
-<!-- LOCALIZATION NOTE: The following 'tabgroupsmigration' strings are for
-     the tab groups (panorama) migration page, not about:sessionrestore -->
-<!ENTITY tabgroupsmigration.tabtitle            "Andere Tabgruppen übertragen">
-<!ENTITY tabgroupsmigration.pagetitle2          "Die Funktionalität der Tabgruppen wurde entfernt, Ihre Tabs aber gespeichert.">
-<!ENTITY tabgroupsmigration.learnaboutaddons    "Erfahren Sie mehr über Add-ons, welche Sie als Ersatz für die eingebaute Tabgruppen-Funktionalität verwenden können.">
-<!ENTITY tabgroupsmigration.description2        "&brandShortName; hat alle Ihre Tabgruppen als Lesezeichen abgelegt, sodass nichts verloren ging.">
-<!ENTITY tabgroupsmigration.bookmarkbutton      "Als Lesezeichen angelegte Tabgruppen anzeigen">
-<!ENTITY tabgroupsmigration.restoredescription  "Sie können einige oder alle zuletzt im Hintergrund offenen Tabgruppen jetzt als Fenster wiederherstellen:">
-

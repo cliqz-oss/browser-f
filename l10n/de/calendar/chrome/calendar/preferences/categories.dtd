@@ -1,5 +1,4 @@
-<!-- ***** BEGIN LICENSE BLOCK *****
-   - This Source Code Form is subject to the terms of the Mozilla Public
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
@@ -8,9 +7,9 @@
    - your editor isn't using UTF-8 encoding and may munge up the document!
   -->
 
-<!ENTITY pref.categories.add.title "Kategorie hinzufügen">
-<!ENTITY pref.categories.addButton.label "Hinzufügen…">
-<!ENTITY pref.categories.addButton.accesskey "H">
+<!ENTITY pref.categories.new.title "Kategorie hinzufügen">
+<!ENTITY pref.categories.newButton.label "Hinzufügen…">
+<!ENTITY pref.categories.newButton.accesskey "H">
 <!ENTITY pref.categories.edit.title "Kategorie bearbeiten">
 <!ENTITY pref.categories.editButton.label "Bearbeiten…">
 <!ENTITY pref.categories.editButton.accesskey "B">

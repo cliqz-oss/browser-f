@@ -73,16 +73,6 @@
 # System Addon (browser/feature)
 @DIR_RESOURCES@distribution/extensions/cliqz@cliqz.com.xpi
 
-# Some users are ending up with unpacked chrome instead of omni.ja. This
-# causes updates to break badly, see bug 1063052. Removing the toplevel
-# chrome.manifest causes us to use the updated omni.ja.
-#ifndef MOZ_GTK
-  @DIR_MACOS@chrome.manifest
-  #ifdef XP_MACOSX
-    @DIR_RESOURCES@chrome.manifest
-  #endif
-#endif
-
 # Mac OS X v2 signing removals
 #ifdef XP_MACOSX
   @DIR_MACOS@active-update.xml

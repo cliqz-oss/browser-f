@@ -81,9 +81,15 @@ pref("app.update.checkInstallTime", true);
 // The number of days a binary is permitted to be old without checking is defined in
 // firefox-branding.js (app.update.checkInstallTime.days)
 
-// The minimum delay in seconds for the timer to fire.
-// default=2 minutes
+// The minimum delay in seconds for the timer to fire between the notification
+// of each consumer of the timer manager.
+// minimum=30 seconds, default=120 seconds, and maximum=300 seconds
 pref("app.update.timerMinimumDelay", 120);
+
+// The minimum delay in milliseconds for the first firing after startup of the timer
+// to notify consumers of the timer manager.
+// minimum=10 seconds, default=30 seconds, and maximum=120 seconds
+pref("app.update.timerFirstInterval", 30000);
 
 // App-specific update preferences
 
@@ -103,12 +109,6 @@ pref("app.update.log", false);
 // the failure.
 pref("app.update.backgroundMaxErrors", 10);
 
-// When |app.update.cert.requireBuiltIn| is true or not specified the
-// final certificate and all certificates the connection is redirected to before
-// the final certificate for the url specified in the |app.update.url|
-// preference must be built-in.
-pref("app.update.cert.requireBuiltIn", false);
-
 // Whether or not app updates are enabled
 pref("app.update.enabled", true);
 
@@ -121,7 +121,7 @@ pref("app.update.auto", true);
 pref("app.update.silent", false);
 
 // If set to true, the hamburger button will show badges for update events.
-#ifndef RELEASE_BUILD
+#ifndef RELEASE_OR_BETA
 pref("app.update.badge", true);
 #else
 pref("app.update.badge", false);
@@ -137,9 +137,6 @@ pref("app.update.url", "https://updatecheck.cliqz.com/update/3/%PRODUCT%/%VERSIO
 
 // app.update.url.manual is in branding section
 // app.update.url.details is in branding section
-
-// User-settable override to app.update.url for testing purposes.
-//pref("app.update.url.override", "");
 
 // app.update.interval is in branding section
 // app.update.promptWaitTime is in branding section
@@ -346,7 +343,7 @@ pref("browser.download.folderList", 1);
 pref("browser.download.manager.addToRecentDocs", true);
 pref("browser.download.manager.resumeOnWakeDelay", 10000);
 
-#ifdef RELEASE_BUILD
+#ifdef RELEASE_OR_BETA
 pref("browser.download.showPanelDropmarker", false);
 #else
 pref("browser.download.showPanelDropmarker", true);
@@ -395,13 +392,7 @@ pref("browser.search.context.loadInBackground", false);
 // comma seperated list of of engines to hide in the search panel.
 pref("browser.search.hiddenOneOffs", "");
 
-#ifdef XP_WIN
-pref("browser.search.redirectWindowsSearch", true);
-#else
-pref("browser.search.redirectWindowsSearch", false);
-#endif
-
-#ifndef RELEASE_BUILD
+#ifndef RELEASE_OR_BETA
 pref("browser.search.reset.enabled", true);
 #endif
 
@@ -462,6 +453,8 @@ pref("browser.tabs.drawInTitlebar", true);
 pref("browser.tabs.selectOwnerOnClose", true);
 
 pref("browser.tabs.showAudioPlayingIcon", true);
+// This should match Chromium's audio indicator delay.
+pref("browser.tabs.delayHidingAudioPlayingIconMS", 3000);
 
 pref("browser.tabs.dontfocusfordialogs", true);
 
@@ -613,9 +606,7 @@ pref("browser.xul.error_pages.enabled", true);
 pref("browser.xul.error_pages.expert_bad_cert", false);
 
 // Enable captive portal detection.
-#ifdef NIGHTLY_BUILD
 pref("network.captive-portal-service.enabled", true);
-#endif
 
 // If true, network link events will change the value of navigator.onLine
 pref("network.manage-offline-status", true);
@@ -984,7 +975,6 @@ pref("security.sandbox.content.level", 2);
 pref("security.sandbox.content.level", 1);
 #endif
 
-#if defined(MOZ_STACKWALKING)
 // This controls the depth of stack trace that is logged when Windows sandbox
 // logging is turned on.  This is only currently available for the content
 // process because the only other sandbox (for GMP) has too strict a policy to
@@ -992,18 +982,25 @@ pref("security.sandbox.content.level", 1);
 pref("security.sandbox.windows.log.stackTraceDepth", 0);
 #endif
 #endif
-#endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX) && defined(MOZ_CONTENT_SANDBOX)
-// This pref is discussed in bug 1083344, the naming is inspired from its Windows
-// counterpart, but on Mac it's an integer which means:
+// This pref is discussed in bug 1083344, the naming is inspired from its
+// Windows counterpart, but on Mac it's an integer which means:
 // 0 -> "no sandbox"
-// 1 -> "an imperfect sandbox designed to allow firefox to run reasonably well"
-// 2 -> "an ideal sandbox which may break many things"
+// 1 -> "preliminary content sandboxing enabled: write access to
+//       home directory is prevented"
+// 2 -> "preliminary content sandboxing enabled with profile protection:
+//       write access to home directory is prevented, read and write access
+//       to ~/Library and profile directories are prevented (excluding
+//       $PROFILE/{extensions,weave})"
 // This setting is read when the content process is started. On Mac the content
 // process is killed when all windows are closed, so a change will take effect
 // when the 1st window is opened.
+#if defined(NIGHTLY_BUILD)
+pref("security.sandbox.content.level", 2);
+#else
 pref("security.sandbox.content.level", 1);
+#endif
 #endif
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX) && defined(MOZ_CONTENT_SANDBOX)
@@ -1023,7 +1020,7 @@ pref("security.sandbox.content.level", 1);
 //
 // This setting may not be required anymore once we decide to permanently
 // enable the content sandbox.
-pref("security.sandbox.content.level", 1);
+pref("security.sandbox.content.level", 2);
 #endif
 
 #if defined(XP_MACOSX) || defined(XP_WIN)
@@ -1060,7 +1057,7 @@ pref("browser.taskbar.lists.refreshInSeconds", 120);
 
 #ifdef MOZ_SERVICES_SYNC
 // The sync engines to use.
-pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab,Addons");
+pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab,Addons,ExtensionStorage");
 // Preferences to be synced by default
 pref("services.sync.prefs.sync.accessibility.blockautorefresh", true);
 pref("services.sync.prefs.sync.accessibility.browsewithcaret", true);
@@ -1145,11 +1142,7 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
 
-#ifdef NIGHTLY_BUILD
 pref("services.sync.sendTabToDevice.enabled", true);
-#else
-pref("services.sync.sendTabToDevice.enabled", false);
-#endif
 
 #endif  // MOZ_SERVICES_SYNC
 
@@ -1252,6 +1245,9 @@ pref("security.mixed_content.block_active_content", true);
 // Show degraded UI for http pages with password fields.
 pref("security.insecure_password.ui.enabled", true);
 
+// Show in-content login form warning UI for insecure login fields
+pref("security.insecure_field_warning.contextual.enabled", true);
+
 // 1 = allow MITM for certificate pinning checks.
 pref("security.cert_pinning.enforcement_level", 1);
 
@@ -1264,10 +1260,15 @@ pref("plain_text.wrap_long_lines", true);
 pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // The request URL of the GeoLocation backend.
+// CLIQZ. Always use Mozilla's geolocation API
+#ifdef 0
+pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+#else
 pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
+#endif
 
 #ifdef XP_MACOSX
-#ifdef RELEASE_BUILD
+#ifdef RELEASE_OR_BETA
 pref("geo.provider.use_corelocation", false);
 #else
 pref("geo.provider.use_corelocation", true);
@@ -1280,7 +1281,7 @@ pref("geo.provider.ms-windows-location", false);
 
 #ifdef MOZ_WIDGET_GTK
 #ifdef MOZ_GPSD
-#ifdef RELEASE_BUILD
+#ifdef RELEASE_OR_BETA
 pref("geo.provider.use_gpsd", false);
 #else
 pref("geo.provider.use_gpsd", true);
@@ -1310,6 +1311,10 @@ pref("identity.fxaccounts.remote.signin.uri", "https://accounts.firefox.com/sign
 
 // The remote content URL where FxAccountsWebChannel messages originate.
 pref("identity.fxaccounts.remote.webchannel.uri", "https://accounts.firefox.com/");
+
+// The value of the context query parameter passed in some fxa requests when config
+// discovery is enabled.
+pref("identity.fxaccounts.contextParam", "fx_desktop_v3");
 
 // The URL we take the user to when they opt to "manage" their Firefox Account.
 // Note that this will always need to be in the same TLD as the
@@ -1385,7 +1390,11 @@ pref("media.gmp.trial-create.enabled", true);
 
 #ifdef MOZ_ADOBE_EME
 pref("media.gmp-eme-adobe.visible", true);
-pref("media.gmp-eme-adobe.enabled", true);
+// When Adobe EME is enabled in the build system, we don't actually enable
+// the plugin by default, so that it doesn't download and install by default.
+// When Adobe EME is first used, Firefox will prompt the user to enable it,
+// and then download the CDM.
+pref("media.gmp-eme-adobe.enabled", false);
 #endif
 
 #ifdef MOZ_WIDEVINE_EME
@@ -1438,7 +1447,7 @@ pref("privacy.userContext.ui.enabled", false);
 pref("privacy.usercontext.about_newtab_segregation.enabled", false);
 #endif
 
-#ifndef RELEASE_BUILD
+#ifndef RELEASE_OR_BETA
 // At the moment, autostart.2 is used, while autostart.1 is unused.
 // We leave it here set to false to reset users' defaults and allow
 // us to change everybody to true in the future, when desired.
@@ -1449,6 +1458,7 @@ pref("browser.tabs.remote.autostart.2", true);
 // For the about:tabcrashed page
 pref("browser.tabs.crashReporting.sendReport", true);
 pref("browser.tabs.crashReporting.includeURL", false);
+pref("browser.tabs.crashReporting.requestEmail", false);
 pref("browser.tabs.crashReporting.emailMe", false);
 pref("browser.tabs.crashReporting.email", "");
 
@@ -1457,7 +1467,7 @@ pref("extensions.interposition.enabled", true);
 pref("extensions.interposition.prefetching", true);
 
 // Enable blocking of e10s for add-on users on beta/release.
-#ifdef RELEASE_BUILD
+#ifdef RELEASE_OR_BETA
 pref("extensions.e10sBlocksEnabling", true);
 #endif
 
@@ -1521,6 +1531,9 @@ pref("browser.migrate.automigrate.enabled", false);
 pref("browser.migrate.automigrate.daysToOfferUndo", 4);
 pref("browser.migrate.automigrate.ui.enabled", true);
 
+pref("browser.migrate.chrome.history.limit", 0);
+pref("browser.migrate.chrome.history.maxAgeInDays", 0);
+
 // Enable browser frames for use on desktop.  Only exposed to chrome callers.
 pref("dom.mozBrowserFramesEnabled", true);
 
@@ -1562,3 +1575,9 @@ pref("browser.crashReports.unsubmittedCheck.enabled", false);
 // some number of days.
 pref("browser.crashReports.unsubmittedCheck.chancesUntilSuppress", 4);
 pref("browser.crashReports.unsubmittedCheck.autoSubmit", false);
+
+#ifdef NIGHTLY_BUILD
+// Enable the (fairly costly) client/server validation on nightly only. The other prefs
+// controlling validation are located in /services/sync/services-sync.js
+pref("services.sync.validation.enabled", true);
+#endif

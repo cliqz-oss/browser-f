@@ -165,6 +165,7 @@
 <!ENTITY compactVersion.label "Kompakte Ansicht">
 <!ENTITY compactVersion.accesskey "K">
 <!ENTITY folderPaneBar.label "Konten-/Ordneransicht">
+<!ENTITY folderPaneBar.accesskey "K">
 <!ENTITY folderModeSelector.label "Ordneransichten">
 
 <!-- Sort Menu -->
@@ -483,18 +484,40 @@
 <!ENTITY deleteJunk.accesskey "u">
 <!ENTITY importCmd.label "Importieren…">
 <!ENTITY importCmd.accesskey "m">
-<!ENTITY errorConsoleCmd.label "Fehlerkonsole">
-<!ENTITY errorConsoleCmd.accesskey "h">
-<!ENTITY errorConsoleCmd.commandkey "j">
 <!ENTITY clearRecentHistory.label "Neueste Chronik löschen…">
 <!ENTITY clearRecentHistory.accesskey "r">
 <!ENTITY accountManagerCmd2.label "Konten-Einstellungen">
 <!ENTITY accountManagerCmd2.accesskey "K">
-<!-- LOCALIZATION NOTE (accountManagerCmdUnix2.accesskey): belongs to accountManagerCmd2.label,
-        which is placed under the Edit menu on Unix systems -->
+<!-- LOCALIZATION NOTE (accountManagerCmdUnix.accesskey):
+     Belongs to accountManagerCmd.label, which is placed under the Edit menu
+     on Unix systems
+  -->
 <!ENTITY accountManagerCmdUnix2.accesskey "o">
-<!ENTITY allowRemoteDebugging.label "Externes Debugging erlauben">
-<!ENTITY allowRemoteDebugging.accesskey "x">
+
+<!-- Developer Tools Submenu -->
+<!ENTITY devtoolsMenu.label "Entwickler-Werkzeuge">
+<!ENTITY devtoolsMenu.accesskey "W">
+<!ENTITY devToolboxCmd.label "Entwickler-Werkzeugkasten">
+<!ENTITY devToolboxCmd.accesskey "W">
+<!ENTITY devToolboxCmd.commandkey "i">
+<!ENTITY addonDebugCmd.label "Addon-Debugger">
+<!ENTITY addonDebugCmd.accesskey "A">
+<!ENTITY tabsDebugCmd.label "Inhaltsframe-Debugger">
+<!ENTITY tabsDebugCmd.accesskey "n">
+<!ENTITY errorConsoleCmd.label "Fehlerkonsole">
+<!ENTITY errorConsoleCmd.accesskey "F">
+<!ENTITY errorConsoleCmd.commandkey "j">
+<!ENTITY scratchpadCmd.label "JavaScript-Umgebung">
+<!ENTITY scratchpadCmd.accesskey "J">
+
+<!--LOCALIZATION NOTE (scratchpadCmd.keycode):
+    This should be a key code constant as per
+    https://developer.mozilla.org/en-US/docs/Web/API/KeyboardEvent/keyCode#Constants_for_keyCode_value
+    (but without the DOM_ prefix) -->
+<!ENTITY scratchpadCmd.keycode "VK_F4">
+<!--LOCALIZATION NOTE (scratchpadCmd.keytext):
+    This should be the text printed on the key defined in the previous string. -->
+<!ENTITY scratchpadCmd.keytext "F4">
 
 <!-- Mail Toolbar -->
 <!ENTITY getMsgButton1.label "Abrufen">

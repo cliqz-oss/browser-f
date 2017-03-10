@@ -28,10 +28,10 @@
 
 <!-- labels -->
 <!ENTITY displayTagsText.label     "Schlagwörter können beim Sortieren und Erkennen von Nachrichten helfen.">
-<!ENTITY addTagButton.label        "Hinzufügen">
-<!ENTITY addTagButton.accesskey    "H">
-<!ENTITY editTagButton.label       "Bearbeiten">
-<!ENTITY editTagButton.accesskey   "B">
+<!ENTITY newTagButton.label        "Hinzufügen…">
+<!ENTITY newTagButton.accesskey    "H">
+<!ENTITY editTagButton1.label      "Bearbeiten…">
+<!ENTITY editTagButton1.accesskey  "B">
 <!ENTITY removeTagButton.label     "Löschen">
 <!ENTITY removeTagButton.accesskey "L">
 
