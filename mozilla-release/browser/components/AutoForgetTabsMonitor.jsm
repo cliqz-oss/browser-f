@@ -54,7 +54,7 @@ class AutoForgetTabsMonitor {
         (aStateFlags & Ci.nsIWebProgressListener.STATE_START) ||
         (aStateFlags & Ci.nsIWebProgressListener.STATE_REDIRECTING);
     const isDoc =
-        (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_REDIR_DOC) ||
+        (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_REDIRECTED_DOCUMENT) ||
         (aStateFlags & Ci.nsIWebProgressListener.STATE_IS_DOCUMENT);
     if (startOrRedirect && isDoc) {
       this._filterDocRequest(aRequest, aWebProgress.isTopLevel);
