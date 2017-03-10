@@ -126,6 +126,13 @@ http://fxfeeds.mozilla.com:80
 # its-an-attack.html.
 http://www.itisatrap.org:80
 
+# Cover CLIQZ domains accessed by extension.
+https://api.cliqz.com:443
+https://cdn.cliqz.com:443
+https://hpn-collector.cliqz.com:443
+https://hpn-sign.cliqz.com:443
+https://stats.cliqz.com:443
+
 #
 # These are subdomains of <ält.example.org>.
 #
