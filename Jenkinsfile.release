@@ -192,26 +192,22 @@ stage('Build') {
     sendEmail(BUILD_STATUS_FAILED)
     throw e
   }
+  sendEmail(BUILD_STATUS_SUCCESSFUL)
+
   if (CQZ_RELEASE_CHANNEL == "beta") {
-    withCredentials([
+    withCredentials([[
       $class: 'UsernamePasswordMultiBinding',
       credentialsId: CQZ_AWS_CREDENTIAL_ID,
       passwordVariable: 'AWS_SECRET_ACCESS_KEY',
-      usernameVariable: 'AWS_ACCESS_KEY_ID']) {
+      usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
         uploadBeta(CQZ_BUILD_ID, CQZ_VERSION)
-        
     }
-
-
-     
   }
-  sendEmail(BUILD_STATUS_SUCCESSFUL)
 }
 
 def uploadBeta(build_id, cqz_version) {
   def locales = ["en-US", "de"] 
   def installers_suffixes = ["win32.installer.exe", "mac.dmg"] 
-  def installers = [:]
   
   for (locale in locales) {
       for (inst_suff in installers_suffixes) {
