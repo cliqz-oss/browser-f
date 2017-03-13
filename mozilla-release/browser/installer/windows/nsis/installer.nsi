@@ -295,10 +295,9 @@ Section "-Application" APP_IDX
                       "$(ERROR_CREATE_DIRECTORY_PREFIX)" \
                       "$(ERROR_CREATE_DIRECTORY_SUFFIX)"
 
-  ; Read value from tagged installer and save it to registry?
-  ; Parameter is name for key, from where take a value
-  ; If value exist - it will do not overwrite it
-  CliqzHelper::setBrand "$INSTDIR" "brand"
+  ; Read data from tagged installer and save it to file
+  ; If file exist - it must not overwrite it
+  CliqzHelper::saveTaggedParams "$INSTDIR"
   Call FixCliqzAsFirefoxRegistry
 
   ; Register DLLs

@@ -21,6 +21,10 @@ bool InstallerTagData::FindAndParseTag(const std::wstring& filename) {
   return res;
 }
 
+std::string InstallerTagData::GetAllParams() {
+  return parsed_data_;
+}
+
 std::string InstallerTagData::GetParam(const std::string& key) {
   if (key.empty())
     return "";
