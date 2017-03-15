@@ -2075,6 +2075,12 @@ var gHeader = {
     }, false);
 
     updateNavButtonVisibility();
+
+    const SETTINGS_PREF_NAME = 'extensions.cliqz.listed';
+    if(Services.prefs.getPrefType(SETTINGS_PREF_NAME) === 128 &&
+      Services.prefs.getBoolPref(SETTINGS_PREF_NAME)) {
+      document.getElementById("settings-icon").hidden = false;
+    }
   },
 
   focusSearchBox: function() {

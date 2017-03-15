@@ -199,7 +199,7 @@
           <!-- main header -->
           <hbox id="header" align="center">
           <!-- This is just to hide contents without actually removing elements. -->
-         <hbox>
+         <hbox id="settings-icon" hidden="true">
             <button id="show-all-extensions" hidden="true"
                     label="&showAllExtensions.button.label;"
                     command="cmd_showAllExtensions"/>
