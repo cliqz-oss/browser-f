@@ -14423,6 +14423,9 @@ nsDocShell::CanSetOriginAttributes()
     return false;
   }
 
+  // TODO: CLIQZ, find a better way to switch tab's privateness. See DB-1260.
+  return true;
+
   // TODO: Bug 1273058 - mContentViewer should be null when setting origin
   // attributes.
   if (mContentViewer) {
