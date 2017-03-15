@@ -110,9 +110,12 @@ function init_all() {
   categories = categories.querySelectorAll("richlistitem.category");
   for (let category of categories) {
     let name = internalPrefCategoryNameToFriendlyName(category.value);
-    let helpSelector = `#header-${name} .help-button`;
-    let helpButton = document.querySelector(helpSelector);
-    helpButton.setAttribute("href", getHelpLinkURL(category.getAttribute("helpTopic")));
+    // CLIQZ - DB-1264: Connect pane doesn't have a help button
+    if (name !== 'connect') {
+      let helpSelector = `#header-${name} .help-button`;
+      let helpButton = document.querySelector(helpSelector);
+      helpButton.setAttribute("href", getHelpLinkURL(category.getAttribute("helpTopic")));
+    } 
   }
 
   // Wait until initialization of all preferences are complete before
