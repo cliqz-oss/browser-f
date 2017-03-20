@@ -14418,13 +14418,13 @@ nsDocShell::GetOriginAttributes(JSContext* aCx,
 bool
 nsDocShell::CanSetOriginAttributes()
 {
+  // TODO: CLIQZ, find a better way to switch tab's privateness. See DB-1260.
+  return true;
+
   MOZ_ASSERT(mChildList.IsEmpty());
   if (!mChildList.IsEmpty()) {
     return false;
   }
-
-  // TODO: CLIQZ, find a better way to switch tab's privateness. See DB-1260.
-  return true;
 
   // TODO: Bug 1273058 - mContentViewer should be null when setting origin
   // attributes.
