@@ -489,13 +489,6 @@ var gPrivacyPane = {
   },
 
   /**
-   * Displays container panel for customising and adding containers.
-   */
-  showContainerSettings() {
-    gotoPref("containers");
-  },
-
-  /**
    * Displays the available block lists for tracking protection.
    */
   showBlockLists: function ()
@@ -510,6 +503,13 @@ var gPrivacyPane = {
                     null, params);
   },
 #endif
+
+  /**
+   * Displays container panel for customising and adding containers.
+   */
+  showContainerSettings() {
+    gotoPref("containers");
+  },
 
   /**
    * Displays the Do Not Track settings dialog.
