@@ -74,6 +74,7 @@ export MOZ_AUTOMATION_UPLOAD=1  # TODO: remove, duplicates cliqz.mozconfig
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
+export S3_BUCKET_SERVICE=cliqz-browser-data
 # this condition only for transaction period between old and new build system
 if [ -z $CQZ_BUILD_ID ]; then
   export S3_UPLOAD_PATH=`echo dist/pr/$CQZ_RELEASE_CHANNEL`
@@ -81,6 +82,7 @@ else
   # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
   # build artifacts back (to locale folder, same as FF)
   export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
+  export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
   # set our own BUILD_ID in new build system, must be specified in format %Y%m%d%H%M%S
   export MOZ_BUILD_DATE=$CQZ_BUILD_ID
 fi
