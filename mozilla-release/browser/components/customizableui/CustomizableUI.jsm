@@ -237,11 +237,9 @@ var CustomizableUIInternal = {
       "search-container",
 #endif
       "cliqz-cc-btn", // CLIQZ control center
-      "cliqz-button", // CLIQZ old Q button
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",
-      "antitracking-button",
     ];
 
     if (AppConstants.MOZ_DEV_EDITION) {
