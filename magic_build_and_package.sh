@@ -51,7 +51,6 @@ if [ $IS_WIN ]; then
 fi
 
 echo '***** Packaging *****'
-
 if [[ $IS_MAC_OS ]]; then
   MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
   unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!
@@ -60,6 +59,11 @@ if [[ $IS_MAC_OS ]]; then
   export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
 else
   ./mach package
+fi
+
+echo '***** Prepare build symbols (release only) *****'
+if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
+  ./mach buildsymbols
 fi
 
 echo '***** Build DE language pack *****'
