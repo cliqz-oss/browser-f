@@ -3249,7 +3249,7 @@ this.XPIProvider = {
 
     // Install into the install location
     logger.info("Installing new system add-on set");
-    yield systemAddonLocation.installAddonSet(Array.from(addonList.keys())
+    yield systemAddonLocation.installAddonSet(Array.from(addonList.values())
       .map(a => a.addon));
   }),
 
