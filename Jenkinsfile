@@ -30,8 +30,6 @@ properties([
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi', 
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
-        string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', 
-                name: 'ANSIBLE_PLAYBOOK_PATH'),
         string(defaultValue: "8000", name: 'NODE_MEMORY'),
         string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
         string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
@@ -51,7 +49,7 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:1202201702', 
+        string(defaultValue: 'cliqz/ansible:20170306133845', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -121,10 +119,7 @@ jobs["windows"] = {
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
-                        def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                         def bootstrap_args = "-u 0 "
-                        def prov_args = "-u 0 "
-                        def nodeIP
 
                         sh "`aws ecr get-login --region=${params.AWS_REGION}`"
                         docker.withRegistry(params.DOCKER_REGISTRY_URL) {
@@ -136,32 +131,13 @@ jobs["windows"] = {
                                         "aws_access_key=${AWS_ACCESS_KEY_ID}",
                                         "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
                                         "jenkins_id=${ec2_node.get('nodeId')}",
-                                        "instance_name=browser-f"
-                                        ]) {
-                                           sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
-                                    }
-                                }
-                            }
-                        } // withRegistry
-
-                        // Retry three times to get the IP from amazon...
-                        retry(3) {
-                            nodeIP = sh(returnStdout: true, script: "${command}").trim()
-                            sleep 15
-                        }
-                        // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-                        docker.withRegistry(DOCKER_REGISTRY_URL) {
-                            timeout(60) {
-                                def image = docker.image(IMAGE_NAME)
-
-                                docker.image(image.imageName()).inside(prov_args) {
-                                    withEnv([
-                                        "instance_name=${ec2_node.get('nodeId')}",
+                                        "instance_name=browser-f",
                                         "JENKINS_URL=${env.JENKINS_URL}",
                                         "NODE_ID=${ec2_node.get('nodeId')}",
                                         "NODE_SECRET=${ec2_node.get('secret')}"
-                                        ]){
-                                        sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                        ]) {
+                                           sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
+                                           sh "cd /playbooks && ansible-playbook -i `cat /tmp/${ec2_node.get('nodeId')}.txt`, ec2/playbook.yml"
                                     }
                                 }
                             }
@@ -241,7 +217,7 @@ jobs["mac"] = {
     retry(3) {
         osx_slave = helpers.getIdleSlave('osx pr')
         
-        if (!osx_slave) {
+        if (osx_slave == null) {
             sleep 1000
             error("Could not get an executor on OSX slave")
         }
