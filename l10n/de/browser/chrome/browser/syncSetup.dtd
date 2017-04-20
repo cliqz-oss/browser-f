@@ -85,7 +85,7 @@
 <!ENTITY syncMy.label               "Synchronisieren:">
 <!ENTITY engine.bookmarks.label     "Lesezeichen">
 <!ENTITY engine.bookmarks.accesskey "l">
-<!ENTITY engine.tabs.label          "Tabs">
+<!ENTITY engine.tabs.label2         "Offene Tabs">
 <!ENTITY engine.tabs.accesskey      "T">
 <!ENTITY engine.history.label       "Chronik">
 <!ENTITY engine.history.accesskey   "C">

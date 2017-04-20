@@ -23,8 +23,9 @@
 <!ENTITY aboutPrivateBrowsing.note.before                "Privates Surfen ">
 <!ENTITY aboutPrivateBrowsing.note.emphasize             "anonymisiert Sie nicht">
 <!ENTITY aboutPrivateBrowsing.note.after                 " im Internet. Ihr Arbeitgeber oder Ihr Internetanbieter können weiterhin verfolgen, welche Seiten Sie besuchen.">
-<!ENTITY aboutPrivateBrowsing.learnMore2                 "Weitere Informationen zu ">
-<!ENTITY aboutPrivateBrowsing.learnMore2.title           "privatem Surfen">
+<!ENTITY aboutPrivateBrowsing.learnMore3.before          "Weitere Informationen zu ">
+<!ENTITY aboutPrivateBrowsing.learnMore3.title           "privatem Surfen">
+<!ENTITY aboutPrivateBrowsing.learnMore3.after           ".">
 
 <!ENTITY trackingProtection.title              "Schutz vor Aktivitätenverfolgung">
 <!ENTITY trackingProtection.description2                 "Einige Websites verwenden Seiteninhalte, um Ihre Aktivitäten durch das ganze Internet zu verfolgen. Beim Schutz vor Aktivitätenverfolgung blockiert Firefox viele dieser verfolgenden Seiteninhalte, welche Informationen über Ihre Internetaktivitäten aufzeichnen könnten.">

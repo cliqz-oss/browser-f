@@ -32,8 +32,6 @@
 <!ENTITY runtimeMenu_accesskey "L">
 <!ENTITY runtimeMenu_disconnect_label "Trennen">
 <!ENTITY runtimeMenu_disconnect_accesskey "T">
-<!ENTITY runtimeMenu_showPermissionTable_label "Berechtigungstabelle">
-<!ENTITY runtimeMenu_showPermissionTable_accesskey "B">
 <!ENTITY runtimeMenu_takeScreenshot_label "Screenshot">
 <!ENTITY runtimeMenu_takeScreenshot_accesskey "S">
 <!ENTITY runtimeMenu_showDetails_label "Informationen zur Laufzeitumgebung">
@@ -140,10 +138,6 @@
 <!ENTITY prefs_options_keybindings_default "Standard">
 <!ENTITY prefs_options_autosavefiles "Dateien automatisch speichern">
 <!ENTITY prefs_options_autosavefiles_tooltip "Veränderte Dateien vor dem Ausführen des Projekts automatisch speichern">
-
-<!-- Permissions Table -->
-<!ENTITY permissionstable_title "Berechtigungstabelle">
-<!ENTITY permissionstable_name_header "Name">
 
 <!-- Runtime Details -->
 <!ENTITY runtimedetails_title "Informationen zur Laufzeitumgebung">

@@ -197,9 +197,11 @@ was trying to connect. -->
 <!ENTITY weakCryptoAdvanced.longDesc "<span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten.">
 <!ENTITY weakCryptoAdvanced.override "(Nicht sicher) <span class='hostname'></span> mit veralteter Sicherheitstechnologie laden">
 
-<!-- LOCALIZATION NOTE (certerror.wrongSystemTime) - The <span id='..' /> tags will be injected with actual values,
-     please leave them unchanged. -->
-<!ENTITY certerror.wrongSystemTime "<p>Es konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufgebaut werden, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtige Uhrzeit, um das Problem zu beheben.</p>">
+<!-- LOCALIZATION NOTE (certerror.wrongSystemTime2,
+                        certerror.wrongSystemTimeWithoutReference) - The <span id='..' />
+     tags will be injected with actual values, please leave them unchanged. -->
+<!ENTITY certerror.wrongSystemTime2 "<p> &brandShortName; konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
+<!ENTITY certerror.wrongSystemTimeWithoutReference "<p>&brandShortName; konnte mit <span id='wrongSystemTimeWithoutReference_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
 
 <!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">

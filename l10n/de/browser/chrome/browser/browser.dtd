@@ -756,6 +756,10 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      when Sync is configured but syncing tabs is disabled. -->
 <!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktivieren Sie das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
 
+<!-- LOCALIZATION NOTE (syncedTabs.context.open.accesskey,
+                        syncedTabs.context.openAllInTabs.accesskey):
+     These access keys are identical because their associated menu items are
+     mutually exclusive -->
 <!ENTITY syncedTabs.context.open.label                       "Öffnen">
 <!ENTITY syncedTabs.context.open.accesskey                   "n">
 <!ENTITY syncedTabs.context.openInNewTab.label               "In neuem Tab öffnen">
@@ -768,6 +772,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.context.bookmarkSingleTab.accesskey     "L">
 <!ENTITY syncedTabs.context.copy.label                       "Adresse kopieren">
 <!ENTITY syncedTabs.context.copy.accesskey                   "k">
+
+<!ENTITY syncedTabs.context.openAllInTabs.label              "Alle in Tabs öffnen">
+<!ENTITY syncedTabs.context.openAllInTabs.accesskey          "A">
 
 
 <!ENTITY syncBrand.shortName.label    "Sync">

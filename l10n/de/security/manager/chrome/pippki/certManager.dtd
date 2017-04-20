@@ -47,7 +47,7 @@
 <!ENTITY certmgr.override_lifetime            "Lebenszeit">
 <!ENTITY certmgr.tokenname                    "Kryptographie-Modul">
 <!ENTITY certmgr.begins                       "Beginnt mit">
-<!ENTITY certmgr.expires                      "Läuft ab am">
+<!ENTITY certmgr.expires                      "Gültig bis">
 <!ENTITY certmgr.email                        "E-Mail-Adresse">
 <!ENTITY certmgr.serial                       "Seriennummer">
 
