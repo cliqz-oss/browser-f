@@ -189,7 +189,7 @@ function sorter(a, b) {
 }
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "sourceProfiles", {
-  get: function() {
+  get() {
     return [...this._getAllProfiles().keys()].map(x => ({id: x, name: x})).sort(sorter);
   }
 });
@@ -250,7 +250,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     }
     return {
       type: aMigrationType,
-      migrate: function(aCallback) {
+      migrate(aCallback) {
         for (let file of files) {
           file.copyTo(currentProfileDir, "");
         }
@@ -517,8 +517,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
   let cookies = getFileResource(types.COOKIES, ["cookies.sqlite"]);
   let passwords = getFileResource(types.PASSWORDS,
-                                  ["signons.sqlite", "logins.json", "key3.db",
-                                   "signedInUser.json"]);
+    ["signons.sqlite", "logins.json", "key3.db",
+     "signedInUser.json"]);
   let formData = getFileResource(types.FORMDATA, ["formhistory.sqlite"]);
   let bookmarksBackups = getFileResource(types.OTHERDATA,
     [PlacesBackups.profileRelativeFolderPath]);
@@ -531,7 +531,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     let tabsRestoreURL = this.tabsRestoreURL;
     session = {
       type: types.SESSION,
-      migrate: function(aCallback) {
+      migrate(aCallback) {
         sessionCheckpoints.copyTo(currentProfileDir, "sessionCheckpoints.json");
         let newSessionFile = currentProfileDir.clone();
         newSessionFile.append("sessionstore.js");

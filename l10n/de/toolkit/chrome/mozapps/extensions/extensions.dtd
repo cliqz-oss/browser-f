@@ -20,6 +20,9 @@
 <!ENTITY installAddonFromFile.accesskey       "A">
 <!ENTITY toolsMenu.tooltip                    "Tools für alle Add-ons">
 
+<!ENTITY getThemes.description                "Wollen Sie Ihren Browser anpassen?">
+<!ENTITY getThemes.learnMore                  "Wählen Sie aus Tausenden von Themes.">
+
 <!ENTITY cmd.back.tooltip                     "Eine Seite zurück">
 <!ENTITY cmd.forward.tooltip                  "Eine Seite vor">
 

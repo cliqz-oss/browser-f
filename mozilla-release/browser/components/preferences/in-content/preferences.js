@@ -42,17 +42,14 @@ function init_category_if_required(category) {
 function register_module(categoryName, categoryObject) {
   gCategoryInits.set(categoryName, {
     inited: false,
-    init: function() {
+    init() {
       categoryObject.init();
       this.inited = true;
     }
   });
 }
 
-addEventListener("DOMContentLoaded", function onLoad() {
-  removeEventListener("DOMContentLoaded", onLoad);
-  init_all();
-});
+document.addEventListener("DOMContentLoaded", init_all, {once: true});
 
 function init_all() {
   document.documentElement.instantApply = true;
@@ -102,8 +99,8 @@ function init_all() {
   init_dynamic_padding();
 
   var initFinished = new CustomEvent("Initialized", {
-    'bubbles': true,
-    'cancelable': true
+    "bubbles": true,
+    "cancelable": true
   });
   document.dispatchEvent(initFinished);
 
@@ -127,7 +124,7 @@ function init_all() {
 function init_dynamic_padding() {
   let categories = document.getElementById("categories");
   let catPadding = Number.parseInt(getComputedStyle(categories)
-                                     .getPropertyValue('padding-top'));
+                                     .getPropertyValue("padding-top"));
   let fullHeight = categories.lastElementChild.getBoundingClientRect().bottom;
   let mediaRule = `
   @media (max-height: ${fullHeight}px) {
@@ -136,8 +133,8 @@ function init_dynamic_padding() {
     }
   }
   `;
-  let mediaStyle = document.createElementNS('http://www.w3.org/1999/xhtml', 'html:style');
-  mediaStyle.setAttribute('type', 'text/css');
+  let mediaStyle = document.createElementNS("http://www.w3.org/1999/xhtml", "html:style");
+  mediaStyle.setAttribute("type", "text/css");
   mediaStyle.appendChild(document.createCDATASection(mediaRule));
   document.documentElement.appendChild(mediaStyle);
 }

@@ -17,7 +17,7 @@
 <!ENTITY engine.bookmarks.accesskey       "L">
 <!ENTITY engine.history.label             "Chronik">
 <!ENTITY engine.history.accesskey         "C">
-<!ENTITY engine.tabs.label                "Tabs">
+<!ENTITY engine.tabs.label2               "Offene Tabs">
 <!ENTITY engine.tabs.accesskey            "T">
 <!ENTITY engine.passwords.label           "Passwörter">
 <!ENTITY engine.passwords.accesskey       "P">

@@ -449,12 +449,10 @@ this.MigratorPrototype = {
         let resources = this._getMaybeCachedResources("");
         if (resources && resources.length > 0)
           exists = true;
-      }
-      else {
+      } else {
         exists = profiles.length > 0;
       }
-    }
-    catch (ex) {
+    } catch (ex) {
       Cu.reportError(ex);
     }
     return exists;
@@ -466,8 +464,7 @@ this.MigratorPrototype = {
     if (this._resourcesByProfile) {
       if (profileKey in this._resourcesByProfile)
         return this._resourcesByProfile[profileKey];
-    }
-    else {
+    } else {
       this._resourcesByProfile = { };
     }
     this._resourcesByProfile[profileKey] = this.getResources(aProfile);
@@ -528,8 +525,7 @@ this.MigrationUtils = Object.freeze({
       try {
         aFunction.apply(null, arguments);
         success = true;
-      }
-      catch (ex) {
+      } catch (ex) {
         Cu.reportError(ex);
       }
       // Do not change this to call aCallback directly in try try & catch
@@ -719,13 +715,11 @@ this.MigrationUtils = Object.freeze({
     let migrator = null;
     if (this._migrators.has(aKey)) {
       migrator = this._migrators.get(aKey);
-    }
-    else {
+    } else {
       try {
         migrator = Cc["@mozilla.org/profile/migrator;1?app=browser&type=" +
                       aKey].createInstance(Ci.nsIBrowserProfileMigrator);
-      }
-      catch (ex) { Cu.reportError(ex) }
+      } catch (ex) { Cu.reportError(ex) }
       this._migrators.set(aKey, migrator);
     }
 
@@ -767,8 +761,7 @@ this.MigrationUtils = Object.freeze({
       if (!key && browserDesc.startsWith("Firefox")) {
         key = "firefox";
       }
-    }
-    catch (ex) {
+    } catch (ex) {
       Cu.reportError("Could not detect default browser: " + ex);
     }
 
@@ -945,8 +938,7 @@ this.MigrationUtils = Object.freeze({
       }
       migratorKey = aMigratorKey;
       skipSourcePage = true;
-    }
-    else {
+    } else {
       let defaultBrowserKey = this.getMigratorKeyForDefaultBrowser();
       if (defaultBrowserKey) {
         migrator = this.getMigrator(defaultBrowserKey);
@@ -1020,12 +1012,26 @@ this.MigrationUtils = Object.freeze({
     });
   },
 
+  insertManyBookmarksWrapper(bookmarks, parent) {
+    let insertionPromise = PlacesUtils.bookmarks.insertTree({guid: parent, children: bookmarks});
+    return insertionPromise.then(insertedItems => {
+      this._importQuantities.bookmarks += insertedItems.length;
+      if (gKeepUndoData) {
+        let bmData = gUndoData.get("bookmarks");
+        for (let bm of insertedItems) {
+          let {parentGuid, guid, lastModified, type} = bm;
+          bmData.push({parentGuid, guid, lastModified, type});
+        }
+      }
+    }, ex => Cu.reportError(ex));
+  },
+
   insertVisitsWrapper(places, options) {
     this._importQuantities.history += places.length;
     if (gKeepUndoData) {
       this._updateHistoryUndo(places);
     }
-    return PlacesUtils.asyncHistory.updatePlaces(places, options);
+    return PlacesUtils.asyncHistory.updatePlaces(places, options, true);
   },
 
   insertLoginWrapper(login) {
@@ -1083,8 +1089,14 @@ this.MigrationUtils = Object.freeze({
     let visitMap = new Map(visits.map(v => [v.url, v]));
     for (let place of places) {
       let visitCount = place.visits.length;
-      let first = Math.min.apply(Math, place.visits.map(v => v.visitDate));
-      let last = Math.max.apply(Math, place.visits.map(v => v.visitDate));
+      let first, last;
+      if (visitCount > 1) {
+        let visitDates = place.visits.map(v => v.visitDate);
+        first = Math.min.apply(Math, visitDates);
+        last = Math.max.apply(Math, visitDates);
+      } else {
+        first = last = place.visits[0].visitDate;
+      }
       let url = place.uri.spec;
       try {
         new URL(url);

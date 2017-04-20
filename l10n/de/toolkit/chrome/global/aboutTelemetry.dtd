@@ -100,6 +100,10 @@ Datensatz
   Thread-Hänger
 ">
 
+<!ENTITY aboutTelemetry.capturedStacksSection "
+  Aufgezeichnete Aufruflisten
+">
+
 <!ENTITY aboutTelemetry.scalarsSection "
   Skalare
 ">
@@ -114,6 +118,10 @@ Datensatz
 
 <!ENTITY aboutTelemetry.keyedHistogramsSection "
   Schlüsselgebundene Histogramme
+">
+
+<!ENTITY aboutTelemetry.eventsSection "
+  Ereignisse
 ">
 
 <!ENTITY aboutTelemetry.simpleMeasurementsSection "

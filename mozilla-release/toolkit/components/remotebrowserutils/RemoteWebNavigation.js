@@ -11,19 +11,14 @@ XPCOMUtils.defineLazyModuleGetter(this, "Services",
   "resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
   "resource://gre/modules/NetUtil.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Utils",
+  "resource://gre/modules/sessionstore/Utils.jsm");
 
-function makeURI(url)
-{
-  return Services.io.newURI(url, null, null);
+function makeURI(url) {
+  return Services.io.newURI(url);
 }
 
-function readInputStreamToString(aStream)
-{
-  return NetUtil.readInputStreamToString(aStream, aStream.available());
-}
-
-function RemoteWebNavigation()
-{
+function RemoteWebNavigation() {
   this.wrappedJSObject = this;
 }
 
@@ -34,7 +29,7 @@ RemoteWebNavigation.prototype = {
 
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIWebNavigation, Ci.nsISupports]),
 
-  swapBrowser: function(aBrowser) {
+  swapBrowser(aBrowser) {
     this._browser = aBrowser;
   },
 
@@ -61,42 +56,65 @@ RemoteWebNavigation.prototype = {
 
   canGoBack: false,
   canGoForward: false,
-  goBack: function() {
+  goBack() {
     this._sendMessage("WebNavigation:GoBack", {});
   },
-  goForward: function() {
+  goForward() {
     this._sendMessage("WebNavigation:GoForward", {});
   },
-  gotoIndex: function(aIndex) {
+  gotoIndex(aIndex) {
     this._sendMessage("WebNavigation:GotoIndex", {index: aIndex});
   },
-  loadURI: function(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
+  loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
     this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
+<<<<<<< HEAD
                             Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
                             aPostData, aHeaders, null, false);
+||||||| merged common ancestors
+                            Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
+                            aPostData, aHeaders, null);
+=======
+                            Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
+                            aPostData, aHeaders, null);
+>>>>>>> origin/upstream-releases
   },
+<<<<<<< HEAD
   loadURIWithOptions: function(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
                                aPostData, aHeaders, aBaseURI, aEnsurePrivate) {
+||||||| merged common ancestors
+  loadURIWithOptions: function(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
+                               aPostData, aHeaders, aBaseURI) {
+=======
+  loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
+                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal) {
+>>>>>>> origin/upstream-releases
     this._sendMessage("WebNavigation:LoadURI", {
       uri: aURI,
       flags: aLoadFlags,
       referrer: aReferrer ? aReferrer.spec : null,
       referrerPolicy: aReferrerPolicy,
-      postData: aPostData ? readInputStreamToString(aPostData) : null,
-      headers: aHeaders ? readInputStreamToString(aHeaders) : null,
+      postData: aPostData ? Utils.serializeInputStream(aPostData) : null,
+      headers: aHeaders ? Utils.serializeInputStream(aHeaders) : null,
       baseURI: aBaseURI ? aBaseURI.spec : null,
+<<<<<<< HEAD
       ensurePrivate: !!aEnsurePrivate
+||||||| merged common ancestors
+=======
+      triggeringPrincipal: aTriggeringPrincipal
+                           ? Utils.serializePrincipal(aTriggeringPrincipal)
+                           : null,
+>>>>>>> origin/upstream-releases
     });
   },
-  setOriginAttributesBeforeLoading: function(aOriginAttributes) {
+  setOriginAttributesBeforeLoading(aOriginAttributes) {
     this._sendMessage("WebNavigation:SetOriginAttributes", {
       originAttributes: aOriginAttributes,
     });
   },
-  reload: function(aReloadFlags) {
+  reload(aReloadFlags) {
     this._sendMessage("WebNavigation:Reload", {flags: aReloadFlags});
   },
-  stop: function(aStopFlags) {
+  stop(aStopFlags) {
     this._sendMessage("WebNavigation:Stop", {flags: aStopFlags});
   },
 
@@ -127,11 +145,10 @@ RemoteWebNavigation.prototype = {
     throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   },
 
-  _sendMessage: function(aMessage, aData) {
+  _sendMessage(aMessage, aData) {
     try {
       this._browser.messageManager.sendAsyncMessage(aMessage, aData);
-    }
-    catch (e) {
+    } catch (e) {
       Cu.reportError(e);
     }
   },

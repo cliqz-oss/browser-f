@@ -178,7 +178,7 @@ const CustomizableWidgets = [
     shortcutId: "key_gotoHistory",
     tooltiptext: "history-panelmenu.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onViewShowing: function(aEvent) {
+    onViewShowing(aEvent) {
       // Populate our list of history
       const kMaxResults = 15;
       let doc = aEvent.target.ownerDocument;
@@ -204,15 +204,16 @@ const CustomizableWidgets = [
 
       PlacesUtils.history.QueryInterface(Ci.nsPIPlacesDatabase)
                          .asyncExecuteLegacyQueries([query], 1, options, {
-        handleResult: function (aResultSet) {
-          let onItemCommand = function (aEvent) {
+        handleResult(aResultSet) {
+          let onItemCommand = function(aItemCommandEvent) {
             // Only handle the click event for middle clicks, we're using the command
             // event otherwise.
-            if (aEvent.type == "click" && aEvent.button != 1) {
+            if (aItemCommandEvent.type == "click" &&
+                aItemCommandEvent.button != 1) {
               return;
             }
-            let item = aEvent.target;
-            win.openUILink(item.getAttribute("targetURI"), aEvent);
+            let item = aItemCommandEvent.target;
+            win.openUILink(item.getAttribute("targetURI"), aItemCommandEvent);
             CustomizableUI.hidePanelForNode(item);
           };
           let fragment = doc.createDocumentFragment();
@@ -236,10 +237,10 @@ const CustomizableWidgets = [
           }
           items.appendChild(fragment);
         },
-        handleError: function (aError) {
+        handleError(aError) {
           log.debug("History view tried to show but had an error: " + aError);
         },
-        handleCompletion: function (aReason) {
+        handleCompletion(aReason) {
           log.debug("History view is being shown!");
         },
       });
@@ -261,7 +262,9 @@ const CustomizableWidgets = [
       let elementCount = tabsFragment.childElementCount;
       separator.hidden = !elementCount;
       while (--elementCount >= 0) {
-        tabsFragment.children[elementCount].classList.add("subviewbutton", "cui-withicon");
+        let element = tabsFragment.children[elementCount];
+        CustomizableUI.addShortcut(element);
+        element.classList.add("subviewbutton", "cui-withicon");
       }
       recentlyClosedTabs.appendChild(tabsFragment);
 
@@ -271,11 +274,13 @@ const CustomizableWidgets = [
       elementCount = windowsFragment.childElementCount;
       separator.hidden = !elementCount;
       while (--elementCount >= 0) {
-        windowsFragment.children[elementCount].classList.add("subviewbutton", "cui-withicon");
+        let element = windowsFragment.children[elementCount];
+        CustomizableUI.addShortcut(element);
+        element.classList.add("subviewbutton", "cui-withicon");
       }
       recentlyClosedWindows.appendChild(windowsFragment);
     },
-    onCreated: function(aNode) {
+    onCreated(aNode) {
       // Middle clicking recently closed items won't close the panel - cope:
       let onRecentlyClosedClick = function(aEvent) {
         if (aEvent.button == 1) {
@@ -288,7 +293,7 @@ const CustomizableWidgets = [
       recentlyClosedTabs.addEventListener("click", onRecentlyClosedClick);
       recentlyClosedWindows.addEventListener("click", onRecentlyClosedClick);
     },
-    onViewHiding: function(aEvent) {
+    onViewHiding(aEvent) {
       log.debug("History view is being hidden!");
     }
   },
@@ -443,7 +448,7 @@ const CustomizableWidgets = [
         Services.obs.notifyObservers(null, "synced-tabs-menu:test:tabs-updated", null);
       });
     },
-    _clearTabList () {
+    _clearTabList() {
       let list = this._tabsList;
       while (list.lastChild) {
         list.lastChild.remove();
@@ -463,7 +468,7 @@ const CustomizableWidgets = [
       appendTo.appendChild(messageLabel);
       return messageLabel;
     },
-    _appendClient: function (client, attachFragment) {
+    _appendClient(client, attachFragment) {
       let doc = attachFragment.ownerDocument;
       // Create the element for the remote client.
       let clientItem = doc.createElementNS(kNSXUL, "label");
@@ -509,7 +514,7 @@ const CustomizableWidgets = [
     id: "privatebrowsing-button",
     shortcutId: "key_privatebrowsing",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onCommand: function(e) {
+    onCommand(e) {
       let win = e.target.ownerGlobal;
       win.OpenBrowserWindow({private: true});
     }
@@ -518,7 +523,7 @@ const CustomizableWidgets = [
     shortcutId: "key_savePage",
     tooltiptext: "save-page-button.tooltiptext3",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onCommand: function(aEvent) {
+    onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.saveBrowser(win.gBrowser.selectedBrowser);
     }
@@ -527,7 +532,7 @@ const CustomizableWidgets = [
     shortcutId: "key_find",
     tooltiptext: "find-button.tooltiptext3",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onCommand: function(aEvent) {
+    onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       if (win.gFindBar) {
         win.gFindBar.onFindCommand();
@@ -538,7 +543,7 @@ const CustomizableWidgets = [
     shortcutId: "openFileKb",
     tooltiptext: "open-file-button.tooltiptext3",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onCommand: function(aEvent) {
+    onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.BrowserOpenFileWindow();
     }
@@ -547,7 +552,7 @@ const CustomizableWidgets = [
     type: "view",
     viewId: "PanelUI-sidebar",
     tooltiptext: "sidebar-button.tooltiptext2",
-    onViewShowing: function(aEvent) {
+    onViewShowing(aEvent) {
       // Populate the subview with whatever menuitems are in the
       // sidebar menu. We skip menu elements, because the menu panel has no way
       // of dealing with those right now.
@@ -564,7 +569,7 @@ const CustomizableWidgets = [
     id: "social-share-button",
     // custom build our button so we can attach to the share command
     type: "custom",
-    onBuild: function(aDocument) {
+    onBuild(aDocument) {
       let node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
       node.setAttribute("id", this.id);
       node.classList.add("toolbarbutton-1");
@@ -606,7 +611,7 @@ const CustomizableWidgets = [
     shortcutId: "key_openAddons",
     tooltiptext: "add-ons-button.tooltiptext3",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onCommand: function(aEvent) {
+    onCommand(aEvent) {
       let win = aEvent.target.ownerGlobal;
       win.BrowserOpenAddonsMgr("addons://list/plugin");
     }
@@ -615,7 +620,7 @@ const CustomizableWidgets = [
     type: "custom",
     tooltiptext: "zoom-controls.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onBuild: function(aDocument) {
+    onBuild(aDocument) {
       const kPanelId = "PanelUI-popup";
       let areaType = CustomizableUI.getAreaType(this.currentArea);
       let inPanel = areaType == CustomizableUI.TYPE_MENU_PANEL;
@@ -703,11 +708,11 @@ const CustomizableWidgets = [
           updateCombinedWidgetStyle(node, aArea, true);
           updateZoomResetButton();
 
-          let areaType = CustomizableUI.getAreaType(aArea);
-          if (areaType == CustomizableUI.TYPE_MENU_PANEL) {
+          let newAreaType = CustomizableUI.getAreaType(aArea);
+          if (newAreaType == CustomizableUI.TYPE_MENU_PANEL) {
             let panel = aDocument.getElementById(kPanelId);
             panel.addEventListener("popupshowing", updateZoomResetButton);
-          } else if (areaType == CustomizableUI.TYPE_TOOLBAR) {
+          } else if (newAreaType == CustomizableUI.TYPE_TOOLBAR) {
             let container = window.gBrowser.tabContainer;
             container.addEventListener("TabSelect", updateZoomResetButton);
           }
@@ -717,11 +722,11 @@ const CustomizableWidgets = [
           if (aWidgetId != this.id)
             return;
 
-          let areaType = CustomizableUI.getAreaType(aPrevArea);
-          if (areaType == CustomizableUI.TYPE_MENU_PANEL) {
+          let formerAreaType = CustomizableUI.getAreaType(aPrevArea);
+          if (formerAreaType == CustomizableUI.TYPE_MENU_PANEL) {
             let panel = aDocument.getElementById(kPanelId);
             panel.removeEventListener("popupshowing", updateZoomResetButton);
-          } else if (areaType == CustomizableUI.TYPE_TOOLBAR) {
+          } else if (formerAreaType == CustomizableUI.TYPE_TOOLBAR) {
             let container = window.gBrowser.tabContainer;
             container.removeEventListener("TabSelect", updateZoomResetButton);
           }
@@ -767,13 +772,13 @@ const CustomizableWidgets = [
           container.removeEventListener("TabSelect", updateZoomResetButton);
         }.bind(this),
 
-        onCustomizeStart: function(aWindow) {
+        onCustomizeStart(aWindow) {
           if (aWindow.document == aDocument) {
             updateZoomResetButton();
           }
         },
 
-        onCustomizeEnd: function(aWindow) {
+        onCustomizeEnd(aWindow) {
           if (aWindow.document == aDocument) {
             updateZoomResetButton();
           }
@@ -795,7 +800,7 @@ const CustomizableWidgets = [
     type: "custom",
     tooltiptext: "edit-controls.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onBuild: function(aDocument) {
+    onBuild(aDocument) {
       let buttons = [{
         id: "cut-button",
         command: "cmd_cut",
@@ -893,7 +898,7 @@ const CustomizableWidgets = [
     viewId: "PanelUI-feeds",
     tooltiptext: "feed-button.tooltiptext2",
     defaultArea: CustomizableUI.AREA_PANEL,
-    onClick: function(aEvent) {
+    onClick(aEvent) {
       let win = aEvent.target.ownerGlobal;
       let feeds = win.gBrowser.selectedBrowser.feeds;
 
@@ -907,7 +912,7 @@ const CustomizableWidgets = [
         CustomizableUI.hidePanelForNode(aEvent.target);
       }
     },
-    onViewShowing: function(aEvent) {
+    onViewShowing(aEvent) {
       let doc = aEvent.target.ownerDocument;
       let container = doc.getElementById("PanelUI-feeds");
       let gotView = doc.defaultView.FeedHandler.buildFeedList(container, true);
@@ -916,10 +921,9 @@ const CustomizableWidgets = [
       if (!gotView) {
         aEvent.preventDefault();
         aEvent.stopPropagation();
-        return;
       }
     },
-    onCreated: function(node) {
+    onCreated(node) {
       let win = node.ownerGlobal;
       let selectedBrowser = win.gBrowser.selectedBrowser;
       let feeds = selectedBrowser && selectedBrowser.feeds;
@@ -934,15 +938,15 @@ const CustomizableWidgets = [
     viewId: "PanelUI-characterEncodingView",
     tooltiptext: "characterencoding-button2.tooltiptext",
     defaultArea: CustomizableUI.AREA_PANEL,
-    maybeDisableMenu: function(aDocument) {
+    maybeDisableMenu(aDocument) {
       let window = aDocument.defaultView;
       return !(window.gBrowser &&
                window.gBrowser.selectedBrowser.mayEnableCharacterEncodingMenu);
     },
-    populateList: function(aDocument, aContainerId, aSection) {
+    populateList(aDocument, aContainerId, aSection) {
       let containerElem = aDocument.getElementById(aContainerId);
 
-      containerElem.addEventListener("command", this.onCommand, false);
+      containerElem.addEventListener("command", this.onCommand);
 
       let list = this.charsetInfo[aSection];
 
@@ -956,7 +960,7 @@ const CustomizableWidgets = [
         containerElem.appendChild(elem);
       }
     },
-    updateCurrentCharset: function(aDocument) {
+    updateCurrentCharset(aDocument) {
       let currentCharset = aDocument.defaultView.gBrowser.selectedBrowser.characterSet;
       currentCharset = CharsetMenu.foldCharset(currentCharset);
 
@@ -966,7 +970,7 @@ const CustomizableWidgets = [
 
       this._updateElements(elements, currentCharset);
     },
-    updateCurrentDetector: function(aDocument) {
+    updateCurrentDetector(aDocument) {
       let detectorContainer = aDocument.getElementById("PanelUI-characterEncodingView-autodetect");
       let currentDetector;
       try {
@@ -976,7 +980,7 @@ const CustomizableWidgets = [
 
       this._updateElements(detectorContainer.childNodes, currentDetector);
     },
-    _updateElements: function(aElements, aCurrentItem) {
+    _updateElements(aElements, aCurrentItem) {
       if (!aElements.length) {
         return;
       }
@@ -994,7 +998,7 @@ const CustomizableWidgets = [
         }
       }
     },
-    onViewShowing: function(aEvent) {
+    onViewShowing(aEvent) {
       let document = aEvent.target.ownerDocument;
 
       let autoDetectLabelId = "PanelUI-characterEncodingView-autodetect-label";
@@ -1015,7 +1019,7 @@ const CustomizableWidgets = [
       this.updateCurrentDetector(document);
       this.updateCurrentCharset(document);
     },
-    onCommand: function(aEvent) {
+    onCommand(aEvent) {
       let node = aEvent.target;
       if (!node.hasAttribute || !node.section) {
         return;
@@ -1043,7 +1047,7 @@ const CustomizableWidgets = [
         window.BrowserCharsetReload();
       }
     },
-    onCreated: function(aNode) {
+    onCreated(aNode) {
       const kPanelId = "PanelUI-popup";
       let document = aNode.ownerDocument;
 
@@ -1094,7 +1098,7 @@ const CustomizableWidgets = [
   }, {
     id: "email-link-button",
     tooltiptext: "email-link-button.tooltiptext3",
-    onCommand: function(aEvent) {
+    onCommand(aEvent) {
       let win = aEvent.view;
       win.MailIntegration.sendLinkForBrowser(win.gBrowser.selectedBrowser)
     }
@@ -1103,12 +1107,12 @@ const CustomizableWidgets = [
     type: "view",
     viewId: "PanelUI-containers",
     hasObserver: false,
-    onCreated: function(aNode) {
+    onCreated(aNode) {
       let doc = aNode.ownerDocument;
       let win = doc.defaultView;
       let items = doc.getElementById("PanelUI-containersItems");
 
-      let onItemCommand = function (aEvent) {
+      let onItemCommand = function(aEvent) {
         let item = aEvent.target;
         if (item.hasAttribute("usercontextid")) {
           let userContextId = parseInt(item.getAttribute("usercontextid"));
@@ -1128,7 +1132,7 @@ const CustomizableWidgets = [
         this.hasObserver = true;
       }
     },
-    onViewShowing: function(aEvent) {
+    onViewShowing(aEvent) {
       let doc = aEvent.target.ownerDocument;
 
       let items = doc.getElementById("PanelUI-containersItems");
@@ -1186,7 +1190,7 @@ const CustomizableWidgets = [
 let preferencesButton = {
   id: "preferences-button",
   defaultArea: CustomizableUI.AREA_PANEL,
-  onCommand: function(aEvent) {
+  onCommand(aEvent) {
     let win = aEvent.target.ownerGlobal;
     win.openPreferences();
   }
@@ -1208,7 +1212,7 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
     type: "view",
     viewId: "PanelUI-panicView",
     _sanitizer: null,
-    _ensureSanitizer: function() {
+    _ensureSanitizer() {
       if (!this.sanitizer) {
         let scope = {};
         Services.scriptloader.loadSubScript("chrome://browser/content/sanitize.js",
@@ -1218,11 +1222,11 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
         this._sanitizer.ignoreTimespan = false;
       }
     },
-    _getSanitizeRange: function(aDocument) {
+    _getSanitizeRange(aDocument) {
       let group = aDocument.getElementById("PanelUI-panic-timeSpan");
       return this._Sanitizer.getClearRange(+group.value);
     },
-    forgetButtonCalled: function(aEvent) {
+    forgetButtonCalled(aEvent) {
       let doc = aEvent.target.ownerDocument;
       this._ensureSanitizer();
       this._sanitizer.range = this._getSanitizeRange(doc);
@@ -1248,18 +1252,18 @@ if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
         }
       });
     },
-    handleEvent: function(aEvent) {
+    handleEvent(aEvent) {
       switch (aEvent.type) {
         case "command":
           this.forgetButtonCalled(aEvent);
           break;
       }
     },
-    onViewShowing: function(aEvent) {
+    onViewShowing(aEvent) {
       let forgetButton = aEvent.target.querySelector("#PanelUI-panic-view-button");
       forgetButton.addEventListener("command", this);
     },
-    onViewHiding: function(aEvent) {
+    onViewHiding(aEvent) {
       let forgetButton = aEvent.target.querySelector("#PanelUI-panic-view-button");
       forgetButton.removeEventListener("command", this);
     },
@@ -1271,12 +1275,12 @@ if (AppConstants.E10S_TESTING_ONLY) {
     CustomizableWidgets.push({
       id: "e10s-button",
       defaultArea: CustomizableUI.AREA_PANEL,
-      onBuild: function(aDocument) {
+      onBuild(aDocument) {
         let node = aDocument.createElementNS(kNSXUL, "toolbarbutton");
         node.setAttribute("label", CustomizableUI.getLocalizedProperty(this, "label"));
         node.setAttribute("tooltiptext", CustomizableUI.getLocalizedProperty(this, "tooltiptext"));
       },
-      onCommand: function(aEvent) {
+      onCommand(aEvent) {
         let win = aEvent.view;
         win.OpenBrowserWindow({remote: false});
       },

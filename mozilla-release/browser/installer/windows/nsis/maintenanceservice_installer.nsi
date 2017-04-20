@@ -120,10 +120,7 @@ Function .onInit
 
   SetSilent silent
 
-  ; On Windows 2000 we do not install the maintenance service.
-  ; We won't run this installer from the parent installer, but just in case 
-  ; someone tries to execute it on Windows 2000...
-  ${Unless} ${AtLeastWinXP}
+  ${Unless} ${AtLeastWin7}
     Abort
   ${EndUnless}
 FunctionEnd
@@ -190,6 +187,20 @@ Section "MaintenanceService"
   ${EndIf}
 
   WriteUninstaller "$INSTDIR\Uninstall.exe"
+
+  ; Since the Maintenance service can be installed either x86 or x64,
+  ; always use the 64-bit registry.
+  ${If} ${RunningX64}
+    ; Previous versions always created the uninstall key in the 32-bit registry.
+    ; Clean those old entries out if they still exist.
+    SetRegView 32
+    DeleteRegKey HKLM "${MaintUninstallKey}"
+    ; Preserve the lastused value before we switch to 64.
+    SetRegView lastused
+
+    SetRegView 64
+  ${EndIf}
+
   WriteRegStr HKLM "${MaintUninstallKey}" "DisplayName" "${MaintFullName}"
   WriteRegStr HKLM "${MaintUninstallKey}" "UninstallString" \
                    '"$INSTDIR\uninstall.exe"'
@@ -207,6 +218,7 @@ Section "MaintenanceService"
   ; want to install once on the first upgrade to maintenance service.
   ; Also write out that we are currently installed, preferences will check
   ; this value to determine if we should show the service update pref.
+<<<<<<< HEAD
   ; Since the Maintenance service can be installed either x86 or x64,
   ; always use the 64-bit registry for checking if an attempt was made.
   ${If} ${RunningX64}
@@ -215,6 +227,20 @@ Section "MaintenanceService"
   WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Attempted" 1
   WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Installed" 1
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
+||||||| merged common ancestors
+  ; Since the Maintenance service can be installed either x86 or x64,
+  ; always use the 64-bit registry for checking if an attempt was made.
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
+  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Attempted" 1
+  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Installed" 1
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
+=======
+  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Attempted" 1
+  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Installed" 1
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
+>>>>>>> origin/upstream-releases
 
   ; Included here for debug purposes only.  
   ; These keys are used to bypass the installation dir is a valid installation
@@ -321,13 +347,20 @@ Section "Uninstall"
   RMDir /REBOOTOK "$INSTDIR\update"
   RMDir /REBOOTOK "$INSTDIR"
 
-  DeleteRegKey HKLM "${MaintUninstallKey}"
-
   ${If} ${RunningX64}
     SetRegView 64
   ${EndIf}
+<<<<<<< HEAD
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "Installed"
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
+||||||| merged common ancestors
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "Installed"
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
+=======
+  DeleteRegKey HKLM "${MaintUninstallKey}"
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "Installed"
+  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
+>>>>>>> origin/upstream-releases
   DeleteRegKey HKLM "${FallbackKey}\"
   ${If} ${RunningX64}
     SetRegView lastused
