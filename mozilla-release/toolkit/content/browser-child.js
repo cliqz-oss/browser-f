@@ -265,13 +265,8 @@ var WebNavigation =  {
         this.loadURI(message.data.uri, message.data.flags,
                      message.data.referrer, message.data.referrerPolicy,
                      message.data.postData, message.data.headers,
-<<<<<<< HEAD
-                     message.data.baseURI, message.data.ensurePrivate);
-||||||| merged common ancestors
-                     message.data.baseURI);
-=======
-                     message.data.baseURI, message.data.triggeringPrincipal);
->>>>>>> origin/upstream-releases
+                     message.data.baseURI, message.data.triggeringPrincipal,
+                     message.data.ensurePrivate);
         break;
       case "WebNavigation:SetOriginAttributes":
         this.setOriginAttributes(message.data.originAttributes);
@@ -311,14 +306,7 @@ var WebNavigation =  {
     this._wrapURIChangeCall(() => this.webNavigation.gotoIndex(index));
   },
 
-<<<<<<< HEAD
-  loadURI: function(uri, flags, referrer, referrerPolicy, postData, headers,
-      baseURI, ensurePrivate) {
-||||||| merged common ancestors
-  loadURI: function(uri, flags, referrer, referrerPolicy, postData, headers, baseURI) {
-=======
-  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal) {
->>>>>>> origin/upstream-releases
+  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal, ensurePrivate) {
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
       let annotation = uri;
       try {
@@ -342,13 +330,8 @@ var WebNavigation =  {
       triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal)
     this._wrapURIChangeCall(() => {
       return this.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-<<<<<<< HEAD
-          postData, headers, baseURI, ensurePrivate);
-||||||| merged common ancestors
-                                                   postData, headers, baseURI);
-=======
-                                                   postData, headers, baseURI, triggeringPrincipal);
->>>>>>> origin/upstream-releases
+                                                   postData, headers, baseURI,
+                                                   triggeringPrincipal, ensurePrivate);
     });
   },
 

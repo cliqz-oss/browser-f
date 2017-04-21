@@ -252,37 +252,16 @@ ${StrTok}
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 !ifdef OFFICIAL
-<<<<<<< HEAD
-  !ifdef BETA_UPDATE_CHANNEL
-    ;CLIQZ for now always use release channels
-    ;!undef URLStubDownload
-    ;!define URLStubDownload "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-    ;!undef URLManualDownload
-    ;!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-    ;!undef Channel
-    ;!define Channel "beta"
-  !endif
-||||||| merged common ancestors
 !ifdef BETA_UPDATE_CHANNEL
-!undef URLStubDownload
-!define URLStubDownload "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-!undef URLManualDownload
-!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-!undef Channel
-!define Channel "beta"
+;!undef URLStubDownload32
+;!undef URLStubDownload64
+;!define URLStubDownload32 "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+;!define URLStubDownload64 "http://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
+;!undef URLManualDownload
+;!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+;!undef Channel
+;!define Channel "beta"
 !endif
-=======
-!ifdef BETA_UPDATE_CHANNEL
-!undef URLStubDownload32
-!undef URLStubDownload64
-!define URLStubDownload32 "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-!define URLStubDownload64 "http://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
-!undef URLManualDownload
-!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-!undef Channel
-!define Channel "beta"
-!endif
->>>>>>> origin/upstream-releases
 !endif
 
 !include "common.nsh"
@@ -999,13 +978,7 @@ Function createOptions
   ${NSD_AddExStyle} $DirRequest ${WS_EX_LTRREADING}|${WS_EX_LEFT}
 !endif
 
-<<<<<<< HEAD
-  ${NSD_CreateBrowseButton} 280u 116u 54u 14u "$(BROWSE_BUTTON)"
-||||||| merged common ancestors
-  ${NSD_CreateBrowseButton} 280u 116u 50u 14u "$(BROWSE_BUTTON)"
-=======
-  ${NSD_CreateBrowseButton} 280u 41u 50u 14u "$(BROWSE_BUTTON)"
->>>>>>> origin/upstream-releases
+  ${NSD_CreateBrowseButton} 280u 41u 54u 14u "$(BROWSE_BUTTON)"
   Pop $ButtonBrowse
   SetCtlColors $ButtonBrowse "" ${COMMON_BKGRD_COLOR}
   ${NSD_OnClick} $ButtonBrowse OnClick_ButtonBrowse
@@ -1124,65 +1097,18 @@ Function createOptions
     StrCpy $0 "false"
   ${EndIf}
 
-<<<<<<< HEAD
-  ; Only show the maintenance service checkbox if we have write access to HKLM
-  ClearErrors
-  WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" \
-                   "Write Test"
-  ${If} ${Errors}
-  ${OrIf} $0 != "true"
-    StrCpy $CheckboxInstallMaintSvc "0"
-  ${Else}
-    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
-    ; Read the registry instead of using ServicesHelper::IsInstalled so the
-    ; plugin isn't included in the stub installer to lessen its size.
-||||||| merged common ancestors
-  ; Only show the maintenance service checkbox if we have write access to HKLM
-  ClearErrors
-  WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
-                   "Write Test"
-  ${If} ${Errors}
-  ${OrIf} $0 != "true"
-    StrCpy $CheckboxInstallMaintSvc "0"
-  ${Else}
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
-    ; Read the registry instead of using ServicesHelper::IsInstalled so the
-    ; plugin isn't included in the stub installer to lessen its size.
-=======
   ${If} $0 == "true"
     ; Only show the maintenance service checkbox if we have write access to HKLM
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
->>>>>>> origin/upstream-releases
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
     ClearErrors
-<<<<<<< HEAD
-    ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\CliqzMaintenance" "ImagePath"
-    ${If} ${Errors}
-      ${NSD_CreateCheckbox} ${OPTIONS_ITEM_EDGE_DU} 184u ${OPTIONS_ITEM_WIDTH_DU} \
-                            12u "$(INSTALL_MAINT_SERVICE)"
-      Pop $CheckboxInstallMaintSvc
-      System::Call 'uxtheme::SetWindowTheme(i $CheckboxInstallMaintSvc, w " ", w " ")'
-      SetCtlColors $CheckboxInstallMaintSvc ${COMMON_TEXT_COLOR_NORMAL} ${COMMON_BKGRD_COLOR}
-      SendMessage $CheckboxInstallMaintSvc ${WM_SETFONT} $FontNormal 0
-      ${NSD_Check} $CheckboxInstallMaintSvc
-||||||| merged common ancestors
-    ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\MozillaMaintenance" "ImagePath"
-    ${If} ${Errors}
-      ${NSD_CreateCheckbox} ${OPTIONS_ITEM_EDGE_DU} 184u ${OPTIONS_ITEM_WIDTH_DU} \
-                            12u "$(INSTALL_MAINT_SERVICE)"
-      Pop $CheckboxInstallMaintSvc
-      System::Call 'uxtheme::SetWindowTheme(i $CheckboxInstallMaintSvc, w " ", w " ")'
-      SetCtlColors $CheckboxInstallMaintSvc ${COMMON_TEXT_COLOR_NORMAL} ${COMMON_BKGRD_COLOR}
-      SendMessage $CheckboxInstallMaintSvc ${WM_SETFONT} $FontNormal 0
-      ${NSD_Check} $CheckboxInstallMaintSvc
-=======
-    WriteRegStr HKLM "Software\Mozilla" "${BrandShortName}InstallerTest" \
+    WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" \
                      "Write Test"
     ${IfNot} ${Errors}
-      DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
+      DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
       ; Read the registry instead of using ServicesHelper::IsInstalled so the
       ; plugin isn't included in the stub installer to lessen its size.
       ClearErrors
-      ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\MozillaMaintenance" "ImagePath"
+      ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\CliqzMaintenance" "ImagePath"
       ${If} ${Errors}
         IntOp $0 132 + $ControlTopAdjustment
         ; In some locales, this string may be too long to fit on one line.
@@ -1207,7 +1133,6 @@ Function createOptions
         ; that come after it.
         IntOp $ControlTopAdjustment 20 + $ControlTopAdjustment
       ${EndIf}
->>>>>>> origin/upstream-releases
     ${EndIf}
   ${EndIf}
 !endif

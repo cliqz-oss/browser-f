@@ -67,27 +67,12 @@ RemoteWebNavigation.prototype = {
   },
   loadURI(aURI, aLoadFlags, aReferrer, aPostData, aHeaders) {
     this.loadURIWithOptions(aURI, aLoadFlags, aReferrer,
-<<<<<<< HEAD
-                            Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-                            aPostData, aHeaders, null, false);
-||||||| merged common ancestors
-                            Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-                            aPostData, aHeaders, null);
-=======
                             Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                            aPostData, aHeaders, null);
->>>>>>> origin/upstream-releases
+                            aPostData, aHeaders, null, null, false);
   },
-<<<<<<< HEAD
-  loadURIWithOptions: function(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                               aPostData, aHeaders, aBaseURI, aEnsurePrivate) {
-||||||| merged common ancestors
-  loadURIWithOptions: function(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                               aPostData, aHeaders, aBaseURI) {
-=======
   loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal) {
->>>>>>> origin/upstream-releases
+                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal,
+                     aEnsurePrivate) {
     this._sendMessage("WebNavigation:LoadURI", {
       uri: aURI,
       flags: aLoadFlags,
@@ -96,14 +81,10 @@ RemoteWebNavigation.prototype = {
       postData: aPostData ? Utils.serializeInputStream(aPostData) : null,
       headers: aHeaders ? Utils.serializeInputStream(aHeaders) : null,
       baseURI: aBaseURI ? aBaseURI.spec : null,
-<<<<<<< HEAD
-      ensurePrivate: !!aEnsurePrivate
-||||||| merged common ancestors
-=======
       triggeringPrincipal: aTriggeringPrincipal
                            ? Utils.serializePrincipal(aTriggeringPrincipal)
                            : null,
->>>>>>> origin/upstream-releases
+      ensurePrivate: !!aEnsurePrivate
     });
   },
   setOriginAttributesBeforeLoading(aOriginAttributes) {

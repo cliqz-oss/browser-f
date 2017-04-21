@@ -92,16 +92,8 @@ var SessionMigration = {
   /**
    * Migrate a limited set of session data from one path to another.
    */
-<<<<<<< HEAD
   migrate: function(aFromPath, aToPath, aRestorePageURL) {
-    return Task.spawn(function() {
-||||||| merged common ancestors
-  migrate: function(aFromPath, aToPath) {
-    return Task.spawn(function() {
-=======
-  migrate: function(aFromPath, aToPath) {
     return Task.spawn(function*() {
->>>>>>> origin/upstream-releases
       let inState = yield SessionMigrationInternal.readState(aFromPath);
       let outState =
           SessionMigrationInternal.convertState(inState, aRestorePageURL);

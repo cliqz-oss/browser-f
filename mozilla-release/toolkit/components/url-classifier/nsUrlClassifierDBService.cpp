@@ -1343,19 +1343,6 @@ nsUrlClassifierDBService::Init()
     CHECK_MALWARE_DEFAULT);
   mCheckPhishing = Preferences::GetBool(CHECK_PHISHING_PREF,
     CHECK_PHISHING_DEFAULT);
-<<<<<<< HEAD
-  mCheckTracking =
-    false;
-#if 0
-    Preferences::GetBool(CHECK_TRACKING_PREF, CHECK_TRACKING_DEFAULT) ||
-    Preferences::GetBool(CHECK_TRACKING_PB_PREF, CHECK_TRACKING_PB_DEFAULT);
-#endif
-||||||| merged common ancestors
-  mCheckTracking =
-    Preferences::GetBool(CHECK_TRACKING_PREF, CHECK_TRACKING_DEFAULT) ||
-    Preferences::GetBool(CHECK_TRACKING_PB_PREF, CHECK_TRACKING_PB_DEFAULT);
-=======
->>>>>>> origin/upstream-releases
   mCheckBlockedURIs = Preferences::GetBool(CHECK_BLOCKED_PREF,
     CHECK_BLOCKED_DEFAULT);
   uint32_t gethashNoise = Preferences::GetUint(GETHASH_NOISE_PREF,

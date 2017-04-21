@@ -173,11 +173,11 @@
     <checkbox
         id="restoreSessionCheckbox"
         preference="browser.startup.restoreTabs"
-        label="&startupLastSession.label;"/>
+        label="&startupPrevSession.label;"/>
     <checkbox
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
-        label="&startupHomePage.label;"/>
+        label="&startupUserHomePage.label;"/>
   </vbox>
   <html:table id="startupTable">
 # Replaced by two checkboxes above.

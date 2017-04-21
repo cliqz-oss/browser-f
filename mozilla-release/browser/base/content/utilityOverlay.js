@@ -173,12 +173,8 @@ function whereToOpenLink(e, ignoreButton, ignoreAlt) {
  *   allowPinnedTabHostChange (boolean)
  *   allowPopups          (boolean)
  *   userContextId        (unsigned int)
-<<<<<<< HEAD
- *   private              (boolean)
-||||||| merged common ancestors
-=======
  *   targetBrowser        (XUL browser)
->>>>>>> origin/upstream-releases
+ *   private              (boolean)
  */
 function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
     aReferrerURI, aPrivate) {
@@ -191,14 +187,8 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
       allowThirdPartyFixup: aAllowThirdPartyFixup,
       postData: aPostData,
       referrerURI: aReferrerURI,
-<<<<<<< HEAD
-      referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-      private: aPrivate
-||||||| merged common ancestors
-      referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-=======
       referrerPolicy: Components.interfaces.nsIHttpChannel.REFERRER_POLICY_UNSET,
->>>>>>> origin/upstream-releases
+      private: aPrivate
     };
   }
 
@@ -429,12 +419,8 @@ function openLinkIn(url, where, params) {
       noReferrer: aNoReferrer,
       userContextId: aUserContextId,
       originPrincipal: aPrincipal,
-<<<<<<< HEAD
-      private: aIsPrivate
-||||||| merged common ancestors
-=======
       triggeringPrincipal: aPrincipal,
->>>>>>> origin/upstream-releases
+      private: aIsPrivate
     });
     targetBrowser = tabUsedForLoad.linkedBrowser;
     break;

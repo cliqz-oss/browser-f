@@ -33,15 +33,9 @@ this.PrivateBrowsingUtils = {
     return this.privacyContextFromWindow(aWindow).usePrivateBrowsing;
   },
 
-<<<<<<< HEAD
-  isBrowserPrivate: function(aBrowser) {
+  isBrowserPrivate(aBrowser) {
     return aBrowser.loadContext.usePrivateBrowsing;
     /*
-||||||| merged common ancestors
-  isBrowserPrivate: function(aBrowser) {
-=======
-  isBrowserPrivate(aBrowser) {
->>>>>>> origin/upstream-releases
     let chromeWin = aBrowser.ownerDocument.defaultView;
     if (chromeWin.gMultiProcessBrowser) {
       // In e10s we have to look at the chrome window's private

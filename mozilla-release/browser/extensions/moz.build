@@ -5,18 +5,8 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-<<<<<<< HEAD
 #    'aushelper',
-#    'deployment-checker',
 #    'e10srollout',
-||||||| merged common ancestors
-    'aushelper',
-    'deployment-checker',
-    'e10srollout',
-=======
-    'aushelper',
-    'e10srollout',
->>>>>>> origin/upstream-releases
     'pdfjs',
 #    'pocket',
 #    'webcompat',

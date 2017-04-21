@@ -156,13 +156,7 @@
             this._wrapURIChangeCall(() =>
               this.webNavigation.loadURIWithOptions(
                   aURI, aFlags, aReferrerURI, aReferrerPolicy,
-<<<<<<< HEAD
-                  aPostData, null, null, !!aEnsurePrivate));
-||||||| merged common ancestors
-                  aPostData, null, null));
-=======
-                  aPostData, null, null, aTriggeringPrincipal));
->>>>>>> origin/upstream-releases
+                  aPostData, null, null, aTriggeringPrincipal, !!aEnsurePrivate));
           ]]>
         </body>
       </method>
@@ -321,32 +315,6 @@
         </body>
       </method>
 
-<<<<<<< HEAD
-      <method name="makePrerenderedBrowserActive">
-        <body>
-        <![CDATA[
-          let frameLoader = this.asFrameLoaderOwner.frameLoader;
-          if (frameLoader) {
-            frameLoader.makePrerenderedLoaderActive();
-          }
-        ]]>
-        </body>
-      </method>
-
-||||||| merged common ancestors
-      <method name="makePrerenderedBrowserActive">
-        <body>
-        <![CDATA[
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
-          if (frameLoader) {
-            frameLoader.makePrerenderedLoaderActive();
-          }
-        ]]>
-        </body>
-      </method>
-
-=======
->>>>>>> origin/upstream-releases
       <property name="imageDocument"
                 readonly="true">
         <getter>

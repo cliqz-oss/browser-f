@@ -2370,11 +2370,12 @@ TabParent::RecvDispatchFocusToTopLevelWindow()
   return IPC_OK();
 }
 
-bool TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
+mozilla::ipc::IPCResult
+TabParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
   SetPrivateBrowsingAttributes(isPrivate);
   CreateLoadContext();
   mLoadContext->SetPrivateness(isPrivate);
-  return true;
+  return IPC_OK();
 }
 
 bool

@@ -283,39 +283,6 @@ description > html|a {
   margin-inline-end: 4px; /* add the 4px end-margin of other elements */
 }
 
-<<<<<<< HEAD
-#telemetryLearnMore,
-#FHRLearnMore,
-#crashReporterLearnMore {
-  /* provide some margin between the links and the label text */
-  /* !important is needed to override the rules defined in common.css */
-  margin-inline-start: 20px !important;
-  /* center the links */
-  margin-top: 8px;
-  margin-bottom: 8px;
-}
-
-/* Hidden in Cliqz */
-#FHRLearnMore,
-#crashReporterLearnMore {
-  display: none !important;
-}
-
-
-||||||| merged common ancestors
-#telemetryLearnMore,
-#FHRLearnMore,
-#crashReporterLearnMore {
-  /* provide some margin between the links and the label text */
-  /* !important is needed to override the rules defined in common.css */
-  margin-inline-start: 20px !important;
-  /* center the links */
-  margin-top: 8px;
-  margin-bottom: 8px;
-}
-
-=======
->>>>>>> origin/upstream-releases
 .indent {
   /* !important needed to override margin-inline-start:0 !important; rule
      define in common.css for labels */

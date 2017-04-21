@@ -141,14 +141,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     }
   },
 
-<<<<<<< HEAD
   maybeTakeUserSelectedMigrator: function () {
-||||||| merged common ancestors
-  onImportSourcePageAdvanced: function ()
-  {
-=======
-  onImportSourcePageAdvanced() {
->>>>>>> origin/upstream-releases
     var newSource = document.getElementById("importSourceGroup").selectedItem.id;
 
     if (newSource == "nothing") {
@@ -173,7 +166,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     return true;
   },
 
-  onImportSourcePageAdvanced: function () {
+  onImportSourcePageAdvanced() {
     // Only change explicitly set migrator if manual selection is allowed.
     if (!this._skipImportSourcePage && !this.maybeTakeUserSelectedMigrator())
       return false;
@@ -404,22 +397,8 @@ var MigrationWizard = { /* exported MigrationWizard */
           label.setAttribute("value",
             MigrationUtils.getLocalizedString(itemID + "_" + this._source));
           items.appendChild(label);
-<<<<<<< HEAD
-        }
-        catch (e) {
-          logError(e);
-||||||| merged common ancestors
-        }
-        catch (e) {
-          // if the block above throws, we've enumerated all the import data types we
-          // currently support and are now just wasting time, break.
-          break;
-=======
         } catch (e) {
-          // if the block above throws, we've enumerated all the import data types we
-          // currently support and are now just wasting time, break.
-          break;
->>>>>>> origin/upstream-releases
+          logError(e);
         }
       }
     }

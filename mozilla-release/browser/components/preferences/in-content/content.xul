@@ -55,18 +55,8 @@
         <hbox align="center">
           <checkbox id="playDRMContent" preference="media.eme.enabled"
                     label="&playDRMContent.label;" accesskey="&playDRMContent.accesskey;"/>
-<<<<<<< HEAD
-        </vbox>
-        <hbox pack="end" align="center">
-          <label id="playDRMContentLink" class="text-link" value="&playDRMContent.learnMore.label;"/>
-          <label class="mozilla-support-label-drm">&mozillaSupportLearnMore.label;</label>
-||||||| merged common ancestors
-        </vbox>
-        <hbox pack="end" align="center">
-          <label id="playDRMContentLink" class="text-link" value="&playDRMContent.learnMore.label;"/>
-=======
           <label id="playDRMContentLink" class="learnMore text-link" value="&playDRMContent.learnMore.label;"/>
->>>>>>> origin/upstream-releases
+          <label class="mozilla-support-label-drm">&mozillaSupportLearnMore.label;</label>
         </hbox>
       </row>
     </rows>

@@ -4713,16 +4713,8 @@ nsDocShell::LoadURI(const char16_t* aURI,
                     nsIInputStream* aHeaderStream)
 {
   return LoadURIWithOptions(aURI, aLoadFlags, aReferringURI,
-<<<<<<< HEAD
-                            mozilla::net::RP_Default, aPostStream,
-                            aHeaderStream, nullptr, false);
-||||||| merged common ancestors
-                            mozilla::net::RP_Default, aPostStream,
-                            aHeaderStream, nullptr);
-=======
                             mozilla::net::RP_Unset, aPostStream,
-                            aHeaderStream, nullptr, nullptr);
->>>>>>> origin/upstream-releases
+                            aHeaderStream, nullptr, nullptr, false);
 }
 
 NS_IMETHODIMP
@@ -4732,15 +4724,9 @@ nsDocShell::LoadURIWithOptions(const char16_t* aURI,
                                uint32_t aReferrerPolicy,
                                nsIInputStream* aPostStream,
                                nsIInputStream* aHeaderStream,
-<<<<<<< HEAD
                                nsIURI* aBaseURI,
+                               nsIPrincipal* aTriggeringPrincipal,
                                bool aEnsurePrivate)
-||||||| merged common ancestors
-                               nsIURI* aBaseURI)
-=======
-                               nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal)
->>>>>>> origin/upstream-releases
 {
   NS_ASSERTION((aLoadFlags & 0xf) == 0, "Unexpected flags");
 
@@ -5779,7 +5765,6 @@ nsDocShell::Destroy()
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
 
-<<<<<<< HEAD
 #if defined(DEBUG)
   nsAutoCString uri;
   if (mCurrentURI.get())
@@ -5788,11 +5773,8 @@ nsDocShell::Destroy()
          ("nsDocShell[%p]::Destroy() %s\n", this, uri.get()));
 #endif
 
-||||||| merged common ancestors
-=======
   AssertOriginAttributesMatchPrivateBrowsing();
 
->>>>>>> origin/upstream-releases
   if (!mIsBeingDestroyed) {
     nsCOMPtr<nsIObserverService> serv = services::GetObserverService();
     if (serv) {

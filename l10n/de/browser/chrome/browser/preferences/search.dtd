@@ -12,19 +12,7 @@
 <!ENTITY showURLBarSuggestions.accesskey       "v">
 <!ENTITY urlBarSuggestionsPermanentPB.label    "Suchvorschläge werden nicht in der Adressleiste angezeigt, weil &brandShortName; angewiesen wurde, keine Chronik zu speichern.">
 
-<<<<<<< HEAD
-<!ENTITY redirectWindowsSearch.label "Diese Suchmaschine für die Suche mit Windows verwenden">
-<!ENTITY redirectWindowsSearch.accesskey "v">
-
 <!ENTITY oneClickSearchEngines.label           "Direkt suchen">
-||||||| merged common ancestors
-<!ENTITY redirectWindowsSearch.label "Diese Suchmaschine für die Suche mit Windows verwenden">
-<!ENTITY redirectWindowsSearch.accesskey "v">
-
-<!ENTITY oneClickSearchEngines.label           "Ein-Klick-Suchmaschinen">
-=======
-<!ENTITY oneClickSearchEngines.label           "Ein-Klick-Suchmaschinen">
->>>>>>> origin/upstream-releases
 
 <!ENTITY chooseWhichOneToDisplay.label         "Um direkt mit einer Suchmaschine zu suchen, schreibe das entsprechende Kürzel vor Deine Anfrage, z.B. #gm + Dein Suchbegriff um Ergebnisse von Google Maps zu erhalten.">
 

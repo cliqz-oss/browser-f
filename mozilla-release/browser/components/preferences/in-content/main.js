@@ -20,31 +20,14 @@ var gMainPane = {
   /**
    * Initialization of this.
    */
-<<<<<<< HEAD
-  init: function ()
-  {
-    function setEventListener(aId, aEventType, aCallback)
-    {
+  init() {
+    function setEventListener(aId, aEventType, aCallback) {
       try {
         document.getElementById(aId)
             .addEventListener(aEventType, aCallback.bind(gMainPane));
-      }
-      catch (e) {
+      } catch (e) {
         Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
       }
-||||||| merged common ancestors
-  init: function ()
-  {
-    function setEventListener(aId, aEventType, aCallback)
-    {
-      document.getElementById(aId)
-              .addEventListener(aEventType, aCallback.bind(gMainPane));
-=======
-  init() {
-    function setEventListener(aId, aEventType, aCallback) {
-      document.getElementById(aId)
-              .addEventListener(aEventType, aCallback.bind(gMainPane));
->>>>>>> origin/upstream-releases
     }
 
     if (AppConstants.HAVE_SHELL_SERVICE) {

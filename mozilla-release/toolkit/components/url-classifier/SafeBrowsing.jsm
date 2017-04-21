@@ -51,12 +51,7 @@ const tablePreferences = [
 #if 0
   "urlclassifier.trackingTable",
   "urlclassifier.trackingWhitelistTable",
-<<<<<<< HEAD
 #endif
-  "urlclassifier.blockedTable"
-||||||| merged common ancestors
-  "urlclassifier.blockedTable"
-=======
   "urlclassifier.blockedTable",
   "urlclassifier.flashAllowTable",
   "urlclassifier.flashAllowExceptTable",
@@ -64,7 +59,6 @@ const tablePreferences = [
   "urlclassifier.flashExceptTable",
   "urlclassifier.flashSubDocTable",
   "urlclassifier.flashSubDocExceptTable"
->>>>>>> origin/upstream-releases
 ];
 
 this.SafeBrowsing = {
@@ -215,12 +209,7 @@ this.SafeBrowsing = {
 #if 0
      this.trackingProtectionLists,
      this.trackingProtectionWhitelists,
-<<<<<<< HEAD
 #endif
-     this.blockedLists] = tablePreferences.map(getLists);
-||||||| merged common ancestors
-     this.blockedLists] = tablePreferences.map(getLists);
-=======
      this.blockedLists,
      flashAllowTable,
      flashAllowExceptTable,
@@ -234,7 +223,6 @@ this.SafeBrowsing = {
                                              flashExceptTable,
                                              flashSubDocTable,
                                              flashSubDocExceptTable)
->>>>>>> origin/upstream-releases
 
     this.updateProviderURLs();
     this.registerTables();

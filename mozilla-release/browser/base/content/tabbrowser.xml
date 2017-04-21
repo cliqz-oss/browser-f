@@ -1537,12 +1537,8 @@
               aRelatedBrowser       = params.relatedBrowser;
               aOriginPrincipal      = params.originPrincipal;
               aOpener               = params.opener;
-<<<<<<< HEAD
-              aPrivate              = params.private;
-||||||| merged common ancestors
-=======
               aIsPrerendered        = params.isPrerendered;
->>>>>>> origin/upstream-releases
+              aPrivate              = params.private;
             }
 
             var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -1567,15 +1563,9 @@
                                   userContextId: aUserContextId,
                                   originPrincipal: aOriginPrincipal,
                                   relatedBrowser: aRelatedBrowser,
-<<<<<<< HEAD
                                   opener: aOpener,
+                                  isPrerendered: aIsPrerendered,
                                   private: aPrivate });
-||||||| merged common ancestors
-                                  opener: aOpener });
-=======
-                                  opener: aOpener,
-                                  isPrerendered: aIsPrerendered });
->>>>>>> origin/upstream-releases
             if (!bgLoad)
               this.selectedTab = tab;
 
@@ -1974,15 +1964,10 @@
               b.setAttribute("usercontextid", aParams.userContextId);
             }
 
-<<<<<<< HEAD
             if (aParams.private) {
               b.setAttribute("mozprivatebrowsing", 1);
             }
 
-            if (aParams.remote) {
-||||||| merged common ancestors
-            if (aParams.remote) {
-=======
             // remote parameter used by some addons, use default in this case.
             if (aParams.remote && !aParams.remoteType) {
               aParams.remoteType = E10SUtils.DEFAULT_REMOTE_TYPE;
@@ -1990,7 +1975,6 @@
 
             if (aParams.remoteType) {
               b.setAttribute("remoteType", aParams.remoteType);
->>>>>>> origin/upstream-releases
               b.setAttribute("remote", "true");
             }
 
@@ -2064,13 +2048,8 @@
             "use strict";
 
             // Supported parameters:
-<<<<<<< HEAD
-            // forceNotRemote, userContextId, private
-||||||| merged common ancestors
-            // forceNotRemote, userContextId
-=======
-            // forceNotRemote, preferredRemoteType, userContextId, isPrerendered
->>>>>>> origin/upstream-releases
+            // forceNotRemote, preferredRemoteType,
+            // userContextId, isPrerendered, private
 
             let uriIsAboutBlank = !aURI || aURI == "about:blank";
 
@@ -2104,15 +2083,9 @@
                                              uriIsAboutBlank,
                                              userContextId: aParams.userContextId,
                                              relatedBrowser: aParams.relatedBrowser,
-<<<<<<< HEAD
                                              opener: aParams.opener,
+                                             isPrerendered: aParams.isPrerendered,
                                              private: !!aParams.private});
-||||||| merged common ancestors
-                                             opener: aParams.opener});
-=======
-                                             opener: aParams.opener,
-                                             isPrerendered: aParams.isPrerendered});
->>>>>>> origin/upstream-releases
             }
 
             let notificationbox = this.getNotificationBox(browser);
@@ -2202,44 +2175,6 @@
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
               let params = arguments[1];
-<<<<<<< HEAD
-              aReferrerURI          = params.referrerURI;
-              aReferrerPolicy       = params.referrerPolicy;
-              aCharset              = params.charset;
-              aPostData             = params.postData;
-              aOwner                = params.ownerTab;
-              aAllowThirdPartyFixup = params.allowThirdPartyFixup;
-              aFromExternal         = params.fromExternal;
-              aRelatedToCurrent     = params.relatedToCurrent;
-              aSkipAnimation        = params.skipAnimation;
-              aAllowMixedContent    = params.allowMixedContent;
-              aForceNotRemote       = params.forceNotRemote;
-              aNoReferrer           = params.noReferrer;
-              aUserContextId        = params.userContextId;
-              aEventDetail          = params.eventDetail;
-              aRelatedBrowser       = params.relatedBrowser;
-              aOriginPrincipal      = params.originPrincipal;
-              aOpener               = params.opener;
-              aPrivate              = params.private;
-||||||| merged common ancestors
-              aReferrerURI          = params.referrerURI;
-              aReferrerPolicy       = params.referrerPolicy;
-              aCharset              = params.charset;
-              aPostData             = params.postData;
-              aOwner                = params.ownerTab;
-              aAllowThirdPartyFixup = params.allowThirdPartyFixup;
-              aFromExternal         = params.fromExternal;
-              aRelatedToCurrent     = params.relatedToCurrent;
-              aSkipAnimation        = params.skipAnimation;
-              aAllowMixedContent    = params.allowMixedContent;
-              aForceNotRemote       = params.forceNotRemote;
-              aNoReferrer           = params.noReferrer;
-              aUserContextId        = params.userContextId;
-              aEventDetail          = params.eventDetail;
-              aRelatedBrowser       = params.relatedBrowser;
-              aOriginPrincipal      = params.originPrincipal;
-              aOpener               = params.opener;
-=======
               aTriggeringPrincipal      = params.triggeringPrincipal;
               aReferrerURI              = params.referrerURI;
               aReferrerPolicy           = params.referrerPolicy;
@@ -2261,7 +2196,7 @@
               aDisallowInheritPrincipal = params.disallowInheritPrincipal;
               aOpener                   = params.opener;
               aIsPrerendered            = params.isPrerendered;
->>>>>>> origin/upstream-releases
+              aPrivate                  = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2355,12 +2290,8 @@
               userContextId:  aUserContextId,
               relatedBrowser: aRelatedBrowser,
               opener: aOpener,
-<<<<<<< HEAD
-              private: !!aPrivate,
-||||||| merged common ancestors
-=======
               isPrerendered: aIsPrerendered,
->>>>>>> origin/upstream-releases
+              private: !!aPrivate,
             };
             let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
             let b = t.linkedBrowser;
@@ -7113,7 +7044,6 @@
         </getter>
       </property>
 
-<<<<<<< HEAD
       <property name="private">
         <getter>
         <![CDATA[
@@ -7128,15 +7058,12 @@
         </setter>
       </property>
 
-||||||| merged common ancestors
-=======
       <property name="soundBlocked" readonly="true">
         <getter>
           return this.getAttribute("blocked") == "true";
         </getter>
       </property>
 
->>>>>>> origin/upstream-releases
       <property name="lastAccessed">
         <getter>
           return this._lastAccessed == Infinity ? Date.now() : this._lastAccessed;

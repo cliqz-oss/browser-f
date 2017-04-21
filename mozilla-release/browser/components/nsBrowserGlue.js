@@ -862,16 +862,8 @@ BrowserGlue.prototype = {
       {
         label:     win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.label"),
         accessKey: win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.accesskey"),
-<<<<<<< HEAD
-        callback: function () {
-          win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
-||||||| merged common ancestors
-        callback: function () {
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
-=======
         callback() {
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
->>>>>>> origin/upstream-releases
+          win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
         }
       },
     ];

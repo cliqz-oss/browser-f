@@ -216,16 +216,8 @@ function onSearchSubmit(aEvent) {
 
 var gContentSearchController;
 
-<<<<<<< HEAD
-function setupSearch()
-{
-  return; // CLIQZ. Disable search engine
-||||||| merged common ancestors
-function setupSearch()
-{
-=======
 function setupSearch() {
->>>>>>> origin/upstream-releases
+  return; // CLIQZ. Disable search engine
   // Set submit button label for when CSS background are disabled (e.g.
   // high contrast mode).
   document.getElementById("searchSubmit").value =
@@ -259,16 +251,8 @@ function loadCompleted() {
  * Update the local snippets from the remote storage, then show them through
  * showSnippets.
  */
-<<<<<<< HEAD
-function loadSnippets()
-{
-  return; // CLIQZ. Disable snippets
-||||||| merged common ancestors
-function loadSnippets()
-{
-=======
 function loadSnippets() {
->>>>>>> origin/upstream-releases
+  return; // CLIQZ. Disable snippets
   if (!gSnippetsMap)
     throw new Error("Snippets map has not properly been initialized");
 
@@ -324,16 +308,8 @@ function loadSnippets() {
  *        a "too much recursion" exception.
  */
 var _snippetsShown = false;
-<<<<<<< HEAD
-function showSnippets()
-{
-  return; // CLIQZ. Disable snippets
-||||||| merged common ancestors
-function showSnippets()
-{
-=======
 function showSnippets() {
->>>>>>> origin/upstream-releases
+  return; // CLIQZ. Disable snippets
   let snippetsElt = document.getElementById("snippets");
 
   // Show about:rights notification, if needed.
@@ -383,16 +359,8 @@ function showSnippets() {
 /**
  * Clear snippets element contents and show default snippets.
  */
-<<<<<<< HEAD
-function showDefaultSnippets()
-{
-  return; // CLIQZ. Disable snippets
-||||||| merged common ancestors
-function showDefaultSnippets()
-{
-=======
 function showDefaultSnippets() {
->>>>>>> origin/upstream-releases
+  return; // CLIQZ. Disable snippets
   // Clear eventual contents...
   let snippetsElt = document.getElementById("snippets");
   snippetsElt.innerHTML = "";

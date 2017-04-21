@@ -209,15 +209,9 @@ this.LightweightThemeManager = {
     }
   },
 
-<<<<<<< HEAD
-  previewTheme: function(aData) {
+  previewTheme(aData) {
     return;  // Disable LW themes in CLIQZ.
 #if 0
-||||||| merged common ancestors
-  previewTheme: function(aData) {
-=======
-  previewTheme(aData) {
->>>>>>> origin/upstream-releases
     let cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
     cancel.data = false;
     Services.obs.notifyObservers(cancel, "lightweight-theme-preview-requested",
@@ -299,15 +293,9 @@ this.LightweightThemeManager = {
    * @param  aData
    *         The lightweight theme to switch to
    */
-<<<<<<< HEAD
-  themeChanged: function(aData) {
+  themeChanged(aData) {
     return;  // Disable LW themes in CLIQZ.
 #if 0
-||||||| merged common ancestors
-  themeChanged: function(aData) {
-=======
-  themeChanged(aData) {
->>>>>>> origin/upstream-releases
     if (_previewTimer) {
       _previewTimer.cancel();
       _previewTimer = null;

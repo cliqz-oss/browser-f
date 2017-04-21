@@ -329,18 +329,10 @@ public:
 
   virtual mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow() override;
 
-<<<<<<< HEAD
-  virtual bool RecvLoadContextPrivatenessChanged(const bool& isPrivate) override;
+  virtual mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(const bool& isPrivate) override;
 
-  virtual bool RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
-                                          const bool& aStartSwipe) override;
-||||||| merged common ancestors
-  virtual bool RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
-                                          const bool& aStartSwipe) override;
-=======
   virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(const uint64_t& aInputBlockId,
                                                              const bool& aStartSwipe) override;
->>>>>>> origin/upstream-releases
 
   virtual mozilla::ipc::IPCResult
   RecvDispatchWheelEvent(const mozilla::WidgetWheelEvent& aEvent) override;

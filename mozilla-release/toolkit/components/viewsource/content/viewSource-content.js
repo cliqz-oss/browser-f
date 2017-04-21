@@ -393,16 +393,8 @@ var ViewSourceContent = {
         docShell.QueryInterface(Ci.nsIWebNavigation)
                 .loadURIWithOptions(content.location.href,
                                     Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER,
-<<<<<<< HEAD
-                                    null, Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-                                    null, null, null, false);
-||||||| merged common ancestors
-                                    null, Ci.nsIHttpChannel.REFERRER_POLICY_DEFAULT,
-                                    null, null, null);
-=======
                                     null, Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                                    null, null, null);
->>>>>>> origin/upstream-releases
+                                    null, null, null, null, false);
       }
     }
   },
@@ -785,14 +777,7 @@ var ViewSourceContent = {
     webNav.loadURIWithOptions(uri, loadFlags,
                               null, referrerPolicy,  // referrer
                               null, null,  // postData, headers
-<<<<<<< HEAD
-                              Services.io.newURI(baseURI, null, null),
-                              false);
-||||||| merged common ancestors
-                              Services.io.newURI(baseURI, null, null));
-=======
-                              Services.io.newURI(baseURI));
->>>>>>> origin/upstream-releases
+                              Services.io.newURI(baseURI), null, false);
   },
 
   /**

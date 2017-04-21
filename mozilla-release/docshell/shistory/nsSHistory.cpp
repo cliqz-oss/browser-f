@@ -1618,15 +1618,9 @@ nsSHistory::LoadURIWithOptions(const char16_t* aURI,
                                uint32_t aReferrerPolicy,
                                nsIInputStream* aPostStream,
                                nsIInputStream* aExtraHeaderStream,
-<<<<<<< HEAD
                                nsIURI* aBaseURI,
+                               nsIPrincipal* aTriggeringPrincipal,
                                bool aEnsurePrivate)
-||||||| merged common ancestors
-                               nsIURI* aBaseURI)
-=======
-                               nsIURI* aBaseURI,
-                               nsIPrincipal* aTriggeringPrincipal)
->>>>>>> origin/upstream-releases
 {
   return NS_OK;
 }

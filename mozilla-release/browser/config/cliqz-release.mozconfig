@@ -15,7 +15,6 @@ if echo $OSTYPE | grep -q "msys"; then
   # Windows specific flags
   ac_add_options --enable-warnings-as-errors
   ac_add_options --enable-jemalloc
-  ac_add_options --enable-require-all-d3dc-versions
   ac_add_options --with-mozilla-api-keyfile=c:/builds/mozilla-desktop-geoloc-api.key
   ac_add_options --with-google-api-keyfile=c:/builds/google-desktop-api.key
 else

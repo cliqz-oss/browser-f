@@ -3212,16 +3212,8 @@ this.XPIProvider = {
   /**
    * Verifies that all installed add-ons are still correctly signed.
    */
-<<<<<<< HEAD
-  verifySignatures: function(sync) {
-     let addonsCheckerFunc = (addons) => {
-||||||| merged common ancestors
-  verifySignatures: function() {
-    XPIDatabase.getAddonList(a => true, (addons) => {
-=======
-  verifySignatures() {
-    XPIDatabase.getAddonList(a => true, (addons) => {
->>>>>>> origin/upstream-releases
+  verifySignatures(sync) {
+    let addonsCheckerFunc = (addons) => {
       Task.spawn(function*() {
         let changes = {
           enabled: [],
@@ -4471,17 +4463,11 @@ this.XPIProvider = {
    *         The add-on to test
    * @return true if enabling the add-on should block e10s
    */
-<<<<<<< HEAD
-  isBlockingE10s: function(aAddon) {
+  isBlockingE10s(aAddon) {
     // In CLIQZ only owned addons can be installed, so trust em.
     if (aAddon.multiprocessCompatible)
       return false;
 
-||||||| merged common ancestors
-  isBlockingE10s: function(aAddon) {
-=======
-  isBlockingE10s(aAddon) {
->>>>>>> origin/upstream-releases
     if (aAddon.type != "extension" &&
         aAddon.type != "webextension" &&
         aAddon.type != "theme")
@@ -5553,16 +5539,8 @@ class AddonInstall {
       try {
         // loadManifestFromZipReader performs the certificate verification for us
         this.addon = yield loadManifestFromZipReader(zipreader, this.installLocation);
-<<<<<<< HEAD
         logger.debug("Parsed manifest", this.addon);
-      }
-      catch (e) {
-||||||| merged common ancestors
-      }
-      catch (e) {
-=======
       } catch (e) {
->>>>>>> origin/upstream-releases
         zipreader.close();
         return Promise.reject([AddonManager.ERROR_CORRUPT_FILE, e]);
       }

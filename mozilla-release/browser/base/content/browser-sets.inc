@@ -20,19 +20,9 @@
     <command id="cmd_handleBackspace" oncommand="BrowserHandleBackspace();" />
     <command id="cmd_handleShiftBackspace" oncommand="BrowserHandleShiftBackspace();" />
 
-<<<<<<< HEAD
-    <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);" reserved="true"/>
-    <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();" reserved="true"/>
-    <command id="cmd_newForgetTab"
-        reserved="true"
-        oncommand="BrowserOpenPrivateTab();"/>
-||||||| merged common ancestors
-    <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);" reserved="true"/>
-    <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();" reserved="true"/>
-=======
     <command id="cmd_newNavigatorTab" oncommand="BrowserOpenTab(event);"/>
     <command id="cmd_newNavigatorTabNoEvent" oncommand="BrowserOpenTab();"/>
->>>>>>> origin/upstream-releases
+    <command id="cmd_newForgetTab" oncommand="BrowserOpenPrivateTab();"/>
     <command id="Browser:OpenFile"  oncommand="BrowserOpenFileWindow();"/>
     <command id="Browser:SavePage" oncommand="saveBrowser(gBrowser.selectedBrowser);"/>
 
@@ -209,21 +199,14 @@
     <key id="key_newNavigator"
          key="&newNavigatorCmd.key;"
          command="cmd_newNavigator"
-<<<<<<< HEAD
-         modifiers="accel"/>
-    <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel" command="cmd_newNavigatorTabNoEvent"/>
-    <key id="key_newForgetTab"
-        key="&forgetTabCmd.commandkey;"
-        modifiers="accel,shift"
-        command="cmd_newForgetTab"/>
-||||||| merged common ancestors
-         modifiers="accel"/>
-    <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel" command="cmd_newNavigatorTabNoEvent"/>
-=======
          modifiers="accel" reserved="true"/>
     <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel"
          command="cmd_newNavigatorTabNoEvent" reserved="true"/>
->>>>>>> origin/upstream-releases
+    <key id="key_newForgetTab"
+         key="&forgetTabCmd.commandkey;"
+         modifiers="accel,shift"
+         command="cmd_newForgetTab"
+         reserved="true"/>
     <key id="focusURLBar" key="&openCmd.commandkey;" command="Browser:OpenLocation"
          modifiers="accel"/>
 #ifndef XP_MACOSX

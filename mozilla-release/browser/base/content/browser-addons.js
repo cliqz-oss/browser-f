@@ -614,8 +614,7 @@ var LightWeightThemeWebInstaller = {
     return this._manager = temp.LightweightThemeManager;
   },
 
-<<<<<<< HEAD
-  _installRequest: function (dataString, baseURI) {
+  _installRequest(dataString, baseURI) {
     this._removePreviousNotifications();
     let notificationBox = gBrowser.getNotificationBox();
     notificationBox.appendNotification(
@@ -626,11 +625,6 @@ var LightWeightThemeWebInstaller = {
 #if 0
     // Disable LW themes in CLIQZ.
 
-||||||| merged common ancestors
-  _installRequest: function (dataString, baseURI) {
-=======
-  _installRequest(dataString, baseURI) {
->>>>>>> origin/upstream-releases
     let data = this._manager.parseTheme(dataString, baseURI);
 
     if (!data) {
@@ -791,15 +785,9 @@ var LightWeightThemeWebInstaller = {
     this._manager.resetPreview();
   },
 
-<<<<<<< HEAD
-  _isAllowed: function (srcURIString) {
+  _isAllowed(srcURIString) {
     return false;  // Disable LW themes in CLIQZ.
 #if 0
-||||||| merged common ancestors
-  _isAllowed: function (srcURIString) {
-=======
-  _isAllowed(srcURIString) {
->>>>>>> origin/upstream-releases
     let uri;
     try {
       uri = makeURI(srcURIString);

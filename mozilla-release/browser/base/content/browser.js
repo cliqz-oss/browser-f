@@ -75,12 +75,8 @@ Cu.import("resource://gre/modules/NotificationDB.jsm");
   ["Translation", "resource:///modules/translation/Translation.jsm"],
   ["UITour", "resource:///modules/UITour.jsm"],
   ["UpdateUtils", "resource://gre/modules/UpdateUtils.jsm"],
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
   ["URLBarZoom", "resource:///modules/URLBarZoom.jsm"],
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
   ["Weave", "resource://services-sync/main.js"],
 #endif
   ["fxAccounts", "resource://gre/modules/FxAccounts.jsm"],
@@ -906,12 +902,7 @@ function _loadURIWithFlags(browser, uri, params) {
   if (!uri) {
     uri = "about:blank";
   }
-<<<<<<< HEAD
-
-||||||| merged common ancestors
-=======
   let triggeringPrincipal = params.triggeringPrincipal || null;
->>>>>>> origin/upstream-releases
   let flags = params.flags || 0;
   let referrer = params.referrerURI;
   let referrerPolicy = ("referrerPolicy" in params ? params.referrerPolicy :
@@ -933,17 +924,9 @@ function _loadURIWithFlags(browser, uri, params) {
         browser.webNavigation.setOriginAttributesBeforeLoading({ userContextId: params.userContextId });
       }
 
-      browser.webNavigation.loadURIWithOptions(uri, flags,
-<<<<<<< HEAD
-          referrer, referrerPolicy, postData, null, null,
-          !!params.ensurePrivate);
-||||||| merged common ancestors
-                                               referrer, referrerPolicy,
-                                               postData, null, null);
-=======
-                                               referrer, referrerPolicy,
-                                               postData, null, null, triggeringPrincipal);
->>>>>>> origin/upstream-releases
+      browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
+                                               postData, null, null,
+                                               triggeringPrincipal, !!params.ensurePrivate);
     } else {
       // Check if the current browser is allowed to unload.
       let {permitUnload, timedOut} = browser.permitUnload();
@@ -987,13 +970,8 @@ function _loadURIWithFlags(browser, uri, params) {
       }
 
       browser.webNavigation.loadURIWithOptions(uri, flags, referrer, referrerPolicy,
-<<<<<<< HEAD
-          postData, null, null, !!params.ensurePrivate);
-||||||| merged common ancestors
-                                               postData, null, null);
-=======
-                                               postData, null, null, triggeringPrincipal);
->>>>>>> origin/upstream-releases
+                                               postData, null, null,
+                                               triggeringPrincipal, !!params.ensurePrivate);
     } else {
       throw e;
     }
@@ -1087,14 +1065,8 @@ var gBrowserInit = {
     LanguageDetectionListener.init();
     BrowserOnClick.init();
     FeedHandler.init();
-<<<<<<< HEAD
-    DevEdition.init();
-#if 0
-||||||| merged common ancestors
-    DevEdition.init();
-=======
     CompactTheme.init();
->>>>>>> origin/upstream-releases
+#if 0
     AboutPrivateBrowsingListener.init();
 #endif
     TrackingProtection.init();
@@ -7985,7 +7957,6 @@ var TabContextMenu = {
     this.contextTab.toggleMuteMenuItem = toggleMute;
     this._updateToggleMuteMenuItem(this.contextTab);
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
@@ -8005,15 +7976,8 @@ var TabContextMenu = {
                          : "apt.tabContext.alwaysInForgetMode");
 #endif
 
-    this.contextTab.addEventListener("TabAttrModified", this, false);
-    aPopupMenu.addEventListener("popuphiding", this, false);
-||||||| merged common ancestors
-    this.contextTab.addEventListener("TabAttrModified", this, false);
-    aPopupMenu.addEventListener("popuphiding", this, false);
-=======
     this.contextTab.addEventListener("TabAttrModified", this);
     aPopupMenu.addEventListener("popuphiding", this);
->>>>>>> origin/upstream-releases
 
     gFxAccounts.updateTabContextMenu(aPopupMenu, this.contextTab);
   },

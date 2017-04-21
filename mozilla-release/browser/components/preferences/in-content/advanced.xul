@@ -231,19 +231,9 @@
               </caption>
               <hbox class="indent" flex="1">
                 <label id="telemetryDataDesc" flex="1">&telemetryDesc.label;</label>
-<<<<<<< HEAD
-                <spacer flex="10"/>
-                <label id="telemetryLearnMore"
-                       class="text-link">&telemetryLearnMore.label;</label>
-                <label class="mozilla-support-label-telemetry">&mozillaSupportLearnMore.label;</label>
-||||||| merged common ancestors
-                <spacer flex="10"/>
-                <label id="telemetryLearnMore"
-                       class="text-link">&telemetryLearnMore.label;</label>
-=======
                 <label id="telemetryLearnMore" flex="1"
                        class="learnMore text-link">&telemetryLearnMore.label;</label>
->>>>>>> origin/upstream-releases
+                <label class="mozilla-support-label-telemetry">&mozillaSupportLearnMore.label;</label>
               </hbox>
             </groupbox>
           </hbox>

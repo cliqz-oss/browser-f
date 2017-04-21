@@ -3044,7 +3044,6 @@ TabChild::OnHideTooltip()
     return NS_OK;
 }
 
-<<<<<<< HEAD
 NS_IMETHODIMP
 TabChild::PrivateModeChanged(bool enabled) {
   SetPrivateBrowsingAttributes(enabled);
@@ -3052,12 +3051,7 @@ TabChild::PrivateModeChanged(bool enabled) {
   return NS_OK;
 }
 
-bool
-||||||| merged common ancestors
-bool
-=======
 mozilla::ipc::IPCResult
->>>>>>> origin/upstream-releases
 TabChild::RecvRequestNotifyAfterRemotePaint()
 {
   // Get the CompositorBridgeChild instance for this content thread.

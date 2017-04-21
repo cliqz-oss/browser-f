@@ -218,29 +218,9 @@ Section "MaintenanceService"
   ; want to install once on the first upgrade to maintenance service.
   ; Also write out that we are currently installed, preferences will check
   ; this value to determine if we should show the service update pref.
-<<<<<<< HEAD
-  ; Since the Maintenance service can be installed either x86 or x64,
-  ; always use the 64-bit registry for checking if an attempt was made.
-  ${If} ${RunningX64}
-    SetRegView 64
-  ${EndIf}
   WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Attempted" 1
   WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Installed" 1
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
-||||||| merged common ancestors
-  ; Since the Maintenance service can be installed either x86 or x64,
-  ; always use the 64-bit registry for checking if an attempt was made.
-  ${If} ${RunningX64}
-    SetRegView 64
-  ${EndIf}
-  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Attempted" 1
-  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Installed" 1
-  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
-=======
-  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Attempted" 1
-  WriteRegDWORD HKLM "Software\Mozilla\MaintenanceService" "Installed" 1
-  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
->>>>>>> origin/upstream-releases
 
   ; Included here for debug purposes only.  
   ; These keys are used to bypass the installation dir is a valid installation
@@ -350,17 +330,9 @@ Section "Uninstall"
   ${If} ${RunningX64}
     SetRegView 64
   ${EndIf}
-<<<<<<< HEAD
+  DeleteRegKey HKLM "${MaintUninstallKey}"
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "Installed"
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
-||||||| merged common ancestors
-  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "Installed"
-  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
-=======
-  DeleteRegKey HKLM "${MaintUninstallKey}"
-  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "Installed"
-  DeleteRegValue HKLM "Software\Mozilla\MaintenanceService" "FFPrefetchDisabled"
->>>>>>> origin/upstream-releases
   DeleteRegKey HKLM "${FallbackKey}\"
   ${If} ${RunningX64}
     SetRegView lastused
