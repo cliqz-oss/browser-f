@@ -5,12 +5,6 @@
 ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}
 ac_add_options --enable-release
 
-if echo $OSTYPE | grep -q "darwin"; then
-  # Enable universal MacOS executable build
-  . $topsrcdir/build/macosx/universal/mozconfig
-#  ac_add_options --enable-warnings-as-errors
-fi
-
 if echo $OSTYPE | grep -q "msys"; then
   # Windows specific flags
   ac_add_options --enable-warnings-as-errors

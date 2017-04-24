@@ -48,6 +48,13 @@ certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 @pk12util -i %CLZ_CERTIFICATE_PATH% -W %CLZ_CERTIFICATE_PWD% -d %CQZ_CERT_DB_PATH%
 
 :::::::::::::::::::::::::::::::::::
+:: BOOTSTRAP
+:::::::::::::::::::::::::::::::::::
+ECHO [%TIME%] INFO: Launch bootstrap stage
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive | call C:\mozilla-build\start-shell-msvc2015.bat
+ECHO rustup target add i686-pc-windows-msvc | call C:\mozilla-build\start-shell-msvc2015.bat
+
+:::::::::::::::::::::::::::::::::::
 :: BUILD
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Starting build
