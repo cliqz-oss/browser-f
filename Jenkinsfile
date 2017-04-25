@@ -427,16 +427,24 @@ jobs["linux"] = {
                         "CQZ_COMMIT=$COMMIT_ID",
                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
                         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+     
+                        withCredentials([
+                            [$class: 'StringBinding', 
+                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+                                variable: 'CQZ_GOOGLE_API_KEY'],
+                            [$class: 'StringBinding', 
+                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+                                variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                        stage('Linux Build Browser') {
-                            withCredentials([
-                                [$class: 'StringBinding', 
-                                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
-                                    variable: 'CQZ_GOOGLE_API_KEY'],
-                                [$class: 'StringBinding', 
-                                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
-                                    variable: 'MOZ_MOZILLA_API_KEY']]) {
+                            stage('fix keys') {
+                                sh '''#!/bin/bash -l 
+                                    sudo chown -R `whoami` /builds
+                                    sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
+                                    sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
+                                '''
+                            }
 
+                            stage('Linux Build Browser') {
                                 try {
                                     sh './magic_build_and_package.sh  --clobber'
                                 } catch (e) {
