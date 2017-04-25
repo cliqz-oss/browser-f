@@ -287,9 +287,8 @@ jobs["mac"] = {
                         stage('fix keys') {
                             sh "if [ ! -d /builds ]; then sudo mkdir -p /builds; fi"
                             sh '''#!/bin/bash -l 
-                                sudo chown -R `whoami` /builds
-                                sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
-                                sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
+                                echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
+                                echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
                             '''
                         }
 
