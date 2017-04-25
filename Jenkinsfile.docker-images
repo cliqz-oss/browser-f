@@ -25,7 +25,7 @@ node('ubuntu && docker && !gpu') {
            ."
         )
 
-        app.push 'latest'
+        app.push 'gcc-upgrade-1'
       }
     }
   }
