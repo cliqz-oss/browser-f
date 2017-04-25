@@ -280,8 +280,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
                                             "toolbar_____",
                                             "unfiled_____"
                                             ];
-            let parentGuid = PlacesUtils.bookmarks.toolbarGuid;
-            // Create Firefox bookmarks folder on Bookmarks Toolbar
+            let parentGuid = PlacesUtils.bookmarks.menuGuid;
+            // Create Firefox bookmarks folder on Bookmarks Menu
             parentGuid = (yield PlacesUtils.bookmarks.insert({
               parentGuid,
               type: PlacesUtils.bookmarks.TYPE_FOLDER,
