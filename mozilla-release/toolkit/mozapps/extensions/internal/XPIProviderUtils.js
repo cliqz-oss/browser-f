@@ -1521,13 +1521,13 @@ this.XPIDatabase = {
     // TODO: Remove that
     setTimeout(function() {
       try {
-        Components.utils.import('chrome://cliqzmodules/content/Extension.jsm');
-        Extension.telemetry({
-          type: "addon",
-          addonType: type || null,
-          action: way == "foreign" ? "foreign_install" : "block",
-          id: addonId
-        });
+        Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
+          .CLIQZ.CliqzUtils.telemetry({
+            type: "addon",
+            addonType: type || null,
+            action: way == "foreign" ? "foreign_install" : "block",
+            id: addonId
+          });
       }
       catch (e) {
         logger.warn("Could not report through CLIQZ Extension telemetry", e);
