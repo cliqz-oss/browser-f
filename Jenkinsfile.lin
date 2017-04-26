@@ -49,7 +49,7 @@ try {
 docker.image(imageName).inside() {
   stage('Update Dependencies') {
     // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-    sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+    sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
   }
 
   withEnv([
@@ -63,17 +63,17 @@ docker.image(imageName).inside() {
         [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY']]) {
 
         stage('fix keys') {
-          sh '''#!/bin/bash -l 
+          sh '''#!/bin/bash -l
             sudo chown -R `whoami` /builds
             sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
             sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
           '''
         }
-  
+
         stage('Build Browser') {
 
           try {
-            sh './magic_build_and_package.sh  --clobber'
+            sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
           } catch (e) {
             archive 'obj/config.log'
             throw e
@@ -98,7 +98,7 @@ docker.image(imageName).inside() {
               withEnv([
                   "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
 
-                sh './sign_lin.sh'
+                sh '/bin/bash -lc "./sign_lin.sh"'
               }
           }
         } finally {
@@ -107,7 +107,7 @@ docker.image(imageName).inside() {
       }
 
       stage('Publisher (Internal)') {
-        sh './magic_upload_files.sh'
+        sh '/bin/bash -lc "./magic_upload_files.sh"'
         archiveArtifacts 'obj/build_properties.json'
       }
     }

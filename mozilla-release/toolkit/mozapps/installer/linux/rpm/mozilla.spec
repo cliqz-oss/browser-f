@@ -25,8 +25,9 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 
 %description
-%{pr_name}.  This package was built from
-%{moz_source_repo}/rev/%{moz_source_stamp}
+%{pr_name}.
+#This package was built from
+#%{moz_source_repo}/rev/%{moz_source_stamp}
 
 #We only want a subpackage for the SDK if the required
 #files were generated.  Like the tests subpackage, we
