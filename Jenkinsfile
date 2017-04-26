@@ -216,12 +216,17 @@ jobs["windows"] = {
                   "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
                   "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
                 ]){
-                  stage('Windows Build') {
-                    bat '''
-                        set CQZ_WORKSPACE=%cd%
-                        build_win.bat
-                    '''
-                  }
+                    stage('fix keys') {
+                          bat 'if not exist "c:\\builds\\" mkdir "c:\\builds\\"'
+                          writeFile file: "c:\\builds\\mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                          writeFile file: "c:\\builds\\google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+                    }
+                    stage('Windows Build') {
+                        bat '''
+                            set CQZ_WORKSPACE=%cd%
+                            build_win.bat
+                        '''
+                    }
                 }
 
                 if (CQZ_BUILD_DE_LOCALIZATION == "1") {
@@ -271,17 +276,25 @@ jobs["mac"] = {
                 "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
                 "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-                stage('OSX Build') {
-                     withCredentials([
-                         [$class: 'StringBinding', 
-                            credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
-                            variable: 'CQZ_GOOGLE_API_KEY'],
-                         [$class: 'StringBinding', 
-                            credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
-                            variable: 'MOZ_MOZILLA_API_KEY']]) {
+                 withCredentials([
+                     [$class: 'StringBinding', 
+                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+                        variable: 'CQZ_GOOGLE_API_KEY'],
+                     [$class: 'StringBinding', 
+                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+                        variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                         sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                         }
+                        stage('fix keys') {
+                            sh "if [ ! -d /builds ]; then sudo mkdir -p /builds; fi"
+                            sh '''#!/bin/bash -l 
+                                echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
+                                echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
+                            '''
+                        }
+
+                        stage('OSX Build') {
+                            sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+                        }
                 }
 
                 stage('OSX Sign') {
@@ -414,16 +427,24 @@ jobs["linux"] = {
                         "CQZ_COMMIT=$COMMIT_ID",
                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
                         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+     
+                        withCredentials([
+                            [$class: 'StringBinding', 
+                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+                                variable: 'CQZ_GOOGLE_API_KEY'],
+                            [$class: 'StringBinding', 
+                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+                                variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                        stage('Linux Build Browser') {
-                            withCredentials([
-                                [$class: 'StringBinding', 
-                                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
-                                    variable: 'CQZ_GOOGLE_API_KEY'],
-                                [$class: 'StringBinding', 
-                                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
-                                    variable: 'MOZ_MOZILLA_API_KEY']]) {
+                            stage('fix keys') {
+                                sh '''#!/bin/bash -l 
+                                    sudo chown -R `whoami` /builds
+                                    sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
+                                    sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
+                                '''
+                            }
 
+                            stage('Linux Build Browser') {
                                 try {
                                     sh './magic_build_and_package.sh  --clobber'
                                 } catch (e) {
