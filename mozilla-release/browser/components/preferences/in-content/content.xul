@@ -52,12 +52,10 @@
     </columns>
     <rows id="contentRows-2">
       <row id="playDRMContentRow">
-        <vbox align="start">
+        <hbox align="center">
           <checkbox id="playDRMContent" preference="media.eme.enabled"
                     label="&playDRMContent.label;" accesskey="&playDRMContent.accesskey;"/>
-        </vbox>
-        <hbox pack="end" align="center">
-          <label id="playDRMContentLink" class="text-link" value="&playDRMContent.learnMore.label;"/>
+          <label id="playDRMContentLink" class="learnMore text-link" value="&playDRMContent.learnMore.label;"/>
           <label class="mozilla-support-label-drm">&mozillaSupportLearnMore.label;</label>
         </hbox>
       </row>
@@ -77,7 +75,7 @@
         <hbox align="start">
           <label id="notificationsPolicy">&notificationsPolicyDesc3.label;</label>
           <label id="notificationsPolicyLearnMore"
-                 class="text-link"
+                 class="learnMore text-link"
                  value="&notificationsPolicyLearnMore.label;"/>
           <label class="mozilla-support-label-notification">&mozillaSupportLearnMore.label;</label>
         </hbox>

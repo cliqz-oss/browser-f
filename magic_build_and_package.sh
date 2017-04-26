@@ -36,11 +36,7 @@ if [[ "$LANG" == 'de' ]]; then
 fi
 
 # for localization repack
-if [[ $IS_MAC_OS ]]; then
-  export L10NBASEDIR=../../l10n  # --with-l10n-base=...
-else
-  export L10NBASEDIR=../l10n  # --with-l10n-base=...
-fi
+export L10NBASEDIR=../l10n  # --with-l10n-base=...
 
 echo '***** Building *****'
 ./mach build
@@ -51,15 +47,7 @@ if [ $IS_WIN ]; then
 fi
 
 echo '***** Packaging *****'
-if [[ $IS_MAC_OS ]]; then
-  MOZ_OBJDIR_BACKUP=$MOZ_OBJDIR
-  unset MOZ_OBJDIR  # Otherwise some python script throws. Good job, Mozilla!
-  make -C $OBJ_DIR package
-  # Restore still useful variable we unset before.
-  export MOZ_OBJDIR=$MOZ_OBJDIR_BACKUP
-else
-  ./mach package
-fi
+./mach package
 
 echo '***** Prepare build symbols (release only) *****'
 if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then

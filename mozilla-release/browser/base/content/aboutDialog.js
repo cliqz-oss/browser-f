@@ -9,8 +9,7 @@ Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
-function init(aEvent)
-{
+function init(aEvent) {
   if (aEvent.target != document)
     return;
 
@@ -40,15 +39,13 @@ function init(aEvent)
         var distroField = document.getElementById("distribution");
         distroField.value = distroAbout;
         distroField.style.display = "block";
-      }
-      catch (ex) {
+      } catch (ex) {
         // Pref is unset
         Components.utils.reportError(ex);
       }
 #endif
     }
-  }
-  catch (e) {
+  } catch (e) {
     // Pref is unset
   }
 

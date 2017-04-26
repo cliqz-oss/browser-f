@@ -54,7 +54,7 @@
 
 #advancedPrefs, #connectPrefs {
   margin-left: 0;
-  margin-right: 0; 
+  margin-right: 0;
 }
 
 #cookiesChildren::-moz-tree-image(domainCol, container) {
@@ -98,7 +98,6 @@
 }
 
 #noFxaAccount {
-  margin: 5px;
   line-height: 1.2em;
 }
 

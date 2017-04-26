@@ -54,6 +54,9 @@
 <!ENTITY directoriesNone.label                 "Keine">
 <!ENTITY editDirectories.label                 "Bearbeiten…">
 <!ENTITY editDirectories.accesskey             "B">
+<!ENTITY showAsDefault.label                   "Standardordner beim Öffnen des Adressbuchs:">
+<!ENTITY showAsDefault.accesskey               "S">
+<!ENTITY showAsDefaultLast.label               "Zuletzt verwendeter Ordner">
 
 <!ENTITY sendOptionsDescription.label          "Verhalten beim Senden von HTML-Nachrichten:">
 <!ENTITY sendOptions.label                     "Sendeoptionen…">

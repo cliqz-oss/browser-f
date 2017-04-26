@@ -24,7 +24,7 @@
   <li>Bitte überprüfe die Adresse auf Tippfehler, wie
     <strong>ww</strong>.example.com statt
     <strong>www</strong>.example.com</li>
-  <li>Wenn du auch keine andere Website aufrufen kannst, überprüfe bitte die 
+  <li>Wenn du auch keine andere Website aufrufen kannst, überprüfe bitte die
 	Netzwerk-/Internetverbindung.</li>
   <li>Wenn dein Computer oder Netzwerk von einer Firewall oder einem Proxy geschützt wird, stelle bitte sicher,
 	dass &brandShortName; auf das Internet zugreifen darf.</li>
@@ -84,7 +84,7 @@
 <!ENTITY contentEncodingError.title "Content-Encoding-Fehler">
 <!ENTITY contentEncodingError.longDesc "
 <ul>
-  <li>Kontaktiere bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li> 
+  <li>Kontaktiere bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li>
 </ul>
 ">
 
@@ -112,7 +112,7 @@
 <!ENTITY proxyConnectFailure.longDesc "
 <ul>
   <li>Überprüfe bitte, ob die Proxy-Einstellungen korrekt sind</li>
-  <li>Kontaktiere bitte deinen Netzwerk-Administrator, um sicherzustellen, dass der Proxy-Server 
+  <li>Kontaktiere bitte deinen Netzwerk-Administrator, um sicherzustellen, dass der Proxy-Server
 	funktioniert</li>
 </ul>
 ">
@@ -130,7 +130,7 @@
 <!ENTITY redirectLoop.title "Fehler: Umleitungsfehler">
 <!ENTITY redirectLoop.longDesc "
 <ul>
-  <li>Dieses Problem kann manchmal auftreten, wenn Cookies deaktiviert oder abgelehnt 
+  <li>Dieses Problem kann manchmal auftreten, wenn Cookies deaktiviert oder abgelehnt
 	werden.</li>
 </ul>
 ">
@@ -138,10 +138,10 @@
 <!ENTITY unknownSocketType.title "Fehler: Unerwartete Antwort">
 <!ENTITY unknownSocketType.longDesc "
 <ul>
-  <li>Bitte stelle sicher, dass auf deinem System der Personal-Security-Manager 
+  <li>Bitte stelle sicher, dass auf deinem System der Personal-Security-Manager
 	installiert ist.</li>
   <li>Dies kann mit einer nicht-standardgemäßen Konfiguration des Servers zusammenhängen.</li>
-</ul> 
+</ul>
 ">
 
 <!ENTITY nssFailure2.title "Fehler: Gesicherte Verbindung fehlgeschlagen">
@@ -160,11 +160,11 @@ was trying to connect. -->
 
 <!ENTITY sharedLongDesc "
 <ul>
-  <li>Die Website könnte vorübergehend nicht erreichbar sein, versuche es bitte 
+  <li>Die Website könnte vorübergehend nicht erreichbar sein, versuche es bitte
 	später nochmals.</li>
-  <li>Wenn du auch keine andere Website aufrufen kannst, überprüfe bitte die 
+  <li>Wenn du auch keine andere Website aufrufen kannst, überprüfe bitte die
 	Netzwerk-/Internetverbindung.</li>
-  <li>Wenn dein Computer oder Netzwerk von einer Firewall oder einem Proxy geschützt wird, 
+  <li>Wenn dein Computer oder Netzwerk von einer Firewall oder einem Proxy geschützt wird,
 	stelle bitte sicher, dass &brandShortName; auf das Internet zugreifen darf.</li>
 </ul>
 ">
@@ -197,9 +197,11 @@ was trying to connect. -->
 <!ENTITY weakCryptoAdvanced.longDesc "<span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche du für sicher hieltest.">
 <!ENTITY weakCryptoAdvanced.override "(Nicht sicher) <span class='hostname'></span> mit veralteter Sicherheitstechnologie laden">
 
-<!-- LOCALIZATION NOTE (certerror.wrongSystemTime) - The <span id='..' /> tags will be injected with actual values,
-     please leave them unchanged. -->
-<!ENTITY certerror.wrongSystemTime "<p>Es konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufgebaut werden, da dein Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf deinem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigiere Datum und Uhrzeit auf deinem Computer auf die richtige Uhrzeit, um das Problem zu beheben.</p>">
+<!-- LOCALIZATION NOTE (certerror.wrongSystemTime2,
+                        certerror.wrongSystemTimeWithoutReference) - The <span id='..' />
+     tags will be injected with actual values, please leave them unchanged. -->
+<!ENTITY certerror.wrongSystemTime2 "<p> &brandShortName; konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufbauen, da dein Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf deinem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigiere Datum und Uhrzeit auf deinem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
+<!ENTITY certerror.wrongSystemTimeWithoutReference "<p>&brandShortName; konnte mit <span id='wrongSystemTimeWithoutReference_URL'/> keine gesicherte Verbindung aufbauen, da dein Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf deinem Computer ist es der <span id='wrongSystemTime_systemDate'/>. Korrigiere Datum und Uhrzeit auf deinem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
 
 <!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">
