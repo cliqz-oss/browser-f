@@ -380,7 +380,7 @@ jobs["linux"] = {
             }
 
             stage("Linux Build") {
-                def imageName = 'browser-f'
+                def imageName = 'browser-f:gcc-upgrade-1'
 
                 try {
                   // authorize docker deamon to access registry
@@ -425,7 +425,7 @@ jobs["linux"] = {
                                     variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                                 try {
-                                    sh './magic_build_and_package.sh  --clobber'
+                                    sh '/bin/bash -lc "./magic_build_and_package.sh --clobber"'
                                 } catch (e) {
                                     archive 'obj/config.log'
                                     throw e

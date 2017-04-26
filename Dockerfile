@@ -1,4 +1,4 @@
-FROM ubuntu:14.04
+FROM ubuntu:17.04
 
 RUN apt-get update && apt-get install -y \
   alien \
@@ -24,10 +24,6 @@ RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/ap
 RUN pip install awscli \
   compare-locales
 
-RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
-  python bootstrap.py --application-choice=browser --no-interactive && \
-  rm bootstrap.py
-
 ARG uid
 ARG gid
 ARG user
@@ -39,5 +35,9 @@ RUN groupadd $user -g $gid && useradd -ms /bin/bash $user -u $uid -g $gid && use
 RUN sed -i.bkp -e \
       's/%sudo\s\+ALL=(ALL\(:ALL\)\?)\s\+ALL/%sudo ALL=NOPASSWD:ALL/g' \
       /etc/sudoers
+
+RUN wget -O bootstrap.py https://hg.mozilla.org/mozilla-central/raw-file/default/python/mozboot/bin/bootstrap.py && \
+  python bootstrap.py --application-choice=browser --no-interactive && \
+  rm bootstrap.py
 
 RUN mkdir /builds
