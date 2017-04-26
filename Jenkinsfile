@@ -371,7 +371,7 @@ jobs["mac"] = {
                                         ./magic_upload_files.sh ${LANG_PARAM}
                                     """
 
-                                    archiveArtifacts 'obj/i386/build_properties.json'
+                                    archiveArtifacts 'obj/build_properties.json'
                                 }
                             } finally {
                                 // remove certs
