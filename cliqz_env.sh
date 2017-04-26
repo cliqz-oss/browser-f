@@ -63,10 +63,6 @@ fi
 
 export MOZ_OBJDIR=../obj
 
-# Mac specific paths
-I386DIR=$MOZ_OBJDIR/i386
-X86_64DIR=$MOZ_OBJDIR/x86_64
-
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
 export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}'\
   ./repack/distribution/distribution.ini | head -n1)
@@ -89,9 +85,6 @@ fi
 
 OBJ_DIR=$MOZ_OBJDIR
 SRC_BASE=mozilla-release
-if [ $IS_MAC_OS ]; then
-  OBJ_DIR=$I386DIR
-fi
 
 # automatic forget tab - start
 wget -O adult-domains.bin https://s3.amazonaws.com/cdn.cliqz.com/browser-f/APT/adult-domains.bin
