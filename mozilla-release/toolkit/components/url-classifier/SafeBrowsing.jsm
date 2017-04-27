@@ -153,12 +153,15 @@ this.SafeBrowsing = {
     switch (kind) {
       case "Phish":
         pref = "browser.safebrowsing.reportPhishURL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(0);
         break;
       case "PhishMistake":
         pref = "browser.safebrowsing.reportPhishMistakeURL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
         break;
       case "MalwareMistake":
         pref = "browser.safebrowsing.reportMalwareMistakeURL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
         break;
 
       default:
