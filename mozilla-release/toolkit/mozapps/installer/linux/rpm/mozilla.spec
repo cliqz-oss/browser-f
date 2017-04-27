@@ -33,7 +33,7 @@ BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 #files were generated.  Like the tests subpackage, we
 #probably only need to conditionaly define the %files
 #section.
-%if %{?createdevel:1}
+%if 0%{?createdevel:1}
 %package devel
 Summary:    %{pr_name} SDK
 Group:      Development/Libraries
@@ -121,7 +121,7 @@ fi
 %doc
 
 
-%if %{?createdevel:1}
+%if 0%{?createdevel:1}
 %files devel
 %defattr(-,root,root,-)
 %{_includedir}
