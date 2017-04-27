@@ -11009,5 +11009,14 @@
     "n_buckets": 20,
     "keyed": true,
     "description": "Measures the number of milliseconds we spend waiting on the main thread for IPC messages to serialize their parameters. Note: only messages that take more than 500 microseconds are included in this probe. This probe is keyed on the IPDL message name."
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }
