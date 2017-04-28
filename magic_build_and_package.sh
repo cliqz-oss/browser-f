@@ -38,6 +38,14 @@ fi
 # for localization repack
 export L10NBASEDIR=../l10n  # --with-l10n-base=...
 
+# check for API key files
+if [ ! -f ../mozilla-desktop-geoloc-api.key ]; then
+  echo "mozilla-api-key-required" > ../mozilla-desktop-geoloc-api.key
+fi
+if [ ! -f ../google-desktop-api.key ]; then
+  echo "google-api-key-required" > ../google-desktop-api.key
+fi
+
 echo '***** Building *****'
 ./mach build
 

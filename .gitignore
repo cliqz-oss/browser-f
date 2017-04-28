@@ -5,3 +5,5 @@ google-api-key
 .idea
 /docker
 adult-domains.bin
+google-desktop-api.key
+mozilla-desktop-geoloc-api.key

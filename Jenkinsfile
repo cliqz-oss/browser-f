@@ -210,6 +210,7 @@ jobs["windows"] = {
             stage("Fix git windows file-endings") {
                 bat "git config core.autocrlf false && git config core.eof lf &&  git rm --cached -r -q . && git reset --hard -q"
             }
+
             withCredentials([
                 [$class: 'FileBinding',
                     credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID,
@@ -237,16 +238,16 @@ jobs["windows"] = {
                   "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
                 ]){
                     stage('fix keys') {
-                          bat 'if not exist "c:\\builds\\" mkdir "c:\\builds\\"'
-                          writeFile file: "c:\\builds\\mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                          writeFile file: "c:\\builds\\google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+                          writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                          writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
                     }
-                    stage('Windows Build') {
-                        bat '''
-                            set CQZ_WORKSPACE=%cd%
-                            build_win.bat
-                        '''
-                    }
+                }
+
+                stage('Windows Build') {
+                    bat '''
+                        set CQZ_WORKSPACE=%cd%
+                        build_win.bat
+                    '''
                 }
 
                 if (CQZ_BUILD_DE_LOCALIZATION == "1") {
@@ -305,16 +306,13 @@ jobs["mac"] = {
                         variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                         stage('fix keys') {
-                            sh "if [ ! -d /builds ]; then sudo mkdir -p /builds; fi"
-                            sh '''#!/bin/bash -l
-                                echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
-                                echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
-                            '''
+                            writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                            writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
                         }
+                }
 
-                        stage('OSX Build') {
-                            sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                        }
+                stage('OSX Build') {
+                    sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
                 }
 
                 stage('OSX Sign') {
@@ -416,7 +414,7 @@ jobs["linux"] = {
                 def imageName = 'browser-f'
 
                 try {
-                  // authorize docker deamon to access registry
+                    // authorize docker deamon to access registry
                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
@@ -425,14 +423,14 @@ jobs["linux"] = {
                         imageName = image.imageName()
                     }
                 } catch (e) {
-                  // if registry fails, build image localy
-                  // Build params with context
+                    // if registry fails, build image localy
+                    // Build params with context
                     def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-                  // Avoiding docker context
+                    // Avoiding docker context
                     sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
 
-                  // Build image with a specific user
+                    // Build image with a specific user
                     sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
                 }
 
@@ -457,21 +455,18 @@ jobs["linux"] = {
                                 variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                             stage('fix keys') {
-                                sh '''#!/bin/bash -l
-                                    sudo chown -R `whoami` /builds
-                                    sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
-                                    sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
-                                '''
+                                writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                                writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
                             }
+                        }
 
-                            stage('Linux Build Browser') {
-                                try {
-                                    sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
-                                } catch (e) {
-                                    archive 'obj/config.log'
-                                    throw e
-                                }
-                            }
+                        stage('Linux Build Browser') {
+                          try {
+                              sh './magic_build_and_package.sh  --clobber'
+                          } catch (e) {
+                              archive 'obj/config.log'
+                              throw e
+                          }
                         }
 
                         withCredentials([
