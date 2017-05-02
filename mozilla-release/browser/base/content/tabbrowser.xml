@@ -2748,6 +2748,18 @@
 
             var wasPinned = aTab.pinned;
 
+            // In the multi-process case, it's possible an asynchronous tab switch
+            // is still underway. If so, then it's possible that the last visible
+            // browser is the one we're in the process of removing. There's the
+            // risk of displaying preloaded browsers that are at the end of the
+            // deck if we remove the browser before the switch is complete, so
+            // we alert the switcher in order to show a spinner instead.
+            // CLIQZ: once called after `this.tabContainer.removeChild(aTab)`
+            //   the spinner is shown infinitely after exiting Print Preview
+            if (this._switcher) {
+              this._switcher.onTabRemoved(aTab);
+            }
+
             // Remove the tab ...
             this.tabContainer.removeChild(aTab);
 
@@ -2777,16 +2789,6 @@
             // steps.
 
             var panel = this.getNotificationBox(browser);
-
-            // In the multi-process case, it's possible an asynchronous tab switch
-            // is still underway. If so, then it's possible that the last visible
-            // browser is the one we're in the process of removing. There's the
-            // risk of displaying preloaded browsers that are at the end of the
-            // deck if we remove the browser before the switch is complete, so
-            // we alert the switcher in order to show a spinner instead.
-            if (this._switcher) {
-              this._switcher.onTabRemoved(aTab);
-            }
 
             // This will unload the document. An unload handler could remove
             // dependant tabs, so it's important that the tabbrowser is now in
