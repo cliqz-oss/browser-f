@@ -253,6 +253,7 @@ ${StrTok}
 ; set the update channel to beta.
 !ifdef OFFICIAL
 !ifdef BETA_UPDATE_CHANNEL
+;CLIQZ. Don't use this
 ;!undef URLStubDownload32
 ;!undef URLStubDownload64
 ;!define URLStubDownload32 "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
@@ -376,7 +377,7 @@ Function .onInit
   ${If} "$R9" == "false"
   ${AndIf} ${RunningX64}
     SetRegView 64
-    ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+    ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
   ${EndIf}
 
   ${If} "$R9" == "false"
@@ -616,11 +617,12 @@ Function SendPing
     ; completion of all phases.
     ${GetSecondsElapsed} "$EndInstallPhaseTickCount" "$EndFinishPhaseTickCount" $4
 
-    ${If} $DroplistArch == "$(VERSION_64BIT)"
-      StrCpy $R0 "1"
-    ${Else}
+    ; CLIQZ. Don't support 64-bit yet
+    ;${If} $DroplistArch == "$(VERSION_64BIT)"
+    ;  StrCpy $R0 "1"
+    ;${Else}
       StrCpy $R0 "0"
-    ${EndIf}
+    ;${EndIf}
 
     ${If} ${RunningX64}
       StrCpy $R1 "1"
@@ -1137,6 +1139,8 @@ Function createOptions
   ${EndIf}
 !endif
 
+; CLIQZ. Don't support 64-bit yet, remove selector from Options page
+!ifdef 0
   ${If} ${RunningX64}
     ; Get the exact pixel width we're going to need for this label.
     ; The label string has a keyboard accelerator, which is an '&' that's in
@@ -1195,6 +1199,7 @@ Function createOptions
     ; Bug 1338583: disable 64-bit as default until Flash issues are resolved
     ${NSD_CB_SelectString} $DroplistArch "$(VERSION_32BIT)"
   ${EndIf}
+!endif
 
   GetDlgItem $0 $HWNDPARENT 1 ; Install button
   ${If} ${FileExists} "$INSTDIR\${FileMainEXE}"
