@@ -197,7 +197,7 @@ jobs["windows"] = {
                 ])
             } // stage
            stage("Fix git windows file-endings") {
-                bat "cd browser-f && git config core.autocrlf false && git config core.eof lf"
+                bat "git config core.autocrlf false && git config core.eof lf"
             }
             withCredentials([
                 [$class: 'FileBinding', 
