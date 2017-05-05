@@ -185,9 +185,6 @@ jobs["windows"] = {
     // We can now use the slave to do a windows build
     node(ec2_node.get('nodeId')) {
         ws('a') {
-            stage("Fix git windows file-endings") {
-                bat "git config core.autocrlf false && git config core.eof lf"
-            }
             stage("Windows EC2 SCM Checkout") {
                 checkout([
                     $class: 'GitSCM',
@@ -199,7 +196,9 @@ jobs["windows"] = {
                     userRemoteConfigs: scm.userRemoteConfigs
                 ])
             } // stage
-            
+           stage("Fix git windows file-endings") {
+                bat "git config core.autocrlf false && git config core.eof lf"
+            }
             withCredentials([
                 [$class: 'FileBinding', 
                     credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, 
