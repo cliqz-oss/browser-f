@@ -53,7 +53,7 @@ properties([
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
-        string(defaultValue: 'cliqz/ansible:20170505133508', 
+        string(defaultValue: 'cliqz/ansible:20170505141042', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
