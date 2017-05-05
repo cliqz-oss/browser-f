@@ -51,7 +51,9 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:20170504131257', 
+        string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
+                name:"WINDOWS_SLAVE_CREDENTIALS"),
+        string(defaultValue: 'cliqz/ansible:20170505105737', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -154,14 +156,22 @@ jobs["windows"] = {
                             timeout(60) {
                                 def image = docker.image(IMAGE_NAME)
 
-                                docker.image(image.imageName()).inside(prov_args) {
-                                    withEnv([
-                                        "instance_name=${ec2_node.get('nodeId')}",
-                                        "JENKINS_URL=${env.JENKINS_URL}",
-                                        "NODE_ID=${ec2_node.get('nodeId')}",
-                                        "NODE_SECRET=${ec2_node.get('secret')}"
-                                        ]){
-                                        sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                docker.image(image.imageName()).inside(prov_args) {    
+                                    withCredentials([
+                                        usernamePassword(
+                                            credentialsId: params.WINDOWS_SLAVE_CREDENTIALS, 
+                                            passwordVariable: 'PASSWORD', 
+                                            usernameVariable: 'USERNAME')]) {
+                                            withEnv([
+                                                "instance_name=${ec2_node.get('nodeId')}",
+                                                "JENKINS_URL=${env.JENKINS_URL}",
+                                                "NODE_ID=${ec2_node.get('nodeId')}",
+                                                "NODE_SECRET=${ec2_node.get('secret')}",
+                                                "USERNAME=${USERNAME}",
+                                                "PASSWORD=${PASSWORD}"
+                                                ]){
+                                                sh "cd /playbooks && ansible-playbook -i ${nodeIP},  ec2/playbook.yml"
+                                        }
                                     }
                                 }
                             }
