@@ -170,7 +170,8 @@ jobs["windows"] = {
                                                 "USERNAME=${USERNAME}",
                                                 "PASSWORD=${PASSWORD}"
                                                 ]){
-                                                sh "cd /playbooks && ansible-playbook -vvvv -i ${nodeIP}, ec2/playbook.yml"
+                                                def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"
+                                                sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
                                         }
                                     }
                                 }
