@@ -53,8 +53,10 @@ properties([
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
-        string(defaultValue: 'cliqz/ansible:20170509094357', 
+        string(defaultValue: 'cliqz/ansible:20170509155933', 
                 name: 'IMAGE_NAME'),
+        string(defaultValue: 'ami-407e0a56', 
+                name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
         string(defaultValue: "1.13.0", name: "CQZ_VERSION"),
@@ -140,7 +142,8 @@ jobs["windows"] = {
                                         "jenkins_id=${ec2_node.get('nodeId')}",
                                         "instance_name=browser-f"
                                         ]) {
-                                           sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
+                                           def bootstrap_params = "image_ami=${params.IMAGE_AMI}"
+                                           sh "cd /playbooks && ansible-playbook -e \"${bootstrap_params} \" ec2/bootstrap.yml"    
                                     }
                                 }
                             }
