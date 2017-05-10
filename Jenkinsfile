@@ -53,7 +53,7 @@ properties([
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
-        string(defaultValue: 'cliqz/ansible:20170509155933', 
+        string(defaultValue: 'cliqz/ansible:20170510184658', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'ami-7b45316d', 
                 name: 'IMAGE_AMI'),
@@ -174,7 +174,10 @@ jobs["windows"] = {
                                                 "PASSWORD=${PASSWORD}"
                                                 ]){
                                                 def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"
-                                                sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
+                                                retry(3) {
+                                                    sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
+                                                    sleep 15
+                                                }
                                         }
                                     }
                                 }
