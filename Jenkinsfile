@@ -55,7 +55,7 @@ properties([
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
         string(defaultValue: 'cliqz/ansible:20170509155933', 
                 name: 'IMAGE_NAME'),
-        string(defaultValue: 'ami-407e0a56', 
+        string(defaultValue: 'ami-7b45316d', 
                 name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
@@ -201,7 +201,7 @@ jobs["windows"] = {
                 ])
             } // stage
            stage("Fix git windows file-endings") {
-                bat "git config core.autocrlf false && git config core.eof lf "
+                bat "git config core.autocrlf false && git config core.eof lf &&  git rm --cached -r -q . && git reset --hard -q"
             }
             withCredentials([
                 [$class: 'FileBinding', 
