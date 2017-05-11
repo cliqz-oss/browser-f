@@ -166,22 +166,22 @@ jobs["windows"] = {
                                 docker.image(image.imageName()).inside(prov_args) {    
                                     withCredentials([
                                         usernamePassword(
-                                            credentialsId: params.WINDOWS_SLAVE_CREDENTIALS, 
-                                            passwordVariable: 'PASSWORD', 
-                                            usernameVariable: 'USERNAME')]) {
-                                            withEnv([
-                                                "instance_name=${ec2_node.get('nodeId')}",
-                                                "JENKINS_URL=${env.JENKINS_URL}",
-                                                "NODE_ID=${ec2_node.get('nodeId')}",
-                                                "NODE_SECRET=${ec2_node.get('secret')}",
-                                                "USERNAME=${USERNAME}",
-                                                "PASSWORD=${PASSWORD}"
-                                                ]){
-                                                def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"                
-                                                sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
+                                        credentialsId: params.WINDOWS_SLAVE_CREDENTIALS, 
+                                        passwordVariable: 'PASSWORD', 
+                                        usernameVariable: 'USERNAME')]) {
+                                        withEnv([
+                                            "instance_name=${ec2_node.get('nodeId')}",
+                                            "JENKINS_URL=${env.JENKINS_URL}",
+                                            "NODE_ID=${ec2_node.get('nodeId')}",
+                                            "NODE_SECRET=${ec2_node.get('secret')}",
+                                            "USERNAME=${USERNAME}",
+                                            "PASSWORD=${PASSWORD}"
+                                            ]){
+                                            def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"                
+                                            sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
 
-                                                }
                                         }
+                                        
                                     }
                                 }
                             }
