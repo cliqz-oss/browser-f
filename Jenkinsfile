@@ -175,8 +175,13 @@ jobs["windows"] = {
                                                 ]){
                                                 def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"
                                                 retry(3) {
-                                                    sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
-                                                    sleep 15
+                                                    try {
+                                                        sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
+                                                    
+                                                    } catch(e) {
+                                                        sleep 30
+                                                    }
+
                                                 }
                                         }
                                     }
