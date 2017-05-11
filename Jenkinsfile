@@ -53,7 +53,7 @@ properties([
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
-        string(defaultValue: 'cliqz/ansible:20170511140430', 
+        string(defaultValue: 'cliqz/ansible:20170511173229', 
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'ami-66c1b770', 
                 name: 'IMAGE_AMI'),
@@ -156,7 +156,7 @@ jobs["windows"] = {
                         }
 
                         // Thanks to Aws on Windows we have to wait, for Ec2Agent to set the password and restart the machine.
-                        sleep(300)
+                        sleep(600)
 
                         // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
                         docker.withRegistry(DOCKER_REGISTRY_URL) {
