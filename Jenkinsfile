@@ -156,7 +156,7 @@ jobs["windows"] = {
                         }
 
                         // Thanks to Aws on Windows we have to wait, for Ec2Agent to set the password and restart the machine.
-                        sleep(180)
+                        sleep(300)
 
                         // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
                         docker.withRegistry(DOCKER_REGISTRY_URL) {
