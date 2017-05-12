@@ -51,11 +51,15 @@ properties([
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
         string(defaultValue: "debian-gpg-pass", 
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
-        string(defaultValue: 'cliqz/ansible:1202201702', 
+        string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
+                name:"WINDOWS_SLAVE_CREDENTIALS"),
+        string(defaultValue: 'cliqz/ansible:20170511173229', 
                 name: 'IMAGE_NAME'),
+        string(defaultValue: 'ami-66c1b770', 
+                name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
                 name: 'DOCKER_REGISTRY_URL'),
-        string(defaultValue: "1.13.0", name: "CQZ_VERSION"),
+        string(defaultValue: "1.14.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: false, description: '', 
                     name: 'MAC_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '', 
@@ -138,7 +142,8 @@ jobs["windows"] = {
                                         "jenkins_id=${ec2_node.get('nodeId')}",
                                         "instance_name=browser-f"
                                         ]) {
-                                           sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"    
+                                           def bootstrap_params = "image_ami=${params.IMAGE_AMI}"
+                                           sh "cd /playbooks && ansible-playbook -e \"${bootstrap_params} \" ec2/bootstrap.yml"    
                                     }
                                 }
                             }
@@ -149,19 +154,34 @@ jobs["windows"] = {
                             nodeIP = sh(returnStdout: true, script: "${command}").trim()
                             sleep 15
                         }
+
+                        // Thanks to Aws on Windows we have to wait, for Ec2Agent to set the password and restart the machine.
+                        sleep(600)
+
                         // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
                         docker.withRegistry(DOCKER_REGISTRY_URL) {
                             timeout(60) {
                                 def image = docker.image(IMAGE_NAME)
 
-                                docker.image(image.imageName()).inside(prov_args) {
-                                    withEnv([
-                                        "instance_name=${ec2_node.get('nodeId')}",
-                                        "JENKINS_URL=${env.JENKINS_URL}",
-                                        "NODE_ID=${ec2_node.get('nodeId')}",
-                                        "NODE_SECRET=${ec2_node.get('secret')}"
-                                        ]){
-                                        sh "cd /playbooks && ansible-playbook -i ${nodeIP}, ec2/playbook.yml"
+                                docker.image(image.imageName()).inside(prov_args) {    
+                                    withCredentials([
+                                        usernamePassword(
+                                        credentialsId: params.WINDOWS_SLAVE_CREDENTIALS, 
+                                        passwordVariable: 'PASSWORD', 
+                                        usernameVariable: 'USERNAME')]) {
+                                        withEnv([
+                                            "instance_name=${ec2_node.get('nodeId')}",
+                                            "JENKINS_URL=${env.JENKINS_URL}",
+                                            "NODE_ID=${ec2_node.get('nodeId')}",
+                                            "NODE_SECRET=${ec2_node.get('secret')}",
+                                            "USERNAME=${USERNAME}",
+                                            "PASSWORD=${PASSWORD}"
+                                            ]){
+                                            def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"                
+                                            sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
+
+                                        }
+                                        
                                     }
                                 }
                             }
@@ -175,9 +195,6 @@ jobs["windows"] = {
     // We can now use the slave to do a windows build
     node(ec2_node.get('nodeId')) {
         ws('a') {
-            stage("Fix git windows file-endings") {
-                bat "git config core.autocrlf false && git config core.eof lf"
-            }
             stage("Windows EC2 SCM Checkout") {
                 checkout([
                     $class: 'GitSCM',
@@ -190,6 +207,9 @@ jobs["windows"] = {
                 ])
             } // stage
             
+            stage("Fix git windows file-endings") {
+                bat "git config core.autocrlf false && git config core.eof lf &&  git rm --cached -r -q . && git reset --hard -q"
+            }
             withCredentials([
                 [$class: 'FileBinding', 
                     credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, 
@@ -419,7 +439,7 @@ jobs["linux"] = {
                 docker.image(imageName).inside() {
                     stage('Linux Update Dependencies') {
                     // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-                        sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+                        sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
                     }
 
                     withEnv([
@@ -446,7 +466,7 @@ jobs["linux"] = {
 
                             stage('Linux Build Browser') {
                                 try {
-                                    sh './magic_build_and_package.sh  --clobber'
+                                    sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
                                 } catch (e) {
                                     archive 'obj/config.log'
                                     throw e
@@ -473,7 +493,7 @@ jobs["linux"] = {
 
                                         withEnv([
                                             "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
-                                            sh './sign_lin.sh'
+                                            sh '/bin/bash -lc "./sign_lin.sh"'
                                         }
                                     }
                                 } finally {
