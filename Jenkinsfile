@@ -439,7 +439,7 @@ jobs["linux"] = {
                 docker.image(imageName).inside() {
                     stage('Linux Update Dependencies') {
                     // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-                        sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
+                        sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
                     }
 
                     withEnv([
@@ -466,7 +466,7 @@ jobs["linux"] = {
 
                             stage('Linux Build Browser') {
                                 try {
-                                    sh './magic_build_and_package.sh  --clobber'
+                                    sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
                                 } catch (e) {
                                     archive 'obj/config.log'
                                     throw e
@@ -493,7 +493,7 @@ jobs["linux"] = {
 
                                         withEnv([
                                             "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
-                                            sh './sign_lin.sh'
+                                            sh '/bin/bash -lc "./sign_lin.sh"'
                                         }
                                     }
                                 } finally {
