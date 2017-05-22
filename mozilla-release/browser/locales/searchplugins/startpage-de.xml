@@ -7,6 +7,6 @@
     <Param name="query" value="{searchTerms}"/>
     <Param name="cat" value="web"/>
     <Param name="pl" value="opensearch"/>
-    <Param name="language" value="english"/>
+    <Param name="language" value="deutsch"/>
   </Url>
 </SearchPlugin>
