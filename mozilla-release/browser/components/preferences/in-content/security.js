@@ -354,7 +354,7 @@ var gPasswordManagers = {
   },
 
   getExisting: function() {
-    let KNOWN_PW_MANAGERS = ["support@lastpass.com"];
+    let KNOWN_PW_MANAGERS = ["support@lastpass.com", "onepassword4@agilebits.com"];
 
     return new Promise(function(resolve, reject) {
       AddonManager.getAllAddons(function(all) {
@@ -370,6 +370,15 @@ var gPasswordManagers = {
   // can be a promise if we decide to move the list to backend
   getAvailable: function(){
     return [{
+      "id": "onepassword4@agilebits.com",
+      "icons": {
+       "64": "https://s3.amazonaws.com/cdncliqz/update/browser/onepassword4%40agilebits.com/onepassword-icon.svg"
+      },
+      "name": "1Password",
+      "homepageURL": "https://agilebits.com/onepassword",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/onepassword4%40agilebits.com/latest.xpi"
+    },
+    {
       "id": "support@lastpass.com",
       "icons": {
        "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/8/8542-64.png?modified=1457436015"
