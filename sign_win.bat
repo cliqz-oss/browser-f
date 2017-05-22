@@ -10,7 +10,7 @@ echo %ff_exe%
 echo %lang%
 
 set timestamp_server_sha1=http://timestamp.verisign.com/scripts/timstamp.dll
-set timestamp_server_sha256=http://timestamp.geotrust.com/tsa
+set timestamp_server_sha256=http://sha256timestamp.ws.symantec.com/sha256/timestamp
 echo %CLZ_SIGNTOOL_PATH%
 
 if exist ./pkg%STUB_PREFIX%_%lang% rmdir /q /s "pkg%STUB_PREFIX%_%lang%"
