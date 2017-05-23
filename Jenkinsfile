@@ -13,64 +13,64 @@ def jobs = [:]
 def helpers
 
 properties([
-    [$class: 'JobRestrictionProperty'], 
+    [$class: 'JobRestrictionProperty'],
     disableConcurrentBuilds(),
     parameters([
         string(defaultValue: 'pr', name: 'RELEASE_CHANNEL'),
-        string(defaultValue: 'google-api-key', 
+        string(defaultValue: 'google-api-key',
                 name: 'CQZ_GOOGLE_API_KEY_CREDENTIAL_ID'),
-        string(defaultValue: 'mozilla-api-key', 
+        string(defaultValue: 'mozilla-api-key',
                 name: 'CQZ_MOZILLA_API_KEY_CREDENTIAL_ID'),
-        string(defaultValue: 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b', 
+        string(defaultValue: 'f3c1a44b-1da8-4b37-a45d-a764b3f0b40b',
                 name: 'CQZ_AWS_CREDENTIAL_ID'),
-        string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi', 
+        string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi',
                 name: 'CQZ_EXTENSION_URL'),
-        string(defaultValue: "4757E2EB2FE332E076F294D0230F41B6009968E5", 
+        string(defaultValue: "4757E2EB2FE332E076F294D0230F41B6009968E5",
                 name: "CQZ_CERT_NAME"),
-        string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi', 
+        string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi',
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
-        string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2', 
+        string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2',
                 name: 'ANSIBLE_PLAYBOOK_PATH'),
         string(defaultValue: "8000", name: 'NODE_MEMORY'),
         string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
         string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
-        string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a", 
+        string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c", 
+        string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c",
                 name: "WIN_CERT_PATH_CREDENTIAL_ID"),
-        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165", 
+        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAC_CERT_CREDENTIAL_ID"),
-        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", 
+        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
                 name: "MAC_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165", 
+        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAR_CERT_CREDENTIAL_ID"),
-        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322", 
+        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
                 name: "MAR_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "debian-gpg-key", 
-                name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"), 
-        string(defaultValue: "debian-gpg-pass", 
+        string(defaultValue: "debian-gpg-key",
+                name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"),
+        string(defaultValue: "debian-gpg-pass",
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
-        string(defaultValue: 'cliqz/ansible:20170511173229', 
+        string(defaultValue: 'cliqz/ansible:20170511173229',
                 name: 'IMAGE_NAME'),
-        string(defaultValue: 'ami-66c1b770', 
+        string(defaultValue: 'ami-66c1b770',
                 name: 'IMAGE_AMI'),
-        string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com', 
+        string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
         string(defaultValue: "1.14.0", name: "CQZ_VERSION"),
-        booleanParam(defaultValue: false, description: '', 
+        booleanParam(defaultValue: false, description: '',
                     name: 'MAC_REBUILD_IMAGE'),
-        booleanParam(defaultValue: false, description: '', 
+        booleanParam(defaultValue: false, description: '',
                     name: 'WIN_REBUILD_IMAGE'),
-        booleanParam(defaultValue: false, description: '', 
+        booleanParam(defaultValue: false, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
-    ]), 
+    ]),
     pipelineTriggers([])
 ])
 
-node('docker && us-east-1') {    
+node('docker && us-east-1') {
     stage("Copy XPI") {
         UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
         HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
@@ -84,7 +84,7 @@ node('docker && us-east-1') {
             sh "aws s3 cp ${params.CQZ_EXTENSION_URL} $UPLOAD_PATH"
             sh "aws s3 cp ${params.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
         }
-    }       
+    }
 }
 
 node('docker && us-east-1') {
@@ -97,12 +97,12 @@ node('docker && us-east-1') {
         } catch(e) {
             echo "Could not load build-helpers"
             throw e
-        }    
+        }
     }
 }
 
 jobs["windows"] = {
-    // Check if there are later jobs wating in a queue and abort 
+    // Check if there are later jobs wating in a queue and abort
     if (helpers.hasNewerQueuedJobs()) {
         error("Has Jobs in queue, aborting")
     }
@@ -121,10 +121,10 @@ jobs["windows"] = {
                     sh "chmod 0600 /home/ubuntu/.aws/config"
 
                     withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding', 
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {               
+                    [$class: 'AmazonWebServicesCredentialsBinding',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                         def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                         def bootstrap_args = "-u 0 "
                         def prov_args = "-u 0 "
@@ -143,7 +143,7 @@ jobs["windows"] = {
                                         "instance_name=browser-f"
                                         ]) {
                                            def bootstrap_params = "image_ami=${params.IMAGE_AMI}"
-                                           sh "cd /playbooks && ansible-playbook -e \"${bootstrap_params} \" ec2/bootstrap.yml"    
+                                           sh "cd /playbooks && ansible-playbook -e \"${bootstrap_params} \" ec2/bootstrap.yml"
                                     }
                                 }
                             }
@@ -159,15 +159,15 @@ jobs["windows"] = {
                         sleep(600)
 
                         // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-                        docker.withRegistry(DOCKER_REGISTRY_URL) {
+                        docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                             timeout(60) {
                                 def image = docker.image(IMAGE_NAME)
 
-                                docker.image(image.imageName()).inside(prov_args) {    
+                                docker.image(image.imageName()).inside(prov_args) {
                                     withCredentials([
                                         usernamePassword(
-                                        credentialsId: params.WINDOWS_SLAVE_CREDENTIALS, 
-                                        passwordVariable: 'PASSWORD', 
+                                        credentialsId: params.WINDOWS_SLAVE_CREDENTIALS,
+                                        passwordVariable: 'PASSWORD',
                                         usernameVariable: 'USERNAME')]) {
                                         withEnv([
                                             "instance_name=${ec2_node.get('nodeId')}",
@@ -177,11 +177,11 @@ jobs["windows"] = {
                                             "USERNAME=${USERNAME}",
                                             "PASSWORD=${PASSWORD}"
                                             ]){
-                                            def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"                
+                                            def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"
                                             sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
 
                                         }
-                                        
+
                                     }
                                 }
                             }
@@ -206,26 +206,26 @@ jobs["windows"] = {
                     userRemoteConfigs: scm.userRemoteConfigs
                 ])
             } // stage
-            
+
             stage("Fix git windows file-endings") {
                 bat "git config core.autocrlf false && git config core.eof lf &&  git rm --cached -r -q . && git reset --hard -q"
             }
             withCredentials([
-                [$class: 'FileBinding', 
-                    credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID, 
+                [$class: 'FileBinding',
+                    credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID,
                     variable: 'CLZ_CERTIFICATE_PATH'],
-                [$class: 'StringBinding', 
-                    credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID, 
+                [$class: 'StringBinding',
+                    credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID,
                     variable: 'CLZ_CERTIFICATE_PWD'],
-                [$class: 'StringBinding', 
-                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+                [$class: 'StringBinding',
+                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
                     variable: 'MOZ_MOZILLA_API_KEY'],
-                [$class: 'StringBinding', 
-                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+                [$class: 'StringBinding',
+                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
                     variable: 'CQZ_GOOGLE_API_KEY'],
-                [$class: 'AmazonWebServicesCredentialsBinding', 
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                [$class: 'AmazonWebServicesCredentialsBinding',
+                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
                 ]) {
 
@@ -260,12 +260,12 @@ jobs["windows"] = {
     }
 }
 
-jobs["mac"] = {   
-    def osx_slave 
+jobs["mac"] = {
+    def osx_slave
 
     retry(3) {
         osx_slave = helpers.getIdleSlave('osx pr')
-        
+
         if (!osx_slave) {
             sleep 1000
             error("Could not get an executor on OSX slave")
@@ -277,14 +277,14 @@ jobs["mac"] = {
             stage('OSX Hypervisor Checkout') {
                 checkout scm
             }
-                             
+
             def LANG_PARAM = ""
             try {
                 if (env.CQZ_LANG) {
                     LANG_PARAM = "-lang ${CQZ_LANG}"
                 }
             } catch(e) {}
-                
+
             stage('OSX Bootstrap') {
                 sh '/bin/bash -lc "pip install compare-locales"'
                 sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
@@ -297,16 +297,16 @@ jobs["mac"] = {
                 "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
                  withCredentials([
-                     [$class: 'StringBinding', 
-                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+                     [$class: 'StringBinding',
+                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
                         variable: 'CQZ_GOOGLE_API_KEY'],
-                     [$class: 'StringBinding', 
-                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+                     [$class: 'StringBinding',
+                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
                         variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                         stage('fix keys') {
                             sh "if [ ! -d /builds ]; then sudo mkdir -p /builds; fi"
-                            sh '''#!/bin/bash -l 
+                            sh '''#!/bin/bash -l
                                 echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
                                 echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
                             '''
@@ -322,11 +322,11 @@ jobs["mac"] = {
                     sh '/bin/bash -lc "rm -rf obj/pkg"'
 
                     withCredentials([
-                        [$class: 'FileBinding', 
-                            credentialsId: params.MAC_CERT_CREDENTIAL_ID, 
+                        [$class: 'FileBinding',
+                            credentialsId: params.MAC_CERT_CREDENTIAL_ID,
                             variable: 'CERT_FILE'],
-                        [$class: 'StringBinding', 
-                            credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID, 
+                        [$class: 'StringBinding',
+                            credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
                             variable: 'CERT_PASS']
                     ]) {
                         try {
@@ -364,11 +364,11 @@ jobs["mac"] = {
                             try {
                                 //expose certs
                                 withCredentials([
-                                    [$class: 'FileBinding', 
-                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID, 
+                                    [$class: 'FileBinding',
+                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID,
                                         variable: 'CLZ_CERTIFICATE_PATH'],
-                                    [$class: 'StringBinding', 
-                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID, 
+                                    [$class: 'StringBinding',
+                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
                                         variable: 'CLZ_CERTIFICATE_PWD']]) {
 
                                     sh '''#!/bin/bash -l -x
@@ -401,10 +401,10 @@ jobs["mac"] = {
                     }
                 }
             }
-        }   
+        }
     }
 }
-    
+
 jobs["linux"] = {
     node('browser') {
         ws('build') {
@@ -447,17 +447,17 @@ jobs["linux"] = {
                         "CQZ_COMMIT=$COMMIT_ID",
                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
                         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
-     
+
                         withCredentials([
-                            [$class: 'StringBinding', 
-                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, 
+                            [$class: 'StringBinding',
+                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
                                 variable: 'CQZ_GOOGLE_API_KEY'],
-                            [$class: 'StringBinding', 
-                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, 
+                            [$class: 'StringBinding',
+                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
                                 variable: 'MOZ_MOZILLA_API_KEY']]) {
 
                             stage('fix keys') {
-                                sh '''#!/bin/bash -l 
+                                sh '''#!/bin/bash -l
                                     sudo chown -R `whoami` /builds
                                     sudo echo ${MOZ_MOZILLA_API_KEY} > /builds/mozilla-desktop-geoloc-api.key
                                     sudo echo ${CQZ_GOOGLE_API_KEY} >/builds/google-desktop-api.key
@@ -475,18 +475,18 @@ jobs["linux"] = {
                         }
 
                         withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding', 
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                            [$class: 'AmazonWebServicesCredentialsBinding',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
                             stage('Publisher (Debian Repo)') {
                                 try {
                                     withCredentials([
-                                        [$class: 'FileBinding', 
-                                            credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID, 
+                                        [$class: 'FileBinding',
+                                            credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID,
                                             variable: 'DEBIAN_GPG_KEY'],
-                                        [$class: 'StringBinding', 
-                                            credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID, 
+                                        [$class: 'StringBinding',
+                                            credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID,
                                             variable: 'DEBIAN_GPG_PASS']]) {
 
                                         sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
