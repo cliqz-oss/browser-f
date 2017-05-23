@@ -38,7 +38,7 @@ BUILD_STATUS_FAILED = 'Failed'
 BUILD_STATUS_SUCCESSFUL = 'Successful'
 
 EMAIL_LIST = 'alexander@cliqz.com,leonid@cliqz.com,lucian@cliqz.com'
-EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com'
+EMAIL_LIST_SUCCESSFUL = 'kateryna@cliqz.com,prashant@cliqz.com,tamara@cliqz.com,marta@cliqz.com'
 
 // Die early for missing build params
 CQZ_RELEASE_CHANNEL
