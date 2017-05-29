@@ -8729,10 +8729,12 @@ Object.assign(SystemAddonInstallLocation.prototype, {
     yield OS.File.makeDir(this._baseDir.path, { ignoreExisting: true });
 
     let addonSet = this._loadAddonSet();
+   
+    let aAddonsIDs = aAddons.map(a => a.id);
 
     // Remove any add-ons that are no longer part of the set.
     for (let addonID of Object.keys(addonSet.addons)) {
-      if (!aAddons.includes(addonID)) {
+      if (!aAddonsIDs.includes(addonID)) {
         AddonManager.getAddonByID(addonID, a => a.uninstall());
       }
     }
