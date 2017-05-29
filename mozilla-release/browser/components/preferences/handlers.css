@@ -44,10 +44,6 @@ listitem.offlineapp {
   margin-top: 30px;
 }
 
-#password-managers-list {
-  border: 0;
-}
-
 .cliqz-feature {
   -moz-box-orient: vertical;
   -moz-binding: url("chrome://mozapps/content/extensions/extensions.xml#cliqz-feature");
@@ -82,12 +78,4 @@ listitem.offlineapp {
 
 .cliqz-feature .homepage-container {
   margin-right: 10px;
-}
-
-#password-managers-list .cliqz-feature {
-  border: 1px solid var(--in-content-box-border-color);
-}
-
-#password-managers-list .cliqz-feature:not(:first-child) {
-  margin-top: 5px;
 }
