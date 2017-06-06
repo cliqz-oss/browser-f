@@ -332,3 +332,6 @@ devtools.jar:
     skin/images/firebug/command-measure.svg (themes/images/firebug/command-measure.svg)
     skin/images/firebug/command-rulers.svg (themes/images/firebug/command-rulers.svg)
     skin/images/firebug/command-noautohide.svg (themes/images/firebug/command-noautohide.svg)
+
+    # DB-1276. For hiding addons on about:debugging page in release build
+*   modules/devtools/client/aboutdebugging/components/aboutdebugging.js (aboutdebugging/components/aboutdebugging.js)

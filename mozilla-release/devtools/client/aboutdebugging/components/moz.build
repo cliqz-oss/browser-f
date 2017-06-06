@@ -9,7 +9,9 @@ DIRS += [
 ]
 
 DevToolsModules(
-    'aboutdebugging.js',
+# DB-1276. For hiding addons on about:debugging page in release build
+# Processing for this file moved to devtools/client/jar.mn
+#   'aboutdebugging.js',
     'panel-header.js',
     'panel-menu-entry.js',
     'panel-menu.js',
