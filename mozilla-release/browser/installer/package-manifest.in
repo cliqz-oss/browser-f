@@ -834,5 +834,4 @@ bin/libfreebl_32int64_3.so
 #endif
 
 ; Extra distrubution files
-@RESPATH@/distribution/*
 @RESPATH@/cliqz.cfg

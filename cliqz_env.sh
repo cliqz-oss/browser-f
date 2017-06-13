@@ -64,8 +64,7 @@ fi
 export MOZ_OBJDIR=../obj
 
 export MOZCONFIG=browser/config/cliqz-release.mozconfig
-export CQZ_VERSION=$(awk -F "=" '/version/ {print $2}'\
-  ./repack/distribution/distribution.ini | head -n1)
+export CQZ_VERSION=$(cat ./mozilla-release/browser/config/version_display.txt)
 export MOZ_AUTOMATION_UPLOAD=1  # TODO: remove, duplicates cliqz.mozconfig
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates

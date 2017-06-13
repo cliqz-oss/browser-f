@@ -1247,11 +1247,6 @@ ifdef HTTPSE_EXT_URL
 	wget --output-document $(HTTPSE_XPI_PATH) $(HTTPSE_EXT_URL)
 endif
 
-DISTR_INI = $(DIST_RESPATH)/distribution/distribution.ini
-$(DISTR_INI):
-	echo DISTR_INI in `pwd`
-	cp -R $(topsrcdir)/../repack/distribution $(DIST_RESPATH)
-
 CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
 $(CLIQZ_CFG):
 	echo CLIQZ_CFG in `pwd`
@@ -1259,7 +1254,7 @@ $(CLIQZ_CFG):
 	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
 
 # Package Cliqz stuff
-cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(DISTR_INI) $(CLIQZ_CFG)
+cliqz_distr: $(CLIQZ_XPI_PATH) $(HTTPSE_XPI_PATH) $(CLIQZ_CFG)
 	echo cliqz_distr in `pwd`
 
 chrome::
