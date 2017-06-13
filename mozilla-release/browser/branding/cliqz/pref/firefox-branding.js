@@ -32,6 +32,13 @@ pref("general.config.obscure_value", 0);
 
 // turn off special startpage on windows 10
 pref("browser.usedOnWindows10", true);
+pref("browser.usedOnWindows10.introURL", "about:blank");
 
 // url for support page about how to set browser as default in Windows 10
 pref("app.support.default_in_win10.URL", "https://cliqz.com/support/cliqz-als-standardbrowser-in-windows-10");
+
+pref("browser.aboutHomeSnippets.updateUrl", "https://www.cliqz.com/");
+
+// Cliqz distribution settings
+pref("app.distributor", "cliqz");
+pref("mozilla.partner.id", "cliqz");
