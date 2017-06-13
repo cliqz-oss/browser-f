@@ -86,7 +86,7 @@ static const RedirEntry kRedirMap[] = {
   { "home", "about:cliqz",
     nsIAboutModule::ALLOW_SCRIPT },
 #if 0
-# Replaced by CLIQZ
+# Replaced by Cliqz
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |

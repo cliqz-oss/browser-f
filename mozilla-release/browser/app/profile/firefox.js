@@ -221,16 +221,16 @@ pref("browser.shell.skipDefaultBrowserCheck", true);
 pref("browser.shell.defaultBrowserCheckCount", 0);
 pref("browser.defaultbrowser.notificationbar", false);
 
-// Not used in CLIQZ. Replaced by the two below.
+// Not used in Cliqz. Replaced by the two below.
 #if 0
 // 0 = blank, 1 = home (browser.startup.homepage), 2 = last visited page, 3 = resume previous browser session
 // The behavior of option 3 is detailed at: http://wiki.mozilla.org/Session_Restore
 pref("browser.startup.page",                1);
 #endif
-// If true, CLIQZ will restore tabs from previous session, same as
+// If true, Cliqz will restore tabs from previous session, same as
 // 'browser.startup.page' = 3 would do.
 pref("browser.startup.restoreTabs", false);
-// If true, CLIQZ will open additional tab with 'browser.startup.homepage' URL.
+// If true, Cliqz will open additional tab with 'browser.startup.homepage' URL.
 // This is similar to 'browser.startup.page' = 1, but without excluding session
 // restore.
 pref("browser.startup.addFreshTab", true);
@@ -1266,7 +1266,7 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 // All the Geolocation preferences are here.
 //
 // The request URL of the GeoLocation backend.
-// CLIQZ. Always use Mozilla's geolocation API
+// Cliqz. Always use Mozilla's geolocation API
 #ifdef 0
 pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
 #else

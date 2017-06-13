@@ -257,7 +257,7 @@ Section "-InstallStartCleanup"
   ${If} ${FileExists} "$INSTDIR\defaults\pref\channel-prefs.js"
     Delete "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
-  ; CLIQZ Browser: we don't replace already existing distribution.js file in pref
+  ; Cliqz Browser: we don't replace already existing distribution.js file in pref
   ${If} ${FileExists} "$INSTDIR\defaults\pref"
     RmDir "$INSTDIR\defaults\pref"
   ${EndIf}
@@ -609,7 +609,7 @@ Section "-InstallEndCleanup"
     ${EndIf}
   ${EndUnless}
   ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
-  ; CLIQZ: we want to have icon on taskbar in silent mode installation
+  ; Cliqz: we want to have icon on taskbar in silent mode installation
   ${MigrateTaskBarShortcut}
 
   ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
@@ -662,7 +662,7 @@ Section "-InstallEndCleanup"
     ${EndIf}
   ${EndIf}
 
-  ; CLIQZ: autolaunch in silent mode if /run switch exist
+  ; Cliqz: autolaunch in silent mode if /run switch exist
   ${If} ${Silent}
     ${GetParameters} $0
     ${GetOptions} "$0" "/run" $0

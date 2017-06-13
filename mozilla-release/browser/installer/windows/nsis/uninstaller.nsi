@@ -389,7 +389,7 @@ Section "Uninstall"
   ${If} ${FileExists} "$INSTDIR\defaults\pref\channel-prefs.js"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
-  ; CLIQZ Browser: remove distribution.js file on uninstall stage
+  ; Cliqz Browser: remove distribution.js file on uninstall stage
   ${If} ${FileExists} "$INSTDIR\defaults\pref\distribution.js"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\distribution.js"
   ${EndIf}

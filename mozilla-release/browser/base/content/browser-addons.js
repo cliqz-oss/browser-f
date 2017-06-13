@@ -623,7 +623,7 @@ var LightWeightThemeWebInstaller = {
         notificationBox.PRIORITY_INFO_MEDIUM,
         []);
 #if 0
-    // Disable LW themes in CLIQZ.
+    // Disable LW themes in Cliqz.
 
     let data = this._manager.parseTheme(dataString, baseURI);
 
@@ -786,7 +786,7 @@ var LightWeightThemeWebInstaller = {
   },
 
   _isAllowed(srcURIString) {
-    return false;  // Disable LW themes in CLIQZ.
+    return false;  // Disable LW themes in Cliqz.
 #if 0
     let uri;
     try {

@@ -814,7 +814,7 @@
           var helpButton = document.documentElement.getButton("help");
           if (aPaneElement.helpTopic) {
             helpButton.hidden = false;
-            // CLIQZ - DB-1071: Added Mozilla Support label next to help icon
+            // Cliqz. DB-1071: Added Mozilla Support label next to help icon
             if (aPaneElement.helpTopic === "prefs-connection-settings") {
               const mozLabel = document.getAnonymousElementByAttribute(this, 'class', 'mozilla-support-label');
               if (mozLabel) {

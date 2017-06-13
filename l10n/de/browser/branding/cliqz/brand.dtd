@@ -2,8 +2,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY  brandShorterName      "CLIQZ">
-<!ENTITY  brandShortName        "CLIQZ">
-<!ENTITY  brandFullName         "CLIQZ">
-<!ENTITY  vendorShortName       "CLIQZ">
-<!ENTITY  trademarkInfo.part1   "CLIQZ und die CLIQZ-Logos sind Warenzeichen der Cliqz GmbH.">
+<!ENTITY  brandShorterName      "Cliqz">
+<!ENTITY  brandShortName        "Cliqz">
+<!ENTITY  brandFullName         "Cliqz">
+<!ENTITY  vendorShortName       "Cliqz">
+<!ENTITY  trademarkInfo.part1   "Cliqz und die Cliqz-Logos sind Warenzeichen der Cliqz GmbH.">

@@ -1,4 +1,4 @@
 ;!@Install@!UTF-8!
-Title="CLIQZ"
+Title="Cliqz"
 RunProgram="setup.exe"
 ;!@InstallEnd@!

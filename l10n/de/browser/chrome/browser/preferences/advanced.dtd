@@ -30,9 +30,9 @@
 
 <!ENTITY dataChoicesTab.label            "Datenübermittlung">
 
-<!ENTITY healthReportIntro.label          "Den Schutz deiner Daten nehmen wir sehr ernst. Wenn CLIQZ Daten an das CLIQZ Team sendet, verarbeiten wir diese Daten wie in unserer <label class='text-link' href='https://cliqz.com/privacy'>Datenschutzerklärung</label> beschrieben.">
+<!ENTITY healthReportIntro.label          "Den Schutz deiner Daten nehmen wir sehr ernst. Wenn Cliqz Daten an das Cliqz Team sendet, verarbeiten wir diese Daten wie in unserer <label class='text-link' href='https://cliqz.com/privacy'>Datenschutzerklärung</label> beschrieben.">
 
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen deiner Browser-Leistung und übermittelt Daten über den Browser-Status an das CLIQZ-Team.">
+<!ENTITY healthReportDesc.label          "Hilft beim Verstehen deiner Browser-Leistung und übermittelt Daten über den Browser-Status an das Cliqz-Team.">
 <!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
 <!ENTITY enableHealthReport.accesskey    "S">
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
@@ -42,7 +42,7 @@
 <!ENTITY enableTelemetryData.accesskey   "Z">
 <!ENTITY telemetryLearnMore.label        "Weitere Informationen">
 
-<!ENTITY crashReporterDesc2.label         "Absturzberichte helfen dem CLIQZ-Team dabei, Probleme zu beheben und den Browser stabiler und sicherer zu machen.">
+<!ENTITY crashReporterDesc2.label         "Absturzberichte helfen dem Cliqz-Team dabei, Probleme zu beheben und den Browser stabiler und sicherer zu machen.">
 <!ENTITY alwaysSubmitCrashReports.label   "&brandShortName; erlauben, bislang nicht gesendete Absturzberichte zu übermitteln">
 <!ENTITY alwaysSubmitCrashReports.accesskey "e">
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">

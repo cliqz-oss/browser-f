@@ -69,7 +69,7 @@
 # Firefox 27
 @DIR_MACOS@distribution/extensions/testpilot@labs.mozilla.com.xpi
 
-# CLIQZ Remove extension from distributions because it was move to
+# Cliqz Remove extension from distributions because it was move to
 # System Addon (browser/feature)
 @DIR_RESOURCES@distribution/extensions/cliqz@cliqz.com.xpi
 
@@ -119,5 +119,5 @@
 @DIR_MACOS@searchplugins/*
 @DIR_MACOS@webapprt/components/
 
-# CLIQZ remove old Netflix supporting file
+# Cliqz. Remove old Netflix supporting file
 @DIR_MACOS@voucher.bin

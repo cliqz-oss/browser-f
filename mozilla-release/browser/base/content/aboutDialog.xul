@@ -45,7 +45,7 @@
       <vbox id="leftBox" flex="1"/>
       <vbox id="rightBox" flex="1">
 #if 0
-# CLIQZ displays its version info in #distribution. See below.
+# Cliqz displays its version info in #distribution. See below.
         <hbox align="baseline">
 #expand <label id="version">__MOZ_APP_VERSION_DISPLAY__</label>
 #ifndef NIGHTLY_BUILD

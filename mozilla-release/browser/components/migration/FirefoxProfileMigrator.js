@@ -639,7 +639,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
 };
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {
-  // CLIQZ
+  // Cliqz
   // This is FF migrator (need to correct migration process in MigrationUtils.jsm)
   get: () => true
 });
@@ -653,7 +653,7 @@ Object.defineProperty(CliqzProfileMigrator.prototype, "tabsRestoreURL", {
 });
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "startupOnlyMigrator", {
-  // CLIQZ
+  // Cliqz
   // Use not only as startup migrator, but as option to import from FF later
   get: () => false
 });
@@ -666,7 +666,7 @@ FirefoxProfileMigrator.prototype.classDescription = "Firefox Profile Migrator";
 FirefoxProfileMigrator.prototype.contractID = "@mozilla.org/profile/migrator;1?app=browser&type=firefox";
 FirefoxProfileMigrator.prototype.classID = Components.ID("{91185366-ba97-4438-acba-48deaca63386}");
 
-CliqzProfileMigrator.prototype.classDescription = "CLIQZ Profile Migrator";
+CliqzProfileMigrator.prototype.classDescription = "Cliqz Profile Migrator";
 CliqzProfileMigrator.prototype.contractID =
     "@mozilla.org/profile/migrator;1?app=browser&type=CLIQZ";
 CliqzProfileMigrator.prototype.classID =

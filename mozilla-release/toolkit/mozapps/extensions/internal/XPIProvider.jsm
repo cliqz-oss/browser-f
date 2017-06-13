@@ -4508,7 +4508,7 @@ this.XPIProvider = {
    * @return true if enabling the add-on should block e10s
    */
   isBlockingE10s(aAddon) {
-    // In CLIQZ only owned addons can be installed, so trust em.
+    // In Cliqz only owned addons can be installed, so trust em.
     if (aAddon.multiprocessCompatible)
       return false;
 
@@ -8680,7 +8680,7 @@ Object.assign(SystemAddonInstallLocation.prototype, {
     }
 
 #if 0
-# CLIQZ - https-everywhere is unpacked non bootstrap addon, though we want
+# Cliqz - https-everywhere is unpacked non bootstrap addon, though we want
 #         it to be a system addon. Thus we disable those checks for now
 
     if (aAddon.unpack) {

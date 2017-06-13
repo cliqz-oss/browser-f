@@ -373,5 +373,5 @@ user_pref("marionette.prefs.recommended", false);
 // Disable Screenshots by default for now
 user_pref("extensions.screenshots.system-disabled", true);
 
-// CLIQZ ignore onboarding
+// Cliqz ignore onboarding
 user_pref("extensions.cliqz.browserOnboarding", true);

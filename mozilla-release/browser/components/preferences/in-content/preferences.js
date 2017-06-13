@@ -68,7 +68,7 @@ function init_all() {
 #endif
   register_module("paneSecurity", gSecurityPane);
   register_module("paneConnect", gConnectPane);
-  // CLIQZ: DB-1230: Display the rich list item when connect module is available
+  // Cliqz. DB-1230: Display the rich list item when connect module is available
   try {
     fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
       if(res.status === 200) {
@@ -105,7 +105,7 @@ function init_all() {
   categories = categories.querySelectorAll("richlistitem.category");
   for (let category of categories) {
     let name = internalPrefCategoryNameToFriendlyName(category.value);
-    // CLIQZ - DB-1264: Connect pane doesn't have a help button
+    // Cliqz. DB-1264: Connect pane doesn't have a help button
     if (name !== 'connect') {
       let helpSelector = `#header-${name} .help-button`;
       let helpButton = document.querySelector(helpSelector);

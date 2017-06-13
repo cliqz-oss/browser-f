@@ -211,7 +211,7 @@ this.LightweightThemeManager = {
   },
 
   previewTheme(aData) {
-    return;  // Disable LW themes in CLIQZ.
+    return;  // Disable LW themes in Cliqz.
 #if 0
     let cancel = Cc["@mozilla.org/supports-PRBool;1"].createInstance(Ci.nsISupportsPRBool);
     cancel.data = false;
@@ -295,7 +295,7 @@ this.LightweightThemeManager = {
    *         The lightweight theme to switch to
    */
   themeChanged(aData) {
-    return;  // Disable LW themes in CLIQZ.
+    return;  // Disable LW themes in Cliqz.
 #if 0
     if (_previewTimer) {
       _previewTimer.cancel();
