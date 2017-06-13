@@ -242,7 +242,7 @@ var CustomizableUIInternal = {
 #if 0
       "search-container",
 #endif
-      "cliqz-cc-btn", // CLIQZ control center
+      "cliqz-cc-btn", // Cliqz control center
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",

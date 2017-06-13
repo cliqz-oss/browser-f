@@ -478,7 +478,7 @@ nsWindowsShellService::InvokeHTTPOpenAsVerb()
   if (!StringBeginsWith(urlStr, NS_LITERAL_STRING("https://"))) {
     return NS_ERROR_FAILURE;
   }
-#if 0  // predefined in branding pref for CLIQZ browser
+#if 0  // predefined in branding pref for Cliqz browser
   urlStr.AppendLiteral("win10-default-browser");
 #endif
 

@@ -1162,7 +1162,7 @@ toolbarpaletteitem[dragover] {
   display: -moz-box;
 }
 
-/* Hidden in CLIQZ */
+/* Hidden in Cliqz */
 #customization-toolbar-visibility-button,
 #customization-lwtheme-button {
   display: none !important;

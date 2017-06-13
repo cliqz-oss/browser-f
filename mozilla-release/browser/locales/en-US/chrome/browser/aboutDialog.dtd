@@ -108,16 +108,16 @@
 <!ENTITY channel.description.end    " update channel. ">
 
 
-<!-- CLIQZ -->
+<!-- Cliqz -->
 <!ENTITY version.basedon            "based on Firefox ">
 <!ENTITY cliqz.headline             "We Redesign the Internet">
-<!ENTITY cliqz.desc1.text           "The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: CLIQZ does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our">
+<!ENTITY cliqz.desc1.text           "The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: Cliqz does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our">
 <!ENTITY cliqz.desc1.privacy        "privacy standards">
 <!ENTITY cliqz.desc1.or             "or">
 <!ENTITY cliqz.desc1.contact        "get in contact">
 
-<!ENTITY cliqz.desc2.text1          "Parts of the CLIQZ Browser are building upon the">
+<!ENTITY cliqz.desc2.text1          "Parts of the Cliqz Browser are building upon the">
 <!ENTITY cliqz.desc2.mozilla        "Mozilla open source project">
 <!ENTITY cliqz.desc2.text2          "Information about the Mozilla Public License 2.0 and other open source and free software can be found">
 <!ENTITY cliqz.desc2.here           "here">
-<!ENTITY cliqz.desc2.text3          "All other parts of the CLIQZ Browser, that is for example integrated search, anti-tracking, and human web, are the exclusive property of CLIQZ.">
+<!ENTITY cliqz.desc2.text3          "All other parts of the Cliqz Browser, that is for example integrated search, anti-tracking, and human web, are the exclusive property of Cliqz.">

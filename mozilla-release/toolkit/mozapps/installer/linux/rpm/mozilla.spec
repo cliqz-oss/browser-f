@@ -13,14 +13,14 @@ Release:        %{?moz_rpm_release:%{moz_rpm_release}}%{?buildid:.%{buildid}}
 Summary:        %{pr_name}
 Group:          Applications/Internet
 License:        MPL 2
-Vendor:         CLIQZ
+Vendor:         Cliqz GmbH
 URL:            http://www.mozilla.org/projects/firefox/
 Source0:        %{name}.desktop
 BuildRoot:      %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 
 #AutoProv:       no
 
-# CLIQZ: on ubuntu dependency has to be installed with apt-get
+# Cliqz: on ubuntu dependency has to be installed with apt-get
 #BuildRequires:  desktop-file-utils
 
 

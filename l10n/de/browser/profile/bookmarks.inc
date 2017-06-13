@@ -69,8 +69,8 @@
 # Nightly builds only, link title for https://planet.mozilla.org/
 #define planet Planet Mozilla (englisch)
 
-# CLIQZ links folder
-#define cliqz_heading CLIQZ
+# Cliqz links folder
+#define cliqz_heading Cliqz
 #define cliqz_about Über uns
 #define cliqz_contact Hilfe und Kontakt
 #define cliqz_tips Tipps und Tricks

@@ -1883,7 +1883,7 @@ var gCategories = {
     this.node = document.getElementById("categories");
     this._search = this.get("addons://search/");
 
-    // These addon categories are disabled in CLIQZ.
+    // These addon categories are disabled in Cliqz.
     const disabledCategories = new Set([
         'extension',
         'service',

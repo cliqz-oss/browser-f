@@ -108,16 +108,16 @@
 <!ENTITY channel.description.end    ".">
 
 
-<!-- CLIQZ -->
+<!-- Cliqz -->
 <!ENTITY version.basedon            "nutzt Firefox ">
 <!ENTITY cliqz.headline             "We Redesign the Internet">
-<!ENTITY cliqz.desc1.text           "CLIQZ respektiert deine Privatsphäre. Der Schutz deiner Daten ist uns wichtig. Als Unternehmen mit Sitz in Deutschland sind wir den besonders strengen deutschen Datenschutzgesetzen und unseren eigenen hohen Ansprüchen verpflichtet. Unser oberstes Prinzip: CLIQZ speichert keinerlei Daten auf unseren Servern, anhand derer du oder dein Gerät oder dein Verhalten im Web identifizierbar wären. Erfahre mehr über">
+<!ENTITY cliqz.desc1.text           "Cliqz respektiert deine Privatsphäre. Der Schutz deiner Daten ist uns wichtig. Als Unternehmen mit Sitz in Deutschland sind wir den besonders strengen deutschen Datenschutzgesetzen und unseren eigenen hohen Ansprüchen verpflichtet. Unser oberstes Prinzip: Cliqz speichert keinerlei Daten auf unseren Servern, anhand derer du oder dein Gerät oder dein Verhalten im Web identifizierbar wären. Erfahre mehr über">
 <!ENTITY cliqz.desc1.privacy        "Datenschutz und Privatsphäre">
 <!ENTITY cliqz.desc1.or             "auf unserer Webseite oder">
 <!ENTITY cliqz.desc1.contact        "sprich direkt mit uns">
 
-<!ENTITY cliqz.desc2.text1          "Der CLIQZ Browser baut auf dem">
+<!ENTITY cliqz.desc2.text1          "Der Cliqz Browser baut auf dem">
 <!ENTITY cliqz.desc2.mozilla        "Mozilla open source project">
 <!ENTITY cliqz.desc2.text2          "auf. Informationen zur „Mozilla Public License 2.0“ und anderen quelloffenen und kostenlosen Bestandteilen findest du">
 <!ENTITY cliqz.desc2.here           "hier">
-<!ENTITY cliqz.desc2.text3          "Die verbleibenden Produkte, wie zum Beispiel integrierte Suche, Anti-Tracking und Human Web, sind von uns entwickelt und gehören ausschließlich CLIQZ">
+<!ENTITY cliqz.desc2.text3          "Die verbleibenden Produkte, wie zum Beispiel integrierte Suche, Anti-Tracking und Human Web, sind von uns entwickelt und gehören ausschließlich Cliqz">

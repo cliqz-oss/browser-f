@@ -133,7 +133,7 @@ static void Output(const char *fmt, ... )
       (decltype(MessageBoxW)*) GetProcAddress(user32, "MessageBoxW");
     if (messageBoxW) {
       // TODO: Use `sAppData->name`
-      messageBoxW(nullptr, wide_msg, L"CLIQZ",
+      messageBoxW(nullptr, wide_msg, L"Cliqz",
                   MB_OK | MB_ICONERROR | MB_SETFOREGROUND);
     }
     FreeLibrary(user32);

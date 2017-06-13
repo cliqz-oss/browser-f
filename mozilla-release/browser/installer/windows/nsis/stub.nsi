@@ -249,7 +249,7 @@ ${StrTok}
 ; set the update channel to beta.
 !ifdef OFFICIAL
 !ifdef BETA_UPDATE_CHANNEL
-;CLIQZ. Don't use this
+;Cliqz. Don't use this
 ;!undef URLStubDownload32
 ;!undef URLStubDownload64
 ;!define URLStubDownload32 "http://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
@@ -601,7 +601,7 @@ Function SendPing
     ; completion of all phases.
     ${GetSecondsElapsed} "$EndInstallPhaseTickCount" "$EndFinishPhaseTickCount" $4
 
-    ; CLIQZ. Don't support 64-bit yet
+    ; Cliqz. Don't support 64-bit yet
     ;${If} $DroplistArch == "$(VERSION_64BIT)"
     ;  StrCpy $R0 "1"
     ;${Else}
@@ -665,17 +665,17 @@ Function SendPing
       ${GetParent} "$R2" $R3
       ${GetLongPath} "$R3" $R3
       ${If} $R3 == $INSTDIR
-        StrCpy $R2 "1" ; This CLIQZ install is set as default.
+        StrCpy $R2 "1" ; This Cliqz install is set as default.
       ${Else}
-        StrCpy $R2 "$R2" "" -9 # length of CLIQZ.exe
+        StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
         ${If} "$R2" == "${FileMainEXE}"
-          StrCpy $R2 "2" ; Another CLIQZ install is set as default.
+          StrCpy $R2 "2" ; Another Cliqz install is set as default.
         ${Else}
           StrCpy $R2 "0"
         ${EndIf}
       ${EndIf}
     ${Else}
-      StrCpy $R2 "0" ; CLIQZ is not set as default.
+      StrCpy $R2 "0" ; Cliqz is not set as default.
     ${EndIf}
 
     ${If} "$R2" == "0"
@@ -1075,7 +1075,7 @@ Function createOptions
       ; Read the registry instead of using ServicesHelper::IsInstalled so the
       ; plugin isn't included in the stub installer to lessen its size.
       ClearErrors
-      ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\CliqzMaintenance" "ImagePath"
+      ReadRegStr $0 HKLM "SYSTEM\CurrentControlSet\services\CLIQZMaintenance" "ImagePath"
       ${If} ${Errors}
         IntOp $0 132 + $ControlTopAdjustment
         ; In some locales, this string may be too long to fit on one line.
@@ -1104,7 +1104,7 @@ Function createOptions
   ${EndIf}
 !endif
 
-; CLIQZ. Don't support 64-bit yet, remove selector from Options page
+; Cliqz. Don't support 64-bit yet, remove selector from Options page
 !ifdef 0
   ${If} ${RunningX64}
     ; Get the exact pixel width we're going to need for this label.

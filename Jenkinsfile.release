@@ -1,7 +1,7 @@
 #!/usr/bin/env groovy
 
 /*
-Jenkins pipeline script to build CLIQZ browser for linux
+Jenkins pipeline script to build Cliqz browser for linux
 It does the following:
     1. Checks out 'cliqz-oss/browser-f'
     2. Builds a docker image with dependencies installed
@@ -211,8 +211,8 @@ def uploadBeta(build_id, cqz_version) {
   
   for (locale in locales) {
       for (inst_suff in installers_suffixes) {
-          full_installer_path = "CLIQZ-${cqz_version}.${locale}.${inst_suff}"
-          installer_path = "CLIQZ.${locale}.${inst_suff}"
+          full_installer_path = "cliqz-${cqz_version}.${locale}.${inst_suff}"
+          installer_path = "cliqz.${locale}.${inst_suff}"
           beta_path = "repository.cliqz.com/dist/beta/${cqz_version}/${build_id}/${full_installer_path}"
           latest_beta_path = "repository.cliqz.com/dist/beta/latest/${installer_path}"
    

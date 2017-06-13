@@ -681,7 +681,7 @@
                          onclick="checkForMiddleClick(this, event);"
                          tooltip="back-button-tooltip"
                          context="backForwardMenu"/>
-          <!-- CLIQZ: Forward button must be here in CLIQZ browser with custom theme -->
+          <!-- Cliqz: Forward button must be here in Cliqz browser with custom theme -->
           <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                          label="&forwardCmd.label;"
                          command="Browser:ForwardOrForwardDuplicate"

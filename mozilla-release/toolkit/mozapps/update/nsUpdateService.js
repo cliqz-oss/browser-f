@@ -1617,7 +1617,7 @@ function Update(update) {
   }
   this.name = name;
 #endif
-  // In CLIQZ we always use just the current product name.
+  // In Cliqz we always use just the current product name.
   var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
   this.name = brandBundle.GetStringFromName("brandShortName");
 }

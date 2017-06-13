@@ -49,7 +49,7 @@ function init(aEvent) {
     // Pref is unset
   }
 
-// CLIQZ. We don't use "version" element in CLIQZ browser at all
+// Cliqz. We don't use "version" element in Cliqz browser at all
 #if 0
   // Include the build ID and display warning if this is an "a#" (nightly or aurora) build
   let versionField = document.getElementById("version");

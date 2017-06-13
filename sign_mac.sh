@@ -12,13 +12,13 @@ for DMG in obj/dist/*.dmg
 do
   echo "Processing $DMG..."
   hdiutil attach -nobrowse $DMG
-  cp -r /Volumes/CLIQZ/*.app $PKG_DIR
+  cp -r /Volumes/cliqz/*.app $PKG_DIR
   xattr -rc $PKG_DIR/
   for app in $PKG_DIR/*.app
   do
     codesign -s $CQZ_CERT_NAME --force --deep $app
   done
-  hdiutil detach /Volumes/CLIQZ
+  hdiutil detach /Volumes/cliqz
   SIGNED_DMG="${DMG%.dmg}-signed.dmg"
 
   if [ -f $SIGNED_DMG ]; then
@@ -26,6 +26,6 @@ do
       rm $SIGNED_DMG
   fi
 
-  appdmg -v CLIQZ-dmg.json $SIGNED_DMG
+  appdmg -v cliqz-dmg.json $SIGNED_DMG
   cp $SIGNED_DMG $DMG
 done

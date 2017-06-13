@@ -184,7 +184,7 @@ this.MigratorPrototype = {
   },
 
   /**
-   * CLIQZ
+   * Cliqz
    * Flag for Firefox migrator. Only FirefoxProfileMigrator must set it to true.
    */
   get isFirefoxMigrator() {
@@ -384,8 +384,8 @@ this.MigratorPrototype = {
     });
 
     /**
-     * CLIQZ
-     * In CLIQZ browser it is possible to import data from Firefox always, not
+     * Cliqz
+     * In Cliqz browser it is possible to import data from Firefox always, not
      * only on startup, this is one of the product in import list. Code below
      * doesn't expecting such behavior (startupOnlyMigrator flag). If change
      * this flag to false in FirefoxProfileMigrator will fall into problem here,

@@ -53,7 +53,7 @@ if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
   # We need to copy this files because we build DE version as repack step, so
   # they don't exist for DE build (but must be before uploading stage, so they)
   # fall into mach_build_properties.json file
-  for f in dist/CLIQZ-*.{txt,json}; do
+  for f in dist/cliqz-*.{txt,json}; do
     cp $f `echo $f | sed "s/en-US/$LANG/"`
   done
 

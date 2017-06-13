@@ -1548,7 +1548,7 @@ this.XPIDatabase = {
           });
       }
       catch (e) {
-        logger.warn("Could not report through CLIQZ Extension telemetry", e);
+        logger.warn("Could not report through Cliqz Extension telemetry", e);
       }
     }, 5000);
   },

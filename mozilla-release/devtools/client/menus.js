@@ -181,7 +181,7 @@ exports.menuitems = [
   { separator: true,
     id: "devToolsEndSeparator"
   },
-/* blocked by CLIQZ
+/* blocked by Cliqz
   { id: "getMoreDevtools",
     l10nKey: "getMoreDevtoolsCmd",
     oncommand(event) {

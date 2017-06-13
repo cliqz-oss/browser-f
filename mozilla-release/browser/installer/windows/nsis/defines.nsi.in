@@ -21,7 +21,7 @@
 !endif
 
 # These defines should match application.ini settings
-!define AppName               "CLIQZ"
+!define AppName               "Cliqz"
 !define AppVersion            "@APP_VERSION@"
 !define GREVersion            @MOZILLA_VERSION@
 !define AB_CD                 "@AB_CD@"
@@ -81,7 +81,7 @@ VIProductVersion "1.0.0.0"
 VIAddVersionKey "ProductName"     "${BrandShortName}"
 VIAddVersionKey "CompanyName"     "${CompanyName}"
 #ifdef MOZ_OFFICIAL_BRANDING
-#CLIQZ don't use Trademarks
+#Cliqz. Don't use Trademarks
 #VIAddVersionKey "LegalTrademarks" "${BrandShortName} is a Trademark of Cliqz GmbH."
 #endif
 VIAddVersionKey "LegalCopyright"  "${CompanyName}"

@@ -9,7 +9,7 @@
   System::Call "kernel32::GetCurrentProcessId() i.r0"
   System::Call "kernel32::ProcessIdToSessionId(i $0, *i ${NSIS_MAX_STRLEN} r9)"
 
-  ; CLIQZ. Before processing futher - check and fix registry
+  ; Cliqz. Before processing futher - check and fix registry
   Call FixCliqzAsFirefoxRegistry
 
   ; Determine if we're the protected UserChoice default or not. If so fix the
@@ -739,7 +739,7 @@
 ; For the cert to work, it must also be signed by a trusted cert for the user.
 !macro AddMaintCertKeys
   Push $R0
-  ; Allow main CLIQZ cert information for updates
+  ; Allow main Cliqz cert information for updates
   ; This call will push the needed key on the stack
   ServicesHelper::PathToUniqueRegistryPath "$INSTDIR"
   Pop $R0
@@ -797,7 +797,7 @@
     RmDir /r /REBOOTOK "$INSTDIR\extensions\talkback@cliqz.com"
   ${EndIf}
 
-  ; Remove CLIQZ extension from distribution\extensions because now it must be
+  ; Remove Cliqz extension from distribution\extensions because now it must be
   ; in System Addon (browser\feature)
   ${If} ${FileExists} "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
     Delete "$INSTDIR\distribution\extensions\cliqz@cliqz.com.xpi"
@@ -1327,8 +1327,8 @@ Function AddFirewallEntries
   ${EndIf}
 FunctionEnd
 
-; CLIQZ. Clean after accidently replaced data in FirefoxHTML and FirefoxURL
-; keys in registry with CLIQZ value. For now CLIQZ use it own identifiers
+; Cliqz. Clean after accidently replaced data in FirefoxHTML and FirefoxURL
+; keys in registry with Cliqz value. For now Cliqz use it own identifiers
 Function FixCliqzAsFirefoxRegistry
   ; Check values in HKCU, must be always accessible, delete inconsistent state
   ReadRegStr $0 HKCU "Software\Classes\FirefoxHTML" ""

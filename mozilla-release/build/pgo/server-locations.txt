@@ -127,7 +127,7 @@ http://fxfeeds.mozilla.com:80
 http://www.itisatrap.org:80
 https://www.itisatrap.org:443
 
-# Cover CLIQZ domains accessed by extension.
+# Cover Cliqz domains accessed by extension.
 https://api.cliqz.com:443
 https://cdn.cliqz.com:443
 https://hpn-collector.cliqz.com:443
