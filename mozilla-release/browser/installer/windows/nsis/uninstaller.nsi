@@ -19,17 +19,13 @@ CRCCheck on
 
 RequestExecutionLevel user
 
-; The commands inside this ifdef require NSIS 3.0a2 or greater so the ifdef can
-; be removed after we require NSIS 3.0a2 or greater.
-!ifdef NSIS_PACKEDVERSION
-  Unicode true
-  ManifestSupportedOS all
-  ManifestDPIAware true
-!endif
+Unicode true
+ManifestSupportedOS all
+ManifestDPIAware true
 
 !addplugindir ./
 
-; On Vista and above attempt to elevate Standard Users in addition to users that
+; Attempt to elevate Standard Users in addition to users that
 ; are a member of the Administrators group.
 !define NONADMIN_ELEVATE
 
@@ -171,7 +167,7 @@ ChangeUI IDD_VERIFY "${NSISDIR}\Contrib\UIs\default.exe"
 # Helper Functions
 
 ; This function is used to uninstall the maintenance service if the
-; application currently being uninstalled is the last application to use the 
+; application currently being uninstalled is the last application to use the
 ; maintenance service.
 Function un.UninstallServiceIfNotUsed
   ; $0 will store if a subkey exists
@@ -199,6 +195,7 @@ Function un.UninstallServiceIfNotUsed
   ${If} ${RunningX64}
     SetRegView lastUsed
   ${EndIf}
+
   ${If} $0 == 0
     ; Get the path of the maintenance service uninstaller.
     ; Look in both the 32-bit and 64-bit registry views.
@@ -266,7 +263,7 @@ Section "Uninstall"
     ApplicationID::UninstallJumpLists "$AppUserModelID"
   ${EndIf}
 
-  ; Remove the updates directory for Vista and above
+  ; Remove the updates directory
   ${un.CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
 
   ; Remove any app model id's stored in the registry for this install path
@@ -287,28 +284,22 @@ Section "Uninstall"
     ${un.SetAppLSPCategories}
   ${EndIf}
 
-  ${un.RegCleanAppHandler} "CliqzURL"
-  ${un.RegCleanAppHandler} "CliqzHTML"
+  ${un.RegCleanAppHandler} "CliqzURL-$AppUserModelID"
+  ${un.RegCleanAppHandler} "CliqzHTML-$AppUserModelID"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
 
-  ClearErrors
-  ReadRegStr $R9 HKCR "CliqzHTML" ""
-  ; Don't clean up the file handlers if the CliqzHTML key still exists since
-  ; there should be a second installation that may be the default file handler
-  ${If} ${Errors}
-    ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".html"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".xht"   "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".xhtml" "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".oga"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".ogg"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML"
-  ${EndIf}
+  ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".html"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xht"   "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xhtml" "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".oga"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogg"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
   ${un.GetSecondInstallPath} "Software\CLIQZ" $R9
@@ -317,36 +308,30 @@ Section "Uninstall"
     ${un.GetSecondInstallPath} "Software\CLIQZ" $R9
   ${EndIf}
 
-  StrCpy $0 "Software\Clients\StartMenuInternet\${FileMainEXE}\shell\open\command"
-  ReadRegStr $R1 HKLM "$0" ""
-  ${un.RemoveQuotesFromPath} "$R1" $R1
-  ${un.GetParent} "$R1" $R1
+  DeleteRegKey HKLM "Software\Clients\StartMenuInternet\${AppRegName}-$AppUserModelID"
+  DeleteRegValue HKLM "Software\RegisteredApplications" "${AppRegName}-$AppUserModelID"
 
-  ; Only remove the StartMenuInternet key if it refers to this install location.
-  ; The StartMenuInternet registry key is independent of the default browser
-  ; settings. The XPInstall base un-installer always removes this key if it is
-  ; uninstalling the default browser and it will always replace the keys when
-  ; installing even if there is another install of Firefox that is set as the
-  ; default browser. Now the key is always updated on install but it is only
-  ; removed if it refers to this install location.
-  ${If} "$INSTDIR" == "$R1"
-    DeleteRegKey HKLM "Software\Clients\StartMenuInternet\${FileMainEXE}"
+  DeleteRegKey HKCU "Software\Clients\StartMenuInternet\${AppRegName}-$AppUserModelID"
+  DeleteRegValue HKCU "Software\RegisteredApplications" "${AppRegName}-$AppUserModelID"
+
+  ; Remove old protocol handler and StartMenuInternet keys without install path
+  ; hashes, but only if they're for this installation.
+  ReadRegStr $0 HKLM "Software\Classes\CliqzHTML\DefaultIcon" ""
+  StrCpy $0 $0 -2
+  ${If} $0 == "$INSTDIR\${FileMainEXE}"
+    DeleteRegKey HKLM "Software\Classes\CliqzHTML"
+    DeleteRegKey HKLM "Software\Classes\CliqzURL"
+    ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
+    DeleteRegKey HKLM "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
-
-  ReadRegStr $R1 HKCU "$0" ""
-  ${un.RemoveQuotesFromPath} "$R1" $R1
-  ${un.GetParent} "$R1" $R1
-
-  ; Only remove the StartMenuInternet key if it refers to this install location.
-  ; The StartMenuInternet registry key is independent of the default browser
-  ; settings. The XPInstall base un-installer always removes this key if it is
-  ; uninstalling the default browser and it will always replace the keys when
-  ; installing even if there is another install of Firefox that is set as the
-  ; default browser. Now the key is always updated on install but it is only
-  ; removed if it refers to this install location.
-  ${If} "$INSTDIR" == "$R1"
-    DeleteRegKey HKCU "Software\Clients\StartMenuInternet\${FileMainEXE}"
+  ReadRegStr $0 HKCU "Software\Classes\CliqzHTML\DefaultIcon" ""
+  StrCpy $0 $0 -2
+  ${If} $0 == "$INSTDIR\${FileMainEXE}"
+    DeleteRegKey HKCU "Software\Classes\CliqzHTML"
+    DeleteRegKey HKCU "Software\Classes\CliqzURL"
+    ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
+    DeleteRegKey HKCU "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKCU "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
 
@@ -432,8 +417,8 @@ Section "Uninstall"
   ; Remove the installation directory if it is empty
   RmDir "$INSTDIR"
 
-  ; If firefox.exe was successfully deleted yet we still need to restart to
-  ; remove other files create a dummy firefox.exe.moz-delete to prevent the
+  ; If cliqz.exe was successfully deleted yet we still need to restart to
+  ; remove other files create a dummy cliqz.exe.moz-delete to prevent the
   ; installer from allowing an install without restart when it is required
   ; to complete an uninstall.
   ${If} ${RebootFlag}
@@ -456,11 +441,11 @@ Section "Uninstall"
   ; clients registry key by the OS under some conditions.
   System::Call "shell32::SHChangeNotify(i ${SHCNE_ASSOCCHANGED}, i 0, i 0, i 0)"
 
-  ; Users who uninstall then reinstall expecting Firefox to use a clean profile
-  ; may be surprised during first-run. This key is checked during startup of Firefox and
+  ; Users who uninstall then reinstall expecting Cliqz to use a clean profile
+  ; may be surprised during first-run. This key is checked during startup of Cliqz and
   ; subsequently deleted after checking. If the value is found during startup
-  ; the browser will offer to Reset Firefox. We use the UpdateChannel to match
-  ; uninstalls of Firefox-release with reinstalls of Firefox-release, for example.
+  ; the browser will offer to Reset Cliqz. We use the UpdateChannel to match
+  ; uninstalls of Cliqz-release with reinstalls of Cliqz-release, for example.
   WriteRegStr HKCU "Software\CLIQZ" "Uninstalled-${UpdateChannel}" "True"
 
 !ifdef MOZ_MAINTENANCE_SERVICE
@@ -619,14 +604,6 @@ Function un.onInit
   StrCpy $LANGUAGE 0
 
   ${un.UninstallUnOnInitCommon}
-
-; The commands inside this ifndef are needed prior to NSIS 3.0a2 and can be
-; removed after we require NSIS 3.0a2 or greater.
-!ifndef NSIS_PACKEDVERSION
-  ${If} ${AtLeastWinVista}
-    System::Call 'user32::SetProcessDPIAware()'
-  ${EndIf}
-!endif
 
   !insertmacro InitInstallOptionsFile "unconfirm.ini"
 FunctionEnd

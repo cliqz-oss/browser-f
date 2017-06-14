@@ -7,5 +7,14 @@
 <!ENTITY     hostCol.label                 "Website">
 <!ENTITY     statusCol.label               "Status">
 <!ENTITY     usageCol.label                "Speicher">
-<!ENTITY     search.label                  "Suchen:">
-<!ENTITY     search.accesskey              "S">
+<!ENTITY     searchPlaceHolder             "Suchen">
+<!ENTITY     searchPlaceHolder.accesskey   "S">
+<!ENTITY     removeSelected.label          "Ausgewählte entfernen">
+<!ENTITY     removeSelected.accesskey      "g">
+<!ENTITY     save.label                    "Änderungen speichern">
+<!ENTITY     save.accesskey                "p">
+<!ENTITY     cancel.label                  "Abbrechen">
+<!ENTITY     cancel.accesskey              "b">
+<!ENTITY     removingDialog.title          "Websitedaten entfernen">
+<!ENTITY     removingDialog.description    "Das Entfernen von Websitedaten löscht auch Cookies. Dadurch werden Sie eventuell von Websites abgemeldet und offline verfügbare Webinhalte gelöscht. Sollen die Änderungen wirklich durchgeführt werden?">
+<!ENTITY     siteTree.label                "Die folgenden Cookies werden gelöscht:">

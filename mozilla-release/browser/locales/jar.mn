@@ -25,7 +25,6 @@
     locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
     locale/browser/aboutTabCrashed.dtd             (%chrome/browser/aboutTabCrashed.dtd)
 #ifdef MOZ_SERVICES_SYNC
-    locale/browser/syncCustomize.dtd               (%chrome/browser/syncCustomize.dtd)
     locale/browser/aboutSyncTabs.dtd               (%chrome/browser/aboutSyncTabs.dtd)
 #endif
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)
@@ -94,12 +93,7 @@
     locale/browser/preferences/translation.dtd        (%chrome/browser/preferences/translation.dtd)
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
-    locale/browser/syncSetup.dtd                (%chrome/browser/syncSetup.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
-    locale/browser/syncGenericChange.properties         (%chrome/browser/syncGenericChange.properties)
-    locale/browser/syncKey.dtd                  (%chrome/browser/syncKey.dtd)
-    locale/browser/syncQuota.dtd                (%chrome/browser/syncQuota.dtd)
-    locale/browser/syncQuota.properties         (%chrome/browser/syncQuota.properties)
 #endif
 % resource search-plugins chrome://browser/locale/searchplugins/
 #if BUILD_FASTER
@@ -109,6 +103,7 @@
     locale/browser/searchplugins/               (.deps/generated_@AB_CD@/*.xml)
     locale/browser/searchplugins/list.json      (.deps/generated_@AB_CD@/list.json)
 #endif
+    locale/browser/searchplugins/images/wikipedia.ico  (searchplugins/images/wikipedia.ico)
     locale/browser/searchplugins/images/yandex-en.ico  (searchplugins/images/yandex-en.ico)
 % locale browser-region @AB_CD@ %locale/browser-region/
     locale/browser-region/region.properties        (%chrome/browser-region/region.properties)

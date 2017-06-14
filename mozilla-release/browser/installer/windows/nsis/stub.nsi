@@ -18,13 +18,9 @@ CRCCheck on
 
 RequestExecutionLevel user
 
-; The commands inside this ifdef require NSIS 3.0a2 or greater so the ifdef can
-; be removed after we require NSIS 3.0a2 or greater.
-!ifdef NSIS_PACKEDVERSION
-  Unicode true
-  ManifestSupportedOS all
-  ManifestDPIAware true
-!endif
+Unicode true
+ManifestSupportedOS all
+ManifestDPIAware true
 
 !addplugindir ./
 
@@ -203,7 +199,7 @@ Var OptionsItemWidthPX
 ; InstallProgressFirstStep .
 !define /math InstallPaveOverTotalSteps ${InstallProgressFirstStep} + 1800
 
-; On Vista and above attempt to elevate Standard Users in addition to users that
+; Attempt to elevate Standard Users in addition to users that
 ; are a member of the Administrators group.
 !define NONADMIN_ELEVATE
 
@@ -350,7 +346,7 @@ Function .onInit
     Quit
   ${EndIf}
 
-  ; Bug 1338583: disable 64-bit as default until Flash issues are resolved
+  ; Bug 1342347: disable 64-bit as default until Flash issues are resolved
   ;${If} ${RunningX64}
   ;  StrCpy $INSTDIR "${DefaultInstDir64bit}"
   ;${Else}
@@ -359,14 +355,6 @@ Function .onInit
 
   ; Require elevation if the user can elevate
   ${ElevateUAC}
-
-; The commands inside this ifndef are needed prior to NSIS 3.0a2 and can be
-; removed after we require NSIS 3.0a2 or greater.
-!ifndef NSIS_PACKEDVERSION
-  ${If} ${AtLeastWinVista}
-    System::Call 'user32::SetProcessDPIAware()'
-  ${EndIf}
-!endif
 
   ; If we have any existing installation, use its location as the default
   ; path for this install, even if it's not the same architecture.
@@ -445,11 +433,7 @@ Function .onInit
   ${EndIf}
 
   ; The interval in MS used for the progress bars set as marquee.
-  ${If} ${AtLeastWinVista}
-    StrCpy $ProgressbarMarqueeIntervalMS "10"
-  ${Else}
-    StrCpy $ProgressbarMarqueeIntervalMS "50"
-  ${EndIf}
+  StrCpy $ProgressbarMarqueeIntervalMS "10"
 
   ; Initialize the majority of variables except those that need to be reset
   ; when a page is displayed.
@@ -468,7 +452,7 @@ Function .onInit
   StrCpy $CheckboxInstallMaintSvc "0"
 !endif
   StrCpy $WasOptionsButtonClicked "0"
-  ; Bug 1338583: disable 64-bit as default until Flash issues are resolved
+  ; Bug 1342347: disable 64-bit as default until Flash issues are resolved
   ;${If} ${RunningX64}
     ;StrCpy $DroplistArch "$(VERSION_64BIT)"
   ;${Else}
@@ -695,36 +679,25 @@ Function SendPing
     ${EndIf}
 
     ${If} "$R2" == "0"
-    ${AndIf} ${AtLeastWinVista}
-      ; Check to see if this install location is currently set as the default
-      ; browser by Default Programs which is only available on Vista and above.
-      ClearErrors
-      ReadRegStr $R3 HKLM "Software\RegisteredApplications" "${AppRegName}"
-      ${Unless} ${Errors}
-        AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-        Pop $R3
-        ${If} $R3 == "1"
-          StrCpy $R3 ""
-          ReadRegStr $R2 HKLM "Software\Classes\http\shell\open\command" ""
-          ${If} $R2 != ""
-            ${GetPathFromString} "$R2" $R2
-            ${GetParent} "$R2" $R3
-            ${GetLongPath} "$R3" $R3
-            ${If} $R3 == $INSTDIR
-              StrCpy $R2 "1" ; This CLIQZ install is set as default.
-            ${Else}
-              StrCpy $R2 "$R2" "" -9 # length of CLIQZ.exe
-              ${If} "$R2" == "${FileMainEXE}"
-                StrCpy $R2 "2" ; Another CLIQZ install is set as default.
-              ${Else}
-                StrCpy $R2 "0"
-              ${EndIf}
-            ${EndIf}
+      StrCpy $R3 ""
+      ReadRegStr $R2 HKLM "Software\Classes\http\shell\open\command" ""
+      ${If} $R2 != ""
+        ${GetPathFromString} "$R2" $R2
+        ${GetParent} "$R2" $R3
+        ${GetLongPath} "$R3" $R3
+        ${If} $R3 == $INSTDIR
+          StrCpy $R2 "1" ; This Cliqz install is set as default.
+        ${Else}
+          StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
+          ${If} "$R2" == "${FileMainEXE}"
+            StrCpy $R2 "2" ; Another Cliqz install is set as default.
           ${Else}
-            StrCpy $R2 "0" ; CLIQZ is not set as default.
+            StrCpy $R2 "0"
           ${EndIf}
         ${EndIf}
-      ${EndUnless}
+      ${Else}
+        StrCpy $R2 "0" ; Cliqz is not set as default.
+      ${EndIf}
     ${EndIf}
 
     ${If} $CanSetAsDefault == "true"
@@ -813,10 +786,10 @@ Function createIntro
   nsDialogs::OnBack /NOUNLOAD $0
 
 !ifdef ${AB_CD}_rtl
-  ; For RTL align the text with the top of the F in the Firefox bitmap
+  ; For RTL align the text with the top of the F in the Cliqz bitmap
   StrCpy $0 "${INTRO_BLURB_RTL_TOP_DU}"
 !else
-  ; For LTR align the text with the top of the x in the Firefox bitmap
+  ; For LTR align the text with the top of the x in the Cliqz bitmap
   StrCpy $0 "${INTRO_BLURB_LTR_TOP_DU}"
 !endif
   ${NSD_CreateLabel} ${INTRO_BLURB_EDGE_DU} $0 ${INTRO_BLURB_WIDTH_DU} 76u "${INTRO_BLURB}"
@@ -1091,14 +1064,6 @@ Function createOptions
   Call IsUserAdmin
   Pop $0
 
-  ; Only show the maintenance service checkbox if we're on XP SP3 or higher;
-  ;  we don't ever want to install it on XP without at least SP3 installed.
-  ${If} $0 == "true"
-  ${AndIf} ${IsWinXP}
-  ${AndIf} ${AtMostServicePack} 2
-    StrCpy $0 "false"
-  ${EndIf}
-
   ${If} $0 == "true"
     ; Only show the maintenance service checkbox if we have write access to HKLM
     DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
@@ -1196,7 +1161,7 @@ Function createOptions
     System::Call 'uxtheme::SetWindowTheme(i $DroplistArch, w " ", w " ")'
     SetCtlColors $DroplistArch ${COMMON_TEXT_COLOR_NORMAL} ${COMMON_BKGRD_COLOR}
     SendMessage $DroplistArch ${WM_SETFONT} $FontNormal 0
-    ; Bug 1338583: disable 64-bit as default until Flash issues are resolved
+    ; Bug 1342347: disable 64-bit as default until Flash issues are resolved
     ${NSD_CB_SelectString} $DroplistArch "$(VERSION_32BIT)"
   ${EndIf}
 !endif
@@ -1720,7 +1685,7 @@ Function OnDownload
       ; installer closes it we can detect that it has completed.
       Delete "$INSTDIR\install.log"
 
-      ; Delete firefox.exe.moz-upgrade and firefox.exe.moz-delete if it exists
+      ; Delete cliqz.exe.moz-upgrade and cliqz.exe.moz-delete if it exists
       ; since it being present will require an OS restart for the full
       ; installer.
       Delete "$INSTDIR\${FileMainEXE}.moz-upgrade"
@@ -1842,15 +1807,13 @@ Function FinishInstall
     ; value was before we changed it. To do so, we read it here and store it
     ; in our own registry key.
     StrCpy $0 ""
-    ${If} ${AtLeastWinVista}
-      AppAssocReg::QueryCurrentDefault "http" "protocol" "effective"
-      Pop $1
-      ; If the method hasn't failed, $1 will contain the progid. Check:
-      ${If} "$1" != "method failed"
-      ${AndIf} "$1" != "method not available"
-        ; Read the actual command from the progid
-        ReadRegStr $0 HKCR "$1\shell\open\command" ""
-      ${EndIf}
+    AppAssocReg::QueryCurrentDefault "http" "protocol" "effective"
+    Pop $1
+    ; If the method hasn't failed, $1 will contain the progid. Check:
+    ${If} "$1" != "method failed"
+    ${AndIf} "$1" != "method not available"
+      ; Read the actual command from the progid
+      ReadRegStr $0 HKCR "$1\shell\open\command" ""
     ${EndIf}
     ; If using the App Association Registry didn't happen or failed, fall back
     ; to the effective http default:
@@ -1871,21 +1834,6 @@ Function FinishInstall
     ${Else} ; Elevated - execute the function in the unelevated process
       GetFunctionAddress $0 ExecSetAsDefaultAppUser
       UAC::ExecCodeSegment $0
-    ${EndIf}
-  ${EndIf}
-
-  ${If} $CheckboxShortcuts == 1
-    ${If} ${AtMostWinVista}
-      ClearErrors
-      ${GetParameters} $0
-      ClearErrors
-      ${GetOptions} "$0" "/UAC:" $0
-      ${If} ${Errors}
-        Call AddQuickLaunchShortcut
-      ${Else}
-        GetFunctionAddress $0 AddQuickLaunchShortcut
-        UAC::ExecCodeSegment $0
-      ${EndIf}
     ${EndIf}
   ${EndIf}
 
@@ -2113,14 +2061,6 @@ Function CanWrite
   ${EndIf}
 FunctionEnd
 
-Function AddQuickLaunchShortcut
-  CreateShortCut "$QUICKLAUNCH\${BrandFullName}.lnk" "$INSTDIR\${FileMainEXE}"
-  ${If} ${FileExists} "$QUICKLAUNCH\${BrandFullName}.lnk"
-    ShellLink::SetShortCutWorkingDirectory "$QUICKLAUNCH\${BrandFullName}.lnk" \
-                                           "$INSTDIR"
-  ${EndIf}
-FunctionEnd
-
 Function ExecSetAsDefaultAppUser
   ; Using the helper.exe lessens the stub installer size.
   ; This could ask for elevatation when the user doesn't install as admin.
@@ -2153,15 +2093,9 @@ Function LaunchApp
 FunctionEnd
 
 Function LaunchAppFromElevatedProcess
-  ; Find the installation directory when launching using GetFunctionAddress
-  ; from an elevated installer since $INSTDIR will not be set in this installer
-  ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
-  ReadRegStr $0 HKLM "Software\Clients\StartMenuInternet\$R9\DefaultIcon" ""
-  ${GetPathFromString} "$0" $0
   ; Set the current working directory to the installation directory
-  ${GetParent} "$0" $1
-  SetOutPath "$1"
-  Exec "$\"$0$\""
+  SetOutPath "$INSTDIR"
+  Exec "$\"$INSTDIR\${FileMainEXE}$\""
 FunctionEnd
 
 Function CopyPostSigningData

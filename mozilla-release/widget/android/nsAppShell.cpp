@@ -30,6 +30,10 @@
 #include "nsToolkitCompsCID.h"
 #include "nsGeoPosition.h"
 
+#include "nsIDocument.h"
+#include "nsIWidget.h"
+#include "WidgetUtils.h"
+
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Services.h"
@@ -135,7 +139,10 @@ public:
         if (!uri) {
             return;
         }
-        specConn->SpeculativeConnect(uri, nullptr);
+
+        OriginAttributes attrs;
+        nsCOMPtr<nsIPrincipal> principal = BasePrincipal::CreateCodebasePrincipal(uri, attrs);
+        specConn->SpeculativeConnect2(uri, principal, nullptr);
     }
 
     static void WaitOnGecko()
@@ -220,11 +227,7 @@ public:
 
     static int64_t RunUiThreadCallback()
     {
-        if (!AndroidBridge::Bridge()) {
-            return -1;
-        }
-
-        return AndroidBridge::Bridge()->RunDelayedUiThreadTasks();
+        return AndroidUiThread::RunDelayedTasksIfValid();
     }
 };
 
@@ -459,9 +462,9 @@ nsAppShell::RecordLatencies()
         return;
     }
 
-    const mozilla::Telemetry::ID timeIDs[] = {
-        mozilla::Telemetry::ID::FENNEC_LOOP_UI_LATENCY,
-        mozilla::Telemetry::ID::FENNEC_LOOP_OTHER_LATENCY
+    const mozilla::Telemetry::HistogramID timeIDs[] = {
+        mozilla::Telemetry::HistogramID::FENNEC_LOOP_UI_LATENCY,
+        mozilla::Telemetry::HistogramID::FENNEC_LOOP_OTHER_LATENCY
     };
 
     static_assert(ArrayLength(Queue::sLatencyCount) == Queue::LATENCY_COUNT,
@@ -570,13 +573,30 @@ nsAppShell::Observe(nsISupports* aSubject,
         removeObserver = true;
 
     } else if (!strcmp(aTopic, "chrome-document-loaded")) {
-        if (jni::IsAvailable()) {
-            // Our first window has loaded, assume any JS initialization has run.
-            java::GeckoThread::CheckAndSetState(
-                    java::GeckoThread::State::PROFILE_READY(),
-                    java::GeckoThread::State::RUNNING());
+        // Set the global ready state.
+        nsCOMPtr<nsIDocument> doc = do_QueryInterface(aSubject);
+        MOZ_ASSERT(doc);
+        nsCOMPtr<nsIWidget> widget =
+            WidgetUtils::DOMWindowToWidget(doc->GetWindow());
+
+        // `widget` may be one of several different types in the parent
+        // process, including the Android nsWindow, PuppetWidget, etc. To
+        // ensure that we only accept the Android nsWindow, we check that the
+        // widget is a top-level window and that its NS_NATIVE_WIDGET value is
+        // non-null, which is not the case for non-native widgets like
+        // PuppetWidget.
+        if (widget &&
+            widget->WindowType() == nsWindowType::eWindowType_toplevel &&
+            widget->GetNativeData(NS_NATIVE_WIDGET) == widget) {
+            if (jni::IsAvailable()) {
+                // When our first window has loaded, assume any JS
+                // initialization has run and set Gecko to ready.
+                java::GeckoThread::CheckAndSetState(
+                        java::GeckoThread::State::PROFILE_READY(),
+                        java::GeckoThread::State::RUNNING());
+            }
+            removeObserver = true;
         }
-        removeObserver = true;
 
     } else if (!strcmp(aTopic, "quit-application-granted")) {
         if (jni::IsAvailable()) {

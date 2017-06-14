@@ -148,20 +148,22 @@ this.SafeBrowsing = {
 
   reportURL:             null,
 
-  getReportURL: function(kind, URI) {
+  getReportURL: function(kind, info) {
     let pref;
     switch (kind) {
       case "Phish":
         pref = "browser.safebrowsing.reportPhishURL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(0);
         break;
+
       case "PhishMistake":
-        pref = "browser.safebrowsing.reportPhishMistakeURL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
+        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
         break;
+
       case "MalwareMistake":
-        pref = "browser.safebrowsing.reportMalwareMistakeURL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
+        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
         break;
 
       default:
@@ -169,16 +171,22 @@ this.SafeBrowsing = {
         Components.utils.reportError(err);
         throw err;
     }
+
+    // The "Phish" reports are about submitting new phishing URLs to Google so
+    // they don't have an associated list URL
+    if (kind != "Phish" && (!info.list || !info.uri)) {
+      return null;
+    }
+
     let reportUrl = Services.urlFormatter.formatURLPref(pref);
+    // formatURLPref might return "about:blank" if getting the pref fails
+    if (reportUrl == "about:blank") {
+      reportUrl = null;
+    }
 
-    let pageUri = URI.clone();
-
-    // Remove the query to avoid including potentially sensitive data
-    if (pageUri instanceof Ci.nsIURL)
-      pageUri.query = '';
-
-    reportUrl += encodeURIComponent(pageUri.asciiSpec);
-
+    if (reportUrl) {
+      reportUrl += encodeURIComponent(info.uri);
+    }
     return reportUrl;
   },
 

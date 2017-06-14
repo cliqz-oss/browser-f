@@ -84,6 +84,7 @@ RemoteWebNavigation.prototype = {
       triggeringPrincipal: aTriggeringPrincipal
                            ? Utils.serializePrincipal(aTriggeringPrincipal)
                            : null,
+      requestTime: Services.telemetry.msSystemNow(),
       ensurePrivate: !!aEnsurePrivate
     });
   },

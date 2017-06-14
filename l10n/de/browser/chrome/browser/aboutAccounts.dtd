@@ -6,7 +6,6 @@
 
 <!ENTITY aboutAccountsConfig.description "Melde dich an, um deine Tabs, Lesezeichen, Passwörter und mehr zu synchronisieren.">
 <!ENTITY aboutAccountsConfig.startButton.label "Anmelden">
-<!ENTITY aboutAccountsConfig.useOldSync.label "Verwendest du eine ältere Version von Sync?">
 <!ENTITY aboutAccountsConfig.syncPreferences.label "Sync-Einstellungen">
 <!ENTITY aboutAccounts.noConnection.title "Keine Verbindung">
 <!ENTITY aboutAccounts.noConnection.description "Du musst zum Anmelden mit dem Internet verbunden sein.">

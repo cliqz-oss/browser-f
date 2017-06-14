@@ -900,15 +900,13 @@ nsContextMenu.prototype = {
 
   // Returns the computed style attribute for the given element.
   getComputedStyle: function(aElem, aProp) {
-    return aElem.ownerDocument
-                .defaultView
-                .getComputedStyle(aElem, "").getPropertyValue(aProp);
+    return aElem.ownerGlobal
+                .getComputedStyle(aElem).getPropertyValue(aProp);
   },
 
   // Returns a "url"-type computed style attribute value, with the url() stripped.
   getComputedURL: function(aElem, aProp) {
-    var url = aElem.ownerDocument
-                   .defaultView.getComputedStyle(aElem, "")
+    var url = aElem.ownerGlobal.getComputedStyle(aElem)
                    .getPropertyCSSValue(aProp);
     if (url instanceof CSSValueList) {
       if (url.length != 1)
@@ -957,6 +955,7 @@ nsContextMenu.prototype = {
                    originPrincipal: this.principal,
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
+                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
                    noReferrer: this.linkHasNoReferrer,
                    private: this.browser.loadContext.usePrivateBrowsing
     };
@@ -964,6 +963,9 @@ nsContextMenu.prototype = {
       params[p] = extra[p];
     }
 
+    if (!this.isRemote) {
+      params.frameOuterWindowID = this.frameOuterWindowID;
+    }
     // If we want to change userContextId, we must be sure that we don't
     // propagate the referrer.
     if ("userContextId" in params &&
