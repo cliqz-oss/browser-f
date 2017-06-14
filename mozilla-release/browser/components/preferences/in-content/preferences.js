@@ -68,12 +68,9 @@ function init_all() {
   register_module("paneSecurity", gSecurityPane);
   register_module("paneConnect", gConnectPane);
   // CLIQZ: DB-1230: Display the rich list item when connect module is available
-  const CONNECT_PREF_NAME = 'extensions.cliqz.connect';
   try {
     fetch('chrome://cliqz/content/pairing/index.html').then( function(res) {
-      if(res.status === 200 &&
-        Services.prefs.getPrefType(CONNECT_PREF_NAME) === 128 &&
-        Services.prefs.getBoolPref(CONNECT_PREF_NAME)) {
+      if(res.status === 200) {
         document.getElementById('category-connect').hidden = false;
       }
     });
