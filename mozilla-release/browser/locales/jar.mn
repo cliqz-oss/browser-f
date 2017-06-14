@@ -24,13 +24,7 @@
     locale/browser/aboutSearchReset.dtd            (%chrome/browser/aboutSearchReset.dtd)
     locale/browser/aboutSessionRestore.dtd         (%chrome/browser/aboutSessionRestore.dtd)
     locale/browser/aboutTabCrashed.dtd             (%chrome/browser/aboutTabCrashed.dtd)
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-    locale/browser/syncCustomize.dtd               (%chrome/browser/syncCustomize.dtd)
-||||||| merged common ancestors
-    locale/browser/syncCustomize.dtd               (%chrome/browser/syncCustomize.dtd)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/aboutSyncTabs.dtd               (%chrome/browser/aboutSyncTabs.dtd)
 #endif
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)
@@ -100,19 +94,7 @@
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
-<<<<<<< HEAD
-    locale/browser/syncGenericChange.properties         (%chrome/browser/syncGenericChange.properties)
-    locale/browser/syncKey.dtd                  (%chrome/browser/syncKey.dtd)
-    locale/browser/syncQuota.dtd                (%chrome/browser/syncQuota.dtd)
-    locale/browser/syncQuota.properties         (%chrome/browser/syncQuota.properties)
 #endif
-||||||| merged common ancestors
-    locale/browser/syncGenericChange.properties         (%chrome/browser/syncGenericChange.properties)
-    locale/browser/syncKey.dtd                  (%chrome/browser/syncKey.dtd)
-    locale/browser/syncQuota.dtd                (%chrome/browser/syncQuota.dtd)
-    locale/browser/syncQuota.properties         (%chrome/browser/syncQuota.properties)
-=======
->>>>>>> origin/upstream-releases
 % resource search-plugins chrome://browser/locale/searchplugins/
 #if BUILD_FASTER
     locale/browser/searchplugins/               (searchplugins/*.xml)

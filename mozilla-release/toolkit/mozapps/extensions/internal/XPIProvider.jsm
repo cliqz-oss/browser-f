@@ -268,17 +268,11 @@ const SIGNED_TYPES = new Set([
   "apiextension",
   "extension",
   "experiment",
-<<<<<<< HEAD
-  "apiextension",
   "theme",
   "locale",
   "multipackage",
-||||||| merged common ancestors
-  "apiextension",
-=======
   "webextension",
   "webextension-theme",
->>>>>>> origin/upstream-releases
 ]);
 
 // This is a random number array that can be used as "salt" when generating

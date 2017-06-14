@@ -263,16 +263,8 @@ Section "Uninstall"
     ApplicationID::UninstallJumpLists "$AppUserModelID"
   ${EndIf}
 
-<<<<<<< HEAD
-  ; Remove the updates directory for Vista and above
-  ${un.CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
-||||||| merged common ancestors
-  ; Remove the updates directory for Vista and above
-  ${un.CleanUpdateDirectories} "Mozilla\Firefox" "Mozilla\updates"
-=======
   ; Remove the updates directory
-  ${un.CleanUpdateDirectories} "Mozilla\Firefox" "Mozilla\updates"
->>>>>>> origin/upstream-releases
+  ${un.CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
 
   ; Remove any app model id's stored in the registry for this install path
   DeleteRegValue HKCU "Software\${AppName}\TaskBarIDs" "$INSTDIR"
@@ -292,67 +284,22 @@ Section "Uninstall"
     ${un.SetAppLSPCategories}
   ${EndIf}
 
-<<<<<<< HEAD
-  ${un.RegCleanAppHandler} "CliqzURL"
-  ${un.RegCleanAppHandler} "CliqzHTML"
-||||||| merged common ancestors
-  ${un.RegCleanAppHandler} "FirefoxURL"
-  ${un.RegCleanAppHandler} "FirefoxHTML"
-=======
-  ${un.RegCleanAppHandler} "FirefoxURL-$AppUserModelID"
-  ${un.RegCleanAppHandler} "FirefoxHTML-$AppUserModelID"
->>>>>>> origin/upstream-releases
+  ${un.RegCleanAppHandler} "CliqzURL-$AppUserModelID"
+  ${un.RegCleanAppHandler} "CliqzHTML-$AppUserModelID"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
-<<<<<<< HEAD
 
-  ClearErrors
-  ReadRegStr $R9 HKCR "CliqzHTML" ""
-  ; Don't clean up the file handlers if the CliqzHTML key still exists since
-  ; there should be a second installation that may be the default file handler
-  ${If} ${Errors}
-    ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".html"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".xht"   "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".xhtml" "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".oga"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".ogg"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML"
-    ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML"
-  ${EndIf}
-||||||| merged common ancestors
-
-  ClearErrors
-  ReadRegStr $R9 HKCR "FirefoxHTML" ""
-  ; Don't clean up the file handlers if the FirefoxHTML key still exists since
-  ; there should be a second installation that may be the default file handler
-  ${If} ${Errors}
-    ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML"
-    ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML"
-  ${EndIf}
-=======
-  ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML-$AppUserModelID"
->>>>>>> origin/upstream-releases
+  ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".html"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xht"   "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".xhtml" "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".oga"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogg"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
   ${un.GetSecondInstallPath} "Software\CLIQZ" $R9
@@ -369,20 +316,20 @@ Section "Uninstall"
 
   ; Remove old protocol handler and StartMenuInternet keys without install path
   ; hashes, but only if they're for this installation.
-  ReadRegStr $0 HKLM "Software\Classes\FirefoxHTML\DefaultIcon" ""
+  ReadRegStr $0 HKLM "Software\Classes\CliqzHTML\DefaultIcon" ""
   StrCpy $0 $0 -2
   ${If} $0 == "$INSTDIR\${FileMainEXE}"
-    DeleteRegKey HKLM "Software\Classes\FirefoxHTML"
-    DeleteRegKey HKLM "Software\Classes\FirefoxURL"
+    DeleteRegKey HKLM "Software\Classes\CliqzHTML"
+    DeleteRegKey HKLM "Software\Classes\CliqzURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKLM "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKLM "Software\RegisteredApplications" "${AppRegName}"
   ${EndIf}
-  ReadRegStr $0 HKCU "Software\Classes\FirefoxHTML\DefaultIcon" ""
+  ReadRegStr $0 HKCU "Software\Classes\CliqzHTML\DefaultIcon" ""
   StrCpy $0 $0 -2
   ${If} $0 == "$INSTDIR\${FileMainEXE}"
-    DeleteRegKey HKCU "Software\Classes\FirefoxHTML"
-    DeleteRegKey HKCU "Software\Classes\FirefoxURL"
+    DeleteRegKey HKCU "Software\Classes\CliqzHTML"
+    DeleteRegKey HKCU "Software\Classes\CliqzURL"
     ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
     DeleteRegKey HKCU "Software\Clients\StartMenuInternet\$R9"
     DeleteRegValue HKCU "Software\RegisteredApplications" "${AppRegName}"
@@ -470,8 +417,8 @@ Section "Uninstall"
   ; Remove the installation directory if it is empty
   RmDir "$INSTDIR"
 
-  ; If firefox.exe was successfully deleted yet we still need to restart to
-  ; remove other files create a dummy firefox.exe.moz-delete to prevent the
+  ; If cliqz.exe was successfully deleted yet we still need to restart to
+  ; remove other files create a dummy cliqz.exe.moz-delete to prevent the
   ; installer from allowing an install without restart when it is required
   ; to complete an uninstall.
   ${If} ${RebootFlag}
@@ -494,11 +441,11 @@ Section "Uninstall"
   ; clients registry key by the OS under some conditions.
   System::Call "shell32::SHChangeNotify(i ${SHCNE_ASSOCCHANGED}, i 0, i 0, i 0)"
 
-  ; Users who uninstall then reinstall expecting Firefox to use a clean profile
-  ; may be surprised during first-run. This key is checked during startup of Firefox and
+  ; Users who uninstall then reinstall expecting Cliqz to use a clean profile
+  ; may be surprised during first-run. This key is checked during startup of Cliqz and
   ; subsequently deleted after checking. If the value is found during startup
-  ; the browser will offer to Reset Firefox. We use the UpdateChannel to match
-  ; uninstalls of Firefox-release with reinstalls of Firefox-release, for example.
+  ; the browser will offer to Reset Cliqz. We use the UpdateChannel to match
+  ; uninstalls of Cliqz-release with reinstalls of Cliqz-release, for example.
   WriteRegStr HKCU "Software\CLIQZ" "Uninstalled-${UpdateChannel}" "True"
 
 !ifdef MOZ_MAINTENANCE_SERVICE

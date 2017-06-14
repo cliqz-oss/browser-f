@@ -157,24 +157,13 @@ this.SafeBrowsing = {
         break;
 
       case "PhishMistake":
-<<<<<<< HEAD
-        pref = "browser.safebrowsing.reportPhishMistakeURL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
-        break;
-||||||| merged common ancestors
-        pref = "browser.safebrowsing.reportPhishMistakeURL";
-        break;
-=======
->>>>>>> origin/upstream-releases
-      case "MalwareMistake":
-<<<<<<< HEAD
-        pref = "browser.safebrowsing.reportMalwareMistakeURL";
-        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
-||||||| merged common ancestors
-        pref = "browser.safebrowsing.reportMalwareMistakeURL";
-=======
         pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
->>>>>>> origin/upstream-releases
+        break;
+
+      case "MalwareMistake":
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
+        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
         break;
 
       default:

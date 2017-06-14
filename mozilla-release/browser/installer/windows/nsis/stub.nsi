@@ -679,59 +679,6 @@ Function SendPing
     ${EndIf}
 
     ${If} "$R2" == "0"
-<<<<<<< HEAD
-    ${AndIf} ${AtLeastWinVista}
-      ; Check to see if this install location is currently set as the default
-      ; browser by Default Programs which is only available on Vista and above.
-      ClearErrors
-      ReadRegStr $R3 HKLM "Software\RegisteredApplications" "${AppRegName}"
-      ${Unless} ${Errors}
-        AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-        Pop $R3
-        ${If} $R3 == "1"
-          StrCpy $R3 ""
-          ReadRegStr $R2 HKLM "Software\Classes\http\shell\open\command" ""
-          ${If} $R2 != ""
-            ${GetPathFromString} "$R2" $R2
-            ${GetParent} "$R2" $R3
-            ${GetLongPath} "$R3" $R3
-            ${If} $R3 == $INSTDIR
-              StrCpy $R2 "1" ; This CLIQZ install is set as default.
-            ${Else}
-              StrCpy $R2 "$R2" "" -9 # length of CLIQZ.exe
-              ${If} "$R2" == "${FileMainEXE}"
-                StrCpy $R2 "2" ; Another CLIQZ install is set as default.
-              ${Else}
-                StrCpy $R2 "0"
-              ${EndIf}
-            ${EndIf}
-||||||| merged common ancestors
-    ${AndIf} ${AtLeastWinVista}
-      ; Check to see if this install location is currently set as the default
-      ; browser by Default Programs which is only available on Vista and above.
-      ClearErrors
-      ReadRegStr $R3 HKLM "Software\RegisteredApplications" "${AppRegName}"
-      ${Unless} ${Errors}
-        AppAssocReg::QueryAppIsDefaultAll "${AppRegName}" "effective"
-        Pop $R3
-        ${If} $R3 == "1"
-          StrCpy $R3 ""
-          ReadRegStr $R2 HKLM "Software\Classes\http\shell\open\command" ""
-          ${If} $R2 != ""
-            ${GetPathFromString} "$R2" $R2
-            ${GetParent} "$R2" $R3
-            ${GetLongPath} "$R3" $R3
-            ${If} $R3 == $INSTDIR
-              StrCpy $R2 "1" ; This Firefox install is set as default.
-            ${Else}
-              StrCpy $R2 "$R2" "" -11 # length of firefox.exe
-              ${If} "$R2" == "${FileMainEXE}"
-                StrCpy $R2 "2" ; Another Firefox install is set as default.
-              ${Else}
-                StrCpy $R2 "0"
-              ${EndIf}
-            ${EndIf}
-=======
       StrCpy $R3 ""
       ReadRegStr $R2 HKLM "Software\Classes\http\shell\open\command" ""
       ${If} $R2 != ""
@@ -739,24 +686,17 @@ Function SendPing
         ${GetParent} "$R2" $R3
         ${GetLongPath} "$R3" $R3
         ${If} $R3 == $INSTDIR
-          StrCpy $R2 "1" ; This Firefox install is set as default.
+          StrCpy $R2 "1" ; This Cliqz install is set as default.
         ${Else}
-          StrCpy $R2 "$R2" "" -11 # length of firefox.exe
+          StrCpy $R2 "$R2" "" -9 # length of cliqz.exe
           ${If} "$R2" == "${FileMainEXE}"
-            StrCpy $R2 "2" ; Another Firefox install is set as default.
->>>>>>> origin/upstream-releases
+            StrCpy $R2 "2" ; Another Cliqz install is set as default.
           ${Else}
-<<<<<<< HEAD
-            StrCpy $R2 "0" ; CLIQZ is not set as default.
-||||||| merged common ancestors
-            StrCpy $R2 "0" ; Firefox is not set as default.
-=======
             StrCpy $R2 "0"
->>>>>>> origin/upstream-releases
           ${EndIf}
         ${EndIf}
       ${Else}
-        StrCpy $R2 "0" ; Firefox is not set as default.
+        StrCpy $R2 "0" ; Cliqz is not set as default.
       ${EndIf}
     ${EndIf}
 
@@ -846,10 +786,10 @@ Function createIntro
   nsDialogs::OnBack /NOUNLOAD $0
 
 !ifdef ${AB_CD}_rtl
-  ; For RTL align the text with the top of the F in the Firefox bitmap
+  ; For RTL align the text with the top of the F in the Cliqz bitmap
   StrCpy $0 "${INTRO_BLURB_RTL_TOP_DU}"
 !else
-  ; For LTR align the text with the top of the x in the Firefox bitmap
+  ; For LTR align the text with the top of the x in the Cliqz bitmap
   StrCpy $0 "${INTRO_BLURB_LTR_TOP_DU}"
 !endif
   ${NSD_CreateLabel} ${INTRO_BLURB_EDGE_DU} $0 ${INTRO_BLURB_WIDTH_DU} 76u "${INTRO_BLURB}"
@@ -1745,7 +1685,7 @@ Function OnDownload
       ; installer closes it we can detect that it has completed.
       Delete "$INSTDIR\install.log"
 
-      ; Delete firefox.exe.moz-upgrade and firefox.exe.moz-delete if it exists
+      ; Delete cliqz.exe.moz-upgrade and cliqz.exe.moz-delete if it exists
       ; since it being present will require an OS restart for the full
       ; installer.
       Delete "$INSTDIR\${FileMainEXE}.moz-upgrade"

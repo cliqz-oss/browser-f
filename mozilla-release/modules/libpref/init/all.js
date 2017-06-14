@@ -5226,17 +5226,7 @@ pref("browser.safebrowsing.provider.google4.reportURL", "https://safebrowsing.go
 pref("browser.safebrowsing.provider.google4.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%&url=");
 pref("browser.safebrowsing.provider.google4.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%&url=");
 
-<<<<<<< HEAD
-pref("browser.safebrowsing.reportPhishMistakeURL", "https://safebrowsing.google.com/safebrowsing/report_error/?tpl=cliqz&hl=%LOCALE%&url=");
 pref("browser.safebrowsing.reportPhishURL", "https://safebrowsing.google.com/safebrowsing/report_phish/?tpl=cliqz&hl=%LOCALE%&url=");
-pref("browser.safebrowsing.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%&url=");
-||||||| merged common ancestors
-pref("browser.safebrowsing.reportPhishMistakeURL", "https://%LOCALE%.phish-error.mozilla.com/?hl=%LOCALE%&url=");
-pref("browser.safebrowsing.reportPhishURL", "https://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%&url=");
-pref("browser.safebrowsing.reportMalwareMistakeURL", "https://%LOCALE%.malware-error.mozilla.com/?hl=%LOCALE%&url=");
-=======
-pref("browser.safebrowsing.reportPhishURL", "https://%LOCALE%.phish-report.mozilla.com/?hl=%LOCALE%&url=");
->>>>>>> origin/upstream-releases
 
 // The table and global pref for blocking plugin content
 pref("browser.safebrowsing.blockedURIs.enabled", true);

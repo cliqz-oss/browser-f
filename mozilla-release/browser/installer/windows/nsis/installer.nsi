@@ -248,16 +248,8 @@ Section "-InstallStartCleanup"
   ; setup the application model id registration value
   ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
-<<<<<<< HEAD
-  ; Remove the updates directory for Vista and above
-  ${CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
-||||||| merged common ancestors
-  ; Remove the updates directory for Vista and above
-  ${CleanUpdateDirectories} "Mozilla\Firefox" "Mozilla\updates"
-=======
   ; Remove the updates directory
-  ${CleanUpdateDirectories} "Mozilla\Firefox" "Mozilla\updates"
->>>>>>> origin/upstream-releases
+  ${CleanUpdateDirectories} "CLIQZ" "CLIQZ\updates"
 
   ${RemoveDeprecatedFiles}
   ${RemovePrecompleteEntries} "false"
@@ -390,30 +382,12 @@ Section "-Application" APP_IDX
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
   StrCpy $2 "$\"$8$\" -osint -url $\"%1$\""
 
-<<<<<<< HEAD
   ; In Win8, the delegate execute handler picks up the value in CliqzURL and
   ; CliqzHTML to launch the desktop browser when it needs to.
-  ${AddDisabledDDEHandlerValues} "CliqzHTML" "$2" "$8,1" \
-||||||| merged common ancestors
-  ; In Win8, the delegate execute handler picks up the value in FirefoxURL and
-  ; FirefoxHTML to launch the desktop browser when it needs to.
-  ${AddDisabledDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" \
-=======
-  ; In Win8, the delegate execute handler picks up the value in FirefoxURL and
-  ; FirefoxHTML to launch the desktop browser when it needs to.
-  ${AddDisabledDDEHandlerValues} "FirefoxHTML-$AppUserModelID" "$2" "$8,1" \
->>>>>>> origin/upstream-releases
+  ${AddDisabledDDEHandlerValues} "CliqzHTML-$AppUserModelID" "$2" "$8,1" \
                                  "${AppRegName} Document" ""
-<<<<<<< HEAD
-  ${AddDisabledDDEHandlerValues} "CliqzURL" "$2" "$8,1" "${AppRegName} URL" \
-                                 "true"
-||||||| merged common ancestors
-  ${AddDisabledDDEHandlerValues} "FirefoxURL" "$2" "$8,1" "${AppRegName} URL" \
-                                 "true"
-=======
-  ${AddDisabledDDEHandlerValues} "FirefoxURL-$AppUserModelID" "$2" "$8,1" \
+  ${AddDisabledDDEHandlerValues} "CliqzURL-$AppUserModelID" "$2" "$8,1" \
                                  "${AppRegName} URL" "true"
->>>>>>> origin/upstream-releases
 
   ; For pre win8, the following keys should only be set if we can write to HKLM.
   ; For post win8, the keys below can be set in HKCU if needed.
@@ -1041,14 +1015,14 @@ Function preSummary
   WriteRegStr HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest" "Write Test"
   ${Unless} ${Errors}
     DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
-    ; Check if Firefox is the http handler for this user.
+    ; Check if Cliqz is the http handler for this user.
     SetShellVarContext current ; Set SHCTX to the current user
     ${IsHandlerForInstallDir} "http" $R9
     ${If} $TmpVal == "HKLM"
       SetShellVarContext all ; Set SHCTX to all users
     ${EndIf}
-    ; If Firefox isn't the http handler for this user show the option to set
-    ; Firefox as the default browser.
+    ; If Cliqz isn't the http handler for this user show the option to set
+    ; Cliqz as the default browser.
     ${If} "$R9" != "true"
     ${AndIf} ${AtMostWin2008R2}
       WriteINIStr "$PLUGINSDIR\summary.ini" "Settings" NumFields "4"

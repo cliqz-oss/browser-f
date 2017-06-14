@@ -13,17 +13,11 @@
   Call FixCliqzAsFirefoxRegistry
 
   ; Determine if we're the protected UserChoice default or not. If so fix the
-  ; start menu tile.  In case there are 2 Firefox installations, we only do
+  ; start menu tile.  In case there are 2 Cliqz installations, we only do
   ; this if the application being updated is the default.
   ReadRegStr $0 HKCU "Software\Microsoft\Windows\Shell\Associations\UrlAssociations\http\UserChoice" "ProgId"
-<<<<<<< HEAD
-  ${If} $0 == "CliqzURL"
-||||||| merged common ancestors
-  ${If} $0 == "FirefoxURL"
-=======
   ${WordFind} "$0" "-" "+1{" $0
-  ${If} $0 == "FirefoxURL"
->>>>>>> origin/upstream-releases
+  ${If} $0 == "CliqzURL"
   ${AndIf} $9 != 0 ; We're not running in session 0
     ReadRegStr $0 HKCU "Software\Classes\CliqzURL\shell\open\command" ""
     ${GetPathFromString} "$0" $0
@@ -69,71 +63,7 @@
     ; Add the Firewall entries after an update
     Call AddFirewallEntries
 
-<<<<<<< HEAD
-    ; Only update the Clients\StartMenuInternet registry key values in HKLM if
-    ; they don't exist or this installation is the same as the one set in those
-    ; keys.
-    ${StrFilter} "${FileMainEXE}" "+" "" "" $1
-    ReadRegStr $0 HKLM "Software\Clients\StartMenuInternet\$1\DefaultIcon" ""
-    ${GetPathFromString} "$0" $0
-    ${GetParent} "$0" $0
-    ${If} ${FileExists} "$0"
-      ${GetLongPath} "$0" $0
-    ${EndIf}
-    ${If} "$0" == "$INSTDIR"
-      ${SetStartMenuInternet} "HKLM"
-    ${EndIf}
-
-    ; Only update the Clients\StartMenuInternet registry key values in HKCU if
-    ; they don't exist or this installation is the same as the one set in those
-    ; keys.  This is only done in Windows 8 to avoid a UAC prompt.
-    ${If} ${AtLeastWin8}
-      ReadRegStr $0 HKCU "Software\Clients\StartMenuInternet\$1\DefaultIcon" ""
-      ${GetPathFromString} "$0" $0
-      ${GetParent} "$0" $0
-      ${If} ${FileExists} "$0"
-        ${GetLongPath} "$0" $0
-      ${EndIf}
-      ${If} "$0" == "$INSTDIR"
-        ${SetStartMenuInternet} "HKCU"
-      ${EndIf}
-    ${EndIf}
-
     ReadRegStr $0 HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion"
-||||||| merged common ancestors
-    ; Only update the Clients\StartMenuInternet registry key values in HKLM if
-    ; they don't exist or this installation is the same as the one set in those
-    ; keys.
-    ${StrFilter} "${FileMainEXE}" "+" "" "" $1
-    ReadRegStr $0 HKLM "Software\Clients\StartMenuInternet\$1\DefaultIcon" ""
-    ${GetPathFromString} "$0" $0
-    ${GetParent} "$0" $0
-    ${If} ${FileExists} "$0"
-      ${GetLongPath} "$0" $0
-    ${EndIf}
-    ${If} "$0" == "$INSTDIR"
-      ${SetStartMenuInternet} "HKLM"
-    ${EndIf}
-
-    ; Only update the Clients\StartMenuInternet registry key values in HKCU if
-    ; they don't exist or this installation is the same as the one set in those
-    ; keys.  This is only done in Windows 8 to avoid a UAC prompt.
-    ${If} ${AtLeastWin8}
-      ReadRegStr $0 HKCU "Software\Clients\StartMenuInternet\$1\DefaultIcon" ""
-      ${GetPathFromString} "$0" $0
-      ${GetParent} "$0" $0
-      ${If} ${FileExists} "$0"
-        ${GetLongPath} "$0" $0
-      ${EndIf}
-      ${If} "$0" == "$INSTDIR"
-        ${SetStartMenuInternet} "HKCU"
-      ${EndIf}
-    ${EndIf}
-
-    ReadRegStr $0 HKLM "Software\mozilla.org\Mozilla" "CurrentVersion"
-=======
-    ReadRegStr $0 HKLM "Software\mozilla.org\Mozilla" "CurrentVersion"
->>>>>>> origin/upstream-releases
     ${If} "$0" != "${GREVersion}"
       WriteRegStr HKLM "Software\cliqz.com\CLIQZ" "CurrentVersion" "${GREVersion}"
     ${EndIf}
@@ -378,25 +308,13 @@
   ClearErrors
   EnumRegKey $7 HKCR "${FILE_TYPE}" 0
   ${If} ${Errors}
-<<<<<<< HEAD
-    WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}"  "" "CliqzHTML"
-||||||| merged common ancestors
-    WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}"  "" "FirefoxHTML"
-=======
     WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}"  "" ${KEY}
->>>>>>> origin/upstream-releases
   ${EndIf}
-<<<<<<< HEAD
-  WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}\OpenWithProgids" "CliqzHTML" ""
-||||||| merged common ancestors
-  WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}\OpenWithProgids" "FirefoxHTML" ""
-=======
   WriteRegStr SHCTX "SOFTWARE\Classes\${FILE_TYPE}\OpenWithProgids" ${KEY} ""
->>>>>>> origin/upstream-releases
 !macroend
 !define AddAssociationIfNoneExist "!insertmacro AddAssociationIfNoneExist"
 
-; Adds the protocol and file handler registry entries for making Firefox the
+; Adds the protocol and file handler registry entries for making Cliqz the
 ; default handler (uses SHCTX).
 !macro SetHandlers
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
@@ -413,108 +331,50 @@
   StrCpy $0 "SOFTWARE\Classes"
   StrCpy $2 "$\"$8$\" -osint -url $\"%1$\""
 
-<<<<<<< HEAD
-  ; Associate the file handlers with CliqzHTML
-||||||| merged common ancestors
-  ; Associate the file handlers with FirefoxHTML
-=======
-  ; Associate the file handlers with FirefoxHTML, if they aren't already.
->>>>>>> origin/upstream-releases
+  ; Associate the file handlers with CliqzHTML, if they aren't already.
   ReadRegStr $6 SHCTX "$0\.htm" ""
-<<<<<<< HEAD
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.htm"   "" "CliqzHTML"
-||||||| merged common ancestors
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.htm"   "" "FirefoxHTML"
-=======
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.htm"   "" "FirefoxHTML$5"
->>>>>>> origin/upstream-releases
+  ${If} "$6" != "CliqzHTML"
+    WriteRegStr SHCTX "$0\.htm"   "" "CliqzHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.html" ""
-<<<<<<< HEAD
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.html"  "" "CliqzHTML"
-||||||| merged common ancestors
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.html"  "" "FirefoxHTML"
-=======
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.html"  "" "FirefoxHTML$5"
->>>>>>> origin/upstream-releases
+  ${If} "$6" != "CliqzHTML"
+    WriteRegStr SHCTX "$0\.html"  "" "CliqzHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.shtml" ""
-<<<<<<< HEAD
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.shtml" "" "CliqzHTML"
-||||||| merged common ancestors
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.shtml" "" "FirefoxHTML"
-=======
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.shtml" "" "FirefoxHTML$5"
->>>>>>> origin/upstream-releases
+  ${If} "$6" != "CliqzHTML"
+    WriteRegStr SHCTX "$0\.shtml" "" "CliqzHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.xht" ""
-<<<<<<< HEAD
-  ${If} "$6" != "CliqzxHTML"
-    WriteRegStr SHCTX "$0\.xht"   "" "CliqzHTML"
-||||||| merged common ancestors
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.xht"   "" "FirefoxHTML"
-=======
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.xht"   "" "FirefoxHTML$5"
->>>>>>> origin/upstream-releases
+  ${If} "$6" != "CliqzHTML"
+    WriteRegStr SHCTX "$0\.xht"   "" "CliqzHTML$5"
   ${EndIf}
 
   ReadRegStr $6 SHCTX "$0\.xhtml" ""
-<<<<<<< HEAD
-  ${If} "$6" != "CliqzHTML"
-    WriteRegStr SHCTX "$0\.xhtml" "" "CliqzHTML"
-||||||| merged common ancestors
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.xhtml" "" "FirefoxHTML"
-=======
   ${WordFind} "$6" "-" "+1{" $6
-  ${If} "$6" != "FirefoxHTML"
-    WriteRegStr SHCTX "$0\.xhtml" "" "FirefoxHTML$5"
->>>>>>> origin/upstream-releases
+  ${If} "$6" != "CliqzHTML"
+    WriteRegStr SHCTX "$0\.xhtml" "" "CliqzHTML$5"
   ${EndIf}
 
-  ${AddAssociationIfNoneExist} ".pdf" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".oga" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".ogg" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".ogv" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".pdf" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".webm" "FirefoxHTML$5"
+  ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".oga" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".ogg" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".ogv" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".webm" "CliqzHTML$5"
 
   ; An empty string is used for the 5th param because CliqzHTML is not a
   ; protocol handler
-<<<<<<< HEAD
-  ${AddDisabledDDEHandlerValues} "CliqzHTML" "$2" "$8,1" \
-||||||| merged common ancestors
-  ${AddDisabledDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" \
-=======
-  ${AddDisabledDDEHandlerValues} "FirefoxHTML$5" "$2" "$8,1" \
->>>>>>> origin/upstream-releases
+  ${AddDisabledDDEHandlerValues} "CliqzHTML$5" "$2" "$8,1" \
                                  "${AppRegName} HTML Document" ""
 
-<<<<<<< HEAD
-  ${AddDisabledDDEHandlerValues} "CliqzURL" "$2" "$8,1" "${AppRegName} URL" \
-||||||| merged common ancestors
-  ${AddDisabledDDEHandlerValues} "FirefoxURL" "$2" "$8,1" "${AppRegName} URL" \
-=======
-  ${AddDisabledDDEHandlerValues} "FirefoxURL$5" "$2" "$8,1" "${AppRegName} URL" \
->>>>>>> origin/upstream-releases
+  ${AddDisabledDDEHandlerValues} "CliqzURL$5" "$2" "$8,1" "${AppRegName} URL" \
                                  "true"
   ; An empty string is used for the 4th & 5th params because the following
   ; protocol handlers already have a display name and the additional keys
@@ -525,7 +385,7 @@
 !macroend
 !define SetHandlers "!insertmacro SetHandlers"
 
-; Adds the HKLM\Software\Clients\StartMenuInternet\Firefox-[pathhash] registry
+; Adds the HKLM\Software\Clients\StartMenuInternet\Cliqz-[pathhash] registry
 ; entries (does not use SHCTX).
 ;
 ; The values for StartMenuInternet are only valid under HKLM and there can only
@@ -548,7 +408,7 @@
   ${GetLongPath} "$INSTDIR\uninstall\helper.exe" $7
 
   ; Avoid writing new keys at the hash-suffixed path if this installation
-  ; already has keys at the old FIREFOX.EXE path. Otherwise we would create a
+  ; already has keys at the old CLIQZ.EXE path. Otherwise we would create a
   ; second entry in Default Apps for the same installation.
   ${StrFilter} "${FileMainEXE}" "+" "" "" $1
   ReadRegStr $0 ${RegKey} "Software\Clients\StartMenuInternet\$1\DefaultIcon" ""
@@ -580,41 +440,17 @@
     WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationIcon" "$8,0"
     WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationName" "${BrandShortName}"
 
-<<<<<<< HEAD
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML"
-||||||| merged common ancestors
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML"
-=======
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML-$AppUserModelID"
->>>>>>> origin/upstream-releases
+    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML-$AppUserModelID"
+    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML-$AppUserModelID"
+    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML-$AppUserModelID"
+    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML-$AppUserModelID"
+    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML-$AppUserModelID"
 
     WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "${AppRegName}-$AppUserModelID"
 
-<<<<<<< HEAD
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL"
-||||||| merged common ancestors
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL"
-=======
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL-$AppUserModelID"
->>>>>>> origin/upstream-releases
+    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL-$AppUserModelID"
+    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL-$AppUserModelID"
+    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL-$AppUserModelID"
 
     ; Registered Application
     WriteRegStr ${RegKey} "Software\RegisteredApplications" "${AppRegName}-$AppUserModelID" "$0\Capabilities"
@@ -625,41 +461,23 @@
 ; The IconHandler reference for CliqzHTML can end up in an inconsistent state
 ; due to changes not being detected by the IconHandler for side by side
 ; installs (see bug 268512). The symptoms can be either an incorrect icon or no
-; icon being displayed for files associated with Firefox (does not use SHCTX).
+; icon being displayed for files associated with Cliqz (does not use SHCTX).
 !macro FixShellIconHandler RegKey
-  ; Find the correct key to update, either FirefoxHTML or FirefoxHTML-[PathHash]
-  StrCpy $3 "FirefoxHTML-$AppUserModelID"
+  ; Find the correct key to update, either CliqzHTML or CliqzHTML-[PathHash]
+  StrCpy $3 "CliqzHTML-$AppUserModelID"
   ClearErrors
   ReadRegStr $0 ${RegKey} "Software\Classes\$3\DefaultIcon" ""
   ${If} ${Errors}
-    StrCpy $3 "FirefoxHTML"
+    StrCpy $3 "CliqzHTML"
   ${EndIf}
 
   ClearErrors
-<<<<<<< HEAD
-  ReadRegStr $1 ${RegKey} "Software\Classes\CliqzHTML\ShellEx\IconHandler" ""
-||||||| merged common ancestors
-  ReadRegStr $1 ${RegKey} "Software\Classes\FirefoxHTML\ShellEx\IconHandler" ""
-=======
   ReadRegStr $1 ${RegKey} "Software\Classes\$3\ShellEx\IconHandler" ""
->>>>>>> origin/upstream-releases
   ${Unless} ${Errors}
-<<<<<<< HEAD
-    ReadRegStr $1 ${RegKey} "Software\Classes\CliqzHTML\DefaultIcon" ""
-||||||| merged common ancestors
-    ReadRegStr $1 ${RegKey} "Software\Classes\FirefoxHTML\DefaultIcon" ""
-=======
     ReadRegStr $1 ${RegKey} "Software\Classes\$3\DefaultIcon" ""
->>>>>>> origin/upstream-releases
     ${GetLongPath} "$INSTDIR\${FileMainEXE}" $2
     ${If} "$1" != "$2,1"
-<<<<<<< HEAD
-      WriteRegStr ${RegKey} "Software\Classes\CliqzHTML\DefaultIcon" "" "$2,1"
-||||||| merged common ancestors
-      WriteRegStr ${RegKey} "Software\Classes\FirefoxHTML\DefaultIcon" "" "$2,1"
-=======
       WriteRegStr ${RegKey} "Software\Classes\$3\DefaultIcon" "" "$2,1"
->>>>>>> origin/upstream-releases
     ${EndIf}
   ${EndUnless}
 !macroend
@@ -813,16 +631,8 @@
     ${If} "$1" == "CliqzHTML"
       DeleteRegValue HKLM "Software\Classes\${FILE_TYPE}" ""
     ${EndIf}
-<<<<<<< HEAD
   ${ElseIf} "$0" == "CliqzHTML"
-    ; Since KHCU is set to CliqzHTML remove CliqzHTML as the default value
-||||||| merged common ancestors
-  ${ElseIf} "$0" == "FirefoxHTML"
-    ; Since KHCU is set to FirefoxHTML remove FirefoxHTML as the default value
-=======
-  ${ElseIf} "$0" == "FirefoxHTML"
-    ; Since HKCU is set to FirefoxHTML remove FirefoxHTML as the default value
->>>>>>> origin/upstream-releases
+    ; Since HKCU is set to CliqzHTML remove CliqzHTML as the default value
     ; from HKCU if HKLM is set to a value other than an empty string.
     ${If} "$1" != ""
       DeleteRegValue HKCU "Software\Classes\${FILE_TYPE}" ""
@@ -878,52 +688,28 @@
   ; Only set the file and protocol handlers if the existing one under HKCR is
   ; for this install location.
 
-<<<<<<< HEAD
-  ${IsHandlerForInstallDir} "CliqzHTML" $R9
-||||||| merged common ancestors
-  ${IsHandlerForInstallDir} "FirefoxHTML" $R9
-=======
-  ${IsHandlerForInstallDir} "FirefoxHTML-$AppUserModelID" $R9
->>>>>>> origin/upstream-releases
+  ${IsHandlerForInstallDir} "CliqzHTML-$AppUserModelID" $R9
   ${If} "$R9" == "true"
     ; An empty string is used for the 5th param because CliqzHTML is not a
     ; protocol handler.
-<<<<<<< HEAD
-    ${AddDisabledDDEHandlerValues} "CliqzHTML" "$2" "$8,1" \
-||||||| merged common ancestors
-    ${AddDisabledDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" \
-=======
-    ${AddDisabledDDEHandlerValues} "FirefoxHTML-$AppUserModelID" "$2" "$8,1" \
->>>>>>> origin/upstream-releases
+    ${AddDisabledDDEHandlerValues} "CliqzHTML-$AppUserModelID" "$2" "$8,1" \
                                    "${AppRegName} HTML Document" ""
   ${Else}
-    ${IsHandlerForInstallDir} "FirefoxHTML" $R9
+    ${IsHandlerForInstallDir} "CliqzHTML" $R9
     ${If} "$R9" == "true"
-      ${AddDisabledDDEHandlerValues} "FirefoxHTML" "$2" "$8,1" \
+      ${AddDisabledDDEHandlerValues} "CliqzHTML" "$2" "$8,1" \
                                      "${AppRegName} HTML Document" ""
     ${EndIf}
   ${EndIf}
 
-<<<<<<< HEAD
-  ${IsHandlerForInstallDir} "CliqzURL" $R9
-||||||| merged common ancestors
-  ${IsHandlerForInstallDir} "FirefoxURL" $R9
-=======
-  ${IsHandlerForInstallDir} "FirefoxURL-$AppUserModelID" $R9
->>>>>>> origin/upstream-releases
+  ${IsHandlerForInstallDir} "CliqzURL-$AppUserModelID" $R9
   ${If} "$R9" == "true"
-<<<<<<< HEAD
-    ${AddDisabledDDEHandlerValues} "CliqzURL" "$2" "$8,1" \
-||||||| merged common ancestors
-    ${AddDisabledDDEHandlerValues} "FirefoxURL" "$2" "$8,1" \
-=======
-    ${AddDisabledDDEHandlerValues} "FirefoxURL-$AppUserModelID" "$2" "$8,1" \
->>>>>>> origin/upstream-releases
+    ${AddDisabledDDEHandlerValues} "CliqzURL-$AppUserModelID" "$2" "$8,1" \
                                    "${AppRegName} URL" "true"
   ${Else}
-    ${IsHandlerForInstallDir} "FirefoxURL" $R9
+    ${IsHandlerForInstallDir} "CliqzURL" $R9
     ${If} "$R9" == "true"
-      ${AddDisabledDDEHandlerValues} "FirefoxURL" "$2" "$8,1" \
+      ${AddDisabledDDEHandlerValues} "CliqzURL" "$2" "$8,1" \
                                      "${AppRegName} URL" "true"
     ${EndIf}
   ${EndIf}
@@ -995,52 +781,12 @@
 !macro RemoveDeprecatedKeys
   StrCpy $0 "SOFTWARE\Classes"
   ; Remove support for launching chrome urls from the shell during install or
-  ; update if the DefaultIcon is from firefox.exe (Bug 301073).
+  ; update if the DefaultIcon is from cliqz.exe (Bug 301073).
   ${RegCleanAppHandler} "chrome"
 
   ; Remove protocol handler registry keys added by the MS shim
-<<<<<<< HEAD
   DeleteRegKey HKLM "Software\Classes\Cliqz.URL"
   DeleteRegKey HKCU "Software\Classes\Cliqz.URL"
-
-  ; Delete gopher from Capabilities\URLAssociations if it is present.
-  ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
-  StrCpy $0 "Software\Clients\StartMenuInternet\$R9"
-  ClearErrors
-  ReadRegStr $2 HKLM "$0\Capabilities\URLAssociations" "gopher"
-  ${Unless} ${Errors}
-    DeleteRegValue HKLM "$0\Capabilities\URLAssociations" "gopher"
-  ${EndUnless}
-
-  ; Delete gopher from the user's UrlAssociations if it points to CliqzURL.
-  StrCpy $0 "Software\Microsoft\Windows\Shell\Associations\UrlAssociations\gopher"
-  ReadRegStr $2 HKCU "$0\UserChoice" "Progid"
-  ${If} "$2" == "CliqzURL"
-    DeleteRegKey HKCU "$0"
-  ${EndIf}
-||||||| merged common ancestors
-  DeleteRegKey HKLM "Software\Classes\Firefox.URL"
-  DeleteRegKey HKCU "Software\Classes\Firefox.URL"
-
-  ; Delete gopher from Capabilities\URLAssociations if it is present.
-  ${StrFilter} "${FileMainEXE}" "+" "" "" $R9
-  StrCpy $0 "Software\Clients\StartMenuInternet\$R9"
-  ClearErrors
-  ReadRegStr $2 HKLM "$0\Capabilities\URLAssociations" "gopher"
-  ${Unless} ${Errors}
-    DeleteRegValue HKLM "$0\Capabilities\URLAssociations" "gopher"
-  ${EndUnless}
-
-  ; Delete gopher from the user's UrlAssociations if it points to FirefoxURL.
-  StrCpy $0 "Software\Microsoft\Windows\Shell\Associations\UrlAssociations\gopher"
-  ReadRegStr $2 HKCU "$0\UserChoice" "Progid"
-  ${If} "$2" == "FirefoxURL"
-    DeleteRegKey HKCU "$0"
-  ${EndIf}
-=======
-  DeleteRegKey HKLM "Software\Classes\Firefox.URL"
-  DeleteRegKey HKCU "Software\Classes\Firefox.URL"
->>>>>>> origin/upstream-releases
 !macroend
 !define RemoveDeprecatedKeys "!insertmacro RemoveDeprecatedKeys"
 
@@ -1192,7 +938,7 @@
         ${If} $AddTaskbarSC == ""
           ; No need to check the default on Win8 and later
           ${If} ${AtMostWin2008R2}
-            ; Check if the Firefox is the http handler for this user
+            ; Check if the Cliqz is the http handler for this user
             SetShellVarContext current ; Set SHCTX to the current user
             ${IsHandlerForInstallDir} "http" $R9
             ${If} $TmpVal == "HKLM"

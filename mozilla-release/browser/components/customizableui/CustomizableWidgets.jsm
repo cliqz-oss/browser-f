@@ -534,13 +534,6 @@ const CustomizableWidgets = [
       });
       return item;
     },
-<<<<<<< HEAD
-  },
-#endif  // MOZ_SERVICES_SYNC
-  {
-||||||| merged common ancestors
-  }, {
-=======
     _createShowMoreElement(doc, clientId, showCount) {
       let labelAttr, tooltipAttr;
       if (showCount === Infinity) {
@@ -564,8 +557,9 @@ const CustomizableWidgets = [
       });
       return showAllItem;
     }
-  }, {
->>>>>>> origin/upstream-releases
+  },
+#endif  // MOZ_SERVICES_SYNC
+  {
     id: "privatebrowsing-button",
     shortcutId: "key_privatebrowsing",
     defaultArea: CustomizableUI.AREA_PANEL,

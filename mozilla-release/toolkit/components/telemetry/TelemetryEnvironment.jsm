@@ -199,13 +199,9 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["extensions.update.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.update.url", {what: RECORD_PREF_VALUE}],
   ["extensions.update.background.url", {what: RECORD_PREF_VALUE}],
-<<<<<<< HEAD
-  ["extensions.https_everywhere.globalEnabled", {what: RECORD_PREF_VALUE}],
-||||||| merged common ancestors
-=======
   ["extensions.screenshots.disabled", {what: RECORD_PREF_VALUE}],
   ["extensions.screenshots.system-disabled", {what: RECORD_PREF_VALUE}],
->>>>>>> origin/upstream-releases
+  ["extensions.https_everywhere.globalEnabled", {what: RECORD_PREF_VALUE}],
   ["general.smoothScroll", {what: RECORD_PREF_VALUE}],
   ["gfx.direct2d.disabled", {what: RECORD_PREF_VALUE}],
   ["gfx.direct2d.force-enabled", {what: RECORD_PREF_VALUE}],

@@ -1530,48 +1530,6 @@
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
               let params = arguments[1];
-<<<<<<< HEAD
-              aTriggeringPrincipal  = params.triggeringPrincipal
-              aReferrerURI          = params.referrerURI;
-              aReferrerPolicy       = params.referrerPolicy;
-              aCharset              = params.charset;
-              aPostData             = params.postData;
-              aLoadInBackground     = params.inBackground;
-              aAllowThirdPartyFixup = params.allowThirdPartyFixup;
-              aFromExternal         = params.fromExternal;
-              aRelatedToCurrent     = params.relatedToCurrent;
-              aAllowMixedContent    = params.allowMixedContent;
-              aSkipAnimation        = params.skipAnimation;
-              aForceNotRemote       = params.forceNotRemote;
-              aPreferredRemoteType  = params.preferredRemoteType;
-              aNoReferrer           = params.noReferrer;
-              aUserContextId        = params.userContextId;
-              aRelatedBrowser       = params.relatedBrowser;
-              aOriginPrincipal      = params.originPrincipal;
-              aOpener               = params.opener;
-              aIsPrerendered        = params.isPrerendered;
-              aPrivate              = params.private;
-||||||| merged common ancestors
-              aTriggeringPrincipal  = params.triggeringPrincipal
-              aReferrerURI          = params.referrerURI;
-              aReferrerPolicy       = params.referrerPolicy;
-              aCharset              = params.charset;
-              aPostData             = params.postData;
-              aLoadInBackground     = params.inBackground;
-              aAllowThirdPartyFixup = params.allowThirdPartyFixup;
-              aFromExternal         = params.fromExternal;
-              aRelatedToCurrent     = params.relatedToCurrent;
-              aAllowMixedContent    = params.allowMixedContent;
-              aSkipAnimation        = params.skipAnimation;
-              aForceNotRemote       = params.forceNotRemote;
-              aPreferredRemoteType  = params.preferredRemoteType;
-              aNoReferrer           = params.noReferrer;
-              aUserContextId        = params.userContextId;
-              aRelatedBrowser       = params.relatedBrowser;
-              aOriginPrincipal      = params.originPrincipal;
-              aOpener               = params.opener;
-              aIsPrerendered        = params.isPrerendered;
-=======
               aTriggeringPrincipal      = params.triggeringPrincipal
               aReferrerURI              = params.referrerURI;
               aReferrerPolicy           = params.referrerPolicy;
@@ -1592,7 +1550,7 @@
               aOpener                   = params.opener;
               aIsPrerendered            = params.isPrerendered;
               aCreateLazyBrowser        = params.createLazyBrowser;
->>>>>>> origin/upstream-releases
+              aPrivate                  = params.private;
             }
 
             var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -2158,20 +2116,11 @@
         </body>
       </method>
 
-<<<<<<< HEAD
-            // Supported parameters:
-            // forceNotRemote, preferredRemoteType,
-            // userContextId, isPrerendered, private
-||||||| merged common ancestors
-            // Supported parameters:
-            // forceNotRemote, preferredRemoteType, userContextId, isPrerendered
-=======
       <method name="_insertBrowser">
         <parameter name="aTab"/>
         <body>
           <![CDATA[
             "use strict";
->>>>>>> origin/upstream-releases
 
             // If browser is already inserted, or aTab doesn't have a
             // browser, don't do anything.
@@ -2181,74 +2130,16 @@
 
             let browser = aTab.linkedBrowser;
 
-<<<<<<< HEAD
-            let browser;
-            let usingPreloadedContent = false;
-
-            // If we open a new tab with the newtab URL in the default
-            // userContext, check if there is a preloaded browser ready.
-            // Private windows are not included because both the label and the
-            // icon for the tab would be set incorrectly (see bug 1195981).
-            if (aURI == BROWSER_NEW_TAB_URL &&
-                !aParams.userContextId &&
-                !aParams.private &&
-                !PrivateBrowsingUtils.isWindowPrivate(window)) {
-              browser = this._getPreloadedBrowser();
-              if (browser) {
-                usingPreloadedContent = true;
-                aTab.permanentKey = browser.permanentKey;
-||||||| merged common ancestors
-            let browser;
-            let usingPreloadedContent = false;
-
-            // If we open a new tab with the newtab URL in the default
-            // userContext, check if there is a preloaded browser ready.
-            // Private windows are not included because both the label and the
-            // icon for the tab would be set incorrectly (see bug 1195981).
-            if (aURI == BROWSER_NEW_TAB_URL &&
-                !aParams.userContextId &&
-                !PrivateBrowsingUtils.isWindowPrivate(window)) {
-              browser = this._getPreloadedBrowser();
-              if (browser) {
-                usingPreloadedContent = true;
-                aTab.permanentKey = browser.permanentKey;
-=======
             // If browser is a lazy browser, delete the substitute properties.
             if (this._browserBindingProperties[0] in browser) {
               for (let name of this._browserBindingProperties) {
                 delete browser[name];
->>>>>>> origin/upstream-releases
               }
             }
 
-<<<<<<< HEAD
-            if (!browser) {
-              // No preloaded browser found, create one.
-              browser = this._createBrowser({permanentKey: aTab.permanentKey,
-                                             remoteType,
-                                             uriIsAboutBlank,
-                                             userContextId: aParams.userContextId,
-                                             relatedBrowser: aParams.relatedBrowser,
-                                             opener: aParams.opener,
-                                             isPrerendered: aParams.isPrerendered,
-                                             private: !!aParams.private});
-            }
-||||||| merged common ancestors
-            if (!browser) {
-              // No preloaded browser found, create one.
-              browser = this._createBrowser({permanentKey: aTab.permanentKey,
-                                             remoteType,
-                                             uriIsAboutBlank,
-                                             userContextId: aParams.userContextId,
-                                             relatedBrowser: aParams.relatedBrowser,
-                                             opener: aParams.opener,
-                                             isPrerendered: aParams.isPrerendered});
-            }
-=======
             let { uriIsAboutBlank, remoteType, usingPreloadedContent } =
                     aTab._browserParams;
             delete aTab._browserParams;
->>>>>>> origin/upstream-releases
 
             let notificationbox = this.getNotificationBox(browser);
             let uniqueId = this._generateUniquePanelID();
@@ -2330,13 +2221,9 @@
             var aOriginPrincipal;
             var aDisallowInheritPrincipal;
             var aOpener;
-<<<<<<< HEAD
-            var aPrivate;
-||||||| merged common ancestors
-=======
             var aCreateLazyBrowser;
             var aSkipBackgroundNotify;
->>>>>>> origin/upstream-releases
+            var aPrivate;
             if (arguments.length == 2 &&
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2362,13 +2249,9 @@
               aDisallowInheritPrincipal = params.disallowInheritPrincipal;
               aOpener                   = params.opener;
               aIsPrerendered            = params.isPrerendered;
-<<<<<<< HEAD
-              aPrivate                  = params.private;
-||||||| merged common ancestors
-=======
               aCreateLazyBrowser        = params.createLazyBrowser;
               aSkipBackgroundNotify     = params.skipBackgroundNotify;
->>>>>>> origin/upstream-releases
+              aPrivate                  = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2453,48 +2336,6 @@
                                               gMultiProcessBrowser);
             }
 
-<<<<<<< HEAD
-            // Currently in this incarnation of bug 906076, we are forcing the
-            // browser to immediately be linked.  In future incarnations of this
-            // bug this will be removed so we can leave the tab in its "lazy"
-            // state to be exploited for startup optimization.  Note that for
-            // now this must occur before "TabOpen" event is fired, as that will
-            // trigger SessionStore.jsm to run code that expects the existence
-            // of tab.linkedBrowser.
-            // "Private" attribute is needed to have the browser ready for being
-            // docShell-swapped right after it's created. Otherwise, it may fail
-            // because of asynchronous nature of "set private" message in
-            // multi-process scenario.
-            let browserParams = {
-              forceNotRemote: aForceNotRemote,
-              preferredRemoteType: aPreferredRemoteType,
-              userContextId:  aUserContextId,
-              relatedBrowser: aRelatedBrowser,
-              opener: aOpener,
-              isPrerendered: aIsPrerendered,
-              private: !!aPrivate,
-            };
-            let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
-            let b = t.linkedBrowser;
-||||||| merged common ancestors
-            // Currently in this incarnation of bug 906076, we are forcing the
-            // browser to immediately be linked.  In future incarnations of this
-            // bug this will be removed so we can leave the tab in its "lazy"
-            // state to be exploited for startup optimization.  Note that for
-            // now this must occur before "TabOpen" event is fired, as that will
-            // trigger SessionStore.jsm to run code that expects the existence
-            // of tab.linkedBrowser.
-            let browserParams = {
-              forceNotRemote: aForceNotRemote,
-              preferredRemoteType: aPreferredRemoteType,
-              userContextId:  aUserContextId,
-              relatedBrowser: aRelatedBrowser,
-              opener: aOpener,
-              isPrerendered: aIsPrerendered,
-            };
-            let { usingPreloadedContent } = this._linkBrowserToTab(t, aURI, browserParams);
-            let b = t.linkedBrowser;
-=======
             let remoteType =
               aForceNotRemote ? E10SUtils.NOT_REMOTE
               : E10SUtils.getRemoteTypeForURI(aURI, gMultiProcessBrowser,
@@ -2509,6 +2350,7 @@
             // icon for the tab would be set incorrectly (see bug 1195981).
             if (aURI == BROWSER_NEW_TAB_URL &&
                 !aUserContextId &&
+                !aPrivate &&
                 !PrivateBrowsingUtils.isWindowPrivate(window)) {
               b = this._getPreloadedBrowser();
               if (b) {
@@ -2523,7 +2365,8 @@
                                         userContextId: aUserContextId,
                                         sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
                                         opener: aOpener,
-                                        isPrerendered: aIsPrerendered });
+                                        isPrerendered: aIsPrerendered,
+                                        private: !!aPrivate });
             }
 
             t.linkedBrowser = b;
@@ -2539,7 +2382,6 @@
             } else {
               this._insertBrowser(t);
             }
->>>>>>> origin/upstream-releases
 
             // Dispatch a new tab notification.  We do this once we're
             // entirely done, so that things are in a consistent state
@@ -3117,23 +2959,11 @@
         <parameter name="aOtherTab"/>
         <body>
           <![CDATA[
-<<<<<<< HEAD
             // CLIQZ Auto-Forget-Tabs:
             // Transfering a private tab to a non-private window is fine.
             // Transfering a normal tab to a private window is not.
             if (PrivateBrowsingUtils.isWindowPrivate(window) &&
                 !aOtherTab.private)
-||||||| merged common ancestors
-            // Do not allow transfering a private tab to a non-private window
-            // and vice versa.
-            if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerDocument.defaultView))
-=======
-            // Do not allow transfering a private tab to a non-private window
-            // and vice versa.
-            if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal))
->>>>>>> origin/upstream-releases
               return;
 
             let ourBrowser = this.getBrowserForTab(aOurTab);
@@ -6453,26 +6283,12 @@
                   sourceNode.localName == "tab" &&
                   sourceNode.ownerGlobal instanceof ChromeWindow &&
                   sourceNode.ownerDocument.documentElement.getAttribute("windowtype") == "navigator:browser" &&
-<<<<<<< HEAD
-                  sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
+                  sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
                 // CLIQZ Auto-Forget-Tabs:
                 // Transfering a private tab to a non-private window is fine.
                 // Transfering a normal tab to a private window is not.
                 if (PrivateBrowsingUtils.isWindowPrivate(window) &&
                     !sourceNode.private)
-||||||| merged common ancestors
-                  sourceNode.ownerDocument.defaultView.gBrowser.tabContainer == sourceNode.parentNode) {
-                // Do not allow transfering a private tab to a non-private window
-                // and vice versa.
-                if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                    PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerDocument.defaultView))
-=======
-                  sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.parentNode) {
-                // Do not allow transfering a private tab to a non-private window
-                // and vice versa.
-                if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-                    PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerGlobal))
->>>>>>> origin/upstream-releases
                   return "none";
 
                 if (window.gMultiProcessBrowser !=

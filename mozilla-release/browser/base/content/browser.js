@@ -76,13 +76,7 @@ Cu.import("resource://gre/modules/NotificationDB.jsm");
   ["Translation", "resource:///modules/translation/Translation.jsm"],
   ["UITour", "resource:///modules/UITour.jsm"],
   ["UpdateUtils", "resource://gre/modules/UpdateUtils.jsm"],
-<<<<<<< HEAD
-  ["URLBarZoom", "resource:///modules/URLBarZoom.jsm"],
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-  ["URLBarZoom", "resource:///modules/URLBarZoom.jsm"],
-=======
->>>>>>> origin/upstream-releases
   ["Weave", "resource://services-sync/main.js"],
 #endif
   ["fxAccounts", "resource://gre/modules/FxAccounts.jsm"],
@@ -5877,12 +5871,8 @@ function handleLinkClick(event, href, linkNode) {
     referrerPolicy,
     noReferrer: BrowserUtils.linkHasNoReferrer(linkNode),
     originPrincipal: doc.nodePrincipal,
-<<<<<<< HEAD
-    private: privateTab,
-||||||| merged common ancestors
-=======
     frameOuterWindowID,
->>>>>>> origin/upstream-releases
+    private: privateTab,
   };
 
   // The new tab/window must use the same userContextId

@@ -2707,35 +2707,18 @@ void TabParent::CreateLoadContext() {
 #if 0  // Privateness is already passed with TabContext to our constructor.
     bool isPrivate = mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
     SetPrivateBrowsingAttributes(isPrivate);
-<<<<<<< HEAD
 #endif
-    mLoadContext = new LoadContext(
-        GetOwnerElement(),
-        true /* aIsContent */,
-        OriginAttributesRef().mPrivateBrowsingId != 0,
-        mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
-        OriginAttributesRef());
-||||||| merged common ancestors
-    loadContext = new LoadContext(GetOwnerElement(),
-                                  true /* aIsContent */,
-                                  isPrivate,
-                                  mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
-                                  OriginAttributesRef());
-    mLoadContext = loadContext;
-=======
     bool useTrackingProtection = false;
     nsCOMPtr<nsIDocShell> docShell = mFrameElement->OwnerDoc()->GetDocShell();
     if (docShell) {
       docShell->GetUseTrackingProtection(&useTrackingProtection);
     }
-    loadContext = new LoadContext(GetOwnerElement(),
+    mLoadContext = new LoadContext(GetOwnerElement(),
                                   true /* aIsContent */,
-                                  isPrivate,
+                                  OriginAttributesRef().mPrivateBrowsingId != 0,
                                   mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
                                   useTrackingProtection,
                                   OriginAttributesRef());
-    mLoadContext = loadContext;
->>>>>>> origin/upstream-releases
   }
 }
 

@@ -8,17 +8,9 @@ DIRS += [
 #    'aushelper',
 #    'e10srollout',
     'pdfjs',
-<<<<<<< HEAD
 #    'pocket',
+#    'screenshots',
 #    'webcompat',
-||||||| merged common ancestors
-    'pocket',
-    'webcompat',
-=======
-    'pocket',
-    'screenshots',
-    'webcompat',
->>>>>>> origin/upstream-releases
 ]
 
 ''' disabled by CLIQZ

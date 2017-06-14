@@ -2,23 +2,6 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<<<<<<< HEAD
-<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
-%syncBrandDTD;
-
-<!-- The page shown when not logged in... -->
-<!ENTITY setupButton.label          "Set Up &syncBrand.fullName.label;">
-<!ENTITY setupButton.accesskey      "S">
-<!ENTITY weaveDesc.label            "&syncBrand.fullName.label; lets you access your history, bookmarks, passwords and open tabs across all your devices.">
-
-||||||| merged common ancestors
-<!-- The page shown when not logged in... -->
-<!ENTITY setupButton.label          "Set Up &syncBrand.fullName.label;">
-<!ENTITY setupButton.accesskey      "S">
-<!ENTITY weaveDesc.label            "&syncBrand.fullName.label; lets you access your history, bookmarks, passwords and open tabs across all your devices.">
-
-=======
->>>>>>> origin/upstream-releases
 <!-- The page shown when logged in... -->
 
 <!ENTITY engine.bookmarks.label     "Bookmarks">

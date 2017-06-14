@@ -955,16 +955,10 @@ nsContextMenu.prototype = {
                    originPrincipal: this.principal,
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
-<<<<<<< HEAD
+                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
                    noReferrer: this.linkHasNoReferrer,
                    private: this.browser.loadContext.usePrivateBrowsing
     };
-||||||| merged common ancestors
-                   noReferrer: this.linkHasNoReferrer };
-=======
-                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-                   noReferrer: this.linkHasNoReferrer };
->>>>>>> origin/upstream-releases
     for (let p in extra) {
       params[p] = extra[p];
     }
