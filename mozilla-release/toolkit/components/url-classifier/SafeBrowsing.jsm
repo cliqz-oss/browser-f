@@ -61,6 +61,20 @@ const tablePreferences = [
   "urlclassifier.flashSubDocExceptTable"
 ];
 
+function reportPhishingURL(url, kind) {
+  try {
+    Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
+      .CLIQZ.System.import('core/kord/inject').then(function (mod) {
+        const inject = mod.default;
+        const humanWeb = inject.module('human-web');
+        humanWeb.action('addDataToUrl', url, 'anti-phishing', kind);
+      });
+  }
+  catch (e) {
+    Cu.reportError(e);
+  }
+}
+
 this.SafeBrowsing = {
 
   init: function() {
@@ -154,21 +168,24 @@ this.SafeBrowsing = {
       case "Phish":
         pref = "browser.safebrowsing.reportPhishURL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(0);
+        reportPhishingURL(URI.asciiSpec, 'user-report-phish');
         break;
 
       case "PhishMistake":
-        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
         pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
+        reportPhishingURL(URI.asciiSpec, 'user-report-phish-mistake');
         break;
 
       case "MalwareMistake":
-        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
         pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
+        reportPhishingURL(URI.asciiSpec, 'user-report-malware-mistake');
         break;
 
       default:
         let err = "SafeBrowsing getReportURL() called with unknown kind: " + kind;
-        Components.utils.reportError(err);
+        Cu.reportError(err);
         throw err;
     }
 
