@@ -7,13 +7,6 @@
 <!ENTITY     cookiesonsystem.label          "Folgende Cookies sind auf Ihrem Computer gespeichert:">
 <!ENTITY     cookiename.label               "Cookie-Name">
 <!ENTITY     cookiedomain.label             "Website"> 
-<!-- LOCALIZATION NOTE (button.removeSelectedCookies.accesskey):
-  The label associated with this accesskey can be found in 
-  preferences.properties as removeSelectedCookies.
--->
-<!ENTITY     button.removeSelectedCookies.accesskey "e">
-<!ENTITY     button.removeAllCookies.label "Alle Cookies entfernen">
-<!ENTITY     button.removeAllCookies.accesskey "A">
 
 <!ENTITY     props.name.label               "Name:">
 <!ENTITY     props.value.label              "Inhalt:">

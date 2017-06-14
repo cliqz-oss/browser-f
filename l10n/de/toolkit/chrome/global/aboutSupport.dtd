@@ -65,6 +65,9 @@ Windows/Mac use the term "Folder" instead of "Directory" -->
 
 <!ENTITY aboutSupport.appBasicsMultiProcessSupport "Fenster mit mehreren Prozessen">
 
+<!ENTITY aboutSupport.appBasicsKeyGoogle "Google-Schlüssel">
+<!ENTITY aboutSupport.appBasicsKeyMozilla "Mozilla-Location-Service-Schlüssel">
+
 <!ENTITY aboutSupport.appBasicsSafeMode "Abgesicherter Modus">
 
 <!ENTITY aboutSupport.showDir.label "Ordner öffnen">
@@ -110,6 +113,14 @@ variant of aboutSupport.showDir.label. -->
 <!ENTITY aboutSupport.copyRawDataToClipboard.label "Rohdaten in die Zwischenablage kopieren">
 
 <!ENTITY aboutSupport.sandboxTitle "Isolierte Umgebungen">
+<!ENTITY aboutSupport.sandboxSyscallLogTitle "Abgewiesene Systemaufrufe">
+<!ENTITY aboutSupport.sandboxSyscallIndex "#">
+<!ENTITY aboutSupport.sandboxSyscallAge "Vor … Sekunden">
+<!ENTITY aboutSupport.sandboxSyscallPID "PID">
+<!ENTITY aboutSupport.sandboxSyscallTID "TID">
+<!ENTITY aboutSupport.sandboxSyscallProcType "Prozesstyp">
+<!ENTITY aboutSupport.sandboxSyscallNumber "Systemaufruf">
+<!ENTITY aboutSupport.sandboxSyscallArgs "Parameter">
 
 <!ENTITY aboutSupport.safeModeTitle "Abgesicherten Modus probieren">
 <!ENTITY aboutSupport.restartInSafeMode.label "Mit deaktivierten Add-ons neu starten…">

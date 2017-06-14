@@ -518,10 +518,8 @@ size. -->
 <!ENTITY doorhanger_login_edit_username_hint "Benutzername">
 <!ENTITY doorhanger_login_edit_password_hint "Passwort">
 <!ENTITY doorhanger_login_edit_toggle "Passwort anzeigen">
-<!ENTITY doorhanger_login_edit_toast_error "Zugangsdaten konnten nicht gespeichert werden">
 <!ENTITY doorhanger_login_select_message "Passwort von &formatS; kopieren?">
 <!ENTITY doorhanger_login_select_toast_copy "Passwort in Zwischenablage kopiert">
-<!ENTITY doorhanger_login_select_toast_copy_error "Passwort konnte nicht kopiert werden">
 <!ENTITY doorhanger_login_select_action_text "Andere Zugangsdaten auswählen">
 <!ENTITY doorhanger_login_select_title "Passwort kopieren von">
 

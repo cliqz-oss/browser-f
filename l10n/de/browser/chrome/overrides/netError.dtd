@@ -52,11 +52,11 @@
 ">
 
 <!ENTITY captivePortal.title "Anmeldung beim Netzwerk">
-<!ENTITY captivePortal.longDesc "
-<p>Dieses Netzwerk benötigt eventuell Ihre Anmeldung für den Internetzugriff.</p>
+<!ENTITY captivePortal.longDesc2 "
+<p>Sie müssen sich bei dem Netzwerk anmelden, um auf das Internet zugreifen zu können.</p>
 ">
 
-<!ENTITY openPortalLoginPage.label "Anmeldeseite öffnen">
+<!ENTITY openPortalLoginPage.label2 "Anmeldeseite des Netzwerks öffnen">
 
 <!ENTITY malformedURI.title "Fehler: Ungültige Adresse">
 <!ENTITY malformedURI.longDesc "
@@ -188,14 +188,6 @@ was trying to connect. -->
 <!-- LOCALIZATION NOTE (sslv3Used.longDesc2) - Do not translate
      "SSL_ERROR_UNSUPPORTED_VERSION". -->
 <!ENTITY sslv3Used.longDesc2 "Weitere Informationen: SSL_ERROR_UNSUPPORTED_VERSION">
-
-<!ENTITY weakCryptoUsed.title "Diese Verbindung ist nicht sicher">
-<!-- LOCALIZATION NOTE (weakCryptoUsed.longDesc2) - Do not translate
-     "SSL_ERROR_NO_CYPHER_OVERLAP". -->
-<!ENTITY weakCryptoUsed.longDesc2 "Weitere Informationen: SSL_ERROR_NO_CYPHER_OVERLAP">
-<!ENTITY weakCryptoAdvanced.title "Erweitert">
-<!ENTITY weakCryptoAdvanced.longDesc "<span class='hostname'></span> verwendet Sicherheitstechnologie, welche veraltet und verwundbar ist. Ein Angreifer könnte leicht Informationen entschlüsseln, welche Sie für sicher hielten.">
-<!ENTITY weakCryptoAdvanced.override "(Nicht sicher) <span class='hostname'></span> mit veralteter Sicherheitstechnologie laden">
 
 <!-- LOCALIZATION NOTE (certerror.wrongSystemTime2,
                         certerror.wrongSystemTimeWithoutReference) - The <span id='..' />

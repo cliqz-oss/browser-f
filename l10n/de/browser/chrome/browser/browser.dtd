@@ -184,6 +184,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY showAllBookmarks2.label "Lesezeichen verwalten">
 <!ENTITY recentBookmarks.label "Kürzlich als Lesezeichen gesetzt">
 <!ENTITY otherBookmarksCmd.label "Weitere Lesezeichen">
+<!ENTITY mobileBookmarksCmd.label "Mobile Lesezeichen">
 <!ENTITY bookmarksToolbarChevron.tooltip "Weitere Lesezeichen anzeigen">
 <!ENTITY showRecentlyBookmarked.label     "Kürzlich hinzugefügte Lesezeichen anzeigen">
 <!ENTITY showRecentlyBookmarked.accesskey "z">
@@ -245,6 +246,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!ENTITY bookmarksMenuButton.label          "Lesezeichen">
 <!ENTITY bookmarksMenuButton.other.label "Weitere Lesezeichen">
+<!ENTITY bookmarksMenuButton.mobile.label "Mobile Lesezeichen">
 <!ENTITY viewBookmarksSidebar2.label        "Lesezeichen-Sidebar anzeigen">
 <!ENTITY viewBookmarksToolbar.label         "Lesezeichen-Symbolleiste anzeigen">
 
@@ -356,6 +358,14 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.notabs.label): This is shown beneath
      the name of a device when that device has no open tabs -->
 <!ENTITY appMenuRemoteTabs.notabs.label "Keine offenen Tabs">
+<!-- LOCALIZATION NOTE (appMenuRemoteTabs.showMore.label, appMenuRemoteTabs.showMore.tooltip):
+     This is shown after the tabs list if we can display more tabs by clicking on the button -->
+<!ENTITY appMenuRemoteTabs.showMore.label "Weitere anzeigen">
+<!ENTITY appMenuRemoteTabs.showMore.tooltip "Mehr Tabs von diesem Gerät anzeigen">
+<!-- LOCALIZATION NOTE (appMenuRemoteTabs.showAll.label, appMenuRemoteTabs.showAll.tooltip):
+     This is shown after the tabs list if we can all the remaining tabs by clicking on the button -->
+<!ENTITY appMenuRemoteTabs.showAll.label "Alle anzeigen">
+<!ENTITY appMenuRemoteTabs.showAll.tooltip "Alle Tabs von diesem Gerät anzeigen">
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.tabsnotsyncing.label): This is shown
      when Sync is configured but syncing tabs is disabled. -->
 <!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktivieren Sie das Synchronisieren von Tabs, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
