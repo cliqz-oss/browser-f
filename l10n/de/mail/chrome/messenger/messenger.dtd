@@ -634,6 +634,9 @@
 <!-- Folder Pane Context Menu -->
 <!ENTITY folderContextGetMessages.label "Nachrichten abrufen">
 <!ENTITY folderContextGetMessages.accesskey "c">
+<!ENTITY folderContextPauseAllUpdates.label "Alle Aktualisierungen anhalten">
+<!ENTITY folderContextPauseUpdates.label "Aktualisierungen anhalten">
+<!ENTITY folderContextPauseUpdates.accesskey "g">
 <!ENTITY folderContextOpenInNewWindow.label "In neuem Fenster öffnen">
 <!ENTITY folderContextOpenInNewWindow.accesskey "ö">
 <!ENTITY folderContextOpenNewTab.label "In neuem Tab öffnen">

@@ -49,7 +49,7 @@ treecol {
 }
 
 .learnMore {
-  margin-inline-start: 1.5em;
+  margin-inline-start: 10px;
   font-weight: normal;
   white-space: nowrap;
 }
@@ -189,6 +189,11 @@ treecol {
   margin-inline-start: 0;
 }
 
+#browserHomePage:-moz-locale-dir(rtl) input {
+  unicode-bidi: plaintext;
+  direction: rtl;
+}
+
 /* Content pane */
 
 #defaultFontSizeLabel {
@@ -253,10 +258,7 @@ treecol {
    active vbox needs */
 #historyPane:not([selectedIndex="1"]) > #historyDontRememberPane,
 #historyPane:not([selectedIndex="2"]) > #historyCustomPane,
-#weavePrefsDeck:not([selectedIndex="1"]) > #hasAccount,
-#weavePrefsDeck:not([selectedIndex="2"]) > #needsUpdate,
-#weavePrefsDeck:not([selectedIndex="3"]) > #noFxaAccount,
-#weavePrefsDeck:not([selectedIndex="4"]) > #hasFxaAccount,
+#weavePrefsDeck:not([selectedIndex="1"]) > #hasFxaAccount,
 #fxaLoginStatus:not([selectedIndex="1"]) > #fxaLoginUnverified,
 #fxaLoginStatus:not([selectedIndex="2"]) > #fxaLoginRejected {
   visibility: collapse;
@@ -271,10 +273,8 @@ description > html|a {
 #weavePrefsDeck > vbox > label,
 #weavePrefsDeck > vbox > groupbox,
 #weavePrefsDeck > vbox > description,
-#weavePrefsDeck > vbox > #pairDevice > label,
-#weavePrefsDeck > #needsUpdate > hbox > #loginError,
 #weavePrefsDeck > #hasFxaAccount > vbox > label,
-#weavePrefsDeck > #hasFxaAccount > hbox:not(#tosPP-normal) > label {
+#weavePrefsDeck > #hasFxaAccount > hbox > label {
   /* no margin-inline-start for elements at the beginning of a line */
   margin-inline-start: 0;
 }
@@ -518,9 +518,12 @@ description > html|a {
   margin-inline-end: 14px !important;
 }
 
+#verifiedManage:visited {
+  color: var(--in-content-link-color);
+}
+
 .fxaSyncIllustration {
   width: 231px;
-  list-style-image: url(chrome://browser/skin/fxa/sync-illustration.png)
 }
 
 #fxaLoginStatus[hasName] #fxaEmailAddress1 {
@@ -583,9 +586,6 @@ description > html|a {
   }
   .iOSLink {
     background-image: url("chrome://browser/skin/fxa/ios@2x.png");
-  }
-  .fxaSyncIllustration {
-    list-style-image: url(chrome://browser/skin/fxa/sync-illustration@2x.png)
   }
   .fxaFirefoxLogo {
     list-style-image: url(chrome://browser/skin/fxa/logo@2x.png);

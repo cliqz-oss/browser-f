@@ -114,8 +114,9 @@ interface nsIHttpAuthenticableChannel : nsIProxiedChannel
     void closeStickyConnection();
 
     /**
-     * Tells the channel to not use SPDY-like protocols, since this will be
-     * using connection-oriented auth.
+     * Tells the channel to mark the connection as allowed to restart on
+     * authentication retry.  This is allowed when the request is a start
+     * of a new authentication round.
      */
-    void forceNoSpdy();
+    void connectionRestartable(in boolean restartable);
 };

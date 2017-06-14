@@ -84,7 +84,12 @@ RemoteWebNavigation.prototype = {
       triggeringPrincipal: aTriggeringPrincipal
                            ? Utils.serializePrincipal(aTriggeringPrincipal)
                            : null,
+<<<<<<< HEAD
       ensurePrivate: !!aEnsurePrivate
+||||||| merged common ancestors
+=======
+      requestTime: Services.telemetry.msSystemNow(),
+>>>>>>> origin/upstream-releases
     });
   },
   setOriginAttributesBeforeLoading(aOriginAttributes) {
