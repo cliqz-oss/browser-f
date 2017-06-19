@@ -1,6 +1,8 @@
 .DS_Store
 cliqz@cliqz.com.xpi
 google-api-key
+google-desktop-api.key
+mozilla-desktop-geoloc-api.key
 /obj
 .idea
 /docker
