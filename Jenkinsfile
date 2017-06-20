@@ -458,7 +458,7 @@ jobs["linux"] = {
 
                         stage('Linux Build Browser') {
                           try {
-                              sh './magic_build_and_package.sh  --clobber'
+                              sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
                           } catch (e) {
                               archive 'obj/config.log'
                               throw e
@@ -493,7 +493,7 @@ jobs["linux"] = {
                             }
 
                             stage('Linux Publisher (Internal)') {
-                                sh './magic_upload_files.sh'
+                                sh '/bin/bash -lc "./magic_upload_files.sh"'
                                 archiveArtifacts 'obj/build_properties.json'
                             }
                         }
