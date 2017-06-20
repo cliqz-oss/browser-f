@@ -813,12 +813,15 @@
           </hbox>
         </toolbaritem>
 
+# Cliqz. DB-1349: doesn't used in Cliqz browser
+#ifdef 0
         <toolbaritem id="search-container" title="&searchItem.title;"
                      align="center" class="chromeclass-toolbar-additional panel-wide-item"
                      cui-areatype="toolbar"
                      flex="100" persist="width" removable="true">
           <searchbar id="searchbar" flex="1"/>
         </toolbaritem>
+#endif
 
         <toolbarbutton id="bookmarks-menu-button"
                        class="toolbarbutton-1 chromeclass-toolbar-additional"
