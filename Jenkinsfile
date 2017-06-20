@@ -30,11 +30,6 @@ properties([
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.8-browser-signed.xpi',
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
-        string(defaultValue: '/home/jenkins/libs/cliqz-builder/ansible/ec2',
-                name: 'ANSIBLE_PLAYBOOK_PATH'),
-        string(defaultValue: "8000", name: 'NODE_MEMORY'),
-        string(defaultValue: "4", name: 'NODE_CPU_COUNT'),
-        string(defaultValue: "7900", name: 'NODE_VNC_PORT'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c",
@@ -60,10 +55,6 @@ properties([
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
         string(defaultValue: "1.14.0", name: "CQZ_VERSION"),
-        booleanParam(defaultValue: false, description: '',
-                    name: 'MAC_REBUILD_IMAGE'),
-        booleanParam(defaultValue: false, description: '',
-                    name: 'WIN_REBUILD_IMAGE'),
         booleanParam(defaultValue: false, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
     ]),
@@ -161,7 +152,7 @@ jobs["windows"] = {
                         // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
                         docker.withRegistry(params.DOCKER_REGISTRY_URL) {
                             timeout(60) {
-                                def image = docker.image(IMAGE_NAME)
+                                def image = docker.image(params.IMAGE_NAME)
 
                                 docker.image(image.imageName()).inside(prov_args) {
                                     withCredentials([
