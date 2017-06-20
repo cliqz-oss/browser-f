@@ -202,6 +202,24 @@ jobs["windows"] = {
                 bat "git config core.autocrlf false && git config core.eof lf &&  git rm --cached -r -q . && git reset --hard -q"
             }
 
+            stage('fix keys') {
+              withCredentials([
+                [
+                  $class: 'StringBinding',
+                  credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                  variable: 'CQZ_GOOGLE_API_KEY'
+                ],
+                [
+                  $class: 'StringBinding',
+                  credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                  variable: 'MOZ_MOZILLA_API_KEY'
+                ],
+              ]) {
+                writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+              }
+            }
+
             withCredentials([
                 [$class: 'FileBinding',
                     credentialsId: params.WIN_CERT_PATH_CREDENTIAL_ID,
@@ -209,12 +227,6 @@ jobs["windows"] = {
                 [$class: 'StringBinding',
                     credentialsId: params.WIN_CERT_PASS_CREDENTIAL_ID,
                     variable: 'CLZ_CERTIFICATE_PWD'],
-                [$class: 'StringBinding',
-                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                    variable: 'MOZ_MOZILLA_API_KEY'],
-                [$class: 'StringBinding',
-                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                    variable: 'CQZ_GOOGLE_API_KEY'],
                 [$class: 'AmazonWebServicesCredentialsBinding',
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
@@ -225,20 +237,13 @@ jobs["windows"] = {
                   "CQZ_BUILD_DE_LOCALIZATION=${CQZ_BUILD_DE_LOCALIZATION}",
                   "CQZ_BUILD_ID=${CQZ_BUILD_ID}",
                   "CQZ_RELEASE_CHANNEL=${CQZ_RELEASE_CHANNEL}",
-                  "CLZ_CERTIFICATE_PWD=${CLZ_CERTIFICATE_PWD}",
-                  "CLZ_CERTIFICATE_PATH=${CLZ_CERTIFICATE_PATH}"
                 ]){
-                    stage('fix keys') {
-                          writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                          writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
-                    }
-                }
-
-                stage('Windows Build') {
+                  stage('Windows Build') {
                     bat '''
-                        set CQZ_WORKSPACE=%cd%
-                        build_win.bat
+                      set CQZ_WORKSPACE=%cd%
+                      build_win.bat
                     '''
+                  }
                 }
 
                 if (CQZ_BUILD_DE_LOCALIZATION == "1") {
