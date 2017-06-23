@@ -25,8 +25,8 @@ endif
 BRANDING_FILES = \
 	branding.nsi \
 	appname.bmp \
-	appname-light.bmp \
 	bgintro.bmp \
+	focus.bmp \
 	magnifier.bmp \
 	shield.bmp \
 	wizHeader.bmp \
