@@ -584,8 +584,8 @@ this.MigrationUtils = Object.freeze({
         return "sourceNameFirefox";
       case "360se":
         return "sourceName360se";
-      case "CLIQZ":
-        return "sourceNameCLIQZ";
+      case "cliqz":
+        return "sourceNameCliqz";
     }
     return null;
   },

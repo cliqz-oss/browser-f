@@ -668,7 +668,7 @@ FirefoxProfileMigrator.prototype.classID = Components.ID("{91185366-ba97-4438-ac
 
 CliqzProfileMigrator.prototype.classDescription = "Cliqz Profile Migrator";
 CliqzProfileMigrator.prototype.contractID =
-    "@mozilla.org/profile/migrator;1?app=browser&type=CLIQZ";
+    "@mozilla.org/profile/migrator;1?app=browser&type=cliqz";
 CliqzProfileMigrator.prototype.classID =
     Components.ID("{f8cfe235-2127-4f42-894f-f8fdf2969233}");
 
