@@ -24,6 +24,7 @@ def FirefoxBranding():
             'branding.nsi',
             'document.ico',
             'firefox.ico',
+            'focus.bmp',
             'magnifier.bmp',
             'newtab.ico',
             'newwindow.ico',

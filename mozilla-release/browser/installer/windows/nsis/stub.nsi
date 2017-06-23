@@ -38,13 +38,17 @@ Var DroplistArch
 Var DirRequest
 Var ButtonBrowse
 Var LabelBlurbHead1
-Var LabelBlurbText1
 Var LabelBlurbHead2
+Var LabelBlurbHead3
+Var LabelBlurbText1
 Var LabelBlurbText2
+Var LabelBlurbText3
 Var BitmapBlurb1
 Var BitmapBlurb2
+Var BitmapBlurb3
 Var HwndBitmapBlurb1
 Var HwndBitmapBlurb2
+Var HwndBitmapBlurb3
 
 Var FontNormal
 Var FontItalic
@@ -57,7 +61,6 @@ Var HasRequiredSpaceAvailable
 Var IsDownloadFinished
 Var DownloadSizeBytes
 Var HalfOfDownload
-Var SwitchPromotional
 Var DownloadReset
 Var ExistingTopDir
 Var SpaceAvailableBytes
@@ -302,6 +305,8 @@ ChangeUI all "nsisui.exe"
   !define INSTALL_BLURB_TEXT_1 "$(INSTALL_BLURB_TEXT_1)"
   !define INSTALL_BLURB_HEAD_2 "$(INSTALL_BLURB_HEAD_2)"
   !define INSTALL_BLURB_TEXT_2 "$(INSTALL_BLURB_TEXT_2)"
+  !define INSTALL_BLURB_HEAD_3 "$(INSTALL_BLURB_HEAD_3)"
+  !define INSTALL_BLURB_TEXT_3 "$(INSTALL_BLURB_TEXT_3)"
   !define MINIINSTALLER_ERROR_SUPPORT_PAGE "$(MINIINSTALLER_ERROR_SUPPORT_PAGE)"
 !endif
 
@@ -485,7 +490,7 @@ Function .onInit
   InitPluginsDir
   File /oname=$PLUGINSDIR\bgintro.bmp "bgintro.bmp"
   File /oname=$PLUGINSDIR\appname.bmp "appname.bmp"
-  File /oname=$PLUGINSDIR\appname-light.bmp "appname-light.bmp"
+  File /oname=$PLUGINSDIR\focus.bmp "focus.bmp"
   File /oname=$PLUGINSDIR\magnifier.bmp "magnifier.bmp"
   File /oname=$PLUGINSDIR\shield.bmp "shield.bmp"
 FunctionEnd
@@ -786,10 +791,10 @@ Function createIntro
   nsDialogs::OnBack /NOUNLOAD $0
 
 !ifdef ${AB_CD}_rtl
-  ; For RTL align the text with the top of the F in the Cliqz bitmap
+  ; For RTL align the text with the top of the C in the Cliqz bitmap
   StrCpy $0 "${INTRO_BLURB_RTL_TOP_DU}"
 !else
-  ; For LTR align the text with the top of the x in the Cliqz bitmap
+  ; For LTR align the text with the top of the z in the Cliqz bitmap
   StrCpy $0 "${INTRO_BLURB_LTR_TOP_DU}"
 !endif
   ${NSD_CreateLabel} ${INTRO_BLURB_EDGE_DU} $0 ${INTRO_BLURB_WIDTH_DU} 76u "${INTRO_BLURB}"
@@ -1266,45 +1271,67 @@ Function createInstall
   IntOp $R0 $8 / 2
 
   ${GetTextWidthHeight} "${INSTALL_BLURB_TEXT_1}" $FontBlurb $R0 $5 $6
-  IntOp $R1 $1 + $3
-  IntOp $R1 $R1 + $5
-  IntOp $R1 $8 - $R1
-  IntOp $R1 $R1 / 2
+  IntOp $R1 $1 / 2
+  IntOp $R1 $R0 - $R1
   ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_IMAGE_TOP_DU} 49u 64u ""
   Pop $BitmapBlurb1
-  ${SetStretchedTransparentImage} $BitmapBlurb1 $PLUGINSDIR\shield.bmp $HwndBitmapBlurb1
-  IntOp $R1 $R1 + $1
-  IntOp $R1 $R1 + $3
+  ${SetStretchedTransparentImage} $BitmapBlurb1 $PLUGINSDIR\magnifier.bmp $HwndBitmapBlurb1
+  IntOp $R1 $5 / 2
+  IntOp $R1 $R0 - $R1
   ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_HEAD_TOP_DU} $5 $6 "${INSTALL_BLURB_HEAD_1}"
   Pop $LabelBlurbHead1
   SendMessage $LabelBlurbHead1 ${WM_SETFONT} $FontBold 0
   SetCtlColors $LabelBlurbHead1 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_AddStyle} $LabelBlurbHead1 ${SS_CENTER}
   ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TEXT_TOP_DU} $5 $6 "${INSTALL_BLURB_TEXT_1}"
   Pop $LabelBlurbText1
   SendMessage $LabelBlurbText1 ${WM_SETFONT} $FontBlurb 0
   SetCtlColors $LabelBlurbText1 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_AddStyle} $LabelBlurbText1 ${SS_CENTER}
 
   ${GetTextWidthHeight} "${INSTALL_BLURB_TEXT_2}" $FontBlurb $R0 $5 $6
-  IntOp $R1 $1 + $3
-  IntOp $R1 $R1 + $5
-  IntOp $R1 $8 - $R1
-  IntOp $R1 $R1 / 2
+  IntOp $R1 $1 / 2
+  IntOp $R1 $R0 - $R1
   ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_IMAGE_TOP_DU} 49u 64u ""
   Pop $BitmapBlurb2
-  ${SetStretchedTransparentImage} $BitmapBlurb2 $PLUGINSDIR\magnifier.bmp $HwndBitmapBlurb2
-  IntOp $R1 $R1 + $1
-  IntOp $R1 $R1 + $3
+  ${SetStretchedTransparentImage} $BitmapBlurb2 $PLUGINSDIR\shield.bmp $HwndBitmapBlurb2
+  IntOp $R1 $5 / 2
+  IntOp $R1 $R0 - $R1
   ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_HEAD_TOP_DU} $5 $6 "${INSTALL_BLURB_HEAD_2}"
   Pop $LabelBlurbHead2
   SendMessage $LabelBlurbHead2 ${WM_SETFONT} $FontBold 0
   SetCtlColors $LabelBlurbHead2 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_AddStyle} $LabelBlurbHead2 ${SS_CENTER}
   ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TEXT_TOP_DU} $5 $6 "${INSTALL_BLURB_TEXT_2}"
   Pop $LabelBlurbText2
   SendMessage $LabelBlurbText2 ${WM_SETFONT} $FontBlurb 0
   SetCtlColors $LabelBlurbText2 ${INSTALL_BLURB_TEXT_COLOR} transparent
-  ShowWindow $BitmapBlurb2_1 ${SW_HIDE}
+  ${NSD_AddStyle} $LabelBlurbText2 ${SS_CENTER}
+  ShowWindow $BitmapBlurb2 ${SW_HIDE}
   ShowWindow $LabelBlurbHead2 ${SW_HIDE}
   ShowWindow $LabelBlurbText2 ${SW_HIDE}
+
+  ${GetTextWidthHeight} "${INSTALL_BLURB_TEXT_3}" $FontBlurb $R0 $5 $6
+  IntOp $R1 $1 / 2
+  IntOp $R1 $R0 - $R1
+  ${NSD_CreateBitmap} $R1 ${INSTALL_BLURB_IMAGE_TOP_DU} 49u 64u ""
+  Pop $BitmapBlurb3
+  ${SetStretchedTransparentImage} $BitmapBlurb3 $PLUGINSDIR\focus.bmp $HwndBitmapBlurb3
+  IntOp $R1 $5 / 2
+  IntOp $R1 $R0 - $R1
+  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_HEAD_TOP_DU} $5 $6 "${INSTALL_BLURB_HEAD_3}"
+  Pop $LabelBlurbHead3
+  SendMessage $LabelBlurbHead3 ${WM_SETFONT} $FontBold 0
+  SetCtlColors $LabelBlurbHead3 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_AddStyle} $LabelBlurbHead3 ${SS_CENTER}
+  ${NSD_CreateLabel} $R1 ${INSTALL_BLURB_TEXT_TOP_DU} $5 $6 "${INSTALL_BLURB_TEXT_3}"
+  Pop $LabelBlurbText3
+  SendMessage $LabelBlurbText3 ${WM_SETFONT} $FontBlurb 0
+  SetCtlColors $LabelBlurbText3 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  ${NSD_AddStyle} $LabelBlurbText3 ${SS_CENTER}
+  ShowWindow $BitmapBlurb3 ${SW_HIDE}
+  ShowWindow $LabelBlurbHead3 ${SW_HIDE}
+  ShowWindow $LabelBlurbText3 ${SW_HIDE}
 
   ${NSD_CreateProgressBar} 103u 166u 241u 9u ""
   Pop $Progressbar
@@ -1327,10 +1354,12 @@ Function createInstall
   SetCtlColors $LabelInstalling ${INSTALL_PROGRESS_TEXT_COLOR_NORMAL} transparent
   ShowWindow $LabelInstalling ${SW_HIDE}
 
+!ifdef 0
   ${NSD_CreateBitmap} ${APPNAME_BMP_EDGE_DU} ${APPNAME_BMP_TOP_DU} \
                       ${APPNAME_BMP_WIDTH_DU} ${APPNAME_BMP_HEIGHT_DU} ""
   Pop $2
-  ${SetStretchedTransparentImage} $2 $PLUGINSDIR\appname-light.bmp $0
+  ${SetStretchedTransparentImage} $2 $PLUGINSDIR\appname.bmp $0
+!endif
 
   GetDlgItem $0 $HWNDPARENT 1 ; Install button
   EnableWindow $0 0
@@ -1416,6 +1445,7 @@ Function createInstall
   ${NSD_FreeImage} $0
   ${NSD_FreeImage} $HwndBitmapBlurb1
   ${NSD_FreeImage} $HwndBitmapBlurb2
+  ${NSD_FreeImage} $HwndBitmapBlurb3
 FunctionEnd
 
 Function StartDownload
@@ -1522,10 +1552,6 @@ Function OnDownload
     StrCpy $DownloadSizeBytes "$4"
     System::Int64Op $4 / 2
     Pop $HalfOfDownload
-    System::Int64Op $4 / 3
-    Pop $SwitchPromotional
-    System::Int64Op $SwitchPromotional * 2
-    Pop $SwitchPromotional
     System::Int64Op $HalfOfDownload / $InstallTotalSteps
     Pop $InstallStepSize
     SendMessage $Progressbar ${PBM_SETMARQUEE} 0 0 ; start=1|stop=0 interval(ms)=+N
@@ -1599,6 +1625,13 @@ Function OnDownload
       Call SetProgressBars
       ShowWindow $LabelDownloading ${SW_HIDE}
       ShowWindow $LabelInstalling ${SW_SHOW}
+      ShowWindow $LabelBlurbHead2 ${SW_HIDE}
+      ShowWindow $LabelBlurbText2 ${SW_HIDE}
+      ShowWindow $BitmapBlurb2 ${SW_HIDE}
+      ShowWindow $LabelBlurbHead3 ${SW_SHOW}
+      ShowWindow $LabelBlurbText3 ${SW_SHOW}
+      ShowWindow $BitmapBlurb3 ${SW_SHOW}
+
       ; Disable the Cancel button during the install
       GetDlgItem $5 $HWNDPARENT 2
       EnableWindow $5 0
@@ -1697,9 +1730,9 @@ Function OnDownload
       Exec "$\"$PLUGINSDIR\download.exe$\" /INI=$PLUGINSDIR\${CONFIG_INI}"
       ${NSD_CreateTimer} CheckInstall ${InstallIntervalMS}
     ${Else}
-      ${If} $SwitchPromotional != "true"
-      ${AndIf} $3 > $SwitchPromotional
-        StrCpy $SwitchPromotional "true"
+      ${If} $HalfOfDownload != "true"
+      ${AndIf} $3 > $HalfOfDownload
+        StrCpy $HalfOfDownload "true"
         LockWindow on
         ShowWindow $LabelBlurbHead1 ${SW_HIDE}
         ShowWindow $LabelBlurbText1 ${SW_HIDE}
