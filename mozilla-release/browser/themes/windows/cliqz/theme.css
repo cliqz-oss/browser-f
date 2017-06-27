@@ -1000,12 +1000,18 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper > #forward-button:hover:no
 #main-window[customize-entered] #browser-bottombox, #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar), #main-window[customize-entered] #customization-container {
   border: none !important; }
 
-#cliqz-dropdown .result .icons {
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .result .icons {
   width: 91px; }
 
 @media (max-width: 550px) {
-  #cliqz-dropdown .result .abstract {
+  #main-window[cliqzBrowser="true"] #cliqz-dropdown .result .abstract {
     max-width: 73%; } }
 
-#cliqz-dropdown .padded {
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .history .buttons span.dot {
+  left: 82px; }
+
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .history.cluster span.timeline {
+  left: 84px; }
+
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .padded {
   padding-left: 101px; }

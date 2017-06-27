@@ -546,12 +546,18 @@ vbox[sidebarcommand=historybroadcaster] sidebarheader {
 #main-window[customize-entered] #browser-bottombox, #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar), #main-window[customize-entered] #customization-container {
   border: none !important; }
 
-#cliqz-dropdown .result .icons {
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .result .icons {
   width: 98px; }
 
 @media (max-width: 550px) {
-  #cliqz-dropdown .result .abstract {
+  #main-window[cliqzBrowser="true"] #cliqz-dropdown .result .abstract {
     max-width: 73%; } }
 
-#cliqz-dropdown .padded {
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .history .buttons span.dot {
+  left: 89px; }
+
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .history.cluster span.timeline {
+  left: 91px; }
+
+#main-window[cliqzBrowser="true"] #cliqz-dropdown .padded {
   padding-left: 108px; }
