@@ -4,8 +4,8 @@
 
 .title {
   background-image: url("chrome://branding/content/silhouette-40.svg");
-  background-size: 2.1em auto;
-  background-position-y: -0.4em;
+  background-position-x: 0.5em;
+  background-position-y: 0.01em;
 }
 
 .radioRestoreContainer:not(:last-child) {
