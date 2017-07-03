@@ -6,7 +6,7 @@
 ; aren't translated.
 !define INTRO_BLURB "Thanks for choosing $BrandFullName browser.$\n$BrandFullName is ultra-safe, ultra-fast and made in Germany."
 !define INSTALL_BLURB_HEAD_1 "Instant search"
-!define INSTALL_BLURB_TEXT_1 "Build-in search serves results$\nfast and in real time."
+!define INSTALL_BLURB_TEXT_1 "Built-in search serves results$\nfast and in real time."
 !define INSTALL_BLURB_HEAD_2 "Anti-Tracking"
 !define INSTALL_BLURB_TEXT_2 "Does not save private data,$\nhas all the privacy features."
 !define INSTALL_BLURB_HEAD_3 "Focus"
