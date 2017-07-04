@@ -73,11 +73,12 @@
   ; root of the Start Menu Programs directory.
   ${MigrateStartMenuShortcut}
 
-  ; Update lastwritetime of the Start Menu shortcut to clear the tile cache.
+  ; Fake update .lnk file of the Start Menu shortcut to clear the tile cache.
   ${If} ${AtLeastWin8}
   ${AndIf} ${FileExists} "$SMPROGRAMS\${BrandFullName}.lnk"
-    FileOpen $0 "$SMPROGRAMS\${BrandFullName}.lnk" a
-    FileClose $0
+    ShellLink::GetShortCutTarget "$SMPROGRAMS\${BrandFullName}.lnk"
+    Pop $0
+    ShellLink::SetShortCutTarget "$SMPROGRAMS\${BrandFullName}.lnk" $0
   ${EndIf}
 
   ; Adds a pinned Task Bar shortcut (see MigrateTaskBarShortcut for details).
