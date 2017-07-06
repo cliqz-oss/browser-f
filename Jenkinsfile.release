@@ -54,6 +54,7 @@ CQZ_MOZILLA_API_KEY_CREDENTIAL_ID
 CQZ_AWS_CREDENTIAL_ID
 LINUX_BUILD_NODE
 CQZ_BALROG_DOMAIN
+BALROG_CREDENTIAL_ID
 
 stage("Copy XPI") {
     CQZ_VERSION=sh(returnStdout: true, script: "cat ./mozilla-release/browser/config/version_display.txt").trim()
@@ -89,6 +90,7 @@ def getBaseBuildParams(jobName, entryPoint) {
       string(name: 'CQZ_S3_DEBIAN_REPOSITORY_URL', value: CQZ_S3_DEBIAN_REPOSITORY_URL),
       string(name: 'TRIGGERING_BUILD_NUMBER', value: env.BUILD_NUMBER),
       string(name: 'TRIGGERING_JOB_NAME', value: env.JOB_NAME),
+	  string(name: 'BALROG_CREDENTIAL_ID', value: BALROG_CREDENTIAL_ID)
     ]
   ]
 }
@@ -230,12 +232,21 @@ def submitBalrog(jobName, id, propsPath) {
         target: folder
     ])
 
-    sh """
-        python ./build-tools/scripts/updates/balrog-submitter.py \
-            --credentials-file ./mozilla-release/build/creds.txt --username balrogadmin \
-            --api-root http://$CQZ_BALROG_DOMAIN/api \
-            --build-properties ${folder + '/' + propsPath}
-    """
+
+    withCredentials([
+		usernamePassword(
+			credentialsId: env.BALROG_CREDENTIAL_ID, 
+			passwordVariable: 'BALROG_PASSWORD', 
+			usernameVariable: 'BALROG_ADMIN')]) {
+				writeFile file: 'creds.txt', text: "balrog_credentials = dict({\"$BALROG_ADMIN\": \"$BALROG_PASSWORD\",})"
+
+		sh """
+			python ./build-tools/scripts/updates/balrog-submitter.py \
+				--credentials-file ./creds.txt --username $BALROG_ADMIN \
+				--api-root http://$CQZ_BALROG_DOMAIN/api \
+				--build-properties ${folder + '/' + propsPath}
+		"""
+    }
 }
 
 def sendEmail(String buildStatus) {
