@@ -244,7 +244,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
 
         bucket_key.set_contents_from_filename(source_file)
 
-        m = 'http://' + s3_bucket + full_key_name
+        m = 'https://' + s3_bucket + full_key_name
 
         for prop, condition in property_conditions:
             if condition(m):
