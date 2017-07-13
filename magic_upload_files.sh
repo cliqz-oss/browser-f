@@ -11,8 +11,10 @@ cd $OBJ_DIR
 
 echo '***** Generate MAR for DE, if needed *****'
 if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
-  $MAKE -C ./tools/update-packaging full-update AB_CD=de
+  $MAKE -C ./tools/update-packaging full-update AB_CD=de \
+    PACKAGE_BASE_DIR=`pwd`/dist/l10n-stage
 fi
+
 echo '***** Packaging MAR *****'
 $MAKE update-packaging
 
@@ -64,7 +66,6 @@ if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
 
   # Rename de build_properties for easier identification
   cp build_properties.json de_build_properties.json
-
 
   export LANG=$OLD_LANG
 fi

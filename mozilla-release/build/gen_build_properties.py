@@ -55,7 +55,7 @@ class BuildProperties:
         self.properties['properties']['buildid'] = all_props['buildid']
         self.properties['properties']['appVersion'] = all_props['moz_app_version']
         self.properties['properties']['completeMarFilename'] = all_props['completeMarFilename']
-        self.properties['properties']['completeMarUrl'] = 'http://repository.cliqz.com/'+ s3_path +'/'+ all_props['completeMarFilename']
+        self.properties['properties']['completeMarUrl'] = 'https://repository.cliqz.com/'+ s3_path +'/'+ all_props['completeMarFilename']
         self.properties['properties']['completeMarHash'] = all_props['completeMarHash']
 
         full_path = os.path.join(os.getcwd(), "dist", "update", all_props['completeMarFilename'])

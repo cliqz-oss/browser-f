@@ -34,13 +34,6 @@ node(MAC_BUILD_NODE) {
   ```
 */
 
-def LANG_PARAM = ""
-try {
-  if (CQZ_LANG) {
-    LANG_PARAM = "-lang ${CQZ_LANG}"
-  }
-} catch(e) {}
-
 stage('bootstrap') {
     sh 'pip install compare-locales'
     sh 'python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive'
@@ -64,7 +57,7 @@ withEnv([
         }
 
         stage('build') {
-            sh "./magic_build_and_package.sh --clobber ${LANG_PARAM}"
+            sh "./magic_build_and_package.sh --clobber"
         }
     }
 
@@ -90,7 +83,7 @@ withEnv([
                 '''
 
                 withEnv(["CQZ_CERT_NAME=$CQZ_CERT_NAME"]) {
-                    sh "./sign_mac.sh ${LANG_PARAM}"
+                    sh "./sign_mac.sh"
                 }
             } finally {
                 sh '''#!/bin/bash -l -x
@@ -127,10 +120,15 @@ withEnv([
                     usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
                     sh """#!/bin/bash -l -x
-                        ./magic_upload_files.sh ${LANG_PARAM}
+                        ./magic_upload_files.sh
                     """
 
-                    archiveArtifacts 'obj/build_properties.json'
+                    if (CQZ_BUILD_DE_LOCALIZATION == "1") {
+                      archiveArtifacts 'obj/en_build_properties.json'
+                      archiveArtifacts 'obj/de_build_properties.json'
+                    } else {
+                      archiveArtifacts 'obj/build_properties.json'
+                    }
                 }
             } finally {
                 // remove certs
