@@ -1,8 +1,9 @@
-// Copyright (c) 2016 Cliqz GmbH. All rights reserved.
+// Copyright (c) 2017 Cliqz GmbH. All rights reserved.
 // Author: Alexander Komarnitskiy <alexander@cliqz.com>
 
 #include <shlobj.h>
 #include <windows.h>
+#include <time.h>
 
 #include "installer_tagdata.h"
 #include "helper.h"
@@ -27,17 +28,66 @@ int popstring(stack_t **stacktop, TCHAR *str, int len) {
   return 0;
 }
 
+void SaveToRegistry(const std::wstring& path,
+                    const std::wstring& value,
+                    int outdate_time) {
+  time_t now = time(nullptr);
+  bool outdated = true;  // replace/remove data by default
+
+  HKEY regkey = NULL;
+  if (::RegCreateKeyEx(HKEY_LOCAL_MACHINE, path.c_str(), 0, NULL, 
+                       REG_OPTION_NON_VOLATILE, KEY_ALL_ACCESS, 
+                       NULL, &regkey, NULL) == ERROR_SUCCESS) {
+    DWORD saved_time = 0;
+    DWORD byte_length = sizeof(saved_time);
+    if (::RegGetValue(regkey, L"", L"CliqzBrandInfoTime", RRF_RT_REG_DWORD,
+                      NULL, reinterpret_cast<BYTE*>(&saved_time), 
+                      &byte_length) == ERROR_SUCCESS) {
+      if (now - saved_time > 0 &&
+          now - saved_time <= outdate_time) {
+        outdated = false;
+      }
+    }
+
+    if (outdated) {
+      if (value.length()) {
+        ::RegSetValueEx(regkey, L"CliqzBrandInfo", 0, REG_SZ,
+                        reinterpret_cast<const BYTE*>(&value[0]),
+                        (value.length() + 1) * sizeof(wchar_t));
+        DWORD save_time = now;
+        ::RegSetValueEx(regkey, L"CliqzBrandInfoTime", 0, REG_DWORD,
+                        reinterpret_cast<const BYTE*>(&save_time),
+                        sizeof(save_time));
+      } 
+      else {
+        ::RegDeleteKeyValue(regkey, L"", L"CliqzBrandInfo");
+        ::RegDeleteKeyValue(regkey, L"", L"CliqzBrandInfoTime");
+      }
+    }
+    ::RegCloseKey(regkey);
+  }
+}
+
 // Try to find data in tagged area in current or one of parent's processes.
-// If data exist, check does distribution file already exist.
-// If not - save all data from tagged area to distribution file 
-// (in CSIDL_APPDATA\\Cliqz folder)
+// If data exist - save it to registry. Also need to check existing data for 
+// outdating.
+// Expecting two parameters:
+//  param1 - path to save in registry (always HKLM).
+//  param2 - timeout (in second) when existing data is outdated.
 extern "C" void __declspec(dllexport) saveTaggedParams(HWND hwndParent,
                                                        int string_size,
                                                        TCHAR *variables,
-                                                       stack_t **stacktop) {
+                                                       stack_t **stacktop,
+                                                       void *extra) {
 #ifdef _DEBUG
   MessageBox(hwndParent, L"1", L"2", MB_OK);
 #endif
+  // Two parameters must be passed from NSIS installer - registry path
+  // and "outdate time"
+  TCHAR reg_path[1024] = { 0 };
+  popstring(stacktop, reg_path, 1024);
+  TCHAR outdate[32] = { 0 };
+  popstring(stacktop, outdate, 32);
 
   // When installer works, the processes tree can have different look.
   // With UAC:
@@ -57,32 +107,13 @@ extern "C" void __declspec(dllexport) saveTaggedParams(HWND hwndParent,
     pid = GetParentProcessId(pid);
   } while (pid != 0 && !tag_found);
 
+  std::wstring tag_data;
   if (tag_found) {
-    // One parameters must be passed from NSIS installer - installation directory
-    TCHAR install_dir[MAX_PATH] = {0};
-    popstring(stacktop, install_dir, MAX_PATH);
     std::string value = InstallerTagData::ForCurrentProcess()->GetAllParams();
-    if (install_dir[0]!='\0' && !value.empty()) {
-      wcscat_s(install_dir, L"\\defaults\\pref");
-      SHCreateDirectory(0, install_dir);
-      wcscat_s(install_dir, L"\\distribution.js");
-      DWORD dwAttrib = GetFileAttributes(install_dir);
-      BOOL file_exist = (dwAttrib != INVALID_FILE_ATTRIBUTES) 
-          && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY);
-      if (!file_exist) {
-        HANDLE hFile = CreateFile(install_dir, GENERIC_WRITE, 0, NULL, CREATE_NEW,
-                                  FILE_ATTRIBUTE_NORMAL, NULL);
-        if (hFile != INVALID_HANDLE_VALUE) {
-          std::string data = "pref(\"extensions.cliqz.full_distribution\", \"";
-          data += value;
-          data += "\");";
-          DWORD written = 0;
-          WriteFile(hFile, &data[0], data.length(), &written, NULL);
-          CloseHandle(hFile);
-        }
-      }
-    }
+    tag_data.assign(value.begin(), value.end());
   }
+
+  SaveToRegistry(reg_path, tag_data, _wtoi(outdate));
 }
 
 BOOL APIENTRY DllMain(HMODULE hModule, 
