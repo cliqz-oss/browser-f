@@ -844,6 +844,9 @@ Function createIntro
   System::Call "kernel32::GetTickCount()l .s"
   Pop $StartIntroPhaseTickCount
 
+  ; Save information about brand to registry for later use from full installer
+  CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
+
   LockWindow off
   nsDialogs::Show
 

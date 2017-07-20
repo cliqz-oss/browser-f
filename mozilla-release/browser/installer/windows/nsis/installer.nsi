@@ -9,6 +9,7 @@
 # ShellLink      http://nsis.sourceforge.net/ShellLink_plug-in
 # UAC            http://nsis.sourceforge.net/UAC_plug-in
 # ServicesHelper Mozilla specific plugin that is located in /other-licenses/nsis
+# CliqzHelper    Simple library which help with extracting branding information
 
 ; Set verbosity to 3 (e.g. no script) to lessen the noise in the build logs
 !verbose 3
@@ -291,9 +292,11 @@ Section "-Application" APP_IDX
                       "$(ERROR_CREATE_DIRECTORY_PREFIX)" \
                       "$(ERROR_CREATE_DIRECTORY_SUFFIX)"
 
-  ; Read data from tagged installer and save it to file
-  ; If file exist - it must not overwrite it
-  CliqzHelper::saveTaggedParams "$INSTDIR"
+  ; Try to get brand information from installer or it parent processes. Just
+  ; in case, because this will be done by stub installer. But in some rare cases
+  ; user can launch full installer bypassing stub installer.
+  CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
+  Call CliqzSaveBrandingInfo
   Call FixCliqzAsFirefoxRegistry
 
   ; Register DLLs

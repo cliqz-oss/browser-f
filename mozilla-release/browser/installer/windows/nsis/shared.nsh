@@ -1349,6 +1349,33 @@ Function FixCliqzAsFirefoxRegistry
   ClearErrors
 FunctionEnd
 
+; Cliqz. Get information about brand from registry and put it into
+; distribution.js file, if it doesn't exist. Here no any checks for
+; data freshness, outdated data must be removed with CliqzHelper.
+Function CliqzSaveBrandingInfo
+  ${If} ${RunningX64}
+    SetRegView 32
+  ${EndIf}
+
+  ; Check for brand information in registry
+  ReadRegStr $0 HKLM "Software\CLIQZ" "${BrandShortName}BrandInfo"
+  ${If} $0 != ""
+    ; Check for distribution.js file, do not replace the existing file.
+    ${IfNot} ${FileExists} "$INSTDIR\defaults\pref\distribution.js"
+      FileOpen $1 "$INSTDIR\defaults\pref\distribution.js" w
+      FileWrite $1 'pref("extensions.cliqz.full_distribution", "$0");'
+      FileClose $1
+    ${EndIf}
+    ; Always remove brand information from registry after installation complete
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}BrandInfo"
+    DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}BrandInfoTime"
+  ${EndIf}
+
+  ${If} ${RunningX64}
+    SetRegView 64
+  ${EndIf}
+FunctionEnd
+
 ; The !ifdef NO_LOG prevents warnings when compiling the installer.nsi due to
 ; this function only being used by the uninstaller.nsi.
 !ifdef NO_LOG
