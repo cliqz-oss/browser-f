@@ -2161,13 +2161,6 @@
               this.mPanelContainer.appendChild(notificationbox);
             }
 
-            // Cliqz. Passing underinitialized browser element (before binding
-            // constructor has finished) is highly undesired. That's why it's
-            // done after browser's notificationbox in inserted into DOM tree.
-            aTab.linkedBrowser = browser;
-            aTab.hasBrowser = true;
-            this._tabForBrowser.set(browser, aTab);
-
             // wire up a progress listener for the new browser object.
             let tabListener = this.mTabProgressListener(aTab, browser, uriIsAboutBlank, usingPreloadedContent);
             const filter = Cc["@mozilla.org/appshell/component/browser-status-filter;1"]
