@@ -40,3 +40,5 @@
 <!ENTITY smtpName.accesskey "A">
 <!ENTITY smtpDefaultServer.label "Standard-Server verwenden">
 
+<!ENTITY smtpServerEdit.label "SMTP-Server bearbeiten…">
+<!ENTITY smtpServerEdit.accesskey "P">

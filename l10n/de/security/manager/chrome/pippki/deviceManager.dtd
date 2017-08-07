@@ -33,4 +33,4 @@
 <!ENTITY loaddevice.browse                      "Durchsuchen…">
 <!ENTITY loaddevice.browse.accesskey            "D">
 
-<!ENTITY loaddevice.title                       "PKCS#11-Einrichtung laden">
+<!ENTITY loaddevice.title2                      "PKCS#11-Gerätetreiber laden">

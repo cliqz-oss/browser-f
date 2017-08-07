@@ -2,7 +2,9 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY  trackingProtectionHeader.label       "Schutz vor Aktivitätenverfolgung verwenden">
+<!ENTITY  trackingProtectionHeader2.label      "Schutz vor Aktivitätenverfolgung">
+<!ENTITY  trackingProtection.description       "Um Aktivitätenverfolgung handelt es sich, wenn Unternehmen Informationen über Sie sammeln, um damit ein Profil von Ihnen zu erstellen, und Inhalte an Hand Ihrer besuchten Webseiten und persönlichen Daten anzeigen.">
+<!ENTITY  trackingProtection.radioGroupLabel   "Blockieren von Inhalten von Unternehmen, welche Aktivitäten verfolgen">
 <!ENTITY  trackingProtectionAlways.label       "Immer">
 <!ENTITY  trackingProtectionAlways.accesskey   "m">
 <!ENTITY  trackingProtectionPrivate.label      "Nur in privaten Fenstern">
@@ -30,7 +32,7 @@
 
 <!ENTITY  locationBar.label             "Adressleiste">
 
-<!ENTITY  locbar.suggest.label          "Vorschläge beim Verwenden der Adressleiste:">
+<!ENTITY  locbar.suggest2.label         "Beim Verwenden der Adressleiste Folgendes vorschlagen">
 <!ENTITY  locbar.history.label          "Einträge aus der Chronik">
 <!ENTITY  locbar.history.accesskey      "C">
 <!ENTITY  locbar.bookmarks.label        "Einträge aus den Lesezeichen">
@@ -40,8 +42,7 @@
 <!ENTITY  locbar.searches.label         "Verwandte Suchanfragen mit der Standardsuchmaschine">
 <!ENTITY  locbar.searches.accesskey     "S">
 
-<!ENTITY  suggestionSettings.label      "Einstellungen für Suchvorschläge öffnen…">
-<!ENTITY  suggestionSettings.accesskey  "v">
+<!ENTITY  suggestionSettings2.label     "Einstellungen für Suchvorschläge ändern">
 
 <!ENTITY  acceptCookies.label           "Cookies akzeptieren">
 <!ENTITY  acceptCookies.accesskey       "C">
@@ -64,8 +65,8 @@
 <!ENTITY  showCookies.label             "Cookies anzeigen…">
 <!ENTITY  showCookies.accesskey         "o">
 
-<!ENTITY  historyHeader.pre.label          "&brandShortName; wird eine Chronik:">
-<!ENTITY  historyHeader.pre.accesskey      "F">
+<!ENTITY  historyHeader2.pre.label         "&brandShortName; wird eine Chronik">
+<!ENTITY  historyHeader2.pre.accesskey     "F">
 <!ENTITY  historyHeader.remember.label     "anlegen">
 <!ENTITY  historyHeader.dontremember.label "niemals anlegen">
 <!ENTITY  historyHeader.custom.label       "nach benutzerdefinierten Einstellungen anlegen">

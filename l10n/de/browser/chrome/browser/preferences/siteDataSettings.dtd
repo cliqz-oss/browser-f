@@ -3,12 +3,11 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY     window.title                  "Einstellungen - Websitedaten">
-<!ENTITY     settings.description          "Die folgenden Websites haben um die Erlaubnis gefragt, Websitedaten auf der Festplatte zu speichern. Sie können festlegen, welche Websites Daten speichern dürfen. Standardmäßig werden Websitedaten nur vorübergehend gespeichert und könnten automatisch gelöscht werden.">
 <!ENTITY     hostCol.label                 "Website">
 <!ENTITY     statusCol.label               "Status">
 <!ENTITY     usageCol.label                "Speicher">
-<!ENTITY     searchPlaceHolder             "Suchen">
-<!ENTITY     searchPlaceHolder.accesskey   "S">
+<!ENTITY     searchTextboxPlaceHolder             "Websites suchen">
+<!ENTITY     searchTextboxPlaceHolder.accesskey   "s">
 <!ENTITY     removeSelected.label          "Ausgewählte entfernen">
 <!ENTITY     removeSelected.accesskey      "g">
 <!ENTITY     save.label                    "Änderungen speichern">
@@ -16,5 +15,5 @@
 <!ENTITY     cancel.label                  "Abbrechen">
 <!ENTITY     cancel.accesskey              "b">
 <!ENTITY     removingDialog.title          "Websitedaten entfernen">
-<!ENTITY     removingDialog.description    "Das Entfernen von Websitedaten löscht auch Cookies. Dadurch werden Sie eventuell von Websites abgemeldet und offline verfügbare Webinhalte gelöscht. Sollen die Änderungen wirklich durchgeführt werden?">
+<!ENTITY     removingSelected.description  "Das Entfernen von Websitedaten löscht auch relevante Cookies und offline verfügbare Webinhalte. Dadurch werden Sie eventuell von Websites abgemeldet. Sollen die Änderungen wirklich durchgeführt werden?">
 <!ENTITY     siteTree.label                "Die folgenden Cookies werden gelöscht:">

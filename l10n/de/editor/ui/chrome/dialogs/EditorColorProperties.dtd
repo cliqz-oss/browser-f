@@ -26,3 +26,4 @@
 <!ENTITY backgroundImage.label "Hintergrundbild: ">
 <!ENTITY backgroundImage.accessKey "g">
 <!ENTITY backgroundImage.tooltip "Eine Grafik-Datei als Hintergrund für Ihre Seite verwenden">
+<!ENTITY backgroundImage.shortenedDataURI "Gekürzte Daten-URI (Kopieren legt die komplette URI in die Zwischenablage)">

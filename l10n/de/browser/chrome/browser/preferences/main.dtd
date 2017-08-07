@@ -4,14 +4,14 @@
 
 <!ENTITY startup.label             "Start">
 
-<!ENTITY startupPage.label         "Wenn &brandShortName; gestartet wird:">
-<!ENTITY startupPage.accesskey     "W">
+<!ENTITY startupPage2.label        "Wenn &brandShortName; gestartet wird">
+<!ENTITY startupPage2.accesskey    "W">
 <!ENTITY startupUserHomePage.label "Startseite anzeigen">
 <!ENTITY startupBlankPage.label    "Leere Seite anzeigen">
 <!ENTITY startupPrevSession.label  "Fenster und Tabs der letzten Sitzung anzeigen">
 
-<!ENTITY homepage.label            "Startseite:">
-<!ENTITY homepage.accesskey        "S">
+<!ENTITY homepage2.label           "Startseite">
+<!ENTITY homepage2.accesskey       "S">
 <!ENTITY useCurrentPage.label      "Aktuelle Seite verwenden">
 <!ENTITY useCurrentPage.accesskey  "A">
 <!ENTITY useMultiple.label         "Aktuelle Seiten verwenden">
@@ -40,6 +40,7 @@
 
 <!ENTITY separateProfileMode.label        "Gleichzeitiges Ausführen von &brandShortName; und Firefox erlauben">
 <!ENTITY useFirefoxSync.label             "Tipp: Dabei werden getrennte Profile verwendet. Verwenden Sie Sync, um Daten zwischen diesen zu synchronisieren.">
-<!ENTITY getStarted.label                 "Sync verwenden…">
+<!ENTITY getStarted.notloggedin.label     "Bei &syncBrand.shortName.label; anmelden…">
+<!ENTITY getStarted.configured.label      "&syncBrand.shortName.label;-Einstellungen öffnen">
 
 <!ENTITY e10sEnabled.label                "&brandShortName; mit mehreren Prozessen ausführen">
