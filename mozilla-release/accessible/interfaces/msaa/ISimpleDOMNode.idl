@@ -99,10 +99,19 @@ cpp_quote("")
 import "objidl.idl";
 import "oaidl.idl";
 
+<<<<<<< HEAD
 import "ISimpleDOMText.idl";
 import "ISimpleDOMDocument.idl";
 
 [object, uuid(32F5D26E-855F-4F27-9C53-9CA88DF52CB7)]
+||||||| merged common ancestors
+import "ISimpleDOMText.idl";
+import "ISimpleDOMDocument.idl";
+
+[object, uuid(1814ceeb-49e2-407f-af99-fa755a7d2607)]
+=======
+[object, uuid(1814ceeb-49e2-407f-af99-fa755a7d2607)]
+>>>>>>> origin/upstream-releases
 interface ISimpleDOMNode : IUnknown
 {
   const unsigned short NODETYPE_ELEMENT = 1;
@@ -171,9 +180,13 @@ interface ISimpleDOMNode : IUnknown
 
   [propget, local] HRESULT localInterface([out][retval] void **localInterface);
 
+  [propget, call_as(get_localInterface)]
+  HRESULT remoteLocalInterface([out][retval] IUnknown **localInterface);
+
   [propget] HRESULT language([out, retval] BSTR *language);
 }
 
+<<<<<<< HEAD
 
 [
     uuid(9457E36C-BE9A-4CC7-A27D-33282F81F4B9),
@@ -186,3 +199,18 @@ library ISimpleDOM
   interface ISimpleDOMDocument;
 };
 
+||||||| merged common ancestors
+
+[
+    uuid(a6245497-9c0b-4449-85a5-bd6ad07df8ea), 
+    helpstring("ISimpleDOM Type Library")
+] 
+library ISimpleDOM 
+{
+  interface ISimpleDOMNode;
+  interface ISimpleDOMText;
+  interface ISimpleDOMDocument;
+};
+
+=======
+>>>>>>> origin/upstream-releases

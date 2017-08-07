@@ -19,17 +19,27 @@ def FirefoxBranding():
             'VisualElements_70.png',
         ]
         BRANDING_FILES += [
-            'appname.bmp',
-            'bgintro.bmp',
+            'bgstub.bmp',
             'branding.nsi',
             'document.ico',
             'firefox.ico',
+<<<<<<< HEAD
             'focus.bmp',
             'magnifier.bmp',
+||||||| merged common ancestors
+=======
+            'firefox64.ico',
+>>>>>>> origin/upstream-releases
             'newtab.ico',
             'newwindow.ico',
             'pbmode.ico',
+<<<<<<< HEAD
             'shield.bmp',
+||||||| merged common ancestors
+            'pencil-rtl.bmp',
+            'pencil.bmp',
+=======
+>>>>>>> origin/upstream-releases
             'wizHeader.bmp',
             'wizHeaderRTL.bmp',
             'wizWatermark.bmp',

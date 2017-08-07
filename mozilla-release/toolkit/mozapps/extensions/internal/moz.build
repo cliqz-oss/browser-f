@@ -5,9 +5,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 EXTRA_JS_MODULES.addons += [
-    'AddonLogging.jsm',
     'AddonRepository.jsm',
     'AddonRepository_SQLiteMigrator.jsm',
+    'AddonSettings.jsm',
     'AddonUpdateChecker.jsm',
     'APIExtensionBootstrap.js',
     'Content.js',
@@ -17,6 +17,13 @@ EXTRA_JS_MODULES.addons += [
     'ProductAddonChecker.jsm',
     'SpellCheckDictionaryBootstrap.js',
     'WebExtensionBootstrap.js',
+<<<<<<< HEAD
+||||||| merged common ancestors
+    'XPIProvider.jsm',
+=======
+    'XPIInstall.jsm',
+    'XPIProvider.jsm',
+>>>>>>> origin/upstream-releases
     'XPIProviderUtils.js',
 ]
 
@@ -29,8 +36,16 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] != 'android':
     EXTRA_JS_MODULES.addons += [
         'PluginProvider.jsm',
     ]
+<<<<<<< HEAD
 
 EXTRA_PP_JS_MODULES.addons += [
     'AddonConstants.jsm',
     'XPIProvider.jsm',
 ]
+||||||| merged common ancestors
+
+EXTRA_PP_JS_MODULES.addons += [
+    'AddonConstants.jsm',
+]
+=======
+>>>>>>> origin/upstream-releases

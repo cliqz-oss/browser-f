@@ -12,7 +12,13 @@
 <!ENTITY showURLBarSuggestions.accesskey       "l">
 <!ENTITY urlBarSuggestionsPermanentPB.label    "Search suggestions will not be shown in location bar results because you have configured &brandShortName; to never remember history.">
 
+<<<<<<< HEAD
 <!ENTITY oneClickSearchEngines.label           "Direct searches">
+||||||| merged common ancestors
+<!ENTITY oneClickSearchEngines.label           "One-click Search Engines">
+=======
+<!ENTITY oneClickSearchEngines.label           "One-Click Search Engines">
+>>>>>>> origin/upstream-releases
 
 <!ENTITY chooseWhichOneToDisplay.label         "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
 
@@ -25,5 +31,11 @@
 <!ENTITY removeEngine.label                    "Remove">
 <!ENTITY removeEngine.accesskey                "r">
 
+<<<<<<< HEAD
 <!ENTITY addMoreSearchEngines.label            "Add more search engines…">
 <!ENTITY addMoreSearchEnginesDesc.label        "Cliqz supports most search engines of the official Mozilla Firefox repository.">
+||||||| merged common ancestors
+<!ENTITY addMoreSearchEngines.label            "Add more search engines…">
+=======
+<!ENTITY addMoreSearchEngines2.label           "Add more search engines">
+>>>>>>> origin/upstream-releases

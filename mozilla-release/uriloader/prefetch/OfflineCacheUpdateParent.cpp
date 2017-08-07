@@ -263,7 +263,7 @@ OfflineCacheUpdateParent::GetIsInIsolatedMozBrowserElement(bool* aIsInIsolatedMo
 }
 
 NS_IMETHODIMP
-OfflineCacheUpdateParent::GetOriginAttributes(JS::MutableHandleValue aAttrs)
+OfflineCacheUpdateParent::GetScriptableOriginAttributes(JS::MutableHandleValue aAttrs)
 {
     NS_ENSURE_TRUE(mLoadingPrincipal, NS_ERROR_UNEXPECTED);
 
@@ -276,11 +276,23 @@ OfflineCacheUpdateParent::GetOriginAttributes(JS::MutableHandleValue aAttrs)
     return NS_OK;
 }
 
+<<<<<<< HEAD
 NS_IMETHODIMP OfflineCacheUpdateParent::AddWeakPrivacyTransitionObserver(
     nsIPrivacyTransitionObserver *obs) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+||||||| merged common ancestors
+=======
+NS_IMETHODIMP_(void)
+OfflineCacheUpdateParent::GetOriginAttributes(mozilla::OriginAttributes& aAttrs)
+{
+    if (mLoadingPrincipal) {
+        aAttrs = mLoadingPrincipal->OriginAttributesRef();
+    }
+}
+
+>>>>>>> origin/upstream-releases
 NS_IMETHODIMP
 OfflineCacheUpdateParent::GetUseTrackingProtection(bool* aUseTrackingProtection)
 {

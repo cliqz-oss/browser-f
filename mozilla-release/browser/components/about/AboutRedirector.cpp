@@ -13,12 +13,16 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsIProtocolHandler.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Preferences.h"
 #include "nsServiceManagerUtils.h"
 
 namespace mozilla {
 namespace browser {
 
 NS_IMPL_ISUPPORTS(AboutRedirector, nsIAboutModule)
+
+bool AboutRedirector::sUseOldPreferences = false;
+bool AboutRedirector::sActivityStreamEnabled = false;
 
 struct RedirEntry {
   const char* id;
@@ -77,6 +81,7 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT },
   { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
+<<<<<<< HEAD
   { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
 #ifdef MOZ_SERVICES_SYNC
@@ -87,6 +92,11 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT },
 #if 0
 # Replaced by Cliqz
+||||||| merged common ancestors
+  { "sync-tabs", "chrome://browser/content/sync/aboutSyncTabs.xul",
+    nsIAboutModule::ALLOW_SCRIPT },
+=======
+>>>>>>> origin/upstream-releases
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -150,6 +160,13 @@ AboutRedirector::NewChannel(nsIURI* aURI,
   nsCOMPtr<nsIIOService> ioService = do_GetIOService(&rv);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  static bool sPrefCacheInited = false;
+  if (!sPrefCacheInited) {
+    Preferences::AddBoolVarCache(&sUseOldPreferences,
+                                 "browser.preferences.useOldOrganization");
+    sPrefCacheInited = true;
+  }
+
   for (auto & redir : kRedirMap) {
     if (!strcmp(path.get(), redir.id)) {
       nsAutoCString url;
@@ -161,6 +178,8 @@ AboutRedirector::NewChannel(nsIURI* aURI,
         NS_ENSURE_SUCCESS(rv, rv);
         rv = aboutNewTabService->GetDefaultURL(url);
         NS_ENSURE_SUCCESS(rv, rv);
+      } else if (path.EqualsLiteral("preferences") && !sUseOldPreferences) {
+        url.AssignASCII("chrome://browser/content/preferences/in-content-new/preferences.xul");
       }
       // fall back to the specified url in the map
       if (url.IsEmpty()) {
@@ -215,8 +234,26 @@ AboutRedirector::GetURIFlags(nsIURI *aURI, uint32_t *result)
 
   nsAutoCString name = GetAboutModuleName(aURI);
 
+  static bool sASEnabledCacheInited = false;
+  if (!sASEnabledCacheInited) {
+    Preferences::AddBoolVarCache(&sActivityStreamEnabled,
+                                 "browser.newtabpage.activity-stream.enabled");
+    sASEnabledCacheInited = true;
+  }
+
   for (auto & redir : kRedirMap) {
     if (name.Equals(redir.id)) {
+
+      // Once ActivityStream is fully rolled out and we've removed Tiles,
+      // this special case can go away and the flag can just become part
+      // of the normal about:newtab entry in kRedirMap.
+      if (name.EqualsLiteral("newtab")) {
+        if (sActivityStreamEnabled) {
+          *result = redir.flags | nsIAboutModule::URI_MUST_LOAD_IN_CHILD;
+          return NS_OK;
+        }
+      }
+
       *result = redir.flags;
       return NS_OK;
     }

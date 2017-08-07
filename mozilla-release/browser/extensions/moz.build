@@ -5,12 +5,33 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+<<<<<<< HEAD
 #    'aushelper',
 #    'e10srollout',
+||||||| merged common ancestors
+    'aushelper',
+    'e10srollout',
+=======
+    'aushelper',
+    'clicktoplay-rollout',
+    'e10srollout',
+    'followonsearch',
+>>>>>>> origin/upstream-releases
     'pdfjs',
+<<<<<<< HEAD
 #    'pocket',
 #    'screenshots',
 #    'webcompat',
+||||||| merged common ancestors
+    'pocket',
+    'screenshots',
+    'webcompat',
+=======
+    'pocket',
+    'screenshots',
+    'shield-recipe-client',
+    'webcompat',
+>>>>>>> origin/upstream-releases
 ]
 
 ''' disabled by Cliqz
@@ -20,7 +41,12 @@ if not CONFIG['RELEASE_OR_BETA']:
         'flyweb',
         'formautofill',
         'presentation',
-        'shield-recipe-client',
+    ]
+
+# Only include the following system add-ons if building DevEdition or Nightly
+if CONFIG['MOZ_DEV_EDITION'] or CONFIG['NIGHTLY_BUILD']:
+    DIRS += [
+        'webcompat-reporter',
     ]
 
 # Only include mortar system add-ons if we locally enable it
@@ -32,6 +58,7 @@ if CONFIG['MOZ_MORTAR']:
 # Nightly-only system add-ons
 if CONFIG['NIGHTLY_BUILD']:
     DIRS += [
-        'webcompat-reporter',
+        'activity-stream',
+        'onboarding',
     ]
 '''

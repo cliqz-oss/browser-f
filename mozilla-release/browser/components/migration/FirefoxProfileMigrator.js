@@ -16,7 +16,7 @@
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource:///modules/MigrationUtils.jsm"); /* globals MigratorPrototype */
+Cu.import("resource:///modules/MigrationUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/NetUtil.jsm");
@@ -238,7 +238,7 @@ FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
 };
 
 FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileDir, currentProfileDir) {
-  let getFileResource = function(aMigrationType, aFileNames) {
+  let getFileResource = (aMigrationType, aFileNames) => {
     let files = [];
     for (let fileName of aFileNames) {
       let file = this._getFileObject(sourceProfileDir, fileName);
@@ -257,7 +257,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         aCallback(true);
       }
     };
-  }.bind(this);
+  };
 
   let getHistoryAndBookmarksResource = function(aFileName) {
     let placesFile = this._getFileObject(sourceProfileDir, aFileName);
@@ -515,6 +515,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     return [places, cookies, formData].filter(r => r);
   }
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
+  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);
   let cookies = getFileResource(types.COOKIES, ["cookies.sqlite"]);
   let passwords = getFileResource(types.PASSWORDS,
     ["signons.sqlite", "logins.json", "key3.db",
@@ -635,7 +636,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   };
 
   return [places, cookies, passwords, formData, dictionary, bookmarksBackups,
-          session, times, telemetry].filter(r => r);
+          session, times, telemetry, favicons].filter(r => r);
 };
 
 Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {

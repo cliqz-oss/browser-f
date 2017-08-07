@@ -52,7 +52,7 @@
 <!ENTITY  permTab               "Berechtigungen">
 <!ENTITY  permTab.accesskey     "B">
 <!ENTITY  permUseDefault        "Standard verwenden">
-<!ENTITY  permAskAlways         "Jedes Mal nachfragen">
+<!ENTITY  permAskAlways         "Immer fragen">
 <!ENTITY  permAllow             "Erlauben">
 <!ENTITY  permAllowSession      "Für die Sitzung erlauben">
 <!ENTITY  permBlock             "Blockieren">

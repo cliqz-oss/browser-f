@@ -16,6 +16,7 @@ SOURCES += [
     'nsBrowserApp.cpp',
 ]
 
+<<<<<<< HEAD
 FINAL_TARGET_FILES += [
     'blocklist.xml',
 ]
@@ -23,6 +24,12 @@ if CONFIG['CQZ_ADULT_DOMAINS_BF']:
     FINAL_TARGET_FILES += ['%' + CONFIG['CQZ_ADULT_DOMAINS_BF']]
 
 FINAL_TARGET_FILES.defaults.profile += ['profile/prefs.js']
+||||||| merged common ancestors
+FINAL_TARGET_FILES += ['blocklist.xml']
+FINAL_TARGET_FILES.defaults.profile += ['profile/prefs.js']
+=======
+FINAL_TARGET_FILES += ['blocklist.xml']
+>>>>>>> origin/upstream-releases
 FINAL_TARGET_FILES.defaults += ['permissions']
 
 DEFINES['APP_VERSION'] = CONFIG['MOZ_APP_VERSION']
@@ -32,10 +39,6 @@ LOCAL_INCLUDES += [
     '/toolkit/xre',
     '/xpcom/base',
     '/xpcom/build',
-]
-
-USE_LIBS += [
-    'mozglue',
 ]
 
 if CONFIG['LIBFUZZER']:

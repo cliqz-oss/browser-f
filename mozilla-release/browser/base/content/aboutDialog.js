@@ -4,6 +4,8 @@
 
 "use strict";
 
+/* import-globals-from aboutDialog-appUpdater.js */
+
 // Services = object with smart getters for common XPCOM services
 Components.utils.import("resource://gre/modules/Services.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
@@ -13,15 +15,27 @@ function init(aEvent) {
   if (aEvent.target != document)
     return;
 
+<<<<<<< HEAD
   try {
     var distroId = Services.prefs.getCharPref("distribution.about");
     if (distroId) {
       var distroVersion = Services.prefs.getCharPref("distribution.version");
+||||||| merged common ancestors
+  try {
+    var distroId = Services.prefs.getCharPref("distribution.id");
+    if (distroId) {
+      var distroVersion = Services.prefs.getCharPref("distribution.version");
+=======
+  var distroId = Services.prefs.getCharPref("distribution.id", "");
+  if (distroId) {
+    var distroVersion = Services.prefs.getCharPref("distribution.version");
+>>>>>>> origin/upstream-releases
 
-      var distroIdField = document.getElementById("distributionId");
-      distroIdField.value = distroId + " - " + distroVersion;
-      distroIdField.style.display = "block";
+    var distroIdField = document.getElementById("distributionId");
+    distroIdField.value = distroId + " - " + distroVersion;
+    distroIdField.style.display = "block";
 
+<<<<<<< HEAD
       // DB-1148: Add platform and extension version to About dialog.
       let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
         let componentsVersion = Services.appinfo.platformVersion;
@@ -44,9 +58,26 @@ function init(aEvent) {
         Components.utils.reportError(ex);
       }
 #endif
+||||||| merged common ancestors
+      try {
+        // This is in its own try catch due to bug 895473 and bug 900925.
+        var distroAbout = Services.prefs.getComplexValue("distribution.about",
+          Components.interfaces.nsISupportsString);
+        var distroField = document.getElementById("distribution");
+        distroField.value = distroAbout;
+        distroField.style.display = "block";
+      } catch (ex) {
+        // Pref is unset
+        Components.utils.reportError(ex);
+      }
+=======
+    var distroAbout = Services.prefs.getStringPref("distribution.about", "");
+    if (distroAbout) {
+      var distroField = document.getElementById("distribution");
+      distroField.value = distroAbout;
+      distroField.style.display = "block";
+>>>>>>> origin/upstream-releases
     }
-  } catch (e) {
-    // Pref is unset
   }
 
 // Cliqz. We don't use "version" element in Cliqz browser at all
@@ -73,6 +104,17 @@ function init(aEvent) {
   let arch = bundle.GetStringFromName(archResource);
   versionField.textContent += ` (${arch})`;
 #endif
+
+  // Show a release notes link if we have a URL.
+  let relNotesLink = document.getElementById("releasenotes");
+  let relNotesPrefType = Services.prefs.getPrefType("app.releaseNotesURL");
+  if (relNotesPrefType != Services.prefs.PREF_INVALID) {
+    let relNotesURL = Services.urlFormatter.formatURLPref("app.releaseNotesURL");
+    if (relNotesURL != "about:blank") {
+      relNotesLink.href = relNotesURL;
+      relNotesLink.hidden = false;
+    }
+  }
 
   if (AppConstants.MOZ_UPDATER) {
     gAppUpdater = new appUpdater();
