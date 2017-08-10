@@ -123,13 +123,13 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   border-radius: 0 !important;
   box-shadow: none !important;
   /* background: transparent !important; */
-  background: #fff !important;
+  background-color: #fff !important;
   -moz-border-start: 1px solid #d8d8d8 !important;
   padding-left: 7px; }
   #urlbar * {
     box-sizing: border-box; }
   #urlbar:hover, #urlbar[focused="true"] {
-    background: #fff !important; }
+    background-color: #fff !important; }
   #urlbar .textbox-input {
     margin-top: -1px !important; }
 
@@ -141,7 +141,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   -moz-border-start: 1px solid #5ea3f9 !important; }
 
 #urlbar .urlbar-input::-moz-selection {
-  background: #b1d6ff; }
+  background-color: #b1d6ff; }
 
 #urlbar-reload-button,
 #urlbar-stop-button,
@@ -183,14 +183,14 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
     border-style: solid;
     border-radius: 0;
     border-color: #bbb;
-    background: rgba(255, 255, 255, 0.1) !important; }
+    background-color: rgba(255, 255, 255, 0.1) !important; }
     .tabbrowser-tab .tab-content .tab-label {
       font-size: 12px;
       text-align: left; }
   .tabbrowser-tab[visuallyselected="true"] {
     position: static !important; }
     .tabbrowser-tab[visuallyselected="true"] .tab-content {
-      background: #fff !important; }
+      background-color: #fff !important; }
   .tabbrowser-tab:not([visuallyselected="true"]):hover .tab-content,
   .tabbrowser-tab .tabs-newtab-button:hover {
     background-color: #ccc !important; }
@@ -211,7 +211,8 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   border: none !important;
   background: none; }
   .tabs-newtab-button:hover {
-    background: #ccc !important; }
+    background-color: #ccc !important;
+    background-image: none; }
 
 tab {
   color: #202020; }
@@ -232,7 +233,7 @@ tab {
 #TabsToolbar .toolbarbutton-1 > .toolbarbutton-menubutton-button:hover:not([disabled="true"]),
 .tabbrowser-arrowscrollbox > .scrollbutton-up:hover:not([disabled="true"]),
 .tabbrowser-arrowscrollbox > .scrollbutton-down:hover:not([disabled="true"]) {
-  background: #e7e7e7;
+  background-color: #e7e7e7;
   border-color: #dedede; }
 
 /*======== Removes Tabs Border ==========*/
@@ -249,7 +250,7 @@ tab {
   margin-top: 0 !important;
   border-top-color: #fff !important;
   box-shadow: 0 2px 2px -2px rgba(0, 0, 0, 0.35) !important;
-  background: #fff !important; }
+  background-color: #fff !important; }
 
 #PersonalToolbar {
   padding-left: 8px; }
@@ -285,7 +286,7 @@ notification[type="warning"] {
   border: none;
   color: #fff;
   font-size: 14px;
-  background: #fec621;
+  background-color: #fec621;
   letter-spacing: 0.4px; }
 
 notification[type="warning"] > button {
@@ -296,7 +297,7 @@ notification[type="warning"] > button {
   border-radius: 3px;
   text-shadow: none;
   box-shadow: none;
-  background: #4661ae; }
+  background-color: #4661ae; }
 
 notification[type="warning"] .messageText {
   font-weight: normal;
@@ -711,7 +712,7 @@ toolbarbutton#cliqz-cc-btn {
   #nav-bar .toolbarbutton-1:not(#back-button):not(#forward-button):hover,
   toolbarbutton#cliqz-cc-btn:hover {
     border-color: #dedede;
-    background: #e7e7e7; }
+    background-color: #e7e7e7; }
 
 #navigator-toolbox::after {
   display: none;
@@ -909,7 +910,7 @@ vbox[sidebarcommand=historybroadcaster] sidebarheader {
   min-width: 36px !important;
   box-shadow: none !important; }
   #nav-bar #PanelUI-menu-button:hover {
-    background: #e7e7e7; }
+    background-color: #e7e7e7; }
   #nav-bar #PanelUI-menu-button .toolbarbutton-badge-stack {
     border: none !important;
     box-shadow: none !important;
@@ -977,7 +978,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper > #forward-button:hover:no
   border-color: transparent !important;
   box-shadow: none !important;
   border-radius: none !important;
-  background: #e7e7e7 !important; }
+  background-color: #e7e7e7 !important; }
 
 ﻿.findbar-button:-moz-any([checked="true"],
 :hover:active):not([disabled="true"]) > .toolbarbutton-text,
@@ -995,7 +996,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper > #forward-button:hover:no
 :hover:active):not([disabled="true"]) > .toolbarbutton-badge-stack {
   box-shadow: none;
   border-color: #cecece;
-  background: #efefef; }
+  background-color: #efefef; }
 
 #main-window[customize-entered] #browser-bottombox, #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar), #main-window[customize-entered] #customization-container {
   border: none !important; }

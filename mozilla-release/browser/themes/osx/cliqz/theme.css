@@ -163,7 +163,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   border-bottom-color: transparent !important;
   box-shadow: none !important;
   background: #fff !important;
-  padding-left: 7px; }
+  padding-left: 4px; }
   #urlbar * {
     box-sizing: border-box; }
   #urlbar #urlbar-reload-button,
@@ -262,7 +262,8 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   list-style-image: var(--cliqz-newtab-image); }
   .tabs-newtab-button .toolbarbutton-icon {
     padding-top: 8px;
-    padding-bottom: 3px; }
+    padding-bottom: 3px;
+    border-width: 0 7px; }
 
 .close-icon {
   list-style-image: var(--cliqz-close-image); }
@@ -392,6 +393,11 @@ notification[type="warning"] {
   box-shadow: 0 0.13em 2px 0 rgba(0, 0, 0, 0.35);
   z-index: 0; }
 
+#navigator-toolbox:-moz-window-inactive::after {
+  box-shadow: 0 0.13em 2px 0 rgba(0, 0, 0, 0.35);
+  margin-top: -3px !important;
+  border-top-style: solid; }
+
 #main-window:not([chromehidden~="toolbar"]) {
   min-width: 425px; }
 
@@ -400,8 +406,7 @@ notification[type="warning"] {
 
 #nav-bar .toolbarbutton-1:not(#back-button):not(#forward-button),
 toolbarbutton#cliqz-cc-btn {
-  margin-top: 0;
-  margin-bottom: 0;
+  margin: 0;
   border-radius: 0;
   padding: 0;
   border-left: 1px solid transparent;
@@ -485,7 +490,7 @@ toolbarbutton#cliqz-cc-btn {
     background: #e7e7e7; }
 
 #TabsToolbar {
-  padding-right: 24px;
+  padding-right: 36px;
   /*Reserve some space for dragging the window*/
   min-height: 36px; }
 
@@ -514,7 +519,7 @@ toolbarbutton#cliqz-cc-btn {
   padding-top: 5px; }
 
 #navigator-toolbox:not([inFullscreen="true"]) #tabbrowser-tabs .tabbrowser-arrowscrollbox {
-  margin-inline-start: 37px; }
+  margin-inline-start: 14px; }
 
 /* END TAB */
 /* BEGIN CUSTOMIZE UI */
