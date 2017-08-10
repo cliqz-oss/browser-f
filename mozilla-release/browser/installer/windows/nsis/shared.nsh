@@ -1458,7 +1458,7 @@ Function SetAsDefaultAppUserHKCU
   StrCpy $0 $0 -2
   ${If} $0 != $8
     ${If} $AppUserModelID == ""
-      ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
+      ${InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
     ${EndIf}
     StrCpy $R9 "${AppRegName}-$AppUserModelID"
   ${EndIf}

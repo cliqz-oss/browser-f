@@ -57,7 +57,7 @@ const MAX_WRITE = 0xffffffff;
 const PREF_MAX_READ = "webextensions.native-messaging.max-input-message-bytes";
 const PREF_MAX_WRITE = "webextensions.native-messaging.max-output-message-bytes";
 
-const REGPATH = "Software\\Mozilla\\NativeMessagingHosts";
+const REGPATH = "Software\\Cliqz\\NativeMessagingHosts";
 
 const global = this;
 
