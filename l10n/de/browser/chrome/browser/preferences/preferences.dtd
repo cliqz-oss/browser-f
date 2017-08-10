@@ -13,36 +13,14 @@
 <!ENTITY  prefWinMinSize.styleMac     "width: 50em; min-height: 45em;">
 <!ENTITY  prefWinMinSize.styleGNOME   "width: 48em; min-height: 38.5em;">
 
-<<<<<<< HEAD
-<!ENTITY  paneGeneral.title       "Allgemein">
-<!ENTITY  paneTabs.title          "Tabs">
-<!ENTITY  paneSearch.title        "Suche">
-<!ENTITY  paneContent.title       "Inhalt">
-<!ENTITY  paneApplications.title  "Anwendungen">
-<!ENTITY  panePrivacy.title       "Datenschutz">
-<!ENTITY  paneContainers.title    "Tab-Umgebungen">
-<!ENTITY  paneSecurity.title      "Sicherheit">
-<!ENTITY  paneAdvanced.title      "Erweitert">
-<!ENTITY  paneConnect.title       "Connect">
-<!ENTITY  mozillaSupportHelp.label      "Mozilla Support">
-||||||| merged common ancestors
-<!ENTITY  paneGeneral.title       "Allgemein">
-<!ENTITY  paneTabs.title          "Tabs">
-<!ENTITY  paneSearch.title        "Suche">
-<!ENTITY  paneContent.title       "Inhalt">
-<!ENTITY  paneApplications.title  "Anwendungen">
-<!ENTITY  panePrivacy.title       "Datenschutz">
-<!ENTITY  paneContainers.title    "Tab-Umgebungen">
-<!ENTITY  paneSecurity.title      "Sicherheit">
-<!ENTITY  paneAdvanced.title      "Erweitert">
-=======
 <!ENTITY  paneSearchResults.title       "Suchergebnisse">
 <!ENTITY  paneGeneral.title             "Allgemein">
 <!ENTITY  paneFilesApplications.title   "Dateien &amp; Anwendungen">
 <!ENTITY  panePrivacySecurity.title     "Datenschutz &amp; Sicherheit">
 <!ENTITY  paneContainers.title          "Tab-Umgebungen">
 <!ENTITY  paneUpdates.title             "Updates">
->>>>>>> origin/upstream-releases
+<!ENTITY  paneConnect.title             "Connect">
+<!ENTITY  mozillaSupportHelp.label      "Mozilla Support">
 
 <!-- LOCALIZATION NOTE (paneSync1.title): This should match syncBrand.fxAccount.label in ../syncBrand.dtd -->
 <!ENTITY  paneSync1.title          "Firefox-Konto">

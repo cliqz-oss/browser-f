@@ -1613,14 +1613,10 @@
               aOpener                   = params.opener;
               aIsPrerendered            = params.isPrerendered;
               aCreateLazyBrowser        = params.createLazyBrowser;
-<<<<<<< HEAD
-              aPrivate                  = params.private;
-||||||| merged common ancestors
-=======
               aNextTabParentId          = params.nextTabParentId;
               aFocusUrlBar              = params.focusUrlBar;
               aName                     = params.name;
->>>>>>> origin/upstream-releases
+              aPrivate                  = params.private;
             }
 
             var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
@@ -1647,17 +1643,11 @@
                                   originPrincipal: aOriginPrincipal,
                                   sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
                                   opener: aOpener,
-<<<<<<< HEAD
-                                  isPrerendered: aIsPrerendered,
-                                  private: aPrivate });
-||||||| merged common ancestors
-                                  isPrerendered: aIsPrerendered });
-=======
                                   isPrerendered: aIsPrerendered,
                                   nextTabParentId: aNextTabParentId,
                                   focusUrlBar: aFocusUrlBar,
-                                  name: aName });
->>>>>>> origin/upstream-releases
+                                  name: aName,
+                                  private: aPrivate });
             if (!bgLoad)
               this.selectedTab = tab;
 
@@ -2372,15 +2362,11 @@
             var aIsPrerendered;
             var aCreateLazyBrowser;
             var aSkipBackgroundNotify;
-<<<<<<< HEAD
-            var aPrivate;
-||||||| merged common ancestors
-=======
             var aNextTabParentId;
             var aNoInitialLabel;
             var aFocusUrlBar;
             var aName;
->>>>>>> origin/upstream-releases
+            var aPrivate;
             if (arguments.length == 2 &&
                 typeof arguments[1] == "object" &&
                 !(arguments[1] instanceof Ci.nsIURI)) {
@@ -2408,15 +2394,11 @@
               aIsPrerendered            = params.isPrerendered;
               aCreateLazyBrowser        = params.createLazyBrowser;
               aSkipBackgroundNotify     = params.skipBackgroundNotify;
-<<<<<<< HEAD
-              aPrivate                  = params.private;
-||||||| merged common ancestors
-=======
               aNextTabParentId          = params.nextTabParentId;
               aNoInitialLabel           = params.noInitialLabel;
               aFocusUrlBar              = params.focusUrlBar;
               aName                     = params.name;
->>>>>>> origin/upstream-releases
+              aPrivate                  = params.private;
             }
 
             // if we're adding tabs, we're past interrupt mode, ditch the owner
@@ -2543,16 +2525,10 @@
                                         userContextId: aUserContextId,
                                         sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
                                         opener: aOpener,
-<<<<<<< HEAD
-                                        isPrerendered: aIsPrerendered,
-                                        private: !!aPrivate });
-||||||| merged common ancestors
-                                        isPrerendered: aIsPrerendered });
-=======
                                         isPrerendered: aIsPrerendered,
                                         nextTabParentId: aNextTabParentId,
-                                        name: aName });
->>>>>>> origin/upstream-releases
+                                        name: aName,
+                                        private: !!aPrivate });
             }
 
             t.linkedBrowser = b;
@@ -3775,26 +3751,16 @@
         <![CDATA[
           // Swap the dropped tab with a new one we create and then close
           // it in the other window (making it seem to have moved between
-<<<<<<< HEAD
-          // windows).
-          // We must create private tab in order to swap docShells with another
-          // private tab.
-          let params = {
-            eventDetail: { adoptedTab: aTab },
-            private: !!aTab.private
-          };
-||||||| merged common ancestors
-          // windows).
-          let params = { eventDetail: { adoptedTab: aTab } };
-=======
           // windows). We also ensure that the tab we create to swap into has
           // the same remote type and process as the one we're swapping in.
           // This makes sure we don't get a short-lived process for the new tab.
+          // Cliqz. We must create private tab in order to swap docShells with
+          // another private tab.
           let linkedBrowser = aTab.linkedBrowser;
           let params = { eventDetail: { adoptedTab: aTab },
                          preferredRemoteType: linkedBrowser.remoteType,
-                         sameProcessAsFrameLoader: linkedBrowser.frameLoader };
->>>>>>> origin/upstream-releases
+                         sameProcessAsFrameLoader: linkedBrowser.frameLoader,
+                         private: !!aTab.private };
           if (aTab.hasAttribute("usercontextid")) {
             // new tab must have the same usercontextid as the old one
             params.userContextId = aTab.getAttribute("usercontextid");

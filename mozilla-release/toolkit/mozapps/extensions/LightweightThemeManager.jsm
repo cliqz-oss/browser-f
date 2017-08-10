@@ -327,14 +327,8 @@ this.LightweightThemeManager = {
       _prefs.setCharPref("selectedThemeID", "");
 
     _notifyWindows(aData);
-<<<<<<< HEAD
-    Services.obs.notifyObservers(null, "lightweight-theme-changed", null);
-#endif
-||||||| merged common ancestors
-    Services.obs.notifyObservers(null, "lightweight-theme-changed", null);
-=======
     Services.obs.notifyObservers(null, "lightweight-theme-changed");
->>>>>>> origin/upstream-releases
+#endif
   },
 
   /**

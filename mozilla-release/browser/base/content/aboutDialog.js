@@ -15,69 +15,31 @@ function init(aEvent) {
   if (aEvent.target != document)
     return;
 
-<<<<<<< HEAD
-  try {
-    var distroId = Services.prefs.getCharPref("distribution.about");
-    if (distroId) {
-      var distroVersion = Services.prefs.getCharPref("distribution.version");
-||||||| merged common ancestors
-  try {
-    var distroId = Services.prefs.getCharPref("distribution.id");
-    if (distroId) {
-      var distroVersion = Services.prefs.getCharPref("distribution.version");
-=======
-  var distroId = Services.prefs.getCharPref("distribution.id", "");
+  var distroId = Services.prefs.getCharPref("distribution.about", "");
   if (distroId) {
     var distroVersion = Services.prefs.getCharPref("distribution.version");
->>>>>>> origin/upstream-releases
 
     var distroIdField = document.getElementById("distributionId");
     distroIdField.value = distroId + " - " + distroVersion;
     distroIdField.style.display = "block";
 
-<<<<<<< HEAD
-      // DB-1148: Add platform and extension version to About dialog.
-      let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
-        let componentsVersion = Services.appinfo.platformVersion;
-        if (cliqzAddon) {
-          componentsVersion += `+${cliqzAddon.version}`;
-        }
-        distroIdField.value += ` (${componentsVersion})`;
-      });
+    // DB-1148: Add platform and extension version to About dialog.
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+      let componentsVersion = Services.appinfo.platformVersion;
+      if (cliqzAddon) {
+        componentsVersion += `+${cliqzAddon.version}`;
+      }
+      distroIdField.value += ` (${componentsVersion})`;
+    });
 
 #if 0
-      try {
-        // This is in its own try catch due to bug 895473 and bug 900925.
-        var distroAbout = Services.prefs.getComplexValue("distribution.about",
-          Components.interfaces.nsISupportsString);
-        var distroField = document.getElementById("distribution");
-        distroField.value = distroAbout;
-        distroField.style.display = "block";
-      } catch (ex) {
-        // Pref is unset
-        Components.utils.reportError(ex);
-      }
-#endif
-||||||| merged common ancestors
-      try {
-        // This is in its own try catch due to bug 895473 and bug 900925.
-        var distroAbout = Services.prefs.getComplexValue("distribution.about",
-          Components.interfaces.nsISupportsString);
-        var distroField = document.getElementById("distribution");
-        distroField.value = distroAbout;
-        distroField.style.display = "block";
-      } catch (ex) {
-        // Pref is unset
-        Components.utils.reportError(ex);
-      }
-=======
     var distroAbout = Services.prefs.getStringPref("distribution.about", "");
     if (distroAbout) {
       var distroField = document.getElementById("distribution");
       distroField.value = distroAbout;
       distroField.style.display = "block";
->>>>>>> origin/upstream-releases
     }
+#endif
   }
 
 // Cliqz. We don't use "version" element in Cliqz browser at all

@@ -30,15 +30,9 @@
 <script type="application/javascript" src="chrome://browser/content/browser-safebrowsing.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-sidebar.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-social.js"/>
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-<script type="application/javascript" src="chrome://browser/content/browser-syncui.js"/>
-#endif
-||||||| merged common ancestors
-<script type="application/javascript" src="chrome://browser/content/browser-syncui.js"/>
-=======
 <script type="application/javascript" src="chrome://browser/content/browser-sync.js"/>
->>>>>>> origin/upstream-releases
+#endif
 <script type="application/javascript" src="chrome://browser/content/browser-tabsintitlebar.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-thumbnails.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-trackingprotection.js"/>

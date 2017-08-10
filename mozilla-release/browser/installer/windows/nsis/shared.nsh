@@ -49,19 +49,9 @@
     StrCpy $TmpVal "HKCU"
   ${Else}
     SetShellVarContext all    ; Set SHCTX to all users (e.g. HKLM)
-<<<<<<< HEAD
     DeleteRegValue HKLM "Software\CLIQZ" "${BrandShortName}InstallerTest"
-    StrCpy $TmpVal "HKLM" ; used primarily for logging
-    ${RegCleanMain} "Software\CLIQZ"
-||||||| merged common ancestors
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
-    StrCpy $TmpVal "HKLM" ; used primarily for logging
-    ${RegCleanMain} "Software\Mozilla"
-=======
-    DeleteRegValue HKLM "Software\Mozilla" "${BrandShortName}InstallerTest"
     StrCpy $TmpVal "HKLM"
-    ${RegCleanMain} "Software\Mozilla"
->>>>>>> origin/upstream-releases
+    ${RegCleanMain} "Software\CLIQZ"
     ${RegCleanUninstall}
     ${UpdateProtocolHandlers}
     ${FixShellIconHandler} "HKLM"
@@ -556,20 +546,10 @@
   ${GetLongPath} "$INSTDIR\${FileMainEXE}" $8
   ${GetLongPath} "$INSTDIR\uninstall\helper.exe" $7
 
-<<<<<<< HEAD
-  ; Avoid writing new keys at the hash-suffixed path if this installation
-  ; already has keys at the old CLIQZ.EXE path. Otherwise we would create a
-  ; second entry in Default Apps for the same installation.
-||||||| merged common ancestors
-  ; Avoid writing new keys at the hash-suffixed path if this installation
-  ; already has keys at the old FIREFOX.EXE path. Otherwise we would create a
-  ; second entry in Default Apps for the same installation.
-=======
-  ; If we already have keys at the old FIREFOX.EXE path, then just update those.
+  ; If we already have keys at the old CLIQZ.EXE path, then just update those.
   ; We have to be careful to update the existing keys in place so that we don't
   ; create duplicate keys for the same installation, or cause Windows to think
   ; something "suspicious" has happened and it should reset the default browser.
->>>>>>> origin/upstream-releases
   ${StrFilter} "${FileMainEXE}" "+" "" "" $1
   ReadRegStr $0 ${RegKey} "Software\Clients\StartMenuInternet\$1\DefaultIcon" ""
   StrCpy $0 $0 -2
@@ -605,41 +585,17 @@
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationIcon" "$8,0"
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationName" "${BrandShortName}"
 
-<<<<<<< HEAD
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML-$AppUserModelID"
-||||||| merged common ancestors
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML-$AppUserModelID"
-=======
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML$2"
->>>>>>> origin/upstream-releases
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML$2"
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
-<<<<<<< HEAD
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL-$AppUserModelID"
-||||||| merged common ancestors
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL-$AppUserModelID"
-    WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL-$AppUserModelID"
-=======
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "FirefoxURL$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "FirefoxURL$2"
->>>>>>> origin/upstream-releases
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "ftp"    "CliqzURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "http"   "CliqzURL$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\URLAssociations" "https"  "CliqzURL$2"
 
   ; Registered Application
   WriteRegStr ${RegKey} "Software\RegisteredApplications" "$1" "$0\Capabilities"

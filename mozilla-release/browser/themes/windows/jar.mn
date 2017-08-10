@@ -7,13 +7,7 @@ browser.jar:
 #include ../shared/jar.inc.mn
   skin/classic/browser/sanitizeDialog.css
   skin/classic/browser/aboutSessionRestore-window-icon.png
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-  skin/classic/browser/aboutSyncTabs.css
-||||||| merged common ancestors
-  skin/classic/browser/aboutSyncTabs.css
-=======
->>>>>>> origin/upstream-releases
 * skin/classic/browser/syncedtabs/sidebar.css     (syncedtabs/sidebar.css)
 #endif
 * skin/classic/browser/browser.css
@@ -144,37 +138,6 @@ browser.jar:
   skin/classic/browser/tabbrowser/tab-stroke-start.png         (tabbrowser/tab-stroke-start.png)
   skin/classic/browser/tabbrowser/tab-stroke-start@2x.png      (tabbrowser/tab-stroke-start@2x.png)
   skin/classic/browser/tabbrowser/tabDragIndicator.png         (tabbrowser/tabDragIndicator.png)
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-  skin/classic/browser/sync-16.png
-  skin/classic/browser/sync-32.png
-  skin/classic/browser/sync-bg.png
-  skin/classic/browser/sync-desktopIcon.svg  (../shared/sync-desktopIcon.svg)
-  skin/classic/browser/sync-horizontalbar.png
-  skin/classic/browser/sync-horizontalbar@2x.png
-  skin/classic/browser/sync-horizontalbar-win7.png
-  skin/classic/browser/sync-horizontalbar-win7@2x.png
-  skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
-  skin/classic/browser/syncProgress-horizontalbar.png
-  skin/classic/browser/syncProgress-horizontalbar@2x.png
-  skin/classic/browser/syncProgress-horizontalbar-win7.png
-  skin/classic/browser/syncProgress-horizontalbar-win7@2x.png
-#endif
-||||||| merged common ancestors
-  skin/classic/browser/sync-16.png
-  skin/classic/browser/sync-32.png
-  skin/classic/browser/sync-bg.png
-  skin/classic/browser/sync-desktopIcon.svg  (../shared/sync-desktopIcon.svg)
-  skin/classic/browser/sync-horizontalbar.png
-  skin/classic/browser/sync-horizontalbar@2x.png
-  skin/classic/browser/sync-horizontalbar-win7.png
-  skin/classic/browser/sync-horizontalbar-win7@2x.png
-  skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
-  skin/classic/browser/syncProgress-horizontalbar.png
-  skin/classic/browser/syncProgress-horizontalbar@2x.png
-  skin/classic/browser/syncProgress-horizontalbar-win7.png
-  skin/classic/browser/syncProgress-horizontalbar-win7@2x.png
-=======
   skin/classic/browser/window-controls/close.svg                 (window-controls/close.svg)
   skin/classic/browser/window-controls/close-highcontrast.svg    (window-controls/close-highcontrast.svg)
   skin/classic/browser/window-controls/close-themes.svg          (window-controls/close-themes.svg)
@@ -187,7 +150,6 @@ browser.jar:
   skin/classic/browser/window-controls/restore.svg               (window-controls/restore.svg)
   skin/classic/browser/window-controls/restore-highcontrast.svg  (window-controls/restore-highcontrast.svg)
   skin/classic/browser/window-controls/restore-themes.svg        (window-controls/restore-themes.svg)
->>>>>>> origin/upstream-releases
 
 #ifdef E10S_TESTING_ONLY
   skin/classic/browser/e10s-64@2x.png (../shared/e10s-64@2x.png)

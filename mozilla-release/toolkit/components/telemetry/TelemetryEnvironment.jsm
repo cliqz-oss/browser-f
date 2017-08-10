@@ -180,17 +180,9 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.search.ignoredJAREngines", {what: RECORD_DEFAULTPREF_VALUE}],
   ["browser.search.suggest.enabled", {what: RECORD_PREF_VALUE}],
   ["browser.startup.homepage", {what: RECORD_PREF_STATE}],
-<<<<<<< HEAD
   ["browser.startup.restoreTabs", {what: RECORD_PREF_VALUE}],
   ["browser.startup.addFreshTab", {what: RECORD_PREF_VALUE}],
-  ["browser.tabs.animate", {what: RECORD_PREF_VALUE}],
-||||||| merged common ancestors
-  ["browser.startup.page", {what: RECORD_PREF_VALUE}],
-  ["browser.tabs.animate", {what: RECORD_PREF_VALUE}],
-=======
-  ["browser.startup.page", {what: RECORD_PREF_VALUE}],
   ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
->>>>>>> origin/upstream-releases
   ["browser.urlbar.suggest.searches", {what: RECORD_PREF_VALUE}],
   ["browser.urlbar.userMadeSearchSuggestionsChoice", {what: RECORD_PREF_VALUE}],
   ["devtools.chrome.enabled", {what: RECORD_PREF_VALUE}],

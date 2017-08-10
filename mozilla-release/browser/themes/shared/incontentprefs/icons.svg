@@ -72,43 +72,6 @@
       <path d="M9.98570165,11.7332857 L9.98570165,16.6146674 C9.98570165,17.0661653 10.3387209,17.4195536 10.7806438,17.4195536 L20.6145776,17.4195536 C21.0475153,17.4195536 21.4095198,17.0570368 21.4095198,16.6146674 L21.4095198,11.7332857 C21.4095198,11.2817878 21.0565005,10.9283995 20.6145776,10.9283995 L10.7806438,10.9283995 C10.3477061,10.9283995 9.98570165,11.2909163 9.98570165,11.7332857 Z M7.78570165,11.7332857 C7.78570165,10.0737329 9.13483148,8.72839954 10.7806438,8.72839954 L20.6145776,8.72839954 C22.2686385,8.72839954 23.6095198,10.0638688 23.6095198,11.7332857 L23.6095198,16.6146674 C23.6095198,18.2742202 22.2603899,19.6195536 20.6145776,19.6195536 L10.7806438,19.6195536 C9.12658292,19.6195536 7.78570165,18.2840843 7.78570165,16.6146674 L7.78570165,11.7332857 Z" id="Shape" stroke-opacity="0.387709466" stroke="#000000" stroke-width="0.5" fill="#FFFFFF" fill-rule="nonzero"></path>
     </g>
   </defs>
-<<<<<<< HEAD
-  <use id="general" xlink:href="#general-shape"/>
-  <use id="general-native" xlink:href="#general-shape"/>
-  <use id="search" xlink:href="#search-shape"/>
-  <use id="search-native" xlink:href="#search-shape"/>
-  <use id="content" xlink:href="#content-shape"/>
-  <use id="content-native" xlink:href="#content-shape"/>
-  <use id="applications" xlink:href="#applications-shape"/>
-  <use id="applications-native" xlink:href="#applications-shape"/>
-  <use id="privacy" xlink:href="#privacy-shape"/>
-  <use id="privacy-native" xlink:href="#privacy-shape"/>
-  <use id="security" xlink:href="#security-shape"/>
-  <use id="security-native" xlink:href="#security-shape"/>
-  <use id="sync" xlink:href="#sync-shape"/>
-  <use id="sync-native" xlink:href="#sync-shape"/>
-  <use id="advanced" xlink:href="#advanced-shape"/>
-  <use id="advanced-native" xlink:href="#advanced-shape"/>
-  <use id="connect" xlink:href="#connect-shape"/>
-  <use id="connect-native" xlink:href="#connect-shape"/>
-||||||| merged common ancestors
-  <use id="general" xlink:href="#general-shape"/>
-  <use id="general-native" xlink:href="#general-shape"/>
-  <use id="search" xlink:href="#search-shape"/>
-  <use id="search-native" xlink:href="#search-shape"/>
-  <use id="content" xlink:href="#content-shape"/>
-  <use id="content-native" xlink:href="#content-shape"/>
-  <use id="applications" xlink:href="#applications-shape"/>
-  <use id="applications-native" xlink:href="#applications-shape"/>
-  <use id="privacy" xlink:href="#privacy-shape"/>
-  <use id="privacy-native" xlink:href="#privacy-shape"/>
-  <use id="security" xlink:href="#security-shape"/>
-  <use id="security-native" xlink:href="#security-shape"/>
-  <use id="sync" xlink:href="#sync-shape"/>
-  <use id="sync-native" xlink:href="#sync-shape"/>
-  <use id="advanced" xlink:href="#advanced-shape"/>
-  <use id="advanced-native" xlink:href="#advanced-shape"/>
-=======
   <use id="general" href="#general-shape"/>
   <use id="general-native" href="#general-shape"/>
   <use id="content" href="#content-shape"/>
@@ -121,5 +84,6 @@
   <use id="advanced-native" href="#advanced-shape"/>
   <use id="searchResults" href="#searchResults-shape"/>
   <use id="searchResults-native" href="#searchResults-shape"/>
->>>>>>> origin/upstream-releases
+  <use id="connect" href="#connect-shape"/>
+  <use id="connect-native" href="#connect-shape"/>
 </svg>

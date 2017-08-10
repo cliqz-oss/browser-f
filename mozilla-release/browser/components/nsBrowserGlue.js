@@ -520,42 +520,18 @@ BrowserGlue.prototype = {
     os.addObserver(this, "quit-application-requested");
     os.addObserver(this, "quit-application-granted");
     if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
-<<<<<<< HEAD
-      os.addObserver(this, "browser-lastwindow-close-requested", false);
-      os.addObserver(this, "browser-lastwindow-close-granted", false);
-    }
-#ifdef MOZ_SERVICES_SYNC
-    os.addObserver(this, "weave:service:ready", false);
-    os.addObserver(this, "fxaccounts:onverified", false);
-    os.addObserver(this, "fxaccounts:device_connected", false);
-    os.addObserver(this, "fxaccounts:device_disconnected", false);
-    os.addObserver(this, "weave:engine:clients:display-uris", false);
-#endif
-    os.addObserver(this, "session-save", false);
-    os.addObserver(this, "places-init-complete", false);
-||||||| merged common ancestors
-      os.addObserver(this, "browser-lastwindow-close-requested", false);
-      os.addObserver(this, "browser-lastwindow-close-granted", false);
-    }
-    os.addObserver(this, "weave:service:ready", false);
-    os.addObserver(this, "fxaccounts:onverified", false);
-    os.addObserver(this, "fxaccounts:device_connected", false);
-    os.addObserver(this, "fxaccounts:device_disconnected", false);
-    os.addObserver(this, "weave:engine:clients:display-uris", false);
-    os.addObserver(this, "session-save", false);
-    os.addObserver(this, "places-init-complete", false);
-=======
       os.addObserver(this, "browser-lastwindow-close-requested");
       os.addObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.addObserver(this, "weave:service:ready");
     os.addObserver(this, "fxaccounts:onverified");
     os.addObserver(this, "fxaccounts:device_connected");
     os.addObserver(this, "fxaccounts:device_disconnected");
     os.addObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.addObserver(this, "session-save");
     os.addObserver(this, "places-init-complete");
->>>>>>> origin/upstream-releases
     this._isPlacesInitObserver = true;
     os.addObserver(this, "places-database-locked");
     this._isPlacesLockedObserver = true;
@@ -2230,10 +2206,6 @@ BrowserGlue.prototype = {
     chromeWindow.openPreferences(...args);
   },
 
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
   _openURLInNewWindow(url) {
     let urlString = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
     urlString.data = url;
@@ -2244,7 +2216,7 @@ BrowserGlue.prototype = {
     });
   },
 
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
   /**
    * Called as an observer when Sync's "display URIs" notification is fired.
    *

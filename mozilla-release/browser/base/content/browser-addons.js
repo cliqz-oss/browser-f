@@ -657,32 +657,8 @@ var LightWeightThemeWebInstaller = {
       if (answer) {
         LightWeightThemeWebInstaller._install(data, notify);
       }
-<<<<<<< HEAD
-    }];
-
-    this._removePreviousNotifications();
-
-    let notificationBox = gBrowser.getNotificationBox();
-    let notificationBar =
-      notificationBox.appendNotification(message, "lwtheme-install-request", "",
-                                         notificationBox.PRIORITY_INFO_MEDIUM,
-                                         buttons);
-    notificationBar.persistence = 1;
-#endif
-||||||| merged common ancestors
-    }];
-
-    this._removePreviousNotifications();
-
-    let notificationBox = gBrowser.getNotificationBox();
-    let notificationBar =
-      notificationBox.appendNotification(message, "lwtheme-install-request", "",
-                                         notificationBox.PRIORITY_INFO_MEDIUM,
-                                         buttons);
-    notificationBar.persistence = 1;
-=======
     });
->>>>>>> origin/upstream-releases
+#endif
   },
 
   _install(newLWTheme, notify) {

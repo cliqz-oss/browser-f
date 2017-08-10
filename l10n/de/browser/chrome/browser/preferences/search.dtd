@@ -25,11 +25,5 @@
 <!ENTITY removeEngine.label                    "Entfernen">
 <!ENTITY removeEngine.accesskey                "E">
 
-<<<<<<< HEAD
-<!ENTITY addMoreSearchEngines.label            "Weitere Suchmaschinen hinzufügen…">
-<!ENTITY addMoreSearchEnginesDesc.label        "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">
-||||||| merged common ancestors
-<!ENTITY addMoreSearchEngines.label            "Weitere Suchmaschinen hinzufügen…">
-=======
 <!ENTITY addMoreSearchEngines2.label           "Weitere Suchmaschinen hinzufügen">
->>>>>>> origin/upstream-releases
+<!ENTITY addMoreSearchEnginesDesc.label        "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">

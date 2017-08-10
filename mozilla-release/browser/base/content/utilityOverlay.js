@@ -462,15 +462,9 @@ function openLinkIn(url, where, params) {
       noReferrer: aNoReferrer,
       userContextId: aUserContextId,
       originPrincipal: aPrincipal,
-<<<<<<< HEAD
-      triggeringPrincipal: aPrincipal,
-      private: aIsPrivate
-||||||| merged common ancestors
-      triggeringPrincipal: aPrincipal,
-=======
       triggeringPrincipal: aTriggeringPrincipal,
       focusUrlBar,
->>>>>>> origin/upstream-releases
+      private: aIsPrivate
     });
     targetBrowser = tabUsedForLoad.linkedBrowser;
 

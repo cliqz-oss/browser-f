@@ -65,16 +65,8 @@
 <!ENTITY  showCookies.label             "Cookies anzeigen…">
 <!ENTITY  showCookies.accesskey         "o">
 
-<<<<<<< HEAD
-<!ENTITY  historyHeader.pre.label          "&brandShortName; wird eine Chronik:">
-<!ENTITY  historyHeader.pre.accesskey      "C">
-||||||| merged common ancestors
-<!ENTITY  historyHeader.pre.label          "&brandShortName; wird eine Chronik:">
-<!ENTITY  historyHeader.pre.accesskey      "F">
-=======
 <!ENTITY  historyHeader2.pre.label         "&brandShortName; wird eine Chronik">
-<!ENTITY  historyHeader2.pre.accesskey     "F">
->>>>>>> origin/upstream-releases
+<!ENTITY  historyHeader2.pre.accesskey     "C">
 <!ENTITY  historyHeader.remember.label     "anlegen">
 <!ENTITY  historyHeader.dontremember.label "niemals anlegen">
 <!ENTITY  historyHeader.custom.label       "nach benutzerdefinierten Einstellungen anlegen">

@@ -5,6 +5,11 @@
 %endif
 @namespace html "http://www.w3.org/1999/xhtml";
 
+#help-button {
+  /* Hidden in Cliqz, probably because it leads to Mozilla URL */
+  display: none !important;
+}
+
 #mainPrefPane {
   max-width: 800px;
   padding: 0;
@@ -101,6 +106,10 @@ treecol {
   list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#advanced");
 }
 
+#category-connect > .category-icon {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#connect");
+}
+
 @media (max-width: 800px) {
   .category-name {
     display: none;
@@ -118,7 +127,7 @@ treecol {
   display: none;
 }
 
-#header-advanced {
+#header-advanced, #header-connect {
   border-bottom: none;
   padding-bottom: 0;
 }
@@ -129,6 +138,7 @@ treecol {
   border-collapse: collapse;
 }
 
+/* Startup prefs table is hidden in Cliqz. */
 #startupTable > tr > td {
   padding: 0; /* remove the padding from html.css */
 }
@@ -281,6 +291,23 @@ description > html|a {
 
 .text-link {
   margin-bottom: 0;
+}
+
+.mozilla-support-label-drm {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: #999;
+}
+
+.mozilla-support-label-notification {
+  padding-left: 4px;
+  color: #999;
+}
+
+.mozilla-support-label-telemetry {
+  margin-top: 8px;
+  padding-left: 4px;
+  color: #999;
 }
 
 #showUpdateHistory {

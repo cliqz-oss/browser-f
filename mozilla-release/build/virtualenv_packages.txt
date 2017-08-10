@@ -39,36 +39,7 @@ mozilla.pth:testing/marionette/harness
 mozilla.pth:testing/marionette/harness/marionette_harness/runner/mixins/browsermob-proxy-py
 mozilla.pth:testing/marionette/puppeteer/firefox
 packages.txt:testing/mozbase/packages.txt
-<<<<<<< HEAD
-objdir:build
-gyp.pth:media/webrtc/trunk/tools/gyp/pylib
-pyasn1.pth:python/pyasn1
-pyasn1_modules.pth:python/pyasn1-modules
-bitstring.pth:python/bitstring
-redo.pth:python/redo
-requests.pth:python/requests
 boto.pth:python/boto
-rsa.pth:python/rsa
-futures.pth:python/futures
-ecc.pth:python/PyECC
-xpcshell.pth:testing/xpcshell
-pyyaml.pth:python/pyyaml/lib
-pytoml.pth:python/pytoml
-||||||| merged common ancestors
-objdir:build
-gyp.pth:media/webrtc/trunk/tools/gyp/pylib
-pyasn1.pth:python/pyasn1
-pyasn1_modules.pth:python/pyasn1-modules
-bitstring.pth:python/bitstring
-redo.pth:python/redo
-requests.pth:python/requests
-rsa.pth:python/rsa
-futures.pth:python/futures
-ecc.pth:python/PyECC
-xpcshell.pth:testing/xpcshell
-pyyaml.pth:python/pyyaml/lib
-pytoml.pth:python/pytoml
-=======
 mozilla.pth:testing/taskcluster
 mozilla.pth:testing/tools/autotry
 mozilla.pth:testing/web-platform
@@ -84,4 +55,3 @@ mozilla.pth:third_party/python/pyasn1
 mozilla.pth:third_party/python/pyasn1-modules
 mozilla.pth:third_party/python/rsa
 mozilla.pth:third_party/python/PyECC
->>>>>>> origin/upstream-releases

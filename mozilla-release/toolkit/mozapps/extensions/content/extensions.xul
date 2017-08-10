@@ -149,14 +149,10 @@
                       class="category"
                       name="&view.discover.label;" priority="1000"
                       tooltiptext="&view.discover.label;"/>
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
         <richlistitem id="category-legacy" value="addons://legacy/"
                       class="category" priority="20000"
                       disabled="true"/>
->>>>>>> origin/upstream-releases
         <richlistitem id="category-availableUpdates" value="addons://updates/available"
                       class="category"
                       name="&view.availableUpdates.label;" priority="100000"

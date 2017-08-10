@@ -759,43 +759,9 @@ function shouldUseService() {
  * @return  true if the service is installed.
  */
 function isServiceInstalled() {
-<<<<<<< HEAD
-  if (AppConstants.MOZ_MAINTENANCE_SERVICE && AppConstants.platform == "win") {
-    let installed = 0;
-    try {
-      let wrk = Cc["@mozilla.org/windows-registry-key;1"].
-                createInstance(Ci.nsIWindowsRegKey);
-      wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-               "SOFTWARE\\CLIQZ\\MaintenanceService",
-               wrk.ACCESS_READ | wrk.WOW64_64);
-      installed = wrk.readIntValue("Installed");
-      wrk.close();
-    } catch (e) {
-    }
-    installed = installed == 1;  // convert to bool
-    LOG("isServiceInstalled = " + installed);
-    return installed;
-||||||| merged common ancestors
-  if (AppConstants.MOZ_MAINTENANCE_SERVICE && AppConstants.platform == "win") {
-    let installed = 0;
-    try {
-      let wrk = Cc["@mozilla.org/windows-registry-key;1"].
-                createInstance(Ci.nsIWindowsRegKey);
-      wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-               "SOFTWARE\\Mozilla\\MaintenanceService",
-               wrk.ACCESS_READ | wrk.WOW64_64);
-      installed = wrk.readIntValue("Installed");
-      wrk.close();
-    } catch (e) {
-    }
-    installed = installed == 1;  // convert to bool
-    LOG("isServiceInstalled = " + installed);
-    return installed;
-=======
   if (!AppConstants.MOZ_MAINTENANCE_SERVICE || AppConstants.platform != "win") {
     LOG("isServiceInstalled - returning false");
     return false;
->>>>>>> origin/upstream-releases
   }
 
   let installed = 0;
@@ -803,7 +769,7 @@ function isServiceInstalled() {
     let wrk = Cc["@mozilla.org/windows-registry-key;1"].
               createInstance(Ci.nsIWindowsRegKey);
     wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-             "SOFTWARE\\Mozilla\\MaintenanceService",
+             "SOFTWARE\\CLIQZ\\MaintenanceService",
              wrk.ACCESS_READ | wrk.WOW64_64);
     installed = wrk.readIntValue("Installed");
     wrk.close();

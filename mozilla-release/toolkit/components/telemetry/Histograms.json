@@ -2517,12 +2517,6 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 672,
-<<<<<<< HEAD
-    "releaseChannelCollection": "opt-out",
-||||||| merged common ancestors
-    "releaseChannelCollection": "opt-out",      
-=======
->>>>>>> origin/upstream-releases
     "description": "SSL handshake result, 0=success, 1-255=NSS error offset, 256-511=SEC error offset + 256, 512-639=NSPR error offset + 512, 640-670=PKIX error, 671=unknown err"
   },
   "SSL_TIME_UNTIL_READY": {
@@ -12793,6 +12787,7 @@
     "releaseChannelCollection": "opt-out"
   },
   "AUTO_FORGET_TAB_NOTIFICATION_STATES": {
+    "record_in_processes": ["main", "content"],
     "alert_emails": [],
     "expires_in_version": "never",
     "bug_numbers": [],
@@ -13027,19 +13022,6 @@
     "high": 1000,
     "n_buckets": 10,
     "description": "Time in ms used to execute callbacks from setTimeout/setInterval, when the script belongs to a tab in the background and the script is on the tracking list. Multiple events are aggregated over a 1s interval."
-<<<<<<< HEAD
-  },
-  "REPORT_DECEPTIVE_SITE":
-  {
-    "alert_emails": [],
-    "expires_in_version": "never",
-    "bug_numbers": [],
-    "kind": "enumerated",
-    "n_values": 3,
-    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
-    "releaseChannelCollection": "opt-out"
-||||||| merged common ancestors
-=======
   },
   "TIME_TO_DOM_LOADING_MS": {
     "record_in_processes": ["main", "content"],
@@ -13333,6 +13315,15 @@
     "n_buckets": 20,
     "keyed": true,
     "description": "Measures the number of milliseconds we spend synchronously notifying observers, keyed by topic. Note: only NotifyObservers calls which take over 500 microseconds are included in this probe."
->>>>>>> origin/upstream-releases
+  },
+  "REPORT_DECEPTIVE_SITE": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [],
+    "expires_in_version": "never",
+    "bug_numbers": [],
+    "kind": "enumerated",
+    "n_values": 3,
+    "description": "Record how many times the report deceptive website button is clicked (0 = Phish, 1 = PhishMistake, 2 = MalwareMistake)",
+    "releaseChannelCollection": "opt-out"
   }
 }

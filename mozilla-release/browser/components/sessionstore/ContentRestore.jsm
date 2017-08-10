@@ -246,25 +246,12 @@ ContentRestoreInternal.prototype = {
       }
 
       return true;
-<<<<<<< HEAD
-    } catch (ex if ex instanceof Ci.nsIException) {
-      // Ignore page load errors, but return false to signal that the load never
-      // happened.
-      dump(ex + "\n");
-      return false;
-||||||| merged common ancestors
-    } catch (ex if ex instanceof Ci.nsIException) {
-      // Ignore page load errors, but return false to signal that the load never
-      // happened.
-      return false;
-=======
     } catch (ex) {
       if (ex instanceof Ci.nsIException) {
         // Ignore page load errors, but return false to signal that the load never
         // happened.
         return false;
       }
->>>>>>> origin/upstream-releases
     }
     return null;
   },

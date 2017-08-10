@@ -6,14 +6,6 @@
 
 imply_option('MOZ_PLACES', True)
 imply_option('MOZ_SERVICES_HEALTHREPORT', True)
-<<<<<<< HEAD
 imply_option('MOZ_SERVICES_SYNC', False)
-imply_option('MOZ_SERVICES_CLOUDSYNC', False)
-||||||| merged common ancestors
-imply_option('MOZ_SERVICES_SYNC', True)
-imply_option('MOZ_SERVICES_CLOUDSYNC', True)
-=======
-imply_option('MOZ_SERVICES_SYNC', True)
->>>>>>> origin/upstream-releases
 
 include('../toolkit/moz.configure')

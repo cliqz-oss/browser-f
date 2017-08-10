@@ -5,7 +5,7 @@
 <!ENTITY  trackingProtectionHeader.label       "Use Tracking Protection">
 <!ENTITY  trackingProtectionAlways.label       "Always">
 <!ENTITY  trackingProtectionAlways.accesskey   "y">
-<!ENTITY  trackingProtectionPrivate.label      "Only in private windows">
+<!ENTITY  trackingProtectionPrivate.label      "Only in forget mode">
 <!ENTITY  trackingProtectionPrivate.accesskey  "l">
 <!ENTITY  trackingProtectionNever.label        "Never">
 <!ENTITY  trackingProtectionNever.accesskey    "n">
@@ -14,7 +14,7 @@
 <!ENTITY  trackingProtectionExceptions.accesskey "x">
 
 <!ENTITY tracking.label                 "Tracking">
-<!ENTITY trackingProtectionPBM5.label         "Use Tracking Protection in Private Windows">
+<!ENTITY trackingProtectionPBM5.label   "Use Tracking Protection in Forget Windows">
 <!ENTITY trackingProtectionPBM5.accesskey     "v">
 <!ENTITY trackingProtectionPBMLearnMore.label "Learn more">
 <!ENTITY changeBlockList.label          "Change Block List">
@@ -28,7 +28,7 @@
 
 <!ENTITY  history.label                 "History">
 
-<!ENTITY  locationBar.label             "Location Bar">
+<!ENTITY  locationBar.label             "Search Bar">
 
 <!ENTITY  locbar.suggest.label          "When using the location bar, suggest:">
 <!ENTITY  locbar.history.label          "History">
@@ -82,7 +82,7 @@
 <!ENTITY  rememberActions.removeCookies.label "remove individual cookies">
 <!ENTITY  rememberActions.post.label          ".">
 
-<!ENTITY  dontrememberDescription.label  "&brandShortName; will use the same settings as private browsing, and will not remember any history as you browse the Web.">
+<!ENTITY  dontrememberDescription.label  "&brandShortName; will use the same settings as forget mode, and will not remember any history as you browse the Web.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (dontrememberActions.post.label): include a starting space as needed -->
@@ -90,8 +90,8 @@
 <!ENTITY  dontrememberActions.clearHistory.label "clear all current history">
 <!ENTITY  dontrememberActions.post.label         ".">
 
-<!ENTITY  privateBrowsingPermanent2.label "Always use private browsing mode">
-<!ENTITY  privateBrowsingPermanent2.accesskey "p">
+<!ENTITY  privateBrowsingPermanent2.label "Always use forget mode">
+<!ENTITY  privateBrowsingPermanent2.accesskey "m">
 
 <!ENTITY  rememberHistory2.label      "Remember my browsing and download history">
 <!ENTITY  rememberHistory2.accesskey  "b">
@@ -104,6 +104,13 @@
 
 <!ENTITY  clearOnCloseSettings.label     "Settings…">
 <!ENTITY  clearOnCloseSettings.accesskey "t">
+
+<!-- Forget mode -->
+<!ENTITY  forgetMode.caption "Forget Mode">
+<!ENTITY  forgetMode.enableCheckboxLabel "Enable automatic forget mode">
+<!ENTITY  forgetMode.explanation1 "Automatic forget mode will automatically open websites with adult content inside a forget tab, so that these websites will not be saved in your history and temporary web files including cookies will not be stored.">
+<!ENTITY  forgetMode.explanation2 "Via the tab context menu, you can select whether a website should be opened in forget mode automatically or not. The tab context menu can be opened by right-clicking on the respective tab.">
+<!ENTITY  forgetMode.learnMore "Learn more">
 
 <!ENTITY  browserContainersHeader.label         "Container Tabs">
 <!ENTITY  browserContainersLearnMore.label      "Learn more">

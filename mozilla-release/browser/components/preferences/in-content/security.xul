@@ -137,7 +137,15 @@
       </row>
     </rows>
   </grid>
-<<<<<<< HEAD
+  <hbox id="masterPasswordRow">
+    <checkbox id="useMasterPassword"
+              label="&useMasterPassword.label;"
+              accesskey="&useMasterPassword.accesskey;"/>
+    <spacer flex="1"/>
+    <button id="changeMasterPassword"
+            label="&changeMasterPassword.label;"
+            accesskey="&changeMasterPassword.accesskey;"/>
+  </hbox>
 
   <vbox flex="1" class="view-pane password-managers" tabindex="0">
     <caption><label>&passwordManager.title;</label></caption>
@@ -154,16 +162,4 @@
     <caption> </caption>
     <richlistbox id="privacy-managers-list" class="list" flex="1"></richlistbox>
   </vbox>
-||||||| merged common ancestors
-=======
-  <hbox id="masterPasswordRow">
-    <checkbox id="useMasterPassword"
-              label="&useMasterPassword.label;"
-              accesskey="&useMasterPassword.accesskey;"/>
-    <spacer flex="1"/>
-    <button id="changeMasterPassword"
-            label="&changeMasterPassword.label;"
-            accesskey="&changeMasterPassword.accesskey;"/>
-  </hbox>
->>>>>>> origin/upstream-releases
 </groupbox>

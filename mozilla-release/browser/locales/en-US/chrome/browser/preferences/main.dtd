@@ -7,32 +7,14 @@
 
 <!ENTITY startup.label             "Startup">
 
-<<<<<<< HEAD
-<!ENTITY startupPage.label         "When &brandShortName; starts:">
-<!ENTITY startupPage.accesskey     "s">
-<!ENTITY startupUserHomePage.label "Show start page">
-||||||| merged common ancestors
-<!ENTITY startupPage.label         "When &brandShortName; starts:">
-<!ENTITY startupPage.accesskey     "s">
-<!ENTITY startupUserHomePage.label "Show your home page">
-=======
 <!ENTITY startupPage2.label        "When &brandShortName; starts">
 <!ENTITY startupPage2.accesskey    "s">
-<!ENTITY startupUserHomePage.label "Show your home page">
->>>>>>> origin/upstream-releases
+<!ENTITY startupUserHomePage.label "Show start page">
 <!ENTITY startupBlankPage.label    "Show a blank page">
 <!ENTITY startupPrevSession.label  "Show your windows and tabs from last time">
 
-<<<<<<< HEAD
-<!ENTITY homepage.label            "Start Page:">
-<!ENTITY homepage.accesskey        "P">
-||||||| merged common ancestors
-<!ENTITY homepage.label            "Home Page:">
-<!ENTITY homepage.accesskey        "P">
-=======
-<!ENTITY homepage2.label           "Home Page">
+<!ENTITY homepage2.label           "Start Page">
 <!ENTITY homepage2.accesskey       "P">
->>>>>>> origin/upstream-releases
 <!ENTITY useCurrentPage.label      "Use Current Page">
 <!ENTITY useCurrentPage.accesskey  "C">
 <!ENTITY useMultiple.label         "Use Current Pages">

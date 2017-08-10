@@ -260,13 +260,9 @@ interface nsIX509CertDB : nsISupports {
    * "network.http.packaged-apps-developer-trusted-root".
    */
   const AppTrustedRoot DeveloperImportedRoot = 10;
-<<<<<<< HEAD
   const AppTrustedRoot CliqzAddonsRoot = 1000;
 
-||||||| merged common ancestors
-=======
   [must_use]
->>>>>>> origin/upstream-releases
   void openSignedAppFileAsync(in AppTrustedRoot trustedRoot,
                               in nsIFile aJarFile,
                               in nsIOpenSignedAppFileCallback callback);

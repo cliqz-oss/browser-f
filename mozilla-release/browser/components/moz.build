@@ -66,14 +66,8 @@ EXTRA_PP_COMPONENTS += [
 
 EXTRA_COMPONENTS += [
     'nsBrowserContentHandler.js',
-<<<<<<< HEAD
-||||||| merged common ancestors
-    'nsBrowserGlue.js',
-=======
-    'nsBrowserGlue.js',
     'tests/startupRecorder.js',
     'tests/testComponents.manifest',
->>>>>>> origin/upstream-releases
 ]
 
 EXTRA_JS_MODULES += [

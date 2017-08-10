@@ -495,6 +495,7 @@
                            oncommand="gPageActionButton.showSendToDeviceView(this);"/>
           </vbox>
         </panelview>
+#ifdef MOZ_SERVICES_SYNC
         <panelview id="page-action-sendToDeviceView"
                    class="PanelUI-subView"
                    title="&sendToDevice.viewTitle;">
@@ -510,6 +511,7 @@
                            disabled="true"/>
           </vbox>
         </panelview>
+#endif
       </photonpanelmultiview>
     </panel>
 
@@ -781,7 +783,6 @@
                          onclick="checkForMiddleClick(this, event);"
                          tooltip="back-button-tooltip"
                          context="backForwardMenu"/>
-<<<<<<< HEAD
           <!-- Cliqz: Forward button must be here in Cliqz browser with custom theme -->
           <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                          label="&forwardCmd.label;"
@@ -789,8 +790,6 @@
                          onclick="checkForMiddleClick(this, event);"
                          tooltip="forward-button-tooltip"
                          context="backForwardMenu"/>
-||||||| merged common ancestors
-=======
 #ifdef MOZ_PHOTON_THEME
           <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                          removable="false" overflows="false"
@@ -813,18 +812,8 @@
                            tooltip="dynamic-shortcut-tooltip"/>
           </toolbaritem>
 #endif
->>>>>>> origin/upstream-releases
           <hbox id="urlbar-wrapper" flex="1">
-<<<<<<< HEAD
-||||||| merged common ancestors
-            <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                           label="&forwardCmd.label;"
-                           command="Browser:ForwardOrForwardDuplicate"
-                           onclick="checkForMiddleClick(this, event);"
-                           tooltip="forward-button-tooltip"
-                           context="backForwardMenu"/>
-=======
-#ifndef MOZ_PHOTON_THEME
+#ifdef 0  <!--#ifndef MOZ_PHOTON_THEME-->
             <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
                            label="&forwardCmd.label;"
                            command="Browser:ForwardOrForwardDuplicate"
@@ -832,7 +821,6 @@
                            tooltip="forward-button-tooltip"
                            context="backForwardMenu"/>
 #endif
->>>>>>> origin/upstream-releases
             <textbox id="urlbar" flex="1"
                      placeholder="&urlbar.placeholder2;"
                      type="autocomplete"

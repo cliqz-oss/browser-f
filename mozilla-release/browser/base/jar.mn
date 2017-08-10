@@ -80,15 +80,9 @@ browser.jar:
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
         content/browser/browser-sidebar.js            (content/browser-sidebar.js)
         content/browser/browser-social.js             (content/browser-social.js)
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-        content/browser/browser-syncui.js             (content/browser-syncui.js)
-#endif
-||||||| merged common ancestors
-        content/browser/browser-syncui.js             (content/browser-syncui.js)
-=======
         content/browser/browser-sync.js               (content/browser-sync.js)
->>>>>>> origin/upstream-releases
+#endif
 *       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)
 #ifdef CAN_DRAW_IN_TITLEBAR
         content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
@@ -134,22 +128,8 @@ browser.jar:
         content/browser/pageinfo/feeds.xml            (content/pageinfo/feeds.xml)
         content/browser/pageinfo/permissions.js       (content/pageinfo/permissions.js)
         content/browser/pageinfo/security.js          (content/pageinfo/security.js)
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-        content/browser/sync/aboutSyncTabs.xul        (content/sync/aboutSyncTabs.xul)
-        content/browser/sync/aboutSyncTabs.js         (content/sync/aboutSyncTabs.js)
-        content/browser/sync/aboutSyncTabs.css        (content/sync/aboutSyncTabs.css)
-        content/browser/sync/aboutSyncTabs-bindings.xml  (content/sync/aboutSyncTabs-bindings.xml)
-#endif
-||||||| merged common ancestors
-        content/browser/sync/aboutSyncTabs.xul        (content/sync/aboutSyncTabs.xul)
-        content/browser/sync/aboutSyncTabs.js         (content/sync/aboutSyncTabs.js)
-        content/browser/sync/aboutSyncTabs.css        (content/sync/aboutSyncTabs.css)
-        content/browser/sync/aboutSyncTabs-bindings.xml  (content/sync/aboutSyncTabs-bindings.xml)
-=======
         content/browser/robot.ico                     (content/robot.ico)
         content/browser/static-robot.png              (content/static-robot.png)
->>>>>>> origin/upstream-releases
         content/browser/safeMode.css                  (content/safeMode.css)
         content/browser/safeMode.js                   (content/safeMode.js)
         content/browser/safeMode.xul                  (content/safeMode.xul)

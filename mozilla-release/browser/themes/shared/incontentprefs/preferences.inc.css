@@ -126,20 +126,11 @@ treecol {
   display: none;
 }
 
-<<<<<<< HEAD
-#header-advanced, #header-connect {
+#header-connect {
   border-bottom: none;
   padding-bottom: 0;
 }
 
-||||||| merged common ancestors
-#header-advanced {
-  border-bottom: none;
-  padding-bottom: 0;
-}
-
-=======
->>>>>>> origin/upstream-releases
 /* General Pane */
 
 #startupTable {

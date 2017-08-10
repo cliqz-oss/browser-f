@@ -28,7 +28,9 @@
 
 <!ENTITY dataChoicesTab.label            "Data Choices">
 
-<!ENTITY healthReportDesc.label          "Helps you understand your browser performance and shares data with &vendorShortName; about your browser health">
+<!ENTITY healthReportIntro.label         "We care about your privacy. When Cliqz sends information to the Cliqz team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
+
+<!ENTITY healthReportDesc.label          "Helps you understand your browser performance and shares data with the Cliqz team about your browser health">
 <!ENTITY enableHealthReport.label        "Enable &brandShortName; Health Report">
 <!ENTITY enableHealthReport.accesskey    "R">
 <!ENTITY healthReportLearnMore.label     "Learn more">
@@ -38,7 +40,7 @@
 <!ENTITY enableTelemetryData.accesskey   "T">
 <!ENTITY telemetryLearnMore.label        "Learn more">
 
-<!ENTITY crashReporterDesc2.label         "Crash reports help &vendorShortName; fix problems and make your browser more stable and secure">
+<!ENTITY crashReporterDesc2.label         "Crash reports help Cliqz team fix problems and make your browser more stable and secure">
 <!ENTITY alwaysSubmitCrashReports.label   "Allow &brandShortName; to send backlogged crash reports on your behalf">
 <!ENTITY alwaysSubmitCrashReports.accesskey "c">
 <!ENTITY crashReporterLearnMore.label     "Learn more">

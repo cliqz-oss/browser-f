@@ -26,14 +26,8 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-        <hbox id="PanelUI-footer-fxa">
-||||||| merged common ancestors
-        <hbox id="PanelUI-footer-fxa">
-=======
         <hbox id="PanelUI-fxa-container">
->>>>>>> origin/upstream-releases
           <hbox id="PanelUI-fxa-status"
                 label="&fxaSignedIn.tooltip;"
                 defaultlabel="&fxaSignIn.label;"
@@ -117,15 +111,9 @@
                      oncommand="PlacesCommandHook.showPlacesOrganizer('History'); CustomizableUI.hidePanelForNode(this);"/>
     </panelview>
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-    <panelview id="PanelUI-remotetabs" flex="1" class="PanelUI-subView">
-||||||| merged common ancestors
-    <panelview id="PanelUI-remotetabs" flex="1" class="PanelUI-subView">
-=======
     <panelview id="PanelUI-remotetabs" flex="1" class="PanelUI-subView"
                descriptionheightworkaround="true">
->>>>>>> origin/upstream-releases
       <label value="&appMenuRemoteTabs.label;" class="panel-subview-header"/>
       <vbox class="panel-subview-body">
         <!-- this widget has 3 boxes in the body, but only 1 is ever visible -->
@@ -555,6 +543,7 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
+#ifdef 0
         <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons">
           <hbox id="appMenu-fxa-status"
                 flex="1"
@@ -579,6 +568,7 @@
             <observes element="sync-status" attribute="tooltiptext"/>
           </toolbarbutton>
         </toolbaritem>
+#endif
         <toolbarseparator/>
         <toolbarbutton id="appMenu-new-window-button"
                        class="subviewbutton subviewbutton-iconic"

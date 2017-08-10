@@ -86,12 +86,8 @@ XPCOMUtils.defineLazyGetter(this, "extensionNameFromURI", () => {
   ["UpdateUtils", "resource://gre/modules/UpdateUtils.jsm"],
 #ifdef MOZ_SERVICES_SYNC
   ["Weave", "resource://services-sync/main.js"],
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
   ["WebNavigationFrames", "resource://gre/modules/WebNavigationFrames.js"],
->>>>>>> origin/upstream-releases
   ["fxAccounts", "resource://gre/modules/FxAccounts.jsm"],
   ["gDevTools", "resource://devtools/client/framework/gDevTools.jsm"],
   ["gDevToolsBrowser", "resource://devtools/client/framework/gDevTools.jsm"],
@@ -1660,16 +1656,8 @@ var gBrowserInit = {
 
 #ifdef MOZ_SERVICES_SYNC
     // initialize the sync UI
-<<<<<<< HEAD
-    gSyncUI.init();
-    gFxAccounts.init();
-#endif
-||||||| merged common ancestors
-    gSyncUI.init();
-    gFxAccounts.init();
-=======
     gSync.init();
->>>>>>> origin/upstream-releases
+#endif
 
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
@@ -1803,15 +1791,9 @@ var gBrowserInit = {
 
     FullScreen.uninit();
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-    gFxAccounts.uninit();
-#endif
-||||||| merged common ancestors
-    gFxAccounts.uninit();
-=======
     gSync.uninit();
->>>>>>> origin/upstream-releases
+#endif
 
     gExtensionsNotifications.uninit();
 
@@ -1978,14 +1960,8 @@ if (AppConstants.platform == "macosx") {
 
 #ifdef MOZ_SERVICES_SYNC
     // initialize the sync UI
-<<<<<<< HEAD
-    gSyncUI.init();
-#endif
-||||||| merged common ancestors
-    gSyncUI.init();
-=======
     gSync.init();
->>>>>>> origin/upstream-releases
+#endif
 
     if (AppConstants.E10S_TESTING_ONLY) {
       gRemoteTabsUI.init();

@@ -5,33 +5,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
-<<<<<<< HEAD
 #    'aushelper',
+#    'clicktoplay-rollout',
 #    'e10srollout',
-||||||| merged common ancestors
-    'aushelper',
-    'e10srollout',
-=======
-    'aushelper',
-    'clicktoplay-rollout',
-    'e10srollout',
-    'followonsearch',
->>>>>>> origin/upstream-releases
+#    'followonsearch',
     'pdfjs',
-<<<<<<< HEAD
 #    'pocket',
 #    'screenshots',
+#    'shield-recipe-client',
 #    'webcompat',
-||||||| merged common ancestors
-    'pocket',
-    'screenshots',
-    'webcompat',
-=======
-    'pocket',
-    'screenshots',
-    'shield-recipe-client',
-    'webcompat',
->>>>>>> origin/upstream-releases
 ]
 
 ''' disabled by Cliqz

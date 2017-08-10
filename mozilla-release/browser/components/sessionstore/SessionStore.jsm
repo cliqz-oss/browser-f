@@ -1158,17 +1158,11 @@ var SessionStoreInternal = {
           // it happens before observers are notified
           this._globalState.setFromState(aInitialState);
 
-<<<<<<< HEAD
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) &&
-            gSessionStartup.willOverrideHomepage;
-||||||| merged common ancestors
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
-=======
           // Restore session cookies before loading any tabs.
           SessionCookies.restore(aInitialState.cookies || []);
 
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
->>>>>>> origin/upstream-releases
+          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) &&
+            gSessionStartup.willOverrideHomepage;
           let options = {firstWindow: true, overwriteTabs: overwrite};
           this.restoreWindows(aWindow, aInitialState, options);
         }
@@ -2991,18 +2985,8 @@ var SessionStoreInternal = {
     let homePages = ["about:blank"];
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
-<<<<<<< HEAD
-    let normalTabsLen = tabbrowser.tabs.length - tabbrowser._numPinnedTabs;
     let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
     if (addFreshTab)
-||||||| merged common ancestors
-    let normalTabsLen = tabbrowser.tabs.length - tabbrowser._numPinnedTabs;
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
-=======
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
->>>>>>> origin/upstream-releases
       homePages = homePages.concat(aWindow.gHomeButton.getHomePage().split("|"));
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
@@ -3277,7 +3261,6 @@ var SessionStoreInternal = {
       winData.tabs = [];
     }
 
-<<<<<<< HEAD
     // Remove tab entries duplicating already open tabs.
     // This is intended to work when both tab restore and fresh tab features
     // are enabled.
@@ -3298,14 +3281,6 @@ var SessionStoreInternal = {
       });
     }
 
-    var tabbrowser = aWindow.gBrowser;
-    var openTabCount = overwriteTabs ? tabbrowser.browsers.length : -1;
-    var newTabCount = winData.tabs.length;
-||||||| merged common ancestors
-    var tabbrowser = aWindow.gBrowser;
-    var openTabCount = overwriteTabs ? tabbrowser.browsers.length : -1;
-    var newTabCount = winData.tabs.length;
-=======
     // See SessionStoreInternal.restoreTabs for a description of what
     // selectTab represents.
     let selectTab = 0;
@@ -3317,7 +3292,6 @@ var SessionStoreInternal = {
 
     let tabbrowser = aWindow.gBrowser;
     let newTabCount = winData.tabs.length;
->>>>>>> origin/upstream-releases
     var tabs = [];
 
     // disable smooth scrolling while adding, moving, removing and selecting tabs

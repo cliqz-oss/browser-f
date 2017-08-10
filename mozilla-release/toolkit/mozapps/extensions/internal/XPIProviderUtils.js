@@ -1142,111 +1142,6 @@ this.XPIDatabase = {
       }
     }
   },
-<<<<<<< HEAD
-
-  /**
-   * Writes out the XPI add-ons list for the platform to read.
-   * @return true if the file was successfully updated, false otherwise
-   */
-  writeAddonsList() {
-    if (!this.addonDB) {
-      // force the DB to load
-      AddonManagerPrivate.recordSimpleMeasure("XPIDB_lateOpen_writeList",
-          XPIProvider.runPhase);
-      this.syncLoadDB(true);
-    }
-    Services.appinfo.invalidateCachesOnRestart();
-
-    let addonsList = FileUtils.getFile(KEY_PROFILEDIR, [FILE_XPI_ADDONS_LIST],
-                                       true);
-    let enabledAddons = [];
-    let text = "[ExtensionDirs]\r\n";
-    let count = 0;
-    let fullCount = 0;
-
-    let activeAddons = _filterDB(
-      this.addonDB,
-      aAddon => aAddon.active && !aAddon.bootstrap && (aAddon.type != "theme"));
-
-    for (let row of activeAddons) {
-      text += "Extension" + (count++) + "=" + row.descriptor + "\r\n";
-      enabledAddons.push(encodeURIComponent(row.id) + ":" +
-                         encodeURIComponent(row.version));
-    }
-    fullCount += count;
-
-    // The selected skin may come from an inactive theme (the default theme
-    // when a lightweight theme is applied for example)
-    text += "\r\n[ThemeDirs]\r\n";
-
-    let dssEnabled = false;
-    try {
-      dssEnabled = Services.prefs.getBoolPref(PREF_EM_DSS_ENABLED);
-    } catch (e) {}
-
-    let themes = [];
-    if (dssEnabled) {
-      themes = _filterDB(this.addonDB, aAddon => aAddon.type == "theme");
-    } else {
-      let activeTheme = _findAddon(
-        this.addonDB,
-        aAddon => (aAddon.type == "theme") &&
-                  (aAddon.internalName == XPIProvider.selectedSkin));
-      if (activeTheme) {
-        themes.push(activeTheme);
-      }
-    }
-
-    if (themes.length > 0) {
-      count = 0;
-      for (let row of themes) {
-        text += "Extension" + (count++) + "=" + row.descriptor + "\r\n";
-        enabledAddons.push(encodeURIComponent(row.id) + ":" +
-                           encodeURIComponent(row.version));
-      }
-      fullCount += count;
-    }
-
-    text += "\r\n[MultiprocessIncompatibleExtensions]\r\n";
-
-    count = 0;
-    for (let row of activeAddons) {
-      if (!row.multiprocessCompatible) {
-        text += "Extension" + (count++) + "=" + row.id + "\r\n";
-      }
-    }
-
-    if (fullCount > 0) {
-      logger.debug("Writing add-ons list");
-
-      try {
-        let addonsListTmp = FileUtils.getFile(KEY_PROFILEDIR, [FILE_XPI_ADDONS_LIST + ".tmp"],
-                                              true);
-        var fos = FileUtils.openFileOutputStream(addonsListTmp);
-        fos.write(text, text.length);
-        fos.close();
-        addonsListTmp.moveTo(addonsListTmp.parent, FILE_XPI_ADDONS_LIST);
-
-        Services.prefs.setCharPref(PREF_EM_ENABLED_ADDONS, enabledAddons.join(","));
-      } catch (e) {
-        logger.error("Failed to write add-ons list to profile directory", e);
-        return false;
-      }
-    } else {
-      if (addonsList.exists()) {
-        logger.debug("Deleting add-ons list");
-        try {
-          addonsList.remove(false);
-        } catch (e) {
-          logger.error("Failed to remove " + addonsList.path, e);
-          return false;
-        }
-      }
-
-      Services.prefs.clearUserPref(PREF_EM_ENABLED_ADDONS);
-    }
-    return true;
-  },
 
   /**
    * @param addonId {String} Id of the addon to report.
@@ -1280,113 +1175,6 @@ this.XPIDatabase = {
       }
     }, 5000);
   },
-||||||| merged common ancestors
-
-  /**
-   * Writes out the XPI add-ons list for the platform to read.
-   * @return true if the file was successfully updated, false otherwise
-   */
-  writeAddonsList() {
-    if (!this.addonDB) {
-      // force the DB to load
-      AddonManagerPrivate.recordSimpleMeasure("XPIDB_lateOpen_writeList",
-          XPIProvider.runPhase);
-      this.syncLoadDB(true);
-    }
-    Services.appinfo.invalidateCachesOnRestart();
-
-    let addonsList = FileUtils.getFile(KEY_PROFILEDIR, [FILE_XPI_ADDONS_LIST],
-                                       true);
-    let enabledAddons = [];
-    let text = "[ExtensionDirs]\r\n";
-    let count = 0;
-    let fullCount = 0;
-
-    let activeAddons = _filterDB(
-      this.addonDB,
-      aAddon => aAddon.active && !aAddon.bootstrap && (aAddon.type != "theme"));
-
-    for (let row of activeAddons) {
-      text += "Extension" + (count++) + "=" + row.descriptor + "\r\n";
-      enabledAddons.push(encodeURIComponent(row.id) + ":" +
-                         encodeURIComponent(row.version));
-    }
-    fullCount += count;
-
-    // The selected skin may come from an inactive theme (the default theme
-    // when a lightweight theme is applied for example)
-    text += "\r\n[ThemeDirs]\r\n";
-
-    let dssEnabled = false;
-    try {
-      dssEnabled = Services.prefs.getBoolPref(PREF_EM_DSS_ENABLED);
-    } catch (e) {}
-
-    let themes = [];
-    if (dssEnabled) {
-      themes = _filterDB(this.addonDB, aAddon => aAddon.type == "theme");
-    } else {
-      let activeTheme = _findAddon(
-        this.addonDB,
-        aAddon => (aAddon.type == "theme") &&
-                  (aAddon.internalName == XPIProvider.selectedSkin));
-      if (activeTheme) {
-        themes.push(activeTheme);
-      }
-    }
-
-    if (themes.length > 0) {
-      count = 0;
-      for (let row of themes) {
-        text += "Extension" + (count++) + "=" + row.descriptor + "\r\n";
-        enabledAddons.push(encodeURIComponent(row.id) + ":" +
-                           encodeURIComponent(row.version));
-      }
-      fullCount += count;
-    }
-
-    text += "\r\n[MultiprocessIncompatibleExtensions]\r\n";
-
-    count = 0;
-    for (let row of activeAddons) {
-      if (!row.multiprocessCompatible) {
-        text += "Extension" + (count++) + "=" + row.id + "\r\n";
-      }
-    }
-
-    if (fullCount > 0) {
-      logger.debug("Writing add-ons list");
-
-      try {
-        let addonsListTmp = FileUtils.getFile(KEY_PROFILEDIR, [FILE_XPI_ADDONS_LIST + ".tmp"],
-                                              true);
-        var fos = FileUtils.openFileOutputStream(addonsListTmp);
-        fos.write(text, text.length);
-        fos.close();
-        addonsListTmp.moveTo(addonsListTmp.parent, FILE_XPI_ADDONS_LIST);
-
-        Services.prefs.setCharPref(PREF_EM_ENABLED_ADDONS, enabledAddons.join(","));
-      } catch (e) {
-        logger.error("Failed to write add-ons list to profile directory", e);
-        return false;
-      }
-    } else {
-      if (addonsList.exists()) {
-        logger.debug("Deleting add-ons list");
-        try {
-          addonsList.remove(false);
-        } catch (e) {
-          logger.error("Failed to remove " + addonsList.path, e);
-          return false;
-        }
-      }
-
-      Services.prefs.clearUserPref(PREF_EM_ENABLED_ADDONS);
-    }
-    return true;
-  }
-=======
->>>>>>> origin/upstream-releases
 };
 
 this.XPIDatabaseReconcile = {
@@ -1529,17 +1317,10 @@ this.XPIDatabaseReconcile = {
 
         // If we don't have an old app version then this is a new profile in
         // which case just mark any sideloaded add-ons as already seen.
-<<<<<<< HEAD
-        aNewAddon.seen = !aOldAppVersion;
-
-        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, aNewAddon.type,
-            "foreign");
-||||||| merged common ancestors
-        aNewAddon.seen = !aOldAppVersion;
-=======
         aNewAddon.seen = (aInstallLocation.name != KEY_APP_PROFILE &&
                           !aOldAppVersion);
->>>>>>> origin/upstream-releases
+        XPIDatabase.reportAddonInstallationAttempt(aNewAddon.id, aNewAddon.type,
+            "foreign");
       }
     }
 

@@ -1018,18 +1018,6 @@ pref("browser.flash-protected-mode-flip.done", false);
 
 pref("dom.ipc.shims.enabledWarnings", false);
 
-<<<<<<< HEAD
-// Start the browser in e10s mode
-pref("browser.tabs.remote.autostart", true);
-pref("browser.tabs.remote.desktopbehavior", true);
-
-||||||| merged common ancestors
-// Start the browser in e10s mode
-pref("browser.tabs.remote.autostart", false);
-pref("browser.tabs.remote.desktopbehavior", true);
-
-=======
->>>>>>> origin/upstream-releases
 #if defined(XP_WIN) && defined(MOZ_SANDBOX)
 // Controls whether and how the Windows NPAPI plugin process is sandboxed.
 // To get a different setting for a particular plugin replace "default", with
@@ -1356,20 +1344,12 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 
 // All the Geolocation preferences are here.
 //
-<<<<<<< HEAD
-// The request URL of the GeoLocation backend.
-// Cliqz. Always use Mozilla's geolocation API
-#ifdef 0
-||||||| merged common ancestors
-// The request URL of the GeoLocation backend.
-#ifdef RELEASE_OR_BETA
-=======
-
 // Geolocation preferences for the RELEASE and "later" Beta channels.
 // Some of these prefs are specified even though they are redundant; they are
 // here for clarity and end-user experiments.
-#ifndef EARLY_BETA_OR_EARLIER
->>>>>>> origin/upstream-releases
+//
+// Cliqz. Always use Mozilla's geolocation API
+#ifdef 0
 pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
 
 #ifdef XP_MACOSX
@@ -1560,7 +1540,7 @@ pref("privacy.userContext.longPressBehavior", 0);
 #endif
 
 // Start the browser in e10s mode
-pref("browser.tabs.remote.autostart", false);
+pref("browser.tabs.remote.autostart", true);
 pref("browser.tabs.remote.desktopbehavior", true);
 
 #if !defined(RELEASE_OR_BETA) || defined(MOZ_DEV_EDITION)

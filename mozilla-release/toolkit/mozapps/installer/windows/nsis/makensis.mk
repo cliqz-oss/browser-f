@@ -47,7 +47,7 @@ $(CONFIG_DIR)/setup.exe::
 	$(INSTALL) $(addprefix $(MOZILLA_DIR)/other-licenses/nsis/,$(CUSTOM_UI)) $(CONFIG_DIR)
 	cd $(CONFIG_DIR) && $(MAKENSISU) $(MAKENSISU_FLAGS) installer.nsi
 ifdef MOZ_STUB_INSTALLER
-	cd $(CONFIG_DIR) && $(MAKENSISU) $(MAKENSISU_FLAGS) stub.nsi
+	cd $(CONFIG_DIR) && $(MAKENSISU) $(MAKENSISU_FLAGS) stub_old.nsi
 ifdef MOZ_EXTERNAL_SIGNING_FORMAT
 	$(MOZ_SIGN_CMD) $(foreach f,$(MOZ_EXTERNAL_SIGNING_FORMAT),-f $(f)) $(CONFIG_DIR)/setup-stub.exe
 endif

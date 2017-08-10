@@ -81,22 +81,12 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT },
   { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
-<<<<<<< HEAD
   { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
-#ifdef MOZ_SERVICES_SYNC
-  { "sync-tabs", "chrome://browser/content/sync/aboutSyncTabs.xul",
-    nsIAboutModule::ALLOW_SCRIPT },
-#endif
   { "home", "about:cliqz",
     nsIAboutModule::ALLOW_SCRIPT },
 #if 0
 # Replaced by Cliqz
-||||||| merged common ancestors
-  { "sync-tabs", "chrome://browser/content/sync/aboutSyncTabs.xul",
-    nsIAboutModule::ALLOW_SCRIPT },
-=======
->>>>>>> origin/upstream-releases
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |

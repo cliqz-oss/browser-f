@@ -484,25 +484,7 @@
                   label="&toolsMenu.label;"
                   accesskey="&toolsMenu.accesskey;"
                   onpopupshowing="mirrorShow(this)">
-<<<<<<< HEAD
-              <menupopup id="menu_ToolsPopup"
-#ifdef MOZ_SERVICES_SYNC
-# We have to use setTimeout() here to avoid a flickering menu bar when opening
-# the Tools menu, see bug 970769. This can be removed once we got rid of the
-# event loop spinning in Weave.Status._authManager.
-                         onpopupshowing="setTimeout(() => gSyncUI.updateUI());"
-#endif
-                         >
-||||||| merged common ancestors
-              <menupopup id="menu_ToolsPopup"
-# We have to use setTimeout() here to avoid a flickering menu bar when opening
-# the Tools menu, see bug 970769. This can be removed once we got rid of the
-# event loop spinning in Weave.Status._authManager.
-                         onpopupshowing="setTimeout(() => gSyncUI.updateUI());"
-                         >
-=======
               <menupopup id="menu_ToolsPopup">
->>>>>>> origin/upstream-releases
               <menuitem id="menu_openDownloads"
                         label="&downloads.label;"
                         accesskey="&downloads.accesskey;"
@@ -529,14 +511,8 @@
                         label="&syncReAuthItem.label;"
                         accesskey="&syncReAuthItem.accesskey;"
                         observes="sync-reauth-state"
-<<<<<<< HEAD
-                        oncommand="gSyncUI.openSignInAgainPage('menubar');"/>
-#endif
-||||||| merged common ancestors
-                        oncommand="gSyncUI.openSignInAgainPage('menubar');"/>
-=======
                         oncommand="gSync.openSignInAgainPage('menubar');"/>
->>>>>>> origin/upstream-releases
+#endif
               <menuseparator id="devToolsSeparator"/>
               <menu id="webDeveloperMenu"
                     label="&webDeveloperMenu.label;"

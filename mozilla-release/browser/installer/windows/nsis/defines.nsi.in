@@ -57,18 +57,18 @@
 
 !if "@MOZ_UPDATE_CHANNEL@" == "default"
 #ifdef DEBUG
-!define AccessibleHandlerCLSID "{398FFD8D-5382-48F7-9E3B-19012762D39A}"
+!define AccessibleHandlerCLSID "{E052D988-37A6-4F28-85F4-8B6ED3A4333F}"
 #else
-!define AccessibleHandlerCLSID "{CE573FAF-7815-4FC2-A031-B092268ACE9E}"
+!define AccessibleHandlerCLSID "{0E1B433B-A383-4513-9542-6DD082A09F48}"
 #endif
 !else if "@MOZ_UPDATE_CHANNEL@" == "nightly"
-!define AccessibleHandlerCLSID "{4629216B-8753-41BF-9527-5BFF51401671}"
+!define AccessibleHandlerCLSID "{9E544F3D-D90A-45A0-A87B-40B5DB30AA40}"
 !else if "@MOZ_UPDATE_CHANNEL@" == "beta"
-!define AccessibleHandlerCLSID "{21E9F98D-A6C9-4CB5-B288-AE2FD2A96C58}"
+!define AccessibleHandlerCLSID "{8C493661-D0FE-4868-A728-944AEA83134A}"
 !else if "@MOZ_UPDATE_CHANNEL@" == "release"
-!define AccessibleHandlerCLSID "{1BAA303D-B4B9-45E5-9CCB-E3FCA3E274B6}"
+!define AccessibleHandlerCLSID "{F40A82CD-24D7-413D-AADC-843816FB4331}"
 !else
-!define AccessibleHandlerCLSID "{4A195748-DCA2-45FB-9295-0A139E76A9E7}"
+!define AccessibleHandlerCLSID "{1C579561-9A8D-4EFB-9F18-4122CDCC7134}"
 !endif
 
 # Due to official and beta using the same branding this is needed to
@@ -122,22 +122,13 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define OPTIONS_ITEM_WIDTH_DU 356u
 !define OPTIONS_SUBITEM_EDGE_DU 119u
 !define OPTIONS_SUBITEM_WIDTH_DU 327u
-<<<<<<< HEAD
 !define INSTALL_BLURB_IMAGE_TOP_DU 23u
 !define INSTALL_BLURB_HEAD_TOP_DU 92u
 !define INSTALL_BLURB_TEXT_TOP_DU 108u
 !define APPNAME_BMP_EDGE_DU 23u
 !define APPNAME_BMP_TOP_DU 19u
-||||||| merged common ancestors
-!define INSTALL_BLURB_TOP_DU 78u
-!define APPNAME_BMP_EDGE_DU 19u
-!define APPNAME_BMP_TOP_DU 12u
-=======
 !define NOW_INSTALLING_TOP_DU 70u
 !define INSTALL_BLURB_TOP_DU 137u
 !define INSTALL_FOOTER_TOP_DU -48u
 !define INSTALL_FOOTER_WIDTH_DU 250u
 !define PROGRESS_BAR_TOP_DU 112u
-!define APPNAME_BMP_EDGE_DU 19u
-!define APPNAME_BMP_TOP_DU 12u
->>>>>>> origin/upstream-releases

@@ -139,16 +139,8 @@ interface nsILoadContext : nsISupports
   [binaryname(ScriptableOriginAttributes)]
   readonly attribute jsval originAttributes;
 
-<<<<<<< HEAD
   void addWeakPrivacyTransitionObserver(in nsIPrivacyTransitionObserver obs);
 
-%{C++
-#ifdef MOZILLA_INTERNAL_API
-||||||| merged common ancestors
-%{C++
-#ifdef MOZILLA_INTERNAL_API
-=======
->>>>>>> origin/upstream-releases
   /**
    * The C++ getter for origin attributes.
    */

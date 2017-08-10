@@ -16,44 +16,6 @@ this.Preferences = {
 
   init(libDir) {
     let panes = [
-<<<<<<< HEAD
-      ["paneGeneral", null],
-      ["paneSearch", null],
-      ["paneContent", null],
-      ["paneApplications", null],
-      ["panePrivacy", null],
-      ["panePrivacy", null, DNTDialog],
-      ["panePrivacy", null, clearRecentHistoryDialog],
-      ["paneSecurity", null],
-      ["paneSync", null],
-      ["paneConnect", null],
-      ["paneAdvanced", "generalTab"],
-      ["paneAdvanced", "dataChoicesTab"],
-      ["paneAdvanced", "networkTab"],
-      ["paneAdvanced", "networkTab", connectionDialog],
-      ["paneAdvanced", "updateTab"],
-      ["paneAdvanced", "encryptionTab"],
-      ["paneAdvanced", "encryptionTab", certManager],
-      ["paneAdvanced", "encryptionTab", deviceManager],
-||||||| merged common ancestors
-      ["paneGeneral", null],
-      ["paneSearch", null],
-      ["paneContent", null],
-      ["paneApplications", null],
-      ["panePrivacy", null],
-      ["panePrivacy", null, DNTDialog],
-      ["panePrivacy", null, clearRecentHistoryDialog],
-      ["paneSecurity", null],
-      ["paneSync", null],
-      ["paneAdvanced", "generalTab"],
-      ["paneAdvanced", "dataChoicesTab"],
-      ["paneAdvanced", "networkTab"],
-      ["paneAdvanced", "networkTab", connectionDialog],
-      ["paneAdvanced", "updateTab"],
-      ["paneAdvanced", "encryptionTab"],
-      ["paneAdvanced", "encryptionTab", certManager],
-      ["paneAdvanced", "encryptionTab", deviceManager],
-=======
       /* The "new" organization */
       ["paneGeneral"],
       ["paneGeneral", scrollToBrowsingGroup],
@@ -66,6 +28,7 @@ this.Preferences = {
       ["panePrivacy", connectionDialog],
       ["panePrivacy", certManager],
       ["panePrivacy", deviceManager],
+      ["paneConnect"],
       ["paneAdvanced"],
 
       /* The "old" organization. The third argument says to
@@ -88,7 +51,6 @@ this.Preferences = {
       ["paneAdvanced", null, true, "encryptionTab"],
       ["paneAdvanced", certManager, true, "encryptionTab"],
       ["paneAdvanced", deviceManager, true, "encryptionTab"],
->>>>>>> origin/upstream-releases
     ];
     for (let [primary, customFn, useOldOrg, advanced] of panes) {
       let configName = primary.replace(/^pane/, "prefs") + (advanced ? "-" + advanced : "");
