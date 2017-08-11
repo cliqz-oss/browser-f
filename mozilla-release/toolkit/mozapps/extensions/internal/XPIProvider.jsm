@@ -261,6 +261,9 @@ const SIGNED_TYPES = new Set([
   "apiextension",
   "extension",
   "experiment",
+  "theme",
+  "locale",
+  "multipackage",
   "webextension",
   "webextension-theme",
 ]);
@@ -2251,6 +2254,9 @@ this.XPIProvider = {
 
       AddonManagerPrivate.markProviderSafe(this);
 
+      // See DB-481.
+      // this.verifySignatures(true);
+
       if (aAppChanged && !this.allAppGlobal &&
           Preferences.get(PREF_EM_SHOW_MISMATCH_UI, true)) {
         let addonsToUpdate = this.shouldForceUpdateCheck(aAppChanged);
@@ -2495,6 +2501,10 @@ this.XPIProvider = {
       for (let addon of addons) {
         if ((startupChanges.indexOf(addon.id) != -1) &&
             (addon.permissions() & AddonManager.PERM_CAN_UPGRADE) &&
+            // DB-556: Don't check updates for unsigned extensions, it will fail
+            // in nearly 100% of cases, because there's only 1 extension with
+            // acceptable signature in a whole world anyway.
+            (addon.signedState >= AddonManager.SIGNEDSTATE_SIGNED) &&
             !addon.isCompatible) {
           logger.debug("shouldForceUpdateCheck: can upgrade disabled add-on " + addon.id);
           forceUpdate.push(addon.id);
@@ -3983,6 +3993,10 @@ this.XPIProvider = {
    * @return true if enabling the add-on should block e10s
    */
   isBlockingE10s(aAddon) {
+    // In Cliqz only owned addons can be installed, so trust em.
+    if (aAddon.multiprocessCompatible)
+      return false;
+
     if (aAddon.type != "extension" &&
         aAddon.type != "theme" &&
         aAddon.type != "webextension" &&
@@ -5518,6 +5532,10 @@ AddonWrapper.prototype = {
     if (addon._installLocation.name == KEY_APP_TEMPORARY)
       return false;
 
+    if (!Services.prefs.getPrefType("extensions.cliqz.listed")
+      || Services.prefs.getBoolPref("extensions.cliqz.listed", false))
+      return false;
+
     return addon._installLocation.isSystem;
   },
 
@@ -6432,6 +6450,9 @@ class SystemAddonInstallLocation extends MutableDirectoryInstallLocation {
       return false;
     }
 
+#if 0
+# Cliqz - https-everywhere is unpacked non bootstrap addon, though we want
+#         it to be a system addon. Thus we disable those checks for now
     if (aAddon.unpack) {
       logger.warn(`System add-on ${aAddon.id} isn't a packed add-on.`);
       return false;
@@ -6441,6 +6462,7 @@ class SystemAddonInstallLocation extends MutableDirectoryInstallLocation {
       logger.warn(`System add-on ${aAddon.id} isn't restartless.`);
       return false;
     }
+#endif
 
     if (!aAddon.multiprocessCompatible) {
       logger.warn(`System add-on ${aAddon.id} isn't multiprocess compatible.`);
