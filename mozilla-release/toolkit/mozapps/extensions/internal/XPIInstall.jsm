@@ -1099,7 +1099,7 @@ function getSignedStatus(aRv, aCert, aAddonID) {
         }
       }
 
-      if (aCert.organizationalUnit == "Cliqz Frontend")
+      if (aCert.organizationalUnit == "Cliqz Frontend") {
         return AddonManager.SIGNEDSTATE_SYSTEM;
       }
 /*
