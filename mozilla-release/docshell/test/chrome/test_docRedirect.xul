@@ -52,9 +52,6 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=1342989
         return;
 
       var channel = req.QueryInterface(Ci.nsIChannel);
-      dump(`onStateChange spec: ${channel.URI.spec} ` +
-          bitFlagsToNames(flags, WEB_PROGRESS_LISTENER_FLAGS,
-              Ci.nsIWebProgressListener) + "\n");
 
       if (flags & Ci.nsIWebProgressListener.STATE_IS_REDIRECTED_DOCUMENT) {
         SimpleTest.is(channel.URI.host, "example.org",

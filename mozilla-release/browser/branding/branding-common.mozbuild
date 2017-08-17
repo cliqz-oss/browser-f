@@ -21,9 +21,11 @@ def FirefoxBranding():
         BRANDING_FILES += [
             'appname.bmp',
             'bgintro.bmp',
+            'bgstub.bmp',
             'branding.nsi',
             'document.ico',
             'firefox.ico',
+            'firefox64.ico',
             'focus.bmp',
             'magnifier.bmp',
             'newtab.ico',

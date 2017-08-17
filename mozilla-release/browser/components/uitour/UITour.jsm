@@ -13,8 +13,6 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/Promise.jsm");
-Cu.import("resource:///modules/RecentWindow.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/TelemetryController.jsm");
 Cu.import("resource://gre/modules/Timer.jsm");
 
@@ -32,13 +30,16 @@ XPCOMUtils.defineLazyModuleGetter(this, "BrowserUITelemetry",
   "resource:///modules/BrowserUITelemetry.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "ProfileAge",
+  "resource://gre/modules/ProfileAge.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "ReaderParent",
   "resource:///modules/ReaderParent.jsm");
+
+XPCOMUtils.defineLazyPreferenceGetter(this, "gPhotonStructure", "browser.photon.structure.enabled");
 
 // See LOG_LEVELS in Console.jsm. Common examples: "All", "Info", "Warn", & "Error".
 const PREF_LOG_LEVEL      = "browser.uitour.loglevel";
 const PREF_SEENPAGEIDS    = "browser.uitour.seenPageIDs";
-const PREF_SURVEY_DURATION = "browser.uitour.surveyDuration";
 
 const BACKGROUND_PAGE_ACTIONS_ALLOWED = new Set([
   "forceShowReaderIcon",
@@ -99,31 +100,39 @@ this.UITour = {
   targets: new Map([
     ["accountStatus", {
       query: (aDocument) => {
+        let prefix = gPhotonStructure ? "appMenu" : "PanelUI"
         // If the user is logged in, use the avatar element.
-        let fxAFooter = aDocument.getElementById("PanelUI-footer-fxa");
+        let fxAFooter = aDocument.getElementById(prefix + "-fxa-container");
         if (fxAFooter.getAttribute("fxastatus")) {
-          return aDocument.getElementById("PanelUI-fxa-avatar");
+          return aDocument.getElementById(prefix + "-fxa-avatar");
         }
 
         // Otherwise use the sync setup icon.
-        let statusButton = aDocument.getElementById("PanelUI-fxa-label");
+        let statusButton = aDocument.getElementById(prefix + "-fxa-label");
         return aDocument.getAnonymousElementByAttribute(statusButton,
                                                         "class",
                                                         "toolbarbutton-icon");
       },
-      // This is a fake widgetName starting with the "PanelUI-" prefix so we know
+      // This is a fake widgetName starting with the "PanelUI-"/"appMenu-" prefix so we know
       // to automatically open the appMenu when annotating this target.
-      widgetName: "PanelUI-fxa-label",
+      get widgetName() {
+        return gPhotonStructure ? "appMenu-fxa-label" : "PanelUI-fxa-label";
+      },
     }],
-    ["addons",      {query: "#add-ons-button"}],
+    ["addons", {
+      query(aDocument) {
+        let buttonId = gPhotonStructure ? "appMenu-addons-button" : "add-ons-button";
+        return aDocument.getElementById(buttonId);
+      }
+    }],
     ["appMenu",     {
       addTargetListener: (aDocument, aCallback) => {
-        let panelPopup = aDocument.getElementById("PanelUI-popup");
+        let panelPopup = aDocument.defaultView.PanelUI.panel;
         panelPopup.addEventListener("popupshown", aCallback);
       },
       query: "#PanelUI-button",
       removeTargetListener: (aDocument, aCallback) => {
-        let panelPopup = aDocument.getElementById("PanelUI-popup");
+        let panelPopup = aDocument.defaultView.PanelUI.panel;
         panelPopup.removeEventListener("popupshown", aCallback);
       },
     }],
@@ -136,28 +145,68 @@ this.UITour = {
     ["controlCenter-trackingBlock", controlCenterTrackingToggleTarget(false)],
     ["customize",   {
       query: (aDocument) => {
+        if (gPhotonStructure) {
+          return aDocument.getElementById("appMenu-customize-button");
+        }
         let customizeButton = aDocument.getElementById("PanelUI-customize");
         return aDocument.getAnonymousElementByAttribute(customizeButton,
                                                         "class",
                                                         "toolbarbutton-icon");
       },
-      widgetName: "PanelUI-customize",
+      get widgetName() {
+        return gPhotonStructure ? "appMenu-customize-button" : "PanelUI-customize";
+      },
     }],
-    ["devtools",    {query: "#developer-button"}],
-    ["help",        {query: "#PanelUI-help"}],
-    ["home",        {query: "#home-button"}],
+    ["devtools", {
+      query(aDocument) {
+        let button = aDocument.getElementById("developer-button");
+        if (button || !gPhotonStructure) {
+          return button;
+        }
+        return aDocument.getElementById("appMenu-developer-button");
+      },
+      get widgetName() {
+        return gPhotonStructure ? "appMenu-developer-button" : "developer-button";
+      },
+    }],
     ["forget", {
       allowAdd: true,
       query: "#panic-button",
       widgetName: "panic-button",
+    }],
+    ["help", {
+      query: (aDocument) => {
+        let buttonId = gPhotonStructure ? "appMenu-help-button" : "PanelUI-help";
+        return aDocument.getElementById(buttonId);
+      }
+    }],
+    ["home",        {query: "#home-button"}],
+    ["library", {
+     query: (aDocument) => {
+        let buttonId = "appMenu-library-button";
+        return gPhotonStructure ?
+          aDocument.getElementById(buttonId) : null;
+      }
     }],
     ["pocket", {
       allowAdd: true,
       query: "#pocket-button",
       widgetName: "pocket-button",
     }],
-    ["privateWindow",  {query: "#privatebrowsing-button"}],
-    ["quit",        {query: "#PanelUI-quit"}],
+    ["privateWindow", {
+      query(aDocument) {
+        let buttonId = gPhotonStructure ? "appMenu-private-window-button"
+                                        : "privatebrowsing-button";
+        return aDocument.getElementById(buttonId);
+      }
+    }],
+    ["quit", {
+      query(aDocument) {
+        let buttonId = gPhotonStructure ? "appMenu-quit-button"
+                                        : "PanelUI-quit";
+        return aDocument.getElementById(buttonId);
+      }
+    }],
     ["readerMode-urlBar", {query: "#reader-mode-button"}],
     ["search",      {
       infoPanelOffsetX: 18,
@@ -208,7 +257,6 @@ this.UITour = {
       query: "#urlbar",
       widgetName: "urlbar-container",
     }],
-    ["webide",      {query: "#webide-button"}],
   ]),
 
   init() {
@@ -363,42 +411,6 @@ this.UITour = {
         break;
       }
 
-      case "showHeartbeat": {
-        // Validate the input parameters.
-        if (typeof data.message !== "string" || data.message === "") {
-          log.error("showHeartbeat: Invalid message specified.");
-          return false;
-        }
-
-        if (typeof data.thankyouMessage !== "string" || data.thankyouMessage === "") {
-          log.error("showHeartbeat: Invalid thank you message specified.");
-          return false;
-        }
-
-        if (typeof data.flowId !== "string" || data.flowId === "") {
-          log.error("showHeartbeat: Invalid flowId specified.");
-          return false;
-        }
-
-        if (data.engagementButtonLabel && typeof data.engagementButtonLabel != "string") {
-          log.error("showHeartbeat: Invalid engagementButtonLabel specified");
-          return false;
-        }
-
-        let heartbeatWindow = window;
-        if (data.privateWindowsOnly && !PrivateBrowsingUtils.isWindowPrivate(heartbeatWindow)) {
-          heartbeatWindow = RecentWindow.getMostRecentBrowserWindow({ private: true });
-          if (!heartbeatWindow) {
-            log.debug("showHeartbeat: No private window found");
-            return false;
-          }
-        }
-
-        // Finally show the Heartbeat UI.
-        this.showHeartbeat(heartbeatWindow, data);
-        break;
-      }
-
       case "showHighlight": {
         let targetPromise = this.getTarget(window, data.target);
         targetPromise.then(target => {
@@ -538,7 +550,21 @@ this.UITour = {
           return false;
         }
 
-        window.openPreferences(data.pane);
+        let paneID = data.pane;
+        let extraArgs = { origin: "UITour" };
+        if (Services.prefs.getBoolPref("browser.preferences.useOldOrganization", true)) {
+          // We are heading to the old Preferences so
+          // let's map the new one to the old one if the `paneID` was for the new Preferences.
+          // Currently only the old advanced pane > dataChoicesTab has the mapping need,
+          // so here only do mapping for it right now.
+          // We could add another mapping when there is need.
+          if (paneID == "privacy-reports") {
+            paneID = "advanced";
+            extraArgs.advancedTab = "dataChoicesTab";
+          }
+        }
+
+        window.openPreferences(paneID, extraArgs);
         break;
       }
 
@@ -583,10 +609,7 @@ this.UITour = {
       case "setTreatmentTag": {
         let name = data.name;
         let value = data.value;
-        let string = Cc["@mozilla.org/supports-string;1"].createInstance(Ci.nsISupportsString);
-        string.data = value;
-        Services.prefs.setComplexValue("browser.uitour.treatment." + name,
-                                       Ci.nsISupportsString, string);
+        Services.prefs.setStringPref("browser.uitour.treatment." + name, value);
         // The notification is only meant to be used in tests.
         UITourHealthReport.recordTreatmentTag(name, value)
                           .then(() => this.notify("TreatmentTag:TelemetrySent"));
@@ -597,8 +620,7 @@ this.UITour = {
         let name = data.name;
         let value;
         try {
-          value = Services.prefs.getComplexValue("browser.uitour.treatment." + name,
-                                                 Ci.nsISupportsString).data;
+          value = Services.prefs.getStringPref("browser.uitour.treatment." + name);
         } catch (ex) {}
         this.sendPageCallback(messageManager, data.callbackID, { value });
         break;
@@ -666,7 +688,12 @@ this.UITour = {
       }
     }
 
-    this.initForBrowser(browser, window);
+    // For performance reasons, only call initForBrowser if we did something
+    // that will require a teardownTourForBrowser call later.
+    // getConfiguration (called from about:home) doesn't require any future
+    // uninitialization.
+    if (action != "getConfiguration")
+      this.initForBrowser(browser, window);
 
     return true;
   },
@@ -683,7 +710,7 @@ this.UITour = {
     }
     this.tourBrowsersByWindow.get(window).add(aBrowser);
 
-    Services.obs.addObserver(this, "message-manager-close", false);
+    Services.obs.addObserver(this, "message-manager-close");
 
     window.addEventListener("SSWindowClosing", this);
   },
@@ -969,7 +996,8 @@ this.UITour = {
     }
 
     // Handle the non-customizable buttons at the bottom of the menu which aren't proper widgets.
-    return targetElement.id.startsWith("PanelUI-")
+    let prefix = gPhotonStructure ? "appMenu-" : "PanelUI-";
+    return targetElement.id.startsWith(prefix)
              && targetElement.id != "PanelUI-button";
   },
 
@@ -1026,337 +1054,6 @@ this.UITour = {
 
   resetTheme() {
     LightweightThemeManager.resetPreview();
-  },
-
-  /**
-   * Show the Heartbeat UI to request user feedback. This function reports back to the
-   * caller using |notify|. The notification event name reflects the current status the UI
-   * is in (either "Heartbeat:NotificationOffered", "Heartbeat:NotificationClosed",
-   * "Heartbeat:LearnMore", "Heartbeat:Engaged", "Heartbeat:Voted",
-   * "Heartbeat:SurveyExpired" or "Heartbeat:WindowClosed").
-   * When a "Heartbeat:Voted" event is notified
-   * the data payload contains a |score| field which holds the rating picked by the user.
-   * Please note that input parameters are already validated by the caller.
-   *
-   * @param aChromeWindow
-   *        The chrome window that the heartbeat notification is displayed in.
-   * @param {Object} aOptions Options object.
-   * @param {String} aOptions.message
-   *        The message, or question, to display on the notification.
-   * @param {String} aOptions.thankyouMessage
-   *        The thank you message to display after user votes.
-   * @param {String} aOptions.flowId
-   *        An identifier for this rating flow. Please note that this is only used to
-   *        identify the notification box.
-   * @param {String} [aOptions.engagementButtonLabel=null]
-   *        The text of the engagement button to use instad of stars. If this is null
-   *        or invalid, rating stars are used.
-   * @param {String} [aOptions.engagementURL=null]
-   *        The engagement URL to open in a new tab once user has engaged. If this is null
-   *        or invalid, no new tab is opened.
-   * @param {String} [aOptions.learnMoreLabel=null]
-   *        The label of the learn more link. No link will be shown if this is null.
-   * @param {String} [aOptions.learnMoreURL=null]
-   *        The learn more URL to open when clicking on the learn more link. No learn more
-   *        will be shown if this is an invalid URL.
-   * @param {boolean} [aOptions.privateWindowsOnly=false]
-   *        Whether the heartbeat UI should only be targeted at a private window (if one exists).
-   *        No notifications should be fired when this is true.
-   * @param {String} [aOptions.surveyId]
-   *        An ID for the survey, reflected in the Telemetry ping.
-   * @param {Number} [aOptions.surveyVersion]
-   *        Survey's version number, reflected in the Telemetry ping.
-   * @param {boolean} [aOptions.testing]
-   *        Whether this is a test survey, reflected in the Telemetry ping.
-   */
-  showHeartbeat(aChromeWindow, aOptions) {
-    // Initialize survey state
-    let pingSent = false;
-    let surveyResults = {};
-    let surveyEndTimer = null;
-
-    /**
-     * Accumulates survey events and submits to Telemetry after the survey ends.
-     *
-     * @param {String} aEventName
-     *        Heartbeat event name
-     * @param {Object} aParams
-     *        Additional parameters and their values
-     */
-    let maybeNotifyHeartbeat = (aEventName, aParams = {}) => {
-      // Return if event occurred after the ping was sent
-      if (pingSent) {
-        log.warn("maybeNotifyHeartbeat: event occurred after ping sent:", aEventName, aParams);
-        return;
-      }
-
-      // No Telemetry from private-window-only Heartbeats
-      if (aOptions.privateWindowsOnly) {
-        return;
-      }
-
-      let ts = Date.now();
-      let sendPing = false;
-      switch (aEventName) {
-        case "Heartbeat:NotificationOffered":
-          surveyResults.flowId = aOptions.flowId;
-          surveyResults.offeredTS = ts;
-          break;
-        case "Heartbeat:LearnMore":
-          // record only the first click
-          if (!surveyResults.learnMoreTS) {
-            surveyResults.learnMoreTS = ts;
-          }
-          break;
-        case "Heartbeat:Engaged":
-          surveyResults.engagedTS = ts;
-          break;
-        case "Heartbeat:Voted":
-          surveyResults.votedTS = ts;
-          surveyResults.score = aParams.score;
-          break;
-        case "Heartbeat:SurveyExpired":
-          surveyResults.expiredTS = ts;
-          break;
-        case "Heartbeat:NotificationClosed":
-          // this is the final event in most surveys
-          surveyResults.closedTS = ts;
-          sendPing = true;
-          break;
-        case "Heartbeat:WindowClosed":
-          surveyResults.windowClosedTS = ts;
-          sendPing = true;
-          break;
-        default:
-          log.error("maybeNotifyHeartbeat: unrecognized event:", aEventName);
-          break;
-      }
-
-      aParams.timestamp = ts;
-      aParams.flowId = aOptions.flowId;
-      this.notify(aEventName, aParams);
-
-      if (!sendPing) {
-        return;
-      }
-
-      // Send the ping to Telemetry
-      let payload = Object.assign({}, surveyResults);
-      payload.version = 1;
-      for (let meta of ["surveyId", "surveyVersion", "testing"]) {
-        if (aOptions.hasOwnProperty(meta)) {
-          payload[meta] = aOptions[meta];
-        }
-      }
-
-      log.debug("Sending payload to Telemetry: aEventName:", aEventName,
-                "payload:", payload);
-
-      TelemetryController.submitExternalPing("heartbeat", payload, {
-        addClientId: true,
-        addEnvironment: true,
-      });
-
-      // only for testing
-      this.notify("Heartbeat:TelemetrySent", payload);
-
-      // Survey is complete, clear out the expiry timer & survey configuration
-      if (surveyEndTimer) {
-        clearTimeout(surveyEndTimer);
-        surveyEndTimer = null;
-      }
-
-      pingSent = true;
-      surveyResults = {};
-    };
-
-    let nb = aChromeWindow.document.getElementById("high-priority-global-notificationbox");
-    let buttons = null;
-
-    if (aOptions.engagementButtonLabel) {
-      buttons = [{
-        label: aOptions.engagementButtonLabel,
-        callback: () => {
-          // Let the consumer know user engaged.
-          maybeNotifyHeartbeat("Heartbeat:Engaged");
-
-          userEngaged(new Map([
-            ["type", "button"],
-            ["flowid", aOptions.flowId]
-          ]));
-
-          // Return true so that the notification bar doesn't close itself since
-          // we have a thank you message to show.
-          return true;
-        },
-      }];
-    }
-
-    let defaultIcon = "chrome://browser/skin/heartbeat-icon.svg";
-    let iconURL = defaultIcon;
-    try {
-      // Take the optional icon URL if specified
-      if (aOptions.iconURL) {
-        iconURL = new URL(aOptions.iconURL);
-        // For now, only allow chrome URIs.
-        if (iconURL.protocol != "chrome:") {
-          iconURL = defaultIcon;
-          throw new Error("Invalid protocol");
-        }
-      }
-    } catch (error) {
-      log.error("showHeartbeat: Invalid icon URL specified.");
-    }
-
-    // Create the notification. Prefix its ID to decrease the chances of collisions.
-    let notice = nb.appendNotification(aOptions.message, "heartbeat-" + aOptions.flowId,
-                                       iconURL,
-                                       nb.PRIORITY_INFO_HIGH, buttons,
-                                       (aEventType) => {
-                                         if (aEventType != "removed") {
-                                           return;
-                                         }
-                                         // Let the consumer know the notification bar was closed.
-                                         // This also happens after voting.
-                                         maybeNotifyHeartbeat("Heartbeat:NotificationClosed");
-                                       });
-
-    // Get the elements we need to style.
-    let messageImage =
-      aChromeWindow.document.getAnonymousElementByAttribute(notice, "anonid", "messageImage");
-    let messageText =
-      aChromeWindow.document.getAnonymousElementByAttribute(notice, "anonid", "messageText");
-
-    function userEngaged(aEngagementParams) {
-      // Make the heartbeat icon pulse twice.
-      notice.label = aOptions.thankyouMessage;
-      messageImage.classList.remove("pulse-onshow");
-      messageImage.classList.add("pulse-twice");
-
-      // Remove all the children of the notice (rating container
-      // and the flex).
-      while (notice.firstChild) {
-        notice.removeChild(notice.firstChild);
-      }
-
-      // Make sure that we have a valid URL. If we haven't, do not open the engagement page.
-      let engagementURL = null;
-      try {
-        engagementURL = new URL(aOptions.engagementURL);
-      } catch (error) {
-        log.error("showHeartbeat: Invalid URL specified.");
-      }
-
-      // Just open the engagement tab if we have a valid engagement URL.
-      if (engagementURL) {
-        for (let [param, value] of aEngagementParams) {
-          engagementURL.searchParams.append(param, value);
-        }
-
-        // Open the engagement URL in a new tab.
-        aChromeWindow.gBrowser.selectedTab =
-          aChromeWindow.gBrowser.addTab(engagementURL.toString(), {
-            owner: aChromeWindow.gBrowser.selectedTab,
-            relatedToCurrent: true
-          });
-      }
-
-      // Remove the notification bar after 3 seconds.
-      aChromeWindow.setTimeout(() => {
-        nb.removeNotification(notice);
-      }, 3000);
-    }
-
-    // Create the fragment holding the rating UI.
-    let frag = aChromeWindow.document.createDocumentFragment();
-
-    // Build the Heartbeat star rating.
-    const numStars = aOptions.engagementButtonLabel ? 0 : 5;
-    let ratingContainer = aChromeWindow.document.createElement("hbox");
-    ratingContainer.id = "star-rating-container";
-
-    for (let i = 0; i < numStars; i++) {
-      // Create a star rating element.
-      let ratingElement = aChromeWindow.document.createElement("toolbarbutton");
-
-      // Style it.
-      let starIndex = numStars - i;
-      ratingElement.className = "plain star-x";
-      ratingElement.id = "star" + starIndex;
-      ratingElement.setAttribute("data-score", starIndex);
-
-      // Add the click handler.
-      ratingElement.addEventListener("click", function(evt) {
-        let rating = Number(evt.target.getAttribute("data-score"), 10);
-
-        // Let the consumer know user voted.
-        maybeNotifyHeartbeat("Heartbeat:Voted", { score: rating });
-
-        // Append the score data to the engagement URL.
-        userEngaged(new Map([
-          ["type", "stars"],
-          ["score", rating],
-          ["flowid", aOptions.flowId]
-        ]));
-      });
-
-      // Add it to the container.
-      ratingContainer.appendChild(ratingElement);
-    }
-
-    frag.appendChild(ratingContainer);
-
-    // Make sure the stars are not pushed to the right by the spacer.
-    let rightSpacer = aChromeWindow.document.createElement("spacer");
-    rightSpacer.flex = 20;
-    frag.appendChild(rightSpacer);
-
-    messageText.flex = 0; // Collapse the space before the stars.
-    let leftSpacer = messageText.nextSibling;
-    leftSpacer.flex = 0;
-
-    // Make sure that we have a valid learn more URL.
-    let learnMoreURL = null;
-    try {
-      learnMoreURL = new URL(aOptions.learnMoreURL);
-    } catch (error) {
-      log.error("showHeartbeat: Invalid learnMore URL specified.");
-    }
-
-    // Add the learn more link.
-    if (aOptions.learnMoreLabel && learnMoreURL) {
-      let learnMore = aChromeWindow.document.createElement("label");
-      learnMore.className = "text-link";
-      learnMore.href = learnMoreURL.toString();
-      learnMore.setAttribute("value", aOptions.learnMoreLabel);
-      learnMore.addEventListener("click", () => maybeNotifyHeartbeat("Heartbeat:LearnMore"));
-      frag.appendChild(learnMore);
-    }
-
-    // Append the fragment and apply the styling.
-    notice.appendChild(frag);
-    notice.classList.add("heartbeat");
-    messageImage.classList.add("heartbeat", "pulse-onshow");
-    messageText.classList.add("heartbeat");
-
-    // Let the consumer know the notification was shown.
-    maybeNotifyHeartbeat("Heartbeat:NotificationOffered");
-
-    // End the survey if the user quits, closes the window, or
-    // hasn't responded before expiration.
-    if (!aOptions.privateWindowsOnly) {
-      function handleWindowClosed(aTopic) {
-        maybeNotifyHeartbeat("Heartbeat:WindowClosed");
-        aChromeWindow.removeEventListener("SSWindowClosing", handleWindowClosed);
-      }
-      aChromeWindow.addEventListener("SSWindowClosing", handleWindowClosed);
-
-      let surveyDuration = Services.prefs.getIntPref(PREF_SURVEY_DURATION) * 1000;
-      surveyEndTimer = setTimeout(() => {
-        maybeNotifyHeartbeat("Heartbeat:SurveyExpired");
-        nb.removeNotification(notice);
-      }, surveyDuration);
-    }
   },
 
   /**
@@ -1667,7 +1364,7 @@ this.UITour = {
       }
       aWindow.document.getElementById("identity-box").click();
     } else if (aMenuName == "pocket") {
-      this.getTarget(aWindow, "pocket").then(Task.async(function* onPocketTarget(target) {
+      this.getTarget(aWindow, "pocket").then(async function onPocketTarget(target) {
         let widgetGroupWrapper = CustomizableUI.getWidget(target.widgetName);
         if (widgetGroupWrapper.type != "view" || !widgetGroupWrapper.viewId) {
           log.error("Can't open the pocket menu without a view");
@@ -1681,7 +1378,7 @@ this.UITour = {
 
         if (placement.area == CustomizableUI.AREA_PANEL) {
           // Open the appMenu and wait for it if it's not already opened or showing a subview.
-          yield new Promise((resolve, reject) => {
+          await new Promise((resolve, reject) => {
             if (aWindow.PanelUI.panel.state != "closed") {
               if (aWindow.PanelUI.multiView.showingSubView) {
                 reject("A subview is already showing");
@@ -1704,7 +1401,7 @@ this.UITour = {
         aWindow.PanelUI.showSubView(widgetGroupWrapper.viewId,
                                     widgetWrapper.anchor,
                                     placement.area);
-      })).catch(log.error);
+      }).catch(log.error);
     }
   },
 
@@ -1788,45 +1485,7 @@ this.UITour = {
   getConfiguration(aMessageManager, aWindow, aConfiguration, aCallbackID) {
     switch (aConfiguration) {
       case "appinfo":
-        let props = ["defaultUpdateChannel", "version"];
-        let appinfo = {};
-        props.forEach(property => appinfo[property] = Services.appinfo[property]);
-
-        // Identifier of the partner repack, as stored in preference "distribution.id"
-        // and included in Firefox and other update pings. Note this is not the same as
-        // Services.appinfo.distributionID (value of MOZ_DISTRIBUTION_ID is set at build time).
-        let distribution = "default";
-        try {
-          distribution = Services.prefs.getDefaultBranch("distribution.").getCharPref("id");
-        } catch (e) {}
-        appinfo["distribution"] = distribution;
-
-        let isDefaultBrowser = null;
-        try {
-          let shell = aWindow.getShellService();
-          if (shell) {
-            isDefaultBrowser = shell.isDefaultBrowser(false);
-          }
-        } catch (e) {}
-        appinfo["defaultBrowser"] = isDefaultBrowser;
-
-        let canSetDefaultBrowserInBackground = true;
-        if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2") ||
-            AppConstants.isPlatformAndVersionAtLeast("macosx", "10.10")) {
-          canSetDefaultBrowserInBackground = false;
-        } else if (AppConstants.platform == "linux") {
-          // The ShellService may not exist on some versions of Linux.
-          try {
-            aWindow.getShellService();
-          } catch (e) {
-            canSetDefaultBrowserInBackground = null;
-          }
-        }
-
-        appinfo["canSetDefaultBrowserInBackground"] =
-          canSetDefaultBrowserInBackground;
-
-        this.sendPageCallback(aMessageManager, aCallbackID, appinfo);
+        this.getAppInfo(aMessageManager, aWindow, aCallbackID);
         break;
       case "availableTargets":
         this.getAvailableTargets(aMessageManager, aWindow, aCallbackID);
@@ -1883,8 +1542,66 @@ this.UITour = {
     }
   },
 
+  getAppInfo(aMessageManager, aWindow, aCallbackID) {
+    (async() => {
+      let props = ["defaultUpdateChannel", "version"];
+      let appinfo = {};
+      props.forEach(property => appinfo[property] = Services.appinfo[property]);
+
+      // Identifier of the partner repack, as stored in preference "distribution.id"
+      // and included in Firefox and other update pings. Note this is not the same as
+      // Services.appinfo.distributionID (value of MOZ_DISTRIBUTION_ID is set at build time).
+      let distribution =
+          Services.prefs.getDefaultBranch("distribution.").getCharPref("id", "default");
+      appinfo["distribution"] = distribution;
+
+      let isDefaultBrowser = null;
+      try {
+        let shell = aWindow.getShellService();
+        if (shell) {
+          isDefaultBrowser = shell.isDefaultBrowser(false);
+        }
+      } catch (e) {}
+      appinfo["defaultBrowser"] = isDefaultBrowser;
+
+      let canSetDefaultBrowserInBackground = true;
+      if (AppConstants.isPlatformAndVersionAtLeast("win", "6.2") ||
+          AppConstants.isPlatformAndVersionAtLeast("macosx", "10.10")) {
+        canSetDefaultBrowserInBackground = false;
+      } else if (AppConstants.platform == "linux") {
+        // The ShellService may not exist on some versions of Linux.
+        try {
+          aWindow.getShellService();
+        } catch (e) {
+          canSetDefaultBrowserInBackground = null;
+        }
+      }
+
+      appinfo["canSetDefaultBrowserInBackground"] =
+        canSetDefaultBrowserInBackground;
+
+      // Expose Profile creation and last reset dates in weeks.
+      const ONE_WEEK = 7 * 24 * 60 * 60 * 1000;
+      let profileAge = new ProfileAge(null, null);
+      let createdDate = await profileAge.created;
+      let resetDate = await profileAge.reset;
+      let createdWeeksAgo = Math.floor((Date.now() - createdDate) / ONE_WEEK);
+      let resetWeeksAgo = null;
+      if (resetDate) {
+        resetWeeksAgo = Math.floor((Date.now() - resetDate) / ONE_WEEK);
+      }
+      appinfo["profileCreatedWeeksAgo"] = createdWeeksAgo;
+      appinfo["profileResetWeeksAgo"] = resetWeeksAgo;
+
+      this.sendPageCallback(aMessageManager, aCallbackID, appinfo);
+    })().catch(err => {
+      log.error(err);
+      this.sendPageCallback(aMessageManager, aCallbackID, {});
+    })
+  },
+
   getAvailableTargets(aMessageManager, aChromeWindow, aCallbackID) {
-    Task.spawn(function*() {
+    (async () => {
       let window = aChromeWindow;
       let data = this.availableTargetsCache.get(window);
       if (data) {
@@ -1897,7 +1614,7 @@ this.UITour = {
       for (let targetName of this.targets.keys()) {
         promises.push(this.getTarget(window, targetName));
       }
-      let targetObjects = yield Promise.all(promises);
+      let targetObjects = await Promise.all(promises);
 
       let targetNames = [];
       for (let targetObject of targetObjects) {
@@ -1910,7 +1627,7 @@ this.UITour = {
       };
       this.availableTargetsCache.set(window, data);
       this.sendPageCallback(aMessageManager, aCallbackID, data);
-    }.bind(this)).catch(err => {
+    })().catch(err => {
       log.error(err);
       this.sendPageCallback(aMessageManager, aCallbackID, {
         targets: [],

@@ -23,9 +23,6 @@
     "TR": {
       "google": "google-nocodes"
     },
-    "UA": {
-      "google": "google-nocodes"
-    },
     "CN": {
       "google": "google-nocodes"
     },
@@ -460,6 +457,13 @@
         ]
       }
     },
+    "lo": {
+      "default": {
+        "visibleDefaultEngines": [
+          "google", "yahoo", "bing", "ddg", "wikipedia-lo", "twitter"
+        ]
+      }
+    },
     "lt": {
       "default": {
         "visibleDefaultEngines": [
@@ -617,7 +621,7 @@
     "sk": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "azet-sk", "atlas-sk", "ddg", "dunaj-sk", "slovnik-sk", "wikipedia-sk", "zoznam-sk"
+          "google", "azet-sk", "atlas-sk", "ddg", "slovnik-sk", "wikipedia-sk", "zoznam-sk"
         ]
       }
     },
@@ -715,7 +719,7 @@
     "vi": {
       "default": {
         "visibleDefaultEngines": [
-          "google", "ddg", "wikipedia-vi", "zing-mp3"
+          "google", "coccoc", "ddg", "wikipedia-vi", "zing-mp3"
         ]
       }
     },

@@ -1,0 +1,29 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<!ENTITY defaultSearchEngine.label             "Complementary search engine">
+
+<!ENTITY chooseYourDefaultSearchEngine.label   "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
+<!ENTITY provideSearchSuggestions.label        "Provide search suggestions">
+<!ENTITY provideSearchSuggestions.accesskey    "s">
+
+<!ENTITY showURLBarSuggestions.label           "Show search suggestions in location bar results">
+<!ENTITY showURLBarSuggestions.accesskey       "l">
+<!ENTITY urlBarSuggestionsPermanentPB.label    "Search suggestions will not be shown in location bar results because you have configured &brandShortName; to never remember history.">
+
+<!ENTITY oneClickSearchEngines.label           "Direct searches">
+
+<!ENTITY chooseWhichOneToDisplay.label         "Put the key in front of your query to directly use a search engine, e.g. to find a specific location directly, type in #gm + your query and hit enter">
+
+<!ENTITY engineNameColumn.label                "Search Engine">
+<!ENTITY engineKeywordColumn.label             "Keyword">
+
+<!ENTITY restoreDefaultSearchEngines.label     "Restore Default Search Engines">
+<!ENTITY restoreDefaultSearchEngines.accesskey "d">
+
+<!ENTITY removeEngine.label                    "Remove">
+<!ENTITY removeEngine.accesskey                "r">
+
+<!ENTITY addMoreSearchEngines.label            "Add more search engines…">
+<!ENTITY addMoreSearchEnginesDesc.label        "Cliqz supports most search engines of the official Mozilla Firefox repository.">

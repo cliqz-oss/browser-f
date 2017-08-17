@@ -13,8 +13,10 @@ BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 EXTRA_JS_MODULES += [
     'CustomizeMode.jsm',
     'DragPositionManager.jsm',
+    'PanelMultiView.jsm',
     'PanelWideWidgetTracker.jsm',
     'ScrollbarSampler.jsm',
+    'SearchWidgetTracker.jsm',
 ]
 
 EXTRA_PP_JS_MODULES += [

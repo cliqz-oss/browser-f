@@ -54,6 +54,10 @@ treecol {
   white-space: nowrap;
 }
 
+.accessory-button {
+  min-width: 145px;
+}
+
 /* Category List */
 
 #categories {
@@ -75,35 +79,27 @@ treecol {
 }
 
 #category-general > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#general");
-}
-
-#category-search > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#search");
-}
-
-#category-content > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#content");
+  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#general");
 }
 
 #category-application > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#applications");
+  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#content");
 }
 
 #category-privacy > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#privacy");
-}
-
-#category-security > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#security");
+  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#security");
 }
 
 #category-sync > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#sync");
+  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#sync");
 }
 
 #category-advanced > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#advanced");
+  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#advanced");
+}
+
+#category-search-results > .category-icon {
+  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#searchResults");
 }
 
 #category-connect > .category-icon {
@@ -113,6 +109,9 @@ treecol {
 @media (max-width: 800px) {
   .category-name {
     display: none;
+  }
+  .help-button {
+    font-size: 0 !important;
   }
 }
 
@@ -127,7 +126,7 @@ treecol {
   display: none;
 }
 
-#header-advanced, #header-connect {
+#header-connect {
   border-bottom: none;
   padding-bottom: 0;
 }
@@ -194,18 +193,12 @@ treecol {
   direction: rtl;
 }
 
-/* Content pane */
-
 #defaultFontSizeLabel {
   /* !important needed to override common !important rule */
   margin-inline-start: 4px !important;
 }
 
 /* Applications Pane Styles */
-
-#applicationsContent {
-  padding: 15px 0;
-}
 
 #filter {
   margin-inline-start: 0;
@@ -252,6 +245,21 @@ treecol {
 .doNotTrackLearnMore > label {
   font-size: 1em !important;
   margin-left: 0;
+}
+
+/* This learn-more link is inserted at the end of a
+   xul:description element so it should behave like normal text. */
+#trackingProtectionLearnMore {
+  white-space: normal;
+  margin-inline-start: 0;
+}
+
+#trackingProtectionAdvancedSettings {
+  margin-inline-start: 15px;
+}
+
+#crashReporterGroup {
+  margin-top: 0;
 }
 
 /* Collapse the non-active vboxes in decks to use only the height the
@@ -318,12 +326,15 @@ description > html|a {
  * Dialog
  */
 
-#dialogOverlay {
-  background-color: rgba(0,0,0,0.5);
+.dialogOverlay {
   visibility: hidden;
 }
 
-#dialogBox {
+.dialogOverlay[topmost="true"] {
+  background-color: rgba(0,0,0,0.5);
+}
+
+.dialogBox {
   background-color: #fbfbfb;
   background-clip: content-box;
   color: #424e5a;
@@ -338,20 +349,20 @@ description > html|a {
   padding: 0;
 }
 
-#dialogBox[resizable="true"] {
+.dialogBox[resizable="true"] {
   resize: both;
   overflow: hidden;
   min-height: 20em;
   min-width: 66ch;
 }
 
-#dialogBox > .groupbox-title {
+.dialogBox > .groupbox-title {
   padding: 3.5px 0;
   background-color: #F1F1F1;
   border-bottom: 1px solid #C1C1C1;
 }
 
-#dialogTitle {
+.dialogTitle {
   text-align: center;
   -moz-user-select: none;
 }
@@ -366,12 +377,12 @@ description > html|a {
   min-width: 0;
 }
 
-#dialogBox > .groupbox-body {
+.dialogBox > .groupbox-body {
   -moz-appearance: none;
   padding: 20px;
 }
 
-#dialogFrame {
+.dialogFrame {
   -moz-box-flex: 1;
   /* Default dialog dimensions */
   width: 66ch;
@@ -467,6 +478,9 @@ description > html|a {
 
 .fxaSyncIllustration {
   margin-top: 35px;
+  width: 231px;
+  -moz-context-properties: fill;
+  fill: #bfcbd3;
 }
 
 #syncOptions caption {
@@ -520,10 +534,6 @@ description > html|a {
 
 #verifiedManage:visited {
   color: var(--in-content-link-color);
-}
-
-.fxaSyncIllustration {
-  width: 231px;
 }
 
 #fxaLoginStatus[hasName] #fxaEmailAddress1 {
@@ -590,4 +600,72 @@ description > html|a {
   .fxaFirefoxLogo {
     list-style-image: url(chrome://browser/skin/fxa/logo@2x.png);
   }
+}
+
+#updateDeck > hbox > label {
+  margin-inline-end: 5px ! important;
+}
+
+.update-throbber {
+  width: 16px;
+  min-height: 16px;
+  margin-inline-end: 3px;
+  list-style-image: url("chrome://global/skin/icons/loading.png");
+}
+
+@media (min-resolution: 1.1dppx) {
+  .update-throbber {
+    list-style-image: url("chrome://global/skin/icons/loading@2x.png");
+  }
+}
+
+.help-button {
+  position: fixed;
+  left: 0;
+  /* Needs to have enough gap from the bottom to not
+     get behind the status panel (bug 1357841). */
+  bottom: 2rem;
+  font-size: 13px;
+  line-height: 13px;
+  height: 14px;
+  background-position: 15px;
+  padding-inline-start: 35px;
+  white-space: nowrap;
+}
+
+.help-button:-moz-locale-dir(rtl) {
+  left: auto;
+  right: 0;
+  background-position: right 15px top 0;
+}
+
+.help-button:link,
+.help-button:visited {
+  color: var(--in-content-category-text);
+  text-decoration: none;
+}
+
+.search-tooltip {
+  position: absolute;
+  padding: 0 10px;
+  bottom: 100%;
+  background-color: #ffe900;
+}
+
+.search-tooltip:hover,
+.search-tooltip:hover::before {
+  filter: opacity(10%);
+}
+
+.search-tooltip::before {
+  position: absolute;
+  content: "";
+  border: 6px solid transparent;
+  border-top-color: #ffe900;
+  top: 100%;
+  offset-inline-start: calc(50% - 6px);
+}
+
+.search-tooltip-parent {
+  position: relative;
 }

@@ -619,13 +619,13 @@ var gPrivacyPane = {
    */
   showCookieExceptions() {
     var bundlePreferences = document.getElementById("bundlePreferences");
-    var params = { blockVisible   : true,
-                   sessionVisible : true,
-                   allowVisible   : true,
-                   prefilledHost  : "",
-                   permissionType : "cookie",
-                   windowTitle    : bundlePreferences.getString("cookiepermissionstitle"),
-                   introText      : bundlePreferences.getString("cookiepermissionstext") };
+    var params = { blockVisible: true,
+                   sessionVisible: true,
+                   allowVisible: true,
+                   prefilledHost: "",
+                   permissionType: "cookie",
+                   windowTitle: bundlePreferences.getString("cookiepermissionstitle"),
+                   introText: bundlePreferences.getString("cookiepermissionstext") };
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
                     null, params);
   },
@@ -673,7 +673,7 @@ var gPrivacyPane = {
         ts.value = timeSpanOrig;
       }
 
-      Services.obs.notifyObservers(null, "clear-private-data", null);
+      Services.obs.notifyObservers(null, "clear-private-data");
     });
   },
 

@@ -2,17 +2,14 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY biffStart.label "Alle">
-<!ENTITY biffStart.accesskey "A">
-<!ENTITY biffEnd.label "Minuten auf neue Artikel prüfen">
-
-<!ENTITY loginAtStartup.label "Beim Starten auf neue Artikel prüfen"> 
+<!ENTITY loginAtStartup.label "Beim Starten auf neue Artikel prüfen">
 <!ENTITY loginAtStartup.accesskey "B">
+<!ENTITY biffAll.label "Aktualisierung für alle Feeds aktivieren">
+<!ENTITY biffAll.accesskey "A">
 
-<!ENTITY useQuickMode.label "Als Standard die Artikel-Zusammenfassung anzeigen, anstatt die Webseite anzuzeigen"> 
-<!ENTITY useQuickMode.accesskey "S">
+<!ENTITY newFeedSettings.label "Standardeinstellungen für neue Feeds">
 
-<!ENTITY manageSubscriptions.label "Abonnements verwalten…"> 
+<!ENTITY manageSubscriptions.label "Abonnements verwalten…">
 <!ENTITY manageSubscriptions.accesskey "o">
 
 <!-- entities from rss.rdf -->

@@ -25,5 +25,5 @@
 <!ENTITY removeEngine.label                    "Remove">
 <!ENTITY removeEngine.accesskey                "r">
 
-<!ENTITY addMoreSearchEngines.label            "Add more search engines…">
+<!ENTITY addMoreSearchEngines2.label           "Add more search engines">
 <!ENTITY addMoreSearchEnginesDesc.label        "Cliqz supports most search engines of the official Mozilla Firefox repository.">

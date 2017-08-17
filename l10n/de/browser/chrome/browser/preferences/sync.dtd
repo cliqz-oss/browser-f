@@ -10,8 +10,8 @@
 <!ENTITY engine.tabs.accesskey      "T">
 <!ENTITY engine.history.label       "Chronik">
 <!ENTITY engine.history.accesskey   "C">
-<!ENTITY engine.passwords.label     "Passwörter">
-<!ENTITY engine.passwords.accesskey "P">
+<!ENTITY engine.logins.label        "Zugangsdaten">
+<!ENTITY engine.logins.accesskey    "Z">
 <!ENTITY engine.prefs.label         "Einstellungen">
 <!ENTITY engine.prefs.accesskey     "E">
 <!ENTITY engine.addons.label        "Add-ons">
@@ -19,8 +19,8 @@
 
 <!-- Device Settings -->
 <!ENTITY fxaSyncDeviceName.label       "Gerätename">
-<!ENTITY changeSyncDeviceName.label "Gerät umbenennen…">
-<!ENTITY changeSyncDeviceName.accesskey "u">
+<!ENTITY changeSyncDeviceName2.label "Gerät umbenennen…">
+<!ENTITY changeSyncDeviceName2.accesskey "u">
 <!ENTITY cancelChangeSyncDeviceName.label "Abbrechen">
 <!ENTITY cancelChangeSyncDeviceName.accesskey "b">
 <!ENTITY saveChangeSyncDeviceName.label "Speichern">
@@ -52,8 +52,8 @@ both, to better adapt this sentence to their language.
 <!ENTITY profilePicture.tooltip      "Profilbild ändern">
 <!ENTITY verifiedManage.label        "Konto verwalten">
 <!ENTITY verifiedManage.accesskey    "v">
-<!ENTITY disconnect.label            "Trennen…">
-<!ENTITY disconnect.accesskey        "r">
+<!ENTITY disconnect3.label           "Trennen…">
+<!ENTITY disconnect3.accesskey       "r">
 <!ENTITY verify.label                "E-Mail-Adresse bestätigen">
 <!ENTITY verify.accesskey            "b">
 <!ENTITY forget.label                "E-Mail-Adresse vergessen">
@@ -67,7 +67,8 @@ both, to better adapt this sentence to their language.
 <!ENTITY signedOut.accountBox.signin  "Anmelden">
 <!ENTITY signedOut.accountBox.signin.accesskey  "A">
 
-<!ENTITY signedIn.engines.label       "Zwischen allen Geräten synchronisieren:">
+<!ENTITY signedIn.settings.label       "Sync-Einstellungen">
+<!ENTITY signedIn.settings.description "Wählen Sie die zwischen den Geräten zu synchronisierenden &brandShortName;-Eigenschaften.">
 
 <!-- LOCALIZATION NOTE (mobilePromo3.*): the following strings will be used to
      create a single sentence with active links.

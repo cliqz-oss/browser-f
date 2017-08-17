@@ -21,10 +21,10 @@
 
 <!ENTITY  fontsAndColors.label        "Schriftarten &amp; Farben">
 
-<!ENTITY  defaultFont.label           "Standard-Schriftart:">
-<!ENTITY  defaultFont.accesskey       "S">
-<!ENTITY  defaultSize.label           "Größe:">
-<!ENTITY  defaultSize.accesskey       "G">
+<!ENTITY  defaultFont2.label          "Standard-Schriftart">
+<!ENTITY  defaultFont2.accesskey      "S">
+<!ENTITY  defaultSize2.label          "Größe">
+<!ENTITY  defaultSize2.accesskey      "G">
 
 <!ENTITY  advancedFonts.label         "Erweitert…">
 <!ENTITY  advancedFonts.accesskey     "E">

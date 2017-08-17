@@ -51,6 +51,26 @@
 !define UpdateChannel "@MOZ_UPDATE_CHANNEL@"
 !endif
 
+# AccessibleHandler.dll uses a different CLSID depending on release channel.
+# These defines must match HANDLER_CLSID defined in
+# accessible/ipc/win/handler/HandlerData.idl
+
+!if "@MOZ_UPDATE_CHANNEL@" == "default"
+#ifdef DEBUG
+!define AccessibleHandlerCLSID "{E052D988-37A6-4F28-85F4-8B6ED3A4333F}"
+#else
+!define AccessibleHandlerCLSID "{0E1B433B-A383-4513-9542-6DD082A09F48}"
+#endif
+!else if "@MOZ_UPDATE_CHANNEL@" == "nightly"
+!define AccessibleHandlerCLSID "{9E544F3D-D90A-45A0-A87B-40B5DB30AA40}"
+!else if "@MOZ_UPDATE_CHANNEL@" == "beta"
+!define AccessibleHandlerCLSID "{8C493661-D0FE-4868-A728-944AEA83134A}"
+!else if "@MOZ_UPDATE_CHANNEL@" == "release"
+!define AccessibleHandlerCLSID "{F40A82CD-24D7-413D-AADC-843816FB4331}"
+!else
+!define AccessibleHandlerCLSID "{1C579561-9A8D-4EFB-9F18-4122CDCC7134}"
+!endif
+
 # Due to official and beta using the same branding this is needed to
 # differentiante between the url used by the stub for downloading.
 !if "@MOZ_UPDATE_CHANNEL@" == "beta"
@@ -107,3 +127,8 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define INSTALL_BLURB_TEXT_TOP_DU 108u
 !define APPNAME_BMP_EDGE_DU 23u
 !define APPNAME_BMP_TOP_DU 19u
+!define NOW_INSTALLING_TOP_DU 70u
+!define INSTALL_BLURB_TOP_DU 137u
+!define INSTALL_FOOTER_TOP_DU -48u
+!define INSTALL_FOOTER_WIDTH_DU 250u
+!define PROGRESS_BAR_TOP_DU 112u
