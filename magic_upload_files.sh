@@ -21,7 +21,7 @@ $MAKE update-packaging
 if [ $CQZ_CERT_DB_PATH ]; then
   # TODO: Specify certificate name by env var.
   if [ -z "$MAR_CERT_NAME" ]; then
-    MAR_CERT_NAME="Cliqz GmbH's DigiCert Inc ID"
+    MAR_CERT_NAME="Cliqz GmbH’s DigiCert Inc ID"
   fi
   echo '***** Signing mar *****'
   MAR_FILES=dist/update/*.mar
