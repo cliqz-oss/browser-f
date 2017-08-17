@@ -20,40 +20,35 @@ const ERRORS = {
 const BloomFilterUtils = {
 
 /**
- * @param {nsIFile} file - pointer to the bloom filter data file.
+ * @param {nsIInputStream} stream - pointer to input stream with BF data.
+ *    Calling side responcible for closing the stream.
  * @return {BloomFilter} filter with a given file.
  */
-loadFromFile: function(file) {
-  const fStream = FileUtils.openFileInputStream(file);
-  try {
-    const binStream = Cc["@mozilla.org/binaryinputstream;1"]
-        .createInstance(Ci.nsIBinaryInputStream);
-    binStream.setInputStream(fStream);
-    if (binStream.available() > FILE_MAX_SIZE)
-      throw new Error(ERRORS.FILE_TOO_BIG);
+loadFromStream: function(stream) {
+  const binStream = Cc["@mozilla.org/binaryinputstream;1"]
+      .createInstance(Ci.nsIBinaryInputStream);
+  binStream.setInputStream(stream);
+  if (binStream.available() > FILE_MAX_SIZE)
+    throw new Error(ERRORS.FILE_TOO_BIG);
 
-    // Check file header:
-    const typeSig = binStream.read32();
-    if (typeSig != HEAD_SIG)
-      throw new Error(ERRORS.WRONG_FORMAT);
-    const version = binStream.read8();
-    if (version != FORMAT_VERSION)
-      throw new Error(ERRORS.WRONG_FORMAT);
-    const dbVersion = binStream.read16();
-    const nHashes = binStream.read8();
+  // Check header:
+  const typeSig = binStream.read32();
+  if (typeSig != HEAD_SIG)
+    throw new Error(ERRORS.WRONG_FORMAT);
+  const version = binStream.read8();
+  if (version != FORMAT_VERSION)
+    throw new Error(ERRORS.WRONG_FORMAT);
+  const dbVersion = binStream.read16();
+  const nHashes = binStream.read8();
 
-    // Read the rest of it into a buffer:
-    const buffer = new ArrayBuffer(binStream.available());
-    const read = binStream.readArrayBuffer(buffer.byteLength, buffer);
-    if (read != buffer.byteLength)
-        throw new Error(ERRORS.BUFF_UNDERFLOW);
+  // Read the rest of it into a buffer:
+  const buffer = new ArrayBuffer(binStream.available());
+  const read = binStream.readArrayBuffer(buffer.byteLength, buffer);
+  if (read != buffer.byteLength)
+    throw new Error(ERRORS.BUFF_UNDERFLOW);
 
-    // Construct filter from buffer:
-    return [new BloomFilter(buffer, nHashes), dbVersion];
-  }
-  finally {
-    fStream.close();
-  }
+  // Construct filter from buffer:
+  return [new BloomFilter(buffer, nHashes), dbVersion];
 },
 
 /**
