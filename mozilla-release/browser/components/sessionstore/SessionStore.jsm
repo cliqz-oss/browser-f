@@ -3265,11 +3265,34 @@ var SessionStoreInternal = {
     // This is intended to work when both tab restore and fresh tab features
     // are enabled.
     if (!overwriteTabs) {
+      const uriFixup = Services.uriFixup;
+      function fixupURI(pageAddress) {
+        try {
+          return uriFixup.createFixupURI(pageAddress, uriFixup.FIXUP_FLAG_NONE);
+        }
+        catch (e) {
+          return pageAddress;
+        }
+      }
+      function similarURIs(uri1, uri2) {
+        if ((uri1 instanceof Ci.nsIURI) && (uri2 instanceof Ci.nsIURI)) {
+          try {
+            return (uri1.hostPort === uri2.hostPort) &&
+                   (uri1.path === uri2.path);
+          }
+          catch (e) {
+            return uri1.spec == uri2.spec;
+          }
+        }
+        return uri1 == uri2;
+      }
+
       let homePages = aWindow.gHomeButton.getHomePage().split("|")
         // Use final URLs that get into session after redirection (see DB-1219).
         .map(url => {
           return redirectedURLs[url] || url;
-        });
+        })
+        .map(fixupURI);
       winData.tabs = winData.tabs.filter(function (tabData) {
         if (!tabData.entries || !tabData.entries.length) {
           return true;
@@ -3277,7 +3300,9 @@ var SessionStoreInternal = {
         let entryIndex = (tabData.index || 1) - 1;  // It's 1-based.
         let entry = tabData.entries[entryIndex] ||
           tabData.entries[tabData.entries.length - 1];
-        return homePages.indexOf(entry.url) == -1;
+        let f = similarURIs.bind(undefined, fixupURI(entry.url));
+        let isHomepage = homePages.findIndex(f) >= 0;
+        return !isHomepage;
       });
     }
 
