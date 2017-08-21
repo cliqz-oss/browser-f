@@ -243,7 +243,9 @@ var CustomizableUIInternal = {
 #if 0
       "search-container",
 #endif
-      "cliqz-cc-btn", // Cliqz control center
+      "cliqz-vd-btn", // Cliqz video downloader 
+      "control-center-browser-action", // Cliqz control center
+      "cliqz-cc-btn", // Cliqz control center old
       "bookmarks-menu-button",
       "downloads-button",
       "home-button",
