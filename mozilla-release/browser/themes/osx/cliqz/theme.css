@@ -501,9 +501,7 @@ toolbarbutton#cliqz-cc-btn {
 .tabbrowser-tab:not([pinned]) {
   -moz-box-flex: 100;
   max-width: 210px;
-  min-width: 74px;
-  width: 0;
-  transition: min-width 250ms ease-out, max-width 230ms ease-out; }
+  min-width: 74px; }
 
 .tab-close-button > .toolbarbutton-icon {
   padding-top: 5px;
