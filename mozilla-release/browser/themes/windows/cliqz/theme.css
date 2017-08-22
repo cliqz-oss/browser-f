@@ -199,9 +199,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   .tabbrowser-tab:not([pinned]) {
     -moz-box-flex: 100;
     max-width: 210px;
-    min-width: 74px;
-    width: 0;
-    transition: min-width 250ms ease-out, max-width 230ms ease-out; }
+    min-width: 74px; }
   .tabbrowser-tab:hover > .tab-stack > .tab-background:not([visuallyselected="true"]) {
     background: none; }
 
