@@ -283,8 +283,20 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   border-bottom: none !important;
   background: #f6f6f6 !important; }
 
-#forward-button > .toolbarbutton-icon {
-  margin: 0; }
+#nav-bar #forward-button > .toolbarbutton-icon {
+  margin: 0;
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  border-right-style: none; }
+
+#nav-bar #back-button > .toolbarbutton-icon {
+  border: none;
+  background: none;
+  padding-left: 3px; }
+
+#nav-bar #forward-button.toolbarbutton-1:-moz-any([open], [checked], :hover:active):not([disabled="true"]) > .toolbarbutton-icon, #nav-bar #back-button.toolbarbutton-1:-moz-any([open], [checked], :hover:active):not([disabled="true"]) > .toolbarbutton-icon {
+  box-shadow: none !important;
+  background: none; }
 
 #PersonalToolbar {
   padding-left: 8px; }
