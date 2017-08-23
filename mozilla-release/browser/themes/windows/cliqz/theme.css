@@ -249,6 +249,26 @@ tab {
   border-top-color: #fff !important;
   box-shadow: 0 2px 2px -2px rgba(0, 0, 0, 0.35) !important;
   background-color: #fff !important; }
+  #nav-bar .toolbarbutton-1:-moz-any([open], [checked], :hover:active):not([disabled="true"]) > .toolbarbutton-badge-stack, #nav-bar .toolbarbutton-1:-moz-any([open], [checked], :hover:active):not([disabled="true"]) .toolbarbutton-icon,
+  #nav-bar .toolbarbutton-1:hover:not([disabled="true"]):not([checked]):not([open]):not(:active) > .toolbarbutton-badge-stack,
+  #nav-bar .toolbarbutton-1:hover:not([disabled="true"]):not([checked]):not([open]):not(:active) .toolbarbutton-icon {
+    background: none;
+    border-color: transparent;
+    box-shadow: none; }
+  #nav-bar .toolbarbutton-1:-moz-any(:hover, [open]):not([disabled="true"]) > .toolbarbutton-menubutton-button > .toolbarbutton-icon,
+  #nav-bar .toolbarbutton-1 > .toolbarbutton-menubutton-button:-moz-any(:hover:active, [open]):not([disabled="true"]) > .toolbarbutton-icon {
+    background: none;
+    border-color: transparent;
+    box-shadow: none; }
+  #nav-bar .toolbarbutton-1[open] > .toolbarbutton-menubutton-dropmarker:not([disabled="true"]) > .dropmarker-icon,
+  #nav-bar .toolbarbutton-1:-moz-any(:hover, [open]):not([disabled="true"]) > .toolbarbutton-menubutton-dropmarker > .dropmarker-icon,
+  #nav-bar .toolbarbutton-1:hover:not([buttonover]):not([open]):not(:active) > .toolbarbutton-menubutton-dropmarker:not([disabled]) > .dropmarker-icon,
+  #nav-bar .toolbarbutton-1:not([disabled="true"]) > .toolbarbutton-menubutton-button[open] + .toolbarbutton-menubutton-dropmarker > .dropmarker-icon {
+    background: none;
+    border-top-color: transparent;
+    border-right-color: transparent;
+    border-bottom-color: transparent;
+    box-shadow: none; }
 
 #PersonalToolbar {
   padding-left: 8px; }
@@ -707,8 +727,9 @@ toolbarbutton#cliqz-cc-btn {
   border-left: 1px solid transparent;
   border-right: 1px solid transparent;
   transition: none !important; }
-  #nav-bar .toolbarbutton-1:not(#back-button):not(#forward-button):hover,
-  toolbarbutton#cliqz-cc-btn:hover {
+  #nav-bar .toolbarbutton-1:not(#back-button):not(#forward-button):hover, #nav-bar .toolbarbutton-1:not(#back-button):not(#forward-button)[open="true"],
+  toolbarbutton#cliqz-cc-btn:hover,
+  toolbarbutton#cliqz-cc-btn[open="true"] {
     border-color: #dedede;
     background-color: #e7e7e7; }
 
@@ -793,6 +814,9 @@ toolbar .toolbarbutton-1 > .toolbarbutton-menubutton-dropmarker[label='Bookmarks
 
 .cliqz-urlbar-Last-search-container {
   margin: 0 7px 0 0; }
+
+.cliqz-urlbar-Last-search-container[channel='40'] .cliqz-urlbar-Last-search {
+  line-height: 17px; }
 
 @media (-moz-os-version: windows-win7) {
   #navigator-toolbox:not(:-moz-lwtheme) {
@@ -977,24 +1001,6 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper > #forward-button:hover:no
   box-shadow: none !important;
   border-radius: none !important;
   background-color: #e7e7e7 !important; }
-
-﻿.findbar-button:-moz-any([checked="true"],
-:hover:active):not([disabled="true"]) > .toolbarbutton-text,
-#nav-bar .toolbarbutton-1 > .toolbarbutton-menubutton-button:-moz-any(:hover:active,
-[open]):not([disabled="true"]) > .toolbarbutton-icon,
-#nav-bar .toolbarbutton-1[open] > .toolbarbutton-menubutton-dropmarker:not([disabled="true"]) > .dropmarker-icon,
-#nav-bar .toolbarbutton-1:-moz-any([open],
-[checked],
-:hover:active):not([disabled="true"]) > .toolbarbutton-icon,
-#nav-bar .toolbarbutton-1:-moz-any([open],
-[checked],
-:hover:active):not([disabled="true"]) > .toolbarbutton-text,
-#nav-bar .toolbarbutton-1:-moz-any([open],
-[checked],
-:hover:active):not([disabled="true"]) > .toolbarbutton-badge-stack {
-  box-shadow: none;
-  border-color: #cecece;
-  background-color: #efefef; }
 
 #main-window[customize-entered] #browser-bottombox, #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar), #main-window[customize-entered] #customization-container {
   border: none !important; }
