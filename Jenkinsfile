@@ -48,7 +48,7 @@ properties([
                 name: "DEBIAN_GPG_PASS_CREDENTIAL_ID"),
         string(defaultValue: "6f6191fb-8560-45aa-836e-a478097d0702",
                 name:"WINDOWS_SLAVE_CREDENTIALS"),
-        string(defaultValue: 'cliqz/ansible:20170823090814',
+        string(defaultValue: 'cliqz/ansible:20170823152345',
                 name: 'IMAGE_NAME'),
         string(defaultValue: 'ami-ed0c3096',
                 name: 'IMAGE_AMI'),
@@ -134,7 +134,7 @@ jobs["windows"] = {
                                         "image_ami=${params.IMAGE_AMI}"
                                         ]) {
                                             def bootstrap_params = "image_ami=${params.IMAGE_AMI}"       
-                                            sh "cd /playbooks && ansible-playbook -e \"${bootstrap_params} \" ec2/bootstrap.yml && ls -la ec2/"
+                                            sh "cd /playbooks && ansible-playbook --extra-vars \"${bootstrap_params} \" ec2/bootstrap.yml && ls -la ec2/"
                                             
                                     }
 
