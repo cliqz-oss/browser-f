@@ -131,7 +131,7 @@ jobs["windows"] = {
                                         "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
                                         "jenkins_id=${ec2_node.get('nodeId')}",
                                         "instance_name=browser-f",
-                                        "image_ami=${params.IMAGE_AMI}"
+                                        "IMAGE_AMI=${params.IMAGE_AMI}"
                                         ]) {
                                             sh "env && cd /playbooks && ansible-playbook ec2/bootstrap.yml && ls -la ec2/"
                                     }
