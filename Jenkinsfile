@@ -116,7 +116,6 @@ jobs["windows"] = {
                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                        def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
                         def bootstrap_args = "-u 0 "
                         def prov_args = "-u 0 "
                         def nodeIP
@@ -134,7 +133,7 @@ jobs["windows"] = {
                                         "instance_name=browser-f",
                                         "image_ami=${params.IMAGE_AMI}"
                                         ]) {
-                                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml"
+                                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml && ls -la ec2/"
                                     }
 
                                     withCredentials([
@@ -153,7 +152,7 @@ jobs["windows"] = {
                                             def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"
                                             
                                             retry(3) {
-                                                nodeIP = sh(returnStdout: true, script: "cat ec2/bootstrap_ip").trim()
+                                                nodeIP = sh(returnStdout: true, script: "cat /playbooks/ec2/bootstrap_ip").trim()
                                                 sleep 15
                                             }
 
