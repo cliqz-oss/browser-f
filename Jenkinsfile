@@ -133,7 +133,7 @@ jobs["windows"] = {
                                         "instance_name=browser-f",
                                         "image_ami=${params.IMAGE_AMI}"
                                         ]) {
-                                            sh "cd /playbooks && ansible-playbook ec2/bootstrap.yml && ls -la ec2/"
+                                            sh "env && cd /playbooks && ansible-playbook ec2/bootstrap.yml && ls -la ec2/"
                                     }
 
                                     withCredentials([
