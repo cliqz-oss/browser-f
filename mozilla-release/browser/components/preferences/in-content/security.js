@@ -11,6 +11,8 @@ Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Components.utils.import("resource://gre/modules/AddonManager.jsm");
 var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
+const HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
+
 var gSecurityPane = {
   _pane: null,
 
@@ -30,8 +32,6 @@ var gSecurityPane = {
 
     AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
       if(addon && addon.isActive){
-        var HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
-
         document.getElementById("httpsEverywhereGroup").hidden = false;
         document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
       }
@@ -52,10 +52,8 @@ var gSecurityPane = {
   },
 
   toggleHttpsEverywhere: function(){
-    var HTTPSEverywhere = Components.classes["@eff.org/https-everywhere;1"]
-                      .getService(Components.interfaces.nsISupports)
-                      .wrappedJSObject;
-    HTTPSEverywhere.toggleEnabledState();
+    Services.prefs.setBoolPref(HTTPS_EVERYWHERE_PREF,
+      !Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF));
   },
 
   // ADD-ONS
