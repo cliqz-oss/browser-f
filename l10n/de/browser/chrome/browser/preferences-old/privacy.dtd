@@ -71,7 +71,7 @@
 <!ENTITY  historyHeader.custom.label       "nach benutzerdefinierten Einstellungen anlegen">
 <!ENTITY  historyHeader.post.label         "">
 
-<!ENTITY  rememberDescription.label      "&brandShortName; wird besuchte Seiten, Downloads, Formulardaten, eingegebene Suchbegriffe und Cookies speichern."> 
+<!ENTITY  rememberDescription.label      "&brandShortName; wird besuchte Seiten, Downloads, Formulardaten, eingegebene Suchbegriffe und Cookies speichern.">
 
 <!-- LOCALIZATION NOTE (rememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (rememberActions.middle.label): include a starting and trailing space as needed -->
@@ -104,6 +104,13 @@
 
 <!ENTITY  clearOnCloseSettings.label     "Einstellungen…">
 <!ENTITY  clearOnCloseSettings.accesskey "E">
+
+<!-- Forget mode -->
+<!ENTITY  forgetMode.caption "Vergessen Modus">
+<!ENTITY  forgetMode.enableCheckboxLabel "Automatischen Vergessen Modus aktivieren">
+<!ENTITY  forgetMode.explanation1 "Der automatische Vergessen Modus öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im vergessen Modus, so dass sie nicht in der Chronik gespeichert werden und keine temporären Dateien, inklusive Cookies, auf dem Computer hinterlassen.">
+<!ENTITY  forgetMode.explanation2 "Im Tab Kontext-Menü kannst du selbst wählen, welche Websites automatisch im Vergessen Modus geöffnet werden sollen oder auch nicht. Das Tab Kontext-Menü öffnet sich durch einen Klick mit der rechten Maustaste auf den aktuellen Tab.">
+<!ENTITY  forgetMode.learnMore "Mehr erfahren">
 
 <!ENTITY  browserContainersHeader.label         "Tab-Umgebungen">
 <!ENTITY  browserContainersLearnMore.label      "Weitere Informationen">

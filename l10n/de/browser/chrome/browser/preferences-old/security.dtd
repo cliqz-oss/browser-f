@@ -38,3 +38,16 @@
 
 <!ENTITY  savedLogins.label              "Gespeicherte Zugangsdaten…">
 <!ENTITY  savedLogins.accesskey          "G">
+
+<!ENTITY  httpsEverywhere.label          "HTTPS Everywhere aktivieren">
+<!ENTITY  httpsEverywhere.accesskey      "H">
+<!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. ">
+<!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">
+
+<!ENTITY  passwordManager.title          "Passwort Manager">
+<!ENTITY  passwordManager.desc1          "Cliqz unterstützt die Einbindung von LastPass, einer Fremdsoftware für Passwort Management.">
+<!ENTITY  passwordManager.desc2          "Bitte beachte, dass Cliqz keine Kontrolle darüber hat, auf welche Daten diese Fremdsoftware Zugriff hat.">
+
+<!ENTITY  ghostery.title                 "Erweiterte Kontrolle der Privatsphäre">
+<!ENTITY  ghostery.desc1                 "Ghostery weist auf versteckte Dienste hin, die im Hintergrund private Daten an">
+<!ENTITY  ghostery.desc2                 "Seitenbetreiber übermitteln. Auf Wunsch können diese blockiert werden.">
