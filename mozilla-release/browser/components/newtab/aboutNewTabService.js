@@ -13,7 +13,7 @@ Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
 
 //const LOCAL_NEWTAB_URL = "chrome://browser/content/newtab/newTab.xhtml";
-const LOCAL_NEWTAB_URL = "about:cliqz";
+const LOCAL_NEWTAB_URL = "resource://cliqz/freshtab/home.html";
 
 const ACTIVITY_STREAM_URL = "resource://activity-stream/data/content/activity-stream.html";
 

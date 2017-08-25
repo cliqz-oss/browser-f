@@ -297,7 +297,7 @@ var gInitialPages = [
   "about:privatebrowsing",
   "about:welcomeback",
   "about:sessionrestore",
-  "resource://cliqz/fresh-tab-frontend/index.html",
+  "resource://cliqz/freshtab/home.html",
   "about:cliqz"
 ];
 
