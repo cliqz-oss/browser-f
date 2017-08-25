@@ -900,8 +900,7 @@ function cleanupTestCommon() {
   if (IS_WIN && MOZ_APP_BASENAME) {
     let appDir = getApplyDirFile(null, true);
     let vendor = MOZ_APP_VENDOR ? MOZ_APP_VENDOR : "Mozilla";
-    const REG_PATH = "SOFTWARE\\" + vendor + "\\" + MOZ_APP_BASENAME +
-                     "\\TaskBarIDs";
+    const REG_PATH = "SOFTWARE\\" + MOZ_APP_BASENAME + "\\TaskBarIDs";
     let key = Cc["@mozilla.org/windows-registry-key;1"].
               createInstance(Ci.nsIWindowsRegKey);
     try {
@@ -1334,8 +1333,7 @@ XPCOMUtils.defineLazyGetter(this, "gInstallDirPathHash", function test_gIDPH() {
   let vendor = MOZ_APP_VENDOR ? MOZ_APP_VENDOR : "Mozilla";
   let appDir = getApplyDirFile(null, true);
 
-  const REG_PATH = "SOFTWARE\\" + vendor + "\\" + MOZ_APP_BASENAME +
-                   "\\TaskBarIDs";
+  const REG_PATH = "SOFTWARE\\" + MOZ_APP_BASENAME + "\\TaskBarIDs";
   let regKey = Cc["@mozilla.org/windows-registry-key;1"].
                createInstance(Ci.nsIWindowsRegKey);
   try {
