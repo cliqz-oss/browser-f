@@ -1347,10 +1347,11 @@ pref("dom.debug.propagate_gesture_events_through_content", false);
 // Geolocation preferences for the RELEASE and "later" Beta channels.
 // Some of these prefs are specified even though they are redundant; they are
 // here for clarity and end-user experiments.
-//
-// Cliqz. Always use Mozilla's geolocation API
-#ifdef 0
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+#ifndef EARLY_BETA_OR_EARLIER
+// Cliqz. Always use Mozilla's geolocation API.
+// Also we don't want to use nightly configs, as it was before
+// pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_API_KEY%");
+pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
 
 #ifdef XP_MACOSX
 pref("geo.provider.use_corelocation", false);
