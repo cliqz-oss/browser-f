@@ -162,7 +162,20 @@ if (!args.testOnly) {
 }
 
 print("Checking...");
-let [testFilter, testVersion] = BloomFilterUtils.loadFromFile(outFile);
+
+let testFilter, testVersion;
+if (outFile.exists() && outFile.isFile()) {
+  let stream = FileUtils.openFileInputStream(outFile);
+  if (stream) {
+    try {
+      [testFilter, testVersion] = BloomFilterUtils.loadFromStream(stream);
+    }
+    finally {
+      stream.close();
+    }
+  }
+}
+
 if (args.dbVersion != testVersion) {
   print("Expected and actual version numbers don't match",
       args.dbVersion, testVersion);
