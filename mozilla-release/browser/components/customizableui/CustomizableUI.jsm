@@ -206,6 +206,7 @@ var CustomizableUIInternal = {
       "preferences-button",
       "add-ons-button",
       "sync-button",
+      "mobilepairing_btn", // Cliqz connect/pairing
     ];
 
     if (!AppConstants.MOZ_DEV_EDITION) {
