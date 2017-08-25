@@ -1328,8 +1328,7 @@ nsXREDirProvider::GetUpdateRootDir(nsIFile* *aResult)
   nsCOMPtr<nsIFile> localDir;
   if ((hasVendor || gAppData->name) &&
       NS_SUCCEEDED(GetUserDataDirectoryHome(getter_AddRefs(localDir), true)) &&
-      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(hasVendor ?
-                                          gAppData->vendor : gAppData->name))) &&
+      NS_SUCCEEDED(localDir->AppendNative(nsDependentCString(gAppData->name))) &&
       NS_SUCCEEDED(localDir->Append(NS_LITERAL_STRING("updates"))) &&
       NS_SUCCEEDED(localDir->Append(pathHash))) {
     localDir.forget(aResult);
