@@ -83,7 +83,7 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT },
   { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
     nsIAboutModule::ALLOW_SCRIPT },
-  { "home", "about:cliqz",
+  { "home", "resource://cliqz/freshtab/home.html",
     nsIAboutModule::ALLOW_SCRIPT },
 #if 0
 # Replaced by Cliqz
