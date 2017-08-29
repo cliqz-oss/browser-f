@@ -8311,7 +8311,9 @@ var TabContextMenu = {
     this.contextTab.addEventListener("TabAttrModified", this);
     aPopupMenu.addEventListener("popuphiding", this);
 
+#ifdef MOZ_SERVICES_SYNC
     gSync.updateTabContextMenu(aPopupMenu, this.contextTab);
+#endif
   },
 
 #if CQZ_AUTO_PRIVATE_TAB
