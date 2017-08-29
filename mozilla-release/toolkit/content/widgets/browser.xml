@@ -1524,6 +1524,7 @@
             if (this._pbObserver)
               this._pbObserver._browser = null;
 
+            Cu.import('resource://gre/modules/XPCOMUtils.jsm');
             // Set new observer.
             this._pbObserver = {
               QueryInterface: XPCOMUtils.generateQI([
