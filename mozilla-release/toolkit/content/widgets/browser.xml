@@ -1528,8 +1528,8 @@
             // Set new observer.
             this._pbObserver = {
               QueryInterface: XPCOMUtils.generateQI([
-                Ci.nsISupportsWeakReference,
-                Ci.nsIPrivacyTransitionObserver
+                Components.interfaces.nsISupportsWeakReference,
+                Components.interfaces.nsIPrivacyTransitionObserver
               ]),
 
               privateModeChanged: function(enabled) {
