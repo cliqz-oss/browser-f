@@ -733,11 +733,13 @@
                        label="&historyMenu.label;"
                        closemenu="none"
                        oncommand="PanelUI.showSubView('PanelUI-history', this)"/>
+#ifdef MOZ_SERVICES_SYNC
         <toolbarbutton id="appMenu-library-remotetabs-button"
                        class="subviewbutton subviewbutton-iconic subviewbutton-nav"
                        label="&appMenuRemoteTabs.label;"
                        closemenu="none"
                        oncommand="PanelUI.showSubView('PanelUI-remotetabs', this)"/>
+#endif
       </vbox>
     </panelview>
   </photonpanelmultiview>

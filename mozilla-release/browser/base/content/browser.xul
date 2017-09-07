@@ -326,6 +326,7 @@
                      oncommand="SidebarUI.show('viewHistorySidebar');">
          <observes element="viewHistorySidebar" attribute="checked"/>
        </toolbarbutton>
+#ifdef MOZ_SERVICES_SYNC
       <toolbarbutton id="sidebar-switcher-tabs"
                      label="&syncedTabs.sidebar.label;"
                      class="subviewbutton subviewbutton-iconic"
@@ -333,6 +334,7 @@
                      oncommand="SidebarUI.show('viewTabsSidebar');">
          <observes element="viewTabsSidebar" attribute="checked"/>
        </toolbarbutton>
+#endif
       <toolbarseparator/>
       <vbox id="sidebar-extensions"></vbox>
       <toolbarseparator/>
