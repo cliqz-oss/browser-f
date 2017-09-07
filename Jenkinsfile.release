@@ -97,6 +97,7 @@ def getBaseBuildParams(jobName, entryPoint) {
 
 def prepareBuildConfig() {
   return [
+/* need to fix rust-init
     'linux en': {
         def buildParams = getBaseBuildParams('browser-f-linux', 'Jenkinsfile.lin')
         buildParams.parameters += [
@@ -110,6 +111,7 @@ def prepareBuildConfig() {
         job = build buildParams
         submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
     },
+*/
     'mac': {
         def buildParams  = getBaseBuildParams('browser-f-mac', 'Jenkinsfile.mac')
         buildParams.parameters += [
