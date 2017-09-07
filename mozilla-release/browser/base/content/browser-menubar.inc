@@ -224,9 +224,11 @@
                               key="key_gotoHistory"
                               observes="viewHistorySidebar"
                               label="&historyButton.label;"/>
+#ifdef MOZ_SERVICES_SYNC
                     <menuitem id="menu_tabsSidebar"
                               observes="viewTabsSidebar"
                               label="&syncedTabs.sidebar.label;"/>
+#endif
                   </menupopup>
                 </menu>
                 <menuseparator/>
