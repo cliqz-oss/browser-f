@@ -139,7 +139,7 @@
                        disabled="true"/>
       </hbox>
       <!-- category list -->
-      <richlistbox id="categories" flex="1">
+      <richlistbox id="categories" flex="1" last-selected="category-plugin">
 #if 0
         <richlistitem id="category-search" value="addons://search/"
                       class="category"
@@ -149,10 +149,10 @@
                       class="category"
                       name="&view.discover.label;" priority="1000"
                       tooltiptext="&view.discover.label;"/>
-#endif
         <richlistitem id="category-legacy" value="addons://legacy/"
                       class="category" priority="20000"
                       disabled="true"/>
+#endif
         <richlistitem id="category-availableUpdates" value="addons://updates/available"
                       class="category"
                       name="&view.availableUpdates.label;" priority="100000"

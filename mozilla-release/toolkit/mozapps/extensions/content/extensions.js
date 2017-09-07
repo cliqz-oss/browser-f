@@ -72,7 +72,7 @@ const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/
 
 const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml"
 
-var gViewDefault = "addons://list/";
+var gViewDefault = "addons://list/plugin";
 
 XPCOMUtils.defineLazyGetter(this, "extensionStylesheets", () => {
   const {ExtensionParent} = Cu.import("resource://gre/modules/ExtensionParent.jsm", {});
@@ -1935,7 +1935,8 @@ var gCategories = {
         'extension',
         'service',
         'experiment',
-        'theme'
+        'theme',
+        'legacy'
         ]);
     if (!Services.prefs.getPrefType("extensions.cliqz.listed")
       || Services.prefs.getBoolPref("extensions.cliqz.listed")) {
