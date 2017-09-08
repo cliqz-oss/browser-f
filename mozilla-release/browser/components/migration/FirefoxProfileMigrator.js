@@ -60,7 +60,7 @@ function getFile(path) {
 
 function insertWholeBookmarkFolder(db, aId, aGuid) {
   let query = `SELECT b.id, h.url, COALESCE(b.title, h.title) AS title,
-    b.type, k.keyword, b.dateAdded, b.lastModified, h.favicon_id
+    b.type, k.keyword, b.dateAdded, b.lastModified
     FROM moz_bookmarks b
     LEFT JOIN moz_places h ON b.fk = h.id
     LEFT JOIN moz_keywords k ON k.id = b.keyword_id
