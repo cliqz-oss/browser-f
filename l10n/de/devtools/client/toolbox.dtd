@@ -82,12 +82,6 @@
 <!ENTITY options.enableRemote.label3    "Externes Debugging aktivieren">
 <!ENTITY options.enableRemote.tooltip2  "Das Aktivieren dieser Einstellung ermöglicht den Entwicklerwerkzeugen das Debuggen anderer Instanzen wie Firefox OS.">
 
-<!-- LOCALIZATION NOTE (options.enableWorkers.label): This is the label for the
-  -  checkbox that toggles worker debugging, i.e. devtools.debugger.workers
-  -  boolean preference in about:config, in the options panel. -->
-<!ENTITY options.enableWorkers.label    "Worker-Debugging aktivieren (Funktion in Entwicklung)">
-<!ENTITY options.enableWorkers.tooltip  "Das Aktivieren dieser Einstellung erlaubt das Untersuchen von Workern.">
-
 <!-- LOCALIZATION NOTE (options.disableJavaScript.label,
   -  options.disableJavaScript.tooltip): This is the options panel label and
   -  tooltip for the checkbox that toggles JavaScript on or off. -->

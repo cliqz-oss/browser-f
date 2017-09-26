@@ -13,6 +13,9 @@ const CACHED_STYLESHEETS = new WeakMap();
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
+XPCOMUtils.defineLazyModuleGetter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "AddonManagerPrivate",
+                                  "resource://gre/modules/AddonManager.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "FormAutofillParent",
                                   "resource://formautofill/FormAutofillParent.jsm");
 
@@ -40,10 +43,59 @@ function onMaybeOpenPopup(evt) {
   insertStyleSheet(domWindow, STYLESHEET_URI);
 }
 
-function startup() {
-  if (!Services.prefs.getBoolPref("extensions.formautofill.experimental")) {
+function addUpgradeListener(instanceID) {
+  AddonManager.addUpgradeListener(instanceID, upgrade => {
+    // don't install the upgrade by doing nothing here.
+    // The upgrade will be installed upon next restart.
+  });
+}
+
+function isAvailable() {
+  let availablePref = Services.prefs.getCharPref("extensions.formautofill.available");
+  if (availablePref == "on") {
+    return true;
+  } else if (availablePref == "detect") {
+    let locale = Services.locale.getRequestedLocale();
+    let region = Services.prefs.getCharPref("browser.search.region", "");
+    return locale == "en-US" && region == "US";
+  }
+  return false;
+}
+
+function startup(data) {
+  if (!isAvailable()) {
+    Services.prefs.clearUserPref("dom.forms.autocomplete.formautofill");
+    // reset the sync related prefs incase the feature was previously available
+    // but isn't now.
+    Services.prefs.clearUserPref("services.sync.engine.addresses.available");
+    Services.telemetry.scalarSet("formautofill.availability", false);
     return;
   }
+
+  if (data.hasOwnProperty("instanceID") && data.instanceID) {
+    if (AddonManagerPrivate.isDBLoaded()) {
+      addUpgradeListener(data.instanceID);
+    } else {
+      // Wait for the extension database to be loaded so we don't cause its init.
+      Services.obs.addObserver(function xpiDatabaseLoaded() {
+        Services.obs.removeObserver(xpiDatabaseLoaded, "xpi-database-loaded");
+        addUpgradeListener(data.instanceID);
+      }, "xpi-database-loaded");
+    }
+  } else {
+    throw Error("no instanceID passed to bootstrap startup");
+  }
+
+  // This pref is used for web contents to detect the autocomplete feature.
+  // When it's true, "element.autocomplete" will return tokens we currently
+  // support -- otherwise it'll return an empty string.
+  Services.prefs.setBoolPref("dom.forms.autocomplete.formautofill", true);
+  Services.telemetry.scalarSet("formautofill.availability", true);
+
+  // This pref determines whether the "addresses" sync engine is available
+  // (ie, whether it is shown in any UI etc) - it *does not* determine whether
+  // the engine is actually enabled or not.
+  Services.prefs.setBoolPref("services.sync.engine.addresses.available", true);
 
   // Listen for the autocomplete popup message to lazily append our stylesheet related to the popup.
   Services.mm.addMessageListener("FormAutoComplete:MaybeOpenPopup", onMaybeOpenPopup);

@@ -85,6 +85,7 @@ cscope*
 /stamp-h2
 
 /include/event2/event-config.h
+/evconfig-private.h
 
 /sample/dns-example
 /sample/event-read-fifo

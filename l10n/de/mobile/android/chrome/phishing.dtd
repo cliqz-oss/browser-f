@@ -5,6 +5,8 @@
 <!ENTITY safeb.palm.accept.label "Diese Seite verlassen">
 <!ENTITY safeb.palm.decline.label "Diese Warnung ignorieren">
 <!ENTITY safeb.palm.reportPage.label "Warum wurde diese Seite blockiert?">
+<!-- Localization note (safeb.palm.advisory.desc) - Please don't translate <a id="advisory_provider"/> tag.  It will be replaced at runtime with advisory link-->
+<!ENTITY safeb.palm.advisory.desc "Warnung bereitgestellt von <a id='advisory_provider'/>">
 
 <!ENTITY safeb.blocked.malwarePage.title "Als attackierend gemeldete Webseite!">
 <!-- Localization note (safeb.blocked.malware.shortDesc) - Please don't translate the contents of the <span id="malware_sitename"/> tag.  It will be replaced at runtime with a domain name (e.g. www.badsite.com) -->

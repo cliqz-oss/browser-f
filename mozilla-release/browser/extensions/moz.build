@@ -5,10 +5,25 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+<<<<<<< HEAD
 #    'aushelper',
 #    'clicktoplay-rollout',
 #    'e10srollout',
 #    'followonsearch',
+||||||| merged common ancestors
+    'aushelper',
+    'clicktoplay-rollout',
+    'e10srollout',
+    'followonsearch',
+=======
+    'activity-stream',
+    'aushelper',
+    'clicktoplay-rollout',
+    'e10srollout',
+    'followonsearch',
+    'formautofill',
+    'onboarding',
+>>>>>>> origin/upstream-releases
     'pdfjs',
 #    'pocket',
 #    'screenshots',
@@ -21,7 +36,6 @@ DIRS += [
 if not CONFIG['RELEASE_OR_BETA']:
     DIRS += [
         'flyweb',
-        'formautofill',
         'presentation',
     ]
 
@@ -36,6 +50,7 @@ if CONFIG['MOZ_MORTAR']:
     DIRS += [
         'mortar',
     ]
+<<<<<<< HEAD
 
 # Nightly-only system add-ons
 if CONFIG['NIGHTLY_BUILD']:
@@ -44,3 +59,13 @@ if CONFIG['NIGHTLY_BUILD']:
         'onboarding',
     ]
 '''
+||||||| merged common ancestors
+
+# Nightly-only system add-ons
+if CONFIG['NIGHTLY_BUILD']:
+    DIRS += [
+        'activity-stream',
+        'onboarding',
+    ]
+=======
+>>>>>>> origin/upstream-releases

@@ -4,85 +4,167 @@
 "use strict";
 
 const {utils: Cu} = Components;
-const {actionTypes: at, actionCreators: ac} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
-Cu.import("resource://gre/modules/NewTabUtils.jsm");
-Cu.import("resource:///modules/PreviewProvider.jsm");
+const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+const {TippyTopProvider} = Cu.import("resource://activity-stream/lib/TippyTopProvider.jsm", {});
+const {insertPinned} = Cu.import("resource://activity-stream/common/Reducers.jsm", {});
+const {Dedupe} = Cu.import("resource://activity-stream/common/Dedupe.jsm", {});
+const {shortURL} = Cu.import("resource://activity-stream/common/ShortURL.jsm", {});
+
+XPCOMUtils.defineLazyModuleGetter(this, "NewTabUtils",
+  "resource://gre/modules/NewTabUtils.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "Screenshots",
+  "resource://activity-stream/lib/Screenshots.jsm");
 
 const TOP_SITES_SHOWMORE_LENGTH = 12;
 const UPDATE_TIME = 15 * 60 * 1000; // 15 minutes
-const DEFAULT_TOP_SITES = [
-  {"url": "https://www.facebook.com/"},
-  {"url": "https://www.youtube.com/"},
-  {"url": "http://www.amazon.com/"},
-  {"url": "https://www.yahoo.com/"},
-  {"url": "http://www.ebay.com"},
-  {"url": "https://twitter.com/"}
-].map(row => Object.assign(row, {isDefault: true}));
+const DEFAULT_SITES_PREF = "default.sites";
+const DEFAULT_TOP_SITES = [];
 
 this.TopSitesFeed = class TopSitesFeed {
   constructor() {
     this.lastUpdated = 0;
+    this._tippyTopProvider = new TippyTopProvider();
+    this._tippyTopProvider.init();
+    this.dedupe = new Dedupe(this._dedupeKey);
+  }
+  _dedupeKey(site) {
+    return site && site.hostname;
+  }
+  refreshDefaults(sites) {
+    // Clear out the array of any previous defaults
+    DEFAULT_TOP_SITES.length = 0;
+
+    // Add default sites if any based on the pref
+    if (sites) {
+      for (const url of sites.split(",")) {
+        DEFAULT_TOP_SITES.push({
+          isDefault: true,
+          url
+        });
+      }
+    }
   }
   async getScreenshot(url) {
-    let screenshot = await PreviewProvider.getThumbnail(url);
+    let screenshot = await Screenshots.getScreenshotForURL(url);
     const action = {type: at.SCREENSHOT_UPDATED, data: {url, screenshot}};
     this.store.dispatch(ac.BroadcastToContent(action));
   }
   async getLinksWithDefaults(action) {
-    let links = await NewTabUtils.activityStreamLinks.getTopSites();
+    let frecent = await NewTabUtils.activityStreamLinks.getTopSites();
+    const defaultUrls = DEFAULT_TOP_SITES.map(site => site.url);
+    let pinned = NewTabUtils.pinnedLinks.links;
+    pinned = pinned.map(site => site && Object.assign({}, site, {
+      isDefault: defaultUrls.indexOf(site.url) !== -1,
+      hostname: shortURL(site)
+    }));
 
-    if (!links) {
-      links = [];
+    if (!frecent) {
+      frecent = [];
     } else {
-      links = links.filter(link => link && link.type !== "affiliate").slice(0, 12);
+      frecent = frecent.filter(link => link && link.type !== "affiliate");
     }
 
-    if (links.length < TOP_SITES_SHOWMORE_LENGTH) {
-      links = [...links, ...DEFAULT_TOP_SITES].slice(0, TOP_SITES_SHOWMORE_LENGTH);
+    // Group together websites that require deduping.
+    let topsitesGroup = [];
+    for (const group of [pinned, frecent, DEFAULT_TOP_SITES]) {
+      topsitesGroup.push(group.filter(site => site).map(site => Object.assign({}, site, {hostname: shortURL(site)})));
     }
 
-    return links;
+    const dedupedGroups = this.dedupe.group(topsitesGroup);
+    // Insert original pinned websites in the result of the dedupe operation.
+    pinned = insertPinned([...dedupedGroups[1], ...dedupedGroups[2]], pinned);
+
+    return pinned.slice(0, TOP_SITES_SHOWMORE_LENGTH);
   }
-  async refresh(action) {
+  async refresh(target = null) {
     const links = await this.getLinksWithDefaults();
+
+    // First, cache existing screenshots in case we need to reuse them
+    const currentScreenshots = {};
+    for (const link of this.store.getState().TopSites.rows) {
+      if (link && link.screenshot) {
+        currentScreenshots[link.url] = link.screenshot;
+      }
+    }
+
+    // Now, get a tippy top icon or screenshot for every item
+    for (let link of links) {
+      if (!link) { continue; }
+
+      // Check for tippy top icon.
+      link = this._tippyTopProvider.processSite(link);
+      if (link.tippyTopIcon) { continue; }
+
+      // If no tippy top, then we get a screenshot.
+      if (currentScreenshots[link.url]) {
+        link.screenshot = currentScreenshots[link.url];
+      } else {
+        this.getScreenshot(link.url);
+      }
+    }
     const newAction = {type: at.TOP_SITES_UPDATED, data: links};
 
-    // Send an update to content so the preloaded tab can get the updated content
-    this.store.dispatch(ac.SendToContent(newAction, action.meta.fromTarget));
-    this.lastUpdated = Date.now();
-
-    // Now, get a screenshot for every item
-    for (let link of links) {
-      this.getScreenshot(link.url);
+    if (target) {
+      // Send an update to content so the preloaded tab can get the updated content
+      this.store.dispatch(ac.SendToContent(newAction, target));
+    } else {
+      // Broadcast an update to all open content pages
+      this.store.dispatch(ac.BroadcastToContent(newAction));
     }
+    this.lastUpdated = Date.now();
   }
-  openNewWindow(action, isPrivate = false) {
-    const win = action._target.browser.ownerGlobal;
-    win.openLinkIn(action.data.url, "window", {private: isPrivate});
+  _getPinnedWithData() {
+    // Augment the pinned links with any other extra data we have for them already in the store
+    const links = this.store.getState().TopSites.rows;
+    const pinned = NewTabUtils.pinnedLinks.links;
+    return pinned.map(pinnedLink => (pinnedLink ? Object.assign(links.find(link => link && link.url === pinnedLink.url) || {}, pinnedLink) : pinnedLink));
+  }
+  pin(action) {
+    const {site, index} = action.data;
+    NewTabUtils.pinnedLinks.pin(site, index);
+    this.store.dispatch(ac.BroadcastToContent({
+      type: at.PINNED_SITES_UPDATED,
+      data: this._getPinnedWithData()
+    }));
+  }
+  unpin(action) {
+    const {site} = action.data;
+    NewTabUtils.pinnedLinks.unpin(site);
+    this.store.dispatch(ac.BroadcastToContent({
+      type: at.PINNED_SITES_UPDATED,
+      data: this._getPinnedWithData()
+    }));
   }
   onAction(action) {
-    let realRows;
     switch (action.type) {
       case at.NEW_TAB_LOAD:
-        // Only check against real rows returned from history, not default ones.
-        realRows = this.store.getState().TopSites.rows.filter(row => !row.isDefault);
-        // When a new tab is opened, if we don't have enough top sites yet, refresh the data.
-        if (realRows.length < TOP_SITES_SHOWMORE_LENGTH) {
-          this.refresh(action);
-        } else if (Date.now() - this.lastUpdated >= UPDATE_TIME) {
+        if (
           // When a new tab is opened, if the last time we refreshed the data
           // is greater than 15 minutes, refresh the data.
-          this.refresh(action);
+          (Date.now() - this.lastUpdated >= UPDATE_TIME)
+        ) {
+          this.refresh(action.meta.fromTarget);
         }
         break;
-      case at.OPEN_NEW_WINDOW:
-        this.openNewWindow(action);
+      case at.PLACES_HISTORY_CLEARED:
+        this.refresh();
         break;
-      case at.OPEN_PRIVATE_WINDOW: {
-        this.openNewWindow(action, true);
+      case at.PREF_CHANGED:
+        if (action.data.name === DEFAULT_SITES_PREF) {
+          this.refreshDefaults(action.data.value);
+        }
         break;
-      }
+      case at.PREFS_INITIAL_VALUES:
+        this.refreshDefaults(action.data[DEFAULT_SITES_PREF]);
+        break;
+      case at.TOP_SITES_PIN:
+        this.pin(action);
+        break;
+      case at.TOP_SITES_UNPIN:
+        this.unpin(action);
+        break;
     }
   }
 };

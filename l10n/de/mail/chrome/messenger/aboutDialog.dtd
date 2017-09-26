@@ -11,7 +11,7 @@
 -->
 <!ENTITY update.checkForUpdatesButton.label       "Nach Updates suchen">
 <!ENTITY update.checkForUpdatesButton.accesskey   "N">
-<!ENTITY update.updateButton.label2               "Zum Abschließen des Updates &brandShortName; neu starten">
+<!ENTITY update.updateButton.label3               "Zum Abschließen des Updates &brandShorterName; neu starten">
 <!ENTITY update.updateButton.accesskey            "Z">
 
 

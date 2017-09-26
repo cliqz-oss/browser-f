@@ -7,34 +7,27 @@
 # file so that ESLint works correctly:
 # tools/lint/eslint/eslint-plugin-mozilla/lib/environments/browser-window.js
 
-<script type="application/javascript" src="chrome://global/content/printUtils.js"/>
-<script type="application/javascript" src="chrome://global/content/viewZoomOverlay.js"/>
-<script type="application/javascript" src="chrome://browser/content/places/browserPlacesViews.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser.js"/>
-<script type="application/javascript" src="chrome://browser/content/customizableui/panelUI.js"/>
-<script type="application/javascript" src="chrome://global/content/viewSourceUtils.js"/>
 
-<script type="application/javascript" src="chrome://browser/content/browser-addons.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-captivePortal.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-ctrlTab.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-customization.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-compacttheme.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-feeds.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-fullScreenAndPointerLock.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-fullZoom.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-gestureSupport.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-media.js"/>
+<script type="application/javascript" src="chrome://browser/content/browser-pageActions.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-places.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-plugins.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-refreshblocker.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-safebrowsing.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-sidebar.js"/>
+<<<<<<< HEAD
 <script type="application/javascript" src="chrome://browser/content/browser-social.js"/>
 #ifdef MOZ_SERVICES_SYNC
 <script type="application/javascript" src="chrome://browser/content/browser-sync.js"/>
 #endif
+||||||| merged common ancestors
+<script type="application/javascript" src="chrome://browser/content/browser-social.js"/>
+<script type="application/javascript" src="chrome://browser/content/browser-sync.js"/>
+=======
+>>>>>>> origin/upstream-releases
 <script type="application/javascript" src="chrome://browser/content/browser-tabsintitlebar.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-thumbnails.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-trackingprotection.js"/>
 
 #ifdef MOZ_DATA_REPORTING

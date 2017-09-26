@@ -3,9 +3,10 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  security.label                 "Sicherheit">
+<!ENTITY  phishingProtection.label       "Schutz vor Betrugsversuchen">
 
-<!ENTITY  warnOnAddonInstall.label        "Warnen, wenn Websites versuchen, Add-ons zu installieren">
-<!ENTITY  warnOnAddonInstall.accesskey    "W">
+<!ENTITY  warnOnAddonInstall2.label       "Warnen, wenn Websites versuchen, Add-ons zu installieren">
+<!ENTITY  warnOnAddonInstall2.accesskey   "W">
 
 <!-- LOCALIZATION NOTE (enableSafeBrowsing.label, blockDownloads.label, blockUncommonUnwanted.label):
   It is important that wording follows the guidelines outlined on this page:
@@ -26,8 +27,8 @@
 
 <!ENTITY  formsAndPasswords.label       "Formulare &amp; Passwörter">
 
-<!ENTITY  rememberLogins1.label          "Zugangsdaten und Passwörter für Websites speichern">
-<!ENTITY  rememberLogins1.accesskey      "Z">
+<!ENTITY  rememberLogins2.label         "Zugangsdaten und Passwörter für Websites speichern">
+<!ENTITY  rememberLogins2.accesskey     "Z">
 <!ENTITY  passwordExceptions.label      "Ausnahmen…">
 <!ENTITY  passwordExceptions.accesskey  "u">
 

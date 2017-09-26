@@ -1,6 +1,6 @@
 "use strict";
 
-Cu.import("resource://formautofill/FormAutofillUtils.jsm");
+Cu.import("resource://formautofill/FormAutofillHeuristics.jsm");
 
 const TESTCASES = [
   {
@@ -52,14 +52,14 @@ const TESTCASES = [
 ];
 
 TESTCASES.forEach(testcase => {
-  add_task(function* () {
+  add_task(async function() {
     do_print("Starting testcase: " + testcase.description);
 
     let doc = MockDocument.createTestDocument(
       "http://localhost:8080/test/", testcase.document);
 
     let element = doc.getElementById(testcase.inputId);
-    let strings = FormAutofillUtils.extractLabelStrings(element);
+    let strings = LabelUtils.extractLabelStrings(element);
 
     Assert.deepEqual(strings, testcase.expectedStrings);
   });
