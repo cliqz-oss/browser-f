@@ -107,14 +107,10 @@ struct BGRAColor
  * use this class to ensure that ImageLib services are available. Failure to do
  * so can result in strange, non-deterministic failures.
  */
-struct AutoInitializeImageLib
+class AutoInitializeImageLib
 {
-  AutoInitializeImageLib()
-  {
-    // Ensure that ImageLib services are initialized.
-    nsCOMPtr<imgITools> imgTools = do_CreateInstance("@mozilla.org/image/tools;1");
-    EXPECT_TRUE(imgTools != nullptr);
-  }
+public:
+  AutoInitializeImageLib();
 };
 
 /// Loads a file from the current directory. @return an nsIInputStream for it.
@@ -122,7 +118,7 @@ already_AddRefed<nsIInputStream> LoadFile(const char* aRelativePath);
 
 /**
  * @returns true if every pixel of @aSurface is @aColor.
- * 
+ *
  * If @aFuzz is nonzero, a tolerance of @aFuzz is allowed in each color
  * component. This may be necessary for tests that involve JPEG images or
  * downscaling.
@@ -414,6 +410,8 @@ ImageTestCase DownscaledTransparentICOWithANDMaskTestCase();
 
 ImageTestCase TruncatedSmallGIFTestCase();
 
+ImageTestCase LargeICOWithBMPTestCase();
+ImageTestCase LargeICOWithPNGTestCase();
 ImageTestCase GreenMultipleSizesICOTestCase();
 
 } // namespace image

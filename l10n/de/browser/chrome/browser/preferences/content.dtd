@@ -2,14 +2,13 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY  popups.label                "Pop-ups">
+<!ENTITY  permissions.label           "Berechtigungen">
 
 <!ENTITY  blockPopups.label           "Pop-up-Fenster blockieren">
 <!ENTITY  blockPopups.accesskey       "P">
 
-<!ENTITY  notificationsPolicy.label            "Benachrichtigungen">
 <!ENTITY  notificationsPolicyLearnMore.label   "Weitere Informationen">
-<!ENTITY  notificationsPolicyDesc3.label       "Websites festlegen, welche Benachrichtigungen senden dürfen">
+<!ENTITY  notificationsPolicyDesc4.label       "Websites festlegen, welche Benachrichtigungen senden dürfen">
 <!ENTITY  notificationsPolicyButton.accesskey  "u">
 <!ENTITY  notificationsPolicyButton.label      "Auswählen…">
 <!ENTITY  notificationsDoNotDisturb.label      "Mich nicht stören">
@@ -33,7 +32,7 @@
 <!ENTITY  colors.accesskey            "F">
 
 
-<!ENTITY languages.label                 "Sprachen">
+<!ENTITY language2.label              "Sprache">
 <!ENTITY chooseLanguage.label            "Bevorzugte Sprachen für die Darstellung von Websites wählen">
 <!ENTITY chooseButton.label              "Wählen…">
 <!ENTITY chooseButton.accesskey          "W">
@@ -53,8 +52,8 @@
 <!ENTITY translation.options.attribution.beforeLogo "Übersetzung mittels">
 <!ENTITY translation.options.attribution.afterLogo "">
 
-<!ENTITY  drmContent.label             "Inhalte mit DRM-Kopierschutz">
+<!ENTITY  drmContent2.label              "Inhalte mit DRM-Kopierschutz">
 
-<!ENTITY  playDRMContent.label         "Inhalte mit DRM-Kopierschutz wiedergeben">
-<!ENTITY  playDRMContent.accesskey     "D">
+<!ENTITY  playDRMContent2.label          "Inhalte mit DRM-Kopierschutz wiedergeben">
+<!ENTITY  playDRMContent2.accesskey      "D">
 <!ENTITY  playDRMContent.learnMore.label "Weitere Informationen">

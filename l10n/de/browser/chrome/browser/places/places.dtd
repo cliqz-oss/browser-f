@@ -85,8 +85,7 @@
 <!ENTITY col.dateadded.label     "Hinzugefügt">
 <!ENTITY col.lastmodified.label  "Zuletzt verändert">
 
-<!ENTITY search.label                              "Suchen:">
-<!ENTITY search.accesskey                          "S">
+<!ENTITY search.placeholder  "Suchen">
 
 <!ENTITY cmd.find.key                              "f">
 
@@ -104,8 +103,6 @@
 <!ENTITY detailsPane.less.accesskey "e">
 <!ENTITY detailsPane.selectAnItemText.description "Wählen Sie einen Eintrag, um seine Eigenschaften zu sehen und zu bearbeiten">
 
-<!ENTITY find.label               "Suchen:">
-<!ENTITY find.accesskey           "S">
 <!ENTITY view.label               "Sortieren">
 <!ENTITY view.accesskey           "o">
 <!ENTITY byDate.label             "Nach Datum">

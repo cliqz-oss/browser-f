@@ -43,8 +43,8 @@
 <!ENTITY  suggestionSettings.label      "Einstellungen für Suchvorschläge öffnen…">
 <!ENTITY  suggestionSettings.accesskey  "v">
 
-<!ENTITY  acceptCookies.label           "Cookies akzeptieren">
-<!ENTITY  acceptCookies.accesskey       "C">
+<!ENTITY  acceptCookies2.label          "Cookies von Websites akzeptieren">
+<!ENTITY  acceptCookies2.accesskey      "C">
 
 <!ENTITY  acceptThirdParty.pre.label      "Cookies von Drittanbietern akzeptieren:">
 <!ENTITY  acceptThirdParty.pre.accesskey  "k">

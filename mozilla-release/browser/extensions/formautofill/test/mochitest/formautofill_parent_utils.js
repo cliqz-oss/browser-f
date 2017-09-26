@@ -7,18 +7,27 @@
 const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
 Cu.import("resource://gre/modules/Services.jsm");
+let {profileStorage} = Cu.import("resource://formautofill/ProfileStorage.jsm", {});
 
 var ParentUtils = {
   cleanUpAddress() {
-    Services.cpmm.addMessageListener("FormAutofill:Addresses", function getResult(result) {
-      Services.cpmm.removeMessageListener("FormAutofill:Addresses", getResult);
+    Services.cpmm.addMessageListener("FormAutofill:Records", function getResult(result) {
+      Services.cpmm.removeMessageListener("FormAutofill:Records", getResult);
 
       let addresses = result.data;
       Services.cpmm.sendAsyncMessage("FormAutofill:RemoveAddresses",
                                      {guids: addresses.map(address => address.guid)});
+
+      let count = addresses.length;
+      Services.obs.addObserver(function observer(subject, topic, data) {
+        if (!--count) {
+          Services.obs.removeObserver(observer, topic);
+          sendAsyncMessage("FormAutofillTest:AddressCleanedUp");
+        }
+      }, "formautofill-storage-changed");
     });
 
-    Services.cpmm.sendAsyncMessage("FormAutofill:GetAddresses", {searchString: ""});
+    Services.cpmm.sendAsyncMessage("FormAutofill:GetRecords", {searchString: "", collectionName: "addresses"});
   },
 
   updateAddress(type, chromeMsg, msgData, contentMsg) {
@@ -42,6 +51,47 @@ var ParentUtils = {
     Services.obs.removeObserver(this, "formautofill-storage-changed");
     this.cleanUpAddress();
   },
+
+  areAddressesMatching(addressA, addressB) {
+    for (let field of profileStorage.addresses.VALID_FIELDS) {
+      if (addressA[field] !== addressB[field]) {
+        return false;
+      }
+    }
+    // Check the internal field if both addresses have valid value.
+    for (let field of profileStorage.INTERNAL_FIELDS) {
+      if (field in addressA && field in addressB && (addressA[field] !== addressB[field])) {
+        return false;
+      }
+    }
+    return true;
+  },
+
+  checkAddresses({expectedAddresses}) {
+    Services.cpmm.addMessageListener("FormAutofill:Records", function getResult(result) {
+      Services.cpmm.removeMessageListener("FormAutofill:Records", getResult);
+      let addresses = result.data;
+      if (addresses.length !== expectedAddresses.length) {
+        sendAsyncMessage("FormAutofillTest:areAddressesMatching", false);
+        return;
+      }
+
+      for (let address of addresses) {
+        let matching = expectedAddresses.some((expectedAddress) => {
+          return ParentUtils.areAddressesMatching(address, expectedAddress);
+        });
+
+        if (!matching) {
+          sendAsyncMessage("FormAutofillTest:areAddressesMatching", false);
+          return;
+        }
+      }
+
+      sendAsyncMessage("FormAutofillTest:areAddressesMatching", true);
+    });
+
+    Services.cpmm.sendAsyncMessage("FormAutofill:GetRecords", {searchString: "", collectionName: "addresses"});
+  },
 };
 
 Services.obs.addObserver(ParentUtils, "formautofill-storage-changed");
@@ -56,6 +106,14 @@ addMessageListener("FormAutofillTest:RemoveAddress", (msg) => {
 
 addMessageListener("FormAutofillTest:UpdateAddress", (msg) => {
   ParentUtils.updateAddress("update", "FormAutofill:SaveAddress", msg, "FormAutofillTest:AddressUpdated");
+});
+
+addMessageListener("FormAutofillTest:CheckAddresses", (msg) => {
+  ParentUtils.checkAddresses(msg);
+});
+
+addMessageListener("FormAutofillTest:CleanUpAddress", (msg) => {
+  ParentUtils.cleanUpAddress();
 });
 
 addMessageListener("cleanup", () => {

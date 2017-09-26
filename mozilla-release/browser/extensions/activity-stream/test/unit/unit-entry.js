@@ -1,4 +1,4 @@
-const {GlobalOverrider, FakePrefs} = require("test/unit/utils");
+const {GlobalOverrider, FakePrefs, FakePerformance} = require("test/unit/utils");
 const {chaiAssertions} = require("test/schemas/pings");
 
 const req = require.context(".", true, /\.test\.jsx?$/);
@@ -10,8 +10,10 @@ sinon.assert.expose(assert, {prefix: ""});
 chai.use(chaiAssertions);
 
 let overrider = new GlobalOverrider();
+
 overrider.set({
   Components: {
+    classes: {},
     interfaces: {},
     utils: {
       import() {},
@@ -26,16 +28,27 @@ overrider.set({
   fetch() {},
   Preferences: FakePrefs,
   Services: {
-    locale: {getRequestedLocale() {}},
+    locale: {
+      getAppLocalesAsLangTags() {},
+      getRequestedLocale() {},
+      negotiateLanguages() {}
+    },
+    urlFormatter: {formatURL: str => str},
     mm: {
       addMessageListener: (msg, cb) => cb(),
       removeMessageListener() {}
     },
+    appShell: {hiddenDOMWindow: {performance: new FakePerformance()}},
     obs: {
       addObserver() {},
       removeObserver() {}
     },
     prefs: {
+      addObserver() {},
+      prefHasUserValue() {},
+      removeObserver() {},
+      getStringPref() {},
+      getBoolPref() {},
       getDefaultBranch() {
         return {
           setBoolPref() {},
@@ -44,7 +57,10 @@ overrider.set({
           clearUserPref() {}
         };
       }
-    }
+    },
+    tm: {dispatchToMainThread: cb => cb()},
+    eTLD: {getPublicSuffix() {}},
+    io: {NewURI() {}}
   },
   XPCOMUtils: {
     defineLazyModuleGetter() {},

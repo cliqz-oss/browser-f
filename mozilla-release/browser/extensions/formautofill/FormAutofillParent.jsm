@@ -35,12 +35,15 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-Cu.import("resource://gre/modules/Services.jsm");
 
 Cu.import("resource://formautofill/FormAutofillUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "FormAutofillPreferences",
                                   "resource://formautofill/FormAutofillPreferences.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "FormAutofillDoorhanger",
+                                  "resource://formautofill/FormAutofillDoorhanger.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
+                                  "resource:///modules/RecentWindow.jsm");
 
 this.log = null;
 FormAutofillUtils.defineLazyLogGetter(this, this.EXPORTED_SYMBOLS[0]);
@@ -54,10 +57,10 @@ function FormAutofillParent() {
     let {profileStorage} = Cu.import("resource://formautofill/ProfileStorage.jsm", {});
     log.debug("Loading profileStorage");
 
-    profileStorage.initialize().then(function onStorageInitialized() {
+    profileStorage.initialize().then(() => {
       // Update the saved field names to compute the status and update child processes.
       this._updateSavedFieldNames();
-    }.bind(this));
+    });
 
     return profileStorage;
   });
@@ -77,10 +80,12 @@ FormAutofillParent.prototype = {
   async init() {
     Services.obs.addObserver(this, "advanced-pane-loaded");
     Services.ppmm.addMessageListener("FormAutofill:InitStorage", this);
-    Services.ppmm.addMessageListener("FormAutofill:GetAddresses", this);
+    Services.ppmm.addMessageListener("FormAutofill:GetRecords", this);
     Services.ppmm.addMessageListener("FormAutofill:SaveAddress", this);
+    Services.ppmm.addMessageListener("FormAutofill:SaveCreditCard", this);
     Services.ppmm.addMessageListener("FormAutofill:RemoveAddresses", this);
-    Services.ppmm.addMessageListener("FormAutofill:OnFormSubmit", this);
+    Services.ppmm.addMessageListener("FormAutofill:OpenPreferences", this);
+    Services.mm.addMessageListener("FormAutofill:OnFormSubmit", this);
 
     // Observing the pref and storage changes
     Services.prefs.addObserver(ENABLED_PREF, this);
@@ -113,8 +118,8 @@ FormAutofillParent.prototype = {
       }
 
       case "formautofill-storage-changed": {
-        // Early exit if the action is not "add" nor "remove"
-        if (data != "add" && data != "remove") {
+        // Early exit if only metadata is changed
+        if (data == "notifyUsed") {
           break;
         }
 
@@ -171,14 +176,14 @@ FormAutofillParent.prototype = {
    * @param   {object} message.data The data of the message.
    * @param   {nsIFrameMessageManager} message.target Caller's message manager.
    */
-  receiveMessage({name, data, target}) {
+  async receiveMessage({name, data, target}) {
     switch (name) {
       case "FormAutofill:InitStorage": {
         this.profileStorage.initialize();
         break;
       }
-      case "FormAutofill:GetAddresses": {
-        this._getAddresses(data, target);
+      case "FormAutofill:GetRecords": {
+        this._getRecords(data, target);
         break;
       }
       case "FormAutofill:SaveAddress": {
@@ -189,12 +194,22 @@ FormAutofillParent.prototype = {
         }
         break;
       }
+      case "FormAutofill:SaveCreditCard": {
+        await this.profileStorage.creditCards.normalizeCCNumberFields(data.creditcard);
+        this.profileStorage.creditCards.add(data.creditcard);
+        break;
+      }
       case "FormAutofill:RemoveAddresses": {
         data.guids.forEach(guid => this.profileStorage.addresses.remove(guid));
         break;
       }
       case "FormAutofill:OnFormSubmit": {
         this._onFormSubmit(data, target);
+        break;
+      }
+      case "FormAutofill:OpenPreferences": {
+        const win = RecentWindow.getMostRecentBrowserWindow();
+        win.openPreferences("panePrivacy", {origin: "autofillFooter"});
       }
     }
   },
@@ -208,35 +223,41 @@ FormAutofillParent.prototype = {
     this.profileStorage._saveImmediately();
 
     Services.ppmm.removeMessageListener("FormAutofill:InitStorage", this);
-    Services.ppmm.removeMessageListener("FormAutofill:GetAddresses", this);
+    Services.ppmm.removeMessageListener("FormAutofill:GetRecords", this);
     Services.ppmm.removeMessageListener("FormAutofill:SaveAddress", this);
+    Services.ppmm.removeMessageListener("FormAutofill:SaveCreditCard", this);
     Services.ppmm.removeMessageListener("FormAutofill:RemoveAddresses", this);
     Services.obs.removeObserver(this, "advanced-pane-loaded");
     Services.prefs.removeObserver(ENABLED_PREF, this);
   },
 
   /**
-   * Get the address data from profile store and return addresses back to content
+   * Get the records from profile store and return results back to content
    * process.
    *
    * @private
+   * @param  {string} data.collectionName
+   *         The name used to specify which collection to retrieve records.
    * @param  {string} data.searchString
-   *         The typed string for filtering out the matched address.
+   *         The typed string for filtering out the matched records.
    * @param  {string} data.info
    *         The input autocomplete property's information.
    * @param  {nsIFrameMessageManager} target
    *         Content's message manager.
    */
-  _getAddresses({searchString, info}, target) {
-    let addresses = [];
+  _getRecords({collectionName, searchString, info}, target) {
+    let records;
+    let collection = this.profileStorage[collectionName];
 
-    if (info && info.fieldName) {
-      addresses = this.profileStorage.addresses.getByFilter({searchString, info});
+    if (!collection) {
+      records = [];
+    } else if (info && info.fieldName) {
+      records = collection.getByFilter({searchString, info});
     } else {
-      addresses = this.profileStorage.addresses.getAll();
+      records = collection.getAll();
     }
 
-    target.sendAsyncMessage("FormAutofill:Addresses", addresses);
+    target.sendAsyncMessage("FormAutofill:Records", records);
   },
 
   _updateSavedFieldNames() {
@@ -247,12 +268,14 @@ FormAutofillParent.prototype = {
       Services.ppmm.initialProcessData.autofillSavedFieldNames.clear();
     }
 
-    this.profileStorage.addresses.getAll().forEach((address) => {
-      Object.keys(address).forEach((fieldName) => {
-        if (!address[fieldName]) {
-          return;
-        }
-        Services.ppmm.initialProcessData.autofillSavedFieldNames.add(fieldName);
+    ["addresses", "creditCards"].forEach(c => {
+      this.profileStorage[c].getAll().forEach((record) => {
+        Object.keys(record).forEach((fieldName) => {
+          if (!record[fieldName]) {
+            return;
+          }
+          Services.ppmm.initialProcessData.autofillSavedFieldNames.add(fieldName);
+        });
       });
     });
 
@@ -267,17 +290,85 @@ FormAutofillParent.prototype = {
   },
 
   _onFormSubmit(data, target) {
-    let {address} = data;
+    let {profile: {address}, timeStartedFillingMS} = data;
 
     if (address.guid) {
+      // Avoid updating the fields that users don't modify.
+      let originalAddress = this.profileStorage.addresses.get(address.guid);
+      for (let field in address.record) {
+        if (address.untouchedFields.includes(field) && originalAddress[field]) {
+          address.record[field] = originalAddress[field];
+        }
+      }
+
       if (!this.profileStorage.addresses.mergeIfPossible(address.guid, address.record)) {
-        // TODO: Show update doorhanger(bug 1303513) and set probe(bug 990200)
+        this._recordFormFillingTime("address", "autofill-update", timeStartedFillingMS);
+
+        FormAutofillDoorhanger.show(target, "update").then((state) => {
+          let changedGUIDs = this.profileStorage.addresses.mergeToStorage(address.record);
+          switch (state) {
+            case "create":
+              if (!changedGUIDs.length) {
+                changedGUIDs.push(this.profileStorage.addresses.add(address.record));
+              }
+              break;
+            case "update":
+              if (!changedGUIDs.length) {
+                this.profileStorage.addresses.update(address.guid, address.record, true);
+                changedGUIDs.push(address.guid);
+              } else {
+                this.profileStorage.addresses.remove(address.guid);
+              }
+              break;
+          }
+          changedGUIDs.forEach(guid => this.profileStorage.addresses.notifyUsed(guid));
+        });
+        // Address should be updated
+        Services.telemetry.scalarAdd("formautofill.addresses.fill_type_autofill_update", 1);
         return;
       }
+      this._recordFormFillingTime("address", "autofill", timeStartedFillingMS);
       this.profileStorage.addresses.notifyUsed(address.guid);
+      // Address is merged successfully
+      Services.telemetry.scalarAdd("formautofill.addresses.fill_type_autofill", 1);
     } else {
-      // TODO: Add first time use probe(bug 990199) and doorhanger(bug 1303510)
-      // profileStorage.addresses.add(address.record);
+      let changedGUIDs = this.profileStorage.addresses.mergeToStorage(address.record);
+      if (!changedGUIDs.length) {
+        changedGUIDs.push(this.profileStorage.addresses.add(address.record));
+      }
+      changedGUIDs.forEach(guid => this.profileStorage.addresses.notifyUsed(guid));
+      this._recordFormFillingTime("address", "manual", timeStartedFillingMS);
+
+      // Show first time use doorhanger
+      if (Services.prefs.getBoolPref("extensions.formautofill.firstTimeUse")) {
+        Services.prefs.setBoolPref("extensions.formautofill.firstTimeUse", false);
+        FormAutofillDoorhanger.show(target, "firstTimeUse").then((state) => {
+          if (state !== "open-pref") {
+            return;
+          }
+
+          target.ownerGlobal.openPreferences("panePrivacy",
+                                             {origin: "autofillDoorhanger"});
+        });
+      } else {
+        // We want to exclude the first time form filling.
+        Services.telemetry.scalarAdd("formautofill.addresses.fill_type_manual", 1);
+      }
     }
+  },
+  /**
+   * Set the probes for the filling time with specific filling type and form type.
+   *
+   * @private
+   * @param  {string} formType
+   *         3 type of form (address/creditcard/address-creditcard).
+   * @param  {string} fillingType
+   *         3 filling type (manual/autofill/autofill-update).
+   * @param  {int} startedFillingMS
+   *         Time that form started to filling in ms.
+   */
+  _recordFormFillingTime(formType, fillingType, startedFillingMS) {
+    let histogram = Services.telemetry.getKeyedHistogramById("FORM_FILLING_REQUIRED_TIME_MS");
+    histogram.add(`${formType}-${fillingType}`, Date.now() - startedFillingMS);
   },
 };

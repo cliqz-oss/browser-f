@@ -104,6 +104,9 @@ FakePrefs.prototype = {
       delete this.observers[prefName];
     }
   },
+  _prefBranch: {},
+  observeBranch(listener) {},
+  ignoreBranch(listener) {},
 
   prefs: {},
   get(prefName) { return this.prefs[prefName]; },
@@ -113,6 +116,46 @@ FakePrefs.prototype = {
     if (prefName in this.observers) {
       this.observers[prefName](value);
     }
+  }
+};
+
+function FakePerformance() {}
+FakePerformance.prototype = {
+  marks: new Map(),
+  now() {
+    return window.performance.now();
+  },
+  timing: {navigationStart: 222222.123},
+  get timeOrigin() {
+    return 10000.234;
+  },
+  // XXX assumes type == "mark"
+  getEntriesByName(name, type) {
+    if (this.marks.has(name)) {
+      return this.marks.get(name);
+    }
+    return [];
+  },
+  callsToMark: 0,
+
+  /**
+   * @note The "startTime" for each mark is simply the number of times mark
+   * has been called in this object.
+   */
+  mark(name) {
+    let markObj = {
+      name,
+      "entryType": "mark",
+      "startTime": ++this.callsToMark,
+      "duration": 0
+    };
+
+    if (this.marks.has(name)) {
+      this.marks.get(name).push(markObj);
+      return;
+    }
+
+    this.marks.set(name, [markObj]);
   }
 };
 
@@ -130,18 +173,19 @@ function nodeWithIntlProp(node) {
   return React.cloneElement(node, {intl});
 }
 
-function shallowWithIntl(node) {
-  return shallow(nodeWithIntlProp(node), {context: {intl}});
+function shallowWithIntl(node, options = {}) {
+  return shallow(nodeWithIntlProp(node), Object.assign({}, options, {context: {intl}}));
 }
 
-function mountWithIntl(node) {
-  return mount(nodeWithIntlProp(node), {
+function mountWithIntl(node, options = {}) {
+  return mount(nodeWithIntlProp(node), Object.assign({}, options, {
     context: {intl},
     childContextTypes: {intl: intlShape}
-  });
+  }));
 }
 
 module.exports = {
+  FakePerformance,
   FakePrefs,
   GlobalOverrider,
   addNumberReducer,

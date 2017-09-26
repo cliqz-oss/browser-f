@@ -34,8 +34,8 @@
 <!ENTITY welcomeback2.pageTitle     "Erfolgreich abgeschlossen!">
 <!ENTITY welcomeback2.pageInfo1     "&brandShortName; ist bereit und kann jetzt verwendet werden.">
 
-<!ENTITY welcomeback2.label.restoreAll  "Alle Fenster und Tabs wiederherstellen">
-<!ENTITY welcomeback2.label.restoreSome "Wiederherzustellende Fenster und Tabs auswählen">
+<!ENTITY welcomeback2.restoreAll.label  "Alle Fenster und Tabs wiederherstellen">
+<!ENTITY welcomeback2.restoreSome.label "Wiederherzustellende Fenster und Tabs auswählen">
 
 
 <!-- LOCALIZATION NOTE (welcomeback2.beforelink.pageInfo2,

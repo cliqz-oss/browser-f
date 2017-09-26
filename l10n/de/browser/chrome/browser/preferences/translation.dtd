@@ -14,7 +14,7 @@
 <!ENTITY removeAllLanguages.accesskey     "A">
 
 <!ENTITY noTranslationForSites.label      "Für die folgenden Websites keine Übersetzung anbieten:">
-<!ENTITY treehead.siteName.label          "Website">
+<!ENTITY treehead.siteName2.label         "Websites">
 <!ENTITY removeSite.label                 "Website entfernen">
 <!ENTITY removeSite.accesskey             "e">
 <!ENTITY removeAllSites.label             "Alle Seiten entfernen">

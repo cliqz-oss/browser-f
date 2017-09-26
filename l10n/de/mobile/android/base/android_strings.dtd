@@ -295,6 +295,9 @@
 <!-- Long-click title of CustomTabsActivity will copy URL to clipboard and display this hint -->
 <!ENTITY custom_tabs_hint_url_copy "Adresse kopiert">
 
+<!ENTITY pref_pwa "Progressive Web Apps">
+<!ENTITY pref_pwa_summary "Hinzufügen von Web-Apps zum Startbildschirm erlauben">
+
 <!-- Localization note (pref_activity_stream): Experimental feature, see https://testpilot.firefox.com/experiments/activity-stream  -->
 <!ENTITY pref_activity_stream "Aktivitätenübersicht">
 <!ENTITY pref_activity_stream_summary "Eine übersichtliche Darstellung der zuletzt besuchten Seiten und eine überarbeitete Startseite erleichtern das Auffinden in &brandShortName;.">
@@ -358,10 +361,6 @@
 <!ENTITY pref_clear_on_exit_title3 "Private Daten beim Beenden löschen">
 <!ENTITY pref_clear_on_exit_summary2 "&brandShortName; löscht die Daten automatisch beim Verwenden der Funktion \u0022Beenden\u0022 aus dem Hauptmenü.">
 <!ENTITY pref_clear_on_exit_dialog_title "Zu löschende Daten auswählen">
-<!ENTITY pref_plugins "Plugins">
-<!ENTITY pref_plugins_enabled "Aktiviert">
-<!ENTITY pref_plugins_tap_to_play2 "Antippen zum Aktivieren">
-<!ENTITY pref_plugins_disabled "Deaktiviert">
 <!ENTITY pref_restore_tabs "Tabs wiederherstellen">
 <!ENTITY pref_restore_always "Immer wiederherstellen">
 <!ENTITY pref_restore_quit "Nach Beenden von &brandShortName; nicht wiederherstellen">
@@ -545,6 +544,7 @@
 <!ENTITY page_removed "Seite entfernt">
 
 <!ENTITY bookmark_edit_title "Lesezeichen bearbeiten">
+<!ENTITY bookmark_edit_folder_title "Ordner bearbeiten">
 <!ENTITY bookmark_edit_name "Name">
 <!ENTITY bookmark_edit_location "Adresse">
 <!ENTITY bookmark_edit_keyword "Schlüsselwort">
@@ -621,6 +621,11 @@
 <!-- Localization note (home_remote_tabs_unhide_selected_devices) : This is
      the text of a button; we expect more than one device. -->
 <!ENTITY home_remote_tabs_unhide_selected_devices "Ausgewählte Geräte nicht mehr ausblenden">
+
+<!-- Localization note (home_pinned_site) : This is a snackbar label displayed after
+    a site is pinned or unpinned. -->
+<!ENTITY home_pinned_site "Seite angeheftet">
+<!ENTITY home_unpinned_site "Seite abgelöst">
 
 <!ENTITY remote_tabs_panel_moved_title "Wo sind meine Tabs jetzt?">
 <!ENTITY remote_tabs_panel_moved_desc "Ihre Tabs von anderen Geräten werden jetzt in einer Ansicht auf der Startseite angezeigt. Dadurch können Sie auf diese in jedem neuen Tab schnell zugreifen.">
@@ -842,3 +847,4 @@ is simply hidden from the Activity Stream panel. -->
 
 <!ENTITY activity_stream_welcome_title "Willkommen zu Ihren wichtigsten Seiten">
 <!ENTITY activity_stream_welcome_content1 "&brandShortName; hebt nun die wichtigsten von Ihnen entdeckten Seiten hervor, sodass Sie wunderbare Artikel, Videos, Lesezeichen und Seiten jederzeit wiederfinden.">
+<!ENTITY fullscreen_warning "Vollbildmodus gestartet">

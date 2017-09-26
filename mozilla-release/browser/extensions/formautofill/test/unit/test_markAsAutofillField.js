@@ -17,6 +17,7 @@ const TESTCASES = [
                  <input id="without-autocomplete-1">
                  <input id="without-autocomplete-2">
                </form>`,
+    targetElementId: "given-name",
     expectedResult: [
       "given-name",
       "additional-name",
@@ -36,6 +37,7 @@ const TESTCASES = [
                  <input id="without-autocomplete-1">
                  <input id="without-autocomplete-2">
                </form>`,
+    targetElementId: "street-addr",
     expectedResult: [],
   },
   {
@@ -47,6 +49,7 @@ const TESTCASES = [
                <input id="tel" autocomplete="tel">
                <input id="without-autocomplete-1">
                <input id="without-autocomplete-2">`,
+    targetElementId: "street-addr",
     expectedResult: [
       "street-addr",
       "city",
@@ -63,14 +66,15 @@ FormAutofillContent._markAsAutofillField = function(field) {
 };
 
 TESTCASES.forEach(testcase => {
-  add_task(function* () {
+  add_task(async function() {
     do_print("Starting testcase: " + testcase.description);
 
     markedFieldId = [];
 
     let doc = MockDocument.createTestDocument(
       "http://localhost:8080/test/", testcase.document);
-    FormAutofillContent.identifyAutofillFields(doc);
+    let element = doc.getElementById(testcase.targetElementId);
+    FormAutofillContent.identifyAutofillFields(element);
 
     Assert.deepEqual(markedFieldId, testcase.expectedResult,
       "Check the fields were marked correctly.");

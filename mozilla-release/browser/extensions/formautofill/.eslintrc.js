@@ -32,9 +32,6 @@ module.exports = {
     // No space padding in parentheses
     "space-in-parens": ["error", "never"],
 
-    // Commas at the end of the line not the start
-    "comma-style": "error",
-
     // Require braces around blocks that start a new line
     "curly": ["error", "all"],
 
@@ -109,9 +106,6 @@ module.exports = {
     // Disallow throwing literals (eg. throw "error" instead of
     // throw new Error("error")).
     "no-throw-literal": "error",
-
-    // Disallow the use of Boolean literals in conditional expressions.
-    "no-unneeded-ternary": "error",
 
     // Disallow padding within blocks.
     "padded-blocks": ["warn", "never"],

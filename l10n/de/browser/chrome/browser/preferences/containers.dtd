@@ -7,7 +7,7 @@
 <!ENTITY preferencesButton.label "Einstellungen">
 <!ENTITY removeButton.label   "Löschen">
 <!-- &#171; is &laquo; however it's not defined in XML -->
-<!ENTITY backLink.label       "&#171; Zurück zu Datenschutz">
+<!ENTITY backLink2.label      "&#171; Zurück">
 
 <!ENTITY window.title         "Neue Umgebung hinzufügen">
 <!ENTITY window.width         "45em">

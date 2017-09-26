@@ -28,6 +28,17 @@ describe("PlacesFeed", () => {
       history: {addObserver: sandbox.spy(), removeObserver: sandbox.spy()},
       bookmarks: {TYPE_BOOKMARK, addObserver: sandbox.spy(), removeObserver: sandbox.spy()}
     });
+    globals.set("Pocket", {savePage: sandbox.spy()});
+    global.Components.classes["@mozilla.org/browser/nav-history-service;1"] = {
+      getService() {
+        return global.PlacesUtils.history;
+      }
+    };
+    global.Components.classes["@mozilla.org/browser/nav-bookmarks-service;1"] = {
+      getService() {
+        return global.PlacesUtils.bookmarks;
+      }
+    };
     sandbox.spy(global.Services.obs, "addObserver");
     sandbox.spy(global.Services.obs, "removeObserver");
     sandbox.spy(global.Components.utils, "reportError");
@@ -77,8 +88,10 @@ describe("PlacesFeed", () => {
       assert.calledWith(global.NewTabUtils.activityStreamLinks.blockURL, {url: "apple.com"});
     });
     it("should bookmark a url on BOOKMARK_URL", () => {
-      feed.onAction({type: at.BOOKMARK_URL, data: "pear.com"});
-      assert.calledWith(global.NewTabUtils.activityStreamLinks.addBookmark, "pear.com");
+      const data = {url: "pear.com", title: "A pear"};
+      const _target = {browser: {ownerGlobal() {}}};
+      feed.onAction({type: at.BOOKMARK_URL, data, _target});
+      assert.calledWith(global.NewTabUtils.activityStreamLinks.addBookmark, data, _target.browser);
     });
     it("should delete a bookmark on DELETE_BOOKMARK_BY_ID", () => {
       feed.onAction({type: at.DELETE_BOOKMARK_BY_ID, data: "g123kd"});
@@ -87,6 +100,53 @@ describe("PlacesFeed", () => {
     it("should delete a history entry on DELETE_HISTORY_URL", () => {
       feed.onAction({type: at.DELETE_HISTORY_URL, data: "guava.com"});
       assert.calledWith(global.NewTabUtils.activityStreamLinks.deleteHistoryEntry, "guava.com");
+    });
+    it("should call openNewWindow with the correct url on OPEN_NEW_WINDOW", () => {
+      sinon.stub(feed, "openNewWindow");
+      const openWindowAction = {type: at.OPEN_NEW_WINDOW, data: {url: "foo.com"}};
+      feed.onAction(openWindowAction);
+      assert.calledWith(feed.openNewWindow, openWindowAction);
+    });
+    it("should call openNewWindow with the correct url and privacy args on OPEN_PRIVATE_WINDOW", () => {
+      sinon.stub(feed, "openNewWindow");
+      const openWindowAction = {type: at.OPEN_PRIVATE_WINDOW, data: {url: "foo.com"}};
+      feed.onAction(openWindowAction);
+      assert.calledWith(feed.openNewWindow, openWindowAction, true);
+    });
+    it("should call openNewWindow with the correct url on OPEN_NEW_WINDOW", () => {
+      const openWindowAction = {
+        type: at.OPEN_NEW_WINDOW,
+        data: {url: "foo.com"},
+        _target: {browser: {ownerGlobal: {openLinkIn: () => {}}}}
+      };
+      sinon.stub(openWindowAction._target.browser.ownerGlobal, "openLinkIn");
+      feed.onAction(openWindowAction);
+      assert.calledOnce(openWindowAction._target.browser.ownerGlobal.openLinkIn);
+    });
+    it("should open link on OPEN_LINK", () => {
+      sinon.stub(feed, "openNewWindow");
+      const openLinkAction = {
+        type: at.OPEN_LINK,
+        data: {url: "foo.com", event: {where: "current"}},
+        _target: {browser: {ownerGlobal: {openLinkIn: sinon.spy(), whereToOpenLink: e => e.where}}}
+      };
+      feed.onAction(openLinkAction);
+      assert.calledWith(openLinkAction._target.browser.ownerGlobal.openLinkIn, openLinkAction.data.url, "current");
+    });
+    it("should open link with referrer on OPEN_LINK", () => {
+      globals.set("Services", {io: {newURI: url => `URI:${url}`}});
+      sinon.stub(feed, "openNewWindow");
+      const openLinkAction = {
+        type: at.OPEN_LINK,
+        data: {url: "foo.com", referrer: "foo.com/ref", event: {where: "tab"}},
+        _target: {browser: {ownerGlobal: {openLinkIn: sinon.spy(), whereToOpenLink: e => e.where}}}
+      };
+      feed.onAction(openLinkAction);
+      assert.calledWith(openLinkAction._target.browser.ownerGlobal.openLinkIn, openLinkAction.data.url, "tab", {referrerURI: `URI:${openLinkAction.data.referrer}`});
+    });
+    it("should save to Pocket on SAVE_TO_POCKET", () => {
+      feed.onAction({type: at.SAVE_TO_POCKET, data: {site: {url: "raspberry.com", title: "raspberry"}}, _target: {browser: {}}});
+      assert.calledWith(global.Pocket.savePage, {}, "raspberry.com", "raspberry");
     });
   });
 

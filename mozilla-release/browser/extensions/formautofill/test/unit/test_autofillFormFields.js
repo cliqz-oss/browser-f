@@ -1,6 +1,7 @@
 /*
  * Test for form auto fill content helper fill all inputs function.
  */
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 
 "use strict";
 
@@ -12,7 +13,7 @@ const TESTCASES = [
     document: `<form><input id="given-name"><input id="family-name">
                <input id="street-addr"><input id="city"><select id="country"></select>
                <input id='email'><input id="tel"></form>`,
-    fieldDetails: [],
+    addressFieldDetails: [],
     profileData: {},
     expectedResult: {
       "street-addr": "",
@@ -34,7 +35,7 @@ const TESTCASES = [
                </select>
                <input id="email" autocomplete="email">
                <input id="tel" autocomplete="tel"></form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "", "contactType": "", "fieldName": "given-name", "element": {}},
       {"section": "", "addressType": "", "contactType": "", "fieldName": "family-name", "element": {}},
       {"section": "", "addressType": "", "contactType": "", "fieldName": "street-address", "element": {}},
@@ -45,14 +46,15 @@ const TESTCASES = [
     ],
     profileData: {
       "guid": "123",
-      "street-address": "2 Harrison St",
+      "street-address": "2 Harrison St line2",
+      "-moz-street-address-one-line": "2 Harrison St line2",
       "address-level2": "San Francisco",
       "country": "US",
       "email": "foo@mozilla.com",
       "tel": "1234567",
     },
     expectedResult: {
-      "street-addr": "2 Harrison St",
+      "street-addr": "2 Harrison St line2",
       "city": "San Francisco",
       "country": "US",
       "email": "foo@mozilla.com",
@@ -71,7 +73,7 @@ const TESTCASES = [
                </select>
                <input id='email' autocomplete="shipping email">
                <input id="tel" autocomplete="shipping tel"></form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "given-name", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "family-name", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "street-address", "element": {}},
@@ -105,7 +107,7 @@ const TESTCASES = [
                <input id="country" autocomplete="shipping country">
                <input id='email' autocomplete="shipping email">
                <input id="tel" autocomplete="shipping tel"></form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "given-name", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "family-name", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "street-address", "element": {}},
@@ -139,7 +141,7 @@ const TESTCASES = [
                <input id="country" autocomplete="billing country">
                <input id='email' autocomplete="shipping email">
                <input id="tel" autocomplete="shipping tel"></form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "given-name", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "family-name", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "street-address", "element": {}},
@@ -178,7 +180,7 @@ const TESTCASES = [
                  <option value="WA">Washington</option>
                </select>
                </form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
     ],
@@ -205,7 +207,7 @@ const TESTCASES = [
                  <option value="WA">Washington</option>
                </select>
                </form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
     ],
@@ -234,7 +236,7 @@ const TESTCASES_INPUT_UNCHANGED = [
                  <option value="WA">Washington</option>
                </select>
                </form>`,
-    fieldDetails: [
+    addressFieldDetails: [
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "country", "element": {}},
       {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
     ],
@@ -246,6 +248,169 @@ const TESTCASES_INPUT_UNCHANGED = [
     expectedResult: {
       "country": "US",
       "state": "",
+    },
+  },
+];
+
+const TESTCASES_FILL_SELECT = [
+  // US States
+  {
+    description: "Form with US states select elements",
+    document: `<form><select id="state" autocomplete="shipping address-level1">
+                 <option value=""></option>
+                 <option value="CA">California</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+      "address-level1": "CA",
+    },
+    expectedResult: {
+      "state": "CA",
+    },
+  },
+  {
+    description: "Form with US states select elements; with lower case state key",
+    document: `<form><select id="state" autocomplete="shipping address-level1">
+                 <option value=""></option>
+                 <option value="ca">ca</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+      "address-level1": "CA",
+    },
+    expectedResult: {
+      "state": "ca",
+    },
+  },
+  {
+    description: "Form with US states select elements; with state name and extra spaces",
+    document: `<form><select id="state" autocomplete="shipping address-level1">
+                 <option value=""></option>
+                 <option value="CA">CA</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+      "address-level1": " California ",
+    },
+    expectedResult: {
+      "state": "CA",
+    },
+  },
+  {
+    description: "Form with US states select elements; with partial state key match",
+    document: `<form><select id="state" autocomplete="shipping address-level1">
+                 <option value=""></option>
+                 <option value="US-WA">WA-Washington</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "shipping", "contactType": "", "fieldName": "address-level1", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+      "address-level1": "WA",
+    },
+    expectedResult: {
+      "state": "US-WA",
+    },
+  },
+
+  // Country
+  {
+    description: "Form with country select elements",
+    document: `<form><select id="country" autocomplete="country">
+                 <option value=""></option>
+                 <option value="US">United States</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+    },
+    expectedResult: {
+      "country": "US",
+    },
+  },
+  {
+    description: "Form with country select elements; with lower case key",
+    document: `<form><select id="country" autocomplete="country">
+                 <option value=""></option>
+                 <option value="us">us</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+    },
+    expectedResult: {
+      "country": "us",
+    },
+  },
+  {
+    description: "Form with country select elements; with alternative name 1",
+    document: `<form><select id="country" autocomplete="country">
+                 <option value=""></option>
+                 <option value="XX">United States</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+    },
+    expectedResult: {
+      "country": "XX",
+    },
+  },
+  {
+    description: "Form with country select elements; with alternative name 2",
+    document: `<form><select id="country" autocomplete="country">
+                 <option value=""></option>
+                 <option value="XX">America</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+    },
+    expectedResult: {
+      "country": "XX",
+    },
+  },
+  {
+    description: "Form with country select elements; with partial matching value",
+    document: `<form><select id="country" autocomplete="country">
+                 <option value=""></option>
+                 <option value="XX">Ship to America</option>
+               </select></form>`,
+    addressFieldDetails: [
+      {"section": "", "addressType": "", "contactType": "", "fieldName": "country", "element": {}},
+    ],
+    profileData: {
+      "guid": "123",
+      "country": "US",
+    },
+    expectedResult: {
+      "country": "XX",
     },
   },
 ];
@@ -264,8 +429,8 @@ function do_test(testcases, testFn) {
         let handler = new FormAutofillHandler(formLike);
         let promises = [];
 
-        handler.fieldDetails = testcase.fieldDetails;
-        handler.fieldDetails.forEach((field, index) => {
+        handler.fieldDetails = handler.address.fieldDetails = testcase.addressFieldDetails;
+        handler.address.fieldDetails.forEach((field, index) => {
           let element = doc.querySelectorAll("input, select")[index];
           field.elementWeakRef = Cu.getWeakReference(element);
           if (!testcase.profileData[field.fieldName]) {
@@ -273,12 +438,13 @@ function do_test(testcases, testFn) {
             // be filled.
             return;
           }
-          promises.push(testFn(testcase, element));
+          promises.push(...testFn(testcase, element));
         });
 
-        handler.autofillFormFields(testcase.profileData);
-        Assert.equal(handler.filledProfileGUID, testcase.profileData.guid,
-                     "Check if filledProfileGUID is set correctly");
+        let [adaptedProfile] = handler.getAdaptedProfiles([testcase.profileData]);
+        handler.autofillFormFields(adaptedProfile);
+        Assert.equal(handler.address.filledRecordGUID, testcase.profileData.guid,
+                     "Check if filledRecordGUID is set correctly");
         await Promise.all(promises);
       });
     })();
@@ -286,33 +452,57 @@ function do_test(testcases, testFn) {
 }
 
 do_test(TESTCASES, (testcase, element) => {
-  return new Promise(resolve => {
-    element.addEventListener("change", () => {
-      let id = element.id;
-      Assert.equal(element.value, testcase.expectedResult[id],
-                  "Check the " + id + " field was filled with correct data");
-      resolve();
-    }, {once: true});
-  });
+  let id = element.id;
+  return [
+    new Promise(resolve => {
+      element.addEventListener("input", () => {
+        Assert.ok(true, "Checking " + id + " field fires input event");
+        resolve();
+      }, {once: true});
+    }),
+    new Promise(resolve => {
+      element.addEventListener("change", () => {
+        Assert.ok(true, "Checking " + id + " field fires change event");
+        Assert.equal(element.value, testcase.expectedResult[id],
+                    "Check the " + id + " field was filled with correct data");
+        resolve();
+      }, {once: true});
+    }),
+  ];
 });
 
 do_test(TESTCASES_INPUT_UNCHANGED, (testcase, element) => {
-  return new Promise((resolve, reject) => {
-    // Make sure no change or input event is fired when no change occurs.
-    let cleaner;
-    let timer = setTimeout(() => {
-      let id = element.id;
-      element.removeEventListener("change", cleaner);
-      element.removeEventListener("input", cleaner);
-      Assert.equal(element.value, testcase.expectedResult[id],
-                  "Check no value is changed on the " + id + " field");
-      resolve();
-    }, 1000);
-    cleaner = event => {
-      clearTimeout(timer);
-      reject(`${event.type} event should not fire`);
-    };
-    element.addEventListener("change", cleaner);
-    element.addEventListener("input", cleaner);
-  });
+  return [
+    new Promise((resolve, reject) => {
+      // Make sure no change or input event is fired when no change occurs.
+      let cleaner;
+      let timer = setTimeout(() => {
+        let id = element.id;
+        element.removeEventListener("change", cleaner);
+        element.removeEventListener("input", cleaner);
+        Assert.equal(element.value, testcase.expectedResult[id],
+                    "Check no value is changed on the " + id + " field");
+        resolve();
+      }, 1000);
+      cleaner = event => {
+        clearTimeout(timer);
+        reject(`${event.type} event should not fire`);
+      };
+      element.addEventListener("change", cleaner);
+      element.addEventListener("input", cleaner);
+    }),
+  ];
+});
+
+do_test(TESTCASES_FILL_SELECT, (testcase, element) => {
+  let id = element.id;
+  return [
+    new Promise(resolve => {
+      element.addEventListener("input", () => {
+        Assert.equal(element.value, testcase.expectedResult[id],
+                    "Check the " + id + " field was filled with correct data");
+        resolve();
+      }, {once: true});
+    }),
+  ];
 });

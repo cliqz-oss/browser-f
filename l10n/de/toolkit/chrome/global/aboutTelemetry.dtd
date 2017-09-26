@@ -2,27 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!ENTITY aboutTelemetry.pageTitle "Telemetriedaten">
-
-<!ENTITY aboutTelemetry.changeDataChoices "
-  Ändern
-">
-
-<!ENTITY aboutTelemetry.uploadEnabled "
-  Daten des Firefox-Statusberichts werden <span>hochgeladen</span>.
-">
-
-<!ENTITY aboutTelemetry.uploadDisabled "
-  Daten des Firefox-Statusberichts werden <span>nicht hochgeladen</span>.
-">
-
-<!ENTITY aboutTelemetry.extendedRecordingEnabled "
-  Ausführliche Telemetrie-Aufzeichnung ist <span>aktiviert</span>.
-">
-
-<!ENTITY aboutTelemetry.extendedRecordingDisabled "
-  Ausführliche Telemetrie-Aufzeichnung ist <span>deaktiviert</span>.
-">
+<!ENTITY aboutTelemetry.pageTitle "Telemetrie-Daten">
 
 <!ENTITY aboutTelemetry.pingDataSource "
 Datensatz auswählen:
@@ -34,14 +14,6 @@ Datensatz in Aufzeichnung
 
 <!ENTITY aboutTelemetry.showArchivedPingData "
 Archivierte Datensätze
-">
-
-<!ENTITY aboutTelemetry.pingDataDisplay "
-Datensatz-Darstellung:
-">
-
-<!ENTITY aboutTelemetry.structured "
-Strukturiert
 ">
 
 <!ENTITY aboutTelemetry.raw "
@@ -64,16 +36,28 @@ Datensatz auswählen:
 Älterer Datensatz &gt;&gt;
 ">
 
-<!ENTITY aboutTelemetry.rawPingData "
-Unformatierte Daten des Datensatzes…
-">
-
 <!ENTITY aboutTelemetry.archiveWeekHeader "
 Woche
 ">
 
+<!ENTITY aboutTelemetry.archivePingType "
+Datensatz-Typ
+">
+
 <!ENTITY aboutTelemetry.archivePingHeader "
 Datensatz
+">
+
+<!ENTITY aboutTelemetry.optionGroupToday "
+Heute
+">
+
+<!ENTITY aboutTelemetry.optionGroupYesterday "
+Gestern
+">
+
+<!ENTITY aboutTelemetry.optionGroupOlder "
+Älter
 ">
 
 <!ENTITY aboutTelemetry.generalDataSection "
@@ -140,18 +124,6 @@ Datensatz
   Sitzungsinformationen
 ">
 
-<!ENTITY aboutTelemetry.addonHistogramsSection "
-  Histogramme aus Daten, die von Add-ons gesammelt wurden
-">
-
-<!ENTITY aboutTelemetry.toggle "
-  Zum Umschalten der Ansicht anklicken
-">
-
-<!ENTITY aboutTelemetry.emptySection "
-  (Keine Daten gesammelt)
-">
-
 <!ENTITY aboutTelemetry.fullSqlWarning "
   HINWEIS: Das Debuggen langsamer SQL-Befehle ist aktiv. Es können vollständige SQL-Befehle weiter unten angezeigt werden, diese werden aber nicht durch die Telemetrie übertragen.
 ">
@@ -170,8 +142,4 @@ Datensatz
 
 <!ENTITY aboutTelemetry.payloadChoiceHeader "
   Datenpaket
-">
-
-<!ENTITY aboutTelemetry.rawPayload "
-  Unformatiertes Datenpaket
 ">
