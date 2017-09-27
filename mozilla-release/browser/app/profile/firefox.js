@@ -472,7 +472,7 @@ pref("browser.tabs.loadInBackground", true);
 pref("browser.tabs.opentabfor.middleclick", true);
 pref("browser.tabs.loadDivertedInBackground", false);
 pref("browser.tabs.loadBookmarksInBackground", false);
-pref("browser.tabs.tabClipWidth", 140);
+pref("browser.tabs.tabClipWidth", 1); // CLIQZ DB-1418: Allow more tabs' close button to be visible
 #ifdef UNIX_BUT_NOT_MAC
 pref("browser.tabs.drawInTitlebar", false);
 #else
