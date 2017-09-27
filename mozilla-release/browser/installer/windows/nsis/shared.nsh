@@ -87,7 +87,8 @@
   ${UpdateShortcutBranding}
 
   ${RemoveDeprecatedKeys}
-  ${Set32to64DidMigrateReg}
+  ; Don't use migration for Cliqz browser users
+  ; ${Set32to64DidMigrateReg}
 
   ${SetAppKeys}
   ${FixClassKeys}

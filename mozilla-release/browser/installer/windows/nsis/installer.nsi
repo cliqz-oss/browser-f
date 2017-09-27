@@ -372,7 +372,8 @@ Section "-Application" APP_IDX
   ${EndIf}
 
   ${RemoveDeprecatedKeys}
-  ${Set32to64DidMigrateReg}
+  ; Don't use migration for Cliqz browser users
+  ; ${Set32to64DidMigrateReg}
 
   ; The previous installer adds several regsitry values to both HKLM and HKCU.
   ; We now try to add to HKLM and if that fails to HKCU
