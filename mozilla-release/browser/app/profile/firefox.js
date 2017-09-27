@@ -1171,15 +1171,7 @@ pref("browser.taskbar.lists.tasks.enabled", true);
 pref("browser.taskbar.lists.refreshInSeconds", 120);
 #endif
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-// The sync engines to use.
-pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab,Addons,ExtensionStorage");
-||||||| merged common ancestors
-// The sync engines to use.
-pref("services.sync.registerEngines", "Bookmarks,Form,History,Password,Prefs,Tab,Addons,ExtensionStorage");
-=======
->>>>>>> origin/upstream-releases
 // Preferences to be synced by default
 pref("services.sync.prefs.sync.accessibility.blockautorefresh", true);
 pref("services.sync.prefs.sync.accessibility.browsewithcaret", true);
@@ -1263,16 +1255,8 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
 
-<<<<<<< HEAD
-pref("services.sync.sendTabToDevice.enabled", true);
-
 #endif  // MOZ_SERVICES_SYNC
 
-||||||| merged common ancestors
-pref("services.sync.sendTabToDevice.enabled", true);
-
-=======
->>>>>>> origin/upstream-releases
 // Developer edition preferences
 #ifdef MOZ_DEV_EDITION
 sticky_pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org");

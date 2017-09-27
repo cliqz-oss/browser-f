@@ -39,16 +39,8 @@ mozilla.pth:testing/marionette/harness
 mozilla.pth:testing/marionette/harness/marionette_harness/runner/mixins/browsermob-proxy-py
 mozilla.pth:testing/marionette/puppeteer/firefox
 packages.txt:testing/mozbase/packages.txt
-<<<<<<< HEAD
 boto.pth:python/boto
-mozilla.pth:testing/taskcluster
-mozilla.pth:testing/tools/autotry
-||||||| merged common ancestors
-mozilla.pth:testing/taskcluster
-mozilla.pth:testing/tools/autotry
-=======
 mozilla.pth:tools
->>>>>>> origin/upstream-releases
 mozilla.pth:testing/web-platform
 mozilla.pth:testing/web-platform/tests/tools/wptrunner
 mozilla.pth:testing/web-platform/tests/tools/wptserve

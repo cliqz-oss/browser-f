@@ -5,23 +5,17 @@
 %endif
 @namespace html "http://www.w3.org/1999/xhtml";
 
-<<<<<<< HEAD
 #help-button {
   /* Hidden in Cliqz, probably because it leads to Mozilla URL */
   display: none !important;
 }
 
-#mainPrefPane {
-||||||| merged common ancestors
-#mainPrefPane {
-=======
 .main-content {
   padding-top: 0;
 }
 
 .pane-container {
   display: block;
->>>>>>> origin/upstream-releases
   max-width: 800px;
 }
 
@@ -140,30 +134,10 @@ html|option {
   list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#sync");
 }
 
-<<<<<<< HEAD
-#category-advanced > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#advanced");
-}
-
-#category-search-results > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#searchResults");
-}
-
 #category-connect > .category-icon {
   list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#connect");
 }
 
-||||||| merged common ancestors
-#category-advanced > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#advanced");
-}
-
-#category-search-results > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#searchResults");
-}
-
-=======
->>>>>>> origin/upstream-releases
 @media (max-width: 800px) {
   .category-name {
     display: none;

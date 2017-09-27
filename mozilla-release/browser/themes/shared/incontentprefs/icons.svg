@@ -47,20 +47,8 @@
   <use id="security-native" href="#security-shape"/>
   <use id="sync" href="#sync-shape"/>
   <use id="sync-native" href="#sync-shape"/>
-<<<<<<< HEAD
-  <use id="advanced" href="#advanced-shape"/>
-  <use id="advanced-native" href="#advanced-shape"/>
-  <use id="searchResults" href="#searchResults-shape"/>
-  <use id="searchResults-native" href="#searchResults-shape"/>
-  <use id="connect" href="#connect-shape"/>
-  <use id="connect-native" href="#connect-shape"/>
-||||||| merged common ancestors
-  <use id="advanced" href="#advanced-shape"/>
-  <use id="advanced-native" href="#advanced-shape"/>
-  <use id="searchResults" href="#searchResults-shape"/>
-  <use id="searchResults-native" href="#searchResults-shape"/>
-=======
   <use id="search" href="#search-shape"/>
   <use id="search-native" href="#search-shape"/>
->>>>>>> origin/upstream-releases
+  <use id="connect" href="#connect-shape"/>
+  <use id="connect-native" href="#connect-shape"/>
 </svg>

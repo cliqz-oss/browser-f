@@ -7630,7 +7630,6 @@
         </getter>
       </property>
 
-<<<<<<< HEAD
       <property name="private">
         <getter>
         <![CDATA[
@@ -7645,12 +7644,7 @@
         </setter>
       </property>
 
-      <property name="soundBlocked" readonly="true">
-||||||| merged common ancestors
-      <property name="soundBlocked" readonly="true">
-=======
       <property name="activeMediaBlocked" readonly="true">
->>>>>>> origin/upstream-releases
         <getter>
           return this.getAttribute("activemedia-blocked") == "true";
         </getter>

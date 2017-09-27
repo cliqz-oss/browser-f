@@ -17,16 +17,6 @@
 <script type="application/javascript" src="chrome://browser/content/browser-places.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-plugins.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-sidebar.js"/>
-<<<<<<< HEAD
-<script type="application/javascript" src="chrome://browser/content/browser-social.js"/>
-#ifdef MOZ_SERVICES_SYNC
-<script type="application/javascript" src="chrome://browser/content/browser-sync.js"/>
-#endif
-||||||| merged common ancestors
-<script type="application/javascript" src="chrome://browser/content/browser-social.js"/>
-<script type="application/javascript" src="chrome://browser/content/browser-sync.js"/>
-=======
->>>>>>> origin/upstream-releases
 <script type="application/javascript" src="chrome://browser/content/browser-tabsintitlebar.js"/>
 <script type="application/javascript" src="chrome://browser/content/browser-trackingprotection.js"/>
 

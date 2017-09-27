@@ -335,18 +335,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY viewToolbarsMenu.accesskey     "y">
 <!ENTITY viewSidebarMenu.label "Sidebar">
 <!ENTITY viewSidebarMenu.accesskey "b">
-<<<<<<< HEAD
 <!ENTITY viewCustomizeToolbar.label       "Anpassen…">
 <!ENTITY viewCustomizeToolbar.accesskey     "A">
-||||||| merged common ancestors
-<!ENTITY viewCustomizeToolbar.label       "Anpassen…"> 
-<!ENTITY viewCustomizeToolbar.accesskey     "A"> 
-=======
-<!ENTITY viewCustomizeToolbar.label       "Anpassen…"> 
-<!ENTITY viewCustomizeToolbar.accesskey     "A"> 
 <!ENTITY overflowCustomizeToolbar.label       "Symbolleisten anpassen…">
 <!ENTITY overflowCustomizeToolbar.accesskey   "S">
->>>>>>> origin/upstream-releases
 
 <!ENTITY historyMenu.label "Chronik">
 <!ENTITY historyMenu.accesskey "C">

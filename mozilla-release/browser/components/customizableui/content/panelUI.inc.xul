@@ -147,16 +147,12 @@
                      oncommand="PlacesCommandHook.showPlacesOrganizer('History'); CustomizableUI.hidePanelForNode(this);"/>
     </panelview>
 
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
 #ifdef MOZ_PHOTON_THEME
     <panelview id="appMenu-library-recentlyClosedTabs"/>
     <panelview id="appMenu-library-recentlyClosedWindows"/>
 #endif
 
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
     <panelview id="PanelUI-remotetabs" flex="1" class="PanelUI-subView"
                descriptionheightworkaround="true">
       <label value="&appMenuRemoteTabs.label;" class="panel-subview-header"/>

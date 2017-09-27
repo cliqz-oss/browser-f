@@ -24,46 +24,24 @@
 
 <!ENTITY dataChoicesTab.label            "Data Choices">
 
-<<<<<<< HEAD
 <!ENTITY healthReportIntro.label         "We care about your privacy. When Cliqz sends information to the Cliqz team, our  <label class='text-link' href='https://cliqz.com/en/privacy'>privacy policy</label> describes how we handle that information.">
 
-<!ENTITY healthReportDesc.label          "Helps you understand your browser performance and shares data with the Cliqz team about your browser health">
-<!ENTITY enableHealthReport.label        "Enable &brandShortName; Health Report">
-<!ENTITY enableHealthReport.accesskey    "R">
-||||||| merged common ancestors
-<!ENTITY healthReportDesc.label          "Helps you understand your browser performance and shares data with &vendorShortName; about your browser health">
-<!ENTITY enableHealthReport.label        "Enable &brandShortName; Health Report">
-<!ENTITY enableHealthReport.accesskey    "R">
-=======
 <!-- LOCALIZATION NOTE (healthReportingDisabled.label): This message is displayed above
 disabled data sharing options in developer builds or builds with no Telemetry support
 available. -->
 <!ENTITY healthReportingDisabled.label   "Data reporting is disabled for this build configuration">
 
-<!ENTITY enableHealthReport1.label       "Allow &brandShortName; to automatically send technical and interaction data to Mozilla">
+<!ENTITY enableHealthReport1.label       "Allow &brandShortName; to automatically send technical and interaction data to Cliqz">
 <!ENTITY enableHealthReport1.accesskey   "r">
->>>>>>> origin/upstream-releases
 <!ENTITY healthReportLearnMore.label     "Learn more">
 
 <!ENTITY dataCollection.label            "&brandShortName; Data Collection and Use">
 <!ENTITY dataCollectionDesc.label        "We strive to provide you with choices and collect only what we need to provide and improve &brandShortName; for everyone. We always ask permission before receiving personal information.">
 <!ENTITY dataCollectionPrivacyNotice.label    "Privacy Notice">
 
-<<<<<<< HEAD
-<!ENTITY crashReporterDesc2.label         "Crash reports help Cliqz team fix problems and make your browser more stable and secure">
-<!ENTITY alwaysSubmitCrashReports.label   "Allow &brandShortName; to send backlogged crash reports on your behalf">
-<!ENTITY alwaysSubmitCrashReports.accesskey "c">
-<!ENTITY crashReporterLearnMore.label     "Learn more">
-||||||| merged common ancestors
-<!ENTITY crashReporterDesc2.label         "Crash reports help &vendorShortName; fix problems and make your browser more stable and secure">
-<!ENTITY alwaysSubmitCrashReports.label   "Allow &brandShortName; to send backlogged crash reports on your behalf">
-<!ENTITY alwaysSubmitCrashReports.accesskey "c">
-<!ENTITY crashReporterLearnMore.label     "Learn more">
-=======
-<!ENTITY alwaysSubmitCrashReports1.label  "Allow &brandShortName; to send crash reports to Mozilla">
+<!ENTITY alwaysSubmitCrashReports1.label  "Allow &brandShortName; to send crash reports to Cliqz">
 <!ENTITY alwaysSubmitCrashReports1.accesskey "c">
 <!ENTITY crashReporterLearnMore.label    "Learn more">
->>>>>>> origin/upstream-releases
 
 <!ENTITY networkTab.label                "Network">
 

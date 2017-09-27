@@ -2,17 +2,8 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<<<<<<< HEAD
 <!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
-||||||| merged common ancestors
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
-
-<!ENTITY chooseYourDefaultSearchEngine.label   "Wählen Sie Ihre Standardsuchmaschine. &brandShortName; verwendet diese für Suchen über die Adressleiste, die Suchleiste und Startseiten.">
-=======
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
-
 <!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
->>>>>>> origin/upstream-releases
 
 <!ENTITY chooseYourDefaultSearchEngine.label   "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
@@ -24,13 +15,7 @@
 
 <!ENTITY oneClickSearchEngines.label           "Direkt suchen">
 
-<<<<<<< HEAD
-<!ENTITY chooseWhichOneToDisplay.label         "Um direkt mit einer Suchmaschine zu suchen, schreibe das entsprechende Kürzel vor Deine Anfrage, z.B. #gm + Dein Suchbegriff um Ergebnisse von Google Maps zu erhalten.">
-||||||| merged common ancestors
-<!ENTITY chooseWhichOneToDisplay.label         "Die Suchleiste ermöglicht das direkte Suchen mit einer anderen Suchmaschine. Die anzuzeigenden Suchmaschinen können hier ausgewählt werden.">
-=======
-<!ENTITY chooseWhichOneToDisplay2.label         "Wählen Sie eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem Sie den Suchbegriff eingegeben haben.">
->>>>>>> origin/upstream-releases
+<!ENTITY chooseWhichOneToDisplay2.label        "Wählen Sie eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem Sie den Suchbegriff eingegeben haben.">
 
 <!ENTITY engineNameColumn.label                "Suchmaschine">
 <!ENTITY engineKeywordColumn.label             "Schlüsselwort">
@@ -41,11 +26,5 @@
 <!ENTITY removeEngine.label                    "Entfernen">
 <!ENTITY removeEngine.accesskey                "E">
 
-<<<<<<< HEAD
-<!ENTITY addMoreSearchEngines2.label           "Weitere Suchmaschinen hinzufügen">
 <!ENTITY addMoreSearchEnginesDesc.label        "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">
-||||||| merged common ancestors
-<!ENTITY addMoreSearchEngines2.label           "Weitere Suchmaschinen hinzufügen">
-=======
 <!ENTITY findMoreSearchEngines.label           "Weitere Suchmaschinen hinzufügen">
->>>>>>> origin/upstream-releases

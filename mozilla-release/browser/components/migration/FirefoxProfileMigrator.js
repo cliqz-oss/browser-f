@@ -508,7 +508,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   }.bind(this);
 
   let types = MigrationUtils.resourceTypes;
-<<<<<<< HEAD
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
     let places = getHistoryAndBookmarksResource("places.sqlite");
     let cookies = getCookiesResource("cookies.sqlite");
@@ -518,15 +517,10 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   let places = getFileResource(types.HISTORY, ["places.sqlite"]);
   let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);
   let cookies = getFileResource(types.COOKIES, ["cookies.sqlite"]);
-||||||| merged common ancestors
-  let places = getFileResource(types.HISTORY, ["places.sqlite"]);
-  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite"]);
-  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite"]);
-=======
-  let places = getFileResource(types.HISTORY, ["places.sqlite", "places.sqlite-wal"]);
-  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite", "favicons.sqlite-wal"]);
-  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite", "cookies.sqlite-wal"]);
->>>>>>> origin/upstream-releases
+// TODO more accurate merge
+//  let places = getFileResource(types.HISTORY, ["places.sqlite", "places.sqlite-wal"]);
+//  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite", "favicons.sqlite-wal"]);
+//  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite", "cookies.sqlite-wal"]);
   let passwords = getFileResource(types.PASSWORDS,
     ["signons.sqlite", "logins.json", "key3.db",
      "signedInUser.json"]);
@@ -539,67 +533,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
   let dictionary = getFileResource(types.OTHERDATA, ["persdict.dat"]);
 
   let session;
-<<<<<<< HEAD
-  if (sessionFile) {
-    let tabsRestoreURL = this.tabsRestoreURL;
-    session = {
-      type: types.SESSION,
-      migrate(aCallback) {
-        sessionCheckpoints.copyTo(currentProfileDir, "sessionCheckpoints.json");
-        let newSessionFile = currentProfileDir.clone();
-        newSessionFile.append("sessionstore.js");
-        let migrationPromise = SessionMigration.migrate(sessionFile.path,
-            newSessionFile.path, tabsRestoreURL);
-        migrationPromise.then(function() {
-          let buildID = Services.appinfo.platformBuildID;
-          let mstone = Services.appinfo.platformVersion;
-          // Force the browser to one-off resume the session that we give it:
-          Services.prefs.setBoolPref("browser.sessionstore.resume_session_once", true);
-          // Reset the homepage_override prefs so that the browser doesn't override our
-          // session with the "what's new" page:
-          Services.prefs.setCharPref("browser.startup.homepage_override.mstone", mstone);
-          Services.prefs.setCharPref("browser.startup.homepage_override.buildID", buildID);
-          // It's too early in startup for the pref service to have a profile directory,
-          // so we have to manually tell it where to save the prefs file.
-          let newPrefsFile = currentProfileDir.clone();
-          newPrefsFile.append("prefs.js");
-          Services.prefs.savePrefFile(newPrefsFile);
-          aCallback(true);
-        }, function() {
-          aCallback(false);
-        });
-      }
-    };
-||||||| merged common ancestors
-  if (sessionFile) {
-    session = {
-      type: types.SESSION,
-      migrate(aCallback) {
-        sessionCheckpoints.copyTo(currentProfileDir, "sessionCheckpoints.json");
-        let newSessionFile = currentProfileDir.clone();
-        newSessionFile.append("sessionstore.js");
-        let migrationPromise = SessionMigration.migrate(sessionFile.path, newSessionFile.path);
-        migrationPromise.then(function() {
-          let buildID = Services.appinfo.platformBuildID;
-          let mstone = Services.appinfo.platformVersion;
-          // Force the browser to one-off resume the session that we give it:
-          Services.prefs.setBoolPref("browser.sessionstore.resume_session_once", true);
-          // Reset the homepage_override prefs so that the browser doesn't override our
-          // session with the "what's new" page:
-          Services.prefs.setCharPref("browser.startup.homepage_override.mstone", mstone);
-          Services.prefs.setCharPref("browser.startup.homepage_override.buildID", buildID);
-          // It's too early in startup for the pref service to have a profile directory,
-          // so we have to manually tell it where to save the prefs file.
-          let newPrefsFile = currentProfileDir.clone();
-          newPrefsFile.append("prefs.js");
-          Services.prefs.savePrefFile(newPrefsFile);
-          aCallback(true);
-        }, function() {
-          aCallback(false);
-        });
-      }
-    };
-=======
   let env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
   if (env.get("MOZ_RESET_PROFILE_MIGRATE_SESSION")) {
     // We only want to restore the previous firefox session if the profile refresh was
@@ -610,13 +543,15 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     let sessionCheckpoints = this._getFileObject(sourceProfileDir, "sessionCheckpoints.json");
     let sessionFile = this._getFileObject(sourceProfileDir, "sessionstore.jsonlz4");
     if (sessionFile) {
+      let tabsRestoreURL = this.tabsRestoreURL;
       session = {
         type: types.SESSION,
         migrate(aCallback) {
           sessionCheckpoints.copyTo(currentProfileDir, "sessionCheckpoints.json");
           let newSessionFile = currentProfileDir.clone();
           newSessionFile.append("sessionstore.jsonlz4");
-          let migrationPromise = SessionMigration.migrate(sessionFile.path, newSessionFile.path);
+          let migrationPromise = SessionMigration.migrate(sessionFile.path,
+              newSessionFile.path, tabsRestoreURL);
           migrationPromise.then(function() {
             let buildID = Services.appinfo.platformBuildID;
             let mstone = Services.appinfo.platformVersion;
@@ -638,7 +573,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
         }
       };
     }
->>>>>>> origin/upstream-releases
   }
 
   // Telemetry related migrations.

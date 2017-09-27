@@ -390,15 +390,11 @@ user_pref("marionette.prefs.recommended", false);
 
 // Disable Screenshots by default for now
 user_pref("extensions.screenshots.system-disabled", true);
-<<<<<<< HEAD
-
-// Cliqz ignore onboarding
-user_pref("extensions.cliqz.browserOnboarding", true);
-||||||| merged common ancestors
-=======
 
 // Set places maintenance far in the future to avoid it kicking in during tests.
 // The maintenance can take a relatively long time which may cause unnecessary
 // intermittents and slow down tests.
 user_pref("places.database.lastMaintenance", 7258114800);
->>>>>>> origin/upstream-releases
+
+// Cliqz ignore onboarding
+user_pref("extensions.cliqz.browserOnboarding", true);

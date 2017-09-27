@@ -598,11 +598,6 @@
 !macroend
 !define SetStartMenuInternet "!insertmacro SetStartMenuInternet"
 
-<<<<<<< HEAD
-; The IconHandler reference for CliqzHTML can end up in an inconsistent state
-||||||| merged common ancestors
-; The IconHandler reference for FirefoxHTML can end up in an inconsistent state
-=======
 ; Add registry keys to support the Firefox 32 bit to 64 bit migration. These
 ; registry entries are not removed on uninstall at this time. After the Firefox
 ; 32 bit to 64 bit migration effort is completed these registry entries can be
@@ -670,8 +665,7 @@
 !macroend
 !define Set32to64DidMigrateReg "!insertmacro Set32to64DidMigrateReg"
 
-; The IconHandler reference for FirefoxHTML can end up in an inconsistent state
->>>>>>> origin/upstream-releases
+; The IconHandler reference for CliqzHTML can end up in an inconsistent state
 ; due to changes not being detected by the IconHandler for side by side
 ; installs (see bug 268512). The symptoms can be either an incorrect icon or no
 ; icon being displayed for files associated with Cliqz (does not use SHCTX).

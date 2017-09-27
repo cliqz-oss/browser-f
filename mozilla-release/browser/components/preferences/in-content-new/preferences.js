@@ -57,7 +57,9 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
+#ifdef MOZ_SERVICES_SYNC
   register_module("paneSync", gSyncPane);
+#endif
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
 

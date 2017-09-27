@@ -89,21 +89,11 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "gPhotonStructure",
   ["Translation", "resource:///modules/translation/Translation.jsm"],
   ["UITour", "resource:///modules/UITour.jsm"],
   ["UpdateUtils", "resource://gre/modules/UpdateUtils.jsm"],
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
   ["Utils", "resource://gre/modules/sessionstore/Utils.jsm"],
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
   ["Weave", "resource://services-sync/main.js"],
-<<<<<<< HEAD
 #endif
-  ["WebNavigationFrames", "resource://gre/modules/WebNavigationFrames.js"],
-||||||| merged common ancestors
-  ["WebNavigationFrames", "resource://gre/modules/WebNavigationFrames.js"],
-=======
   ["WebNavigationFrames", "resource://gre/modules/WebNavigationFrames.jsm"],
->>>>>>> origin/upstream-releases
   ["fxAccounts", "resource://gre/modules/FxAccounts.jsm"],
   ["gDevTools", "resource://devtools/client/framework/gDevTools.jsm"],
   ["gDevToolsBrowser", "resource://devtools/client/framework/gDevTools.jsm"],
@@ -1709,26 +1699,16 @@ var gBrowserInit = {
     FullScreen.init();
     PointerLock.init();
 
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
     if (AppConstants.isPlatformAndVersionAtLeast("win", "10")) {
       MenuTouchModeObserver.init();
     }
 
->>>>>>> origin/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
     // initialize the sync UI
-<<<<<<< HEAD
-    gSync.init();
-#endif
-||||||| merged common ancestors
-    gSync.init();
-=======
     requestIdleCallback(() => {
       gSync.init();
     }, {timeout: 1000 * 5});
->>>>>>> origin/upstream-releases
+#endif
 
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
@@ -2040,16 +2020,10 @@ if (AppConstants.platform == "macosx") {
 
 #ifdef MOZ_SERVICES_SYNC
     // initialize the sync UI
-<<<<<<< HEAD
-    gSync.init();
-#endif
-||||||| merged common ancestors
-    gSync.init();
-=======
     requestIdleCallback(() => {
       gSync.init();
     }, {timeout: 1000 * 5});
->>>>>>> origin/upstream-releases
+#endif
 
     if (AppConstants.E10S_TESTING_ONLY) {
       gRemoteTabsUI.init();

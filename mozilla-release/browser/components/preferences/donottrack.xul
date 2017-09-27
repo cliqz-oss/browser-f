@@ -36,15 +36,7 @@
     <description flex="1" class="doNotTrackLearnMore">
       &doNotTrackTPInfo.description;
       <label class="text-link"
-<<<<<<< HEAD
-             value="&doNotTrackLearnMore.label;"
-             href="&doNotTrackLearnMore.url;"/>
-||||||| merged common ancestors
-             value="&doNotTrackLearnMore.label;"
-             href="https://www.mozilla.org/dnt"/>
-=======
-             href="https://www.mozilla.org/dnt">&doNotTrackLearnMore.label;</label>
->>>>>>> origin/upstream-releases
+             href="&doNotTrackLearnMore.url;">&doNotTrackLearnMore.label;</label>
     </description>
   </prefpane>
 </prefwindow>

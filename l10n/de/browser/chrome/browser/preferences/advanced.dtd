@@ -24,44 +24,24 @@
 
 <!ENTITY dataChoicesTab.label            "Datenübermittlung">
 
-<<<<<<< HEAD
 <!ENTITY healthReportIntro.label          "Den Schutz deiner Daten nehmen wir sehr ernst. Wenn Cliqz Daten an das Cliqz Team sendet, verarbeiten wir diese Daten wie in unserer <label class='text-link' href='https://cliqz.com/privacy'>Datenschutzerklärung</label> beschrieben.">
 
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen deiner Browser-Leistung und übermittelt Daten über den Browser-Status an das Cliqz-Team.">
-<!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
-<!ENTITY enableHealthReport.accesskey    "S">
-||||||| merged common ancestors
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browser-Status an &vendorShortName;.">
-<!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
-<!ENTITY enableHealthReport.accesskey    "S">
-=======
 <!-- LOCALIZATION NOTE (healthReportingDisabled.label): This message is displayed above
 disabled data sharing options in developer builds or builds with no Telemetry support
 available. -->
 <!ENTITY healthReportingDisabled.label   "Datenübermittlung ist für diese Build-Konfiguration deaktiviert">
 
-<!ENTITY enableHealthReport1.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Mozilla zu senden">
+<!ENTITY enableHealthReport1.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Cliqz zu senden">
 <!ENTITY enableHealthReport1.accesskey   "t">
->>>>>>> origin/upstream-releases
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
 
 <!ENTITY dataCollection.label            "Datenerhebung durch &brandShortName; und deren Verwendung">
 <!ENTITY dataCollectionDesc.label        "Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um &brandShortName; für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.">
 <!ENTITY dataCollectionPrivacyNotice.label    "Datenschutzhinweis">
 
-<<<<<<< HEAD
-<!ENTITY crashReporterDesc2.label         "Absturzberichte helfen dem Cliqz-Team dabei, Probleme zu beheben und den Browser stabiler und sicherer zu machen.">
-<!ENTITY alwaysSubmitCrashReports.label   "&brandShortName; erlauben, bislang nicht gesendete Absturzberichte zu übermitteln">
-<!ENTITY alwaysSubmitCrashReports.accesskey "e">
-||||||| merged common ancestors
-<!ENTITY crashReporterDesc2.label         "Absturzberichte helfen &vendorShortName; dabei, Probleme zu beheben und den Browser stabiler und sicherer zu machen.">
-<!ENTITY alwaysSubmitCrashReports.label   "&brandShortName; erlauben, bislang nicht gesendete Absturzberichte zu übermitteln">
-<!ENTITY alwaysSubmitCrashReports.accesskey "e">
-=======
-<!ENTITY alwaysSubmitCrashReports1.label  "&brandShortName; erlauben, Absturzberichte an Mozilla zu senden">
+<!ENTITY alwaysSubmitCrashReports1.label  "&brandShortName; erlauben, Absturzberichte an Cliqz zu senden">
 <!ENTITY alwaysSubmitCrashReports1.accesskey "r">
->>>>>>> origin/upstream-releases
-<!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
+3<!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
 
 <!ENTITY networkTab.label                "Netzwerk">
 
