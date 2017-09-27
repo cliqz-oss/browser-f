@@ -290,6 +290,47 @@ XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
 #endif
 
+// CLIQZ Blue Theme
+// TODO - move this out into a separate file!
+try {
+  var THEME_PREF = "extensions.cliqz.freshtab.blueTheme.enabled",
+      THEME_CLASS = "cliqz-blue",
+      FRESHTAB_CONFIG = "extensions.cliqz.freshtabConfig",
+      pref_service = Components.classes["@mozilla.org/preferences-service;1"]
+        .getService(Components.interfaces.nsIPrefBranchInternal),
+      branch = pref_service.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+
+  function observe(subject, topic, data) {
+    setThemeState(getThemeState());
+  }
+
+  function getThemeState() {
+    return !branch.prefHasUserValue(THEME_PREF) || branch.getBoolPref(THEME_PREF);
+  }
+
+  function setThemeState(enabled) {
+    var win = window.document.getElementById('main-window');
+    if (enabled) {
+      win.classList.add(THEME_CLASS);
+    } else {
+      win.classList.remove(THEME_CLASS);
+    }
+  }
+
+  // handles changes
+  branch.addObserver(THEME_PREF, { observe:observe }, false);
+
+  // set the current state of the Blue theme
+  var freshtabConfig = branch.prefHasUserValue(FRESHTAB_CONFIG) ? branch.getStringPref(FRESHTAB_CONFIG) : '{}';
+  var freshtabBackground = JSON.parse(freshtabConfig).background;
+
+  // we also set the blue theme if the user did not set any freshtab background
+  setThemeState(Object.keys(freshtabBackground).length === 0 || getThemeState());
+} catch (e) {
+  Cu.reportError(e);
+}
+// CLIQZ Blue Theme end
+
 var gInitialPages = [
   "about:blank",
   "about:newtab",
