@@ -1,3 +1,37 @@
+#main-window.cliqz-blue #tabbrowser-tabs, #main-window.cliqz-blue #TabsToolbar {
+  background-color: #00ADEF !important; }
+
+#main-window.cliqz-blue .tab-label:not([selected="true"]) {
+  color: #fff;
+  opacity: 1; }
+
+#main-window.cliqz-blue .tabbrowser-tab .tab-content {
+  border-color: rgba(0, 0, 0, 0.15);
+  background: none !important; }
+
+#main-window.cliqz-blue #nav-bar, #main-window.cliqz-blue #navigator-toolbox, #main-window.cliqz-blue .tab-content, #main-window.cliqz-blue #PersonalToolbar {
+  background-color: none !important; }
+
+#main-window.cliqz-blue #nav-bar {
+  border-top-color: #00AEF0 !important; }
+
+#main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content {
+  background: #fff !important;
+  border-right: 1px solid #0096d4; }
+
+#main-window.cliqz-blue .tab-label-container:not([selected="true"]) {
+  opacity: 1 !important;
+  color: #fff !important; }
+
+#main-window.cliqz-blue .tabbrowser-tab:hover:not([visuallyselected="true"]) .tab-content,
+#main-window.cliqz-blue .tabbrowser-tab .tabs-newtab-button:hover,
+#main-window.cliqz-blue .tabs-newtab-button:hover {
+  background-color: #0098d5 !important; }
+
+#main-window.cliqz-blue #urlbar[focused="true"], #main-window.cliqz-blue .searchbar-textbox[focused="true"] {
+  border-color: #ccc !important;
+  -moz-border-start: none !important; }
+
 #main-window:not([cliqzBrowser="true"]),
 #main-window:not([cliqzBrowser="true"]) * :root {
   --cliqz-close-image: url("../images/browser/mac/close.png");
@@ -23,6 +57,20 @@
   --cliqz-toolbar-image-2x: url("../Toolbar@2x.png");
   --cliqz-urlbar-arrow-button: url("urlbar-arrow.png");
   --cliqz-urlbar-arrow-button-2x: url("urlbar-arrow@2x.png"); }
+
+#main-window.cliqz-blue:not([cliqzBrowser="true"]),
+#main-window.cliqz-blue:not([cliqzBrowser="true"]) * :root {
+  --cliqz-close-image: url("../images/browser/blue_theme/mac/close.png");
+  --cliqz-close-image-2x: url("../images/browser/blue_theme/mac/close@2x.png");
+  --cliqz-newtab-image: url("../images/browser/blue_theme/mac/newtab.png");
+  --cliqz-newtab-image-2x: url("../images/browser/blue_theme/mac/newtab@2x.png"); }
+
+#main-window.cliqz-blue[cliqzBrowser="true"],
+#main-window.cliqz-blue[cliqzBrowser="true"] * :root {
+  --cliqz-close-image: url("close_blue.png");
+  --cliqz-close-image-2x: url("close_blue@2x.png");
+  --cliqz-newtab-image: url("newtab_blue.png");
+  --cliqz-newtab-image-2x: url("newtab_blue@2x.png"); }
 
 @font-face {
   font-family: "Lato";
