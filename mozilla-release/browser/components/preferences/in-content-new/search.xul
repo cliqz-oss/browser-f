@@ -29,7 +29,7 @@
     <!-- Default Search Engine -->
     <groupbox id="defaultEngineGroup" data-category="paneSearch">
       <caption label="&defaultSearchEngine.label;"/>
-      <label>&chooseYourDefaultSearchEngine2.label;</label>
+      <label>&chooseYourDefaultSearchEngine.label;</label>
       <hbox>
         <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
         <hbox>
@@ -42,7 +42,7 @@
                 label="&provideSearchSuggestions.label;"
                 accesskey="&provideSearchSuggestions.accesskey;"
                 preference="browser.search.suggest.enabled"/>
-      <vbox class="indent">
+      <vbox class="indent" hidden="true">
         <checkbox id="urlBarSuggestion" label="&showURLBarSuggestions2.label;"
                   accesskey="&showURLBarSuggestions2.accesskey;"
                   preference="browser.urlbar.suggest.searches"/>
@@ -86,5 +86,7 @@
 
       <hbox id="addEnginesBox" pack="start">
         <label id="addEngines" class="text-link">&findMoreSearchEngines.label;</label>
+        <html:br/>
+        <label>&findMoreSearchEnginesDesc.label;</label>
       </hbox>
     </groupbox>

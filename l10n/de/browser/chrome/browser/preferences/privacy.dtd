@@ -25,6 +25,7 @@
 <!ENTITY changeBlockList2.label               "Blockierliste ändern…">
 <!ENTITY changeBlockList2.accesskey           "B">
 
+<!ENTITY  doNotTrackHeader.label        "Do Not Track">
 <!ENTITY  doNotTrack.description        "Websites eine &quot;Do Not Track&quot;-Information senden, dass die eigenen Aktivitäten nicht verfolgt werden sollen">
 <!ENTITY  doNotTrack.learnMore.label    "Weitere Informationen">
 <!ENTITY  doNotTrack.default.label      "Nur wenn der Schutz vor Aktivitätenverfolgung aktiv ist">
@@ -120,3 +121,6 @@
 <!ENTITY  forgetMode.explanation1 "Der automatische Vergessen Modus öffnet Websites mit expliziten (pornographischen) Inhalten automatisch im vergessen Modus, so dass sie nicht in der Chronik gespeichert werden und keine temporären Dateien, inklusive Cookies, auf dem Computer hinterlassen.">
 <!ENTITY  forgetMode.explanation2 "Im Tab Kontext-Menü kannst du selbst wählen, welche Websites automatisch im Vergessen Modus geöffnet werden sollen oder auch nicht. Das Tab Kontext-Menü öffnet sich durch einen Klick mit der rechten Maustaste auf den aktuellen Tab.">
 <!ENTITY  forgetMode.learnMore "Mehr erfahren">
+
+<!-- Cliqz addition -->
+<!ENTITY  cliqzFirefoxPrivacy.label "Der Cliqz Browser baut auf dem <label class='text-link' href='https://www.mozilla.org/de/'>Mozilla Open Source Projekt</label> auf. Es gilt die <label class='text-link' href='https://www.mozilla.org/de/privacy/firefox'>Firefox Datenschutzhinweis</label>, wenn nicht anders in der Cliqz <label class='text-link' href='https://cliqz.com/privacy-browser'>Datenschutzerklärung</label> festgestellt.">

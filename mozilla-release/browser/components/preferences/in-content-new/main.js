@@ -12,6 +12,7 @@ Components.utils.import("resource://gre/modules/FileUtils.jsm");
 Components.utils.import("resource:///modules/ShellService.jsm");
 Components.utils.import("resource:///modules/TransientPrefs.jsm");
 Components.utils.import("resource://gre/modules/Services.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
 Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
@@ -148,8 +149,13 @@ var gMainPane = {
    */
   init() {
     function setEventListener(aId, aEventType, aCallback) {
-      document.getElementById(aId)
-              .addEventListener(aEventType, aCallback.bind(gMainPane));
+      try {
+        document.getElementById(aId)
+            .addEventListener(aEventType, aCallback.bind(gMainPane));
+      }
+      catch (e) {
+        Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
+      }
     }
 
     if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -201,9 +207,9 @@ var gMainPane = {
     // set up the "use current page" label-changing listener
     this._updateUseCurrentButton();
     window.addEventListener("focus", this._updateUseCurrentButton.bind(this));
-
+#if 0
     this.updateBrowserStartupLastSession();
-
+#endif
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
       try {
@@ -329,9 +335,18 @@ var gMainPane = {
                        ? "aboutDialog.architecture.sixtyFourBit"
                        : "aboutDialog.architecture.thirtyTwoBit";
     let arch = bundle.GetStringFromName(archResource);
-    version += ` (${arch})`;
 
-    document.getElementById("version").textContent = version;
+    // Add Firefox and nav-extension versions
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+      let componentsVersion = Services.appinfo.platformVersion;
+      if (cliqzAddon) {
+        componentsVersion += `+${cliqzAddon.version}`;
+      }
+      version += ` (${componentsVersion})`;
+      version += ` (${arch})`;
+
+      document.getElementById("version").textContent = version;
+    });
 
     // Show a release notes link if we have a URL.
     let relNotesLink = document.getElementById("releasenotes");
@@ -344,6 +359,8 @@ var gMainPane = {
       }
     }
 
+#if 0
+    // Not used in Cliqz build because Cliqz itself a "distributed" build
     let distroId = Services.prefs.getCharPref("distribution.id", "");
     if (distroId) {
       let distroVersion = Services.prefs.getCharPref("distribution.version");
@@ -359,6 +376,7 @@ var gMainPane = {
         distroField.hidden = false;
       }
     }
+#endif
 
     if (AppConstants.MOZ_UPDATER) {
       gAppUpdater = new appUpdater();
@@ -606,17 +624,9 @@ var gMainPane = {
    * browser.startup.homepage
    * - the user's home page, as a string; if the home page is a set of tabs,
    *   this will be those URLs separated by the pipe character "|"
-   * browser.startup.page
-   * - what page(s) to show when the user starts the application, as an integer:
-   *
-   *     0: a blank page
-   *     1: the home page (as set by the browser.startup.homepage pref)
-   *     2: the last page the user visited (DEPRECATED)
-   *     3: windows and tabs from the last session (a.k.a. session restore)
-   *
-   *   The deprecated option is not exposed in UI; however, if the user has it
-   *   selected and doesn't change the UI for this preference, the deprecated
-   *   option is preserved.
+   * browser.startup.restoreTabs
+   * - whether to restore windows and tabs from the last session (a.k.a. session
+   *   restore)
    */
 
   syncFromHomePref() {
@@ -768,17 +778,14 @@ var gMainPane = {
    */
   updateBrowserStartupLastSession() {
     let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let startupPref = document.getElementById("browser.startup.page");
-    let menu = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
+    let restorePref = document.getElementById("browser.startup.restoreTabs");
+    let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     if (pbAutoStartPref.value) {
-      option.setAttribute("disabled", "true");
-      if (option.selected) {
-        menu.selectedItem = document.getElementById("browserStartupHomePage");
-      }
+      restoreCheckbox.setAttribute("disabled", "true");
+      restoreCheckbox.checked = false;
     } else {
-      option.removeAttribute("disabled");
-      startupPref.updateElements(); // select the correct index in the startup menulist
+      restoreCheckbox.removeAttribute("disabled");
+      restorePref.updateElements(); // Update corresponding checkbox.
     }
   },
 

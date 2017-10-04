@@ -31,9 +31,12 @@
 #endif
 
     <!-- Startup -->
-    <preference id="browser.startup.page"
-                name="browser.startup.page"
-                type="int"/>
+    <preference id="browser.startup.restoreTabs"
+                name="browser.startup.restoreTabs"
+                type="bool"/>
+    <preference id="browser.startup.addFreshTab"
+                name="browser.startup.addFreshTab"
+                type="bool"/>
     <preference id="browser.startup.homepage"
                 name="browser.startup.homepage"
                 type="wstring"/>
@@ -323,7 +326,19 @@
   </vbox>
 #endif
 
+  <vbox id="startupPagesBox">
+    <checkbox
+        id="restoreSessionCheckbox"
+        preference="browser.startup.restoreTabs"
+        label="&startupPrevSession.label;"/>
+    <checkbox
+        id="addCliqzFrashTabCheckbox"
+        preference="browser.startup.addFreshTab"
+        label="&startupUserHomePage.label;"/>
+  </vbox>
   <html:table id="startupTable">
+# Replaced by two checkboxes above.
+#if 0
     <html:tr>
       <html:td class="label-cell">
         <label accesskey="&startupPage2.accesskey;"
@@ -347,6 +362,7 @@
         </menulist>
       </html:td>
     </html:tr>
+#endif
     <html:tr>
       <html:td class="label-cell">
         <label accesskey="&homepage2.accesskey;"
