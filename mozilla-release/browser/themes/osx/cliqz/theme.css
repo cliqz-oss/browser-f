@@ -18,6 +18,8 @@
 #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content {
   background: #fff !important;
   border-right: 1px solid #0096d4; }
+  #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
+    -moz-image-region: rect(0, 64px, 16px, 48px); }
 
 #main-window.cliqz-blue .tab-label-container:not([selected="true"]) {
   opacity: 1 !important;
@@ -31,6 +33,10 @@
 #main-window.cliqz-blue #urlbar[focused="true"], #main-window.cliqz-blue .searchbar-textbox[focused="true"] {
   border-color: #ccc !important;
   -moz-border-start: none !important; }
+
+@media (min-resolution: 2dppx) {
+  #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
+    -moz-image-region: rect(0, 128px, 32px, 96px); } }
 
 #main-window:not([cliqzBrowser="true"]),
 #main-window:not([cliqzBrowser="true"]) * :root {
@@ -639,3 +645,4 @@ vbox[sidebarcommand=historybroadcaster] sidebarheader {
 
 #main-window[cliqzBrowser="true"] #cliqz-dropdown .padded {
   padding-left: 108px; }
+
