@@ -30,4 +30,5 @@
 <!-- LOCALIZATION NOTE (paneSync1.title): This should match syncBrand.fxAccount.label in ../syncBrand.dtd -->
 <!ENTITY  paneSync1.title          "Firefox-Konto">
 
-<!ENTITY  helpButton2.label        "Hilfe für &brandShortName;">
+<!-- In Cliqz browser use Firefox Support for preferences page -->
+<!ENTITY  helpButton2.label        "Firefox Support">

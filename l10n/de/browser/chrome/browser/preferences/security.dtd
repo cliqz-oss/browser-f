@@ -40,7 +40,8 @@
 <!ENTITY  savedLogins.label              "Gespeicherte Zugangsdaten…">
 <!ENTITY  savedLogins.accesskey          "G">
 
-<!ENTITY  httpsEverywhere.label          "HTTPS Everywhere aktivieren">
+<!ENTITY  httpsEverywhere.label          "HTTPS Everywhere">
+<!ENTITY  httpsEverywhereEnable.label    "HTTPS Everywhere aktivieren">
 <!ENTITY  httpsEverywhere.accesskey      "H">
 <!ENTITY  httpsEverywhereDesc.label      "HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. ">
 <!ENTITY  httpsEverywhereMore.label      "Erfahre mehr">

@@ -26,5 +26,5 @@
 <!ENTITY removeEngine.label                    "Entfernen">
 <!ENTITY removeEngine.accesskey                "E">
 
-<!ENTITY addMoreSearchEnginesDesc.label        "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">
 <!ENTITY findMoreSearchEngines.label           "Weitere Suchmaschinen hinzufügen">
+<!ENTITY findMoreSearchEnginesDesc.label       "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">
