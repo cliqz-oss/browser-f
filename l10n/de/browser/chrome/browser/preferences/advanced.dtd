@@ -41,7 +41,7 @@ available. -->
 
 <!ENTITY alwaysSubmitCrashReports1.label  "&brandShortName; erlauben, Absturzberichte an Cliqz zu senden">
 <!ENTITY alwaysSubmitCrashReports1.accesskey "r">
-3<!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
+<!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
 
 <!ENTITY networkTab.label                "Netzwerk">
 
