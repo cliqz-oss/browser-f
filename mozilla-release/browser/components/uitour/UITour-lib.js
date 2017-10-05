@@ -59,9 +59,9 @@ if (typeof Mozilla == "undefined") {
 
     function listener(event) {
       if (typeof event.detail != "object")
-	return;
+        return;
       if (event.detail.callbackID != id)
-	return;
+        return;
 
       document.removeEventListener("mozUITourResponse", listener);
       callback(event.detail.data);
@@ -266,12 +266,12 @@ if (typeof Mozilla == "undefined") {
     var buttonData = [];
     if (Array.isArray(buttons)) {
       for (var i = 0; i < buttons.length; i++) {
-	buttonData.push({
-	  label: buttons[i].label,
-	  icon: buttons[i].icon,
-	  style: buttons[i].style,
-	  callbackID: _waitForCallback(buttons[i].callback)
-	});
+        buttonData.push({
+          label: buttons[i].label,
+          icon: buttons[i].icon,
+          style: buttons[i].style,
+          callbackID: _waitForCallback(buttons[i].callback)
+        });
       }
     }
 
@@ -371,8 +371,8 @@ if (typeof Mozilla == "undefined") {
       themes.push(theme);
 
       _sendEvent("previewTheme", {
-	theme: JSON.stringify(theme),
-	state: true
+        theme: JSON.stringify(theme),
+        state: true
       });
 
       callback(theme);
@@ -563,6 +563,8 @@ if (typeof Mozilla == "undefined") {
    * is a string, begins with "utm_" and contains only only alphanumeric
    * characters, dashes or underscores. The values may be any string and will
    * automatically be encoded.
+   * @param {String} email - A string containing the default email account
+   * for the URL opened by the browser.
    * @since 31, 47 for `extraURLCampaignParams`
    * @example
    * // Will open about:accounts?action=signup&entrypoint=uitour
@@ -574,10 +576,15 @@ if (typeof Mozilla == "undefined") {
    *   'utm_foo': 'bar',
    *   'utm_bar': 'baz'
    * });
+   * @example
+   * // Will open:
+   * // about:accounts?action=signup&entrypoint=uitour&email=foo%40bar.com
+   * Mozilla.UITour.showFirefoxAccounts(null, "foo@bar.com");
    */
-  Mozilla.UITour.showFirefoxAccounts = function(extraURLCampaignParams) {
+  Mozilla.UITour.showFirefoxAccounts = function(extraURLCampaignParams, email) {
     _sendEvent("showFirefoxAccounts", {
       extraURLCampaignParams: JSON.stringify(extraURLCampaignParams),
+      email
     });
   };
 

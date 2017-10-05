@@ -17,38 +17,62 @@ const globalImportContext = typeof Window === "undefined" ? BACKGROUND_PROCESS :
 // Export for tests
 this.globalImportContext = globalImportContext;
 
-const actionTypes = [
+// Create an object that avoids accidental differing key/value pairs:
+// {
+//   INIT: "INIT",
+//   UNINIT: "UNINIT"
+// }
+const actionTypes = {};
+for (const type of [
   "BLOCK_URL",
   "BOOKMARK_URL",
   "DELETE_BOOKMARK_BY_ID",
   "DELETE_HISTORY_URL",
+  "DELETE_HISTORY_URL_CONFIRM",
+  "DIALOG_CANCEL",
+  "DIALOG_OPEN",
+  "FEED_INIT",
   "INIT",
   "LOCALE_UPDATED",
+  "MIGRATION_CANCEL",
+  "MIGRATION_START",
+  "NEW_TAB_INIT",
   "NEW_TAB_INITIAL_STATE",
   "NEW_TAB_LOAD",
   "NEW_TAB_UNLOAD",
-  "NEW_TAB_VISIBLE",
+  "OPEN_LINK",
   "OPEN_NEW_WINDOW",
   "OPEN_PRIVATE_WINDOW",
+  "PINNED_SITES_UPDATED",
   "PLACES_BOOKMARK_ADDED",
   "PLACES_BOOKMARK_CHANGED",
   "PLACES_BOOKMARK_REMOVED",
   "PLACES_HISTORY_CLEARED",
   "PLACES_LINK_BLOCKED",
   "PLACES_LINK_DELETED",
+  "PREFS_INITIAL_VALUES",
+  "PREF_CHANGED",
+  "SAVE_SESSION_PERF_DATA",
+  "SAVE_TO_POCKET",
   "SCREENSHOT_UPDATED",
+  "SECTION_DEREGISTER",
+  "SECTION_REGISTER",
+  "SECTION_ROWS_UPDATE",
+  "SET_PREF",
+  "SNIPPETS_DATA",
+  "SNIPPETS_RESET",
+  "SYSTEM_TICK",
+  "TELEMETRY_IMPRESSION_STATS",
   "TELEMETRY_PERFORMANCE_EVENT",
   "TELEMETRY_UNDESIRED_EVENT",
   "TELEMETRY_USER_EVENT",
+  "TOP_SITES_PIN",
+  "TOP_SITES_UNPIN",
   "TOP_SITES_UPDATED",
   "UNINIT"
-// The line below creates an object like this:
-// {
-//   INIT: "INIT",
-//   UNINIT: "UNINIT"
-// }
-// It prevents accidentally adding a different key/value name.
-].reduce((obj, type) => { obj[type] = type; return obj; }, {});
+]) {
+  actionTypes[type] = type;
+}
 
 // Helper function for creating routed actions between content and main
 // Not intended to be used by consumers
@@ -134,7 +158,7 @@ function UserEvent(data) {
  * UndesiredEvent - A telemetry ping indicating an undesired state.
  *
  * @param  {object} data Fields to include in the ping (value, etc.)
- * @param {int} importContext (For testing) Override the import context for testing.
+ * @param  {int} importContext (For testing) Override the import context for testing.
  * @return {object} An action. For UI code, a SendToMain action.
  */
 function UndesiredEvent(data, importContext = globalImportContext) {
@@ -149,7 +173,7 @@ function UndesiredEvent(data, importContext = globalImportContext) {
  * PerfEvent - A telemetry ping indicating a performance-related event.
  *
  * @param  {object} data Fields to include in the ping (value, etc.)
- * @param {int} importContext (For testing) Override the import context for testing.
+ * @param  {int} importContext (For testing) Override the import context for testing.
  * @return {object} An action. For UI code, a SendToMain action.
  */
 function PerfEvent(data, importContext = globalImportContext) {
@@ -160,6 +184,26 @@ function PerfEvent(data, importContext = globalImportContext) {
   return importContext === UI_CODE ? SendToMain(action) : action;
 }
 
+/**
+ * ImpressionStats - A telemetry ping indicating an impression stats.
+ *
+ * @param  {object} data Fields to include in the ping
+ * @param  {int} importContext (For testing) Override the import context for testing.
+ * #return {object} An action. For UI code, a SendToMain action.
+ */
+function ImpressionStats(data, importContext = globalImportContext) {
+  const action = {
+    type: actionTypes.TELEMETRY_IMPRESSION_STATS,
+    data
+  };
+  return importContext === UI_CODE ? SendToMain(action) : action;
+}
+
+function SetPref(name, value, importContext = globalImportContext) {
+  const action = {type: actionTypes.SET_PREF, data: {name, value}};
+  return importContext === UI_CODE ? SendToMain(action) : action;
+}
+
 this.actionTypes = actionTypes;
 
 this.actionCreators = {
@@ -167,8 +211,10 @@ this.actionCreators = {
   UserEvent,
   UndesiredEvent,
   PerfEvent,
+  ImpressionStats,
   SendToContent,
-  SendToMain
+  SendToMain,
+  SetPref
 };
 
 // These are helpers to test for certain kinds of actions

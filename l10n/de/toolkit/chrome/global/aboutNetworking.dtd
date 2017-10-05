@@ -46,3 +46,13 @@
 <!ENTITY aboutNetworking.rcwnCacheWonCount     "Anzahl Cache-Siege">
 <!ENTITY aboutNetworking.rcwnNetWonCount       "Anzahl Netzwerk-Siege">
 <!ENTITY aboutNetworking.totalNetworkRequests  "Gesamtanzahl Netzwerkanfragen">
+<!ENTITY aboutNetworking.rcwnOperation         "Cache-Aktionen">
+<!ENTITY aboutNetworking.rcwnPerfOpen          "Öffnen">
+<!ENTITY aboutNetworking.rcwnPerfRead          "Lesen">
+<!ENTITY aboutNetworking.rcwnPerfWrite         "Schreiben">
+<!ENTITY aboutNetworking.rcwnPerfEntryOpen     "Eintrag öffnen">
+<!ENTITY aboutNetworking.rcwnAvgShort          "Durchschnitt kurz">
+<!ENTITY aboutNetworking.rcwnAvgLong           "Durchschnitt lang">
+<!ENTITY aboutNetworking.rcwnStddevLong        "Standardabweichung Durchschnitt lang">
+<!ENTITY aboutNetworking.rcwnCacheSlow         "Anzahl Cache langsam">
+<!ENTITY aboutNetworking.rcwnCacheNotSlow      "Anzahl Cache nicht langsam">

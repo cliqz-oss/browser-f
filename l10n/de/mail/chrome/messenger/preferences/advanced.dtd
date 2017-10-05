@@ -11,6 +11,7 @@
 <!-- General Settings -->
 <!ENTITY enableGlodaSearch.label       "Globale Suche und Nachrichtenindizierung aktivieren">
 <!ENTITY enableGlodaSearch.accesskey   "N">
+<!ENTITY dateTimeFormatting.label      "Datums- und Uhrzeitformat">
 <!ENTITY allowHWAccel.label            "Hardwarebeschleunigung verwenden, wenn verfügbar">
 <!ENTITY allowHWAccel.accesskey        "H">
 <!ENTITY storeType.label               "Speichermethode für neue Konten:">
@@ -52,7 +53,19 @@
 <!ENTITY crashReporterLearnMore.label    "Weitere Informationen">
 
 <!-- Update -->
-<!ENTITY updateApp.label                 "&brandShortName;-Updates:">
+<!-- LOCALIZATION NOTE (updateApp.label):
+  Strings from aboutDialog.dtd are displayed in this section of the preferences.
+  Please check for possible accesskey conflicts.
+-->
+<!ENTITY updateApp2.label                "&brandShortName;-Updates">
+<!-- LOCALIZATION NOTE (updateApp.version.*): updateApp.version.pre is
+  followed by a version number, keep the trailing space or replace it with
+  a different character as needed. updateApp.version.post is displayed after
+  the version number, and is empty on purpose for English. You can use it
+  if required by your language.
+ -->
+<!ENTITY updateApp.version.pre           "Version ">
+<!ENTITY updateApp.version.post          "">
 <!ENTITY updateAuto.label                "Updates automatisch installieren (empfohlen: erhöhte Sicherheit)">
 <!ENTITY updateAuto.accesskey            "U">
 <!ENTITY updateCheck.label               "Nach Updates suchen, aber Installation manuell durchführen">
@@ -89,6 +102,8 @@
 <!ENTITY useCacheBefore.label            "Es werden bis zu">
 <!ENTITY useCacheBefore.accesskey        "U">
 <!ENTITY useCacheAfter.label             "MB Speicherplatz als Cache verwendet">
+<!ENTITY overrideSmartCacheSize.label    "Automatisches Cache-Management ausschalten">
+<!ENTITY overrideSmartCacheSize.accesskey "M">
 <!ENTITY clearCacheNow.label             "Jetzt leeren">
 <!ENTITY clearCacheNow.accesskey         "l">
 

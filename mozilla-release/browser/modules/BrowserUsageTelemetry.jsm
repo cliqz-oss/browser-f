@@ -23,7 +23,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
 const MAX_UNIQUE_VISITED_DOMAINS = 100;
 
 // Observed topic names.
-const WINDOWS_RESTORED_TOPIC = "sessionstore-windows-restored";
 const TAB_RESTORING_TOPIC = "SSTabRestoring";
 const TELEMETRY_SUBSESSIONSPLIT_TOPIC = "internal-telemetry-after-subsession-split";
 const DOMWINDOW_OPENED_TOPIC = "domwindowopened";
@@ -104,12 +103,7 @@ function getSearchEngineId(engine) {
     if (engine.identifier) {
       return engine.identifier;
     }
-    // Due to bug 1222070, we can't directly check Services.telemetry.canRecordExtended
-    // here.
-    const extendedTelemetry = Services.prefs.getBoolPref("toolkit.telemetry.enabled");
-    if (engine.name && extendedTelemetry) {
-      // If it's a custom search engine only report the engine name
-      // if extended Telemetry is enabled.
+    if (engine.name) {
       return "other-" + engine.name;
     }
   }
@@ -311,8 +305,8 @@ let urlbarListener = {
 
 let BrowserUsageTelemetry = {
   init() {
-    Services.obs.addObserver(this, WINDOWS_RESTORED_TOPIC);
     urlbarListener.init();
+    this._setupAfterRestore();
   },
 
   /**
@@ -333,15 +327,11 @@ let BrowserUsageTelemetry = {
   uninit() {
     Services.obs.removeObserver(this, DOMWINDOW_OPENED_TOPIC);
     Services.obs.removeObserver(this, TELEMETRY_SUBSESSIONSPLIT_TOPIC);
-    Services.obs.removeObserver(this, WINDOWS_RESTORED_TOPIC);
     urlbarListener.uninit();
   },
 
   observe(subject, topic, data) {
     switch (topic) {
-      case WINDOWS_RESTORED_TOPIC:
-        this._setupAfterRestore();
-        break;
       case DOMWINDOW_OPENED_TOPIC:
         this._onWindowOpen(subject);
         break;

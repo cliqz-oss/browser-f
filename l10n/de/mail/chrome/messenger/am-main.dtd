@@ -40,3 +40,6 @@
 <!ENTITY smtpName.label "Postausgangs-Server (SMTP):">
 <!ENTITY smtpName.accesskey "P">
 <!ENTITY smtpDefaultServer.label "Standard-Server verwenden">
+
+<!ENTITY smtpServerEdit.label "Postausgangs-Server (SMTP) bearbeiten…">
+<!ENTITY smtpServerEdit.accesskey "M">

@@ -4,91 +4,188 @@
 "use strict";
 
 const {utils: Cu} = Components;
-Cu.import("resource://gre/modules/XPCOMUtils.jsm");
-const {Store} = Cu.import("resource://activity-stream/lib/Store.jsm", {});
-const {actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+Cu.import("resource://gre/modules/Services.jsm");
 
+// NB: Eagerly load modules that will be loaded/constructed/initialized in the
+// common case to avoid the overhead of wrapping and detecting lazy loading.
+const {actionCreators: ac, actionTypes: at} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
+const {DefaultPrefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
+const {LocalizationFeed} = Cu.import("resource://activity-stream/lib/LocalizationFeed.jsm", {});
+const {ManualMigration} = Cu.import("resource://activity-stream/lib/ManualMigration.jsm", {});
+const {NewTabInit} = Cu.import("resource://activity-stream/lib/NewTabInit.jsm", {});
+const {PlacesFeed} = Cu.import("resource://activity-stream/lib/PlacesFeed.jsm", {});
+const {PrefsFeed} = Cu.import("resource://activity-stream/lib/PrefsFeed.jsm", {});
+const {Store} = Cu.import("resource://activity-stream/lib/Store.jsm", {});
+const {SnippetsFeed} = Cu.import("resource://activity-stream/lib/SnippetsFeed.jsm", {});
+const {SystemTickFeed} = Cu.import("resource://activity-stream/lib/SystemTickFeed.jsm", {});
+const {TelemetryFeed} = Cu.import("resource://activity-stream/lib/TelemetryFeed.jsm", {});
+const {TopSitesFeed} = Cu.import("resource://activity-stream/lib/TopSitesFeed.jsm", {});
+const {TopStoriesFeed} = Cu.import("resource://activity-stream/lib/TopStoriesFeed.jsm", {});
+
+const DEFAULT_SITES = new Map([
+  // This first item is the global list fallback for any unexpected geos
+  ["", "https://www.youtube.com/,https://www.facebook.com/,https://www.wikipedia.org/,https://www.reddit.com/,https://www.amazon.com/,https://twitter.com/"],
+  ["US", "https://www.youtube.com/,https://www.facebook.com/,https://www.amazon.com/,https://www.reddit.com/,https://www.wikipedia.org/,https://twitter.com/"],
+  ["CA", "https://www.youtube.com/,https://www.facebook.com/,https://www.reddit.com/,https://www.wikipedia.org/,https://www.amazon.ca/,https://twitter.com/"],
+  ["DE", "https://www.youtube.com/,https://www.facebook.com/,https://www.amazon.de/,https://www.ebay.de/,https://www.wikipedia.org/,https://www.reddit.com/"],
+  ["PL", "https://www.youtube.com/,https://www.facebook.com/,https://allegro.pl/,https://www.wikipedia.org/,https://www.olx.pl/,https://www.wykop.pl/"],
+  ["RU", "https://vk.com/,https://www.youtube.com/,https://ok.ru/,https://www.avito.ru/,https://www.aliexpress.com/,https://www.wikipedia.org/"],
+  ["GB", "https://www.youtube.com/,https://www.facebook.com/,https://www.reddit.com/,https://www.amazon.co.uk/,https://www.bbc.co.uk/,https://www.ebay.co.uk/"],
+  ["FR", "https://www.youtube.com/,https://www.facebook.com/,https://www.wikipedia.org/,https://www.amazon.fr/,https://www.leboncoin.fr/,https://twitter.com/"]
+]);
+const GEO_PREF = "browser.search.region";
 const REASON_ADDON_UNINSTALL = 6;
 
-XPCOMUtils.defineLazyModuleGetter(this, "DefaultPrefs",
-  "resource://activity-stream/lib/ActivityStreamPrefs.jsm");
+// Configure default Activity Stream prefs with a plain `value` or a `getValue`
+// that computes a value. A `value_local_dev` is used for development defaults.
+const PREFS_CONFIG = new Map([
+  ["default.sites", {
+    title: "Comma-separated list of default top sites to fill in behind visited sites",
+    getValue: ({geo}) => DEFAULT_SITES.get(DEFAULT_SITES.has(geo) ? geo : "")
+  }],
+  ["feeds.section.topstories.options", {
+    title: "Configuration options for top stories feed",
+    // This is a dynamic pref as it depends on the feed being shown or not
+    getValue: args => JSON.stringify({
+      api_key_pref: "extensions.pocket.oAuthConsumerKey",
+      // Use the opposite value as what default value the feed would have used
+      hidden: !PREFS_CONFIG.get("feeds.section.topstories").getValue(args),
+      learn_more_endpoint: "https://getpocket.com/firefox_learnmore?src=ff_newtab",
+      provider_description: "pocket_feedback_body",
+      provider_icon: "pocket",
+      provider_name: "Pocket",
+      read_more_endpoint: "https://getpocket.com/explore/trending?src=ff_new_tab",
+      stories_endpoint: `https://getpocket.com/v3/firefox/global-recs?consumer_key=$apiKey&locale_lang=${args.locale}`,
+      stories_referrer: "https://getpocket.com/recommendations",
+      survey_link: "https://www.surveymonkey.com/r/newtabffx",
+      topics_endpoint: `https://getpocket.com/v3/firefox/trending-topics?consumer_key=$apiKey&locale_lang=${args.locale}`
+    })
+  }],
+  ["migrationExpired", {
+    title: "Boolean flag that decides whether to show the migration message or not.",
+    value: false
+  }],
+  ["migrationLastShownDate", {
+    title: "Timestamp when migration message was last shown. In seconds.",
+    value: 0
+  }],
+  ["migrationRemainingDays", {
+    title: "Number of days to show the manual migration message",
+    value: 4
+  }],
+  ["showSearch", {
+    title: "Show the Search bar on the New Tab page",
+    value: true
+  }],
+  ["showTopSites", {
+    title: "Show the Top Sites section on the New Tab page",
+    value: true
+  }],
+  ["impressionStats.clicked", {
+    title: "GUIDs of clicked Top stories items",
+    value: "[]"
+  }],
+  ["impressionStats.blocked", {
+    title: "GUIDs of blocked Top stories items",
+    value: "[]"
+  }],
+  ["impressionStats.pocketed", {
+    title: "GUIDs of pocketed Top stories items",
+    value: "[]"
+  }],
+  ["telemetry", {
+    title: "Enable system error and usage data collection",
+    value: true,
+    value_local_dev: false
+  }],
+  ["telemetry.log", {
+    title: "Log telemetry events in the console",
+    value: false,
+    value_local_dev: true
+  }],
+  ["telemetry.ping.endpoint", {
+    title: "Telemetry server endpoint",
+    value: "https://tiles.services.mozilla.com/v4/links/activity-stream"
+  }]
+]);
 
-// Feeds
-XPCOMUtils.defineLazyModuleGetter(this, "LocalizationFeed",
-  "resource://activity-stream/lib/LocalizationFeed.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "NewTabInit",
-  "resource://activity-stream/lib/NewTabInit.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesFeed",
-  "resource://activity-stream/lib/PlacesFeed.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryFeed",
-  "resource://activity-stream/lib/TelemetryFeed.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "TopSitesFeed",
-  "resource://activity-stream/lib/TopSitesFeed.jsm");
-
-const PREFS_CONFIG = [
-  // When you add a feed pref here:
-  // 1. The pref should be prefixed with "feeds."
-  // 2. The init property should be a function that instantiates your Feed
-  // 3. You should use XPCOMUtils.defineLazyModuleGetter to import the Feed,
-  //    so it isn't loaded until the feed is enabled.
+// Array of each feed's FEEDS_CONFIG factory and values to add to PREFS_CONFIG
+const FEEDS_DATA = [
   {
-    name: "feeds.localization",
+    name: "localization",
+    factory: () => new LocalizationFeed(),
     title: "Initialize strings and detect locale for Activity Stream",
-    value: true,
-    init: () => new LocalizationFeed()
+    value: true
   },
   {
-    name: "feeds.newtabinit",
+    name: "migration",
+    factory: () => new ManualMigration(),
+    title: "Manual migration wizard",
+    value: true
+  },
+  {
+    name: "newtabinit",
+    factory: () => new NewTabInit(),
     title: "Sends a copy of the state to each new tab that is opened",
-    value: true,
-    init: () => new NewTabInit()
+    value: true
   },
   {
-    name: "feeds.places",
+    name: "places",
+    factory: () => new PlacesFeed(),
     title: "Listens for and relays various Places-related events",
-    value: true,
-    init: () => new PlacesFeed()
+    value: true
   },
   {
-    name: "feeds.telemetry",
-    title: "Relays telemetry-related actions to TelemetrySender",
-    value: true,
-    init: () => new TelemetryFeed()
+    name: "prefs",
+    factory: () => new PrefsFeed(PREFS_CONFIG),
+    title: "Preferences",
+    value: true
   },
   {
-    name: "feeds.topsites",
-    title: "Queries places and gets metadata for Top Sites section",
-    value: true,
-    init: () => new TopSitesFeed()
+    name: "section.topstories",
+    factory: () => new TopStoriesFeed(),
+    title: "Fetches content recommendations from a configurable content provider",
+    // Dynamically determine if Pocket should be shown for a geo / locale
+    getValue: ({geo, locale}) => {
+      const locales = ({
+        "US": ["en-US", "en-GB", "en-ZA"],
+        "CA": ["en-US", "en-GB", "en-ZA"],
+        "DE": ["de", "de-DE", "de-AT", "de-CH"]
+      })[geo];
+      return !!locales && locales.includes(locale);
+    }
   },
-  // End feeds
-
+  {
+    name: "snippets",
+    factory: () => new SnippetsFeed(),
+    title: "Gets snippets data",
+    value: true
+  },
+  {
+    name: "systemtick",
+    factory: () => new SystemTickFeed(),
+    title: "Produces system tick events to periodically check for data expiry",
+    value: true
+  },
   {
     name: "telemetry",
-    title: "Enable system error and usage data collection",
-    value: false
+    factory: () => new TelemetryFeed(),
+    title: "Relays telemetry-related actions to TelemetrySender",
+    value: true
   },
   {
-    name: "telemetry.log",
-    title: "Log telemetry events in the console",
-    value: false
-  },
-  {
-    name: "telemetry.ping.endpoint",
-    title: "Telemetry server endpoint",
-    value: "https://tiles.services.mozilla.com/v3/links/activity-stream"
+    name: "topsites",
+    factory: () => new TopSitesFeed(),
+    title: "Queries places and gets metadata for Top Sites section",
+    value: true
   }
 ];
 
-const feeds = {};
-for (const pref of PREFS_CONFIG) {
-  if (pref.name.match(/^feeds\./)) {
-    feeds[pref.name] = pref.init;
-  }
+const FEEDS_CONFIG = new Map();
+for (const config of FEEDS_DATA) {
+  const pref = `feeds.${config.name}`;
+  FEEDS_CONFIG.set(pref, config.factory);
+  PREFS_CONFIG.set(pref, config);
 }
 
 this.ActivityStream = class ActivityStream {
@@ -105,19 +202,27 @@ this.ActivityStream = class ActivityStream {
     this.initialized = false;
     this.options = options;
     this.store = new Store();
-    this.feeds = feeds;
+    this.feeds = FEEDS_CONFIG;
     this._defaultPrefs = new DefaultPrefs(PREFS_CONFIG);
   }
   init() {
-    this.initialized = true;
+    this._updateDynamicPrefs();
     this._defaultPrefs.init();
+
+    // Hook up the store and let all feeds and pages initialize
     this.store.init(this.feeds);
-    this.store.dispatch({
+    this.store.dispatch(ac.BroadcastToContent({
       type: at.INIT,
       data: {version: this.options.version}
-    });
+    }));
+
+    this.initialized = true;
   }
   uninit() {
+    if (this.geo === "") {
+      Services.prefs.removeObserver(GEO_PREF, this);
+    }
+
     this.store.dispatch({type: at.UNINIT});
     this.store.uninit();
 
@@ -131,6 +236,50 @@ this.ActivityStream = class ActivityStream {
       this._defaultPrefs.reset();
     }
   }
+  _updateDynamicPrefs() {
+    // Save the geo pref if we have it
+    if (Services.prefs.prefHasUserValue(GEO_PREF)) {
+      this.geo = Services.prefs.getStringPref(GEO_PREF);
+    } else if (this.geo !== "") {
+      // Watch for geo changes and use a dummy value for now
+      Services.prefs.addObserver(GEO_PREF, this);
+      this.geo = "";
+    }
+
+    this.locale = Services.locale.getRequestedLocale();
+
+    // Update the pref config of those with dynamic values
+    for (const pref of PREFS_CONFIG.keys()) {
+      const prefConfig = PREFS_CONFIG.get(pref);
+      if (!prefConfig.getValue) {
+        continue;
+      }
+
+      const newValue = prefConfig.getValue({
+        geo: this.geo,
+        locale: this.locale
+      });
+
+      // If there's an existing value and it has changed, that means we need to
+      // overwrite the default with the new value.
+      if (prefConfig.value !== undefined && prefConfig.value !== newValue) {
+        this._defaultPrefs.setDefaultPref(pref, newValue);
+      }
+
+      prefConfig.value = newValue;
+    }
+  }
+  observe(subject, topic, data) {
+    switch (topic) {
+      case "nsPref:changed":
+        // We should only expect one geo change, so update and stop observing
+        if (data === GEO_PREF) {
+          this._updateDynamicPrefs();
+          Services.prefs.removeObserver(GEO_PREF, this);
+        }
+        break;
+    }
+  }
 };
 
-this.EXPORTED_SYMBOLS = ["ActivityStream"];
+this.EXPORTED_SYMBOLS = ["ActivityStream", "PREFS_CONFIG"];

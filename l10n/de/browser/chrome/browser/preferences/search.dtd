@@ -3,18 +3,19 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
+<!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
 
 <!ENTITY chooseYourDefaultSearchEngine.label   "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
-<!ENTITY showURLBarSuggestions.label           "Suchvorschläge in Adressleiste anzeigen">
-<!ENTITY showURLBarSuggestions.accesskey       "v">
+<!ENTITY showURLBarSuggestions2.label           "Suchvorschläge in Adressleiste anzeigen">
+<!ENTITY showURLBarSuggestions2.accesskey       "v">
 <!ENTITY urlBarSuggestionsPermanentPB.label    "Suchvorschläge werden nicht in der Adressleiste angezeigt, weil &brandShortName; angewiesen wurde, keine Chronik zu speichern.">
 
 <!ENTITY oneClickSearchEngines.label           "Direkt suchen">
 
-<!ENTITY chooseWhichOneToDisplay.label         "Um direkt mit einer Suchmaschine zu suchen, schreibe das entsprechende Kürzel vor Deine Anfrage, z.B. #gm + Dein Suchbegriff um Ergebnisse von Google Maps zu erhalten.">
+<!ENTITY chooseWhichOneToDisplay2.label        "Wählen Sie eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem Sie den Suchbegriff eingegeben haben.">
 
 <!ENTITY engineNameColumn.label                "Suchmaschine">
 <!ENTITY engineKeywordColumn.label             "Schlüsselwort">
@@ -25,5 +26,5 @@
 <!ENTITY removeEngine.label                    "Entfernen">
 <!ENTITY removeEngine.accesskey                "E">
 
-<!ENTITY addMoreSearchEngines2.label           "Weitere Suchmaschinen hinzufügen">
 <!ENTITY addMoreSearchEnginesDesc.label        "Cliqz unterstützt viele Suchmaschinen aus dem offiziellen Mozilla Firefox Verzeichnis.">
+<!ENTITY findMoreSearchEngines.label           "Weitere Suchmaschinen hinzufügen">

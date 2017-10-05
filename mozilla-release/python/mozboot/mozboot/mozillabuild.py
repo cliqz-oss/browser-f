@@ -10,18 +10,6 @@ import tempfile
 
 from mozboot.base import BaseBootstrapper
 
-STYLO_MOZCONFIG = '''
-To enable Stylo in your builds, paste the lines between the chevrons
-(>>> and <<<) into your mozconfig file:
-
-<<<
-ac_add_options --enable-stylo
-
-ac_add_options --with-libclang-path="{state_dir}/clang/bin"
-ac_add_options --with-clang-path="{state_dir}/clang/bin/clang.exe"
->>>
-'''
-
 class MozillaBuildBootstrapper(BaseBootstrapper):
     '''Bootstrapper for MozillaBuild to install rustup.'''
     def __init__(self, no_interactive=False):
@@ -38,9 +26,9 @@ class MozillaBuildBootstrapper(BaseBootstrapper):
         try:
             rustup_init = tempfile.gettempdir() + '/rustup-init.exe'
             self.http_download_and_save(
-                    'https://static.rust-lang.org/rustup/archive/0.2.0/i686-pc-windows-msvc/rustup-init.exe',
+                    'https://static.rust-lang.org/rustup/archive/1.6.0/i686-pc-windows-msvc/rustup-init.exe',
                     rustup_init,
-                    'a45ab7462b567dacddaf6e9e48bb43a1b9c1db4404ba77868f7d6fc685282a46')
+                    '9855b9f0b19fd83c056185e083b6b345982becc2f8c608aac14998a73bcc2937')
             self.run([rustup_init, '--no-modify-path', '--default-host',
                 'x86_64-pc-windows-msvc', '--default-toolchain', 'stable', '-y'])
             mozillabuild_dir = os.environ['MOZILLABUILD']
@@ -84,10 +72,6 @@ class MozillaBuildBootstrapper(BaseBootstrapper):
 
     def install_mobile_android_artifact_mode_packages(self):
         pass
-
-    def suggest_browser_mozconfig(self):
-        if self.stylo:
-            print(STYLO_MOZCONFIG.format(state_dir=self.state_dir))
 
     def ensure_stylo_packages(self, state_dir, checkout_root):
         import stylo

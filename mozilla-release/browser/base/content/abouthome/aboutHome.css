@@ -363,9 +363,9 @@ body[narrow] #restorePreviousSession::before {
   display: block;
   position: absolute;
   top: 12px;
-  right: 12px;
-  width: 70px;
-  height: 20px;
+  offset-inline-end: 12px;
+  width: 67px;
+  height: 19px;
 }
 
 /* [HiDPI]
@@ -437,4 +437,3 @@ body[narrow] #restorePreviousSession::before {
     transform-origin: top center;
   }
 }
-

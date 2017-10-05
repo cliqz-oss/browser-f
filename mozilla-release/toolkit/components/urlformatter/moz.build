@@ -23,8 +23,4 @@ EXTRA_PP_COMPONENTS += [
     'nsURLFormatter.js',
 ]
 
-CONFIGURE_SUBST_FILES += [
-    'api_keys',
-]
-
 DEFINES['OBJDIR'] = OBJDIR

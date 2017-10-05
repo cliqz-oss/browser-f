@@ -76,6 +76,10 @@ XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREA_PLACEMENTS", function() {
     ],
   };
 
+  if (AppConstants.MOZ_PHOTON_THEME) {
+    result["nav-bar"].push("sidebar-button");
+  }
+
   if (gPhotonStructure) {
     result["widget-overflow-fixed-list"] = [];
   } else {
@@ -155,6 +159,7 @@ XPCOMUtils.defineLazyGetter(this, "ALL_BUILTIN_ITEMS", function() {
     "BMB_bookmarksToolbarPopup",
     "search-go-button",
     "soundplaying-icon",
+    "restore-tabs-button",
   ]
   return DEFAULT_ITEMS.concat(PALETTE_ITEMS)
                       .concat(SPECIAL_CASES);
@@ -202,17 +207,21 @@ this.BrowserUITelemetry = {
     UITelemetry.addSimpleMeasureFunction("syncstate",
                                          this.getSyncState.bind(this));
 
-    Services.obs.addObserver(this, "sessionstore-windows-restored");
-    Services.obs.addObserver(this, "browser-delayed-startup-finished");
     Services.obs.addObserver(this, "autocomplete-did-enter-text");
     CustomizableUI.addListener(this);
+
+    // Register existing windows
+    let browserEnum = Services.wm.getEnumerator("navigator:browser");
+    while (browserEnum.hasMoreElements()) {
+      this._registerWindow(browserEnum.getNext());
+    }
+    Services.obs.addObserver(this, "browser-delayed-startup-finished");
+
+    this._gatherFirstWindowMeasurements();
   },
 
   observe(aSubject, aTopic, aData) {
     switch (aTopic) {
-      case "sessionstore-windows-restored":
-        this._gatherFirstWindowMeasurements();
-        break;
       case "browser-delayed-startup-finished":
         this._registerWindow(aSubject);
         break;
@@ -300,17 +309,14 @@ this.BrowserUITelemetry = {
     // our measurements because at that point all browser windows have
     // probably been closed, since the vast majority of saved-session
     // pings are gathered during shutdown.
-    let win = RecentWindow.getMostRecentBrowserWindow({
-      private: false,
-      allowPopups: false,
-    });
-
     Services.search.init(rv => {
-      // If there are no such windows (or we've just about found one
-      // but it's closed already), we're out of luck. :(
-      let hasWindow = win && !win.closed;
-      this._firstWindowMeasurements = hasWindow ? this._getWindowMeasurements(win, rv)
-                                                : {};
+      let win = RecentWindow.getMostRecentBrowserWindow({
+        private: false,
+        allowPopups: false,
+      });
+      // If there are no such windows, we're out of luck. :(
+      this._firstWindowMeasurements = win ? this._getWindowMeasurements(win, rv)
+                                          : {};
     });
   },
 

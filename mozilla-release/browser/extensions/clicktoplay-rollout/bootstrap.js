@@ -6,7 +6,7 @@
 
 const {classes: Cc, interfaces: Ci, utils: Cu} = Components;
 
-Cu.import("resource://gre/modules/Preferences.jsm");
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/UpdateUtils.jsm");
 Cu.import("resource://gre/modules/AppConstants.jsm");
@@ -14,8 +14,8 @@ Cu.import("resource://gre/modules/TelemetryEnvironment.jsm");
 
 // The amount of people to be part of the rollout
 const TEST_THRESHOLD = {
-  "beta": 0.5,  // 50%
-  "release": 0.05,  // 5%
+  "beta": 1.0,  // 100%
+  "release": 1.0,  // 100%
 };
 
 if (AppConstants.RELEASE_OR_BETA) {
@@ -46,13 +46,13 @@ function defineCohort() {
     return;
   }
 
-  let cohort = Preferences.get(PREF_COHORT_NAME);
+  let cohort = Services.prefs.getStringPref(PREF_COHORT_NAME, undefined);
 
   if (!cohort) {
     // The cohort has not been defined yet: this is the first
     // time that we're running. Let's see if the user has
     // a non-default setting to avoid changing it.
-    let currentPluginState = Preferences.get(PREF_FLASH_STATE);
+    let currentPluginState = Services.prefs.getIntPref(PREF_FLASH_STATE);
     switch (currentPluginState) {
       case Ci.nsIPluginTag.STATE_CLICKTOPLAY:
         cohort = "early-adopter-ctp";
@@ -71,8 +71,11 @@ function defineCohort() {
 
   switch (cohort) {
     case undefined:
+    case null:
+    case "":
     case "test":
     case "control":
+    case "excluded":
     {
       // If it's either test/control, the cohort might have changed
       // if the desired sampling has been changed.
@@ -81,8 +84,8 @@ function defineCohort() {
 
       if (userSample < testThreshold) {
         cohort = "test";
-        let defaultPrefs = new Preferences({defaultBranch: true});
-        defaultPrefs.set(PREF_FLASH_STATE, Ci.nsIPluginTag.STATE_CLICKTOPLAY);
+        let defaultPrefs = Services.prefs.getDefaultBranch("");
+        defaultPrefs.setIntPref(PREF_FLASH_STATE, Ci.nsIPluginTag.STATE_CLICKTOPLAY);
       } else if (userSample >= 1.0 - testThreshold) {
         cohort = "control";
       } else {
@@ -105,21 +108,19 @@ function defineCohort() {
 }
 
 function getUserSample() {
-  let prefValue = Preferences.get(PREF_COHORT_SAMPLE, undefined);
-  let value = 0.0;
+  let prefType = Services.prefs.getPrefType(PREF_COHORT_SAMPLE);
 
-  if (typeof(prefValue) == "string") {
-    value = parseFloat(prefValue, 10);
-    return value;
+  if (prefType == Ci.nsIPrefBranch.PREF_STRING) {
+    return parseFloat(Services.prefs.getStringPref(PREF_COHORT_SAMPLE), 10);
   }
 
-  value = Math.random();
-  Preferences.set(PREF_COHORT_SAMPLE, value.toString().substr(0, 8));
+  let value = Math.random();
+  Services.prefs.setStringPref(PREF_COHORT_SAMPLE, value.toString().substr(0, 8));
   return value;
 }
 
 function setCohort(cohortName) {
-  Preferences.set(PREF_COHORT_NAME, cohortName);
+  Services.prefs.setStringPref(PREF_COHORT_NAME, cohortName);
   TelemetryEnvironment.setExperimentActive("clicktoplay-rollout", cohortName);
 
   try {
@@ -130,10 +131,10 @@ function setCohort(cohortName) {
 }
 
 function watchForPrefChanges() {
-  Preferences.observe(PREF_FLASH_STATE, function prefWatcher() {
-    let currentCohort = Preferences.get(PREF_COHORT_NAME, "unknown");
+  Services.prefs.addObserver(PREF_FLASH_STATE, function prefWatcher() {
+    let currentCohort = Services.prefs.getStringPref(PREF_COHORT_NAME, "unknown");
     setCohort(`user-changed-from-${currentCohort}`);
-    Preferences.ignore(PREF_FLASH_STATE, prefWatcher);
+    Services.prefs.removeObserver(PREF_FLASH_STATE, prefWatcher);
   });
 }
 
