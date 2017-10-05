@@ -13,11 +13,8 @@
 #main-window.cliqz-blue #nav-bar, #main-window.cliqz-blue #navigator-toolbox, #main-window.cliqz-blue .tab-content, #main-window.cliqz-blue #PersonalToolbar {
   background-color: none !important; }
 
-#main-window.cliqz-blue #nav-bar {
-  border-top-color: #00AEF0 !important; }
-
 #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content {
-  background: #fff !important;
+  background: #f6f6f6 !important;
   border-right: 1px solid #0096d4; }
   #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
     -moz-image-region: rect(0, 64px, 16px, 48px); }
@@ -32,12 +29,17 @@
   background-color: #0098d5 !important; }
 
 #main-window.cliqz-blue #urlbar[focused="true"], #main-window.cliqz-blue .searchbar-textbox[focused="true"] {
-  border-color: #ccc !important;
-  -moz-border-start: none !important; }
+  border-color: #ccc !important; }
 
 @media (min-resolution: 2dppx) {
   #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
     -moz-image-region: rect(0, 128px, 32px, 96px); } }
+
+#main-window[tabsintitlebar] #TabsToolbar:not([collapsed="true"]) + #nav-bar:not(:-moz-lwtheme) {
+  border-top: none; }
+
+#reload-button {
+  border-left: none; }
 
 #main-window:not([cliqzBrowser="true"]),
 #main-window:not([cliqzBrowser="true"]) * :root {
@@ -466,7 +468,8 @@ notification[type="warning"] .messageText {
   width: 30px;
   border: none !important;
   background: none !important;
-  list-style-image: var(--cliqz-newtab-image) !important; }
+  list-style-image: var(--cliqz-newtab-image) !important;
+  -moz-image-region: rect(0px, 18px, 20px, 0px); }
   .tabs-newtab-button .toolbarbutton-icon {
     padding-top: 5px;
     padding-bottom: 3px; }
@@ -549,3 +552,4 @@ toolbaritem[sdkstylewidget="true"] > toolbarbutton, [cui-areatype="menu-panel"]:
     list-style-image: var(--cliqz-toolbar-image-2x); }
   toolbaritem[sdkstylewidget="true"] > toolbarbutton, [cui-areatype="menu-panel"]:-moz-any(#back-button, #forward-button, #home-button, #print-button, #downloads-button, #bookmarks-menu-button, #new-tab-button, #new-window-button, #fullscreen-button, #sync-button, #feed-button, #social-share-button, #open-file-button, #find-button, #developer-button, #preferences-button, #privatebrowsing-button, #save-page-button, #add-ons-button, #history-panelmenu, #nav-bar-overflow-button, #PanelUI-menu-button, #characterencoding-button, #email-link-button, #sidebar-button, #zoom-out-button, #zoom-reset-button, #zoom-in-button, #cut-button, #copy-button, #paste-button, #e10s-button, #panic-button, #webide-button, #containers-panelmenu), toolbarpaletteitem[place="palette"] > :-moz-any(#back-button, #forward-button, #home-button, #print-button, #downloads-button, #bookmarks-menu-button, #new-tab-button, #new-window-button, #fullscreen-button, #sync-button, #feed-button, #social-share-button, #open-file-button, #find-button, #developer-button, #preferences-button, #privatebrowsing-button, #save-page-button, #add-ons-button, #history-panelmenu, #nav-bar-overflow-button, #PanelUI-menu-button, #characterencoding-button, #email-link-button, #sidebar-button, #zoom-out-button, #zoom-reset-button, #zoom-in-button, #cut-button, #copy-button, #paste-button, #e10s-button, #panic-button, #webide-button, #containers-panelmenu) {
     list-style-image: var(--menupanel-list-style-image-2x); } }
+
