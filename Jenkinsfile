@@ -32,7 +32,7 @@ properties([
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c",
+        string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
                 name: "WIN_CERT_PATH_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAC_CERT_CREDENTIAL_ID"),
