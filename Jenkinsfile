@@ -173,18 +173,7 @@ jobs["windows"] = {
 }
 
 jobs["mac"] = {
-    def osx_slave
-
-    retry(3) {
-        osx_slave = helpers.getIdleSlave('osx pr')
-
-        if (!osx_slave) {
-            sleep 1000
-            error("Could not get an executor on OSX slave")
-        }
-    }
-
-    node(osx_slave) {
+    node('osx && pr') {
         ws('x') {
             stage('OSX Hypervisor Checkout') {
                 checkout scm
@@ -198,9 +187,10 @@ jobs["mac"] = {
             } catch(e) {}
 
             stage('OSX Bootstrap') {
-                sh '/bin/bash -lc "pip install compare-locales"'
+                sh '/bin/bash -lc "sudo pip install compare-locales"'
                 sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
                 sh '/bin/bash -lc "brew uninstall terminal-notifier"'
+                sh '/bin/bash -lc "brew install wget --with-libressl"'
             }
 
             withEnv([
