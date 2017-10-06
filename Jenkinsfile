@@ -32,7 +32,7 @@ properties([
         string(defaultValue: 'us-east-1', name: 'AWS_REGION'),
         string(defaultValue: "c2d53661-8521-47c7-a7b3-73bbb6723c0a",
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
-        string(defaultValue: "44c2aee7-743e-4ede-9411-55ad7219b09c",
+        string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
                 name: "WIN_CERT_PATH_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAC_CERT_CREDENTIAL_ID"),
@@ -98,93 +98,8 @@ jobs["windows"] = {
         error("Has Jobs in queue, aborting")
     }
 
-    // Try to get a jenkins slave. If the slave was created by this action
-    // we need to bootstrap it with ansible
-    def ec2_node = helpers.getEC2Slave("windows pr", "c:/jenkins")
-
-    if (ec2_node.get('created')) {
-        echo "New slave created. Starting provisioning"
-
-        node('docker && us-east-1') {
-            ws() {
-                stage("EC2 Slave Provisionning") {
-                    writeFile file: '/home/ubuntu/.aws/config', text: "[default]\nregion = ${params.AWS_REGION}"
-                    sh "chmod 0600 /home/ubuntu/.aws/config"
-
-                    withCredentials([
-                    [$class: 'AmazonWebServicesCredentialsBinding',
-                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                        def command = "aws ec2 describe-instances --filters \"Name=tag:JenkinsNodeId,Values=${ec2_node.get('nodeId')}\" | grep PrivateIpAddress | head -1 | awk -F \':\' '{print \$2}' | sed \'s/[\",]//g\'"
-                        def bootstrap_args = "-u 0 "
-                        def prov_args = "-u 0 "
-                        def nodeIP
-
-                        sh "`aws ecr get-login --region=${params.AWS_REGION}`"
-                        docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                            timeout(60) {
-                                def image = docker.image(params.IMAGE_NAME)
-                                image.pull()
-                                docker.image(image.imageName()).inside(bootstrap_args) {
-                                    withEnv([
-                                        "aws_access_key=${AWS_ACCESS_KEY_ID}",
-                                        "aws_secret_key=${AWS_SECRET_ACCESS_KEY}",
-                                        "jenkins_id=${ec2_node.get('nodeId')}",
-                                        "instance_name=browser-f"
-                                        ]) {
-                                           def bootstrap_params = "image_ami=${params.IMAGE_AMI}"
-                                           sh "cd /playbooks && ansible-playbook -e \"${bootstrap_params} \" ec2/bootstrap.yml"
-                                    }
-                                }
-                            }
-                        } // withRegistry
-
-                        // Retry three times to get the IP from amazon...
-                        retry(3) {
-                            nodeIP = sh(returnStdout: true, script: "${command}").trim()
-                            sleep 15
-                        }
-
-                        // Thanks to Aws on Windows we have to wait, for Ec2Agent to set the password and restart the machine.
-                        sleep(600)
-
-                        // After the slave is created in EC2 we need to configure it. Start jenkins service, enable winrm , etc...
-                        docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                            timeout(60) {
-                                def image = docker.image(params.IMAGE_NAME)
-
-                                docker.image(image.imageName()).inside(prov_args) {
-                                    withCredentials([
-                                        usernamePassword(
-                                        credentialsId: params.WINDOWS_SLAVE_CREDENTIALS,
-                                        passwordVariable: 'PASSWORD',
-                                        usernameVariable: 'USERNAME')]) {
-                                        withEnv([
-                                            "instance_name=${ec2_node.get('nodeId')}",
-                                            "JENKINS_URL=${env.JENKINS_URL}",
-                                            "NODE_ID=${ec2_node.get('nodeId')}",
-                                            "NODE_SECRET=${ec2_node.get('secret')}",
-                                            "USERNAME=${USERNAME}",
-                                            "PASSWORD=${PASSWORD}"
-                                            ]){
-                                            def params = "ansible_user=${USERNAME} ansible_password=${PASSWORD}"
-                                            sh "cd /playbooks && ansible-playbook --extra-vars \"${params}\" -i ${nodeIP}, ec2/playbook.yml"
-
-                                        }
-
-                                    }
-                                }
-                            }
-                        } // withRegistry
-                    } // withCredentials
-                } // stage
-            } // ws
-        } // node
-    } // endIf
-
     // We can now use the slave to do a windows build
-    node(ec2_node.get('nodeId')) {
+    node('windows && pr') {
         ws('a') {
             stage("Windows EC2 SCM Checkout") {
                 checkout([
@@ -257,251 +172,251 @@ jobs["windows"] = {
     }
 }
 
-jobs["mac"] = {
-    def osx_slave
+// jobs["mac"] = {
+//     def osx_slave
 
-    retry(3) {
-        osx_slave = helpers.getIdleSlave('osx pr')
+//     retry(3) {
+//         osx_slave = helpers.getIdleSlave('osx pr')
 
-        if (!osx_slave) {
-            sleep 1000
-            error("Could not get an executor on OSX slave")
-        }
-    }
+//         if (!osx_slave) {
+//             sleep 1000
+//             error("Could not get an executor on OSX slave")
+//         }
+//     }
 
-    node(osx_slave) {
-        ws('x') {
-            stage('OSX Hypervisor Checkout') {
-                checkout scm
-            }
+//     node(osx_slave) {
+//         ws('x') {
+//             stage('OSX Hypervisor Checkout') {
+//                 checkout scm
+//             }
 
-            def LANG_PARAM = ""
-            try {
-                if (env.CQZ_LANG) {
-                    LANG_PARAM = "-lang ${CQZ_LANG}"
-                }
-            } catch(e) {}
+//             def LANG_PARAM = ""
+//             try {
+//                 if (env.CQZ_LANG) {
+//                     LANG_PARAM = "-lang ${CQZ_LANG}"
+//                 }
+//             } catch(e) {}
 
-            stage('OSX Bootstrap') {
-                sh '/bin/bash -lc "pip install compare-locales"'
-                sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                sh '/bin/bash -lc "brew uninstall terminal-notifier"'
-            }
+//             stage('OSX Bootstrap') {
+//                 sh '/bin/bash -lc "pip install compare-locales"'
+//                 sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+//                 sh '/bin/bash -lc "brew uninstall terminal-notifier"'
+//             }
 
-            withEnv([
-                "CQZ_BUILD_ID=$CQZ_BUILD_ID",
-                "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
-                "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
+//             withEnv([
+//                 "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+//                 "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
+//                 "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-                 withCredentials([
-                     [$class: 'StringBinding',
-                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                        variable: 'CQZ_GOOGLE_API_KEY'],
-                     [$class: 'StringBinding',
-                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                        variable: 'MOZ_MOZILLA_API_KEY']]) {
+//                  withCredentials([
+//                      [$class: 'StringBinding',
+//                         credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+//                         variable: 'CQZ_GOOGLE_API_KEY'],
+//                      [$class: 'StringBinding',
+//                         credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+//                         variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                        stage('fix keys') {
-                            writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                            writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
-                        }
-                }
+//                         stage('fix keys') {
+//                             writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+//                             writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+//                         }
+//                 }
 
-                stage('OSX Build') {
-                    sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                }
+//                 stage('OSX Build') {
+//                     sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+//                 }
 
-                stage('OSX Sign') {
-                        // remove old package - important if clobber was not done
-                    sh '/bin/bash -lc "rm -rf obj/pkg"'
+//                 stage('OSX Sign') {
+//                         // remove old package - important if clobber was not done
+//                     sh '/bin/bash -lc "rm -rf obj/pkg"'
 
-                    withCredentials([
-                        [$class: 'FileBinding',
-                            credentialsId: params.MAC_CERT_CREDENTIAL_ID,
-                            variable: 'CERT_FILE'],
-                        [$class: 'StringBinding',
-                            credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
-                            variable: 'CERT_PASS']
-                    ]) {
-                        try {
-                            // create temporary keychain and make it a default one
-                            sh '''#!/bin/bash -l -x
-                                security create-keychain -p cliqz cliqz
-                                security list-keychains -s cliqz
-                                security default-keychain -s cliqz
-                                security unlock-keychain -p cliqz cliqz
-                            '''
+//                     withCredentials([
+//                         [$class: 'FileBinding',
+//                             credentialsId: params.MAC_CERT_CREDENTIAL_ID,
+//                             variable: 'CERT_FILE'],
+//                         [$class: 'StringBinding',
+//                             credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
+//                             variable: 'CERT_PASS']
+//                     ]) {
+//                         try {
+//                             // create temporary keychain and make it a default one
+//                             sh '''#!/bin/bash -l -x
+//                                 security create-keychain -p cliqz cliqz
+//                                 security list-keychains -s cliqz
+//                                 security default-keychain -s cliqz
+//                                 security unlock-keychain -p cliqz cliqz
+//                             '''
 
-                            sh '''#!/bin/bash -l +x
-                                security import $CERT_FILE -P $CERT_PASS -k cliqz -A
-                            '''
+//                             sh '''#!/bin/bash -l +x
+//                                 security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+//                             '''
 
-                            withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
-                                sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
-                            }
-                        } finally {
-                            sh '''#!/bin/bash -l -x
-                                security delete-keychain cliqz
-                                security list-keychains -s login.keychain
-                                security default-keychain -s login.keychain
-                                true
-                            '''
-                        }
-                    }
-                }
+//                             withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
+//                                 sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+//                             }
+//                         } finally {
+//                             sh '''#!/bin/bash -l -x
+//                                 security delete-keychain cliqz
+//                                 security list-keychains -s login.keychain
+//                                 security default-keychain -s login.keychain
+//                                 true
+//                             '''
+//                         }
+//                     }
+//                 }
 
-                stage('OSX Upload') {
-                    if (params.RELEASE_CHANNEL == 'pr') {
-                        sh '/bin/bash -lc "./magic_upload_files.sh"'
-                    } else {
-                        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-                            try {
-                                //expose certs
-                                withCredentials([
-                                    [$class: 'FileBinding',
-                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PATH'],
-                                    [$class: 'StringBinding',
-                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PWD']]) {
+//                 stage('OSX Upload') {
+//                     if (params.RELEASE_CHANNEL == 'pr') {
+//                         sh '/bin/bash -lc "./magic_upload_files.sh"'
+//                     } else {
+//                         withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+//                             try {
+//                                 //expose certs
+//                                 withCredentials([
+//                                     [$class: 'FileBinding',
+//                                         credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+//                                         variable: 'CLZ_CERTIFICATE_PATH'],
+//                                     [$class: 'StringBinding',
+//                                         credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+//                                         variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                                    sh '''#!/bin/bash -l -x
-                                        mkdir $CQZ_CERT_DB_PATH
-                                        cd `brew --prefix nss`/bin
-                                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                                        set +x
-                                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                                    '''
-                                }
+//                                     sh '''#!/bin/bash -l -x
+//                                         mkdir $CQZ_CERT_DB_PATH
+//                                         cd `brew --prefix nss`/bin
+//                                         ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+//                                         set +x
+//                                         ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+//                                     '''
+//                                 }
 
 
-                                withCredentials([[
-                                    $class: 'AmazonWebServicesCredentialsBinding',
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+//                                 withCredentials([[
+//                                     $class: 'AmazonWebServicesCredentialsBinding',
+//                                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+//                                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                                    sh """#!/bin/bash -l -x
-                                        ./magic_upload_files.sh ${LANG_PARAM}
-                                    """
+//                                     sh """#!/bin/bash -l -x
+//                                         ./magic_upload_files.sh ${LANG_PARAM}
+//                                     """
 
-                                    archiveArtifacts 'obj/build_properties.json'
-                                }
-                            } finally {
-                                // remove certs
-                                sh 'rm -r $CQZ_CERT_DB_PATH || true'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+//                                     archiveArtifacts 'obj/build_properties.json'
+//                                 }
+//                             } finally {
+//                                 // remove certs
+//                                 sh 'rm -r $CQZ_CERT_DB_PATH || true'
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
-jobs["linux"] = {
-    node('browser') {
-        ws('build') {
-            stage('Linux Docker Checkout') {
-                checkout scm
-            }
+// jobs["linux"] = {
+//     node('browser') {
+//         ws('build') {
+//             stage('Linux Docker Checkout') {
+//                 checkout scm
+//             }
 
-            stage("Linux Build") {
-                def imageName = 'browser-f'
+//             stage("Linux Build") {
+//                 def imageName = 'browser-f'
 
-                try {
-                    // authorize docker deamon to access registry
-                    sh "`aws ecr get-login --region=${params.AWS_REGION}`"
+//                 try {
+//                     // authorize docker deamon to access registry
+//                     sh "`aws ecr get-login --region=${params.AWS_REGION}`"
 
-                    docker.withRegistry(params.DOCKER_REGISTRY_URL) {
-                        def image = docker.image(imageName)
-                        image.pull()
-                        imageName = image.imageName()
-                    }
-                } catch (e) {
-                    // if registry fails, build image localy
-                    // Build params with context
-                    def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
+//                     docker.withRegistry(params.DOCKER_REGISTRY_URL) {
+//                         def image = docker.image(imageName)
+//                         image.pull()
+//                         imageName = image.imageName()
+//                     }
+//                 } catch (e) {
+//                     // if registry fails, build image localy
+//                     // Build params with context
+//                     def cacheParams = params.LIN_REBUILD_IMAGE.toBoolean() ? '--pull --no-cache=true' : ''
 
-                    // Avoiding docker context
-                    sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
+//                     // Avoiding docker context
+//                     sh 'rm -rf docker && mkdir docker && cp Dockerfile docker/'
 
-                    // Build image with a specific user
-                    sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
-                }
+//                     // Build image with a specific user
+//                     sh "cd docker && docker build -t ${imageName} ${cacheParams} --build-arg user=`whoami` --build-arg uid=`id -u` --build-arg gid=`id -g` ."
+//                 }
 
-                docker.image(imageName).inside() {
-                    stage('Linux Update Dependencies') {
-                    // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
-                        sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                    }
+//                 docker.image(imageName).inside() {
+//                     stage('Linux Update Dependencies') {
+//                     // Install any missing dependencies. Try to rebuild base image from time to time to speed up this process
+//                         sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+//                     }
 
-                    withEnv([
-                        "CQZ_BUILD_ID=$CQZ_BUILD_ID",
-                        "CQZ_COMMIT=$COMMIT_ID",
-                        "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
-                        "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
+//                     withEnv([
+//                         "CQZ_BUILD_ID=$CQZ_BUILD_ID",
+//                         "CQZ_COMMIT=$COMMIT_ID",
+//                         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
+//                         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
 
-                        withCredentials([
-                            [$class: 'StringBinding',
-                                credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                                variable: 'CQZ_GOOGLE_API_KEY'],
-                            [$class: 'StringBinding',
-                                credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                                variable: 'MOZ_MOZILLA_API_KEY']]) {
+//                         withCredentials([
+//                             [$class: 'StringBinding',
+//                                 credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+//                                 variable: 'CQZ_GOOGLE_API_KEY'],
+//                             [$class: 'StringBinding',
+//                                 credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+//                                 variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                            stage('fix keys') {
-                                writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                                writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
-                            }
-                        }
+//                             stage('fix keys') {
+//                                 writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+//                                 writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+//                             }
+//                         }
 
-                        stage('Linux Build Browser') {
-                          try {
-                              sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
-                          } catch (e) {
-                              archive 'obj/config.log'
-                              throw e
-                          }
-                        }
+//                         stage('Linux Build Browser') {
+//                           try {
+//                               sh '/bin/bash -lc "./magic_build_and_package.sh  --clobber"'
+//                           } catch (e) {
+//                               archive 'obj/config.log'
+//                               throw e
+//                           }
+//                         }
 
-                        withCredentials([
-                            [$class: 'AmazonWebServicesCredentialsBinding',
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-                            stage('Publisher (Debian Repo)') {
-                                try {
-                                    withCredentials([
-                                        [$class: 'FileBinding',
-                                            credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID,
-                                            variable: 'DEBIAN_GPG_KEY'],
-                                        [$class: 'StringBinding',
-                                            credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID,
-                                            variable: 'DEBIAN_GPG_PASS']]) {
+//                         withCredentials([
+//                             [$class: 'AmazonWebServicesCredentialsBinding',
+//                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+//                                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+//                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+//                             stage('Publisher (Debian Repo)') {
+//                                 try {
+//                                     withCredentials([
+//                                         [$class: 'FileBinding',
+//                                             credentialsId: params.DEBIAN_GPG_KEY_CREDENTIAL_ID,
+//                                             variable: 'DEBIAN_GPG_KEY'],
+//                                         [$class: 'StringBinding',
+//                                             credentialsId: params.DEBIAN_GPG_PASS_CREDENTIAL_ID,
+//                                             variable: 'DEBIAN_GPG_PASS']]) {
 
-                                        sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
+//                                         sh 'echo $DEBIAN_GPG_PASS > debian.gpg.pass'
 
-                                        withEnv([
-                                            "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
-                                            sh '/bin/bash -lc "./sign_lin.sh"'
-                                        }
-                                    }
-                                } finally {
-                                    sh 'rm -rf debian.gpg.pass'
-                                }
-                            }
+//                                         withEnv([
+//                                             "CQZ_S3_DEBIAN_REPOSITORY_URL=$CQZ_S3_DEBIAN_REPOSITORY_URL"]) {
+//                                             sh '/bin/bash -lc "./sign_lin.sh"'
+//                                         }
+//                                     }
+//                                 } finally {
+//                                     sh 'rm -rf debian.gpg.pass'
+//                                 }
+//                             }
 
-                            stage('Linux Publisher (Internal)') {
-                                sh '/bin/bash -lc "./magic_upload_files.sh"'
-                                archiveArtifacts 'obj/build_properties.json'
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+//                             stage('Linux Publisher (Internal)') {
+//                                 sh '/bin/bash -lc "./magic_upload_files.sh"'
+//                                 archiveArtifacts 'obj/build_properties.json'
+//                             }
+//                         }
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
 parallel jobs
