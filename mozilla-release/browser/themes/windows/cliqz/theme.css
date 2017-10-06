@@ -981,6 +981,9 @@ vbox[sidebarcommand=historybroadcaster] sidebarheader {
 #main-window[inFullscreen="true"] .tabbrowser-arrowscrollbox > .arrowscrollbox-scrollbox {
   -moz-padding-start: 1px; }
 
+#main-window[inFullscreen="true"] #TabsToolbar {
+  padding-right: 0 !important; }
+
 #nav-bar #PanelUI-menu-button {
   -moz-margin-start: 0;
   padding: 0 !important;
