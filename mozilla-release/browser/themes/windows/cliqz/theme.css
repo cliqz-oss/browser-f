@@ -253,6 +253,8 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
     background-color: #ccc !important; }
   .tabbrowser-tab[pinned] {
     width: 37px; }
+    .tabbrowser-tab[pinned] .tab-content .tab-text {
+      display: none; }
   .tabbrowser-tab:not([pinned]) {
     -moz-box-flex: 100;
     max-width: 210px;

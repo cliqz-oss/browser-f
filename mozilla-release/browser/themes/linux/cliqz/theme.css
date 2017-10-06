@@ -443,6 +443,8 @@ notification[type="warning"] .messageText {
 
 .tabbrowser-tab[pinned] {
   width: 37px; }
+  .tabbrowser-tab[pinned] .tab-content .tab-text {
+    display: none; }
 
 .tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned] .tab-stack {
   margin: 0; }
