@@ -173,7 +173,7 @@ properties([
 // }
 
 jobs["mac"] = {
-    node('osx && pr') {
+    node('browser && osx && pr') {
         ws('x') {
             stage('OSX Hypervisor Checkout') {
                 checkout scm
