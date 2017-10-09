@@ -187,10 +187,13 @@ jobs["mac"] = {
             } catch(e) {}
 
             stage('OSX Bootstrap') {
-                sh '/bin/bash -lc "sudo pip install compare-locales"'
-                sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
-                sh '/bin/bash -lc "brew uninstall terminal-notifier"'
-                sh '/bin/bash -lc "brew install wget --with-libressl"'
+                sh '''#!/bin/bash -lc 
+                rvm use ruby-2.4.2
+                pip install compare-locales
+                python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive
+                brew uninstall terminal-notifier
+                brew install wget --with-libressl
+                '''
             }
 
             withEnv([
