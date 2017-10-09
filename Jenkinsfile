@@ -187,7 +187,7 @@ jobs["mac"] = {
             } catch(e) {}
 
             stage('OSX Bootstrap') {
-                sh '''#!/bin/bash -lc 
+                sh '''#!/bin/bash -lc -x
                 rvm use ruby-2.4.2
                 pip install compare-locales
                 python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive
