@@ -230,7 +230,7 @@ jobs["mac"] = {
                     ]) {
                         try {
                             // create temporary keychain and make it a default one
-                            sh '''#!/bin/bash -l -x
+                            sh '''#!/bin/bash -l +x
                                 security create-keychain -p cliqz cliqz.keychain
                                 security list-keychains -d user -s login.keychain -s cliqz.keychain
                                 security default-keychain -s cliqz.keychain
@@ -246,8 +246,8 @@ jobs["mac"] = {
                                 // sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
                             }
                         } finally {
-                            sh '''#!/bin/bash -l -x
-                                security delete-keychain cliqz
+                            sh '''#!/bin/bash -l +x
+                                security delete-keychain cliqz.keychain
                                 security list-keychains -s login.keychain
                                 security default-keychain -s login.keychain
                                 true
