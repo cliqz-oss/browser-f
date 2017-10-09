@@ -110,12 +110,13 @@ var gPrivacyPane = {
 #if CQZ_AUTO_PRIVATE_TAB
     const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
         getService(Ci.nsISupports).wrappedJSObject;
-    document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
+    if (!autoForgetTabs.hasDatabase) {
+      document.getElementById("forgetMode").hidden = true;
+    }
 #endif
 
-    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon){
-      if(addon && addon.isActive){
-        document.getElementById("httpsEverywhereGroup").hidden = false;
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon) {
+      if (addon && addon.isActive) {
         document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
       }
     })
