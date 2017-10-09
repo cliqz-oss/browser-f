@@ -212,9 +212,9 @@ jobs["mac"] = {
                         }
                 }
 
-                // stage('OSX Build') {
-                //     sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                // }
+                stage('OSX Build') {
+                    sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+                }
 
                 stage('OSX Sign') {
                         // remove old package - important if clobber was not done
@@ -242,8 +242,7 @@ jobs["mac"] = {
                             '''
 
                             withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
-                                sh 'codesign -s 6134C52F68678D64D136E5912F0AD1DD88C15568 --force --deep sign_win.bat'
-                                // sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                                sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
                             }
                         } finally {
                             sh '''#!/bin/bash -l +x
@@ -256,50 +255,50 @@ jobs["mac"] = {
                     }
                 }
 
-                // stage('OSX Upload') {
-                //     if (params.RELEASE_CHANNEL == 'pr') {
-                //         sh '/bin/bash -lc "./magic_upload_files.sh"'
-                //     } else {
-                //         withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-                //             try {
-                //                 //expose certs
-                //                 withCredentials([
-                //                     [$class: 'FileBinding',
-                //                         credentialsId: params.MAR_CERT_CREDENTIAL_ID,
-                //                         variable: 'CLZ_CERTIFICATE_PATH'],
-                //                     [$class: 'StringBinding',
-                //                         credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
-                //                         variable: 'CLZ_CERTIFICATE_PWD']]) {
+                stage('OSX Upload') {
+                    if (params.RELEASE_CHANNEL == 'pr') {
+                        sh '/bin/bash -lc "./magic_upload_files.sh"'
+                    } else {
+                        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+                            try {
+                                //expose certs
+                                withCredentials([
+                                    [$class: 'FileBinding',
+                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+                                        variable: 'CLZ_CERTIFICATE_PATH'],
+                                    [$class: 'StringBinding',
+                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+                                        variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                //                     sh '''#!/bin/bash -l -x
-                //                         mkdir $CQZ_CERT_DB_PATH
-                //                         cd `brew --prefix nss`/bin
-                //                         ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                //                         set +x
-                //                         ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                //                     '''
-                //                 }
+                                    sh '''#!/bin/bash -l -x
+                                        mkdir $CQZ_CERT_DB_PATH
+                                        cd `brew --prefix nss`/bin
+                                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+                                        set +x
+                                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                                    '''
+                                }
 
 
-                //                 withCredentials([[
-                //                     $class: 'AmazonWebServicesCredentialsBinding',
-                //                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                //                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                //                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                                withCredentials([[
+                                    $class: 'AmazonWebServicesCredentialsBinding',
+                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                //                     sh """#!/bin/bash -l -x
-                //                         ./magic_upload_files.sh ${LANG_PARAM}
-                //                     """
+                                    sh """#!/bin/bash -l -x
+                                        ./magic_upload_files.sh ${LANG_PARAM}
+                                    """
 
-                //                     archiveArtifacts 'obj/build_properties.json'
-                //                 }
-                //             } finally {
-                //                 // remove certs
-                //                 sh 'rm -r $CQZ_CERT_DB_PATH || true'
-                //             }
-                //         }
-                //     }
-                // }
+                                    archiveArtifacts 'obj/build_properties.json'
+                                }
+                            } finally {
+                                // remove certs
+                                sh 'rm -r $CQZ_CERT_DB_PATH || true'
+                            }
+                        }
+                    }
+                }
             }
         }
     }
