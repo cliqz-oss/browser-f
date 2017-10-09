@@ -764,7 +764,7 @@
   <checkbox id="httpsEverywhereEnable"
             label="&httpsEverywhereEnable.label;"
             accesskey="&httpsEverywhere.accesskey;"
-            oncommand="gSecurityPane.toggleHttpsEverywhere();"/>
+            oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
   <hbox align="start">
     <label>&httpsEverywhereDesc.label;</label>
     <label class="text-link"
