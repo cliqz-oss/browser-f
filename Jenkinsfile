@@ -12,6 +12,28 @@ CQZ_BUILD_ID = new Date().format('yyyyMMddHHmmss')
 def jobs = [:]
 def helpers
 
+def withRVM(version, cl) {
+    RVM_HOME='$HOME/.rvm'
+    paths = [
+        "$RVM_HOME/bin",
+        "${env.PATH}"
+    ]
+    
+    def path = paths.join(':')
+
+    withEnv(["PATH=${env.PATH}:$RVM_HOME", "RVM_HOME=$RVM_HOME"]) {
+        sh "set +x; source $RVM_HOME/scripts/rvm; rvm use --create --install --binary $version"
+    }
+
+    withEnv([
+        "PATH=$path",
+        "RUBY_VERSION=$version"
+        ]) {
+            cl()
+    }
+}
+
+
 properties([
     [$class: 'JobRestrictionProperty'],
     disableConcurrentBuilds(),
@@ -172,6 +194,9 @@ properties([
 //     }
 // }
 
+
+
+
 jobs["mac"] = {
     node('browser && osx && pr') {
         ws('x') {
@@ -187,13 +212,12 @@ jobs["mac"] = {
             } catch(e) {}
 
             stage('OSX Bootstrap') {
-                sh '''#!/bin/bash -lc -x
-                rvm use ruby-2.4.2
-                pip install compare-locales
-                python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive
-                brew uninstall terminal-notifier
-                brew install wget --with-libressl
-                '''
+                withRVM('ruby-2.4.2') {
+                    sh '/bin/bash -lc "pip install compare-locales"'
+                    sh '/bin/bash -lc "python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive"'
+                    sh '/bin/bash -lc "brew uninstall terminal-notifier"'
+                    sh '/bin/bash -lc "brew install wget --with-libressl"'
+                }
             }
 
             withEnv([
@@ -215,9 +239,9 @@ jobs["mac"] = {
                         }
                 }
 
-                stage('OSX Build') {
-                    sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                }
+                // stage('OSX Build') {
+                //     sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+                // }
 
                 stage('OSX Sign') {
                         // remove old package - important if clobber was not done
@@ -258,50 +282,50 @@ jobs["mac"] = {
                     }
                 }
 
-                stage('OSX Upload') {
-                    if (params.RELEASE_CHANNEL == 'pr') {
-                        sh '/bin/bash -lc "./magic_upload_files.sh"'
-                    } else {
-                        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-                            try {
-                                //expose certs
-                                withCredentials([
-                                    [$class: 'FileBinding',
-                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PATH'],
-                                    [$class: 'StringBinding',
-                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PWD']]) {
+                // stage('OSX Upload') {
+                //     if (params.RELEASE_CHANNEL == 'pr') {
+                //         sh '/bin/bash -lc "./magic_upload_files.sh"'
+                //     } else {
+                //         withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+                //             try {
+                //                 //expose certs
+                //                 withCredentials([
+                //                     [$class: 'FileBinding',
+                //                         credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+                //                         variable: 'CLZ_CERTIFICATE_PATH'],
+                //                     [$class: 'StringBinding',
+                //                         credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+                //                         variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                                    sh '''#!/bin/bash -l -x
-                                        mkdir $CQZ_CERT_DB_PATH
-                                        cd `brew --prefix nss`/bin
-                                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                                        set +x
-                                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                                    '''
-                                }
+                //                     sh '''#!/bin/bash -l -x
+                //                         mkdir $CQZ_CERT_DB_PATH
+                //                         cd `brew --prefix nss`/bin
+                //                         ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+                //                         set +x
+                //                         ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                //                     '''
+                //                 }
 
 
-                                withCredentials([[
-                                    $class: 'AmazonWebServicesCredentialsBinding',
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+                //                 withCredentials([[
+                //                     $class: 'AmazonWebServicesCredentialsBinding',
+                //                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                //                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+                //                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-                                    sh """#!/bin/bash -l -x
-                                        ./magic_upload_files.sh ${LANG_PARAM}
-                                    """
+                //                     sh """#!/bin/bash -l -x
+                //                         ./magic_upload_files.sh ${LANG_PARAM}
+                //                     """
 
-                                    archiveArtifacts 'obj/build_properties.json'
-                                }
-                            } finally {
-                                // remove certs
-                                sh 'rm -r $CQZ_CERT_DB_PATH || true'
-                            }
-                        }
-                    }
-                }
+                //                     archiveArtifacts 'obj/build_properties.json'
+                //                 }
+                //             } finally {
+                //                 // remove certs
+                //                 sh 'rm -r $CQZ_CERT_DB_PATH || true'
+                //             }
+                //         }
+                //     }
+                // }
             }
         }
     }
