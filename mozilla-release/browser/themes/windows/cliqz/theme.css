@@ -31,6 +31,10 @@
 #main-window.cliqz-blue #urlbar[focused="true"], #main-window.cliqz-blue .searchbar-textbox[focused="true"] {
   border-color: #ccc !important; }
 
+#main-window.cliqz-blue:not([customizing]) #navigator-toolbox[inFullscreen] > #TabsToolbar:not(:-moz-lwtheme),
+#main-window.cliqz-blue:not(:-moz-any([customizing], [tabsintitlebar])) #navigator-toolbox > #TabsToolbar:not(:-moz-lwtheme) {
+  -moz-appearance: none; }
+
 @media (min-resolution: 2dppx) {
   #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
     -moz-image-region: rect(0, 128px, 32px, 96px); } }
@@ -65,15 +69,14 @@
 #main-window.cliqz-blue:not([cliqzBrowser="true"]) * :root {
   --cliqz-close-image: url("../images/browser/blue_theme/windows/close.png");
   --cliqz-close-image-2x: url("../images/browser/blue_theme/windows/close@2x.png");
-  --cliqz-newtab-image: url("../images/browser/blue_theme/windows/newtab.png");
+  --cliqz-newtab-image: url("../images/browser/blue_theme/windows/newtab.svg");
   --cliqz-newtab-image-2x: url("../images/browser/blue_theme/windows/newtab@2x.png"); }
 
 #main-window.cliqz-blue[cliqzBrowser="true"],
 #main-window.cliqz-blue[cliqzBrowser="true"] * :root {
   --cliqz-close-image: url("close_blue.png");
   --cliqz-close-image-2x: url("close_blue@2x.png");
-  --cliqz-newtab-image: url("newtab_blue.png");
-  --cliqz-newtab-image-2x: url("newtab_blue@2x.png"); }
+  --cliqz-newtab-image: url("newtab_blue.svg"); }
 
 :-moz-any(#back-button,
 #forward-button,
@@ -250,7 +253,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
       background-color: #fff !important; }
   .tabbrowser-tab:not([visuallyselected="true"]):hover .tab-content,
   .tabbrowser-tab .tabs-newtab-button:hover {
-    background-color: #ccc !important; }
+    background-color: #b4b4b4 !important; }
   .tabbrowser-tab[pinned] {
     width: 37px; }
     .tabbrowser-tab[pinned] .tab-content .tab-text {
@@ -268,7 +271,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   border: none !important;
   background: none; }
   .tabs-newtab-button:hover {
-    background-color: #ccc !important;
+    background-color: #b4b4b4 !important;
     background-image: none; }
 
 tab {

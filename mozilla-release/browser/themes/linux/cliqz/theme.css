@@ -31,6 +31,10 @@
 #main-window.cliqz-blue #urlbar[focused="true"], #main-window.cliqz-blue .searchbar-textbox[focused="true"] {
   border-color: #ccc !important; }
 
+#main-window.cliqz-blue:not([customizing]) #navigator-toolbox[inFullscreen] > #TabsToolbar:not(:-moz-lwtheme),
+#main-window.cliqz-blue:not(:-moz-any([customizing], [tabsintitlebar])) #navigator-toolbox > #TabsToolbar:not(:-moz-lwtheme) {
+  -moz-appearance: none; }
+
 @media (min-resolution: 2dppx) {
   #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
     -moz-image-region: rect(0, 128px, 32px, 96px); } }
@@ -47,7 +51,7 @@
   --cliqz-font-lato-regular: url("chrome://cliqz/content/static/skin/fonts/Lato-Regular.ttf");
   --cliqz-loading-image: url("../images/browser/linux/loading.png");
   --cliqz-menuPanel-svg: url("../images/browser/linux/menuPanel.svg");
-  --cliqz-newtab-image: url("../images/browser/linux/newtab.png");
+  --cliqz-newtab-image: url("../images/browser/linux/newtab.svg");
   --cliqz-toolbar-image: url("../images/browser/linux/Toolbar.png");
   --cliqz-toolbar-image-2x: url("../images/browser/linux/Toolbar@2x.png");
   --cliqz-urlbar-arrow-image: url("../images/browser/linux/urlbar-arrow.png");
@@ -61,7 +65,7 @@
   --cliqz-font-lato-regular: url("Lato-Regular.ttf");
   --cliqz-loading-image: url("loading.png");
   --cliqz-menuPanel-svg: url("menuPanel.svg");
-  --cliqz-newtab-image: url("newtab.png");
+  --cliqz-newtab-image: url("newtab.svg");
   --cliqz-toolbar-image: url("../Toolbar.png");
   --cliqz-toolbar-image-2x: url("../Toolbar@2x.png");
   --cliqz-urlbar-arrow-image: url("urlbar-arrow.png");
@@ -71,15 +75,14 @@
 #main-window.cliqz-blue:not([cliqzBrowser="true"]) * :root {
   --cliqz-close-image: url("../images/browser/blue_theme/linux/close.png");
   --cliqz-close-image-2x: url("../images/browser/blue_theme/linux/close@2x.png");
-  --cliqz-newtab-image: url("../images/browser/blue_theme/linux/newtab.png");
+  --cliqz-newtab-image: url("../images/browser/blue_theme/linux/newtab.svg");
   --cliqz-newtab-image-2x: url("../images/browser/blue_theme/linux/newtab@2x.png"); }
 
 #main-window.cliqz-blue[cliqzBrowser="true"],
 #main-window.cliqz-blue[cliqzBrowser="true"] * :root {
   --cliqz-close-image: url("close_blue.png");
   --cliqz-close-image-2x: url("close_blue@2x.png");
-  --cliqz-newtab-image: url("newtab_blue.png");
-  --cliqz-newtab-image-2x: url("newtab_blue@2x.png"); }
+  --cliqz-newtab-image: url("newtab_blue.svg"); }
 
 @font-face {
   font-family: "Lato";
@@ -425,7 +428,7 @@ notification[type="warning"] .messageText {
 
 .tabbrowser-tab:hover:not([visuallyselected="true"]) .tab-content,
 .tabbrowser-tab .tabs-newtab-button:hover {
-  background-color: #ccc !important; }
+  background-color: #b4b4b4 !important; }
 
 .tabbrowser-tab:first-child .tab-content {
   border-width: 1px 1px 0 1px; }
@@ -470,11 +473,12 @@ notification[type="warning"] .messageText {
   width: 30px;
   border: none !important;
   background: none !important;
-  list-style-image: var(--cliqz-newtab-image) !important;
-  -moz-image-region: rect(0px, 18px, 20px, 0px); }
+  list-style-image: var(--cliqz-newtab-image) !important; }
   .tabs-newtab-button .toolbarbutton-icon {
     padding-top: 5px;
     padding-bottom: 3px; }
+  .tabs-newtab-button:hover {
+    background-color: #b4b4b4 !important; }
 
 .close-icon {
   list-style-image: var(--cliqz-close-image);
