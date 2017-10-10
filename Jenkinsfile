@@ -47,7 +47,7 @@ properties([
                 name: 'CQZ_AWS_CREDENTIAL_ID'),
         string(defaultValue: 's3://cdncliqz/update/browser_beta/latest.xpi',
                 name: 'CQZ_EXTENSION_URL'),
-        string(defaultValue: "6134C52F68678D64D136E5912F0AD1DD88C15568",
+        string(defaultValue: "5B0571C810B2BC947DE61ADCE8512CEA605A5625",
                 name: "CQZ_CERT_NAME"),
         string(defaultValue: 's3://cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.17-browser-signed.xpi',
                 name: 'CQZ_HTTPSE_EXTENSION_URL'),
@@ -56,9 +56,9 @@ properties([
                 name: "WIN_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "2832a98c-40f1-4dbf-afba-b74b91796d21",
                 name: "WIN_CERT_PATH_CREDENTIAL_ID"),
-        string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
+        string(defaultValue: "6712f640-9e25-4ec8-b7af-2456ca41b4b3",
                 name: "MAC_CERT_CREDENTIAL_ID"),
-        string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
+        string(defaultValue: "fe75da3d-cb92-4d23-aeab-9e72ca044099",
                 name: "MAC_CERT_PASS_CREDENTIAL_ID"),
         string(defaultValue: "761dc30d-f04f-49a5-9940-cdd8ca305165",
                 name: "MAR_CERT_CREDENTIAL_ID"),
@@ -258,22 +258,23 @@ jobs["mac"] = {
                         try {
                             // create temporary keychain and make it a default one
                             sh '''#!/bin/bash -l +x
-                                security create-keychain -p cliqz cliqz.keychain
-                                security list-keychains -d user -s login.keychain -s cliqz.keychain
-                                security default-keychain -s cliqz.keychain
-                                security unlock-keychain -p cliqz cliqz.keychain
+                                security create-keychain -p cliqz cliqz
+                                security list-keychains -s cliqz
+                                security default-keychain -s cliqz
+                                security unlock-keychain -p cliqz cliqz
                             '''
 
                             sh '''#!/bin/bash -l +x
-                                security import $CERT_FILE -P $CERT_PASS -k cliqz.keychain -A
+                                security import $CERT_FILE -P $CERT_PASS -k cliqz -A
                             '''
 
                             withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
-                                sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                                // sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                                sh '/bin/bash -lc "codesign -s $CQZ_CERT_NAME --force --deep sign_win.bat"'
                             }
                         } finally {
                             sh '''#!/bin/bash -l +x
-                                security delete-keychain cliqz.keychain
+                                security delete-keychain cliqz
                                 security list-keychains -s login.keychain
                                 security default-keychain -s login.keychain
                                 true
