@@ -111,12 +111,14 @@
                 hidden="true"
                 oncommand="gBrowser.openNonRemoteWindow(TabContextMenu.contextTab);"/>
 #endif
+#if 0
       <menuseparator id="context_sendTabToDevice_separator"/>
       <menu id="context_sendTabToDevice" label="&sendTabToDevice.label;"
             accesskey="&sendTabToDevice.accesskey;">
         <menupopup id="context_sendTabToDevicePopupMenu"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle);"/>
       </menu>
+#endif
       <menuseparator/>
       <menuitem id="context_reloadAllTabs" label="&reloadAllTabs.label;" accesskey="&reloadAllTabs.accesskey;"
                 tbattr="tabbrowser-multiple-visible"
