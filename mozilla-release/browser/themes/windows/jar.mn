@@ -62,8 +62,7 @@ browser.jar:
   skin/classic/browser/cliqz/urlbar-arrow@2x.png               (cliqz/urlbar-arrow@2x.png)
   skin/classic/browser/cliqz/close_blue.png                    (cliqz/blue_theme/close.png)
   skin/classic/browser/cliqz/close_blue@2x.png                 (cliqz/blue_theme/close@2x.png)
-  skin/classic/browser/cliqz/newtab_blue.png                   (cliqz/blue_theme/newtab.png)
-  skin/classic/browser/cliqz/newtab_blue@2x.png                (cliqz/blue_theme/newtab@2x.png)
+  skin/classic/browser/cliqz/newtab_blue.svg                   (cliqz/blue_theme/newtab.svg)
 * skin/classic/browser/controlcenter/panel.css                 (controlcenter/panel.css)
 #ifndef MOZ_PHOTON_THEME
   skin/classic/browser/customizableui/customizeMode-gridTexture.png  (customizableui/customizeMode-gridTexture.png)

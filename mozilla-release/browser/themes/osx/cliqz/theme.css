@@ -49,8 +49,7 @@
   --cliqz-close-image: url("../images/browser/mac/close.png");
   --cliqz-close-image-2x: url("../images/browser/mac/close@2x.png");
   --cliqz-font-lato-regular: url("chrome://cliqz/content/static/skin/fonts/Lato-Regular.ttf");
-  --cliqz-newtab-image: url("../images/browser/mac/newtab.png");
-  --cliqz-newtab-image-2x: url("../images/browser/mac/newtab@2x.png");
+  --cliqz-newtab-image: url("../images/browser/mac/newtab.svg");
   --cliqz-toolbar-image: url("../images/browser/mac/Toolbar.png");
   --cliqz-toolbar-image-2x: url("../images/browser/mac/Toolbar@2x.png");
   --cliqz-urlbar-arrow-image: url("../images/browser/mac/urlbar-arrow.png");
@@ -63,8 +62,7 @@
   --cliqz-close-image: url("close.png");
   --cliqz-close-image-2x: url("close@2x.png");
   --cliqz-font-lato-regular: url("Lato-Regular.ttf");
-  --cliqz-newtab-image: url("newtab.png");
-  --cliqz-newtab-image-2x: url("newtab@2x.png");
+  --cliqz-newtab-image: url("newtab.svg");
   --cliqz-toolbar-image: url("../Toolbar.png");
   --cliqz-toolbar-image-2x: url("../Toolbar@2x.png");
   --cliqz-urlbar-arrow-button: url("urlbar-arrow.png");
@@ -74,15 +72,13 @@
 #main-window.cliqz-blue:not([cliqzBrowser="true"]) * :root {
   --cliqz-close-image: url("../images/browser/blue_theme/mac/close.png");
   --cliqz-close-image-2x: url("../images/browser/blue_theme/mac/close@2x.png");
-  --cliqz-newtab-image: url("../images/browser/blue_theme/mac/newtab.png");
-  --cliqz-newtab-image-2x: url("../images/browser/blue_theme/mac/newtab@2x.png"); }
+  --cliqz-newtab-image: url("../images/browser/blue_theme/mac/newtab.svg"); }
 
 #main-window.cliqz-blue[cliqzBrowser="true"],
 #main-window.cliqz-blue[cliqzBrowser="true"] * :root {
   --cliqz-close-image: url("close_blue.png");
   --cliqz-close-image-2x: url("close_blue@2x.png");
-  --cliqz-newtab-image: url("newtab_blue.png");
-  --cliqz-newtab-image-2x: url("newtab_blue@2x.png"); }
+  --cliqz-newtab-image: url("newtab_blue.svg"); }
 
 @font-face {
   font-family: "Lato";
@@ -281,7 +277,7 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
 
 .tabbrowser-tab:hover:not([visuallyselected="true"]) .tab-content,
 .tabbrowser-tab .tabs-newtab-button:hover {
-  background-color: #ccc !important; }
+  background-color: #b4b4b4 !important; }
 
 .tabbrowser-tab:first-child .tab-content {
   border-width: 1px 1px 0 1px; }
@@ -323,8 +319,10 @@ window:not([chromehidden~="toolbar"]) #urlbar-wrapper {
   .tabs-newtab-button .toolbarbutton-icon {
     padding-top: 8px;
     padding-bottom: 3px;
-    border-width: 0 7px;
+    border-width: 0 9px;
     width: 32px; }
+  .tabs-newtab-button:hover {
+    background-color: #b4b4b4 !important; }
 
 .close-icon {
   list-style-image: var(--cliqz-close-image); }
@@ -394,10 +392,6 @@ toolbarbutton.bookmark-item:not(.subviewbutton):not(#bookmarks-menu-button),
   padding: 0; }
 
 @media (min-resolution: 2dppx) {
-  .tabs-newtab-button,
-  #TabsToolbar > #new-tab-button,
-  #TabsToolbar > toolbarpaletteitem > #new-tab-button {
-    list-style-image: var(--cliqz-newtab-image-2x); }
   .close-icon {
     list-style-image: var(--cliqz-close-image-2x); } }
 
