@@ -239,9 +239,9 @@ jobs["mac"] = {
                         }
                 }
 
-                // stage('OSX Build') {
-                //     sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
-                // }
+                stage('OSX Build') {
+                    sh '/bin/bash -lc "./magic_build_and_package.sh --clobber ${LANG_PARAM}"'
+                }
 
                 stage('OSX Sign') {
                         // remove old package - important if clobber was not done
@@ -269,8 +269,8 @@ jobs["mac"] = {
                             '''
 
                             withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
-                                // sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
-                                sh '/bin/bash -lc "codesign -s $CQZ_CERT_NAME --force --deep sign_win.bat"'
+                                sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                                
                             }
                         } finally {
                             sh '''#!/bin/bash -l +x
