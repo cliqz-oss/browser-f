@@ -83,36 +83,36 @@ properties([
     pipelineTriggers([])
 ])
 
-// node('docker && us-east-1') {
-//     stage("Copy XPI") {
-//         UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
-//         HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
+node('docker && us-east-1') {
+    stage("Copy XPI") {
+        UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/cliqz@cliqz.com.xpi"
+        HTTPSE_UPLOAD_PATH="s3://repository.cliqz.com/dist/$CQZ_RELEASE_CHANNEL/${params.CQZ_VERSION}/${CQZ_BUILD_ID}/https-everywhere@cliqz.com.xpi"
 
-//         withCredentials([
-//             [$class: 'AmazonWebServicesCredentialsBinding',
-//             accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-//             credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-//             secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+        withCredentials([
+            [$class: 'AmazonWebServicesCredentialsBinding',
+            accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+            credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
+            secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
 
-//             sh "aws s3 cp ${params.CQZ_EXTENSION_URL} $UPLOAD_PATH"
-//             sh "aws s3 cp ${params.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
-//         }
-//     }
-// }
+            sh "aws s3 cp ${params.CQZ_EXTENSION_URL} $UPLOAD_PATH"
+            sh "aws s3 cp ${params.CQZ_HTTPSE_EXTENSION_URL} $HTTPSE_UPLOAD_PATH"
+        }
+    }
+}
 
-// node('docker && us-east-1') {
-//     ws() {
-//         stage('Helpers Checkout') {
-//             checkout scm
-//         }
-//         try {
-//            helpers = load "build-helpers.groovy"
-//         } catch(e) {
-//             echo "Could not load build-helpers"
-//             throw e
-//         }
-//     }
-// }
+node('docker && us-east-1') {
+    ws() {
+        stage('Helpers Checkout') {
+            checkout scm
+        }
+        try {
+           helpers = load "build-helpers.groovy"
+        } catch(e) {
+            echo "Could not load build-helpers"
+            throw e
+        }
+    }
+}
 
 // jobs["windows"] = {
 //     // Check if there are later jobs wating in a queue and abort
