@@ -5364,7 +5364,7 @@ pref("browser.safebrowsing.malware.enabled", true);
 #ifdef MOZILLA_OFFICIAL
 pref("browser.safebrowsing.downloads.enabled", true);
 #else
-pref("browser.safebrowsing.downloads.enabled", false);
+pref("browser.safebrowsing.downloads.enabled", true);
 #endif
 pref("browser.safebrowsing.downloads.remote.enabled", true);
 pref("browser.safebrowsing.downloads.remote.timeout_ms", 10000);
