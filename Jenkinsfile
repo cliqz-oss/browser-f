@@ -269,9 +269,6 @@ jobs["mac"] = {
                                 security set-key-partition-list -S apple-tool:,apple: -s -k cliqz cliqz
                             '''
 
-
-
-
                             withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
                                 sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
                                 
