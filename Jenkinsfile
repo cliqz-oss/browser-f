@@ -305,12 +305,15 @@ jobs["mac"] = {
                                     '''
                                 }
 
-                            withCredentials([
-                                [$class: 'AmazonWebServicesCredentialsBinding',
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID',
-                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
-
+                                withCredentials(
+                                    [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc', 
+                                    variable: 'CREDENTIALS_TEMPLATE'), 
+                                    [$class: 'AmazonWebServicesCredentialsBinding', 
+                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                                ]) {
+                                    sh "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"
                                     sh """#!/bin/bash -l -x
                                         ./magic_upload_files.sh ${LANG_PARAM}
                                     """
@@ -318,8 +321,9 @@ jobs["mac"] = {
                                     archiveArtifacts 'obj/build_properties.json'
                                 }
                             } finally {
-                                // remove certs
+                                // remove certs and credentials
                                 sh 'rm -r $CQZ_CERT_DB_PATH || true'
+                                sh 'rm -rf ~/.aws/credentials || true'
                             }
                         }
                     }
