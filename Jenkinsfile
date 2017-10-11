@@ -305,9 +305,8 @@ jobs["mac"] = {
                                     '''
                                 }
 
-
-                                withCredentials([[
-                                    $class: 'AmazonWebServicesCredentialsBinding',
+                            withCredentials([
+                                [$class: 'AmazonWebServicesCredentialsBinding',
                                     accessKeyVariable: 'AWS_ACCESS_KEY_ID',
                                     credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                                     secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
