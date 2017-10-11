@@ -1,4 +1,7 @@
 @charset "UTF-8";
+#main-window.cliqz-blue[customizing="true"] #titlebar, #main-window.cliqz-blue[customizing="true"] #tab-view-deck, #main-window.cliqz-blue[customizing="true"] #titlebar-content {
+  background-color: #00ADEF; }
+
 #main-window.cliqz-blue #tabbrowser-tabs, #main-window.cliqz-blue #TabsToolbar {
   background-color: #00ADEF !important; }
 
@@ -35,12 +38,15 @@
 #main-window.cliqz-blue:not(:-moz-any([customizing], [tabsintitlebar])) #navigator-toolbox > #TabsToolbar:not(:-moz-lwtheme) {
   -moz-appearance: none; }
 
+#main-window.cliqz-blue :-moz-system-metric(windows-classic) #tabbrowser-tabs {
+  background-color: transparent !important; }
+
 @media (min-resolution: 2dppx) {
   #main-window.cliqz-blue .tabbrowser-tab[visuallyselected="true"] .tab-content .tab-close-button[selected="true"]:not(:hover) {
     -moz-image-region: rect(0, 128px, 32px, 96px); } }
 
 #main-window[tabsintitlebar] #TabsToolbar:not([collapsed="true"]) + #nav-bar:not(:-moz-lwtheme) {
-  border-top: none; }
+  border-top: none !important; }
 
 #reload-button {
   border-left: none; }
@@ -428,7 +434,7 @@ notification[type="warning"] .messageText {
 
 .tabbrowser-tab:hover:not([visuallyselected="true"]) .tab-content,
 .tabbrowser-tab .tabs-newtab-button:hover {
-  background-color: #b4b4b4 !important; }
+  background-color: #bababa !important; }
 
 .tabbrowser-tab:first-child .tab-content {
   border-width: 1px 1px 0 1px; }
@@ -478,7 +484,7 @@ notification[type="warning"] .messageText {
     padding-top: 5px;
     padding-bottom: 3px; }
   .tabs-newtab-button:hover {
-    background-color: #b4b4b4 !important; }
+    background-color: #bababa !important; }
 
 .close-icon {
   list-style-image: var(--cliqz-close-image);
