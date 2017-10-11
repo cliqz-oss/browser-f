@@ -265,7 +265,7 @@ jobs["mac"] = {
                             '''
 
                             sh '''#!/bin/bash -l +x
-                                security import $CERT_FILE -P $CERT_PASS -k cliqz -t priv -f pkcs12 -A
+                                security import $CERT_FILE -P $CERT_PASS -k cliqz -A
                             '''
 
                             withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
