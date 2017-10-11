@@ -400,7 +400,7 @@ var gInitialPages = [
   "about:privatebrowsing",
   "about:welcomeback",
   "about:sessionrestore",
-  "resource://cliqz/freshtab/home.html",
+  "chrome://cliqz/content/freshtab/home.html",
   "about:cliqz"
 ];
 
