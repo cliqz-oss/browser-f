@@ -287,10 +287,10 @@ jobs["mac"] = {
                             //expose certs
                             withCredentials([
                                 [$class: 'FileBinding',
-                                    credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+                                    credentialsId: params.MAC_CERT_CREDENTIAL_ID,
                                     variable: 'CLZ_CERTIFICATE_PATH'],
                                 [$class: 'StringBinding',
-                                    credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+                                    credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
                                     variable: 'CLZ_CERTIFICATE_PWD']]) {
 
                                 sh '''#!/bin/bash -l -x
@@ -300,7 +300,7 @@ jobs["mac"] = {
                                     mkdir -p $CQZ_CERT_DB_PATH
                                     cd `brew --prefix nss`/bin
                                     ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                                    set +x
+            
                                     ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
                                 '''
                             }
