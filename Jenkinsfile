@@ -295,6 +295,7 @@ jobs["mac"] = {
 
                                 sh '''#!/bin/bash -l -x
                                     mkdir $CQZ_CERT_DB_PATH
+                                    cd `brew --prefix nss`/bin
                                     ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
                                     set +x
                                     ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
