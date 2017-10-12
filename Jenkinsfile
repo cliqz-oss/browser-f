@@ -222,18 +222,18 @@ jobs["mac"] = {
                 "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION",
                 "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL"]) {
 
-                 withCredentials([
-                     [$class: 'StringBinding',
-                        credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
-                        variable: 'CQZ_GOOGLE_API_KEY'],
-                     [$class: 'StringBinding',
-                        credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
-                        variable: 'MOZ_MOZILLA_API_KEY']]) {
+                withCredentials([
+                    [$class: 'StringBinding',
+                    credentialsId: params.CQZ_GOOGLE_API_KEY_CREDENTIAL_ID,
+                    variable: 'CQZ_GOOGLE_API_KEY'],
+                    [$class: 'StringBinding',
+                    credentialsId: params.CQZ_MOZILLA_API_KEY_CREDENTIAL_ID,
+                    variable: 'MOZ_MOZILLA_API_KEY']]) {
 
-                        stage('fix keys') {
-                            writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
-                            writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
-                        }
+                    stage('fix keys') {
+                        writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                        writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+                    }
                 }
 
                 stage('OSX Build') {
@@ -282,51 +282,45 @@ jobs["mac"] = {
                 }
 
                 stage('OSX Upload') {
-                    if (params.RELEASE_CHANNEL == 'pr') {
-                        sh '/bin/bash -lc "./magic_upload_files.sh"'
-                    } else {
-                        withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
-                            try {
-                                //expose certs
-                                withCredentials([
-                                    [$class: 'FileBinding',
-                                        credentialsId: params.MAR_CERT_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PATH'],
-                                    [$class: 'StringBinding',
-                                        credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
-                                        variable: 'CLZ_CERTIFICATE_PWD']]) {
+                    withEnv(['CQZ_CERT_DB_PATH=/Users/vagrant/certs']) {
+                        try {
+                            //expose certs
+                            withCredentials([
+                                [$class: 'FileBinding',
+                                    credentialsId: params.MAR_CERT_CREDENTIAL_ID,
+                                    variable: 'CLZ_CERTIFICATE_PATH'],
+                                [$class: 'StringBinding',
+                                    credentialsId: params.MAR_CERT_PASS_CREDENTIAL_ID,
+                                    variable: 'CLZ_CERTIFICATE_PWD']]) {
 
-                                    sh '''#!/bin/bash -l -x
-                                        mkdir $CQZ_CERT_DB_PATH
-                                        cd `brew --prefix nss`/bin
-                                        ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-                                        set +x
-                                        ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
-                                    '''
-                                }
-
-                                withCredentials(
-                                    [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc', 
-                                    variable: 'CREDENTIALS_TEMPLATE'), 
-                                    [$class: 'AmazonWebServicesCredentialsBinding', 
-                                    accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                                    credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                                    secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
-                                ]) {
-                                    sh "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"
-                                    sh """#!/bin/bash -l -x
-                                        ./magic_upload_files.sh ${LANG_PARAM}
-                                    """
-
-                                    archiveArtifacts 'obj/build_properties.json'
-                                }
-                            } finally {
-                                // remove certs and credentials
-                                sh 'rm -r $CQZ_CERT_DB_PATH || true'
-                                sh 'rm -rf ~/.aws/credentials || true'
+                                sh '''#!/bin/bash -l -x
+                                    mkdir $CQZ_CERT_DB_PATH
+                                    cd `brew --prefix nss`/bin
+                                    ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
+                                    set +x
+                                    ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
+                                '''
                             }
+
+                            withCredentials([
+                                // [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc', 
+                                // variable: 'CREDENTIALS_TEMPLATE'), 
+                                [$class: 'AmazonWebServicesCredentialsBinding', 
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                            ]) {
+                                // sh '/bin/bash -lc "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"'
+                                sh '/bin/bash -lc "./magic_upload_files.sh ${LANG_PARAM}"'
+
+                                archiveArtifacts 'obj/build_properties.json'
+                            }
+                        } finally {
+                            // remove certs and credentials
+                            sh 'rm -r $CQZ_CERT_DB_PATH || true'
                         }
                     }
+                    
                 }
             }
         }
