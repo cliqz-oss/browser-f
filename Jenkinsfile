@@ -252,32 +252,25 @@ jobs["mac"] = {
                             credentialsId: params.MAC_CERT_PASS_CREDENTIAL_ID,
                             variable: 'CERT_PASS']
                     ]) {
-                        try {
-                            // create temporary keychain and make it a default one
-                            sh '''#!/bin/bash -l -x
-                                security create-keychain -p cliqz cliqz
-                                security list-keychains -s cliqz
-                                security default-keychain -s cliqz
-                                security unlock-keychain -p cliqz cliqz
-                            '''
+                        // create temporary keychain and make it a default one
+                        sh '''#!/bin/bash -l -x
+                            security create-keychain -p cliqz cliqz
+                            security list-keychains -s cliqz
+                            security default-keychain -s cliqz
+                            security set-keychain-settings -t 3600 cliqz
+                            security unlock-keychain -p cliqz cliqz
+                        '''
 
-                            sh '''#!/bin/bash -l -x
-                                security import $CERT_FILE -P $CERT_PASS -k cliqz -A
-                                security set-key-partition-list -S apple-tool:,apple: -s -k cliqz cliqz
-                            '''
+                        sh '''#!/bin/bash -l -x
+                            security import $CERT_FILE -P $CERT_PASS -k cliqz -A
+                            security set-key-partition-list -S apple-tool:,apple: -s -k cliqz cliqz
+                        '''
 
-                            withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
-                                sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
-                                
-                            }
-                        } finally {
-                            sh '''#!/bin/bash -l -x
-                                security delete-keychain cliqz
-                                security list-keychains -s login.keychain
-                                security default-keychain -s login.keychain
-                                true
-                            '''
+                        withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
+                            sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
+                            
                         }
+                        
                     }
                 }
 
@@ -321,6 +314,12 @@ jobs["mac"] = {
                         } finally {
                             // remove certs and credentials
                             sh 'rm -r $CQZ_CERT_DB_PATH || true'
+                            sh '''#!/bin/bash -l -x
+                                security delete-keychain cliqz
+                                security list-keychains -s login.keychain
+                                security default-keychain -s login.keychain
+                                true
+                            '''
                         }
                     }
                     
