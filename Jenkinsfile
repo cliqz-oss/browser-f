@@ -64,6 +64,8 @@ properties([
                 name: "MAR_CERT_CREDENTIAL_ID"),
         string(defaultValue: "3428e3e4-5733-4e59-8c6b-f95f1ee00322",
                 name: "MAR_CERT_PASS_CREDENTIAL_ID"),
+        string(defaultValue: "0ece63d0-527d-4468-9b1d-032235589419",
+                name: "MAR_CERT_NICKNAME"),
         string(defaultValue: "debian-gpg-key",
                 name: "DEBIAN_GPG_KEY_CREDENTIAL_ID"),
         string(defaultValue: "debian-gpg-pass",
@@ -304,7 +306,9 @@ jobs["mac"] = {
                                 [$class: 'AmazonWebServicesCredentialsBinding', 
                                 accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
                                 credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
-                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']
+                                secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
+                                string(credentialsId: params.MAR_CERT_NICKNAME, 
+                                variable: 'MAR_CERT_NAME')
                             ]) {
                                 // sh '/bin/bash -lc "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"'
                                 sh '/bin/bash -lc "./magic_upload_files.sh ${LANG_PARAM}"'
