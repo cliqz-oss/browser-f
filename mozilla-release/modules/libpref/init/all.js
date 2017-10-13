@@ -5320,19 +5320,19 @@ pref("dom.flyweb.enabled", false);
 pref("dom.mapped_arraybuffer.enabled", true);
 
 // The tables used for Safebrowsing phishing and malware checks.
-pref("urlclassifier.malwareTable", "goog-malware-shavar,goog-unwanted-shavar,test-malware-simple,test-unwanted-simple");
+pref("urlclassifier.malwareTable", "goog-malware-proto,goog-unwanted-proto,test-malware-simple,test-unwanted-simple");
 
 #ifdef MOZILLA_OFFICIAL
 // In the official build, we are allowed to use google's private
 // phishing list "goog-phish-shavar". See Bug 1288840.
-pref("urlclassifier.phishTable", "goog-phish-shavar,test-phish-simple");
+pref("urlclassifier.phishTable", "goog-phish-proto,test-phish-simple");
 #else
-pref("urlclassifier.phishTable", "googpub-phish-shavar,test-phish-simple");
+pref("urlclassifier.phishTable", "googpub-phish-proto,test-phish-simple");
 #endif
 
 // Tables for application reputation.
-pref("urlclassifier.downloadAllowTable", "goog-downloadwhite-digest256");
-pref("urlclassifier.downloadBlockTable", "goog-badbinurl-shavar");
+pref("urlclassifier.downloadAllowTable", "goog-downloadwhite-proto");
+pref("urlclassifier.downloadBlockTable", "goog-badbinurl-proto");
 
 pref("urlclassifier.disallow_completions", "test-malware-simple,test-phish-simple,test-unwanted-simple,test-track-simple,test-trackwhite-simple,test-block-simple,goog-downloadwhite-digest256,base-track-digest256,mozstd-trackwhite-digest256,content-track-digest256,mozplugin-block-digest256,mozplugin2-block-digest256,block-flash-digest256,except-flash-digest256,allow-flashallow-digest256,except-flashallow-digest256,block-flashsubdoc-digest256,except-flashsubdoc-digest256,except-flashinfobar-digest256");
 
