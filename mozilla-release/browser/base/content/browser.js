@@ -5201,9 +5201,12 @@ var CombinedStopReload = {
   },
 
   _shouldSwitch(aRequest) {
+    // DB-1518: Switch to reload button in the url bar for CliqzTab
+    const cliqzNewTabURL = "chrome://cliqz/content/freshtab/home.html";
     if (!aRequest ||
         !aRequest.originalURI ||
-        aRequest.originalURI.spec.startsWith("about:reader"))
+        aRequest.originalURI.spec.startsWith("about:reader") ||
+        aRequest.originalURI.spec === cliqzNewTabURL)
       return true;
 
     if (aRequest.originalURI.schemeIs("chrome") ||
