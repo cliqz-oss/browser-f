@@ -2,7 +2,7 @@
 
 Cliqz develops novel Internet browsers that incorporate proprietary features such as search and anti-tracking. This repository is about the Cliqz desktop browser, based on Mozilla Firefox – thus the repository name “browser-f” like Firefox. It is available for Windows and Mac. Learn more about our products and team at [cliqz.com](https://cliqz.com).
 
-Most features developed by Cliqz and offered as part of the Cliqz browsers are maintained in the open source project [browser-core](browser-core).  
+Most features developed by Cliqz and offered as part of the Cliqz browsers are maintained in the open source project [browser-core](https://github.com/cliqz-oss/browser-core).  
  
 If you are curious about our mobile browsers, please visit our open source projects for [Cliqz for Android](https://github.com/cliqz-oss/browser-android) and [Cliqz for iOS](https://github.com/cliqz-oss/browser-ios).
 
