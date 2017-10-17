@@ -4,7 +4,7 @@ Cliqz develops novel Internet browsers that incorporate proprietary features suc
 
 Most features developed by Cliqz and offered as part of the Cliqz browsers are maintained in the open source project [browser-core](browser-core).  
  
-If you are curious about our mobile browsers, please visit our open source projects for [Cliqz for Android](browser-android) and [Cliqz for iOS](browser-ios).
+If you are curious about our mobile browsers, please visit our open source projects for [Cliqz for Android](https://github.com/cliqz-oss/browser-android) and [Cliqz for iOS](https://github.com/cliqz-oss/browser-ios).
 
 ## Building
 
