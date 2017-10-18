@@ -18,7 +18,7 @@ def withRVM(version, cl) {
         "$RVM_HOME/bin",
         "${env.PATH}"
     ]
-    
+
     def path = paths.join(':')
 
     withEnv(["PATH=${env.PATH}:$HOME/.rvm/bin", "RVM_HOME=$RVM_HOME"]) {
@@ -78,7 +78,7 @@ properties([
                 name: 'IMAGE_AMI'),
         string(defaultValue: 'https://141047255820.dkr.ecr.us-east-1.amazonaws.com',
                 name: 'DOCKER_REGISTRY_URL'),
-        string(defaultValue: "1.16.0", name: "CQZ_VERSION"),
+        string(defaultValue: "1.17.0", name: "CQZ_VERSION"),
         booleanParam(defaultValue: false, description: '',
                     name: 'LIN_REBUILD_IMAGE'),
     ]),
@@ -270,9 +270,9 @@ jobs["mac"] = {
 
                         withEnv(["CQZ_CERT_NAME=$params.CQZ_CERT_NAME"]) {
                             sh '/bin/bash -lc "./sign_mac.sh ${LANG_PARAM}"'
-                            
+
                         }
-                        
+
                     }
                 }
 
@@ -295,19 +295,19 @@ jobs["mac"] = {
                                     mkdir -p $CQZ_CERT_DB_PATH
                                     cd `brew --prefix nss`/bin
                                     ./certutil -N -d $CQZ_CERT_DB_PATH -f emptypw.txt
-            
+
                                     ./pk12util -i $CLZ_CERTIFICATE_PATH -W $CLZ_CERTIFICATE_PWD -d $CQZ_CERT_DB_PATH
                                 '''
                             }
 
                             withCredentials([
-                                // [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc', 
-                                // variable: 'CREDENTIALS_TEMPLATE'), 
-                                [$class: 'AmazonWebServicesCredentialsBinding', 
-                                accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
-                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID, 
+                                // [file(credentialsId: '1cb02bb6-3c6a-4959-91fb-5ce241af3ecc',
+                                // variable: 'CREDENTIALS_TEMPLATE'),
+                                [$class: 'AmazonWebServicesCredentialsBinding',
+                                accessKeyVariable: 'AWS_ACCESS_KEY_ID',
+                                credentialsId: params.CQZ_AWS_CREDENTIAL_ID,
                                 secretKeyVariable: 'AWS_SECRET_ACCESS_KEY'],
-                                string(credentialsId: params.MAR_CERT_NICKNAME, 
+                                string(credentialsId: params.MAR_CERT_NICKNAME,
                                 variable: 'MAR_CERT_NAME')
                             ]) {
                                 // sh '/bin/bash -lc "chmod a+x $CREDENTIALS_TEMPLATE; $CREDENTIALS_TEMPLATE ${params.AWS_REGION} $AWS_ACCESS_KEY_ID $AWS_SECRET_ACCESS_KEY > ~/.aws/credentials"'
@@ -326,7 +326,7 @@ jobs["mac"] = {
                             '''
                         }
                     }
-                    
+
                 }
             }
         }
