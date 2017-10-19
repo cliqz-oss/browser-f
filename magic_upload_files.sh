@@ -27,10 +27,6 @@ if [ $CQZ_CERT_DB_PATH ]; then
   MAR_FILES=dist/update/*.mar
   for MAR_FILE in $MAR_FILES
   do
-    # repack from lzma back to bz2 (don't ask, Mozillian's trick)
-    export MAR=dist/host/bin/mar
-    ../mozilla-release/tools/update-packaging/change_mar_compression.pl -r $MAR_FILE
-
     # signmar is somehow dependent on its execution path. It refuses to work when
     # launched using relative paths, and gives unrelated error:
     # "Could not initialize NSS". BEWARE!
