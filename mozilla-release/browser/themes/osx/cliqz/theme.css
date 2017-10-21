@@ -639,6 +639,8 @@ vbox[sidebarcommand=historybroadcaster] sidebarheader {
 #navigator-toolbox[inFullscreen="true"] > #TabsToolbar {
   padding-top: 0;
   margin-top: -3px; }
+  #navigator-toolbox[inFullscreen="true"] > #TabsToolbar .tabbrowser-tab:first-child .tab-content {
+    border-left-width: 0; }
 
 #main-window[customize-entered] #browser-bottombox, #main-window[customize-entered] #navigator-toolbox > toolbar:not(#TabsToolbar), #main-window[customize-entered] #customization-container {
   border: none !important; }
