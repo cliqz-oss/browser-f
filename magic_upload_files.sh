@@ -25,20 +25,8 @@ if [ $CQZ_CERT_DB_PATH ]; then
   fi
   echo '***** Signing mar *****'
   MAR_FILES=dist/update/*.mar
-  # Temporary step, for version 56 only
-  # Repack to bz2, rename to mar and sign together with new MAR type (lzma)
-  for MAR_FILE in $MAR_FILES; do
-    export MAR=dist/host/bin/mar
-    ../mozilla-release/tools/update-packaging/change_mar_compression.pl $MAR_FILE
-  done
-
-  BZ_TO_MAR_FILES=dist/update/*.bz
-  for BZ_FILE in $BZ_TO_MAR_FILES; do
-    NEW_BZ_FILE=$(echo $BZ_FILE | sed -e "s/\.complete\.mar\.bz/\.bz\.complete\.mar/g")
-    mv $BZ_FILE $NEW_BZ_FILE
-  done
-
-  for MAR_FILE in $MAR_FILES; do
+  for MAR_FILE in $MAR_FILES
+  do
     # signmar is somehow dependent on its execution path. It refuses to work when
     # launched using relative paths, and gives unrelated error:
     # "Could not initialize NSS". BEWARE!
