@@ -400,7 +400,7 @@ var gInitialPages = [
   "about:privatebrowsing",
   "about:welcomeback",
   "about:sessionrestore",
-  "chrome://cliqz/content/freshtab/home.html",
+  "resource://cliqz/freshtab/home.html",
   "about:cliqz"
 ];
 
@@ -5202,7 +5202,7 @@ var CombinedStopReload = {
 
   _shouldSwitch(aRequest) {
     // DB-1518: Switch to reload button in the url bar for CliqzTab
-    const cliqzNewTabURL = "chrome://cliqz/content/freshtab/home.html";
+    const cliqzNewTabURL = "resource://cliqz/freshtab/home.html"; // do we still need this?
     if (!aRequest ||
         !aRequest.originalURI ||
         aRequest.originalURI.spec.startsWith("about:reader") ||
