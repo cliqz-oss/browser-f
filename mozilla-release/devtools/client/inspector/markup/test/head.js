@@ -1,3 +1,4 @@
+
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -11,7 +12,7 @@ Services.scriptloader.loadSubScript(
   this);
 
 var {getInplaceEditorForSpan: inplaceEditor} = require("devtools/client/shared/inplace-editor");
-var clipboard = require("sdk/clipboard");
+var clipboard = require("devtools/shared/platform/clipboard");
 var {ActorRegistryFront} = require("devtools/shared/fronts/actor-registry");
 
 // If a test times out we want to see the complete log and not just the last few
@@ -111,7 +112,7 @@ Task.async(function* (selector, inspector, expectFailure = false) {
  */
 function* getFirstChildNodeValue(selector, testActor) {
   let nodeValue = yield testActor.eval(`
-    content.document.querySelector("${selector}").firstChild.nodeValue;
+    document.querySelector("${selector}").firstChild.nodeValue;
   `);
   return nodeValue;
 }
@@ -126,11 +127,11 @@ function* getFirstChildNodeValue(selector, testActor) {
  */
 function waitForChildrenUpdated({markup}) {
   info("Waiting for queued children updates to be handled");
-  let def = defer();
-  markup._waitForChildren().then(() => {
-    executeSoon(def.resolve);
+  return new Promise(resolve => {
+    markup._waitForChildren().then(() => {
+      executeSoon(resolve);
+    });
   });
-  return def.promise;
 }
 
 /**
@@ -296,7 +297,7 @@ function searchUsingSelectorSearch(selector, inspector) {
 var isEditingMenuDisabled = Task.async(
 function* (nodeFront, inspector, assert = true) {
   // To ensure clipboard contains something to paste.
-  clipboard.set("<p>test</p>", "html");
+  clipboard.copyString("<p>test</p>");
 
   yield selectNode(nodeFront, inspector);
   let allMenuItems = openContextMenuAndGetAllItems(inspector);
@@ -328,7 +329,7 @@ function* (nodeFront, inspector, assert = true) {
 var isEditingMenuEnabled = Task.async(
 function* (nodeFront, inspector, assert = true) {
   // To ensure clipboard contains something to paste.
-  clipboard.set("<p>test</p>", "html");
+  clipboard.copyString("<p>test</p>");
 
   yield selectNode(nodeFront, inspector);
   let allMenuItems = openContextMenuAndGetAllItems(inspector);
@@ -353,9 +354,9 @@ function* (nodeFront, inspector, assert = true) {
  * can be used with yield.
  */
 function promiseNextTick() {
-  let deferred = defer();
-  executeSoon(deferred.resolve);
-  return deferred.promise;
+  return new Promise(resolve => {
+    executeSoon(resolve);
+  });
 }
 
 /**

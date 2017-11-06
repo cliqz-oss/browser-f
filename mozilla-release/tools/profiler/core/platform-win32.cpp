@@ -32,6 +32,10 @@
 #include <mmsystem.h>
 #include <process.h>
 
+#ifdef __MINGW32__
+#include <immintrin.h> // for _mm_pause
+#endif
+
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/StackWalk_windows.h"
 #include "mozilla/WindowsVersion.h"
@@ -91,10 +95,10 @@ private:
   HANDLE mProfiledThread;
 };
 
-uintptr_t
+HANDLE
 GetThreadHandle(PlatformData* aData)
 {
-  return (uintptr_t) aData->ProfiledThread();
+  return aData->ProfiledThread();
 }
 
 static const HANDLE kNoThread = INVALID_HANDLE_VALUE;

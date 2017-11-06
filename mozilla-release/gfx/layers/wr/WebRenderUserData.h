@@ -13,10 +13,17 @@
 class nsDisplayItemGeometry;
 
 namespace mozilla {
+namespace wr {
+class IpcResourceUpdateQueue;
+}
+
 namespace layers {
+class CanvasLayer;
 class ImageClient;
 class ImageContainer;
 class WebRenderBridgeChild;
+class WebRenderCanvasData;
+class WebRenderCanvasRendererAsync;
 class WebRenderImageData;
 class WebRenderFallbackData;
 class WebRenderLayerManager;
@@ -24,35 +31,49 @@ class WebRenderLayerManager;
 class WebRenderUserData
 {
 public:
+  typedef nsTHashtable<nsRefPtrHashKey<WebRenderUserData> > WebRenderUserDataRefTable;
+
   NS_INLINE_DECL_REFCOUNTING(WebRenderUserData)
 
-  explicit WebRenderUserData(WebRenderLayerManager* aWRManager)
-    : mWRManager(aWRManager)
-  { }
+  WebRenderUserData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
+                    WebRenderUserDataRefTable* aTable);
 
   virtual WebRenderImageData* AsImageData() { return nullptr; }
   virtual WebRenderFallbackData* AsFallbackData() { return nullptr; }
+  virtual WebRenderCanvasData* AsCanvasData() { return nullptr; }
 
   enum class UserDataType {
     eImage,
     eFallback,
     eAnimation,
+    eCanvas,
   };
 
   virtual UserDataType GetType() = 0;
+  bool IsDataValid(WebRenderLayerManager* aManager);
+  bool IsUsed() { return mUsed; }
+  void SetUsed(bool aUsed) { mUsed = aUsed; }
+  nsIFrame* GetFrame() { return mFrame; }
+  uint32_t GetDisplayItemKey() { return mDisplayItemKey; }
+  void RemoveFromTable();
 
 protected:
-  virtual ~WebRenderUserData() {}
+  virtual ~WebRenderUserData();
 
   WebRenderBridgeChild* WrBridge() const;
 
-  WebRenderLayerManager* mWRManager;
+  RefPtr<WebRenderLayerManager> mWRManager;
+  nsIFrame* mFrame;
+  uint32_t mDisplayItemKey;
+  WebRenderUserDataRefTable* mTable;
+  bool mUsed;
 };
 
 class WebRenderImageData : public WebRenderUserData
 {
 public:
-  explicit WebRenderImageData(WebRenderLayerManager* aWRManager);
+  explicit WebRenderImageData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
+                              WebRenderUserDataRefTable* aTable);
   virtual ~WebRenderImageData();
 
   virtual WebRenderImageData* AsImageData() override { return this; }
@@ -62,7 +83,9 @@ public:
   void SetKey(const wr::ImageKey& aKey) { mKey = Some(aKey); }
   already_AddRefed<ImageClient> GetImageClient();
 
-  Maybe<wr::ImageKey> UpdateImageKey(ImageContainer* aContainer, bool aForceUpdate = false);
+  Maybe<wr::ImageKey> UpdateImageKey(ImageContainer* aContainer,
+                                     wr::IpcResourceUpdateQueue& aResources,
+                                     bool aForceUpdate = false);
 
   void CreateAsyncImageWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
                                          ImageContainer* aContainer,
@@ -72,7 +95,8 @@ public:
                                          const gfx::Matrix4x4& aSCTransform,
                                          const gfx::MaybeIntSize& aScaleToSize,
                                          const wr::ImageRendering& aFilter,
-                                         const wr::MixBlendMode& aMixBlendMode);
+                                         const wr::MixBlendMode& aMixBlendMode,
+                                         bool aIsBackfaceVisible);
 
   void CreateImageClientIfNeeded();
 
@@ -89,7 +113,8 @@ protected:
 class WebRenderFallbackData : public WebRenderImageData
 {
 public:
-  explicit WebRenderFallbackData(WebRenderLayerManager* aWRManager);
+  explicit WebRenderFallbackData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
+                                 WebRenderUserDataRefTable* aTable);
   virtual ~WebRenderFallbackData();
 
   virtual WebRenderFallbackData* AsFallbackData() override { return this; }
@@ -111,7 +136,8 @@ protected:
 class WebRenderAnimationData : public WebRenderUserData
 {
 public:
-  explicit WebRenderAnimationData(WebRenderLayerManager* aWRManager);
+  explicit WebRenderAnimationData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
+                                  WebRenderUserDataRefTable* aTable);
   virtual ~WebRenderAnimationData() {}
 
   virtual UserDataType GetType() override { return UserDataType::eAnimation; }
@@ -120,6 +146,23 @@ public:
 
 protected:
   AnimationInfo mAnimationInfo;
+};
+
+class WebRenderCanvasData : public WebRenderUserData
+{
+public:
+  explicit WebRenderCanvasData(WebRenderLayerManager* aWRManager, nsDisplayItem* aItem,
+                               WebRenderUserDataRefTable* aTable);
+  virtual ~WebRenderCanvasData();
+
+  virtual WebRenderCanvasData* AsCanvasData() override { return this; }
+  virtual UserDataType GetType() override { return UserDataType::eCanvas; }
+  static UserDataType Type() { return UserDataType::eCanvas; }
+
+  WebRenderCanvasRendererAsync* GetCanvasRenderer();
+
+protected:
+  UniquePtr<WebRenderCanvasRendererAsync> mCanvasRenderer;
 };
 
 } // namespace layers

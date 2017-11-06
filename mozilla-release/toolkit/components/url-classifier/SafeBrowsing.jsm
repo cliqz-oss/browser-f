@@ -41,6 +41,7 @@ const tablePreferences = [
   "urlclassifier.malwareTable",
   "urlclassifier.downloadBlockTable",
   "urlclassifier.downloadAllowTable",
+  "urlclassifier.passwordAllowTable",
   "urlclassifier.trackingTable",
   "urlclassifier.trackingWhitelistTable",
   "urlclassifier.blockedTable",
@@ -55,7 +56,7 @@ const tablePreferences = [
 
 this.SafeBrowsing = {
 
-  init: function() {
+  init() {
     if (this.initialized) {
       log("Already initialized");
       return;
@@ -75,7 +76,7 @@ this.SafeBrowsing = {
     log("init() finished");
   },
 
-  registerTableWithURLs: function(listname) {
+  registerTableWithURLs(listname) {
     let listManager = Cc["@mozilla.org/url-classifier/listmanager;1"].
       getService(Ci.nsIUrlListManager);
 
@@ -96,7 +97,7 @@ this.SafeBrowsing = {
     listManager.registerTable(listname, providerName, provider.updateURL, provider.gethashURL);
   },
 
-  registerTables: function() {
+  registerTables() {
     for (let i = 0; i < this.phishingLists.length; ++i) {
       this.registerTableWithURLs(this.phishingLists[i]);
     }
@@ -108,6 +109,9 @@ this.SafeBrowsing = {
     }
     for (let i = 0; i < this.downloadAllowLists.length; ++i) {
       this.registerTableWithURLs(this.downloadAllowLists[i]);
+    }
+    for (let i = 0; i < this.passwordAllowLists.length; ++i) {
+      this.registerTableWithURLs(this.passwordAllowLists[i]);
     }
     for (let i = 0; i < this.trackingProtectionLists.length; ++i) {
       this.registerTableWithURLs(this.trackingProtectionLists[i]);
@@ -137,10 +141,12 @@ this.SafeBrowsing = {
     }
   },
 
+
   initialized:          false,
   phishingEnabled:      false,
   malwareEnabled:       false,
-  downloadsEnabled:       false,
+  downloadsEnabled:     false,
+  passwordsEnabled:     false,
   trackingEnabled:      false,
   blockedEnabled:       false,
   trackingAnnotations:  false,
@@ -151,6 +157,7 @@ this.SafeBrowsing = {
   malwareLists:                 [],
   downloadBlockLists:           [],
   downloadAllowLists:           [],
+  passwordAllowLists:           [],
   trackingProtectionLists:      [],
   trackingProtectionWhitelists: [],
   blockedLists:                 [],
@@ -162,7 +169,7 @@ this.SafeBrowsing = {
 
   reportURL:             null,
 
-  getReportURL: function(kind, info) {
+  getReportURL(kind, info) {
     let pref;
     switch (kind) {
       case "Phish":
@@ -198,7 +205,7 @@ this.SafeBrowsing = {
     return reportUrl;
   },
 
-  observe: function(aSubject, aTopic, aData) {
+  observe(aSubject, aTopic, aData) {
     // skip nextupdatetime and lastupdatetime
     if (aData.indexOf("lastupdatetime") >= 0 || aData.indexOf("nextupdatetime") >= 0) {
       return;
@@ -212,13 +219,14 @@ this.SafeBrowsing = {
     this.readPrefs();
   },
 
-  readPrefs: function() {
+  readPrefs() {
     loggingEnabled = Services.prefs.getBoolPref(PREF_DEBUG_ENABLED);
     log("reading prefs");
 
     this.phishingEnabled = Services.prefs.getBoolPref("browser.safebrowsing.phishing.enabled");
     this.malwareEnabled = Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled");
     this.downloadsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled");
+    this.passwordsEnabled = Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
     this.trackingEnabled = Services.prefs.getBoolPref("privacy.trackingprotection.enabled") || Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled");
     this.blockedEnabled = Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
     this.trackingAnnotations = Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
@@ -235,6 +243,7 @@ this.SafeBrowsing = {
                        this.malwareLists,
                        this.downloadBlockLists,
                        this.downloadAllowLists,
+                       this.passwordAllowLists,
                        this.trackingProtectionLists,
                        this.trackingProtectionWhitelists,
                        this.blockedLists,
@@ -246,6 +255,7 @@ this.SafeBrowsing = {
      this.malwareLists,
      this.downloadBlockLists,
      this.downloadAllowLists,
+     this.passwordAllowLists,
      this.trackingProtectionLists,
      this.trackingProtectionWhitelists,
      this.blockedLists,
@@ -268,6 +278,7 @@ this.SafeBrowsing = {
                       this.malwareLists,
                       this.downloadBlockLists,
                       this.downloadAllowLists,
+                      this.passwordAllowLists,
                       this.trackingProtectionLists,
                       this.trackingProtectionWhitelists,
                       this.blockedLists,
@@ -295,10 +306,10 @@ this.SafeBrowsing = {
   },
 
 
-  updateProviderURLs: function() {
+  updateProviderURLs() {
     try {
       var clientID = Services.prefs.getCharPref("browser.safebrowsing.id");
-    } catch(e) {
+    } catch (e) {
       clientID = Services.appinfo.name;
     }
 
@@ -341,8 +352,9 @@ this.SafeBrowsing = {
       let googleKey = Services.urlFormatter.formatURL("%GOOGLE_API_KEY%").trim();
       if ((provider == "google" || provider == "google4") &&
           (!googleKey || googleKey == "no-google-api-key")) {
-        updateURL= "";
-        gethashURL= "";
+        log("Missing Google API key, clearing updateURL and gethashURL.");
+        updateURL = "";
+        gethashURL = "";
       }
 
       log("Provider: " + provider + " updateURL=" + updateURL);
@@ -364,12 +376,15 @@ this.SafeBrowsing = {
     }, this);
   },
 
-  controlUpdateChecking: function() {
-    log("phishingEnabled:", this.phishingEnabled, "malwareEnabled:",
-        this.malwareEnabled, "trackingEnabled:", this.trackingEnabled,
+  controlUpdateChecking() {
+    log("phishingEnabled:", this.phishingEnabled,
+        "malwareEnabled:", this.malwareEnabled,
         "downloadsEnabled:", this.downloadsEnabled,
-        "blockedEnabled:", this.blockedEnabled, "trackingAnnotations",
-        this.trackingAnnotations, "flashBlockEnabled", this.flashBlockEnabled,
+        "passwordsEnabled:", this.passwordsEnabled,
+        "trackingEnabled:", this.trackingEnabled,
+        "blockedEnabled:", this.blockedEnabled,
+        "trackingAnnotations", this.trackingAnnotations,
+        "flashBlockEnabled", this.flashBlockEnabled,
         "flashInfobarListEnabled:", this.flashInfobarListEnabled);
 
     let listManager = Cc["@mozilla.org/url-classifier/listmanager;1"].
@@ -401,6 +416,13 @@ this.SafeBrowsing = {
         listManager.enableUpdate(this.downloadAllowLists[i]);
       } else {
         listManager.disableUpdate(this.downloadAllowLists[i]);
+      }
+    }
+    for (let i = 0; i < this.passwordAllowLists.length; ++i) {
+      if (this.passwordsEnabled) {
+        listManager.enableUpdate(this.passwordAllowLists[i]);
+      } else {
+        listManager.disableUpdate(this.passwordAllowLists[i]);
       }
     }
     for (let i = 0; i < this.trackingProtectionLists.length; ++i) {
@@ -442,12 +464,13 @@ this.SafeBrowsing = {
   },
 
 
-  addMozEntries: function() {
+  addMozEntries() {
     // Add test entries to the DB.
     // XXX bug 779008 - this could be done by DB itself?
     const phishURL    = "itisatrap.org/firefox/its-a-trap.html";
     const malwareURL  = "itisatrap.org/firefox/its-an-attack.html";
     const unwantedURL = "itisatrap.org/firefox/unwanted.html";
+    const harmfulURL  = "itisatrap.org/firefox/harmful.html";
     const trackerURLs = [
       "trackertest.org/",
       "itisatracker.org/",
@@ -460,10 +483,13 @@ this.SafeBrowsing = {
                  malwareURL + "\n";
     update += "n:1000\ni:test-phish-simple\nad:1\n" +
               "a:1:32:" + phishURL.length + "\n" +
-              phishURL  + "\n";
+              phishURL + "\n";
     update += "n:1000\ni:test-unwanted-simple\nad:1\n" +
               "a:1:32:" + unwantedURL.length + "\n" +
               unwantedURL + "\n";
+    update += "n:1000\ni:test-harmful-simple\nad:1\n" +
+              "a:1:32:" + harmfulURL.length + "\n" +
+              harmfulURL + "\n";
     update += "n:1000\ni:test-track-simple\n" +
               "ad:" + trackerURLs.length + "\n";
     trackerURLs.forEach((trackerURL, i) => {
@@ -483,26 +509,26 @@ this.SafeBrowsing = {
 
     // nsIUrlClassifierUpdateObserver
     let dummyListener = {
-      updateUrlRequested: function() { },
-      streamFinished:     function() { },
+      updateUrlRequested() { },
+      streamFinished() { },
       // We notify observers when we're done in order to be able to make perf
       // test results more consistent
-      updateError:        function() {
+      updateError() {
         Services.obs.notifyObservers(db, "mozentries-update-finished", "error");
       },
-      updateSuccess:      function() {
+      updateSuccess() {
         Services.obs.notifyObservers(db, "mozentries-update-finished", "success");
       }
     };
 
     try {
-      let tables = "test-malware-simple,test-phish-simple,test-unwanted-simple,test-track-simple,test-trackwhite-simple,test-block-simple";
+      let tables = "test-malware-simple,test-phish-simple,test-unwanted-simple,test-harmful-simple,test-track-simple,test-trackwhite-simple,test-block-simple";
       db.beginUpdate(dummyListener, tables, "");
       db.beginStream("", "");
       db.updateStream(update);
       db.finishStream();
       db.finishUpdate();
-    } catch(ex) {
+    } catch (ex) {
       // beginUpdate will throw harmlessly if there's an existing update in progress, ignore failures.
       log("addMozEntries failed!", ex);
       Services.obs.notifyObservers(db, "mozentries-update-finished", "exception");

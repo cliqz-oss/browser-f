@@ -8,7 +8,7 @@
 #include "nsFrame.h"
 #include "nsGkAtoms.h"
 #include "nsStyleContext.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 
 // This is a very simple frame whose only purpose is to capture style change
 // events and propagate them to the parent.  Most of the heavy lifting is done
@@ -36,7 +36,6 @@ public:
 #endif
 
   void BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                        const nsRect&           aDirtyRect,
                         const nsDisplayListSet& aLists) override {}
 
   virtual nsresult AttributeChanged(int32_t         aNameSpaceID,
@@ -86,7 +85,7 @@ nsSVGStopFrame::AttributeChanged(int32_t         aNameSpaceID,
     MOZ_ASSERT(GetParent()->IsSVGLinearGradientFrame() ||
                GetParent()->IsSVGRadialGradientFrame(),
                "Observers observe the gradient, so that's what we must invalidate");
-    nsSVGEffects::InvalidateDirectRenderingObservers(GetParent());
+    SVGObserverUtils::InvalidateDirectRenderingObservers(GetParent());
   }
 
   return nsFrame::AttributeChanged(aNameSpaceID, aAttribute, aModType);

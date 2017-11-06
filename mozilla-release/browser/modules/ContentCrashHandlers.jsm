@@ -150,6 +150,8 @@ this.TabCrashHandler = {
         let shutdown = env.exists("MOZ_CRASHREPORTER_SHUTDOWN");
 
         if (shutdown) {
+          dump("A content process crashed and MOZ_CRASHREPORTER_SHUTDOWN is " +
+               "set, shutting down\n");
           Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
         }
 
@@ -408,7 +410,7 @@ this.TabCrashHandler = {
     // default. In order to make sure we don't send it, we overwrite it
     // with the empty string.
     if (!includeURL) {
-      extraExtraKeyVals["URL"] = "";
+      extraExtraKeyVals.URL = "";
     }
 
     CrashSubmit.submit(dumpID, {

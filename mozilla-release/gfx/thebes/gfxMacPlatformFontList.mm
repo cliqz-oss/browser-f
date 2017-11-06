@@ -50,6 +50,7 @@
 #include "gfxUserFontSet.h"
 #include "harfbuzz/hb.h"
 
+#include "MainThreadUtils.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTArray.h"
 
@@ -152,11 +153,9 @@ MacOSFontEntry::ReadCMAP(FontInfoData *aFontInfoData)
 
     RefPtr<gfxCharacterMap> charmap;
     nsresult rv;
-    bool symbolFont = false; // currently ignored
 
     if (aFontInfoData && (charmap = GetCMAPFromFontInfo(aFontInfoData,
-                                                        mUVSOffset,
-                                                        symbolFont))) {
+                                                        mUVSOffset))) {
         rv = NS_OK;
     } else {
         uint32_t kCMAP = TRUETYPE_TAG('c','m','a','p');
@@ -164,14 +163,12 @@ MacOSFontEntry::ReadCMAP(FontInfoData *aFontInfoData)
         AutoTable cmapTable(this, kCMAP);
 
         if (cmapTable) {
-            bool unicodeFont = false; // currently ignored
             uint32_t cmapLen;
             const uint8_t* cmapData =
                 reinterpret_cast<const uint8_t*>(hb_blob_get_data(cmapTable,
                                                                   &cmapLen));
             rv = gfxFontUtils::ReadCMAP(cmapData, cmapLen,
-                                        *charmap, mUVSOffset,
-                                        unicodeFont, symbolFont);
+                                        *charmap, mUVSOffset);
         } else {
             rv = NS_ERROR_NOT_AVAILABLE;
         }
@@ -183,14 +180,17 @@ MacOSFontEntry::ReadCMAP(FontInfoData *aFontInfoData)
         // characters it supports, so only check/clear the
         // complex-script ranges for non-Graphite fonts
 
-        // for layout support, check for the presence of mort/morx and/or
+        // for layout support, check for the presence of mort/morx/kerx and/or
         // opentype layout tables
         bool hasAATLayout = HasFontTable(TRUETYPE_TAG('m','o','r','x')) ||
                             HasFontTable(TRUETYPE_TAG('m','o','r','t'));
+        bool hasAppleKerning = HasFontTable(TRUETYPE_TAG('k','e','r','x'));
         bool hasGSUB = HasFontTable(TRUETYPE_TAG('G','S','U','B'));
         bool hasGPOS = HasFontTable(TRUETYPE_TAG('G','P','O','S'));
-        if (hasAATLayout && !(hasGSUB || hasGPOS)) {
-            mRequiresAAT = true; // prefer CoreText if font has no OTL tables
+        if ((hasAATLayout && !(hasGSUB || hasGPOS)) || hasAppleKerning) {
+            mRequiresAAT = true; // prefer CoreText if font has no OTL tables,
+                                 // or if it uses the Apple-specific 'kerx'
+                                 // variant of kerning table
         }
 
         for (const ScriptRange* sr = gfxPlatformFontList::sComplexScriptRanges;
@@ -312,7 +312,9 @@ MacOSFontEntry::MacOSFontEntry(const nsAString& aPostscriptName,
       mIsCFF(false),
       mIsCFFInitialized(false),
       mHasVariations(false),
-      mHasVariationsInitialized(false)
+      mHasVariationsInitialized(false),
+      mHasAATSmallCaps(false),
+      mHasAATSmallCapsInitialized(false)
 {
     mWeight = aWeight;
 }
@@ -331,7 +333,9 @@ MacOSFontEntry::MacOSFontEntry(const nsAString& aPostscriptName,
       mIsCFF(false),
       mIsCFFInitialized(false),
       mHasVariations(false),
-      mHasVariationsInitialized(false)
+      mHasVariationsInitialized(false),
+      mHasAATSmallCaps(false),
+      mHasAATSmallCapsInitialized(false)
 {
     mFontRef = aFontRef;
     mFontRefInitialized = true;
@@ -346,6 +350,18 @@ MacOSFontEntry::MacOSFontEntry(const nsAString& aPostscriptName,
                  "userfont is either a data font or a local font");
     mIsDataUserFont = aIsDataUserFont;
     mIsLocalUserFont = aIsLocalUserFont;
+}
+
+gfxFontEntry*
+MacOSFontEntry::Clone() const
+{
+    MOZ_ASSERT(!IsUserFont(), "we can only clone installed fonts!");
+    MacOSFontEntry* fe =
+        new MacOSFontEntry(Name(), mWeight, mStandardFace, mSizeHint);
+    fe->mStyle = mStyle;
+    fe->mStretch = mStretch;
+    fe->mFixedPitch = mFixedPitch;
+    return fe;
 }
 
 CGFontRef
@@ -452,6 +468,99 @@ MacOSFontEntry::HasFontTable(uint32_t aTableTag)
     return mAvailableTables.GetEntry(aTableTag);
 }
 
+static bool
+CheckForAATSmallCaps(CFArrayRef aFeatures)
+{
+    // Walk the array of feature descriptors from the font, and see whether
+    // a small-caps feature setting is available.
+    // Just bail out (returning false) if at any point we fail to find the
+    // expected dictionary keys, etc; if the font has bad data, we don't even
+    // try to search the rest of it.
+    auto numFeatures = CFArrayGetCount(aFeatures);
+    for (auto f = 0; f < numFeatures; ++f) {
+        auto featureDict = (CFDictionaryRef)
+            CFArrayGetValueAtIndex(aFeatures, f);
+        if (!featureDict) {
+            return false;
+        }
+        auto featureNum = (CFNumberRef)
+            CFDictionaryGetValue(featureDict,
+                                 CFSTR("CTFeatureTypeIdentifier"));
+        if (!featureNum) {
+            return false;
+        }
+        int16_t featureType;
+        if (!CFNumberGetValue(featureNum, kCFNumberSInt16Type, &featureType)) {
+            return false;
+        }
+        if (featureType == kLetterCaseType || featureType == kLowerCaseType) {
+            // Which selector to look for, depending whether we've found the
+            // legacy LetterCase feature or the new LowerCase one.
+            const uint16_t smallCaps = (featureType == kLetterCaseType)
+                                       ? kSmallCapsSelector
+                                       : kLowerCaseSmallCapsSelector;
+            auto selectors = (CFArrayRef)
+                CFDictionaryGetValue(featureDict,
+                                     CFSTR("CTFeatureTypeSelectors"));
+            if (!selectors) {
+                return false;
+            }
+            auto numSelectors = CFArrayGetCount(selectors);
+            for (auto s = 0; s < numSelectors; s++) {
+                auto selectorDict =
+                    (CFDictionaryRef)CFArrayGetValueAtIndex(selectors, s);
+                if (!selectorDict) {
+                    return false;
+                }
+                auto selectorNum = (CFNumberRef)
+                    CFDictionaryGetValue(selectorDict,
+                                         CFSTR("CTFeatureSelectorIdentifier"));
+                if (!selectorNum) {
+                    return false;
+                }
+                int16_t selectorValue;
+                if (!CFNumberGetValue(selectorNum, kCFNumberSInt16Type,
+                                      &selectorValue)) {
+                    return false;
+                }
+                if (selectorValue == smallCaps) {
+                    return true;
+                }
+            }
+        }
+    }
+    return false;
+}
+
+bool
+MacOSFontEntry::SupportsOpenTypeFeature(Script aScript, uint32_t aFeatureTag)
+{
+    // If we're going to shape with Core Text, we don't support added
+    // OpenType features (aside from any CT applies by default), except
+    // for 'smcp' which we map to an AAT feature selector.
+    if (RequiresAATLayout()) {
+        if (aFeatureTag != HB_TAG('s','m','c','p')) {
+            return false;
+        }
+        if (mHasAATSmallCapsInitialized) {
+            return mHasAATSmallCaps;
+        }
+        mHasAATSmallCapsInitialized = true;
+        CTFontRef ctFont =
+            CTFontCreateWithGraphicsFont(mFontRef, 0.0, nullptr, nullptr);
+        if (ctFont) {
+            CFArrayRef features = CTFontCopyFeatures(ctFont);
+            CFRelease(ctFont);
+            if (features) {
+                mHasAATSmallCaps = CheckForAATSmallCaps(features);
+                CFRelease(features);
+            }
+        }
+        return mHasAATSmallCaps;
+    }
+    return gfxFontEntry::SupportsOpenTypeFeature(aScript, aFeatureTag);
+}
+
 void
 MacOSFontEntry::AddSizeOfIncludingThis(MallocSizeOf aMallocSizeOf,
                                        FontListSizes* aSizes) const
@@ -491,7 +600,11 @@ gfxMacFontFamily::LocalizedName(nsAString& aLocalizedName)
 {
     nsAutoreleasePool localPool;
 
-    if (!HasOtherFamilyNames()) {
+    // It's unsafe to call HasOtherFamilyNames off the main thread because
+    // it entrains FindStyleVariations, which calls GetWeightOverride, which
+    // retrieves prefs.  And the pref names can change (via user overrides),
+    // so we can't use gfxPrefs to access them.
+    if (NS_IsMainThread() && !HasOtherFamilyNames()) {
         aLocalizedName = mName;
         return;
     }
@@ -707,6 +820,12 @@ gfxSingleFaceMacFontFamily::ReadOtherFamilyNames(gfxPlatformFontList *aPlatformF
 /* gfxMacPlatformFontList */
 #pragma mark-
 
+// A bunch of fonts for "additional language support" are shipped in a
+// "Language Support" directory, and don't show up in the standard font
+// list returned by CTFontManagerCopyAvailableFontFamilyNames unless
+// we explicitly activate them.
+#define LANG_FONTS_DIR "/Library/Application Support/Apple/Fonts/Language Support"
+
 gfxMacPlatformFontList::gfxMacPlatformFontList() :
     gfxPlatformFontList(false),
     mDefaultFont(nullptr),
@@ -715,6 +834,15 @@ gfxMacPlatformFontList::gfxMacPlatformFontList() :
 #ifdef MOZ_BUNDLED_FONTS
     ActivateBundledFonts();
 #endif
+
+    nsresult rv;
+    nsCOMPtr<nsIFile> langFonts(do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv));
+    if (NS_SUCCEEDED(rv)) {
+        rv = langFonts->InitWithNativePath(NS_LITERAL_CSTRING(LANG_FONTS_DIR));
+        if (NS_SUCCEEDED(rv)) {
+            ActivateFontsFromDir(langFonts);
+        }
+    }
 
     ::CFNotificationCenterAddObserver(::CFNotificationCenterGetLocalCenter(),
                                       this,
@@ -730,6 +858,11 @@ gfxMacPlatformFontList::gfxMacPlatformFontList() :
 
 gfxMacPlatformFontList::~gfxMacPlatformFontList()
 {
+    ::CFNotificationCenterRemoveObserver(::CFNotificationCenterGetLocalCenter(),
+                                         this,
+                                         kCTFontManagerRegisteredFontsChangedNotification,
+                                         0);
+
     if (mDefaultFont) {
         ::CFRelease(mDefaultFont);
     }
@@ -1265,6 +1398,7 @@ static const char kSystemFont_system[] = "-apple-system";
 bool
 gfxMacPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
                                            nsTArray<gfxFontFamily*>* aOutput,
+                                           FindFamiliesFlags aFlags,
                                            gfxFontStyle* aStyle,
                                            gfxFloat aDevToCssSize)
 {
@@ -1279,7 +1413,10 @@ gfxMacPlatformFontList::FindAndAddFamilies(const nsAString& aFamily,
         return true;
     }
 
-    return gfxPlatformFontList::FindAndAddFamilies(aFamily, aOutput, aStyle,
+    return gfxPlatformFontList::FindAndAddFamilies(aFamily,
+                                                   aOutput,
+                                                   aFlags,
+                                                   aStyle,
                                                    aDevToCssSize);
 }
 
@@ -1440,16 +1577,12 @@ MacFontInfo::LoadFontFamilyData(const nsAString& aFamilyName)
                 uint32_t cmapLen = CFDataGetLength(cmapTable);
                 RefPtr<gfxCharacterMap> charmap = new gfxCharacterMap();
                 uint32_t offset;
-                bool unicodeFont = false; // ignored
-                bool symbolFont = false;
                 nsresult rv;
 
-                rv = gfxFontUtils::ReadCMAP(cmapData, cmapLen, *charmap, offset,
-                                            unicodeFont, symbolFont);
+                rv = gfxFontUtils::ReadCMAP(cmapData, cmapLen, *charmap, offset);
                 if (NS_SUCCEEDED(rv)) {
                     fontData.mCharacterMap = charmap;
                     fontData.mUVSOffset = offset;
-                    fontData.mSymbolFont = symbolFont;
                     mLoadStats.cmaps++;
                 }
                 CFRelease(cmapTable);
@@ -1497,29 +1630,27 @@ gfxMacPlatformFontList::CreateFontInfoData()
     return fi.forget();
 }
 
-#ifdef MOZ_BUNDLED_FONTS
+gfxFontFamily*
+gfxMacPlatformFontList::CreateFontFamily(const nsAString& aName) const
+{
+    return new gfxMacFontFamily(aName, 0.0);
+}
 
 void
-gfxMacPlatformFontList::ActivateBundledFonts()
+gfxMacPlatformFontList::ActivateFontsFromDir(nsIFile* aDir)
 {
-    nsCOMPtr<nsIFile> localDir;
-    nsresult rv = NS_GetSpecialDirectory(NS_GRE_DIR, getter_AddRefs(localDir));
-    if (NS_FAILED(rv)) {
-        return;
-    }
-    if (NS_FAILED(localDir->Append(NS_LITERAL_STRING("fonts")))) {
-        return;
-    }
     bool isDir;
-    if (NS_FAILED(localDir->IsDirectory(&isDir)) || !isDir) {
+    if (NS_FAILED(aDir->IsDirectory(&isDir)) || !isDir) {
         return;
     }
 
     nsCOMPtr<nsISimpleEnumerator> e;
-    rv = localDir->GetDirectoryEntries(getter_AddRefs(e));
-    if (NS_FAILED(rv)) {
+    if (NS_FAILED(aDir->GetDirectoryEntries(getter_AddRefs(e)))) {
         return;
     }
+
+    CFMutableArrayRef urls =
+        ::CFArrayCreateMutable(kCFAllocatorDefault, 0, &kCFTypeArrayCallBacks);
 
     bool hasMore;
     while (NS_SUCCEEDED(e->HasMoreElements(&hasMore)) && hasMore) {
@@ -1541,13 +1672,32 @@ gfxMacPlatformFontList::ActivateBundledFonts()
                                                       path.Length(),
                                                       false);
         if (fontURL) {
-            CFErrorRef error = nullptr;
-            ::CTFontManagerRegisterFontsForURL(fontURL,
-                                               kCTFontManagerScopeProcess,
-                                               &error);
+            ::CFArrayAppendValue(urls, fontURL);
             ::CFRelease(fontURL);
         }
     }
+
+    ::CTFontManagerRegisterFontsForURLs(urls,
+                                        kCTFontManagerScopeProcess,
+                                        nullptr);
+    ::CFRelease(urls);
+}
+
+#ifdef MOZ_BUNDLED_FONTS
+
+void
+gfxMacPlatformFontList::ActivateBundledFonts()
+{
+    nsCOMPtr<nsIFile> localDir;
+    if (NS_FAILED(NS_GetSpecialDirectory(NS_GRE_DIR,
+                                         getter_AddRefs(localDir)))) {
+        return;
+    }
+    if (NS_FAILED(localDir->Append(NS_LITERAL_STRING("fonts")))) {
+        return;
+    }
+
+    ActivateFontsFromDir(localDir);
 }
 
 #endif

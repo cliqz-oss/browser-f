@@ -194,8 +194,11 @@ function getPanelForNode(node) {
 }
 
 var awaitBrowserLoaded = browser => ContentTask.spawn(browser, null, () => {
-  if (content.document.readyState !== "complete") {
-    return ContentTaskUtils.waitForEvent(this, "load", true).then(() => {});
+  if (content.document.readyState !== "complete" ||
+      content.document.documentURI === "about:blank") {
+    return ContentTaskUtils.waitForEvent(this, "load", true, event => {
+      return content.document.documentURI !== "about:blank";
+    }).then(() => {});
   }
 });
 
@@ -214,8 +217,7 @@ var awaitExtensionPanel = async function(extension, win = window, awaitLoad = tr
 };
 
 function getCustomizableUIPanelID() {
-  return gPhotonStructure ? CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
-                          : CustomizableUI.AREA_PANEL;
+  return CustomizableUI.AREA_FIXED_OVERFLOW_PANEL;
 }
 
 function getBrowserActionWidget(extension) {
@@ -228,7 +230,7 @@ function getBrowserActionPopup(extension, win = window) {
   if (group.areaType == CustomizableUI.TYPE_TOOLBAR) {
     return win.document.getElementById("customizationui-widget-panel");
   }
-  return gPhotonStructure ? win.PanelUI.overflowPanel : win.PanelUI.panel;
+  return win.PanelUI.overflowPanel;
 }
 
 var showBrowserAction = async function(extension, win = window) {
@@ -238,14 +240,7 @@ var showBrowserAction = async function(extension, win = window) {
   if (group.areaType == CustomizableUI.TYPE_TOOLBAR) {
     ok(!widget.overflowed, "Expect widget not to be overflowed");
   } else if (group.areaType == CustomizableUI.TYPE_MENU_PANEL) {
-    // Show the right panel. After Photon is turned on permanently, this
-    // can be re-simplified. This is unfortunately easier than getting
-    // and using the panel (area) ID out of CustomizableUI for the widget.
-    if (gPhotonStructure) {
-      await win.document.getElementById("nav-bar").overflowable.show();
-    } else {
-      await win.PanelUI.show();
-    }
+    await win.document.getElementById("nav-bar").overflowable.show();
   }
 };
 

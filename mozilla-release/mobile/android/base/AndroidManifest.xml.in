@@ -312,12 +312,10 @@
 
         </activity>
 
-#ifdef MOZ_ANDROID_CUSTOM_TABS
         <activity android:name="org.mozilla.gecko.customtabs.CustomTabsActivity"
                   android:configChanges="keyboard|keyboardHidden|mcc|mnc|orientation|screenSize|locale|layoutDirection|smallestScreenSize|screenLayout"
                   android:windowSoftInputMode="stateUnspecified|adjustResize"
                   android:theme="@style/GeckoCustomTabs" />
-#endif
 
         <activity android:name="org.mozilla.gecko.webapps.WebAppActivity"
             android:theme="@style/Theme.AppCompat.NoActionBar" />
@@ -386,28 +384,11 @@
             android:name="org.mozilla.gecko.dlc.DownloadContentService">
         </service>
 
-        <service
-            android:exported="false"
-            android:name="org.mozilla.gecko.feeds.FeedService">
-        </service>
-
         <!-- DON'T EXPORT THIS, please! An attacker could delete arbitrary files. -->
         <service
             android:exported="false"
             android:name="org.mozilla.gecko.cleanup.FileCleanupService">
         </service>
-
-        <receiver
-            android:name="org.mozilla.gecko.feeds.FeedAlarmReceiver"
-            android:exported="false" />
-
-        <receiver
-            android:name="org.mozilla.gecko.BootReceiver"
-            android:exported="false">
-            <intent-filter>
-                <action android:name="android.intent.action.BOOT_COMPLETED"></action>
-            </intent-filter>
-        </receiver>
 
         <receiver
             android:name="org.mozilla.gecko.PackageReplacedReceiver"
@@ -421,7 +402,6 @@
           android:name="org.mozilla.gecko.telemetry.TelemetryUploadService"
           android:exported="false"/>
 
-#ifdef MOZ_ANDROID_CUSTOM_TABS
         <service
             android:name="org.mozilla.gecko.customtabs.GeckoCustomTabsService"
             android:exported="true">
@@ -429,7 +409,6 @@
                 <action android:name="android.support.customtabs.action.CustomTabsService" />
             </intent-filter>
         </service>
-#endif
 
 #include ../services/manifests/FxAccountAndroidManifest_services.xml.in
 

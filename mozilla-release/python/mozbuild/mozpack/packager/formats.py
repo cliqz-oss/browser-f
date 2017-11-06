@@ -338,5 +338,7 @@ class OmniJarSubFormatter(PiecemealFormatter):
             'modules',
             'greprefs.js',
             'hyphenation',
+            'localization',
             'update.locale',
+            'contentaccessible',
         ]

@@ -27,6 +27,7 @@ namespace mozilla {
 
 struct ActiveScrolledRoot;
 
+
 namespace layers {
 
 class CompositorBridgeChild;
@@ -38,6 +39,7 @@ class WebRenderParentCommand;
 class WebRenderLayerManager final : public LayerManager
 {
   typedef nsTArray<RefPtr<Layer> > LayerRefArray;
+  typedef nsTHashtable<nsRefPtrHashKey<WebRenderUserData>> WebRenderUserDataRefTable;
 
 public:
   explicit WebRenderLayerManager(nsIWidget* aWidget);
@@ -63,31 +65,40 @@ public:
   Maybe<wr::ImageKey> CreateImageKey(nsDisplayItem* aItem,
                                      ImageContainer* aContainer,
                                      mozilla::wr::DisplayListBuilder& aBuilder,
+                                     mozilla::wr::IpcResourceUpdateQueue& aResources,
                                      const StackingContextHelper& aSc,
                                      gfx::IntSize& aSize);
   bool PushImage(nsDisplayItem* aItem,
                  ImageContainer* aContainer,
                  mozilla::wr::DisplayListBuilder& aBuilder,
+                 mozilla::wr::IpcResourceUpdateQueue& aResources,
                  const StackingContextHelper& aSc,
                  const LayerRect& aRect);
-  already_AddRefed<WebRenderFallbackData> GenerateFallbackData(nsDisplayItem* aItem,
-                                                               wr::DisplayListBuilder& aBuilder,
-                                                               nsDisplayListBuilder* aDisplayListBuilder,
-                                                               LayerRect& aImageRect,
-                                                               LayerPoint& aOffset);
+
+  already_AddRefed<WebRenderFallbackData>
+  GenerateFallbackData(nsDisplayItem* aItem,
+                       wr::DisplayListBuilder& aBuilder,
+                       wr::IpcResourceUpdateQueue& aResourceUpdates,
+                       nsDisplayListBuilder* aDisplayListBuilder,
+                       LayerRect& aImageRect,
+                       LayerPoint& aOffset);
+
   Maybe<wr::WrImageMask> BuildWrMaskImage(nsDisplayItem* aItem,
                                           wr::DisplayListBuilder& aBuilder,
+                                          wr::IpcResourceUpdateQueue& aResources,
                                           const StackingContextHelper& aSc,
                                           nsDisplayListBuilder* aDisplayListBuilder,
                                           const LayerRect& aBounds);
   bool PushItemAsImage(nsDisplayItem* aItem,
                        wr::DisplayListBuilder& aBuilder,
+                       wr::IpcResourceUpdateQueue& aResources,
                        const StackingContextHelper& aSc,
                        nsDisplayListBuilder* aDisplayListBuilder);
   void CreateWebRenderCommandsFromDisplayList(nsDisplayList* aDisplayList,
                                               nsDisplayListBuilder* aDisplayListBuilder,
                                               const StackingContextHelper& aSc,
-                                              wr::DisplayListBuilder& aBuilder);
+                                              wr::DisplayListBuilder& aBuilder,
+                                              wr::IpcResourceUpdateQueue& aResources);
   void EndTransactionWithoutLayer(nsDisplayList* aDisplayList,
                                   nsDisplayListBuilder* aDisplayListBuilder);
   bool IsLayersFreeTransaction() { return mEndTransactionWithoutLayers; }
@@ -190,10 +201,13 @@ public:
   // means we need some other place to cached the data between transaction.
   // We store the data in frame's property.
   template<class T> already_AddRefed<T>
-  CreateOrRecycleWebRenderUserData(nsDisplayItem* aItem)
+  CreateOrRecycleWebRenderUserData(nsDisplayItem* aItem, bool* aOutIsRecycled = nullptr)
   {
     MOZ_ASSERT(aItem);
     nsIFrame* frame = aItem->Frame();
+    if (aOutIsRecycled) {
+      *aOutIsRecycled = true;
+    }
 
     if (!frame->HasProperty(nsIFrame::WebRenderUserDataProperty())) {
       frame->AddProperty(nsIFrame::WebRenderUserDataProperty(),
@@ -203,15 +217,32 @@ public:
     nsIFrame::WebRenderUserDataTable* userDataTable =
       frame->GetProperty(nsIFrame::WebRenderUserDataProperty());
     RefPtr<WebRenderUserData>& data = userDataTable->GetOrInsert(aItem->GetPerFrameKey());
-    if (!data || (data->GetType() != T::Type())) {
-      data = new T(this);
+    if (!data || (data->GetType() != T::Type()) || !data->IsDataValid(this)) {
+      // To recreate a new user data, we should remove the data from the table first.
+      if (data) {
+        data->RemoveFromTable();
+      }
+      data = new T(this, aItem, &mWebRenderUserDatas);
+      mWebRenderUserDatas.PutEntry(data);
+      if (aOutIsRecycled) {
+        *aOutIsRecycled = false;
+      }
     }
 
     MOZ_ASSERT(data);
     MOZ_ASSERT(data->GetType() == T::Type());
+
+    // Mark the data as being used. We will remove unused user data in the end of EndTransaction.
+    data->SetUsed(true);
+
+    if (T::Type() == WebRenderUserData::UserDataType::eCanvas) {
+      mLastCanvasDatas.PutEntry(data->AsCanvasData());
+    }
     RefPtr<T> res = static_cast<T*>(data.get());
     return res.forget();
   }
+
+  bool ShouldNotifyInvalidation() const { return mShouldNotifyInvalidation; }
 
 private:
   /**
@@ -228,9 +259,39 @@ private:
                               nsDisplayList* aDisplayList = nullptr,
                               nsDisplayListBuilder* aDisplayListBuilder = nullptr);
 
+  void RemoveUnusedAndResetWebRenderUserData()
+  {
+    for (auto iter = mWebRenderUserDatas.Iter(); !iter.Done(); iter.Next()) {
+      WebRenderUserData* data = iter.Get()->GetKey();
+      if (!data->IsUsed()) {
+        nsIFrame* frame = data->GetFrame();
+
+        MOZ_ASSERT(frame->HasProperty(nsIFrame::WebRenderUserDataProperty()));
+
+        nsIFrame::WebRenderUserDataTable* userDataTable =
+          frame->GetProperty(nsIFrame::WebRenderUserDataProperty());
+
+        MOZ_ASSERT(userDataTable->Count());
+
+        userDataTable->Remove(data->GetDisplayItemKey());
+
+        if (!userDataTable->Count()) {
+          frame->RemoveProperty(nsIFrame::WebRenderUserDataProperty());
+        }
+        iter.Remove();
+      }
+      data->SetUsed(false);
+    }
+  }
+
 private:
   nsIWidget* MOZ_NON_OWNING_REF mWidget;
-  std::vector<wr::ImageKey> mImageKeysToDelete;
+  nsTArray<wr::ImageKey> mImageKeysToDelete;
+  // TODO - This is needed because we have some code that creates image keys
+  // and enqueues them for deletion right away which is bad not only because
+  // of poor texture cache usage, but also because images end up deleted before
+  // they are used. This should hopfully be temporary.
+  nsTArray<wr::ImageKey> mImageKeysToDeleteLater;
   nsTArray<uint64_t> mDiscardedCompositorAnimationsIds;
 
   /* PaintedLayer callbacks; valid at the end of a transaciton,
@@ -263,6 +324,22 @@ private:
   // need this so that WebRenderLayerScrollData items that deeper in the
   // tree don't duplicate scroll metadata that their ancestors already have.
   std::vector<const ActiveScrolledRoot*> mAsrStack;
+  const ActiveScrolledRoot* mLastAsr;
+
+public:
+  // Note: two DisplayItemClipChain* A and B might actually be "equal" (as per
+  // DisplayItemClipChain::Equal(A, B)) even though they are not the same pointer
+  // (A != B). In this hopefully-rare case, they will get separate entries
+  // in this map when in fact we could collapse them. However, to collapse
+  // them involves writing a custom hash function for the pointer type such that
+  // A and B hash to the same things whenever DisplayItemClipChain::Equal(A, B)
+  // is true, and that will incur a performance penalty for all the hashmap
+  // operations, so is probably not worth it. With the current code we might
+  // end up creating multiple clips in WR that are effectively identical but
+  // have separate clip ids. Hopefully this won't happen very often.
+  typedef std::unordered_map<const DisplayItemClipChain*, wr::WrClipId> ClipIdMap;
+private:
+  ClipIdMap mClipIdCache;
 
   // Layers that have been mutated. If we have an empty transaction
   // then a display item layer will no longer be valid
@@ -290,6 +367,16 @@ private:
   uint32_t mPaintSequenceNumber;
   // See equivalent field in ClientLayerManager
   APZTestData mApzTestData;
+
+  typedef nsTHashtable<nsRefPtrHashKey<WebRenderCanvasData>> CanvasDataSet;
+  // Store of WebRenderCanvasData objects for use in empty transactions
+  CanvasDataSet mLastCanvasDatas;
+
+  // True if the layers-free transaction has invalidation region and then
+  // we should send notification after EndTransaction
+  bool mShouldNotifyInvalidation;
+
+  WebRenderUserDataRefTable mWebRenderUserDatas;
 };
 
 } // namespace layers

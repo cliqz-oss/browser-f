@@ -11,11 +11,9 @@
 #include "nsParserCIID.h"
 #include "nsParser.h"
 #include "CNavDTD.h"
-#include "nsHTMLEntities.h"
 #include "nsHTMLTokenizer.h"
 //#include "nsTextTokenizer.h"
 #include "nsElementTable.h"
-#include "nsParserService.h"
 #include "nsSAXAttributes.h"
 #include "nsSAXLocator.h"
 #include "nsSAXXMLReader.h"
@@ -32,7 +30,6 @@ NS_GENERIC_FACTORY_CONSTRUCTOR(nsExpatDriver)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsParser)
 NS_GENERIC_FACTORY_CONSTRUCTOR(CNavDTD)
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsParserService)
 
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSAXAttributes)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsSAXXMLReader)
@@ -42,7 +39,6 @@ NS_DEFINE_NAMED_CID(NS_EXPAT_DRIVER_CID);
 #endif
 NS_DEFINE_NAMED_CID(NS_PARSER_CID);
 NS_DEFINE_NAMED_CID(NS_CNAVDTD_CID);
-NS_DEFINE_NAMED_CID(NS_PARSERSERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_SAXATTRIBUTES_CID);
 NS_DEFINE_NAMED_CID(NS_SAXXMLREADER_CID);
 
@@ -52,14 +48,12 @@ static const mozilla::Module::CIDEntry kParserCIDs[] = {
 #endif
   { &kNS_PARSER_CID, false, nullptr, nsParserConstructor },
   { &kNS_CNAVDTD_CID, false, nullptr, CNavDTDConstructor },
-  { &kNS_PARSERSERVICE_CID, false, nullptr, nsParserServiceConstructor },
   { &kNS_SAXATTRIBUTES_CID, false, nullptr, nsSAXAttributesConstructor },
   { &kNS_SAXXMLREADER_CID, false, nullptr, nsSAXXMLReaderConstructor },
   { nullptr }
 };
 
 static const mozilla::Module::ContractIDEntry kParserContracts[] = {
-  { NS_PARSERSERVICE_CONTRACTID, &kNS_PARSERSERVICE_CID },
   { NS_SAXATTRIBUTES_CONTRACTID, &kNS_SAXATTRIBUTES_CID },
   { NS_SAXXMLREADER_CONTRACTID, &kNS_SAXXMLREADER_CID },
   { nullptr }
@@ -71,11 +65,6 @@ Initialize()
   nsresult rv = nsHTMLTags::AddRefTable();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = nsHTMLEntities::AddRefTable();
-  if (NS_FAILED(rv)) {
-    nsHTMLTags::ReleaseTable();
-    return rv;
-  }
 #ifdef DEBUG
   CheckElementTable();
 #endif
@@ -91,7 +80,6 @@ static void
 Shutdown()
 {
   nsHTMLTags::ReleaseTable();
-  nsHTMLEntities::ReleaseTable();
 }
 
 static mozilla::Module kParserModule = {

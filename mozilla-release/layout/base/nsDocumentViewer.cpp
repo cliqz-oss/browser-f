@@ -65,7 +65,6 @@
 #include "mozilla/ReflowInput.h"
 #include "nsIImageLoadingContent.h"
 #include "nsCopySupport.h"
-#include "nsIDOMHTMLFrameSetElement.h"
 #include "nsIDOMHTMLImageElement.h"
 #ifdef MOZ_XUL
 #include "nsIXULDocument.h"
@@ -1268,7 +1267,7 @@ nsDocumentViewer::PermitUnloadInternal(bool *aShouldPrompt,
                                      isTabModalPromptAllowed);
       }
 
-      nsXPIDLString title, message, stayLabel, leaveLabel;
+      nsAutoString title, message, stayLabel, leaveLabel;
       rv  = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                "OnBeforeUnloadTitle",
                                                title);
@@ -1291,7 +1290,7 @@ nsDocumentViewer::PermitUnloadInternal(bool *aShouldPrompt,
         rv = tmp;
       }
 
-      if (NS_FAILED(rv) || !title || !message || !stayLabel || !leaveLabel) {
+      if (NS_FAILED(rv)) {
         NS_ERROR("Failed to get strings from dom.properties!");
         return NS_OK;
       }
@@ -1307,9 +1306,9 @@ nsDocumentViewer::PermitUnloadInternal(bool *aShouldPrompt,
       nsAutoSyncOperation sync(mDocument);
       mInPermitUnloadPrompt = true;
       mozilla::Telemetry::Accumulate(mozilla::Telemetry::ONBEFOREUNLOAD_PROMPT_COUNT, 1);
-      rv = prompt->ConfirmEx(title, message, buttonFlags,
-                             leaveLabel, stayLabel, nullptr, nullptr,
-                             &dummy, &buttonPressed);
+      rv = prompt->ConfirmEx(title.get(), message.get(), buttonFlags,
+                             leaveLabel.get(), stayLabel.get(),
+                             nullptr, nullptr, &dummy, &buttonPressed);
       mInPermitUnloadPrompt = false;
 
       // If the prompt aborted, we tell our consumer that it is not allowed
@@ -2320,7 +2319,7 @@ nsDocumentViewer::CreateStyleSet(nsIDocument* aDocument)
   if (backendType == StyleBackendType::Gecko) {
     styleSet = new nsStyleSet();
   } else {
-    styleSet = new ServoStyleSet();
+    styleSet = new ServoStyleSet(ServoStyleSet::Kind::Master);
   }
 
   styleSet->BeginUpdate();
@@ -3390,15 +3389,10 @@ SetChildForceCharacterSet(nsIContentViewer* aChild, void* aClosure)
 NS_IMETHODIMP
 nsDocumentViewer::SetForceCharacterSet(const nsACString& aForceCharacterSet)
 {
-  // This method is scriptable, so add-ons could pass in something other
-  // than a canonical name. However, in case where the input is a canonical
-  // name, "replacement" doesn't survive label resolution. Additionally, the
-  // empty string means no hint.
+  // The empty string means no hint.
   const Encoding* encoding = nullptr;
   if (!aForceCharacterSet.IsEmpty()) {
-    if (aForceCharacterSet.EqualsLiteral("replacement")) {
-      encoding = REPLACEMENT_ENCODING;
-    } else if (!(encoding = Encoding::ForLabel(aForceCharacterSet))) {
+    if (!(encoding = Encoding::ForLabel(aForceCharacterSet))) {
       // Reject unknown labels
       return NS_ERROR_INVALID_ARG;
     }
@@ -3473,15 +3467,10 @@ SetChildHintCharacterSet(nsIContentViewer* aChild, void* aClosure)
 NS_IMETHODIMP
 nsDocumentViewer::SetHintCharacterSet(const nsACString& aHintCharacterSet)
 {
-  // This method is scriptable, so add-ons could pass in something other
-  // than a canonical name. However, in case where the input is a canonical
-  // name, "replacement" doesn't survive label resolution. Additionally, the
-  // empty string means no hint.
+  // The empty string means no hint.
   const Encoding* encoding = nullptr;
   if (!aHintCharacterSet.IsEmpty()) {
-    if (aHintCharacterSet.EqualsLiteral("replacement")) {
-      encoding = REPLACEMENT_ENCODING;
-    } else if (!(encoding = Encoding::ForLabel(aHintCharacterSet))) {
+    if (!(encoding = Encoding::ForLabel(aHintCharacterSet))) {
       // Reject unknown labels
       return NS_ERROR_INVALID_ARG;
     }

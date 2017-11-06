@@ -34,7 +34,8 @@ bool
 D3D11ShareHandleImage::AllocateTexture(D3D11RecycleAllocator* aAllocator, ID3D11Device* aDevice)
 {
   if (aAllocator) {
-    if (aAllocator->VendorId() == 0x8086 || gfxPrefs::PDMWMFUseNV12Format()) {
+    if (gfxPrefs::PDMWMFUseNV12Format() &&
+        gfx::DeviceManagerDx::Get()->CanUseNV12()) {
       mTextureClient = aAllocator->CreateOrRecycleClient(gfx::SurfaceFormat::NV12, mSize);
     } else {
       mTextureClient = aAllocator->CreateOrRecycleClient(gfx::SurfaceFormat::B8G8R8A8, mSize);
@@ -127,6 +128,7 @@ D3D11ShareHandleImage::GetAsSourceSurface()
   RefPtr<ID3D11DeviceContext> context;
   device->GetImmediateContext(getter_AddRefs(context));
   if (!context) {
+    gfxCriticalError() << "Failed to get immediate context.";
     return nullptr;
   }
 
@@ -177,28 +179,6 @@ D3D11ShareHandleImage::GetAsSourceSurface()
 ID3D11Texture2D*
 D3D11ShareHandleImage::GetTexture() const {
   return mTexture;
-}
-
-D3D11RecycleAllocator::D3D11RecycleAllocator(KnowsCompositor* aAllocator,
-                                             ID3D11Device* aDevice)
-  : TextureClientRecycleAllocator(aAllocator)
-  , mDevice(aDevice)
-{
-  mVendorId = 0;
-  RefPtr<IDXGIDevice> dxgiDevice;
-  HRESULT hr = mDevice->QueryInterface(
-    static_cast<IDXGIDevice**>(getter_AddRefs(dxgiDevice)));
-  if (SUCCEEDED(hr)) {
-    RefPtr<IDXGIAdapter> adapter;
-    hr = dxgiDevice->GetAdapter(adapter.StartAssignment());
-    if (SUCCEEDED(hr)) {
-      DXGI_ADAPTER_DESC adapterDesc;
-      hr = adapter->GetDesc(&adapterDesc);
-      if (SUCCEEDED(hr)) {
-        mVendorId = adapterDesc.VendorId;
-      }
-    }
-  }
 }
 
 already_AddRefed<TextureClient>

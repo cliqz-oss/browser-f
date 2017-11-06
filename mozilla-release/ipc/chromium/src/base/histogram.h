@@ -71,7 +71,7 @@ class Histogram {
   static const size_t kBucketCount_MAX;
 
   typedef std::vector<Count> Counts;
-  typedef std::vector<Sample> Ranges;
+  typedef const Sample* Ranges;
 
   // These enums are used to facilitate deserialization of renderer histograms
   // into the browser.
@@ -180,11 +180,8 @@ class Histogram {
   static Histogram* FactoryGet(Sample minimum,
                                Sample maximum,
                                size_t bucket_count,
-                               Flags flags);
-  static Histogram* FactoryTimeGet(base::TimeDelta minimum,
-                                   base::TimeDelta maximum,
-                                   size_t bucket_count,
-                                   Flags flags);
+                               Flags flags,
+                               const int* buckets);
 
   virtual ~Histogram();
 
@@ -248,8 +245,8 @@ class Histogram {
   Histogram(Sample minimum, Sample maximum, size_t bucket_count);
   Histogram(TimeDelta minimum, TimeDelta maximum, size_t bucket_count);
 
-  // Initialize ranges_ mapping.
-  void InitializeBucketRange();
+  // Initialize ranges_ mapping from raw data.
+  void InitializeBucketRangeFromData(const int* buckets);
 
   // Method to override to skip the display of the i'th bucket if it's empty.
   virtual bool PrintEmptyBucket(size_t index) const;
@@ -275,11 +272,6 @@ class Histogram {
   //----------------------------------------------------------------------------
   // Update all our internal data, including histogram
   virtual void Accumulate(Sample value, Count count, size_t index);
-
-  //----------------------------------------------------------------------------
-  // Accessors for derived classes.
-  //----------------------------------------------------------------------------
-  void SetBucketRange(size_t i, Sample value);
 
   // Validate that ranges_ was created sensibly (top and bottom range
   // values relate properly to the declared_min_ and declared_max_)..
@@ -344,11 +336,8 @@ class LinearHistogram : public Histogram {
   static Histogram* FactoryGet(Sample minimum,
                                Sample maximum,
                                size_t bucket_count,
-                               Flags flags);
-  static Histogram* FactoryTimeGet(TimeDelta minimum,
-                                   TimeDelta maximum,
-                                   size_t bucket_count,
-                                   Flags flags);
+                               Flags flags,
+                               const int* buckets);
 
   // Overridden from Histogram:
   virtual ClassType histogram_type() const;
@@ -364,8 +353,6 @@ class LinearHistogram : public Histogram {
 
   LinearHistogram(TimeDelta minimum, TimeDelta maximum, size_t bucket_count);
 
-  // Initialize ranges_ mapping.
-  void InitializeBucketRange();
   virtual double GetBucketSize(Count current, size_t i) const;
 
   // If we have a description for a bucket, then return that.  Otherwise
@@ -391,7 +378,8 @@ class LinearHistogram : public Histogram {
 // BooleanHistogram is a histogram for booleans.
 class BooleanHistogram : public LinearHistogram {
  public:
-  static Histogram* FactoryGet(Flags flags);
+  static Histogram* FactoryGet(Flags flags,
+                               const int* buckets);
 
   virtual ClassType histogram_type() const;
 
@@ -411,7 +399,8 @@ class BooleanHistogram : public LinearHistogram {
 class FlagHistogram : public BooleanHistogram
 {
 public:
-  static Histogram *FactoryGet(Flags flags);
+  static Histogram *FactoryGet(Flags flags,
+                               const int* buckets);
 
   virtual ClassType histogram_type() const;
 
@@ -432,7 +421,8 @@ private:
 class CountHistogram : public LinearHistogram
 {
 public:
-  static Histogram *FactoryGet(Flags flags);
+  static Histogram *FactoryGet(Flags flags,
+                               const int* buckets);
 
   virtual ClassType histogram_type() const;
 
@@ -444,28 +434,6 @@ private:
   explicit CountHistogram();
 
   DISALLOW_COPY_AND_ASSIGN(CountHistogram);
-};
-
-//------------------------------------------------------------------------------
-
-// CustomHistogram is a histogram for a set of custom integers.
-class CustomHistogram : public Histogram {
- public:
-
-  static Histogram* FactoryGet(const std::vector<Sample>& custom_ranges,
-                               Flags flags);
-
-  // Overridden from Histogram:
-  virtual ClassType histogram_type() const;
-
- protected:
-  explicit CustomHistogram(const std::vector<Sample>& custom_ranges);
-
-  // Initialize ranges_ mapping.
-  void InitializedCustomBucketRange(const std::vector<Sample>& custom_ranges);
-  virtual double GetBucketSize(Count current, size_t i) const;
-
-  DISALLOW_COPY_AND_ASSIGN(CustomHistogram);
 };
 
 }  // namespace base

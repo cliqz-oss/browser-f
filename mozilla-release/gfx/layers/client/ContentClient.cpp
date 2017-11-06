@@ -137,7 +137,7 @@ ContentClientBasic::CreateBuffer(ContentType aType,
     gfxDevCrash(LogReason::AlphaWithBasicClient) << "Asking basic content client for component alpha";
   }
 
-  IntSize size(aRect.width, aRect.height);
+  IntSize size(aRect.Width(), aRect.Height());
 #ifdef XP_WIN
   if (mBackend == BackendType::CAIRO && 
       (aType == gfxContentType::COLOR || aType == gfxContentType::COLOR_ALPHA)) {
@@ -157,6 +157,14 @@ ContentClientBasic::CreateBuffer(ContentType aType,
     gfxPlatform::GetPlatform()->Optimal2DFormatForContent(aType));
 }
 
+RefPtr<CapturedPaintState>
+ContentClientBasic::BorrowDrawTargetForRecording(PaintState& aPaintState,
+                                                 RotatedContentBuffer::DrawIterator* aIter)
+{
+  // BasicLayers does not yet support OMTP.
+  return nullptr;
+}
+
 void
 ContentClientRemoteBuffer::DestroyBuffers()
 {
@@ -172,6 +180,20 @@ ContentClientRemoteBuffer::DestroyBuffers()
   }
 
   DestroyFrontBuffer();
+}
+
+RefPtr<CapturedPaintState>
+ContentClientRemoteBuffer::BorrowDrawTargetForRecording(PaintState& aPaintState,
+                                                        RotatedContentBuffer::DrawIterator* aIter)
+{
+  RefPtr<CapturedPaintState> cps = RotatedContentBuffer::BorrowDrawTargetForRecording(aPaintState, aIter);
+  if (!cps) {
+    return nullptr;
+  }
+
+  cps->mTextureClient = mTextureClient;
+  cps->mTextureClientOnWhite = mTextureClientOnWhite;
+  return cps.forget();
 }
 
 class RemoteBufferReadbackProcessor : public TextureReadbackSink
@@ -305,7 +327,7 @@ ContentClientRemoteBuffer::BuildTextureClients(SurfaceFormat aFormat,
   DestroyBuffers();
 
   mSurfaceFormat = aFormat;
-  mSize = IntSize(aRect.width, aRect.height);
+  mSize = IntSize(aRect.Width(), aRect.Height());
   mTextureFlags = TextureFlagsForRotatedContentBufferFlags(aFlags);
 
   if (aFlags & BUFFER_COMPONENT_ALPHA) {
@@ -603,8 +625,8 @@ ContentClientDoubleBuffered::FinalizeFrame(const nsIntRegion& aRegionToDraw)
                   this,
                   mFrontUpdatedRegion.GetBounds().x,
                   mFrontUpdatedRegion.GetBounds().y,
-                  mFrontUpdatedRegion.GetBounds().width,
-                  mFrontUpdatedRegion.GetBounds().height));
+                  mFrontUpdatedRegion.GetBounds().Width(),
+                  mFrontUpdatedRegion.GetBounds().Height()));
 
   mFrontAndBackBufferDiffer = false;
 

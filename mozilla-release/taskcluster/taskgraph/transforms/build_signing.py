@@ -58,7 +58,4 @@ def define_upstream_artifacts(config, jobs):
             'formats': spec['formats'],
         } for spec in artifacts_specifications]
 
-        label = dep_job.label.replace("build-", "signing-")
-        job['label'] = label
-
         yield job

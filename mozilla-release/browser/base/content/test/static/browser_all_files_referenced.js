@@ -95,6 +95,9 @@ var whitelist = [
   {file: "resource://gre/modules/ClusterLib.js"},
   {file: "resource://gre/modules/ColorConversion.js"},
 
+  // Needed by HiddenFrame.jsm, but can't be packaged test-only
+  {file: "chrome://global/content/win.xul"},
+
   // The l10n build system can't package string files only for some platforms.
   {file: "resource://gre/chrome/en-US/locale/en-US/global-platform/mac/accessible.properties",
    platforms: ["linux", "win"]},
@@ -122,9 +125,10 @@ var whitelist = [
   {file: "resource://shield-recipe-client-content/shield-content-frame.js"},
   {file: "resource://shield-recipe-client-content/shield-content-process.js"},
 
+  // New L10n API that is not yet used in production
+  {file: "resource://gre/modules/DOMLocalization.jsm"},
+
   // Starting from here, files in the whitelist are bugs that need fixing.
-  // Bug 1339420
-  {file: "chrome://branding/content/icon128.png"},
   // Bug 1339424 (wontfix?)
   {file: "chrome://browser/locale/taskbar.properties",
    platforms: ["linux", "macosx"]},
@@ -132,8 +136,6 @@ var whitelist = [
   {file: "chrome://global/content/customizeToolbar.xul"},
   // Bug 1343837
   {file: "chrome://global/content/findUtils.js"},
-  // Bug 1343843
-  {file: "chrome://global/content/url-classifier/unittests.xul"},
   // Bug 1348362
   {file: "chrome://global/skin/icons/warning-64.png", platforms: ["linux", "win"]},
   // Bug 1348525
@@ -153,8 +155,6 @@ var whitelist = [
   // Bug 1348533
   {file: "chrome://mozapps/skin/downloads/buttons.png", platforms: ["macosx"]},
   {file: "chrome://mozapps/skin/downloads/downloadButtons.png", platforms: ["linux", "win"]},
-  // Bug 1348556
-  {file: "chrome://mozapps/skin/plugins/pluginBlocked.png"},
   // Bug 1348558
   {file: "chrome://mozapps/skin/update/downloadButtons.png",
    platforms: ["linux"]},
@@ -162,39 +162,13 @@ var whitelist = [
   {file: "chrome://pippki/content/resetpassword.xul"},
   // Bug 1351078
   {file: "resource://gre/modules/Battery.jsm"},
-  // Bug 1351070
-  {file: "resource://gre/modules/ContentPrefInstance.jsm"},
   // Bug 1351079
   {file: "resource://gre/modules/ISO8601DateUtils.jsm"},
   // Bug 1337345
   {file: "resource://gre/modules/Manifest.jsm"},
   // Bug 1351097
   {file: "resource://gre/modules/accessibility/AccessFu.jsm"},
-  // Bug 1351637
-  {file: "resource://gre/modules/sdk/bootstrap.js"},
-
 ];
-
-// Temporary whitelisted while WebPayments in construction
-// See Bug 1381141
-if (AppConstants.NIGHTLY_BUILD && AppConstants.MOZ_BUILD_APP == "browser") {
-  whitelist.push(
-    {file: "chrome://payments/content/paymentRequest.xhtml"}
-  );
-}
-
-if (!AppConstants.MOZ_PHOTON_THEME) {
-  whitelist.push(
-    // Bug 1343824
-    {file: "chrome://browser/skin/customizableui/customize-illustration-rtl@2x.png",
-     platforms: ["linux", "win"]},
-    {file: "chrome://browser/skin/customizableui/customize-illustration@2x.png",
-     platforms: ["linux", "win"]},
-    {file: "chrome://browser/skin/customizableui/info-icon-customizeTip@2x.png",
-     platforms: ["linux", "win"]},
-    {file: "chrome://browser/skin/customizableui/panelarrow-customizeTip@2x.png",
-     platforms: ["linux", "win"]});
-}
 
 whitelist = new Set(whitelist.filter(item =>
   ("isFromDevTools" in item) == isDevtools &&
@@ -241,15 +215,11 @@ if (!isDevtools) {
     whitelist.add("resource://services-sync/engines/" + module);
   }
 
-  // intl/unicharutil/nsEntityConverter.h
-  for (let name of ["html40Latin1", "html40Symbols", "html40Special", "mathml20"]) {
-    whitelist.add("resource://gre/res/entityTables/" + name + ".properties");
-  }
 }
 
 const gInterestingCategories = new Set([
-  "agent-style-sheets", "addon-provider-module", "webextension-scripts",
-  "webextension-schemas", "webextension-scripts-addon",
+  "agent-style-sheets", "addon-provider-module", "webextension-modules",
+  "webextension-scripts", "webextension-schemas", "webextension-scripts-addon",
   "webextension-scripts-content", "webextension-scripts-devtools"
 ]);
 
@@ -499,7 +469,8 @@ function findChromeUrlsFromArray(array, prefix) {
 
     // Only keep strings that look like real chrome or resource urls.
     if (/chrome:\/\/[a-zA-Z09 -]+\/(content|skin|locale)\//.test(string) ||
-        /resource:\/\/gre.*\.[a-z]+/.test(string))
+        /resource:\/\/gre.*\.[a-z]+/.test(string) ||
+        string.startsWith("resource://content-accessible/"))
       gReferencesFromCode.add(string);
   }
 }
@@ -516,20 +487,20 @@ add_task(async function checkAllTheFiles() {
   findChromeUrlsFromArray(uint16, "chrome://");
   findChromeUrlsFromArray(uint16, "resource://");
 
-  const kCodeExtensions = [".xul", ".xml", ".xsl", ".js", ".jsm", ".html", ".xhtml"];
+  const kCodeExtensions = [".xul", ".xml", ".xsl", ".js", ".jsm", ".json", ".html", ".xhtml"];
 
   let appDir = Services.dirsvc.get("GreD", Ci.nsIFile);
   // This asynchronously produces a list of URLs (sadly, mostly sync on our
   // test infrastructure because it runs against jarfiles there, and
   // our zipreader APIs are all sync)
-  let uris = await generateURIsFromDirTree(appDir, [".css", ".manifest", ".json", ".jpg", ".png", ".gif", ".svg",  ".dtd", ".properties"].concat(kCodeExtensions));
+  let uris = await generateURIsFromDirTree(appDir, [".css", ".manifest", ".jpg", ".png", ".gif", ".svg",  ".dtd", ".properties"].concat(kCodeExtensions));
 
   // Parse and remove all manifests from the list.
   // NOTE that this must be done before filtering out devtools paths
   // so that all chrome paths can be recorded.
   let manifestPromises = [];
   uris = uris.filter(uri => {
-    let path = uri.path;
+    let path = uri.pathQueryRef;
     if (path.endsWith(".manifest")) {
       manifestPromises.push(parseManifest(uri));
       return false;
@@ -546,7 +517,7 @@ add_task(async function checkAllTheFiles() {
   let allPromises = [];
 
   for (let uri of uris) {
-    let path = uri.path;
+    let path = uri.pathQueryRef;
     if (path.endsWith(".css"))
       allPromises.push(parseCSSFile(uri));
     else if (kCodeExtensions.some(ext => path.endsWith(ext)))
@@ -561,6 +532,8 @@ add_task(async function checkAllTheFiles() {
   let devtoolsPrefixes = ["chrome://webide/",
                           "chrome://devtools",
                           "resource://devtools/",
+                          "resource://devtools-client-jsonview/",
+                          "resource://devtools-client-shared/",
                           "resource://app/modules/devtools",
                           "resource://gre/modules/devtools"];
   let chromeFiles = [];

@@ -599,8 +599,8 @@ GfxInfo::Init()
 
     if (createDXGIFactory) {
       RefPtr<IDXGIFactory> factory = nullptr;
-      HRESULT hrf = createDXGIFactory(__uuidof(IDXGIFactory),
-                                      (void**)(&factory) );
+      createDXGIFactory(__uuidof(IDXGIFactory),
+                        (void**)(&factory) );
       if (factory) {
         RefPtr<IDXGIAdapter> adapter;
         if (SUCCEEDED(factory->EnumAdapters(0, getter_AddRefs(adapter)))) {

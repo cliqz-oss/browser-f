@@ -29,24 +29,17 @@ import java.util.List;
 /* package-local */ class TopSitesPageAdapter extends RecyclerView.Adapter<TopSitesCard> implements RecyclerViewClickSupport.OnItemClickListener {
     private List<TopSite> topSites;
     private final int pageNumber;
-    private int tiles;
-    private int tilesWidth;
-    private int tilesHeight;
-    private int textHeight;
+    private int tilesSize;
 
     private final HomePager.OnUrlOpenListener onUrlOpenListener;
     private final HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener;
 
-    /* package-local */ TopSitesPageAdapter(Context context, int pageNumber, int tiles, int tilesWidth, int tilesHeight,
+    /* package-local */ TopSitesPageAdapter(Context context, int pageNumber,
                                HomePager.OnUrlOpenListener onUrlOpenListener, HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener) {
         setHasStableIds(true);
 
         this.topSites = new ArrayList<>();
         this.pageNumber = pageNumber;
-        this.tiles = tiles;
-        this.tilesWidth = tilesWidth;
-        this.tilesHeight = tilesHeight;
-        this.textHeight = context.getResources().getDimensionPixelSize(R.dimen.activity_stream_top_sites_text_height);
 
         this.onUrlOpenListener = onUrlOpenListener;
         this.onUrlOpenInBackgroundListener = onUrlOpenInBackgroundListener;
@@ -56,14 +49,15 @@ import java.util.List;
      * @param startIndex The first item that this topsites group should show. This item, and the following
      * 3 items will be displayed by this adapter.
      */
-    public void swapCursor(Cursor cursor, int startIndex) {
+    public void swapCursor(final Cursor cursor, final int startIndex, final int tilesSize) {
+        this.tilesSize = tilesSize;
         topSites.clear();
 
         if (cursor == null) {
             return;
         }
 
-        for (int i = 0; i < tiles && startIndex + i < cursor.getCount(); i++) {
+        for (int i = 0; i < TopSitesPage.NUM_TILES && startIndex + i < cursor.getCount(); i++) {
             cursor.moveToPosition(startIndex + i);
 
             topSites.add(TopSite.fromCursor(cursor));
@@ -94,19 +88,18 @@ import java.util.List;
     @Override
     public void onBindViewHolder(TopSitesCard holder, int position) {
         holder.bind(topSites.get(position), getTopSiteAbsolutePosition(position));
+
+        final View card = holder.itemView;
+        final ViewGroup.LayoutParams layoutParams = card.getLayoutParams();
+        layoutParams.width = tilesSize;
+        layoutParams.height = tilesSize;
+        card.setLayoutParams(layoutParams);
     }
 
     @Override
     public TopSitesCard onCreateViewHolder(ViewGroup parent, int viewType) {
         final LayoutInflater inflater = LayoutInflater.from(parent.getContext());
-
         final FrameLayout card = (FrameLayout) inflater.inflate(R.layout.activity_stream_topsites_card, parent, false);
-
-        ViewGroup.LayoutParams layoutParams = card.getLayoutParams();
-        layoutParams.width = tilesWidth;
-        layoutParams.height = tilesHeight + textHeight;
-        card.setLayoutParams(layoutParams);
-
         return new TopSitesCard(card, onUrlOpenListener, onUrlOpenInBackgroundListener);
     }
 
@@ -126,9 +119,9 @@ import java.util.List;
      * relativePosition must range from 0 to {number of tiles on the current page}.
      */
     private int getTopSiteAbsolutePosition(int relativePosition) {
-        if (relativePosition < 0 || relativePosition > tiles) {
+        if (relativePosition < 0 || relativePosition > TopSitesPage.NUM_TILES) {
             throw new IllegalArgumentException("Illegal relative top site position encountered");
         }
-        return relativePosition + pageNumber * tiles;
+        return relativePosition + pageNumber * TopSitesPage.NUM_TILES;
     }
 }

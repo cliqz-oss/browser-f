@@ -20,6 +20,8 @@
 <!ENTITY restoreDefault.label      "Standard wiederherstellen">
 <!ENTITY restoreDefault.accesskey  "t">
 
+<!ENTITY disableExtension.label    "Erweiterung deaktivieren">
+
 <!ENTITY downloads.label     "Downloads">
 
 <!ENTITY saveTo.label "Alle Dateien in folgendem Ordner abspeichern:">

@@ -8,10 +8,6 @@ this._scriptLoader = Cc["@mozilla.org/moz/jssubscript-loader;1"].
                      getService(Ci.mozIJSSubScriptLoader);
 this._scriptLoader.loadSubScript("chrome://mochikit/content/tests/SimpleTest/EventUtils.js", EventUtils);
 
-const searchbar = document.getElementById("searchbar");
-const searchIcon = document.getAnonymousElementByAttribute(searchbar, "anonid", "searchbar-search-button");
-const goButton = document.getAnonymousElementByAttribute(searchbar, "anonid", "search-go-button");
-const textbox = searchbar._textbox;
 const searchPopup = document.getElementById("PopupSearchAutoComplete");
 const kValues = ["long text", "long text 2", "long text 3"];
 
@@ -46,7 +42,6 @@ async function endCustomizing(aWindow = window) {
   if (aWindow.document.documentElement.getAttribute("customizing") != "true") {
     return true;
   }
-  await SpecialPowers.pushPrefEnv({set: [["browser.uiCustomization.disableAnimation", true]]});
   let eventPromise = BrowserTestUtils.waitForEvent(aWindow.gNavToolbox, "aftercustomization");
   aWindow.gCustomizeMode.exit();
   return eventPromise;
@@ -56,13 +51,30 @@ async function startCustomizing(aWindow = window) {
   if (aWindow.document.documentElement.getAttribute("customizing") == "true") {
     return true;
   }
-  await SpecialPowers.pushPrefEnv({set: [["browser.uiCustomization.disableAnimation", true]]});
   let eventPromise = BrowserTestUtils.waitForEvent(aWindow.gNavToolbox, "customizationready");
   aWindow.gCustomizeMode.enter();
   return eventPromise;
 }
 
+let searchbar;
+let textbox;
+let searchIcon;
+let goButton;
+
 add_task(async function init() {
+  await SpecialPowers.pushPrefEnv({ set: [
+    ["browser.search.widget.inNavBar", true],
+  ]});
+
+  searchbar = document.getElementById("searchbar");
+  textbox = searchbar._textbox;
+  searchIcon = document.getAnonymousElementByAttribute(
+    searchbar, "anonid", "searchbar-search-button"
+  );
+  goButton = document.getAnonymousElementByAttribute(
+    searchbar, "anonid", "search-go-button"
+  );
+
   await promiseNewEngine("testEngine.xml");
 
   // First cleanup the form history in case other tests left things there.
@@ -467,7 +479,10 @@ add_task(async function dont_consume_clicks() {
 // Dropping text to the searchbar should open the popup
 add_task(async function drop_opens_popup() {
   let promise = promiseEvent(searchPopup, "popupshown");
-  EventUtils.synthesizeDrop(searchIcon, textbox.inputField, [[ {type: "text/plain", data: "foo" } ]], "move", window);
+  // Use a source for the drop that is outside of the search bar area, to avoid
+  // it receiving a mousedown and causing the popup to sometimes open.
+  let homeButton = document.getElementById("home-button");
+  EventUtils.synthesizeDrop(homeButton, textbox.inputField, [[ {type: "text/plain", data: "foo" } ]], "move", window);
   await promise;
 
   isnot(searchPopup.getAttribute("showonlysettings"), "true", "Should show the full popup");

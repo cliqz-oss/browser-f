@@ -4,7 +4,7 @@
 
 use std::ascii::AsciiExt;
 
-use super::{Token, Parser, BasicParseError};
+use super::{Token, Parser, ParserInput, BasicParseError};
 
 
 /// Parse the *An+B* notation, as found in the `:nth-child()` selector.
@@ -69,13 +69,13 @@ pub fn parse_nth<'i, 't>(input: &mut Parser<'i, 't>) -> Result<(i32, i32), Basic
 
 
 fn parse_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32) -> Result<(i32, i32), BasicParseError<'i>> {
-    let start_position = input.position();
+    let start = input.state();
     match input.next() {
         Ok(&Token::Delim('+')) => parse_signless_b(input, a, 1),
         Ok(&Token::Delim('-')) => parse_signless_b(input, a, -1),
         Ok(&Token::Number { has_sign: true, int_value: Some(b), .. }) => Ok((a, b)),
         _ => {
-            input.reset(start_position);
+            input.reset(&start);
             Ok((a, 0))
         }
     }
@@ -89,12 +89,28 @@ fn parse_signless_b<'i, 't>(input: &mut Parser<'i, 't>, a: i32, b_sign: i32) -> 
 }
 
 fn parse_n_dash_digits(string: &str) -> Result<i32, ()> {
-    if string.len() >= 3
-    && string[..2].eq_ignore_ascii_case("n-")
-    && string[2..].chars().all(|c| matches!(c, '0'...'9'))
+    let bytes = string.as_bytes();
+    if bytes.len() >= 3
+    && bytes[..2].eq_ignore_ascii_case(b"n-")
+    && bytes[2..].iter().all(|&c| matches!(c, b'0'...b'9'))
     {
-        Ok(string[1..].parse().unwrap())  // Include the minus sign
+        Ok(parse_number_saturate(&string[1..]).unwrap())  // Include the minus sign
     } else {
         Err(())
     }
+}
+
+fn parse_number_saturate(string: &str) -> Result<i32, ()> {
+    let mut input = ParserInput::new(string);
+    let mut parser = Parser::new(&mut input);
+    let int = if let Ok(&Token::Number {int_value: Some(int), ..})
+                = parser.next_including_whitespace_and_comments() {
+        int
+    } else {
+        return Err(())
+    };
+    if !parser.is_exhausted() {
+        return Err(())
+    }
+    Ok(int)
 }

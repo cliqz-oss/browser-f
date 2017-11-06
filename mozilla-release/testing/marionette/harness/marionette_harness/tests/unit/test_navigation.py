@@ -663,8 +663,7 @@ class TestTLSNavigation(MarionetteTestCase):
         self.test_page_insecure = self.fixtures.where_is("test.html", on="https")
 
         self.marionette.delete_session()
-        self.capabilities = self.marionette.start_session(
-            {"requiredCapabilities": self.insecure_tls})
+        self.capabilities = self.marionette.start_session(self.insecure_tls)
 
     def tearDown(self):
         try:
@@ -677,8 +676,7 @@ class TestTLSNavigation(MarionetteTestCase):
     @contextlib.contextmanager
     def safe_session(self):
         try:
-            self.capabilities = self.marionette.start_session(
-                {"requiredCapabilities": self.secure_tls})
+            self.capabilities = self.marionette.start_session(self.secure_tls)
             self.assertFalse(self.capabilities["acceptInsecureCerts"])
             yield self.marionette
         finally:
@@ -687,8 +685,7 @@ class TestTLSNavigation(MarionetteTestCase):
     @contextlib.contextmanager
     def unsafe_session(self):
         try:
-            self.capabilities = self.marionette.start_session(
-                {"requiredCapabilities": self.insecure_tls})
+            self.capabilities = self.marionette.start_session(self.insecure_tls)
             self.assertTrue(self.capabilities["acceptInsecureCerts"])
             yield self.marionette
         finally:
@@ -733,7 +730,7 @@ class TestPageLoadStrategy(BaseNavigationTestCase):
 
     def test_none(self):
         self.marionette.delete_session()
-        self.marionette.start_session({"desiredCapabilities": {"pageLoadStrategy": "none"}})
+        self.marionette.start_session({"pageLoadStrategy": "none"})
 
         # With a strategy of "none" there should be no wait for the page load, and the
         # current load state is unknown. So only test that the command executes successfully.
@@ -742,7 +739,7 @@ class TestPageLoadStrategy(BaseNavigationTestCase):
     @skip_if_mobile("Disabling due to message passing slowness on Android.")
     def test_eager(self):
         self.marionette.delete_session()
-        self.marionette.start_session({"desiredCapabilities": {"pageLoadStrategy": "eager"}})
+        self.marionette.start_session({"pageLoadStrategy": "eager"})
 
         self.marionette.navigate(self.test_page_slow_resource)
         self.assertEqual("interactive", self.ready_state)
@@ -751,7 +748,7 @@ class TestPageLoadStrategy(BaseNavigationTestCase):
 
     def test_normal(self):
         self.marionette.delete_session()
-        self.marionette.start_session({"desiredCapabilities": {"pageLoadStrategy": "normal"}})
+        self.marionette.start_session({"pageLoadStrategy": "normal"})
 
         self.marionette.navigate(self.test_page_slow_resource)
         self.assertEqual(self.test_page_slow_resource, self.marionette.get_url())
@@ -762,7 +759,7 @@ class TestPageLoadStrategy(BaseNavigationTestCase):
     def test_strategy_after_remoteness_change(self):
         """Bug 1378191 - Reset of capabilities after listener reload"""
         self.marionette.delete_session()
-        self.marionette.start_session({"desiredCapabilities": {"pageLoadStrategy": "eager"}})
+        self.marionette.start_session({"pageLoadStrategy": "eager"})
 
         # Trigger a remoteness change which will reload the listener script
         self.assertTrue(self.is_remote_tab, "Initial tab doesn't have remoteness flag set")

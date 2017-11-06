@@ -27,44 +27,6 @@ registerCleanupFunction(function() {
 
 var gTests = [
 {
-  desc: "Test the remote commands",
-  async teardown() {
-    gBrowser.removeCurrentTab();
-    await signOut();
-  },
-  async run() {
-    setPref("identity.fxaccounts.remote.signup.uri",
-            "https://example.com/browser/browser/base/content/test/sync/accounts_testRemoteCommands.html");
-    let tab = await promiseNewTabLoadEvent("about:accounts");
-    let mm = tab.linkedBrowser.messageManager;
-
-    let deferred = Promise.defer();
-
-    // We'll get a message when openPrefs() is called, which this test should
-    // arrange.
-    let promisePrefsOpened = promiseOneMessage(tab, "test:openPrefsCalled");
-    let results = 0;
-    try {
-      mm.addMessageListener("test:response", function responseHandler(msg) {
-        let data = msg.data.data;
-        if (data.type == "testResult") {
-          ok(data.pass, data.info);
-          results++;
-        } else if (data.type == "testsComplete") {
-          is(results, data.count, "Checking number of results received matches the number of tests that should have run");
-          mm.removeMessageListener("test:response", responseHandler);
-          deferred.resolve();
-        }
-      });
-    } catch (e) {
-      ok(false, "Failed to get all commands");
-      deferred.reject();
-    }
-    await deferred.promise;
-    await promisePrefsOpened;
-  }
-},
-{
   desc: "Test action=signin - no user logged in",
   teardown: () => gBrowser.removeCurrentTab(),
   async run() {
@@ -168,12 +130,52 @@ var gTests = [
 },
 {
   desc: "Test action=signup - user logged in",
-  teardown: () => gBrowser.removeCurrentTab(),
+  async teardown() {
+    gBrowser.removeCurrentTab();
+    await signOut();
+  },
   async run() {
     const expected_url = "https://example.com/?is_sign_up";
     setPref("identity.fxaccounts.remote.signup.uri", expected_url);
     await setSignedInUser();
     let tab = await promiseNewTabLoadEvent("about:accounts?action=signup");
+    await fxAccounts.getSignedInUser();
+    // we expect "manage" to be shown.
+    await checkVisibilities(tab, {
+      stage: true, // parent of 'manage' and 'intro'
+      manage: true,
+      intro: false, // this is  "get started"
+      remote: false,
+      networkError: false
+    });
+  },
+},
+{
+  desc: "Test action=email - no user logged in",
+  teardown: () => gBrowser.removeCurrentTab(),
+  async run() {
+    const expected_url = "https://example.com/?is_email";
+    setPref("identity.fxaccounts.remote.email.uri", expected_url);
+    let [tab, url] = await promiseNewTabWithIframeLoadEvent("about:accounts?action=email");
+    is(url, expected_url, "action=email got the expected URL");
+    // we expect the remote iframe to be shown.
+    await checkVisibilities(tab, {
+      stage: false, // parent of 'manage' and 'intro'
+      manage: false,
+      intro: false, // this is  "get started"
+      remote: true,
+      networkError: false
+    });
+  },
+},
+{
+  desc: "Test action=email - user logged in",
+  teardown: () => gBrowser.removeCurrentTab(),
+  async run() {
+    const expected_url = "https://example.com/?is_email";
+    setPref("identity.fxaccounts.remote.email.uri", expected_url);
+    await setSignedInUser();
+    let tab = await promiseNewTabLoadEvent("about:accounts?action=email");
     await fxAccounts.getSignedInUser();
     // we expect "manage" to be shown.
     await checkVisibilities(tab, {

@@ -42,7 +42,6 @@ using CrashReporter::GetIDFromMinidump;
 #endif
 
 #include "mozilla/dom/WidevineCDMManifestBinding.h"
-#include "widevine-adapter/WidevineAdapter.h"
 #include "ChromiumCDMAdapter.h"
 
 namespace mozilla {
@@ -119,12 +118,12 @@ GMPParent::Init(GeckoMediaPluginServiceParent* aService, nsIFile* aPluginDir)
   // where <gmp-plugin-id> should be gmp-gmpopenh264
   nsCOMPtr<nsIFile> parent;
   nsresult rv = aPluginDir->GetParent(getter_AddRefs(parent));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return GenericPromise::CreateAndReject(rv, __func__);
   }
   nsAutoString parentLeafName;
   rv = parent->GetLeafName(parentLeafName);
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return GenericPromise::CreateAndReject(rv, __func__);
   }
   LOGD("%s: for %s", __FUNCTION__, NS_LossyConvertUTF16toASCII(parentLeafName).get());
@@ -151,7 +150,7 @@ GMPParent::LoadProcess()
   MOZ_ASSERT(mState == GMPStateNotLoaded);
 
   nsAutoString path;
-  if (NS_FAILED(mDirectory->GetPath(path))) {
+  if (NS_WARN_IF(NS_FAILED(mDirectory->GetPath(path)))) {
     return NS_ERROR_FAILURE;
   }
   LOGD("%s: for %s", __FUNCTION__, NS_ConvertUTF16toUTF8(path).get());
@@ -619,7 +618,7 @@ GMPParent::ReadGMPMetaData()
 
   nsCOMPtr<nsIFile> infoFile;
   nsresult rv = mDirectory->Clone(getter_AddRefs(infoFile));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return GenericPromise::CreateAndReject(rv, __func__);
   }
   infoFile->AppendRelativePath(mName + NS_LITERAL_STRING(".info"));
@@ -631,7 +630,7 @@ GMPParent::ReadGMPMetaData()
   // Maybe this is the Widevine adapted plugin?
   nsCOMPtr<nsIFile> manifestFile;
   rv = mDirectory->Clone(getter_AddRefs(manifestFile));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return GenericPromise::CreateAndReject(rv, __func__);
   }
   manifestFile->AppendRelativePath(NS_LITERAL_STRING("manifest.json"));
@@ -740,11 +739,7 @@ IsCDMAPISupported(const mozilla::dom::WidevineCDMManifest& aManifest)
   int32_t interfaceVersion =
     aManifest.mX_cdm_interface_versions.ToInteger(&ignored);
   int32_t hostVersion = aManifest.mX_cdm_host_versions.ToInteger(&ignored);
-  if (MediaPrefs::EMEChromiumAPIEnabled()) {
-    return ChromiumCDMAdapter::Supports(
-      moduleVersion, interfaceVersion, hostVersion);
-  }
-  return WidevineAdapter::Supports(
+  return ChromiumCDMAdapter::Supports(
     moduleVersion, interfaceVersion, hostVersion);
 }
 
@@ -822,17 +817,9 @@ GMPParent::ParseChromiumManifest(const nsAString& aJSON)
 
   video.mAPITags.AppendElement(kEMEKeySystem);
 
-  if (MediaPrefs::EMEChromiumAPIEnabled()) {
-    video.mAPIName = NS_LITERAL_CSTRING(CHROMIUM_CDM_API);
-    mAdapter = NS_LITERAL_STRING("chromium");
-  } else {
-    video.mAPIName = NS_LITERAL_CSTRING(GMP_API_VIDEO_DECODER);
-    mAdapter = NS_LITERAL_STRING("widevine");
+  video.mAPIName = NS_LITERAL_CSTRING(CHROMIUM_CDM_API);
+  mAdapter = NS_LITERAL_STRING("chromium");
 
-    GMPCapability decrypt(NS_LITERAL_CSTRING(GMP_API_DECRYPTOR));
-    decrypt.mAPITags.AppendElement(kEMEKeySystem);
-    mCapabilities.AppendElement(Move(decrypt));
-  }
   mCapabilities.AppendElement(Move(video));
 
   return GenericPromise::CreateAndResolve(true, __func__);
@@ -900,8 +887,8 @@ GMPParent::OpenPGMPContent()
 
   Endpoint<PGMPContentParent> parent;
   Endpoint<PGMPContentChild> child;
-  if (NS_FAILED(PGMPContent::CreateEndpoints(base::GetCurrentProcId(),
-                                             OtherPid(), &parent, &child))) {
+  if (NS_WARN_IF(NS_FAILED(PGMPContent::CreateEndpoints(
+        base::GetCurrentProcId(), OtherPid(), &parent, &child)))) {
     return false;
   }
 

@@ -38,6 +38,7 @@
 
 #include "mozilla/dom/ScriptSettings.h"
 
+#include "mozilla/AutoRestore.h"
 #include "mozilla/Services.h"
 #include "mozilla/Omnijar.h"
 #include "mozilla/Preferences.h"
@@ -150,10 +151,6 @@ nsXREDirProvider::Initialize(nsIFile *aXULAppDir,
       NS_ASSERTION(mProfileDir, "NS_APP_USER_PROFILE_50_DIR not defined! This shouldn't happen!");
     }
   }
-
-#ifdef MOZ_B2G
-  LoadAppBundleDirs();
-#endif
 
   return NS_OK;
 }
@@ -280,7 +277,7 @@ nsXREDirProvider::GetUserProfilesLocalDir(nsIFile** aResult,
 #if defined(XP_UNIX) || defined(XP_MACOSX)
 /**
  * Get the directory that is the parent of the system-wide directories
- * for extensions and native-messaing manifests.
+ * for extensions and native manifests.
  *
  * On OSX this is /Library/Application Support/Mozilla
  * On Linux this is /usr/{lib,lib64}/mozilla
@@ -392,38 +389,22 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
     rv = GetUserAppDataDirectory(getter_AddRefs(file));
   }
 #if defined(XP_UNIX) || defined(XP_MACOSX)
-  else if (!strcmp(aProperty, XRE_SYS_NATIVE_MESSAGING_MANIFESTS)) {
+  else if (!strcmp(aProperty, XRE_SYS_NATIVE_MANIFESTS)) {
     nsCOMPtr<nsIFile> localDir;
 
     rv = ::GetSystemParentDirectory(getter_AddRefs(localDir));
     if (NS_SUCCEEDED(rv)) {
-      NS_NAMED_LITERAL_CSTRING(dirname,
-#if defined(XP_MACOSX)
-                               "NativeMessagingHosts"
-#else
-                               "native-messaging-hosts"
-#endif
-                               );
-      rv = localDir->AppendNative(dirname);
-      if (NS_SUCCEEDED(rv)) {
-        localDir.swap(file);
-      }
+      localDir.swap(file);
     }
   }
-  else if (!strcmp(aProperty, XRE_USER_NATIVE_MESSAGING_MANIFESTS)) {
+  else if (!strcmp(aProperty, XRE_USER_NATIVE_MANIFESTS)) {
     nsCOMPtr<nsIFile> localDir;
     rv = GetUserDataDirectoryHome(getter_AddRefs(localDir), false);
     if (NS_SUCCEEDED(rv)) {
 #if defined(XP_MACOSX)
       rv = localDir->AppendNative(NS_LITERAL_CSTRING("Mozilla"));
-      if (NS_SUCCEEDED(rv)) {
-        rv = localDir->AppendNative(NS_LITERAL_CSTRING("NativeMessagingHosts"));
-      }
 #else
       rv = localDir->AppendNative(NS_LITERAL_CSTRING(".mozilla"));
-      if (NS_SUCCEEDED(rv)) {
-        rv = localDir->AppendNative(NS_LITERAL_CSTRING("native-messaging-hosts"));
-      }
 #endif
     }
     if (NS_SUCCEEDED(rv)) {
@@ -496,6 +477,9 @@ nsXREDirProvider::GetFile(const char* aProperty, bool* aPersistent,
 #else
     return NS_ERROR_FAILURE;
 #endif
+  }
+  else if (!strcmp(aProperty, XRE_USER_SYS_EXTENSION_DEV_DIR)) {
+    return GetSysUserExtensionsDevDirectory(aFile);
   }
   else if (!strcmp(aProperty, XRE_APP_DISTRIBUTION_DIR)) {
     bool persistent = false;
@@ -861,38 +845,6 @@ DeleteDirIfExists(nsIFile* dir)
 #endif // (defined(XP_WIN) || defined(XP_MACOSX)) &&
   // defined(MOZ_CONTENT_SANDBOX)
 
-#ifdef MOZ_B2G
-void
-nsXREDirProvider::LoadAppBundleDirs()
-{
-  nsCOMPtr<nsIFile> dir;
-  bool persistent = false;
-  nsresult rv = GetFile(XRE_APP_DISTRIBUTION_DIR, &persistent, getter_AddRefs(dir));
-  if (NS_FAILED(rv))
-    return;
-
-  dir->AppendNative(NS_LITERAL_CSTRING("bundles"));
-
-  nsCOMPtr<nsISimpleEnumerator> e;
-  rv = dir->GetDirectoryEntries(getter_AddRefs(e));
-  if (NS_FAILED(rv))
-    return;
-
-  nsCOMPtr<nsIDirectoryEnumerator> files = do_QueryInterface(e);
-  if (!files)
-    return;
-
-  nsCOMPtr<nsIFile> subdir;
-  while (NS_SUCCEEDED(files->GetNextFile(getter_AddRefs(subdir))) && subdir) {
-    mAppBundleDirectories.AppendObject(subdir);
-
-    nsCOMPtr<nsIFile> manifest =
-      CloneAndAppend(subdir, "chrome.manifest");
-    XRE_AddManifestLocation(NS_APP_LOCATION, manifest);
-  }
-}
-#endif
-
 static const char *const kAppendPrefDir[] = { "defaults", "preferences", nullptr };
 
 #ifdef DEBUG_bsmedberg
@@ -1024,6 +976,22 @@ nsXREDirProvider::GetDirectory(nsIFile* *aResult)
   return mProfileDir->Clone(aResult);
 }
 
+void
+nsXREDirProvider::InitializeUserPrefs()
+{
+  if (!mPrefsInitialized) {
+    // Temporarily set mProfileNotified to true so that the preference service
+    // can access the profile directory during initialization. Afterwards, clear
+    // it so that no other code can inadvertently access it until we get to
+    // profile-do-change.
+    AutoRestore<bool> ar(mProfileNotified);
+    mProfileNotified = true;
+
+    mozilla::Preferences::InitializeUserPrefs();
+    mPrefsInitialized = true;
+  }
+}
+
 NS_IMETHODIMP
 nsXREDirProvider::DoStartup()
 {
@@ -1037,11 +1005,11 @@ nsXREDirProvider::DoStartup()
     mProfileNotified = true;
 
     /*
-       Setup prefs before profile-do-change to be able to use them to track
-       crashes and because we want to begin crash tracking before other code run
-       from this notification since they may cause crashes.
+       Make sure we've setup prefs before profile-do-change to be able to use
+       them to track crashes and because we want to begin crash tracking before
+       other code run from this notification since they may cause crashes.
     */
-    mozilla::Preferences::InitializeUserPrefs();
+    MOZ_ASSERT(mPrefsInitialized);
 
     bool safeModeNecessary = false;
     nsCOMPtr<nsIAppStartup> appStartup (do_GetService(NS_APPSTARTUP_CONTRACTID));
@@ -1557,6 +1525,23 @@ nsXREDirProvider::GetSysUserExtensionsDirectory(nsIFile** aFile)
   return NS_OK;
 }
 
+nsresult
+nsXREDirProvider::GetSysUserExtensionsDevDirectory(nsIFile** aFile)
+{
+  nsCOMPtr<nsIFile> localDir;
+  nsresult rv = GetUserDataDirectoryHome(getter_AddRefs(localDir), false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = AppendSysUserExtensionsDevPath(localDir);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = EnsureDirectoryExists(localDir);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  localDir.forget(aFile);
+  return NS_OK;
+}
+
 #if defined(XP_UNIX) || defined(XP_MACOSX)
 nsresult
 nsXREDirProvider::GetSystemExtensionsDirectory(nsIFile** aFile)
@@ -1660,6 +1645,39 @@ nsXREDirProvider::AppendSysUserExtensionPath(nsIFile* aFile)
 
 #else
 #error "Don't know how to get XRE user extension path on your platform"
+#endif
+  return NS_OK;
+}
+
+nsresult
+nsXREDirProvider::AppendSysUserExtensionsDevPath(nsIFile* aFile)
+{
+  MOZ_ASSERT(aFile);
+
+  nsresult rv;
+
+#if defined (XP_MACOSX) || defined(XP_WIN)
+
+  static const char* const sXR = "Mozilla";
+  rv = aFile->AppendNative(nsDependentCString(sXR));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  static const char* const sExtensions = "SystemExtensionsDev";
+  rv = aFile->AppendNative(nsDependentCString(sExtensions));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+#elif defined(XP_UNIX)
+
+  static const char* const sXR = ".mozilla";
+  rv = aFile->AppendNative(nsDependentCString(sXR));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  static const char* const sExtensions = "systemextensionsdev";
+  rv = aFile->AppendNative(nsDependentCString(sExtensions));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+#else
+#error "Don't know how to get XRE system extension dev path on your platform"
 #endif
   return NS_OK;
 }

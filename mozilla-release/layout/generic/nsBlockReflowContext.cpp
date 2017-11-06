@@ -28,11 +28,11 @@ using namespace mozilla;
 #endif
 
 nsBlockReflowContext::nsBlockReflowContext(nsPresContext* aPresContext,
-                                           const ReflowInput& aParentRS)
+                                           const ReflowInput& aParentRI)
   : mPresContext(aPresContext),
-    mOuterReflowInput(aParentRS),
-    mSpace(aParentRS.GetWritingMode()),
-    mMetrics(aParentRS)
+    mOuterReflowInput(aParentRI),
+    mSpace(aParentRI.GetWritingMode()),
+    mMetrics(aParentRI)
 {
 }
 
@@ -358,11 +358,11 @@ nsBlockReflowContext::ReflowBlock(const LogicalRect&  aSpace,
  */
 bool
 nsBlockReflowContext::PlaceBlock(const ReflowInput&  aReflowInput,
-                                 bool                      aForceFit,
-                                 nsLineBox*                aLine,
-                                 nsCollapsingMargin&       aBEndMarginResult,
-                                 nsOverflowAreas&          aOverflowAreas,
-                                 nsReflowStatus            aReflowStatus)
+                                 bool aForceFit,
+                                 nsLineBox* aLine,
+                                 nsCollapsingMargin& aBEndMarginResult,
+                                 nsOverflowAreas& aOverflowAreas,
+                                 const nsReflowStatus& aReflowStatus)
 {
   // Compute collapsed block-end margin value.
   WritingMode wm = aReflowInput.GetWritingMode();

@@ -4,7 +4,7 @@
 
 <!ENTITY window.width                       "36em">
 
-<!ENTITY     cookiesonsystem.label          "Folgende Cookies sind auf Ihrem Computer gespeichert:">
+<!ENTITY     cookiesonsystem2.label         "Folgende Cookies sind auf Ihrem Computer gespeichert:">
 <!ENTITY     cookiename.label               "Cookie-Name">
 <!ENTITY     cookiedomain.label             "Website"> 
 
@@ -19,7 +19,6 @@
 <!ENTITY     window.title                   "Cookies">
 <!ENTITY     windowClose.key                "w">
 <!ENTITY     focusSearch1.key               "f">
-<!ENTITY     focusSearch2.key               "k">
 
 <!ENTITY     searchFilter.label             "Suchen">
 <!ENTITY     searchFilter.accesskey         "u">

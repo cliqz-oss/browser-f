@@ -22,7 +22,7 @@ nsHtml5PlainTextUtils::NewLinkAttributes()
   nsHtml5String type = nsHtml5Portability::newStringFromLiteral("text/css");
   linkAttrs->addAttribute(nsHtml5AttributeName::ATTR_TYPE, type, -1);
   nsHtml5String href = nsHtml5Portability::newStringFromLiteral(
-    "resource://gre-resources/plaintext.css");
+    "resource://content-accessible/plaintext.css");
   linkAttrs->addAttribute(nsHtml5AttributeName::ATTR_HREF, href, -1);
 
   nsresult rv;
@@ -32,9 +32,9 @@ nsHtml5PlainTextUtils::NewLinkAttributes()
   rv = bundleService->CreateBundle("chrome://global/locale/browser.properties",
                                    getter_AddRefs(bundle));
   NS_ASSERTION(NS_SUCCEEDED(rv) && bundle, "chrome://global/locale/browser.properties could not be loaded");
-  nsXPIDLString title;
+  nsAutoString title;
   if (bundle) {
-    bundle->GetStringFromName("plainText.wordWrap", getter_Copies(title));
+    bundle->GetStringFromName("plainText.wordWrap", title);
   }
 
   linkAttrs->addAttribute(

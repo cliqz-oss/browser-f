@@ -19,7 +19,6 @@
 #include "TrackUnionStream.h"
 #include "ImageContainer.h"
 #include "AudioCaptureStream.h"
-#include "AudioChannelService.h"
 #include "AudioNodeStream.h"
 #include "AudioNodeExternalInputStream.h"
 #include "MediaStreamListener.h"
@@ -59,7 +58,7 @@ enum SourceMediaStream::TrackCommands : uint32_t {
 };
 
 /**
- * A hash table containing the graph instances, one per AudioChannel.
+ * A hash table containing the graph instances, one per document.
  */
 static nsDataHashtable<nsUint32HashKey, MediaStreamGraphImpl*> gGraphs;
 
@@ -949,7 +948,8 @@ MediaStreamGraphImpl::PlayAudio(MediaStream* aStream)
 
     // Need unique id for stream & track - and we want it to match the inserter
     output.WriteTo(LATENCY_STREAM_ID(aStream, track->GetID()),
-                                     mMixer, AudioChannelCount(),
+                                     mMixer,
+                                     CurrentDriver()->AsAudioCallbackDriver()->OutputChannelCount(),
                                      mSampleRate);
   }
   return ticksWritten;
@@ -1407,7 +1407,16 @@ MediaStreamGraphImpl::Process()
     }
   }
 
-  if (CurrentDriver()->AsAudioCallbackDriver() && ticksPlayed) {
+  if (CurrentDriver()->AsAudioCallbackDriver()) {
+    if (!ticksPlayed) {
+      // Nothing was played, so the mixer doesn't know how many frames were
+      // processed. We still tell it so AudioCallbackDriver knows how much has
+      // been processed. (bug 1406027)
+      mMixer.Mix(nullptr,
+                 CurrentDriver()->AsAudioCallbackDriver()->OutputChannelCount(),
+                 mStateComputedTime - mProcessedTime,
+                 mSampleRate);
+    }
     mMixer.FinishMixing();
   }
 
@@ -1912,7 +1921,6 @@ MediaStream::MediaStream()
   , mMainThreadDestroyed(false)
   , mNrOfMainThreadUsers(0)
   , mGraph(nullptr)
-  , mAudioChannelType(dom::AudioChannel::Normal)
 {
   MOZ_COUNT_CTOR(MediaStream);
 }
@@ -1997,7 +2005,6 @@ MediaStream::SetGraphImpl(MediaStreamGraphImpl* aGraph)
 {
   MOZ_ASSERT(!mGraph, "Should only be called once");
   mGraph = aGraph;
-  mAudioChannelType = aGraph->AudioChannel();
   mTracks.InitGraphRate(aGraph->GraphRate());
 }
 
@@ -3444,7 +3451,6 @@ ProcessedMediaStream::DestroyImpl()
 
 MediaStreamGraphImpl::MediaStreamGraphImpl(GraphDriverType aDriverRequested,
                                            TrackRate aSampleRate,
-                                           dom::AudioChannel aChannel,
                                            AbstractThread* aMainThread)
   : MediaStreamGraph(aSampleRate)
   , mPortCount(0)
@@ -3473,7 +3479,6 @@ MediaStreamGraphImpl::MediaStreamGraphImpl(GraphDriverType aDriverRequested,
 #ifdef DEBUG
   , mCanRunMessagesSynchronously(false)
 #endif
-  , mAudioChannel(aChannel)
 {
   if (mRealtime) {
     if (aDriverRequested == AUDIO_THREAD_DRIVER) {
@@ -3509,12 +3514,10 @@ MediaStreamGraphImpl::Destroy()
 }
 
 static
-uint32_t ChannelAndWindowToHash(dom::AudioChannel aChannel,
-                                nsPIDOMWindowInner* aWindow)
+uint32_t WindowToHash(nsPIDOMWindowInner* aWindow)
 {
   uint32_t hashkey = 0;
 
-  hashkey = AddToHash(hashkey, static_cast<uint32_t>(aChannel));
   hashkey = AddToHash(hashkey, aWindow);
 
   return hashkey;
@@ -3522,20 +3525,17 @@ uint32_t ChannelAndWindowToHash(dom::AudioChannel aChannel,
 
 MediaStreamGraph*
 MediaStreamGraph::GetInstance(MediaStreamGraph::GraphDriverType aGraphDriverRequested,
-                              dom::AudioChannel aChannel,
                               nsPIDOMWindowInner* aWindow)
 {
   NS_ASSERTION(NS_IsMainThread(), "Main thread only");
 
-  uint32_t channel = static_cast<uint32_t>(aChannel);
   MediaStreamGraphImpl* graph = nullptr;
 
-  // We hash the AudioChannel and the nsPIDOMWindowInner together to form a key
-  // to the gloabl MediaStreamGraph hashtable. Effectively, this means there is
-  // a graph per document and AudioChannel.
+  // We hash the nsPIDOMWindowInner to form a key to the gloabl
+  // MediaStreamGraph hashtable. Effectively, this means there is a graph per
+  // document.
 
-
-  uint32_t hashkey = ChannelAndWindowToHash(aChannel, aWindow);
+  uint32_t hashkey = WindowToHash(aWindow);
 
   if (!gGraphs.Get(hashkey, &graph)) {
     if (!gMediaStreamGraphShutdownBlocker) {
@@ -3583,14 +3583,12 @@ MediaStreamGraph::GetInstance(MediaStreamGraph::GraphDriverType aGraphDriverRequ
     }
     graph = new MediaStreamGraphImpl(aGraphDriverRequested,
                                      CubebUtils::PreferredSampleRate(),
-                                     aChannel,
                                      mainThread);
 
     gGraphs.Put(hashkey, graph);
 
     LOG(LogLevel::Debug,
-        ("Starting up MediaStreamGraph %p for channel %s and window %p",
-         graph, AudioChannelValues::strings[channel].value, aWindow));
+        ("Starting up MediaStreamGraph %p for window %p", graph, aWindow));
   }
 
   return graph;
@@ -3606,7 +3604,6 @@ MediaStreamGraph::CreateNonRealtimeInstance(TrackRate aSampleRate,
   MediaStreamGraphImpl* graph = new MediaStreamGraphImpl(
     OFFLINE_THREAD_DRIVER,
     aSampleRate,
-    AudioChannel::Normal,
     parentObject->AbstractMainThreadFor(TaskCategory::Other));
 
   LOG(LogLevel::Debug, ("Starting up Offline MediaStreamGraph %p", graph));

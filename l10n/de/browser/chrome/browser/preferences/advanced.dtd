@@ -29,8 +29,8 @@ disabled data sharing options in developer builds or builds with no Telemetry su
 available. -->
 <!ENTITY healthReportingDisabled.label   "Datenübermittlung ist für diese Build-Konfiguration deaktiviert">
 
-<!ENTITY enableHealthReport1.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Mozilla zu senden">
-<!ENTITY enableHealthReport1.accesskey   "t">
+<!ENTITY enableHealthReport2.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Mozilla zu senden">
+<!ENTITY enableHealthReport2.accesskey   "t">
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
 
 <!ENTITY dataCollection.label            "Datenerhebung durch &brandShortName; und deren Verwendung">
@@ -116,7 +116,7 @@ available. -->
 <!ENTITY offlineStorageNotifyExceptions.label     "Ausnahmen…">
 <!ENTITY offlineStorageNotifyExceptions.accesskey "A">
 
-<!ENTITY offlineAppsList2.label          "Folgende Websites dürfen Daten für die Verwendung im Offline-Modus speichern:">
+<!ENTITY offlineAppsList3.label          "Folgende Websites dürfen Daten für die Verwendung im Offline-Modus speichern:">
 <!ENTITY offlineAppsList.height          "7em">
 <!ENTITY offlineAppsListRemove.label     "Entfernen…">
 <!ENTITY offlineAppsListRemove.accesskey "E">

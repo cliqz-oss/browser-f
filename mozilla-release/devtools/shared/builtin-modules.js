@@ -14,15 +14,19 @@
  */
 
 const { Cu, CC, Cc, Ci } = require("chrome");
-const { Loader } = Cu.import("resource://gre/modules/commonjs/toolkit/loader.js", {});
 const promise = Cu.import("resource://gre/modules/Promise.jsm", {}).Promise;
 const jsmScope = Cu.import("resource://gre/modules/Services.jsm", {});
 const { Services } = jsmScope;
 // Steal various globals only available in JSM scope (and not Sandbox one)
 const { PromiseDebugging, ChromeUtils, ThreadSafeChromeUtils, HeapSnapshot,
-        atob, btoa, TextEncoder, TextDecoder } = jsmScope;
-const { URL } = Cu.Sandbox(CC("@mozilla.org/systemprincipal;1", "nsIPrincipal")(),
-                           {wantGlobalProperties: ["URL"]});
+        atob, btoa, TextEncoder, TextDecoder } = Cu.getGlobalForObject(jsmScope);
+
+// Create a single Sandbox to access global properties needed in this module.
+// Sandbox are memory expensive, so we should create as little as possible.
+const { CSS, FileReader, indexedDB, URL } =
+    Cu.Sandbox(CC("@mozilla.org/systemprincipal;1", "nsIPrincipal")(), {
+      wantGlobalProperties: ["CSS", "FileReader", "indexedDB", "URL"]
+    });
 
 /**
  * Defines a getter on a specified object that will be created upon first use.
@@ -167,12 +171,12 @@ function lazyRequireGetter(obj, property, module, destructure) {
 // List of pseudo modules exposed to all devtools modules.
 exports.modules = {
   "Services": Object.create(Services),
-  "toolkit/loader": Loader,
   promise,
   PromiseDebugging,
   ChromeUtils,
   ThreadSafeChromeUtils,
   HeapSnapshot,
+  FileReader,
 };
 
 defineLazyGetter(exports.modules, "Debugger", () => {
@@ -201,13 +205,6 @@ defineLazyGetter(exports.modules, "xpcInspector", () => {
   return Cc["@mozilla.org/jsinspector;1"].getService(Ci.nsIJSInspector);
 });
 
-defineLazyGetter(exports.modules, "FileReader", () => {
-  let sandbox
-    = Cu.Sandbox(CC("@mozilla.org/systemprincipal;1", "nsIPrincipal")(),
-                 {wantGlobalProperties: ["FileReader"]});
-  return sandbox.FileReader;
-});
-
 // List of all custom globals exposed to devtools modules.
 // Changes here should be mirrored to devtools/.eslintrc.
 exports.globals = {
@@ -218,6 +215,7 @@ exports.globals = {
   TextEncoder: TextEncoder,
   TextDecoder: TextDecoder,
   URL,
+  CSS,
   loader: {
     lazyGetter: defineLazyGetter,
     lazyImporter: defineLazyModuleGetter,
@@ -292,15 +290,9 @@ lazyGlobal("CSSRule", () => Ci.nsIDOMCSSRule);
 lazyGlobal("DOMParser", () => {
   return CC("@mozilla.org/xmlextras/domparser;1", "nsIDOMParser");
 });
-lazyGlobal("CSS", () => {
-  let sandbox
-    = Cu.Sandbox(CC("@mozilla.org/systemprincipal;1", "nsIPrincipal")(),
-                 {wantGlobalProperties: ["CSS"]});
-  return sandbox.CSS;
-});
 lazyGlobal("WebSocket", () => {
   return Services.appShell.hiddenDOMWindow.WebSocket;
 });
 lazyGlobal("indexedDB", () => {
-  return require("sdk/indexed-db").indexedDB;
+  return require("devtools/shared/indexed-db").createDevToolsIndexedDB(indexedDB);
 });

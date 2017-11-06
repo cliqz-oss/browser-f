@@ -27,8 +27,6 @@ XPCOMUtils.defineLazyGetter(this, "Timer", function() {
   return timer;
 });
 
-XPCOMUtils.defineLazyPreferenceGetter(this, "gPhotonStructure", "browser.photon.structure.enabled");
-
 const MS_SECOND = 1000;
 const MS_MINUTE = MS_SECOND * 60;
 const MS_HOUR = MS_MINUTE * 60;
@@ -52,13 +50,14 @@ const LEGACY_PANEL_PLACEMENTS = [
 XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREA_PLACEMENTS", function() {
   let result = {
     "nav-bar": [
-      "urlbar-container",
-      "search-container",
-      "bookmarks-menu-button",
-      "pocket-button",
-      "downloads-button",
+      "back-button",
+      "forward-button",
+      "stop-reload-button",
       "home-button",
-      "social-share-button",
+      "urlbar-container",
+      "downloads-button",
+      "library-button",
+      "sidebar-button",
     ],
     // It's true that toolbar-menubar is not visible
     // on OS X, but the XUL node is definitely present
@@ -74,30 +73,9 @@ XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREA_PLACEMENTS", function() {
     "PersonalToolbar": [
       "personal-bookmarks",
     ],
+    "widget-overflow-fixed-list": [
+    ],
   };
-
-  if (AppConstants.MOZ_PHOTON_THEME) {
-    result["nav-bar"].push("sidebar-button");
-  }
-
-  if (gPhotonStructure) {
-    result["widget-overflow-fixed-list"] = [];
-  } else {
-    result["PanelUI-contents"] = LEGACY_PANEL_PLACEMENTS;
-    let showCharacterEncoding = Services.prefs.getComplexValue(
-      "browser.menu.showCharacterEncoding",
-      Ci.nsIPrefLocalizedString
-    ).data;
-    if (showCharacterEncoding == "true") {
-      result["PanelUI-contents"].push("characterencoding-button");
-    }
-
-    if (AppConstants.MOZ_DEV_EDITION || AppConstants.NIGHTLY_BUILD) {
-      if (Services.prefs.getBoolPref("extensions.webcompat-reporter.enabled")) {
-        result["PanelUI-contents"].push("webcompat-reporter-button");
-      }
-    }
-  }
 
   return result;
 });
@@ -108,20 +86,15 @@ XPCOMUtils.defineLazyGetter(this, "DEFAULT_AREAS", function() {
 
 XPCOMUtils.defineLazyGetter(this, "PALETTE_ITEMS", function() {
   let result = [
+    "bookmarks-menu-button",
+    "search-container",
     "open-file-button",
     "developer-button",
     "feed-button",
     "email-link-button",
-    "containers-panelmenu",
+    ...LEGACY_PANEL_PLACEMENTS,
+    "characterencoding-button",
   ];
-
-  let panelPlacements = DEFAULT_AREA_PLACEMENTS["PanelUI-contents"];
-  if (!panelPlacements) {
-    result.push(...LEGACY_PANEL_PLACEMENTS);
-  }
-  if (!panelPlacements || !panelPlacements.includes("characterencoding-button")) {
-    result.push("characterencoding-button");
-  }
 
   if (Services.prefs.getBoolPref("privacy.panicButton.enabled")) {
     result.push("panic-button");
@@ -716,7 +689,7 @@ this.BrowserUITelemetry = {
     "spell-undo-add-to-dictionary", "openlinkincurrent", "openlinkintab",
     "openlink",
     // "openlinkprivate" intentionally omitted for privacy reasons. See bug 1176391.
-    "bookmarklink", "sharelink", "savelink",
+    "bookmarklink", "savelink",
     "marklinkMenu", "copyemail", "copylink", "media-play", "media-pause",
     "media-mute", "media-unmute", "media-playbackrate",
     "media-playbackrate-050x", "media-playbackrate-100x",
@@ -724,12 +697,12 @@ this.BrowserUITelemetry = {
     "media-showcontrols", "media-hidecontrols",
     "video-fullscreen", "leave-dom-fullscreen",
     "reloadimage", "viewimage", "viewvideo", "copyimage-contents", "copyimage",
-    "copyvideourl", "copyaudiourl", "saveimage", "shareimage", "sendimage",
+    "copyvideourl", "copyaudiourl", "saveimage", "sendimage",
     "setDesktopBackground", "viewimageinfo", "viewimagedesc", "savevideo",
-    "sharevideo", "saveaudio", "video-saveimage", "sendvideo", "sendaudio",
-    "ctp-play", "ctp-hide", "sharepage", "savepage", "pocket", "markpageMenu",
+    "saveaudio", "video-saveimage", "sendvideo", "sendaudio",
+    "ctp-play", "ctp-hide", "savepage", "pocket", "markpageMenu",
     "viewbgimage", "undo", "cut", "copy", "paste", "delete", "selectall",
-    "keywordfield", "searchselect", "shareselect", "frame", "showonlythisframe",
+    "keywordfield", "searchselect", "frame", "showonlythisframe",
     "openframeintab", "openframe", "reloadframe", "bookmarkframe", "saveframe",
     "printframe", "viewframesource", "viewframeinfo",
     "viewpartialsource-selection", "viewpartialsource-mathml",

@@ -11,6 +11,7 @@
 #include "GLTextureImage.h"             // for TextureImage
 #include "ImageTypes.h"                 // for StereoMode
 #include "mozilla/Assertions.h"         // for MOZ_ASSERT, etc
+#include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"         // for override
 #include "mozilla/DebugOnly.h"
 #include "mozilla/RefPtr.h"             // for RefPtr, RefCounted
@@ -66,6 +67,7 @@ class TextureClientPool;
 #endif
 class TextureForwarder;
 class KeepAlive;
+class SyncObjectClient;
 
 /**
  * TextureClient is the abstraction that allows us to share data between the
@@ -91,36 +93,6 @@ enum TextureAllocationFlags {
   // The texture is going to be updated using UpdateFromSurface and needs to support
   // that call.
   ALLOC_UPDATE_FROM_SURFACE = 1 << 7,
-};
-
-#ifdef XP_WIN
-typedef void* SyncHandle;
-#else
-typedef uintptr_t SyncHandle;
-#endif // XP_WIN
-
-class SyncObject : public RefCounted<SyncObject>
-{
-public:
-  MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(SyncObject)
-  virtual ~SyncObject() { }
-
-  static already_AddRefed<SyncObject> CreateSyncObject(SyncHandle aHandle
-#ifdef XP_WIN
-                                                       , ID3D11Device* aDevice = nullptr
-#endif
-                                                       );
-
-  enum class SyncType {
-    D3D11,
-  };
-
-  virtual SyncType GetSyncType() = 0;
-  virtual void FinalizeFrame() = 0;
-  virtual bool IsSyncObjectValid() = 0;
-
-protected:
-  SyncObject() { }
 };
 
 /**
@@ -294,6 +266,7 @@ public:
   virtual void Forget(LayersIPCChannel* aAllocator) {}
 
   virtual bool Serialize(SurfaceDescriptor& aDescriptor) = 0;
+  virtual void GetSubDescriptor(GPUVideoSubDescriptor* aOutDesc) { }
 
   virtual TextureData*
   CreateSimilar(LayersIPCChannel* aAllocator,
@@ -305,7 +278,7 @@ public:
 
   virtual bool ReadBack(TextureReadbackSink* aReadbackSink) { return false; }
 
-  virtual void SyncWithObject(SyncObject* aFence) {};
+  virtual void SyncWithObject(SyncObjectClient* aSyncObject) {};
 
   virtual TextureFlags GetTextureFlags() const { return TextureFlags::NO_FLAGS; }
 
@@ -614,7 +587,7 @@ public:
     mReadbackSink = aReadbackSink;
   }
 
-  void SyncWithObject(SyncObject* aFence) { mData->SyncWithObject(aFence); }
+  void SyncWithObject(SyncObjectClient* aSyncObject) { mData->SyncWithObject(aSyncObject); }
 
   LayersIPCChannel* GetAllocator() { return mAllocator; }
 
@@ -626,12 +599,13 @@ public:
   const TextureData* GetInternalData() const { return mData; }
 
   uint64_t GetSerial() const { return mSerial; }
+  void GPUVideoDesc(SurfaceDescriptorGPUVideo* aOutDesc);
 
   void CancelWaitForRecycle();
 
   /**
    * Set last transaction id of CompositableForwarder.
-   * 
+   *
    * Called when TextureClient has TextureFlags::RECYCLE flag.
    * When CompositableForwarder forwards the TextureClient with
    * TextureFlags::RECYCLE, it holds TextureClient's ref until host side
@@ -659,9 +633,18 @@ public:
 
   bool SerializeReadLock(ReadLockDescriptor& aDescriptor);
 
+  // Mark that the TextureClient will be used by the paint thread, and should not
+  // free its underlying texture data. This must only be called from the main
+  // thread.
+  void AddPaintThreadRef();
+
+  // Mark that the TextureClient is no longer in use by the PaintThread. This
+  // must only be called from the PaintThread.
+  void DropPaintThreadRef();
+
 private:
   static void TextureClientRecycleCallback(TextureClient* aClient, void* aClosure);
- 
+
   // Internal helpers for creating texture clients using the actual forwarder instead
   // of KnowsCompositor. TextureClientPool uses these to let it cache texture clients
   // per-process instead of per ShadowLayerForwarder, but everyone else should
@@ -676,7 +659,7 @@ private:
                    BackendSelector aSelector,
                    TextureFlags aTextureFlags,
                    TextureAllocationFlags aAllocFlags = ALLOC_DEFAULT);
-  
+
   static already_AddRefed<TextureClient>
   CreateForRawBufferAccess(LayersIPCChannel* aAllocator,
                            gfx::SurfaceFormat aFormat,
@@ -747,6 +730,9 @@ protected:
 
   // Serial id of TextureClient. It is unique in current process.
   const uint64_t mSerial;
+
+  // When non-zero, texture data must not be freed.
+  mozilla::Atomic<uintptr_t> mPaintThreadRefs;
 
   // External image id. It is unique if it is allocated.
   // The id is allocated in TextureClient::InitIPDLActor().

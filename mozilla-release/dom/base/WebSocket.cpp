@@ -371,13 +371,12 @@ WebSocketImpl::PrintErrorOnConsole(const char *aBundleURI,
   NS_ENSURE_SUCCESS_VOID(rv);
 
   // Localize the error message
-  nsXPIDLString message;
+  nsAutoString message;
   if (aFormatStrings) {
     rv = strBundle->FormatStringFromName(aError, aFormatStrings,
-                                         aFormatStringsLen,
-                                         getter_Copies(message));
+                                         aFormatStringsLen, message);
   } else {
-    rv = strBundle->GetStringFromName(aError, getter_Copies(message));
+    rv = strBundle->GetStringFromName(aError, message);
   }
   NS_ENSURE_SUCCESS_VOID(rv);
 
@@ -635,6 +634,12 @@ WebSocketImpl::Disconnect()
 
   if (NS_IsMainThread()) {
     DisconnectInternal();
+
+    // If we haven't called WebSocket::DisconnectFromOwner yet, update
+    // web socket count here.
+    if (mWebSocket->GetOwner()) {
+      mWebSocket->GetOwner()->UpdateWebSocketCount(-1);
+    }
   } else {
     RefPtr<DisconnectInternalRunnable> runnable =
       new DisconnectInternalRunnable(this);
@@ -1303,6 +1308,10 @@ WebSocket::ConstructorCommon(const GlobalObject& aGlobal,
   bool connectionFailed = true;
 
   if (NS_IsMainThread()) {
+    // We're keeping track of all main thread web sockets to be able to
+    // avoid throttling timeouts when we have active web sockets.
+    webSocket->GetOwner()->UpdateWebSocketCount(1);
+
     aRv =
       webSocketImpl->Init(aGlobal.Context(), principal, !!aTransportProvider,
                           aUrl, protocolArray, EmptyCString(), 0, 0,
@@ -1439,8 +1448,8 @@ WebSocket::ConstructorCommon(const GlobalObject& aGlobal,
                                                webSocket->mImpl->mInnerWindowID,
                                                webSocket->mURI,
                                                webSocket->mImpl->mRequestedProtocolList);
-
   cws.Done();
+
   return webSocket.forget();
 }
 
@@ -1468,7 +1477,7 @@ WebSocket::IsCertainlyAliveForCC() const
   return mKeepingAlive;
 }
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(WebSocket)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WebSocket)
 NS_INTERFACE_MAP_END_INHERITING(DOMEventTargetHelper)
 
 NS_IMPL_ADDREF_INHERITED(WebSocket, DOMEventTargetHelper)
@@ -1478,6 +1487,13 @@ void
 WebSocket::DisconnectFromOwner()
 {
   AssertIsOnMainThread();
+
+  // If we haven't called WebSocketImpl::Disconnect yet, update web
+  // socket count here.
+  if (mImpl && !mImpl->mDisconnectingOrDisconnected) {
+    GetOwner()->UpdateWebSocketCount(-1);
+  }
+
   DOMEventTargetHelper::DisconnectFromOwner();
 
   if (mImpl) {
@@ -1650,18 +1666,17 @@ WebSocketImpl::Init(JSContext* aCx,
       nsCOMPtr<nsPIDOMWindowInner> innerWindow;
 
       while (true) {
-        if (principal) {
-          bool isNullPrincipal = true;
-          isNullPrincipal = principal->GetIsNullPrincipal();
-          if (isNullPrincipal || nsContentUtils::IsSystemPrincipal(principal)) {
-            break;
-          }
+        if (principal && !principal->GetIsNullPrincipal()) {
+          break;
         }
 
         if (!innerWindow) {
           innerWindow = do_QueryInterface(globalObject);
-          if (NS_WARN_IF(!innerWindow)) {
-            return NS_ERROR_DOM_SECURITY_ERR;
+          if (!innerWindow) {
+            // If we are in a XPConnect sandbox or in a JS component,
+            // innerWindow will be null. There is nothing on top of this to be
+            // considered.
+            break;
           }
         }
 
@@ -1943,7 +1958,8 @@ WebSocket::CreateAndDispatchSimpleEvent(const nsAString& aName)
   event->InitEvent(aName, false, false);
   event->SetTrusted(true);
 
-  return DispatchDOMEvent(nullptr, event, nullptr, nullptr);
+  bool dummy;
+  return DispatchEvent(event, &dummy);
 }
 
 nsresult
@@ -2026,8 +2042,8 @@ WebSocket::CreateAndDispatchMessageEvent(const nsACString& aData,
                           Sequence<OwningNonNull<MessagePort>>());
   event->SetTrusted(true);
 
-  return DispatchDOMEvent(nullptr, static_cast<Event*>(event), nullptr,
-                          nullptr);
+  bool dummy;
+  return DispatchEvent(static_cast<Event*>(event), &dummy);
 }
 
 nsresult
@@ -2061,7 +2077,8 @@ WebSocket::CreateAndDispatchCloseEvent(bool aWasClean,
     CloseEvent::Constructor(this, CLOSE_EVENT_STRING, init);
   event->SetTrusted(true);
 
-  return DispatchDOMEvent(nullptr, event, nullptr, nullptr);
+  bool dummy;
+  return DispatchEvent(event, &dummy);
 }
 
 nsresult

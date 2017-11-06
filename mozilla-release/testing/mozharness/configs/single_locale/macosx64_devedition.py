@@ -8,21 +8,19 @@ config = {
     "mozconfig": "%(branch)s/browser/config/mozconfigs/macosx64/l10n-mozconfig-devedition",
     "bootstrap_env": {
         "SHELL": '/bin/bash',
-        "MOZ_OBJDIR": "obj-l10n",
+        "MOZ_OBJDIR": "obj-firefox",
         "EN_US_BINARY_URL": "%(en_us_binary_url)s",
         "MOZ_UPDATE_CHANNEL": "%(update_channel)s",
         "MOZ_PKG_PLATFORM": "mac",
         # "IS_NIGHTLY": "yes",
         "DIST": "%(abs_objdir)s",
-        "LOCALE_MERGEDIR": "%(abs_merge_dir)s/",
         "L10NBASEDIR": "../../l10n",
         "MOZ_MAKE_COMPLETE_MAR": "1",
-        "LOCALE_MERGEDIR": "%(abs_merge_dir)s/",
         'EN_US_PACKAGE_NAME': 'target.dmg',
     },
     "ssh_key_dir": "~/.ssh",
     "log_name": "single_locale",
-    "objdir": "obj-l10n",
+    "objdir": "obj-firefox",
     "js_src_dir": "js/src",
     "vcs_share_base": "/builds/hg-shared",
 
@@ -39,7 +37,6 @@ config = {
     "locales_file": "%(branch)s/browser/locales/all-locales",
     "locales_dir": "browser/locales",
     "hg_l10n_tag": "default",
-    "merge_locales": True,
 
     # MAR
     "previous_mar_dir": "dist/previous",

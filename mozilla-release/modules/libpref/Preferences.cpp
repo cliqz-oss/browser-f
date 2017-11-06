@@ -10,8 +10,12 @@
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/HashFunctions.h"
+#include "mozilla/ResultExtensions.h"
+#include "mozilla/ScopeExit.h"
 #include "mozilla/ServoStyleSet.h"
+#include "mozilla/SyncRunnable.h"
 #include "mozilla/Telemetry.h"
+#include "mozilla/URLPreloader.h"
 #include "mozilla/UniquePtrExtensions.h"
 
 #include "nsXULAppAPI.h"
@@ -32,7 +36,7 @@
 #include "nsIStringEnumerator.h"
 #include "nsIZipReader.h"
 #include "nsPrefBranch.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsCRT.h"
 #include "nsCOMArray.h"
 #include "nsXPCOMCID.h"
@@ -658,9 +662,7 @@ Preferences::IsServiceAvailable()
 bool
 Preferences::InitStaticMembers()
 {
-#ifndef MOZ_B2G
   MOZ_ASSERT(NS_IsMainThread() || mozilla::ServoStyleSet::IsInServoTraversal());
-#endif
 
   if (!sShutdown && !sPreferences) {
     MOZ_ASSERT(NS_IsMainThread());
@@ -728,8 +730,6 @@ NS_INTERFACE_MAP_BEGIN(Preferences)
     NS_INTERFACE_MAP_ENTRY(nsIPrefService)
     NS_INTERFACE_MAP_ENTRY(nsIObserver)
     NS_INTERFACE_MAP_ENTRY(nsIPrefBranch)
-    NS_INTERFACE_MAP_ENTRY(nsIPrefBranch2)
-    NS_INTERFACE_MAP_ENTRY(nsIPrefBranchInternal)
     NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
 NS_INTERFACE_MAP_END
 
@@ -763,7 +763,7 @@ Preferences::Init()
     return Ok();
   }
 
-  nsXPIDLCString lockFileName;
+  nsCString lockFileName;
   /*
    * The following is a small hack which will allow us to only load the library
    * which supports the netscape.cfg file if the preference is defined. We
@@ -1255,9 +1255,13 @@ Preferences::WritePrefFile(nsIFile* aFile, SaveMethod aSaveMethod)
         do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID, &rv);
       if (NS_SUCCEEDED(rv)) {
         bool async = aSaveMethod == SaveMethod::Asynchronous;
-        rv = target->Dispatch(new PWRunnable(aFile),
-                              async ? nsIEventTarget::DISPATCH_NORMAL :
-                                      nsIEventTarget::DISPATCH_SYNC);
+        if (async) {
+          rv = target->Dispatch(new PWRunnable(aFile),
+                                nsIEventTarget::DISPATCH_NORMAL);
+        } else {
+          // Note that we don't get the nsresult return value here
+          SyncRunnable::DispatchToThread(target, new PWRunnable(aFile), true);
+        }
         return rv;
       }
     }
@@ -1276,46 +1280,20 @@ Preferences::WritePrefFile(nsIFile* aFile, SaveMethod aSaveMethod)
 
 static nsresult openPrefFile(nsIFile* aFile)
 {
-  nsCOMPtr<nsIInputStream> inStr;
-
-  nsresult rv = NS_NewLocalFileInputStream(getter_AddRefs(inStr), aFile);
-  if (NS_FAILED(rv))
-    return rv;
-
-  int64_t fileSize64;
-  rv = aFile->GetFileSize(&fileSize64);
-  if (NS_FAILED(rv))
-    return rv;
-  NS_ENSURE_TRUE(fileSize64 <= UINT32_MAX, NS_ERROR_FILE_TOO_BIG);
-
-  uint32_t fileSize = (uint32_t)fileSize64;
-  auto fileBuffer = MakeUniqueFallible<char[]>(fileSize);
-  if (fileBuffer == nullptr)
-    return NS_ERROR_OUT_OF_MEMORY;
-
   PrefParseState ps;
   PREF_InitParseState(&ps, PREF_ReaderCallback, ReportToConsole, nullptr);
+  auto cleanup = MakeScopeExit([&] () {
+    PREF_FinalizeParseState(&ps);
+  });
 
-  // Read is not guaranteed to return a buf the size of fileSize,
-  // but usually will.
-  nsresult rv2 = NS_OK;
-  uint32_t offset = 0;
-  for (;;) {
-    uint32_t amtRead = 0;
-    rv = inStr->Read(fileBuffer.get(), fileSize, &amtRead);
-    if (NS_FAILED(rv) || amtRead == 0)
-      break;
-    if (!PREF_ParseBuf(&ps, fileBuffer.get(), amtRead))
-      rv2 = NS_ERROR_FILE_CORRUPTED;
-    offset += amtRead;
-    if (offset == fileSize) {
-      break;
-    }
+  nsCString data;
+  MOZ_TRY_VAR(data, URLPreloader::ReadFile(aFile));
+  if (!PREF_ParseBuf(&ps, data.get(), data.Length())) {
+    return NS_ERROR_FILE_CORRUPTED;
   }
 
-  PREF_FinalizeParseState(&ps);
+  return NS_OK;
 
-  return NS_FAILED(rv) ? rv : rv2;
 }
 
 /*
@@ -1472,12 +1450,12 @@ static nsresult pref_LoadPrefsInDirList(const char *listId)
 
 static nsresult pref_ReadPrefFromJar(nsZipArchive* jarReader, const char *name)
 {
-  nsZipItemPtr<char> manifest(jarReader, name, true);
-  NS_ENSURE_TRUE(manifest.Buffer(), NS_ERROR_NOT_AVAILABLE);
+  nsCString manifest;
+  MOZ_TRY_VAR(manifest, URLPreloader::ReadZip(jarReader, nsDependentCString(name)));
 
   PrefParseState ps;
   PREF_InitParseState(&ps, PREF_ReaderCallback, ReportToConsole, nullptr);
-  PREF_ParseBuf(&ps, manifest, manifest.Length());
+  PREF_ParseBuf(&ps, manifest.get(), manifest.Length());
   PREF_FinalizeParseState(&ps);
 
   return NS_OK;
@@ -1849,6 +1827,7 @@ nsresult
 Preferences::AddStrongObserver(nsIObserver* aObserver,
                                const char* aPref)
 {
+  MOZ_ASSERT(aObserver);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
   return sRootBranch->AddObserver(aPref, aObserver, false);
 }
@@ -1858,6 +1837,7 @@ nsresult
 Preferences::AddWeakObserver(nsIObserver* aObserver,
                              const char* aPref)
 {
+  MOZ_ASSERT(aObserver);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
   return sRootBranch->AddObserver(aPref, aObserver, true);
 }
@@ -1867,6 +1847,7 @@ nsresult
 Preferences::RemoveObserver(nsIObserver* aObserver,
                             const char* aPref)
 {
+  MOZ_ASSERT(aObserver);
   if (!sPreferences && sShutdown) {
     return NS_OK; // Observers have been released automatically.
   }
@@ -1879,6 +1860,7 @@ nsresult
 Preferences::AddStrongObservers(nsIObserver* aObserver,
                                 const char** aPrefs)
 {
+  MOZ_ASSERT(aObserver);
   for (uint32_t i = 0; aPrefs[i]; i++) {
     nsresult rv = AddStrongObserver(aObserver, aPrefs[i]);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1891,6 +1873,7 @@ nsresult
 Preferences::AddWeakObservers(nsIObserver* aObserver,
                               const char** aPrefs)
 {
+  MOZ_ASSERT(aObserver);
   for (uint32_t i = 0; aPrefs[i]; i++) {
     nsresult rv = AddWeakObserver(aObserver, aPrefs[i]);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -1903,6 +1886,7 @@ nsresult
 Preferences::RemoveObservers(nsIObserver* aObserver,
                              const char** aPrefs)
 {
+  MOZ_ASSERT(aObserver);
   if (!sPreferences && sShutdown) {
     return NS_OK; // Observers have been released automatically.
   }
@@ -1950,6 +1934,7 @@ Preferences::RegisterCallback(PrefChangedFunc aCallback,
                               void* aClosure,
                               MatchKind aMatchKind)
 {
+  MOZ_ASSERT(aCallback);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
   ValueObserverHashKey hashKey(aPref, aCallback, aMatchKind);
@@ -1975,6 +1960,7 @@ Preferences::RegisterCallbackAndCall(PrefChangedFunc aCallback,
                                      void* aClosure,
                                      MatchKind aMatchKind)
 {
+  MOZ_ASSERT(aCallback);
   WATCHING_PREF_RAII();
   nsresult rv = RegisterCallback(aCallback, aPref, aClosure, aMatchKind);
   if (NS_SUCCEEDED(rv)) {
@@ -1990,6 +1976,7 @@ Preferences::UnregisterCallback(PrefChangedFunc aCallback,
                                 void* aClosure,
                                 MatchKind aMatchKind)
 {
+  MOZ_ASSERT(aCallback);
   if (!sPreferences && sShutdown) {
     return NS_OK; // Observers have been released automatically.
   }

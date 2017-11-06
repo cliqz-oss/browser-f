@@ -4,6 +4,7 @@
 
 use attr::{ParsedAttrSelectorOperation, AttrSelectorOperation, NamespaceConstraint};
 use bloom::{BLOOM_HASH_MASK, BloomFilter};
+use nth_index_cache::NthIndexCacheInner;
 use parser::{AncestorHashes, Combinator, Component, LocalName};
 use parser::{Selector, SelectorImpl, SelectorIter, SelectorList};
 use std::borrow::Borrow;
@@ -215,7 +216,7 @@ fn may_match<E>(hashes: &AncestorHashes,
 /// and `is_unvisited` are based on relevant link state of only the current
 /// complex selector being matched (not the global relevant link status for all
 /// selectors in `MatchingContext`).
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelevantLinkStatus {
     /// Looking for a possible relevant link.  This is the initial mode when
     /// matching a selector.
@@ -352,7 +353,7 @@ impl RelevantLinkStatus {
 /// However since the selector "c1" raises
 /// NotMatchedAndRestartFromClosestDescendant. So the selector
 /// "b1 + c1 > b2 ~ " doesn't match and restart matching from "d1".
-#[derive(PartialEq, Eq, Copy, Clone)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum SelectorMatchingResult {
     Matched,
     NotMatchedAndRestartFromClosestLaterSibling,
@@ -392,7 +393,9 @@ pub fn matches_selector<E, F>(selector: &Selector<E::Impl>,
     let iter = if offset == 0 {
         selector.iter()
     } else {
-        selector.iter_from(offset)
+        let iter = selector.iter_from(offset);
+        local_context.note_position(&iter);
+        iter
     };
     matches_complex_selector(iter, element, &mut local_context, flags_setter)
 }
@@ -431,6 +434,10 @@ where
     }
 
     let mut local_context = LocalMatchingContext::new(context, selector);
+    // Disable the hover quirk here, since we're in a random position inside the
+    // selector, and this is only used for invalidation, so incorrectly
+    // returning true doesn't affect correctness, only does a bit more work.
+    local_context.hover_active_quirk_disabled = true;
     for component in selector.iter_raw_parse_order_from(from_offset - 1) {
         if matches!(*component, Component::Combinator(..)) {
             return CompoundSelectorMatchingResult::Matched {
@@ -458,7 +465,7 @@ where
 /// Matches a complex selector.
 pub fn matches_complex_selector<E, F>(mut iter: SelectorIter<E::Impl>,
                                       element: &E,
-                                      mut context: &mut LocalMatchingContext<E::Impl>,
+                                      context: &mut LocalMatchingContext<E::Impl>,
                                       flags_setter: &mut F)
                                       -> bool
     where E: Element,
@@ -508,6 +515,32 @@ pub fn matches_complex_selector<E, F>(mut iter: SelectorIter<E::Impl>,
     }
 }
 
+#[inline(always)]
+fn next_element_for_combinator<E>(
+    element: &E,
+    combinator: Combinator,
+) -> Option<E>
+where
+    E: Element,
+{
+    match combinator {
+        Combinator::NextSibling |
+        Combinator::LaterSibling => {
+            element.prev_sibling_element()
+        }
+        Combinator::Child |
+        Combinator::Descendant => {
+            if element.blocks_ancestor_combinators() {
+                return None;
+            }
+            element.parent_element()
+        }
+        Combinator::PseudoElement => {
+            element.pseudo_element_originating_element()
+        }
+    }
+}
+
 fn matches_complex_selector_internal<E, F>(mut selector_iter: SelectorIter<E::Impl>,
                                            element: &E,
                                            context: &mut LocalMatchingContext<E::Impl>,
@@ -519,12 +552,12 @@ fn matches_complex_selector_internal<E, F>(mut selector_iter: SelectorIter<E::Im
 {
     *relevant_link = relevant_link.examine_potential_link(element, &mut context.shared);
 
+    debug!("Matching complex selector {:?} for {:?}, relevant link {:?}",
+           selector_iter, element, relevant_link);
+
     let matches_all_simple_selectors = selector_iter.all(|simple| {
         matches_simple_selector(simple, element, context, &relevant_link, flags_setter)
     });
-
-    debug!("Matching for {:?}, simple selector {:?}, relevant link {:?}",
-           element, selector_iter, relevant_link);
 
     let combinator = selector_iter.next_sequence();
     let siblings = combinator.map_or(false, |c| c.is_sibling());
@@ -539,27 +572,22 @@ fn matches_complex_selector_internal<E, F>(mut selector_iter: SelectorIter<E::Im
     match combinator {
         None => SelectorMatchingResult::Matched,
         Some(c) => {
-            let (mut next_element, candidate_not_found) = match c {
+            let candidate_not_found= match c {
                 Combinator::NextSibling | Combinator::LaterSibling => {
                     // Only ancestor combinators are allowed while looking for
                     // relevant links, so switch to not looking.
                     *relevant_link = RelevantLinkStatus::NotLooking;
-                    (element.prev_sibling_element(),
-                     SelectorMatchingResult::NotMatchedAndRestartFromClosestDescendant)
+                     SelectorMatchingResult::NotMatchedAndRestartFromClosestDescendant
                 }
                 Combinator::Child | Combinator::Descendant => {
-                    if element.blocks_ancestor_combinators() {
-                        (None, SelectorMatchingResult::NotMatchedGlobally)
-                    } else {
-                        (element.parent_element(),
-                         SelectorMatchingResult::NotMatchedGlobally)
-                    }
+                     SelectorMatchingResult::NotMatchedGlobally
                 }
                 Combinator::PseudoElement => {
-                    (element.pseudo_element_originating_element(),
-                     SelectorMatchingResult::NotMatchedGlobally)
+                     SelectorMatchingResult::NotMatchedGlobally
                 }
             };
+
+            let mut next_element = next_element_for_combinator(element, c);
 
             loop {
                 let element = match next_element {
@@ -600,11 +628,7 @@ fn matches_complex_selector_internal<E, F>(mut selector_iter: SelectorIter<E::Im
                     // can continue to matching on the next candidate element.
                     _ => {},
                 }
-                next_element = if siblings {
-                    element.prev_sibling_element()
-                } else {
-                    element.parent_element()
-                };
+                next_element = next_element_for_combinator(&element, c);
             }
         }
     }
@@ -724,26 +748,26 @@ fn matches_simple_selector<E, F>(
             element.is_empty()
         }
         Component::NthChild(a, b) => {
-            matches_generic_nth_child(element, a, b, false, false, flags_setter)
+            matches_generic_nth_child(element, context, a, b, false, false, flags_setter)
         }
         Component::NthLastChild(a, b) => {
-            matches_generic_nth_child(element, a, b, false, true, flags_setter)
+            matches_generic_nth_child(element, context, a, b, false, true, flags_setter)
         }
         Component::NthOfType(a, b) => {
-            matches_generic_nth_child(element, a, b, true, false, flags_setter)
+            matches_generic_nth_child(element, context, a, b, true, false, flags_setter)
         }
         Component::NthLastOfType(a, b) => {
-            matches_generic_nth_child(element, a, b, true, true, flags_setter)
+            matches_generic_nth_child(element, context, a, b, true, true, flags_setter)
         }
         Component::FirstOfType => {
-            matches_generic_nth_child(element, 0, 1, true, false, flags_setter)
+            matches_generic_nth_child(element, context, 0, 1, true, false, flags_setter)
         }
         Component::LastOfType => {
-            matches_generic_nth_child(element, 0, 1, true, true, flags_setter)
+            matches_generic_nth_child(element, context, 0, 1, true, true, flags_setter)
         }
         Component::OnlyOfType => {
-            matches_generic_nth_child(element, 0, 1, true, false, flags_setter) &&
-            matches_generic_nth_child(element, 0, 1, true, true, flags_setter)
+            matches_generic_nth_child(element, context, 0, 1, true, false, flags_setter) &&
+            matches_generic_nth_child(element, context, 0, 1, true, true, flags_setter)
         }
         Component::Negation(ref negated) => {
             context.nesting_level += 1;
@@ -767,6 +791,7 @@ fn select_name<'a, T>(is_html: bool, local_name: &'a T, local_name_lower: &'a T)
 
 #[inline]
 fn matches_generic_nth_child<E, F>(element: &E,
+                                   context: &mut LocalMatchingContext<E::Impl>,
                                    a: i32,
                                    b: i32,
                                    is_of_type: bool,
@@ -776,39 +801,30 @@ fn matches_generic_nth_child<E, F>(element: &E,
     where E: Element,
           F: FnMut(&E, ElementSelectorFlags),
 {
+    if element.ignores_nth_child_selectors() {
+        return false;
+    }
+
     flags_setter(element, if is_from_end {
         HAS_SLOW_SELECTOR
     } else {
         HAS_SLOW_SELECTOR_LATER_SIBLINGS
     });
 
-    let mut index: i32 = 1;
-    let mut next_sibling = if is_from_end {
-        element.next_sibling_element()
+    // Grab a reference to the appropriate cache.
+    let mut cache = context.shared.nth_index_cache.as_mut().map(|c| {
+        c.get(is_of_type, is_from_end)
+    });
+
+    // Lookup or compute the index.
+    let index = if let Some(i) = cache.as_mut().and_then(|c| c.lookup(element.opaque())) {
+        i
     } else {
-        element.prev_sibling_element()
+        let i = nth_child_index(element, is_of_type, is_from_end, cache.as_mut().map(|s| &mut **s));
+        cache.as_mut().map(|c| c.insert(element.opaque(), i));
+        i
     };
-
-    loop {
-        let sibling = match next_sibling {
-            None => break,
-            Some(next_sibling) => next_sibling
-        };
-
-        if is_of_type {
-            if element.get_local_name() == sibling.get_local_name() &&
-                element.get_namespace() == sibling.get_namespace() {
-                index += 1;
-            }
-        } else {
-          index += 1;
-        }
-        next_sibling = if is_from_end {
-            sibling.next_sibling_element()
-        } else {
-            sibling.prev_sibling_element()
-        };
-    }
+    debug_assert_eq!(index, nth_child_index(element, is_of_type, is_from_end, None), "invalid cache");
 
     // Is there a non-negative integer n such that An+B=index?
     match index.checked_sub(b) {
@@ -818,6 +834,65 @@ fn matches_generic_nth_child<E, F>(element: &E,
             None /* a == 0 */ => an == 0,
         },
     }
+}
+
+#[inline]
+fn same_type<E: Element>(a: &E, b: &E) -> bool {
+    a.get_local_name() == b.get_local_name() &&
+    a.get_namespace() == b.get_namespace()
+}
+
+#[inline]
+fn nth_child_index<E>(
+    element: &E,
+    is_of_type: bool,
+    is_from_end: bool,
+    mut cache: Option<&mut NthIndexCacheInner>,
+) -> i32
+where
+    E: Element,
+{
+    // The traversal mostly processes siblings left to right. So when we walk
+    // siblings to the right when computing NthLast/NthLastOfType we're unlikely
+    // to get cache hits along the way. As such, we take the hit of walking the
+    // siblings to the left checking the cache in the is_from_end case (this
+    // matches what Gecko does). The indices-from-the-left is handled during the
+    // regular look further below.
+    if let Some(ref mut c) = cache {
+        if is_from_end && !c.is_empty() {
+            let mut index: i32 = 1;
+            let mut curr = element.clone();
+            while let Some(e) = curr.prev_sibling_element() {
+                curr = e;
+                if !is_of_type || same_type(element, &curr) {
+                    if let Some(i) = c.lookup(curr.opaque()) {
+                        return i - index;
+                    }
+                    index += 1;
+                }
+            }
+        }
+    }
+
+    let mut index: i32 = 1;
+    let mut curr = element.clone();
+    let next = |e: E| if is_from_end { e.next_sibling_element() } else { e.prev_sibling_element() };
+    while let Some(e) = next(curr) {
+        curr = e;
+        if !is_of_type || same_type(element, &curr) {
+            // If we're computing indices from the left, check each element in the
+            // cache. We handle the indices-from-the-right case at the top of this
+            // function.
+            if !is_from_end {
+                if let Some(i) = cache.as_mut().and_then(|c| c.lookup(curr.opaque())) {
+                    return i + index
+                }
+            }
+            index += 1;
+        }
+    }
+
+    index
 }
 
 #[inline]

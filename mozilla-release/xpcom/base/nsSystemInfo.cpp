@@ -237,6 +237,26 @@ nsresult GetCountryCode(nsAString& aCountryCode)
 } // namespace
 #endif // defined(XP_WIN)
 
+#ifdef XP_MACOSX
+static nsresult GetAppleModelId(nsAutoCString& aModelId)
+{
+  size_t numChars = 0;
+  size_t result = sysctlbyname("hw.model", nullptr, &numChars, nullptr, 0);
+  if (result != 0 || !numChars) {
+    return NS_ERROR_FAILURE;
+  }
+  aModelId.SetLength(numChars);
+  result = sysctlbyname("hw.model", aModelId.BeginWriting(), &numChars, nullptr,
+                        0);
+  if (result != 0) {
+    return NS_ERROR_FAILURE;
+  }
+  // numChars includes null terminator
+  aModelId.Truncate(numChars - 1);
+  return NS_OK;
+}
+#endif
+
 using namespace mozilla;
 
 nsSystemInfo::nsSystemInfo()
@@ -680,6 +700,12 @@ nsSystemInfo::Init()
     rv = SetPropertyAsAString(NS_LITERAL_STRING("countryCode"), countryCode);
     NS_ENSURE_SUCCESS(rv, rv);
   }
+
+  nsAutoCString modelId;
+  if (NS_SUCCEEDED(GetAppleModelId(modelId))) {
+    rv = SetPropertyAsACString(NS_LITERAL_STRING("appleModelId"), modelId);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
 #endif
 
 #if defined(MOZ_WIDGET_GTK)
@@ -706,7 +732,7 @@ nsSystemInfo::Init()
   }
 
   nsAutoCString secondaryLibrary;
-  if (gtkver_len > 0) {
+  if (gtkver_len > 0 && gtkver_len < int(sizeof(gtkver))) {
     secondaryLibrary.Append(nsDependentCSubstring(gtkver, gtkver_len));
   }
 

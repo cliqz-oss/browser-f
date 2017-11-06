@@ -2,6 +2,11 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!ENTITY searchBar.label                       "Suchleiste">
+
+<!ENTITY searchBar.hidden.label                "Adressleiste für Suche und Seitenaufrufe verwenden">
+<!ENTITY searchBar.shown.label                 "Suchleiste zur Symbolleiste hinzufügen">
+
 <!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
 
 <!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">

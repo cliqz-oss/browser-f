@@ -11,6 +11,7 @@ var {gDevToolsBrowser} = require("devtools/client/framework/devtools-browser");
 var {Tools} = require("devtools/client/definitions");
 const { Task } = require("devtools/shared/task");
 var promise = require("promise");
+const defer = require("devtools/shared/defer");
 var Services = require("Services");
 loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
 loader.lazyRequireGetter(this, "WebConsoleFrame", "devtools/client/webconsole/webconsole", true);
@@ -46,6 +47,14 @@ HUD_SERVICE.prototype =
    * @type Map
    */
   consoles: null,
+
+  _browerConsoleSessionState: false,
+  storeBrowserConsoleSessionState() {
+    this._browerConsoleSessionState = !!this.getBrowserConsole();
+  },
+  getBrowserConsoleSessionState() {
+    return this._browerConsoleSessionState;
+  },
 
   /**
    * Assign a function to this property to listen for every request that
@@ -173,11 +182,11 @@ HUD_SERVICE.prototype =
       return this._browserConsoleDefer.promise;
     }
 
-    this._browserConsoleDefer = promise.defer();
+    this._browserConsoleDefer = defer();
 
     function connect()
     {
-      let deferred = promise.defer();
+      let deferred = defer();
 
       if (!DebuggerServer.initialized) {
         DebuggerServer.init();
@@ -189,9 +198,8 @@ HUD_SERVICE.prototype =
       return client.connect()
         .then(() => client.getProcess())
         .then(aResponse => {
-          // Set chrome:false in order to attach to the target
-          // (i.e. send an `attach` request to the chrome actor)
-          return { form: aResponse.form, client: client, chrome: false };
+          // Use a TabActor in order to ensure calling `attach` to the ChromeActor
+          return { form: aResponse.form, client, chrome: true, isTabActor: true };
         });
     }
 
@@ -203,7 +211,7 @@ HUD_SERVICE.prototype =
     function openWindow(aTarget)
     {
       target = aTarget;
-      let deferred = promise.defer();
+      let deferred = defer();
       // Using the old frontend for now in the browser console.  This can be switched to
       // Tools.webConsole.url to use whatever is preffed on.
       let url = Tools.webConsole.oldWebConsoleURL;
@@ -558,7 +566,7 @@ WebConsole.prototype = {
 
     HUDService.consoles.delete(this.hudId);
 
-    this._destroyer = promise.defer();
+    this._destroyer = defer();
 
     // The document may already be removed
     if (this.chromeUtilsWindow && this.mainPopupSet) {
@@ -637,6 +645,9 @@ BrowserConsole.prototype = extend(WebConsole.prototype, {
       return this._bc_init;
     }
 
+    // Only add the shutdown observer if we've opened a Browser Console window.
+    ShutdownObserver.init();
+
     this.ui._filterPrefsPrefix = BROWSER_CONSOLE_FILTER_PREFS_PREFIX;
 
     let window = this.iframeWindow;
@@ -678,7 +689,7 @@ BrowserConsole.prototype = extend(WebConsole.prototype, {
 
     this._telemetry.toolClosed("browserconsole");
 
-    this._bc_destroyer = promise.defer();
+    this._bc_destroyer = defer();
 
     let chromeWindow = this.chromeWindow;
     this.$destroy().then(() =>
@@ -693,16 +704,32 @@ BrowserConsole.prototype = extend(WebConsole.prototype, {
 });
 
 const HUDService = new HUD_SERVICE();
+exports.HUDService = HUDService;
 
-(() => {
-  let methods = ["openWebConsole", "openBrowserConsole",
-                 "toggleBrowserConsole", "getOpenWebConsole",
-                 "getBrowserConsole", "getHudByWindow",
-                 "openBrowserConsoleOrFocus", "getHudReferenceById"];
-  for (let method of methods) {
-    exports[method] = HUDService[method].bind(HUDService);
+/**
+ * The ShutdownObserver listens for app shutdown and saves the current state
+ * of the Browser Console for session restore.
+ */
+var ShutdownObserver = {
+  _initialized: false,
+  init() {
+    if (this._initialized) {
+      return;
+    }
+
+    Services.obs.addObserver(this, "quit-application-granted");
+
+    this._initialized = true;
+  },
+
+  observe(message, topic) {
+    if (topic == "quit-application-granted") {
+      HUDService.storeBrowserConsoleSessionState();
+      this.uninit();
+    }
+  },
+
+  uninit() {
+    Services.obs.removeObserver(this, "quit-application-granted");
   }
-
-  exports.consoles = HUDService.consoles;
-  exports.lastFinishedRequest = HUDService.lastFinishedRequest;
-})();
+};

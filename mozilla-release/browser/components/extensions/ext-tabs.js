@@ -3,16 +3,12 @@
 "use strict";
 
 // The ext-* files are imported into the same scopes.
-/* import-globals-from ext-utils.js */
+/* import-globals-from ext-browser.js */
 
 XPCOMUtils.defineLazyGetter(this, "strBundle", function() {
   const stringSvc = Cc["@mozilla.org/intl/stringbundle;1"].getService(Ci.nsIStringBundleService);
   return stringSvc.createBundle("chrome://global/locale/extensions.properties");
 });
-
-XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
-                                   "@mozilla.org/browser/aboutnewtab-service;1",
-                                   "nsIAboutNewTabService");
 
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
                                   "resource://gre/modules/PrivateBrowsingUtils.jsm");
@@ -266,6 +262,9 @@ this.tabs = class extends ExtensionAPI {
               needed.push("pinned");
             } else if (event.type == "TabUnpinned") {
               needed.push("pinned");
+            } else if (event.type == "TabBrowserInserted" &&
+                       !event.detail.insertedOnTabCreation) {
+              needed.push("discarded");
             }
 
             let tab = tabManager.getWrapper(event.originalTarget);
@@ -294,12 +293,14 @@ this.tabs = class extends ExtensionAPI {
           windowTracker.addListener("TabAttrModified", listener);
           windowTracker.addListener("TabPinned", listener);
           windowTracker.addListener("TabUnpinned", listener);
+          windowTracker.addListener("TabBrowserInserted", listener);
 
           return () => {
             windowTracker.removeListener("status", statusListener);
             windowTracker.removeListener("TabAttrModified", listener);
             windowTracker.removeListener("TabPinned", listener);
             windowTracker.removeListener("TabUnpinned", listener);
+            windowTracker.removeListener("TabBrowserInserted", listener);
           };
         }).api(),
 
@@ -367,6 +368,15 @@ this.tabs = class extends ExtensionAPI {
 
             tabListener.initTabReady();
             let currentTab = window.gBrowser.selectedTab;
+
+            if (createProperties.openerTabId !== null) {
+              options.ownerTab = tabTracker.getTab(createProperties.openerTabId);
+              options.openerBrowser = options.ownerTab.linkedBrowser;
+              if (options.ownerTab.ownerGlobal !== window) {
+                return Promise.reject({message: "Opener tab must be in the same window as the tab being created"});
+              }
+            }
+
             let nativeTab = window.gBrowser.addTab(url || window.BROWSER_NEW_TAB_URL, options);
 
             let active = true;
@@ -428,7 +438,10 @@ this.tabs = class extends ExtensionAPI {
               return Promise.reject({message: `Illegal URL: ${url}`});
             }
 
-            nativeTab.linkedBrowser.loadURI(url);
+            let flags = updateProperties.loadReplace
+              ? Ci.nsIWebNavigation.LOAD_FLAGS_REPLACE_HISTORY
+              : Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
+            nativeTab.linkedBrowser.loadURIWithFlags(url, {flags});
           }
 
           if (updateProperties.active !== null) {
@@ -440,7 +453,7 @@ this.tabs = class extends ExtensionAPI {
           }
           if (updateProperties.muted !== null) {
             if (nativeTab.muted != updateProperties.muted) {
-              nativeTab.toggleMuteAudio(extension.uuid);
+              nativeTab.toggleMuteAudio(extension.id);
             }
           }
           if (updateProperties.pinned !== null) {
@@ -450,7 +463,13 @@ this.tabs = class extends ExtensionAPI {
               tabbrowser.unpinTab(nativeTab);
             }
           }
-          // FIXME: highlighted/selected, openerTabId
+          if (updateProperties.openerTabId !== null) {
+            let opener = tabTracker.getTab(updateProperties.openerTabId);
+            if (opener.ownerDocument !== nativeTab.ownerDocument) {
+              return Promise.reject({message: "Opener tab must be in the same window as the tab being updated"});
+            }
+            tabTracker.setOpener(nativeTab, opener);
+          }
 
           return tabManager.convert(nativeTab);
         },
@@ -715,9 +734,7 @@ this.tabs = class extends ExtensionAPI {
             // For non-remote browsers, this event is dispatched on the document
             // rather than on the <browser>.
             if (browser instanceof Ci.nsIDOMDocument) {
-              browser = browser.defaultView.QueryInterface(Ci.nsIInterfaceRequestor)
-                               .getInterface(Ci.nsIDocShell)
-                               .chromeEventHandler;
+              browser = browser.docShell.chromeEventHandler;
             }
 
             let {gBrowser} = browser.ownerGlobal;

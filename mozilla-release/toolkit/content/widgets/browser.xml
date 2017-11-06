@@ -251,7 +251,7 @@
           if (this._docShell)
             return this._docShell;
 
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
+          let {frameLoader} = this;
           if (!frameLoader)
             return null;
           this._docShell = frameLoader.docShell;
@@ -266,7 +266,7 @@
           if (this._loadContext)
             return this._loadContext;
 
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
+          let {frameLoader} = this;
           if (!frameLoader)
             return null;
           this._loadContext = frameLoader.loadContext;
@@ -347,11 +347,10 @@
                 readonly="true">
         <getter>
           <![CDATA[
-            var owner = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);
-            if (!owner.frameLoader) {
-              return null;
+            if (this.frameLoader) {
+              return this.frameLoader.messageManager;
             }
-            return owner.frameLoader.messageManager;
+            return null;
           ]]>
         </getter>
 
@@ -1095,6 +1094,13 @@
                   this.mPrefs.getBoolPref("apz.autoscroll.enabled", false)) {
                 let { tabParent } = this.frameLoader;
                 if (tabParent) {
+                  // If APZ is handling the autoscroll, it may decide to cancel
+                  // it of its own accord, so register an observer to allow it
+                  // to notify us of that.
+                  var os = Components.classes["@mozilla.org/observer-service;1"]
+                                     .getService(Components.interfaces.nsIObserverService);
+                  os.addObserver(this, "apz:cancel-autoscroll", true);
+
                   tabParent.startApzAutoscroll(data.screenX, data.screenY,
                                                data.scrollId, data.presShellId);
                 }
@@ -1169,10 +1175,19 @@
         <parameter name="aState"/>
         <body>
           <![CDATA[
-            if (aTopic != "browser:purge-session-history")
-              return;
+            if (aTopic == "browser:purge-session-history") {
+              this.purgeSessionHistory();
+            } else if (aTopic == "apz:cancel-autoscroll") {
+              if (aState == this._autoScrollScrollId) {
+                this._autoScrollPopup.hidePopup();
 
-            this.purgeSessionHistory();
+                // Set this._autoScrollScrollId to null, so in stopScroll() we
+                // don't call stopApzAutoscroll() (since it's APZ that
+                // initiated the stopping).
+                this._autoScrollScrollId = null;
+                this._autoScrollPresShellId = null;
+              }
+            }
           ]]>
         </body>
       </method>
@@ -1220,6 +1235,14 @@
               window.removeEventListener("keyup", this, true);
               this.messageManager.sendAsyncMessage("Autoscroll:Stop");
 
+              var os = Components.classes["@mozilla.org/observer-service;1"]
+                                 .getService(Components.interfaces.nsIObserverService);
+              try {
+                os.removeObserver(this, "apz:cancel-autoscroll");
+              } catch (ex) {
+                // It's not clear why this sometimes throws an exception
+              }
+
               if (this.isRemoteBrowser && this._autoScrollScrollId != null) {
                 let { tabParent } = this.frameLoader;
                 if (tabParent) {
@@ -1244,6 +1267,7 @@
             // events can be handled by browser-content.js.
             popup.setAttribute("mousethrough", "always");
             popup.setAttribute("rolluponmousewheel", "true");
+            popup.setAttribute("hidden", "true");
             return popup;
           ]]>
         </body>
@@ -1274,6 +1298,7 @@
               this._autoScrollPopup.setAttribute("translucent", /Win|Mac/.test(navigator.platform));
             }
 
+            this._autoScrollPopup.removeAttribute("hidden");
             this._autoScrollPopup.setAttribute("noautofocus", "true");
             this._autoScrollPopup.setAttribute("scrolldir", scrolldir);
             this._autoScrollPopup.addEventListener("popuphidden", this, true);
@@ -1543,14 +1568,13 @@
         <parameter name="aPrintProgressListener"/>
         <body>
           <![CDATA[
-            var owner = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);
-            if (!owner.frameLoader) {
+            if (!this.frameLoader) {
               throw Components.Exception("No frame loader.",
                                          Components.results.NS_ERROR_FAILURE);
             }
 
-            owner.frameLoader.print(aOuterWindowID, aPrintSettings,
-                                    aPrintProgressListener);
+            this.frameLoader.print(aOuterWindowID, aPrintSettings,
+                                   aPrintProgressListener);
           ]]>
         </body>
       </method>
@@ -1558,6 +1582,7 @@
       <method name="dropLinks">
         <parameter name="aLinksCount"/>
         <parameter name="aLinks"/>
+        <parameter name="aTriggeringPrincipal"/>
         <body><![CDATA[
           if (!this.droppedLinkHandler) {
             return false;
@@ -1570,7 +1595,7 @@
               type: aLinks[i + 2],
             });
           }
-          this.droppedLinkHandler(null, links);
+          this.droppedLinkHandler(null, links, aTriggeringPrincipal);
           return true;
         ]]></body>
       </method>

@@ -341,6 +341,7 @@ class TestFilter(object):
             self.manifest = manifestinclude.get_manifest(manifest_path)
         else:
             self.manifest = manifestinclude.IncludeManifest.create()
+            self.manifest.set_defaults()
 
         if include:
             self.manifest.set("skip", "true")
@@ -413,7 +414,7 @@ class ManifestLoader(object):
             except manifest.ManifestVersionMismatch:
                 manifest_file = manifest.Manifest(url_base)
 
-            manifest_update.update(tests_path, manifest_file, True)
+        manifest_update.update(tests_path, manifest_file, True)
 
         manifest.write(manifest_file, manifest_path)
 

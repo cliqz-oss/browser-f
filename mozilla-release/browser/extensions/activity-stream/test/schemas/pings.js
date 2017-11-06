@@ -2,11 +2,12 @@ const Joi = require("joi-browser");
 const {MAIN_MESSAGE_TYPE, CONTENT_MESSAGE_TYPE} = require("common/Actions.jsm");
 
 const baseKeys = {
-  client_id: Joi.string().required(),
+  // client_id will be set by PingCentre if it doesn't exist.
+  client_id: Joi.string().optional(),
   addon_version: Joi.string().required(),
   locale: Joi.string().required(),
   session_id: Joi.string(),
-  page: Joi.valid(["about:home", "about:newtab"]),
+  page: Joi.valid(["about:home", "about:newtab", "unknown"]),
   user_prefs: Joi.number().integer().required()
 };
 
@@ -100,7 +101,8 @@ const SessionPing = Joi.object().keys(Object.assign({}, baseKeys, {
     //
     // Not required at least for the error cases where the observer event
     // doesn't fire
-    load_trigger_type: Joi.valid(["menu_plus_or_keyboard", "unexpected"])
+    load_trigger_type: Joi.valid(["first_window_opened",
+      "menu_plus_or_keyboard", "unexpected"])
       .notes(["server counter", "server counter alert"]).required(),
 
     // When did the topsites element finish painting?  Note that, at least for

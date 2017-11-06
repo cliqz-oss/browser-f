@@ -48,7 +48,7 @@ dnl ========================================================
 MOZJPEG=62
 MOZPNG=10631
 NSPR_VERSION=4
-NSPR_MINVER=4.16
+NSPR_MINVER=4.17
 NSS_VERSION=3
 
 dnl Set the minimum version of toolkit libs used by mozilla
@@ -66,7 +66,7 @@ W32API_VERSION=3.14
 GCONF_VERSION=1.2.1
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.19.3
+SQLITE_VERSION=3.20.1
 
 dnl Set various checks
 dnl ========================================================
@@ -368,7 +368,7 @@ AC_SUBST(GNU_AS)
 AC_SUBST(GNU_CC)
 AC_SUBST(GNU_CXX)
 
-AC_SUBST(STL_FLAGS)
+AC_SUBST_LIST(STL_FLAGS)
 AC_SUBST(WRAP_STL_INCLUDES)
 AC_SUBST(MOZ_MSVC_STL_WRAP_RAISE)
 
@@ -1020,22 +1020,6 @@ case "$target" in
         if test -z "$DEVELOPER_OPTIONS"; then
             LDFLAGS="$LDFLAGS -RELEASE"
         fi
-        dnl For profile-guided optimization
-        PROFILE_GEN_CFLAGS="-GL"
-        num_cores=$($PYTHON -c 'import multiprocessing; print(min(8,multiprocessing.cpu_count()))')
-        cgthreads="-CGTHREADS:${num_cores}"
-        PROFILE_GEN_LDFLAGS="-LTCG:PGINSTRUMENT -PogoSafeMode $cgthreads"
-        dnl XXX: PGO builds can fail with warnings treated as errors,
-        dnl specifically "no profile data available" appears to be
-        dnl treated as an error sometimes. This might be a consequence
-        dnl of using WARNINGS_AS_ERRORS in some modules, combined
-        dnl with the linker doing most of the work in the whole-program
-        dnl optimization/PGO case. I think it's probably a compiler bug,
-        dnl but we work around it here.
-        PROFILE_USE_CFLAGS="-GL -wd4624 -wd4952"
-        dnl XXX: should be -LTCG:PGOPTIMIZE, but that fails on libxul.
-        dnl Probably also a compiler bug, but what can you do?
-        PROFILE_USE_LDFLAGS="-LTCG:PGUPDATE $cgthreads"
         LDFLAGS="$LDFLAGS -DYNAMICBASE"
         RCFLAGS="-nologo"
         dnl Minimum reqiurement of Gecko is VS2015 or later which supports
@@ -1919,7 +1903,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.32.1, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.33, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 if test -n "$MOZ_SYSTEM_NSS"; then
@@ -2103,7 +2087,6 @@ MOZ_SPELLCHECK=1
 MOZ_TOOLKIT_SEARCH=1
 MOZ_UI_LOCALE=en-US
 MOZ_UNIVERSALCHARDET=1
-MOZ_URL_CLASSIFIER=
 MOZ_XUL=1
 MOZ_ZIPWRITER=1
 MOZ_NO_SMART_CARDS=
@@ -2215,10 +2198,6 @@ xulrunner)
   ;;
 esac
 
-if test -n "$MOZ_B2G"; then
-    AC_DEFINE(MOZ_B2G)
-fi
-
 # Graphene is a desktop runtime for running applications with a HTML UI.
 if test -n "$MOZ_GRAPHENE"; then
     AC_DEFINE(MOZ_GRAPHENE)
@@ -2236,9 +2215,7 @@ fi
 
 AC_SUBST(MOZ_PHOENIX)
 AC_SUBST(MOZ_XULRUNNER)
-AC_SUBST(MOZ_B2G)
 AC_SUBST(MOZ_MULET)
-AC_SUBST(MOZ_B2G_VERSION)
 
 dnl ========================================================
 dnl Ensure Android SDK and build-tools versions depending on
@@ -3720,24 +3697,18 @@ then
     if test "x$ac_cv_sqlite_dbstat_vtab" = "xno"; then
         AC_MSG_ERROR([System SQLite library is not compiled with SQLITE_ENABLE_DBSTAT_VTAB.])
     fi
+else
+    dnl ==============================
+    dnl === SQLite fdatasync check ===
+    dnl ==============================
+    dnl Check to see if fdatasync is available
+    AC_CHECK_FUNC(fdatasync)
 fi
 
 if test -n "$MOZ_SYSTEM_SQLITE"; then
     AC_DEFINE(MOZ_SYSTEM_SQLITE)
 fi
 AC_SUBST(MOZ_SYSTEM_SQLITE)
-
-dnl ========================================================
-dnl = Enable url-classifier
-dnl ========================================================
-MOZ_ARG_ENABLE_BOOL(url-classifier,
-[  --enable-url-classifier Enable url classifier module],
-    MOZ_URL_CLASSIFIER=1,
-    MOZ_URL_CLASSIFIER= )
-if test -n "$MOZ_URL_CLASSIFIER"; then
-    AC_DEFINE(MOZ_URL_CLASSIFIER)
-fi
-AC_SUBST(MOZ_URL_CLASSIFIER)
 
 dnl ========================================================
 dnl = Disable zipwriter
@@ -4054,17 +4025,13 @@ MOZ_ARG_DISABLE_BOOL(startupcache,
     MOZ_DISABLE_STARTUPCACHE=1,
     MOZ_DISABLE_STARTUPCACHE=)
 
-dnl bug 988880: disable startup cache on b2g
-if test -n "$MOZ_B2G"; then
-  MOZ_DISABLE_STARTUPCACHE=1
-fi
 if test -n "$MOZ_DISABLE_STARTUPCACHE"; then
   AC_DEFINE(MOZ_DISABLE_STARTUPCACHE)
 fi
 AC_SUBST(MOZ_DISABLE_STARTUPCACHE)
 
 dnl ========================================================
-dnl = Enable Pico Speech Synthesis (Gonk usually)
+dnl = Enable Pico Speech Synthesis
 dnl ========================================================
 MOZ_ARG_ENABLE_BOOL(synth-pico,
 [  --enable-synth-pico  Set compile flags necessary for compiling Pico Web Speech API ],
@@ -4136,18 +4103,6 @@ MOZ_ARG_WITH_STRING(jitreport-granularity,
   JITREPORT_GRANULARITY=3)
 
 AC_DEFINE_UNQUOTED(JS_DEFAULT_JITREPORT_GRANULARITY, $JITREPORT_GRANULARITY)
-
-dnl ========================================================
-dnl = Disable Mozilla's versions of RIL and Geolocation
-dnl ========================================================
-MOZ_ARG_DISABLE_BOOL(mozril-geoloc,
-[  --disable-mozril-geoloc         Disable Mozilla's RIL and geolocation],
-    DISABLE_MOZ_RIL_GEOLOC=1,
-    DISABLE_MOZ_RIL_GEOLOC= )
-if test -n "$DISABLE_MOZ_RIL_GEOLOC"; then
-   AC_DEFINE(DISABLE_MOZ_RIL_GEOLOC)
-fi
-AC_SUBST(DISABLE_MOZ_RIL_GEOLOC)
 
 dnl ========================================================
 dnl =
@@ -4225,34 +4180,6 @@ if test -n "$GNU_CC" -a -n "$GNU_CXX"; then
 else
     AC_MSG_RESULT([no])
 fi
-
-dnl ========================================================
-dnl Profile guided optimization (gcc checks)
-dnl ========================================================
-dnl Test for profiling options
-dnl Under gcc 3.4+, use -fprofile-generate/-fprofile-use
-
-_SAVE_CFLAGS="$CFLAGS"
-CFLAGS="$CFLAGS -fprofile-generate -fprofile-correction"
-
-AC_MSG_CHECKING([whether C compiler supports -fprofile-generate])
-AC_TRY_COMPILE([], [return 0;],
-               [ PROFILE_GEN_CFLAGS="-fprofile-generate"
-                 result="yes" ], result="no")
-AC_MSG_RESULT([$result])
-
-if test $result = "yes"; then
-  PROFILE_GEN_LDFLAGS="-fprofile-generate"
-  PROFILE_USE_CFLAGS="-fprofile-use -fprofile-correction -Wcoverage-mismatch"
-  PROFILE_USE_LDFLAGS="-fprofile-use"
-fi
-
-CFLAGS="$_SAVE_CFLAGS"
-
-AC_SUBST(PROFILE_GEN_CFLAGS)
-AC_SUBST(PROFILE_GEN_LDFLAGS)
-AC_SUBST(PROFILE_USE_CFLAGS)
-AC_SUBST(PROFILE_USE_LDFLAGS)
 
 fi # ! SKIP_COMPILER_CHECKS
 
@@ -4754,6 +4681,7 @@ AC_SUBST(MOZ_CHILD_PROCESS_BUNDLENAME)
 # packages produced.
 # - MOZ_ANDROID_GCM_SENDERID: On Android, the Android GCM Sender ID used.  GCM
 # sender IDs are not sensitive: see, http://stackoverflow.com/a/18216063.
+# - MOZ_MMA_GCM_SENDERID: This GCM Sender ID is used for MMA integration.
 # - MOZ_PROFILE_MIGRATOR: When set, enables profile migrator.
 
 if test -z "$MOZ_APP_NAME"; then
@@ -4811,10 +4739,6 @@ else
   MOZ_APP_MAXVERSION=$MOZ_APP_VERSION
 fi
 
-MOZ_B2G_VERSION=${MOZ_B2G_VERSION:-"1.0.0"}
-AC_DEFINE_UNQUOTED(MOZ_B2G_VERSION,"$MOZ_B2G_VERSION")
-AC_DEFINE_UNQUOTED(MOZ_B2G_OS_NAME,"$MOZ_B2G_OS_NAME")
-
 AC_SUBST(MOZ_APP_NAME)
 AC_SUBST(MOZ_APP_REMOTINGNAME)
 AC_SUBST(MOZ_APP_DISPLAYNAME)
@@ -4825,6 +4749,7 @@ AC_SUBST(MOZ_APP_ID)
 AC_SUBST(MOZ_APP_ANDROID_VERSION_CODE)
 AC_SUBST(MOZ_ANDROID_SHARED_ID)
 AC_SUBST(MOZ_ANDROID_GCM_SENDERID)
+AC_SUBST(MOZ_MMA_GCM_SENDERID)
 AC_SUBST(MAR_CHANNEL_ID)
 AC_SUBST(ACCEPTED_MAR_CHANNEL_IDS)
 AC_SUBST(MOZ_PROFILE_MIGRATOR)
@@ -5222,6 +5147,7 @@ export MOZ_ZLIB_CFLAGS
 export MOZ_ZLIB_LIBS
 export MOZ_APP_NAME
 export MOZ_APP_REMOTINGNAME
+export MOZ_DEV_EDITION
 export RUSTC
 export MOZILLA_CENTRAL_PATH=$_topsrcdir
 export STLPORT_CPPFLAGS

@@ -27,7 +27,7 @@
 #include "nsLayoutUtils.h"
 #include "mozilla/EnumeratedArray.h"
 #include "FilterSupport.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "Layers.h"
 #include "nsBidi.h"
 
@@ -468,6 +468,9 @@ public:
                                          Layer* aOldLayer,
                                          LayerManager* aManager,
                                          bool aMirror = false) override;
+  bool InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
+                                CanvasRenderer* aRenderer,
+                                bool aMirror = false) override;
   virtual bool ShouldForceInactiveLayer(LayerManager* aManager) override;
   void MarkContextClean() override;
   void MarkContextCleanForFrameCapture() override;
@@ -1165,6 +1168,8 @@ protected:
   friend struct CanvasBidiProcessor;
   friend class CanvasDrawObserver;
 };
+
+size_t BindingJSObjectMallocBytes(CanvasRenderingContext2D* aContext);
 
 } // namespace dom
 } // namespace mozilla

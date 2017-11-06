@@ -6,16 +6,14 @@
 
 <!-- LOCALIZATION NOTE: The title is intended to be apologetic and disarming, expressing dismay
      and regret that we are unable to restore the session for the user -->
-<!ENTITY restorepage.errorTitle     "Entschuldigung, das hätte nicht passieren dürfen.">
-<!ENTITY restorepage.problemDesc    "&brandShortName; hat Schwierigkeiten, die Tabs und Fenster Ihrer letzten Sitzung wiederherzustellen. Häufig liegt das an einer kürzlich geöffneten Webseite.">
-<!ENTITY restorepage.tryThis        "Sie können Folgendes versuchen:">
-<!ENTITY restorepage.restoreSome    "Einen oder mehrere Tabs schließen, die womöglich das Problem verursachen."> 
-<!ENTITY restorepage.startNew       "Eine komplett neue Sitzung starten">
+<!ENTITY restorepage.errorTitle2    "Entschuldigung, beim Wiederherstellen Ihrer Seiten ist ein Problem aufgetreten">
+<!ENTITY restorepage.problemDesc2   "Beim Wiederherstellen Ihrer letzten Browser-Sitzung ist ein Problem aufgetreten. Wählen Sie &quot;Sitzung wiederherstellen&quot;, um es erneut zu versuchen.">
+<!ENTITY restorepage.tryThis2       "Falls die Wiederherstellung noch immer nicht funktioniert, so kann dies durch einen bestimmten Tab verursacht werden. Sehen Sie sich die Liste mit den früheren Tabs an, entfernen Sie den Haken von den Tabs, die Sie nicht benötigen, und lassen Sie dann die Sitzung wiederherstellen.">
 
-<!ENTITY restorepage.tryagainButton "Wiederherstellen">
-<!ENTITY restorepage.restore.access "W">
-<!ENTITY restorepage.closeButton    "Schließen">
-<!ENTITY restorepage.close.access   "c">
+<!ENTITY restorepage.tryagainButton2 "Sitzung wiederherstellen">
+<!ENTITY restorepage.restore.access2 "w">
+<!ENTITY restorepage.closeButton2    "Neue Sitzung starten">
+<!ENTITY restorepage.close.access2   "N">
 
 <!ENTITY restorepage.restoreHeader  "Wiederherstellen">
 <!ENTITY restorepage.listHeader     "Fenster und Tabs">

@@ -104,14 +104,10 @@ var ContentPolicy = {
       return Ci.nsIContentPolicy.ACCEPT;
     }
 
-    let block = false;
     let ids = [];
-    for (let [id, {blocking, filter}] of this.contentPolicies.entries()) {
+    for (let [id, {filter}] of this.contentPolicies.entries()) {
       if (WebRequestCommon.typeMatches(policyType, filter.types) &&
           WebRequestCommon.urlMatches(contentLocation, filter.urls)) {
-        if (blocking) {
-          block = true;
-        }
         ids.push(id);
       }
     }
@@ -179,14 +175,7 @@ var ContentPolicy = {
     if (requestOrigin) {
       data.originUrl = requestOrigin.spec;
     }
-    if (block) {
-      let rval = mm.sendSyncMessage("WebRequest:ShouldLoad", data);
-      if (rval.length == 1 && rval[0].cancel) {
-        return Ci.nsIContentPolicy.REJECT;
-      }
-    } else {
-      mm.sendAsyncMessage("WebRequest:ShouldLoad", data);
-    }
+    mm.sendAsyncMessage("WebRequest:ShouldLoad", data);
 
     return Ci.nsIContentPolicy.ACCEPT;
   },

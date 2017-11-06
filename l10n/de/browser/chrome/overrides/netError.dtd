@@ -18,16 +18,15 @@
 <!ENTITY deniedPortAccess.title "Fehler: Port aus Sicherheitsgründen blockiert">
 <!ENTITY deniedPortAccess.longDesc "">
 
-<!ENTITY dnsNotFound.title "Fehler: Server nicht gefunden">
-<!ENTITY dnsNotFound.longDesc "
+<!ENTITY dnsNotFound.pageTitle "Server nicht gefunden">
+<!-- Localization note (dnsNotFound.title1) - "Hmm" is a sound made when considering or puzzling over something. You don't have to include it in your translation if your language does not have a written word like this. -->
+<!ENTITY dnsNotFound.title1 "Seite wurde nicht gefunden">
+<!ENTITY dnsNotFound.longDesc1 "
+<strong>Falls die Adresse korrekt ist, können Sie noch Folgendes versuchen:</strong>
 <ul>
-  <li>Bitte überprüfen Sie die Adresse auf Tippfehler, wie
-    <strong>ww</strong>.example.com statt
-    <strong>www</strong>.example.com</li>
-  <li>Wenn Sie auch keine andere Website aufrufen können, überprüfen Sie bitte die 
-	Netzwerk-/Internetverbindung.</li>
-  <li>Wenn Ihr Computer oder Netzwerk von einer Firewall oder einem Proxy geschützt wird, stellen Sie bitte sicher,
-	dass &brandShortName; auf das Internet zugreifen darf.</li>
+  <li>Die Seite später noch einmal aufrufen.</li>
+  <li>Die Netzwerkverbindung überprüfen.</li>
+  <li>Falls der Computer sich hinter einer Firewall befindet, überprüfen Sie bitte, ob &brandShortName; der Internetzugriff erlaubt wurde.</li>
 </ul>
 ">
 
@@ -58,15 +57,9 @@
 
 <!ENTITY openPortalLoginPage.label2 "Anmeldeseite des Netzwerks öffnen">
 
-<!ENTITY malformedURI.title "Fehler: Ungültige Adresse">
-<!ENTITY malformedURI.longDesc "
-<ul>
-  <li>Web-Adressen sehen für gewöhnlich folgendermaßen aus:
-    <strong>http://www.example.com/</strong></li>
-  <li>Bitte stellen Sie sicher, dass Sie nicht den umgekehrten,
-    sondern den einfachen Schrägstrich verwenden (<strong>/</strong>).</li>
-</ul>
-">
+<!ENTITY malformedURI.pageTitle "Ungültige Adresse">
+<!-- Localization note (malformedURI.title1) - "Hmm" is a sound made when considering or puzzling over something. You don't have to include it in your translation if your language does not have a written word like this. -->
+<!ENTITY malformedURI.title1 "Diese Adresse scheint nicht korrekt zu sein.">
 
 <!ENTITY netInterrupt.title "Fehler: Datenübertragung unterbrochen">
 <!ENTITY netInterrupt.longDesc "&sharedLongDesc;">
@@ -193,7 +186,7 @@ was trying to connect. -->
                         certerror.wrongSystemTimeWithoutReference) - The <span id='..' />
      tags will be injected with actual values, please leave them unchanged. -->
 <!ENTITY certerror.wrongSystemTime2 "<p> &brandShortName; konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
-<!ENTITY certerror.wrongSystemTimeWithoutReference "<p>&brandShortName; konnte mit <span id='wrongSystemTimeWithoutReference_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
+<!ENTITY certerror.wrongSystemTimeWithoutReference "<p>&brandShortName; konnte mit <span id='wrongSystemTimeWithoutReference_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTimeWithoutReference_systemDate'/>. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
 
 <!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">

@@ -12,7 +12,7 @@
 #include "gfxContext.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/RefPtr.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "mozilla/dom/SVGMaskElement.h"
 
 using namespace mozilla;
@@ -63,8 +63,7 @@ nsSVGMaskFrame::GetMaskForMaskedFrame(MaskParams& aParams)
   // and maskArea) is important for performance.
   context->Save();
   nsSVGUtils::SetClipRect(context, aParams.toUserSpace, maskArea);
-  context->SetMatrix(gfxMatrix());
-  gfxRect maskSurfaceRect = context->GetClipExtents();
+  gfxRect maskSurfaceRect = context->GetClipExtents(gfxContext::eDeviceSpace);
   maskSurfaceRect.RoundOut();
   context->Restore();
 
@@ -160,7 +159,7 @@ nsSVGMaskFrame::GetMaskForMaskedFrame(MaskParams& aParams)
 gfxRect
 nsSVGMaskFrame::GetMaskArea(nsIFrame* aMaskedFrame)
 {
-  SVGMaskElement *maskElem = static_cast<SVGMaskElement*>(mContent);
+  SVGMaskElement *maskElem = static_cast<SVGMaskElement*>(GetContent());
 
   uint16_t units =
     maskElem->mEnumAttributes[SVGMaskElement::MASKUNITS].GetAnimValue();
@@ -192,7 +191,7 @@ nsSVGMaskFrame::AttributeChanged(int32_t  aNameSpaceID,
        aAttribute == nsGkAtoms::height||
        aAttribute == nsGkAtoms::maskUnits ||
        aAttribute == nsGkAtoms::maskContentUnits)) {
-    nsSVGEffects::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
   }
 
   return nsSVGContainerFrame::AttributeChanged(aNameSpaceID,
@@ -221,7 +220,7 @@ nsSVGMaskFrame::GetCanvasTM()
 gfxMatrix
 nsSVGMaskFrame::GetMaskTransform(nsIFrame* aMaskedFrame)
 {
-  SVGMaskElement *content = static_cast<SVGMaskElement*>(mContent);
+  SVGMaskElement *content = static_cast<SVGMaskElement*>(GetContent());
 
   nsSVGEnum* maskContentUnits =
     &content->mEnumAttributes[SVGMaskElement::MASKCONTENTUNITS];

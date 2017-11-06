@@ -118,7 +118,6 @@ public class GeckoPreferenceFragment extends PreferenceFragment {
             return getString(R.string.pref_category_search);
         }
 
-        // Launched as action from content notifications.
         if (res == R.xml.preferences_notifications) {
             return getString(R.string.pref_category_notifications);
         }
@@ -150,7 +149,6 @@ public class GeckoPreferenceFragment extends PreferenceFragment {
             return R.id.pref_header_search;
         }
 
-        // Launched as action from content notifications.
         if (res == R.xml.preferences_notifications) {
             return R.id.pref_header_notifications;
         }

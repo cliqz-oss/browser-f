@@ -49,14 +49,14 @@
 <!ENTITY  acceptCookies2.label          "Cookies von Websites akzeptieren">
 <!ENTITY  acceptCookies2.accesskey      "C">
 
-<!ENTITY  acceptThirdParty.pre.label      "Cookies von Drittanbietern akzeptieren:">
-<!ENTITY  acceptThirdParty.pre.accesskey  "k">
+<!ENTITY  acceptThirdParty2.pre.label     "Cookies von Drittanbietern akzeptieren:">
+<!ENTITY  acceptThirdParty2.pre.accesskey "k">
 <!ENTITY  acceptThirdParty.always.label   "Immer">
 <!ENTITY  acceptThirdParty.never.label    "Nie">
 <!ENTITY  acceptThirdParty.visited.label  "Nur von besuchten Drittanbietern">
 
-<!ENTITY  keepUntil.label               "Behalten, bis:">
-<!ENTITY  keepUntil.accesskey           "B">
+<!ENTITY  keepUntil2.label              "Behalten, bis">
+<!ENTITY  keepUntil2.accesskey          "B">
 
 <!ENTITY  expire.label                  "sie nicht mehr gültig sind">
 <!ENTITY  close.label                   "&brandShortName; geschlossen wird">
@@ -113,3 +113,8 @@
 <!ENTITY  browserContainersEnabled.accesskey    "a">
 <!ENTITY  browserContainersSettings.label        "Einstellungen…">
 <!ENTITY  browserContainersSettings.accesskey    "u">
+
+<!ENTITY  a11yPrivacy.checkbox.label     "Dienste für Barrierefreiheit am Zugriff auf Ihren Browser hindern">
+<!ENTITY  a11yPrivacy.checkbox.accesskey "B">
+<!ENTITY  a11yPrivacy.learnmore.label    "Weitere Informationen">
+<!ENTITY enableSafeBrowsingLearnMore.label "Weitere Informationen">

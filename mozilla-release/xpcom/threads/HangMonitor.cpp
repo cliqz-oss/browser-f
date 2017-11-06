@@ -163,17 +163,16 @@ GetChromeHangReport(Telemetry::ProcessedStack& aStack,
   }
 
   if (!suspended) {
-    if (ret != -1) {
+    if (ret != (DWORD)-1) {
       MOZ_ALWAYS_TRUE(::ResumeThread(winMainThreadHandle) != DWORD(-1));
     }
     return;
   }
 
-  MozStackWalk(ChromeStackWalker, /* skipFrames */ 0, /* maxFrames */ 0,
-               reinterpret_cast<void*>(&rawStack),
-               reinterpret_cast<uintptr_t>(winMainThreadHandle), nullptr);
+  MozStackWalkThread(ChromeStackWalker, /* skipFrames */ 0, /* maxFrames */ 0,
+                     &rawStack, winMainThreadHandle, nullptr);
   ret = ::ResumeThread(winMainThreadHandle);
-  if (ret == -1) {
+  if (ret == (DWORD)-1) {
     return;
   }
   aStack = Telemetry::GetStackAndModules(rawStack);
@@ -212,7 +211,7 @@ ThreadMain(void*)
   Telemetry::ProcessedStack stack;
   int32_t systemUptime = -1;
   int32_t firefoxUptime = -1;
-  UniquePtr<HangAnnotations> annotations;
+  HangAnnotations annotations;
 #endif
 
   while (true) {

@@ -5,7 +5,7 @@
 <!ENTITY window.width                                   "37em">
 
 <!ENTITY languages.customize.Header                     "Sprachen">
-<!ENTITY languages.customize.description                "Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:">
+<!ENTITY languages.customize2.description               "Webseiten sind manchmal in mehr als einer Sprache verfügbar. Wählen Sie die Sprachen für die Darstellung von Webseiten in der von Ihnen bevorzugten Reihenfolge:">
 <!ENTITY languages.customize.moveUp.label               "Nach oben">
 <!ENTITY languages.customize.moveUp.accesskey           "o">
 <!ENTITY languages.customize.moveDown.label             "Nach unten">

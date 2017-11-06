@@ -100,14 +100,16 @@ public:
                       const Float* aBorderWidths,
                       RectCornerRadii& aBorderRadii,
                       const nscolor* aBorderColors,
-                      nsBorderColors* const* aCompositeColors,
-                      nscolor aBackgroundColor);
+                      const nsBorderColors* aCompositeColors,
+                      nscolor aBackgroundColor,
+                      bool aBackfaceIsVisible);
 
   // draw the entire border
   void DrawBorders();
 
   bool CanCreateWebRenderCommands();
   void CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                               mozilla::wr::IpcResourceUpdateQueue& aResources,
                                const mozilla::layers::StackingContextHelper& aSc);
 
   // utility function used for background painting as well as borders
@@ -146,17 +148,24 @@ private:
   Float mBorderWidths[4];
   RectCornerRadii mBorderRadii;
 
-  // colors
+  // the colors for 'border-top-color' et. al.
   nscolor mBorderColors[4];
-  nsBorderColors* mCompositeColors[4];
+
+  // the lists of colors for '-moz-border-top-colors' et. al.
+  // the pointers here are either nullptr, or referring to a non-empty
+  // nsTArray, so no additional empty check is needed.
+  const nsTArray<nscolor>* mCompositeColors[4];
 
   // the background color
   nscolor mBackgroundColor;
 
   // calculated values
+  bool mAllBordersSameStyle;
+  bool mAllBordersSameWidth;
   bool mOneUnitBorder;
   bool mNoBorderRadius;
   bool mAvoidStroke;
+  bool mBackfaceIsVisible;
 
   // For all the sides in the bitmask, would they be rendered
   // in an identical color and style?
@@ -230,7 +239,8 @@ private:
   void DrawBorderSides (int aSides);
 
   // function used by the above to handle -moz-border-colors
-  void DrawBorderSidesCompositeColors(int aSides, const nsBorderColors *compositeColors);
+  void DrawBorderSidesCompositeColors(
+    int aSides, const nsTArray<nscolor>& compositeColors);
 
   // Setup the stroke options for the given dashed/dotted side
   void SetupDashedOptions(StrokeOptions* aStrokeOptions,

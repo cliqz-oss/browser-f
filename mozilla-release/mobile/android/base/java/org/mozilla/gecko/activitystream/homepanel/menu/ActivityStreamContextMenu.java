@@ -7,7 +7,9 @@ package org.mozilla.gecko.activitystream.homepanel.menu;
 import android.content.Context;
 import android.content.Intent;
 import android.database.Cursor;
+import android.support.annotation.NonNull;
 import android.support.design.widget.NavigationView;
+import android.support.design.widget.Snackbar;
 import android.view.MenuItem;
 import android.view.View;
 
@@ -17,10 +19,13 @@ import org.mozilla.gecko.R;
 import org.mozilla.gecko.Telemetry;
 import org.mozilla.gecko.TelemetryContract;
 import org.mozilla.gecko.activitystream.ActivityStreamTelemetry;
+import org.mozilla.gecko.activitystream.homepanel.model.WebpageModel;
+import org.mozilla.gecko.activitystream.homepanel.topstories.PocketStoriesLoader;
 import org.mozilla.gecko.annotation.RobocopTarget;
+import org.mozilla.gecko.db.BrowserContract;
 import org.mozilla.gecko.db.BrowserDB;
+import org.mozilla.gecko.db.SuggestedSites;
 import org.mozilla.gecko.home.HomePager;
-import org.mozilla.gecko.activitystream.homepanel.model.Item;
 import org.mozilla.gecko.reader.SavedReaderViewHelper;
 import org.mozilla.gecko.util.Clipboard;
 import org.mozilla.gecko.util.HardwareUtils;
@@ -35,11 +40,13 @@ public abstract class ActivityStreamContextMenu
 
     public enum MenuMode {
         HIGHLIGHT,
-        TOPSITE
+        TOPSITE,
+        TOPSTORY
     }
 
     private final Context context;
-    private final Item item;
+    private final WebpageModel item;
+    @NonNull private final View snackbarAnchor;
 
     private final ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder;
 
@@ -55,12 +62,14 @@ public abstract class ActivityStreamContextMenu
     private final MenuMode mode;
 
     /* package-private */ ActivityStreamContextMenu(final Context context,
+                                                    final View snackbarAnchor,
                                                     final ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder,
                                                     final MenuMode mode,
-                                                    final Item item,
+                                                    final WebpageModel item,
                                                     HomePager.OnUrlOpenListener onUrlOpenListener,
                                                     HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener) {
         this.context = context;
+        this.snackbarAnchor = snackbarAnchor;
         this.item = item;
         this.telemetryExtraBuilder = telemetryExtraBuilder;
 
@@ -88,11 +97,10 @@ public abstract class ActivityStreamContextMenu
             pinItem.setTitle(R.string.contextmenu_top_sites_unpin);
         }
 
-        // Disable "dismiss" for topsites until we have decided on its behaviour for topsites
-        // (currently "dismiss" adds the URL to a highlights-specific blocklist, which the topsites
-        // query has no knowledge of).
-        if (mode == MenuMode.TOPSITE) {
-            final MenuItem dismissItem = getItemByID(R.id.dismiss);
+        // Disable "dismiss" for topsites and topstories here. Later when we know whether this item
+        // has history we might re-enable this item (See AsyncTask below).
+        final MenuItem dismissItem = getItemByID(R.id.dismiss);
+        if (mode == MenuMode.TOPSTORY || mode == MenuMode.TOPSITE) {
             dismissItem.setVisible(false);
         }
 
@@ -141,14 +149,14 @@ public abstract class ActivityStreamContextMenu
             }).execute();
         }
 
-        // Only show the "remove from history" item if a page actually has history
         final MenuItem deleteHistoryItem = getItemByID(R.id.delete);
+        // Only show the "remove from history" item if a page actually has history
         deleteHistoryItem.setVisible(false);
 
         (new UIAsyncTask.WithoutParams<Boolean>(ThreadUtils.getBackgroundHandler()) {
             @Override
             protected Boolean doInBackground() {
-                final Item item = ActivityStreamContextMenu.this.item;
+                final WebpageModel item = ActivityStreamContextMenu.this.item;
 
                 final Cursor cursor = BrowserDB.from(context).getHistoryForURL(context.getContentResolver(), item.getUrl());
                 // It's tempting to throw here, but crashing because of a (hopefully) inconsequential
@@ -166,6 +174,12 @@ public abstract class ActivityStreamContextMenu
             @Override
             protected void onPostExecute(Boolean hasHistory) {
                 deleteHistoryItem.setVisible(hasHistory);
+
+                if (!hasHistory && mode == MenuMode.TOPSITE) {
+                    // For top sites items without history (suggested items) we show the dismiss
+                    // item. This will allow users to remove a suggested site.
+                    dismissItem.setVisible(true);
+                }
             }
         }).execute();
     }
@@ -179,6 +193,8 @@ public abstract class ActivityStreamContextMenu
         // Pin and bookmark items are handled separately below, since they do require state
         // information to handle correctly.
         telemetryExtraBuilder.fromMenuItemId(menuItemId);
+
+        final String referrerUri = mode == MenuMode.TOPSTORY ? PocketStoriesLoader.POCKET_REFERRER_URI : null;
 
         switch (menuItem.getItemId()) {
             case R.id.share:
@@ -225,11 +241,16 @@ public abstract class ActivityStreamContextMenu
                         if (item.isBookmarked()) {
                             db.removeBookmarksWithURL(context.getContentResolver(), item.getUrl());
 
+                            // See bug 1402521 for adding "options" to the snackbar.
+                            Snackbar.make(ActivityStreamContextMenu.this.snackbarAnchor, R.string.bookmark_removed, Snackbar.LENGTH_LONG).show();
                         } else {
                             // We only store raw URLs in history (and bookmarks), hence we won't ever show about:reader
                             // URLs in AS topsites or highlights. Therefore we don't need to do any special about:reader handling here.
                             db.addBookmark(context.getContentResolver(), item.getTitle(), item.getUrl());
+
+                            Snackbar.make(ActivityStreamContextMenu.this.snackbarAnchor, R.string.bookmark_added, Snackbar.LENGTH_LONG).show();
                         }
+                        item.onStateCommitted();
                     }
                 });
                 break;
@@ -253,6 +274,7 @@ public abstract class ActivityStreamContextMenu
                         } else {
                             db.pinSiteForAS(context.getContentResolver(), item.getUrl(), item.getTitle());
                         }
+                        item.onStateCommitted();
                     }
                 });
                 break;
@@ -266,19 +288,25 @@ public abstract class ActivityStreamContextMenu
                 break;
 
             case R.id.open_new_tab:
-                onUrlOpenInBackgroundListener.onUrlOpenInBackground(item.getUrl(), EnumSet.noneOf(HomePager.OnUrlOpenInBackgroundListener.Flags.class));
+                onUrlOpenInBackgroundListener.onUrlOpenInBackgroundWithReferrer(item.getUrl(), referrerUri,
+                        EnumSet.noneOf(HomePager.OnUrlOpenInBackgroundListener.Flags.class));
                 break;
 
             case R.id.open_new_private_tab:
-                onUrlOpenInBackgroundListener.onUrlOpenInBackground(item.getUrl(), EnumSet.of(HomePager.OnUrlOpenInBackgroundListener.Flags.PRIVATE));
+                onUrlOpenInBackgroundListener.onUrlOpenInBackgroundWithReferrer(item.getUrl(), referrerUri,
+                        EnumSet.of(HomePager.OnUrlOpenInBackgroundListener.Flags.PRIVATE));
                 break;
 
             case R.id.dismiss:
                 ThreadUtils.postToBackgroundThread(new Runnable() {
                     @Override
                     public void run() {
-                        BrowserDB.from(context)
-                                .blockActivityStreamSite(context.getContentResolver(), item.getUrl());
+                        BrowserDB db = BrowserDB.from(context);
+                        if (db.hideSuggestedSite(item.getUrl())) {
+                            context.getContentResolver().notifyChange(BrowserContract.SuggestedSites.CONTENT_URI, null);
+                        } else {
+                            db.blockActivityStreamSite(context.getContentResolver(), item.getUrl());
+                        }
                     }
                 });
                 break;
@@ -307,11 +335,15 @@ public abstract class ActivityStreamContextMenu
         return true;
     }
 
-
+    /**
+     * @param shouldOverrideIconWithImageProvider true if the favicon should be replaced with an image provider,
+     *                                            if applicable, false otherwise.
+     */
     @RobocopTarget
     public static ActivityStreamContextMenu show(Context context,
                                                       View anchor, ActivityStreamTelemetry.Extras.Builder telemetryExtraBuilder,
-                                                      final MenuMode menuMode, final Item item,
+                                                      final MenuMode menuMode, final WebpageModel item,
+                                                      final boolean shouldOverrideIconWithImageProvider,
                                                       HomePager.OnUrlOpenListener onUrlOpenListener,
                                                       HomePager.OnUrlOpenInBackgroundListener onUrlOpenInBackgroundListener,
                                                       final int tilesWidth, final int tilesHeight) {
@@ -319,8 +351,9 @@ public abstract class ActivityStreamContextMenu
 
         if (!HardwareUtils.isTablet()) {
             menu = new BottomSheetContextMenu(context,
+                    anchor,
                     telemetryExtraBuilder, menuMode,
-                    item, onUrlOpenListener, onUrlOpenInBackgroundListener,
+                    item, shouldOverrideIconWithImageProvider, onUrlOpenListener, onUrlOpenInBackgroundListener,
                     tilesWidth, tilesHeight);
         } else {
             menu = new PopupContextMenu(context,

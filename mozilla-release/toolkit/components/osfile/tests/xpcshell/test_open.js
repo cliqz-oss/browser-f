@@ -5,10 +5,6 @@
 
 Components.utils.import("resource://gre/modules/osfile.jsm");
 
-function run_test() {
-  run_next_test();
-}
-
 /**
  * Test OS.File.open for reading:
  * - with an existing file (should succeed);
@@ -19,12 +15,15 @@ add_task(async function() {
   // Attempt to open a file that does not exist, ensure that it yields the
   // appropriate error.
   try {
-    let fd = await OS.File.open(OS.Path.join(".", "This file does not exist"));
+    await OS.File.open(OS.Path.join(".", "This file does not exist"));
     do_check_true(false, "File opening 1 succeeded (it should fail)");
-  } catch (err if err instanceof OS.File.Error && err.becauseNoSuchFile) {
-    do_print("File opening 1 failed " + err);
+  } catch (err) {
+    if (err instanceof OS.File.Error && err.becauseNoSuchFile) {
+      do_print("File opening 1 failed " + err);
+    } else {
+      throw err;
+    }
   }
-
   // Attempt to open a file with the wrong args, so that it fails before
   // serialization, ensure that it yields the appropriate error.
   do_print("Attempting to open a file with wrong arguments");
@@ -55,7 +54,7 @@ add_task(async function() {
  * Test the error thrown by OS.File.open when attempting to open a directory
  * that does not exist.
  */
-add_task(async function test_error_attributes () {
+add_task(async function test_error_attributes() {
 
   let dir = OS.Path.join(do_get_profile().path, "test_osfileErrorAttrs");
   let fpath = OS.Path.join(dir, "test_error_attributes.txt");

@@ -42,7 +42,6 @@
 #include "nsReadableUtils.h"
 #include "nsLocalFile.h"
 #include "nsIComponentManager.h"
-#include "nsXPIDLString.h"
 #include "prproces.h"
 #include "nsIDirectoryEnumerator.h"
 #include "nsISimpleEnumerator.h"
@@ -239,12 +238,10 @@ nsLocalFile::nsLocalFile(const nsLocalFile& aOther)
 #ifdef MOZ_WIDGET_COCOA
 NS_IMPL_ISUPPORTS(nsLocalFile,
                   nsILocalFileMac,
-                  nsILocalFile,
                   nsIFile,
                   nsIHashable)
 #else
 NS_IMPL_ISUPPORTS(nsLocalFile,
-                  nsILocalFile,
                   nsIFile,
                   nsIHashable)
 #endif

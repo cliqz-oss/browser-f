@@ -1405,13 +1405,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
               this.richlistbox.appendChild(item);
             }
 
-            if (typeof item._onChanged == "function") {
-              // The binding may have not been applied yet.
-              setTimeout(() => {
-                item._onChanged();
-              }, 0);
-            }
-
             this._currentIndex++;
           }
 
@@ -1426,26 +1419,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         ]]>
         </body>
       </method>
-
-      <!-- The x-coordinate relative to the leading edge of the window of the
-           items' site icons (favicons). -->
-      <property name="siteIconStart"
-                onget="return this._siteIconStart;">
-        <setter>
-          <![CDATA[
-          if (val != this._siteIconStart) {
-            this._siteIconStart = val;
-            for (let item of this.richlistbox.childNodes) {
-              let changed = item.adjustSiteIconStart(val);
-              if (changed) {
-                item.handleOverUnderflow();
-              }
-            }
-          }
-          return val;
-          ]]>
-        </setter>
-      </property>
 
       <property name="overflowPadding"
                 onget="return Number(this.getAttribute('overflowpadding'))"
@@ -2075,20 +2048,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
         </body>
       </method>
 
-      <method name="_onChanged">
-        <body>
-          <![CDATA[
-            let popup = this.parentNode.parentNode;
-            let iconChanged = this.adjustSiteIconStart(popup._siteIconStart);
-
-            if (iconChanged) {
-              this.handleOverUnderflow();
-            }
-          ]]>
-        </body>
-      </method>
-
-
       <method name="_reuseAcItem">
         <body>
           <![CDATA[
@@ -2104,12 +2063,15 @@ extends="chrome://global/content/bindings/popup.xml#popup">
                 action.params.engineName == popup.overrideSearchEngineName) {
 
               this.collapsed = false;
-              // Call adjustSiteIconStart only after setting collapsed=
-              // false.  The calculations it does may be wrong otherwise.
-              this.adjustSiteIconStart(popup._siteIconStart);
+
               // The popup may have changed size between now and the last
               // time the item was shown, so always handle over/underflow.
-              this.handleOverUnderflow();
+              let dwu = window.getInterface(Ci.nsIDOMWindowUtils);
+              let popupWidth = dwu.getBoundsWithoutFlushing(this.parentNode).width;
+              if (!this._previousPopupWidth || this._previousPopupWidth != popupWidth) {
+                this._previousPopupWidth = popupWidth;
+                this.handleOverUnderflow();
+              }
 
               return true;
             }
@@ -2129,12 +2091,6 @@ extends="chrome://global/content/bindings/popup.xml#popup">
           this.setAttribute("text", this.getAttribute("ac-text"));
 
           let popup = this.parentNode.parentNode;
-          if (!popup.popupOpen) {
-            // Removing the max-width and resetting it later when overflow is
-            // handled is jarring when the item is visible, so skip this when
-            // the popup is open.
-            this._removeMaxWidths();
-          }
 
           let title = this.getAttribute("title");
           let titleLooksLikeUrl = false;
@@ -2346,7 +2302,15 @@ extends="chrome://global/content/bindings/popup.xml#popup">
           }
           this._setUpDescription(this._urlText, displayUrl, !emphasiseUrl);
 
-          if (this._inOverflow) {
+          // Removing the max-width may be jarring when the item is visible, but
+          // we have no other choice to properly crop the text.
+          // Removing max-widths may cause overflow or underflow events, that
+          // will set the _inOverflow property. In case both the old and the new
+          // text are overflowing, the overflow event won't happen, and we must
+          // enforce an _handleOverflow() call to update the max-widths.
+          let wasInOverflow = this._inOverflow;
+          this._removeMaxWidths();
+          if (wasInOverflow && this._inOverflow) {
             this._handleOverflow();
           }
           ]]>
@@ -2356,44 +2320,13 @@ extends="chrome://global/content/bindings/popup.xml#popup">
       <method name="_removeMaxWidths">
         <body>
           <![CDATA[
-          this._titleText.style.removeProperty("max-width");
-          this._tagsText.style.removeProperty("max-width");
-          this._urlText.style.removeProperty("max-width");
-          this._actionText.style.removeProperty("max-width");
-          ]]>
-        </body>
-      </method>
-
-      <!-- Sets the x-coordinate of the leading edge of the site icon (favicon)
-           relative the the leading edge of the window.
-           @param newStart The new x-coordinate, relative to the leading edge of
-                  the window.  Pass undefined to reset the icon's position to
-                  whatever is specified in CSS.
-           @return True if the icon's position changed, false if not. -->
-      <method name="adjustSiteIconStart">
-        <parameter name="newStart"/>
-        <body>
-          <![CDATA[
-          if (typeof(newStart) != "number") {
-            this._typeIcon.style.removeProperty("margin-inline-start");
-            return true;
+          if (this._hasMaxWidths) {
+            this._titleText.style.removeProperty("max-width");
+            this._tagsText.style.removeProperty("max-width");
+            this._urlText.style.removeProperty("max-width");
+            this._actionText.style.removeProperty("max-width");
+            this._hasMaxWidths = false;
           }
-          let utils = window.QueryInterface(Ci.nsIInterfaceRequestor)
-                            .getInterface(Ci.nsIDOMWindowUtils);
-          let rect = utils.getBoundsWithoutFlushing(this._siteIcon);
-
-          let dir = this.getAttribute("dir");
-          let delta = dir == "rtl" ? rect.right - newStart
-                                   : newStart - rect.left;
-          let px = this._typeIcon.style.marginInlineStart;
-          if (!px) {
-            // Allow margin-inline-start not to be specified in CSS initially.
-            let style = window.getComputedStyle(this._typeIcon);
-            px = dir == "rtl" ? style.marginRight : style.marginLeft;
-          }
-          let typeIconStart = Number(px.substr(0, px.length - 2));
-          this._typeIcon.style.marginInlineStart = (typeIconStart + delta) + "px";
-          return delta > 0;
           ]]>
         </body>
       </method>
@@ -2419,7 +2352,8 @@ extends="chrome://global/content/bindings/popup.xml#popup">
                                         : titleRect.left - itemRect.left;
 
           let popup = this.parentNode.parentNode;
-          let itemWidth = itemRect.width - titleStart - popup.overflowPadding;
+          let itemWidth = itemRect.width - titleStart - popup.overflowPadding -
+                          (popup.margins ? popup.margins.end : 0);
 
           if (this._tags.hasAttribute("empty")) {
             // The tags box is not displayed in this case.
@@ -2465,6 +2399,7 @@ extends="chrome://global/content/bindings/popup.xml#popup">
             urlActionMaxWidth -= separatorRect.width;
             this._urlText.style.maxWidth = urlActionMaxWidth + "px";
             this._actionText.style.maxWidth = urlActionMaxWidth + "px";
+            this._hasMaxWidths = true;
           }
         ]]></body>
       </method>

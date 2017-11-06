@@ -25,7 +25,7 @@ XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
 
 this.PluginContent = function(global) {
   this.init(global);
-}
+};
 
 const FLASH_MIME_TYPE = "application/x-shockwave-flash";
 const REPLACEMENT_STYLE_SHEET = Services.io.newURI("chrome://pluginproblem/content/pluginReplaceBinding.css");
@@ -98,12 +98,14 @@ PluginContent.prototype = {
         setTimeout(() => this.updateNotificationUI(), 0);
         break;
       case "BrowserPlugins:ContextMenuCommand":
+        let contextMenu = this.global.contextMenu;
+
         switch (msg.data.command) {
           case "play":
-            this._showClickToPlayNotification(msg.objects.plugin, true);
+            this._showClickToPlayNotification(contextMenu.getTarget(msg, "plugin"), true);
             break;
           case "hide":
-            this.hideClickToPlayOverlay(msg.objects.plugin);
+            this.hideClickToPlayOverlay(contextMenu.getTarget(msg, "plugin"));
             break;
         }
         break;
@@ -328,22 +330,21 @@ PluginContent.prototype = {
                    [right, bottom],
                    [centerX, centerY]];
 
-    if (right <= 0 || top <= 0) {
-      return false;
-    }
-
     let contentWindow = plugin.ownerGlobal;
     let cwu = contentWindow.QueryInterface(Ci.nsIInterfaceRequestor)
                            .getInterface(Ci.nsIDOMWindowUtils);
 
     for (let [x, y] of points) {
+      if (x < 0 || y < 0) {
+        continue;
+      }
       let el = cwu.elementFromPoint(x, y, true, true);
-      if (el !== plugin) {
-        return false;
+      if (el === plugin) {
+        return true;
       }
     }
 
-    return true;
+    return false;
   },
 
   addLinkClickCallback(linkNode, callbackName /* callbackArgs...*/) {

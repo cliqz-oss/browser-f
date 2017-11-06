@@ -5,7 +5,10 @@
 XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
                                   "resource://gre/modules/AddonManager.jsm");
 
+AddonTestUtils.init(this);
+
 add_task(async function setup() {
+  AddonTestUtils.overrideCertDB();
   await ExtensionTestUtils.startAddonManager();
 });
 
@@ -15,11 +18,11 @@ add_task(async function test_experiments_api() {
       <RDF xmlns="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
            xmlns:em="http://www.mozilla.org/2004/em-rdf#">
           <Description about="urn:mozilla:install-manifest"
-              em:id="meh@experiments.addons.mozilla.org"
-              em:name="Meh Experiment"
+              em:id="fooBar@experiments.addons.mozilla.org"
+              em:name="FooBar Experiment"
               em:type="256"
               em:version="0.1"
-              em:description="Meh experiment"
+              em:description="FooBar experiment"
               em:creator="Mozilla">
 
               <em:targetApplication>
@@ -40,9 +43,9 @@ add_task(async function test_experiments_api() {
       class API extends ExtensionAPI {
         getAPI(context) {
           return {
-            meh: {
+            fooBar: {
               hello(text) {
-                console.log('meh.hello API called', text);
+                console.log('fooBar.hello API called', text);
                 Services.obs.notifyObservers(null, "webext-api-hello", text);
               }
             }
@@ -53,9 +56,9 @@ add_task(async function test_experiments_api() {
 
     "schema.json": [
       {
-        "namespace": "meh",
-        "description": "All full of meh.",
-        "permissions": ["experiments.meh"],
+        "namespace": "fooBar",
+        "description": "All full of fooBar.",
+        "permissions": ["experiments.fooBar"],
         "functions": [
           {
             "name": "hello",
@@ -72,8 +75,8 @@ add_task(async function test_experiments_api() {
 
   let addonFile = Extension.generateXPI({
     manifest: {
-      applications: {gecko: {id: "meh@web.extension"}},
-      permissions: ["experiments.meh"],
+      applications: {gecko: {id: "fooBar@web.extension"}},
+      permissions: ["experiments.fooBar"],
     },
 
     background() {
@@ -83,9 +86,9 @@ add_task(async function test_experiments_api() {
       // and only calling hello() with the magic string if the call with
       // bad arguments throws.
       try {
-        browser.meh.hello("I should not see this", "since two arguments are bad");
+        browser.fooBar.hello("I should not see this", "since two arguments are bad");
       } catch (err) {
-        browser.meh.hello("Here I am");
+        browser.fooBar.hello("Here I am");
       }
     },
   });
@@ -95,8 +98,8 @@ add_task(async function test_experiments_api() {
       applications: {gecko: {id: "boring@web.extension"}},
     },
     background() {
-      if (browser.meh) {
-        browser.meh.hello("Here I should not be");
+      if (browser.fooBar) {
+        browser.fooBar.hello("Here I should not be");
       }
     },
   });
@@ -129,8 +132,8 @@ add_task(async function test_experiments_api() {
   // Install API add-on.
   let apiAddon = await AddonManager.installTemporaryAddon(apiAddonFile);
 
-  let {ExtensionAPIs} = Cu.import("resource://gre/modules/ExtensionAPI.jsm", {});
-  ok(ExtensionAPIs.apis.has("meh"), "Should have meh API.");
+  let {ExtensionAPIs} = Cu.import("resource://gre/modules/ExtensionCommon.jsm", {}).ExtensionCommon;
+  ok(ExtensionAPIs.apis.has("fooBar"), "Should have fooBar API.");
 
 
   // Install boring WebExtension add-on.
@@ -147,6 +150,31 @@ add_task(async function test_experiments_api() {
 
   let hello = await promise;
   equal(hello, "Here I am", "Should get hello from add-on");
+
+  // Install management test add-on.
+  let managementAddon = ExtensionTestUtils.loadExtension({
+    manifest: {
+      applications: {gecko: {id: "management@web.extension"}},
+      permissions: ["management"],
+    },
+    async background() {
+      // Should find the simple extension.
+      let normalAddon = await browser.management.get("boring@web.extension");
+      browser.test.assertEq(normalAddon.id, "boring@web.extension", "Found boring addon");
+
+      try {
+        // Not allowed to get the API experiment.
+        await browser.management.get("fooBar@experiments.addons.mozilla.org");
+      } catch (e) {
+        browser.test.sendMessage("done");
+      }
+    },
+    useAddonManager: "temporary",
+  });
+
+  await managementAddon.startup();
+  await managementAddon.awaitMessage("done");
+  await managementAddon.unload();
 
   // Cleanup.
   apiAddon.uninstall();

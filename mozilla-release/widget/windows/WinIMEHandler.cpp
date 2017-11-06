@@ -43,6 +43,7 @@ namespace widget {
 nsWindow* IMEHandler::sFocusedWindow = nullptr;
 InputContextAction::Cause IMEHandler::sLastContextActionCause =
   InputContextAction::CAUSE_UNKNOWN;
+bool IMEHandler::sForceDisableCurrentIMM_IME = false;
 bool IMEHandler::sPluginHasFocus = false;
 
 #ifdef NS_ENABLE_TSF
@@ -82,6 +83,8 @@ IMEHandler::Initialize()
 #endif // #ifdef NS_ENABLE_TSF
 
   IMMHandler::Initialize();
+
+  sForceDisableCurrentIMM_IME = IMMHandler::IsActiveIMEInBlockList();
 }
 
 // static
@@ -185,8 +188,23 @@ IMEHandler::ProcessMessage(nsWindow* aWindow, UINT aMessage,
   }
 #endif // #ifdef NS_ENABLE_TSF
 
-  return IMMHandler::ProcessMessage(aWindow, aMessage, aWParam, aLParam,
-                                    aResult);
+  bool keepGoing =
+    IMMHandler::ProcessMessage(aWindow, aMessage, aWParam, aLParam, aResult);
+
+  // If user changes active IME to an IME which is listed in our block list,
+  // we should disassociate IMC from the window for preventing the IME to work
+  // and crash.
+  if (aMessage == WM_INPUTLANGCHANGE) {
+    bool disableIME = IMMHandler::IsActiveIMEInBlockList();
+    if (disableIME != sForceDisableCurrentIMM_IME) {
+      bool enable =
+        !disableIME && WinUtils::IsIMEEnabled(aWindow->InputContextRef());
+      AssociateIMEContext(aWindow, enable);
+      sForceDisableCurrentIMM_IME = disableIME;
+    }
+  }
+
+  return keepGoing;
 }
 
 #ifdef NS_ENABLE_TSF
@@ -421,7 +439,8 @@ IMEHandler::OnDestroyWindow(nsWindow* aWindow)
 bool
 IMEHandler::NeedsToAssociateIMC()
 {
-  return !sAssociateIMCOnlyWhenIMM_IMEActive || !IsIMMActive();
+  return !sForceDisableCurrentIMM_IME &&
+         (!sAssociateIMCOnlyWhenIMM_IMEActive || !IsIMMActive());
 }
 #endif // #ifdef NS_ENABLE_TSF
 
@@ -503,6 +522,22 @@ IMEHandler::AssociateIMEContext(nsWindowBase* aWindowBase, bool aEnable)
 void
 IMEHandler::InitInputContext(nsWindow* aWindow, InputContext& aInputContext)
 {
+  MOZ_ASSERT(aWindow);
+  MOZ_ASSERT(aWindow->GetWindowHandle(),
+             "IMEHandler::SetInputContext() requires non-nullptr HWND");
+
+  static bool sInitialized = false;
+  if (!sInitialized) {
+    sInitialized = true;
+    // Some TIPs like QQ Input (Simplified Chinese) may need normal window
+    // (i.e., windows except message window) when initializing themselves.
+    // Therefore, we need to initialize TSF/IMM modules after first normal
+    // window is created.  InitInputContext() should be called immediately
+    // after creating each normal window, so, here is a good place to
+    // initialize these modules.
+    Initialize();
+  }
+
   // For a11y, the default enabled state should be 'enabled'.
   aInputContext.mIMEState.mEnabled = IMEState::ENABLED;
 
@@ -597,6 +632,32 @@ IMEHandler::SetInputScopeForIMM32(nsWindow* aWindow,
       static const InputScope inputScopes[] = { IS_URL };
       scopes = &inputScopes[0];
       arraySize = ArrayLength(inputScopes);
+    } else if (aHTMLInputInputmode.EqualsLiteral("mozAwesomebar")) {
+      // Even if Awesomebar has focus, user may not input URL directly.
+      // However, on-screen keyboard for URL should be shown because it has
+      // some useful additional keys like ".com" and they are not hindrances
+      // even when inputting non-URL text, e.g., words to search something in
+      // the web.  On the other hand, MS-IME for Japanese and Google Japanese
+      // Input make their open state "closed" automatically if we notify them
+      // of URL as the input scope.  However, this is very annoying for the
+      // users when they try to input some words to search the web or
+      // bookmark/history items.  Therefore, if they are active, we need to
+      // notify them of the default input scope for avoiding this issue.
+      // FYI: We cannot check active TIP without TSF.  Therefore, if it's
+      //      not in TSF mode, we can check only if active IMM-IME is Google
+      //      Japanese Input.  Google Japanese Input is a TIP of TSF basically.
+      //      However, if the OS is Win7 or it's installed on Win7 but has not
+      //      been updated yet even after the OS is upgraded to Win8 or later,
+      //      it's installed as IMM-IME.
+      if (IMMHandler::IsGoogleJapaneseInputActive()) {
+        static const InputScope inputScopes[] = { IS_DEFAULT };
+        scopes = &inputScopes[0];
+        arraySize = ArrayLength(inputScopes);
+      } else {
+        static const InputScope inputScopes[] = { IS_URL };
+        scopes = &inputScopes[0];
+        arraySize = ArrayLength(inputScopes);
+      }
     } else if (aHTMLInputInputmode.EqualsLiteral("email")) {
       static const InputScope inputScopes[] = { IS_EMAIL_SMTPEMAILADDRESS };
       scopes = &inputScopes[0];

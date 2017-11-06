@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+"use strict";
 
 // Based on:
 // https://bugzilla.mozilla.org/show_bug.cgi?id=549539
@@ -69,6 +70,7 @@ SpecialPowersObserver.prototype._loadFrameScript = function() {
   if (!this._isFrameScriptLoaded) {
     // Register for any messages our API needs us to handle
     this._messageManager.addMessageListener("SPPrefService", this);
+    this._messageManager.addMessageListener("SPProcessCrashManagerWait", this);
     this._messageManager.addMessageListener("SPProcessCrashService", this);
     this._messageManager.addMessageListener("SPPingService", this);
     this._messageManager.addMessageListener("SpecialPowers.Quit", this);
@@ -113,7 +115,7 @@ SpecialPowersObserver.prototype.init = function() {
   // Register special testing modules.
   var testsURI = Cc["@mozilla.org/file/directory_service;1"].
                    getService(Ci.nsIProperties).
-                   get("ProfD", Ci.nsILocalFile);
+                   get("ProfD", Ci.nsIFile);
   testsURI.append("tests.manifest");
   var ioSvc = Cc["@mozilla.org/network/io-service;1"].
                 getService(Ci.nsIIOService);
@@ -132,13 +134,14 @@ SpecialPowersObserver.prototype.uninit = function() {
   var obs = Services.obs;
   obs.removeObserver(this, "chrome-document-global-created");
   obs.removeObserver(this, "http-on-modify-request");
-  this._registerObservers._topics.forEach(function(element) {
+  this._registerObservers._topics.forEach((element) => {
     obs.removeObserver(this._registerObservers, element);
   });
   this._removeProcessCrashObservers();
 
   if (this._isFrameScriptLoaded) {
     this._messageManager.removeMessageListener("SPPrefService", this);
+    this._messageManager.removeMessageListener("SPProcessCrashManagerWait", this);
     this._messageManager.removeMessageListener("SPProcessCrashService", this);
     this._messageManager.removeMessageListener("SPPingService", this);
     this._messageManager.removeMessageListener("SpecialPowers.Quit", this);
@@ -233,9 +236,7 @@ SpecialPowersObserver.prototype.receiveMessage = function(aMessage) {
   switch (aMessage.name) {
     case "SPPingService":
       if (aMessage.json.op == "ping") {
-        aMessage.target
-                .QueryInterface(Ci.nsIFrameLoaderOwner)
-                .frameLoader
+        aMessage.target.frameLoader
                 .messageManager
                 .sendAsyncMessage("SPPingService", { op: "pong" });
       }
@@ -256,7 +257,7 @@ SpecialPowersObserver.prototype.receiveMessage = function(aMessage) {
       try {
         let promises = [];
         aMessage.data.forEach(function(request) {
-          const filePerms = 0666; // eslint-disable-line no-octal
+          const filePerms = 0o666;
           let testFile = Services.dirsvc.get("ProfD", Ci.nsIFile);
           if (request.name) {
             testFile.appendRelativePath(request.name);
@@ -277,22 +278,16 @@ SpecialPowersObserver.prototype.receiveMessage = function(aMessage) {
         });
 
         Promise.all(promises).then(function() {
-          aMessage.target
-                  .QueryInterface(Ci.nsIFrameLoaderOwner)
-                  .frameLoader
+          aMessage.target.frameLoader
                   .messageManager
                   .sendAsyncMessage("SpecialPowers.FilesCreated", filePaths);
         }, function(e) {
-          aMessage.target
-                  .QueryInterface(Ci.nsIFrameLoaderOwner)
-                  .frameLoader
+          aMessage.target.frameLoader
                   .messageManager
                   .sendAsyncMessage("SpecialPowers.FilesError", e.toString());
         });
       } catch (e) {
-          aMessage.target
-                  .QueryInterface(Ci.nsIFrameLoaderOwner)
-                  .frameLoader
+          aMessage.target.frameLoader
                   .messageManager
                   .sendAsyncMessage("SpecialPowers.FilesError", e.toString());
       }

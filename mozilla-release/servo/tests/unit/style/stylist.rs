@@ -5,22 +5,19 @@
 use cssparser::SourceLocation;
 use euclid::ScaleFactor;
 use euclid::TypedSize2D;
-use html5ever::LocalName;
 use selectors::parser::{AncestorHashes, Selector};
-use selectors::parser::LocalName as LocalNameSelector;
 use servo_arc::Arc;
 use servo_atoms::Atom;
 use style::context::QuirksMode;
 use style::media_queries::{Device, MediaType};
 use style::properties::{PropertyDeclarationBlock, PropertyDeclaration};
 use style::properties::{longhands, Importance};
-use style::rule_tree::CascadeLevel;
-use style::selector_map::{self, SelectorMap};
+use style::selector_map::SelectorMap;
 use style::selector_parser::{SelectorImpl, SelectorParser};
 use style::shared_lock::SharedRwLock;
 use style::stylesheets::StyleRule;
 use style::stylist::{Stylist, Rule};
-use style::stylist::needs_revalidation;
+use style::stylist::needs_revalidation_for_testing;
 use style::thread_state;
 
 /// Helper method to get some Rules from selector strings.
@@ -51,19 +48,6 @@ fn get_mock_rules(css_selectors: &[&str]) -> (Vec<Vec<Rule>>, SharedRwLock) {
     }).collect(), shared_lock)
 }
 
-fn get_mock_map(selectors: &[&str]) -> (SelectorMap<Rule>, SharedRwLock) {
-    let mut map = SelectorMap::<Rule>::new();
-    let (selector_rules, shared_lock) = get_mock_rules(selectors);
-
-    for rules in selector_rules.into_iter() {
-        for rule in rules.into_iter() {
-            map.insert(rule, QuirksMode::NoQuirks)
-        }
-    }
-
-    (map, shared_lock)
-}
-
 fn parse_selectors(selectors: &[&str]) -> Vec<Selector<SelectorImpl>> {
     selectors.iter()
              .map(|x| SelectorParser::parse_author_origin_no_namespace(x).unwrap().0
@@ -83,13 +67,12 @@ fn test_revalidation_selectors() {
         "div > span",
 
         // ID selectors.
-        "#foo1", // FIXME(bz) This one should not be a revalidation
-                // selector once we fix
-                // https://bugzilla.mozilla.org/show_bug.cgi?id=1369611
+        "#foo1",
         "#foo2::before",
         "#foo3 > span",
-        "#foo1 > span", // FIXME(bz) This one should not be a
-                        // revalidation selector either.
+        "#foo1 > span", // FIXME(bz): This one should not be a
+                        // revalidation selector, since #foo1 should be in the
+                        // rule hash.
 
         // Attribute selectors.
         "div[foo]",
@@ -126,13 +109,11 @@ fn test_revalidation_selectors() {
         // Selectors in the ancestor chain (needed for cousin sharing).
         "p:first-child span",
     ]).into_iter()
-      .filter(|s| needs_revalidation(&s))
+      .filter(|s| needs_revalidation_for_testing(&s))
       .collect::<Vec<_>>();
 
     let reference = parse_selectors(&[
         // ID selectors.
-        "#foo1",
-        "#foo2::before",
         "#foo3 > span",
         "#foo1 > span",
 
@@ -184,72 +165,36 @@ fn test_rule_ordering_same_specificity() {
             "The rule that comes later should win.");
 }
 
-
-#[test]
-fn test_get_id_name() {
-    let (rules_list, _) = get_mock_rules(&[".intro", "#top"]);
-    assert_eq!(selector_map::get_id_name(rules_list[0][0].selector.iter()), None);
-    assert_eq!(selector_map::get_id_name(rules_list[1][0].selector.iter()), Some(Atom::from("top")));
-}
-
-#[test]
-fn test_get_class_name() {
-    let (rules_list, _) = get_mock_rules(&[".intro.foo", "#top"]);
-    assert_eq!(selector_map::get_class_name(rules_list[0][0].selector.iter()), Some(Atom::from("intro")));
-    assert_eq!(selector_map::get_class_name(rules_list[1][0].selector.iter()), None);
-}
-
-#[test]
-fn test_get_local_name() {
-    let (rules_list, _) = get_mock_rules(&["img.foo", "#top", "IMG", "ImG"]);
-    let check = |i: usize, names: Option<(&str, &str)>| {
-        assert!(selector_map::get_local_name(rules_list[i][0].selector.iter())
-                == names.map(|(name, lower_name)| LocalNameSelector {
-                        name: LocalName::from(name),
-                        lower_name: LocalName::from(lower_name) }))
-    };
-    check(0, Some(("img", "img")));
-    check(1, None);
-    check(2, Some(("IMG", "img")));
-    check(3, Some(("ImG", "img")));
-}
-
 #[test]
 fn test_insert() {
     let (rules_list, _) = get_mock_rules(&[".intro.foo", "#top"]);
     let mut selector_map = SelectorMap::new();
-    selector_map.insert(rules_list[1][0].clone(), QuirksMode::NoQuirks);
+    selector_map.insert(rules_list[1][0].clone(), QuirksMode::NoQuirks)
+                .expect("OOM");
     assert_eq!(1, selector_map.id_hash.get(&Atom::from("top"), QuirksMode::NoQuirks).unwrap()[0].source_order);
-    selector_map.insert(rules_list[0][0].clone(), QuirksMode::NoQuirks);
-    assert_eq!(0, selector_map.class_hash.get(&Atom::from("intro"), QuirksMode::NoQuirks).unwrap()[0].source_order);
-    assert!(selector_map.class_hash.get(&Atom::from("foo"), QuirksMode::NoQuirks).is_none());
-}
-
-#[test]
-fn test_get_universal_rules() {
-    thread_state::initialize(thread_state::LAYOUT);
-    let (map, _shared_lock) = get_mock_map(&["*|*", "#foo > *|*", "*|* > *|*", ".klass", "#id"]);
-
-    let decls = map.get_universal_rules(CascadeLevel::UserNormal);
-
-    assert_eq!(decls.len(), 1, "{:?}", decls);
+    selector_map.insert(rules_list[0][0].clone(), QuirksMode::NoQuirks)
+                .expect("OOM");
+    assert_eq!(0, selector_map.class_hash.get(&Atom::from("foo"), QuirksMode::NoQuirks).unwrap()[0].source_order);
+    assert!(selector_map.class_hash.get(&Atom::from("intro"), QuirksMode::NoQuirks).is_none());
 }
 
 fn mock_stylist() -> Stylist {
-    let device = Device::new(MediaType::Screen, TypedSize2D::new(0f32, 0f32), ScaleFactor::new(1.0));
+    let device = Device::new(MediaType::screen(), TypedSize2D::new(0f32, 0f32), ScaleFactor::new(1.0));
     Stylist::new(device, QuirksMode::NoQuirks)
 }
 
 #[test]
 fn test_stylist_device_accessors() {
+    thread_state::initialize(thread_state::LAYOUT);
     let stylist = mock_stylist();
-    assert_eq!(stylist.device().media_type(), MediaType::Screen);
+    assert_eq!(stylist.device().media_type(), MediaType::screen());
     let mut stylist_mut = mock_stylist();
-    assert_eq!(stylist_mut.device_mut().media_type(), MediaType::Screen);
+    assert_eq!(stylist_mut.device_mut().media_type(), MediaType::screen());
 }
 
 #[test]
 fn test_stylist_rule_tree_accessors() {
+    thread_state::initialize(thread_state::LAYOUT);
     let stylist = mock_stylist();
     stylist.rule_tree();
     stylist.rule_tree().root();

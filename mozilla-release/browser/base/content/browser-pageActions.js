@@ -47,11 +47,31 @@ var BrowserPageActions = {
    * Inits.  Call to init.
    */
   init() {
-    if (!AppConstants.MOZ_PHOTON_THEME) {
-      return;
-    }
+    this.placeAllActions();
+  },
+
+  /**
+   * Places all registered actions.
+   */
+  placeAllActions() {
+    // Place actions in the panel.  Notify of onBeforePlacedInWindow too.
     for (let action of PageActions.actions) {
-      this.placeAction(action, PageActions.insertBeforeActionIDInUrlbar(action));
+      action.onBeforePlacedInWindow(window);
+      this.placeActionInPanel(action);
+    }
+
+    // Place actions in the urlbar.  Do this in reverse order.  The reason is
+    // subtle.  If there were no urlbar nodes already in markup (like the
+    // bookmark star button), then doing this in forward order would be fine.
+    // Forward order means that the insert-before relationship is always broken:
+    // there's never a next-sibling node before which to insert a new node, so
+    // node.insertBefore() is always passed null, and nodes are always appended.
+    // That will break the position of nodes that should be inserted before
+    // nodes that are in markup, which in turn can break other nodes.
+    let actionsInUrlbar = PageActions.actionsInUrlbar;
+    for (let i = actionsInUrlbar.length - 1; i >= 0; i--) {
+      let action = actionsInUrlbar[i];
+      this.placeActionInUrlbar(action);
     }
   },
 
@@ -60,20 +80,11 @@ var BrowserPageActions = {
    *
    * @param  action (PageActions.Action, required)
    *         The action to place.
-   * @param  panelInsertBeforeID (string, required)
-   *         The ID of the action in the panel before which the given action
-   *         action should be inserted.
-   * @param  urlbarInsertBeforeID (string, required)
-   *         If the action is shown in the urlbar, then this is ID of the action
-   *         in the urlbar before which the given action should be inserted.
    */
-  placeAction(action, panelInsertBeforeID, urlbarInsertBeforeID) {
-    if (action.__isSeparator) {
-      this._appendPanelSeparator(action);
-      return;
-    }
-    this.placeActionInPanel(action, panelInsertBeforeID);
-    this.placeActionInUrlbar(action, urlbarInsertBeforeID);
+  placeAction(action) {
+    action.onBeforePlacedInWindow(window);
+    this.placeActionInPanel(action);
+    this.placeActionInUrlbar(action);
   },
 
   /**
@@ -81,11 +92,9 @@ var BrowserPageActions = {
    *
    * @param  action (PageActions.Action, required)
    *         The action to place.
-   * @param  insertBeforeID (string, required)
-   *         The ID of the action in the panel before which the given action
-   *         action should be inserted.
    */
-  placeActionInPanel(action, insertBeforeID) {
+  placeActionInPanel(action) {
+    let insertBeforeID = PageActions.nextActionIDInPanel(action);
     let id = this._panelButtonNodeIDForActionID(action.id);
     let node = document.getElementById(id);
     if (!node) {
@@ -104,10 +113,14 @@ var BrowserPageActions = {
         action.subview.onPlaced(panelViewNode);
       }
     }
-    return node;
   },
 
   _makePanelButtonNodeForAction(action) {
+    if (action.__isSeparator) {
+      let node = document.createElement("toolbarseparator");
+      return [node, null];
+    }
+
     let buttonNode = document.createElement("toolbarbutton");
     buttonNode.classList.add(
       "subviewbutton",
@@ -131,17 +144,7 @@ var BrowserPageActions = {
       this.multiViewNode.appendChild(panelViewNode);
     }
     buttonNode.addEventListener("command", event => {
-      if (panelViewNode) {
-        action.subview.onShowing(panelViewNode);
-        this.multiViewNode.showSubView(panelViewNode, buttonNode);
-        return;
-      }
-      if (action.wantsIframe) {
-        this._toggleTempPanelForAction(action);
-        return;
-      }
-      this.panelNode.hidePopup();
-      action.onCommand(event, buttonNode);
+      this.doCommandForAction(action, event, buttonNode);
     });
     return [buttonNode, panelViewNode];
   },
@@ -174,22 +177,32 @@ var BrowserPageActions = {
     return panelViewNode;
   },
 
-  _toggleTempPanelForAction(action) {
-    let panelNodeID = this._tempPanelID;
-    let panelNode = document.getElementById(panelNodeID);
+  _toggleActivatedActionPanelForAction(action) {
+    let panelNode = this.activatedActionPanelNode;
     if (panelNode) {
       panelNode.hidePopup();
-      return;
+      return null;
     }
 
+    // Before creating the panel, get the anchor node for it because it'll throw
+    // if there isn't one (which shouldn't happen, but still).
+    let anchorNode = this.panelAnchorNodeForAction(action);
+
     panelNode = document.createElement("panel");
-    panelNode.id = panelNodeID;
+    panelNode.id = this._activatedActionPanelID;
     panelNode.classList.add("cui-widget-panel");
+    panelNode.setAttribute("actionID", action.id);
     panelNode.setAttribute("role", "group");
     panelNode.setAttribute("type", "arrow");
     panelNode.setAttribute("flip", "slide");
     panelNode.setAttribute("noautofocus", "true");
     panelNode.setAttribute("tabspecific", "true");
+    panelNode.setAttribute("photon", "true");
+
+    // For tests.
+    if (this._disableActivatedActionPanelAnimation) {
+      panelNode.setAttribute("animate", "false");
+    }
 
     let panelViewNode = null;
     let iframeNode = null;
@@ -208,7 +221,17 @@ var BrowserPageActions = {
     let popupSet = document.getElementById("mainPopupSet");
     popupSet.appendChild(panelNode);
     panelNode.addEventListener("popuphidden", () => {
+      if (iframeNode) {
+        action.onIframeHidden(iframeNode, panelNode);
+      }
       panelNode.remove();
+    }, { once: true });
+
+    panelNode.addEventListener("popuphiding", () => {
+      if (iframeNode) {
+        action.onIframeHiding(iframeNode, panelNode);
+      }
+      anchorNode.removeAttribute("open");
     }, { once: true });
 
     if (panelViewNode) {
@@ -216,20 +239,59 @@ var BrowserPageActions = {
       action.subview.onShowing(panelViewNode);
     }
 
+    // Hide the main page action panel before showing the activated-action
+    // panel.
     this.panelNode.hidePopup();
-
-    let urlbarNodeID = this._urlbarButtonNodeIDForActionID(action.id);
-    let anchorNode =
-      document.getElementById(urlbarNodeID) || this.mainButtonNode;
     panelNode.openPopup(anchorNode, "bottomcenter topright");
+    anchorNode.setAttribute("open", "true");
 
     if (iframeNode) {
       action.onIframeShown(iframeNode, panelNode);
     }
+
+    return panelNode;
   },
 
-  get _tempPanelID() {
-    return "pageActionTempPanel";
+  /**
+   * Returns the node in the urlbar to which popups for the given action should
+   * be anchored.  If the action is null, a sensible anchor is returned.
+   *
+   * @param  action (PageActions.Action, optional)
+   *         The action you want to anchor.
+   * @return (DOM node, nonnull) The node to which the action should be
+   *         anchored.
+   */
+  panelAnchorNodeForAction(action) {
+    // Try each of the following nodes in order, using the first that's visible.
+    let potentialAnchorNodeIDs = [
+      action && action.anchorIDOverride,
+      action && this._urlbarButtonNodeIDForActionID(action.id),
+      this.mainButtonNode.id,
+      "identity-icon",
+    ];
+    let dwu = window.QueryInterface(Ci.nsIInterfaceRequestor)
+                    .getInterface(Ci.nsIDOMWindowUtils);
+    for (let id of potentialAnchorNodeIDs) {
+      if (id) {
+        let node = document.getElementById(id);
+        if (node && !node.hidden) {
+          let bounds = dwu.getBoundsWithoutFlushing(node);
+          if (bounds.height > 0 && bounds.width > 0) {
+            return node;
+          }
+        }
+      }
+    }
+    let id = action ? action.id : "<no action>";
+    throw new Error(`PageActions: No anchor node for ${id}`);
+  },
+
+  get activatedActionPanelNode() {
+    return document.getElementById(this._activatedActionPanelID);
+  },
+
+  get _activatedActionPanelID() {
+    return "pageActionActivatedActionPanel";
   },
 
   /**
@@ -237,11 +299,9 @@ var BrowserPageActions = {
    *
    * @param  action (PageActions.Action, required)
    *         The action to place.
-   * @param  insertBeforeID (string, required)
-   *         If the action is shown in the urlbar, then this is ID of the action
-   *         in the urlbar before which the given action should be inserted.
    */
-  placeActionInUrlbar(action, insertBeforeID) {
+  placeActionInUrlbar(action) {
+    let insertBeforeID = PageActions.nextActionIDInUrlbar(action);
     let id = this._urlbarButtonNodeIDForActionID(action.id);
     let node = document.getElementById(id);
 
@@ -253,7 +313,7 @@ var BrowserPageActions = {
           node.remove();
         }
       }
-      return null;
+      return;
     }
 
     let newlyPlaced = false;
@@ -289,41 +349,31 @@ var BrowserPageActions = {
         }
       }
     }
-
-    return node;
   },
 
   _makeUrlbarButtonNode(action) {
     let buttonNode = document.createElement("image");
-    buttonNode.classList.add("urlbar-icon");
+    buttonNode.classList.add("urlbar-icon", "urlbar-page-action");
+    buttonNode.setAttribute("role", "button");
     if (action.tooltip) {
       buttonNode.setAttribute("tooltiptext", action.tooltip);
     }
     if (action.iconURL) {
       buttonNode.style.listStyleImage = `url('${action.iconURL}')`;
     }
+    buttonNode.setAttribute("context", "pageActionPanelContextMenu");
+    buttonNode.addEventListener("contextmenu", event => {
+      BrowserPageActions.onContextMenu(event);
+    });
     if (action.nodeAttributes) {
       for (let name in action.nodeAttributes) {
         buttonNode.setAttribute(name, action.nodeAttributes[name]);
       }
     }
     buttonNode.addEventListener("click", event => {
-      if (event.button != 0) {
-        return;
-      }
-      if (action.subview || action.wantsIframe) {
-        this._toggleTempPanelForAction(action);
-        return;
-      }
-      action.onCommand(event, buttonNode);
+      this.doCommandForAction(action, event, buttonNode);
     });
     return buttonNode;
-  },
-
-  _appendPanelSeparator(action) {
-    let node = document.createElement("toolbarseparator");
-    node.id = this._panelButtonNodeIDForActionID(action.id);
-    this.mainViewBodyNode.appendChild(node);
   },
 
   /**
@@ -410,6 +460,34 @@ var BrowserPageActions = {
     }
   },
 
+  doCommandForAction(action, event, buttonNode) {
+    if (event && event.type == "click" && event.button != 0) {
+      return;
+    }
+    PageActions.logTelemetry("used", action, buttonNode);
+    // If we're in the panel, open a subview inside the panel:
+    // Note that we can't use this.panelNode.contains(buttonNode) here
+    // because of XBL boundaries breaking ELement.contains.
+    if (action.subview && buttonNode && buttonNode.closest("panel") == this.panelNode) {
+      let panelViewNodeID = this._panelViewNodeIDForActionID(action.id, false);
+      let panelViewNode = document.getElementById(panelViewNodeID);
+      action.subview.onShowing(panelViewNode);
+      this.multiViewNode.showSubView(panelViewNode, buttonNode);
+      return;
+    }
+    // Otherwise, hide the main popup in case it was open:
+    this.panelNode.hidePopup();
+
+    // Toggle the activated action's panel if necessary
+    if (action.subview || action.wantsIframe) {
+      this._toggleActivatedActionPanelForAction(action);
+      return;
+    }
+
+    // Otherwise, run the action.
+    action.onCommand(event, buttonNode);
+  },
+
   /**
    * Returns the action for a node.
    *
@@ -423,7 +501,22 @@ var BrowserPageActions = {
       return null;
     }
     let actionID = this._actionIDForNodeID(node.id);
-    return PageActions.actionForID(actionID);
+    let action = PageActions.actionForID(actionID);
+    if (!action) {
+      // The given node may be an ancestor of a node corresponding to an action,
+      // like how #star-button is contained in #star-button-box, the latter
+      // being the bookmark action's node.  Look up the ancestor chain.
+      for (let n = node.parentNode; n && !action; n = n.parentNode) {
+        if (n.id == "page-action-buttons" || n.localName == "panelview") {
+          // We reached the page-action-buttons or panelview container.
+          // Stop looking; no acton was found.
+          break;
+        }
+        actionID = this._actionIDForNodeID(n.id);
+        action = PageActions.actionForID(actionID);
+      }
+    }
+    return action;
   },
 
   // The ID of the given action's top-level button in the panel.
@@ -459,7 +552,16 @@ var BrowserPageActions = {
       return null;
     }
     let match = nodeID.match(/^pageAction-(?:panel|urlbar)-(.+)$/);
-    return match ? match[1] : null;
+    if (match) {
+      return match[1];
+    }
+    // Check all the urlbar ID overrides.
+    for (let action of PageActions.actions) {
+      if (action.urlbarIDOverride && action.urlbarIDOverride == nodeID) {
+        return action.id;
+      }
+    }
+    return null;
   },
 
   /**
@@ -470,19 +572,35 @@ var BrowserPageActions = {
    */
   mainButtonClicked(event) {
     event.stopPropagation();
-    if ((event.type == "click" && event.button != 0) ||
+    if ((event.type == "mousedown" && event.button != 0) ||
         (event.type == "keypress" && event.charCode != KeyEvent.DOM_VK_SPACE &&
          event.keyCode != KeyEvent.DOM_VK_RETURN)) {
       return;
     }
 
-    // If the temp panel is open and anchored to the main button, close it.
-    let tempPanel = document.getElementById(this._tempPanelID);
-    if (tempPanel && tempPanel.anchorNode.id == this.mainButtonNode.id) {
-      tempPanel.hidePopup();
+    // If the activated-action panel is open and anchored to the main button,
+    // close it.
+    let panelNode = this.activatedActionPanelNode;
+    if (panelNode && panelNode.anchorNode.id == this.mainButtonNode.id) {
+      panelNode.hidePopup();
       return;
     }
 
+    if (this.panelNode.state == "open") {
+      this.panelNode.hidePopup();
+    } else if (this.panelNode.state == "closed") {
+      this.showPanel(event);
+    }
+  },
+
+  /**
+   * Show the page action panel
+   *
+   * @param  event (DOM event, optional)
+   *         The event that triggers showing the panel. (such as a mouse click,
+   *         if the user clicked something to open the panel)
+   */
+  showPanel(event = null) {
     for (let action of PageActions.actions) {
       let buttonNodeID = this._panelButtonNodeIDForActionID(action.id);
       let buttonNode = document.getElementById(buttonNodeID);
@@ -490,6 +608,10 @@ var BrowserPageActions = {
     }
 
     this.panelNode.hidden = false;
+    this.panelNode.addEventListener("popuphiding", () => {
+      this.mainButtonNode.removeAttribute("open");
+    }, {once: true});
+    this.mainButtonNode.setAttribute("open", "true");
     this.panelNode.openPopup(this.mainButtonNode, {
       position: "bottomcenter topright",
       triggerEvent: event,
@@ -506,6 +628,10 @@ var BrowserPageActions = {
   onContextMenu(event) {
     let node = event.originalTarget;
     this._contextAction = this.actionForNode(node);
+    // Don't show the menu if there's no action where the user clicked!
+    if (!this._contextAction) {
+      event.preventDefault();
+    }
   },
 
   /**
@@ -543,6 +669,8 @@ var BrowserPageActions = {
     if (!this._contextAction) {
       return;
     }
+    let telemetryType = this._contextAction.shownInUrlbar ? "removed" : "added";
+    PageActions.logTelemetry(telemetryType, this._contextAction);
     this._contextAction.shownInUrlbar = !this._contextAction.shownInUrlbar;
   },
 
@@ -581,6 +709,49 @@ var BrowserPageActions = {
   },
 };
 
+var BrowserPageActionFeedback = {
+  /**
+   * The feedback page action panel DOM node (DOM node)
+   */
+  get panelNode() {
+    delete this.panelNode;
+    return this.panelNode = document.getElementById("pageActionFeedback");
+  },
+
+  get feedbackAnimationBox() {
+    delete this.feedbackAnimationBox;
+    return this.feedbackAnimationBox = document.getElementById("pageActionFeedbackAnimatableBox");
+  },
+
+  get feedbackLabel() {
+    delete this.feedbackLabel;
+    return this.feedbackLabel = document.getElementById("pageActionFeedbackMessage");
+  },
+
+  show(action, event) {
+    this.feedbackLabel.textContent = this.panelNode.getAttribute(action.id + "Feedback");
+    this.panelNode.hidden = false;
+
+    let anchor = BrowserPageActions.panelAnchorNodeForAction(action);
+    this.panelNode.openPopup(anchor, {
+      position: "bottomcenter topright",
+      triggerEvent: event,
+    });
+
+    this.panelNode.addEventListener("popupshown", () => {
+      this.feedbackAnimationBox.setAttribute("animate", "true");
+    }, {once: true});
+    this.panelNode.addEventListener("popuphidden", () => {
+      this.feedbackAnimationBox.removeAttribute("animate");
+    }, {once: true});
+
+    // The timeout value used here allows the panel to stay open for
+    // 1 second after the text transition (duration=120ms) has finished.
+    setTimeout(() => {
+      this.panelNode.hidePopup(true);
+    }, Services.prefs.getIntPref("browser.pageActions.feedbackTimeoutMS", 1120));
+  },
+};
 
 // built-in actions below //////////////////////////////////////////////////////
 
@@ -607,7 +778,9 @@ BrowserPageActions.copyURL = {
     BrowserPageActions.panelNode.hidePopup();
     Cc["@mozilla.org/widget/clipboardhelper;1"]
       .getService(Ci.nsIClipboardHelper)
-      .copyString(gBrowser.selectedBrowser.currentURI.spec);
+      .copyString(gURLBar.makeURIReadable(gBrowser.selectedBrowser.currentURI).displaySpec);
+    let action = PageActions.actionForID("copyURL");
+    BrowserPageActionFeedback.show(action, event);
   },
 };
 
@@ -653,6 +826,7 @@ BrowserPageActions.sendToDevice = {
     let title = browser.contentTitle;
 
     let bodyNode = panelViewNode.firstChild;
+    let panelNode = panelViewNode.closest("panel");
 
     // This is on top because it also clears the device list between state
     // changes.
@@ -666,6 +840,17 @@ BrowserPageActions.sendToDevice = {
         item.classList.add("subviewbutton-iconic");
       }
       item.setAttribute("tooltiptext", name);
+      item.addEventListener("command", event => {
+        if (panelNode) {
+          panelNode.hidePopup();
+        }
+        // There are items in the subview that don't represent devices: "Sign
+        // in", "Learn about Sync", etc.  Device items will be .sendtab-target.
+        if (event.target.classList.contains("sendtab-target")) {
+          let action = PageActions.actionForID("sendToDevice");
+          BrowserPageActionFeedback.show(action, event);
+        }
+      });
       return item;
     });
 

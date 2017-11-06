@@ -7,8 +7,8 @@
 
 const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 
-Cu.import('resource://gre/modules/XPCOMUtils.jsm');
-Cu.import('resource://gre/modules/Services.jsm');
+Cu.import("resource://gre/modules/XPCOMUtils.jsm");
+Cu.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "Prompt",
                                   "resource://gre/modules/Prompt.jsm");
@@ -69,10 +69,11 @@ PresentationDevicePrompt.prototype = {
     });
   },
 
-  _getPrompt: function(aTitle, aMenu) {
+  _getPrompt: function(aTitle, aMenu, aWindow) {
     debug("_getPrompt");
 
     let p = new Prompt({
+      window: aWindow,
       title: aTitle,
     });
 
@@ -123,7 +124,9 @@ PresentationDevicePrompt.prototype = {
     this._request = aRequest;
 
     let prompt = this._getPrompt(this._getString("deviceMenu.title"),
-                                 this._getPromptMenu(this._devices));
+                                 this._getPromptMenu(this._devices),
+                                 aRequest.chromeEventHandler &&
+                                   aRequest.chromeEventHandler.ownerGlobal);
 
     this._showPrompt(prompt, this._selectDevice.bind(this));
 

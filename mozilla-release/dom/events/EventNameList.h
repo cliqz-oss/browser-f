@@ -551,6 +551,10 @@ WINDOW_EVENT(message,
              eMessage,
              EventNameType_None,
              eBasicEventClass)
+WINDOW_EVENT(messageerror,
+             eMessageError,
+             EventNameType_HTMLBodyOrFramesetOnly,
+             eBasicEventClass)
 WINDOW_EVENT(offline,
              eOffline,
              EventNameType_XUL | EventNameType_HTMLBodyOrFramesetOnly,
@@ -641,21 +645,6 @@ WINDOW_ONLY_EVENT(appinstalled,
                   EventNameType_None,
                   eBasicEventClass)
 
-
-#ifdef MOZ_B2G
-WINDOW_ONLY_EVENT(moztimechange,
-                  eTimeChange,
-                  EventNameType_None,
-                  eBasicEventClass)
-WINDOW_ONLY_EVENT(moznetworkupload,
-                  eNetworkUpload,
-                  EventNameType_None,
-                  eBasicEventClass)
-WINDOW_ONLY_EVENT(moznetworkdownload,
-                  eNetworkDownload,
-                  EventNameType_None,
-                  eBasicEventClass)
-#endif // MOZ_B2G
 
 TOUCH_EVENT(touchstart,
             eTouchStart,

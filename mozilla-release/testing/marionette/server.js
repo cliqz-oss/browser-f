@@ -16,7 +16,6 @@ const ServerSocket = CC(
 Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
-Cu.import("resource://gre/modules/Task.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
 Cu.import("chrome://marionette/content/assert.js");
@@ -117,6 +116,7 @@ const RECOMMENDED_PREFS = new Map([
   // as it is picked up at runtime.
   ["browser.safebrowsing.blockedURIs.enabled", false],
   ["browser.safebrowsing.downloads.enabled", false],
+  ["browser.safebrowsing.passwords.enabled", false],
   ["browser.safebrowsing.malware.enabled", false],
   ["browser.safebrowsing.phishing.enabled", false],
 
@@ -206,9 +206,13 @@ const RECOMMENDED_PREFS = new Map([
   // Disable metadata caching for installed add-ons by default
   ["extensions.getAddons.cache.enabled", false],
 
-  // Disable intalling any distribution extensions or add-ons.
+  // Disable installing any distribution extensions or add-ons.
   // Should be set in profile.
   ["extensions.installDistroAddons", false],
+
+  // Make sure Shield doesn't hit the network.
+  ["extensions.shield-recipe-client.api_url", ""],
+
   ["extensions.showMismatchUI", false],
 
   // Turn off extension updates so they do not bother tests
@@ -298,31 +302,39 @@ server.TCPListener = class {
     this.conns = new Set();
     this.nextConnID = 0;
     this.alive = false;
-    this._acceptConnections = false;
     this.alteredPrefs = new Set();
   }
 
   /**
    * Function produces a GeckoDriver.
    *
-   * Determines application name to initialise the driver with.
+   * Determines the application to initialise the driver with.
    *
    * @return {GeckoDriver}
    *     A driver instance.
    */
   driverFactory() {
     Preferences.set(PREF_CONTENT_LISTENER, false);
-    return new GeckoDriver(Services.appinfo.name, this);
+    return new GeckoDriver(Services.appinfo.ID, this);
   }
 
   set acceptConnections(value) {
-    if (!value) {
-      logger.info("New connections will no longer be accepted");
-    } else {
-      logger.info("New connections are accepted again");
-    }
+    if (value) {
+      if (!this.socket) {
+        const flags = KeepWhenOffline | LoopbackOnly;
+        const backlog = 1;
+        this.socket = new ServerSocket(this.port, flags, backlog);
+        this.port = this.socket.port;
 
-    this._acceptConnections = value;
+        this.socket.asyncListen(this);
+        logger.debug("New connections are accepted");
+      }
+
+    } else if (this.socket) {
+      this.socket.close();
+      this.socket = null;
+      logger.debug("New connections will no longer be accepted");
+    }
   }
 
   /**
@@ -350,27 +362,19 @@ server.TCPListener = class {
       }
     }
 
-    const flags = KeepWhenOffline | LoopbackOnly;
-    const backlog = 1;
-    this.socket = new ServerSocket(this.port, flags, backlog);
-    this.socket.asyncListen(this);
-    this.port = this.socket.port;
+    // Start socket server and listening for connection attempts
+    this.acceptConnections = true;
+
     Preferences.set(PREF_PORT, this.port);
+    env.set(ENV_ENABLED, "1");
 
     this.alive = true;
-    this._acceptConnections = true;
-    env.set(ENV_ENABLED, "1");
   }
 
   stop() {
     if (!this.alive) {
       return;
     }
-
-    this._acceptConnections = false;
-
-    this.socket.close();
-    this.socket = null;
 
     for (let k of this.alteredPrefs) {
       logger.debug(`Resetting recommended pref ${k}`);
@@ -380,15 +384,13 @@ server.TCPListener = class {
 
     Services.obs.notifyObservers(this, NOTIFY_RUNNING);
 
+    // Shutdown server socket, and no longer listen for new connections
+    this.acceptConnections = false;
+
     this.alive = false;
   }
 
   onSocketAccepted(serverSocket, clientSocket) {
-    if (!this._acceptConnections) {
-      logger.warn("New connections are currently not accepted");
-      return;
-    }
-
     let input = clientSocket.openInputStream(0, 0, 0);
     let output = clientSocket.openOutputStream(0, 0, 0);
     let transport = new DebuggerTransport(input, output);
@@ -496,58 +498,67 @@ server.TCPConnection = class {
 
     // execute new command
     } else if (msg instanceof Command) {
-      this.lastID = msg.id;
-      this.execute(msg);
+      (async () => {
+        await this.execute(msg);
+      })();
     }
   }
 
   /**
-   * Executes a WebDriver command and sends back a response when it has
-   * finished executing.
-   *
-   * Commands implemented in GeckoDriver and registered in its
-   * {@code GeckoDriver.commands} attribute.  The return values from
-   * commands are expected to be Promises.  If the resolved value of said
-   * promise is not an object, the response body will be wrapped in
-   * an object under a "value" field.
+   * Executes a Marionette command and sends back a response when it
+   * has finished executing.
    *
    * If the command implementation sends the response itself by calling
-   * {@code resp.send()}, the response is guaranteed to not be sent twice.
+   * <code>resp.send()</code>, the response is guaranteed to not be
+   * sent twice.
    *
    * Errors thrown in commands are marshaled and sent back, and if they
-   * are not WebDriverError instances, they are additionally propagated
-   * and reported to {@code Components.utils.reportError}.
+   * are not {@link WebDriverError} instances, they are additionally
+   * propagated and reported to {@link Components.utils.reportError}.
    *
    * @param {Command} cmd
-   *     The requested command to execute.
+   *     Command to execute.
    */
-  execute(cmd) {
+  async execute(cmd) {
     let resp = this.createResponse(cmd.id);
     let sendResponse = () => resp.sendConditionally(resp => !resp.sent);
     let sendError = resp.sendError.bind(resp);
 
-    let req = Task.spawn(function* () {
-      let fn = this.driver.commands[cmd.name];
-      if (typeof fn == "undefined") {
-        throw new UnknownCommandError(cmd.name);
+    await this.despatch(cmd, resp)
+        .then(sendResponse, sendError).catch(error.report);
+  }
+
+  /**
+   * Despatches command to appropriate Marionette service.
+   *
+   * @param {Command} cmd
+   *     Command to run.
+   * @param {Response} resp
+   *     Mutable response where the command's return value will be
+   *     assigned.
+   *
+   * @throws {Error}
+   *     A command's implementation may throw at any time.
+   */
+  async despatch(cmd, resp) {
+    let fn = this.driver.commands[cmd.name];
+    if (typeof fn == "undefined") {
+      throw new UnknownCommandError(cmd.name);
+    }
+
+    if (!["newSession", "WebDriver:NewSession"].includes(cmd.name)) {
+      assert.session(this.driver);
+    }
+
+    let rv = await fn.bind(this.driver)(cmd, resp);
+
+    if (typeof rv != "undefined") {
+      if (typeof rv != "object") {
+        resp.body = {value: rv};
+      } else {
+        resp.body = rv;
       }
-
-      if (cmd.name !== "newSession") {
-        assert.session(this.driver);
-      }
-
-      let rv = yield fn.bind(this.driver)(cmd, resp);
-
-      if (typeof rv != "undefined") {
-        if (typeof rv != "object") {
-          resp.body = {value: rv};
-        } else {
-          resp.body = rv;
-        }
-      }
-    }.bind(this));
-
-    req.then(sendResponse, sendError).catch(error.report);
+    }
   }
 
   /**

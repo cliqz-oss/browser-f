@@ -1,6 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
+from __future__ import absolute_import, print_function
 
 import argparse
 import os
@@ -100,8 +101,8 @@ def create_parser(mach_interface=False):
     add_arg('--geckoProfileEntries', dest="gecko_profile_entries", type=int,
             help="How many samples to take with the profiler")
     add_arg('--extension', dest='extensions', action='append',
-            default=['${talos}/talos-powers/talos-powers-signed.xpi',
-                     '${talos}/pageloader/pageloader-signed.xpi'],
+            default=['${talos}/talos-powers',
+                     '${talos}/pageloader'],
             help="Extension to install while running")
     add_arg('--fast', action='store_true',
             help="Run tp tests as tp_fast")
@@ -168,13 +169,16 @@ def create_parser(mach_interface=False):
     add_arg('--no-upload-results', action="store_true",
             dest='no_upload_results',
             help="If given, it disables uploading of talos results.")
-    add_arg('--stylo', action="store_true",
-            dest='stylo',
+    add_arg('--enable-stylo', action="store_true",
+            dest='enable_stylo',
             help='If given, enable Stylo via Environment variables and '
                  'upload results with Stylo options.')
+    add_arg('--disable-stylo', action="store_true",
+            dest='disable_stylo',
+            help='If given, disable Stylo via Environment variables.')
     add_arg('--stylo-threads', type=int,
             dest='stylothreads',
-            help='If given, run stylo with a certain number of threads')
+            help='If given, run Stylo with a certain number of threads')
 
     add_logging_group(parser)
     return parser

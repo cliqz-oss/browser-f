@@ -33,13 +33,8 @@ using mozilla::Move;
 // Undo the damage done by mozzconf.h
 #undef compress
 
-// Logging seems to be somewhat broken on b2g.
-#ifdef MOZ_B2G
-#define IPC_LOG(...)
-#else
 static mozilla::LazyLogModule sLogModule("ipc");
 #define IPC_LOG(...) MOZ_LOG(sLogModule, LogLevel::Debug, (__VA_ARGS__))
-#endif
 
 /*
  * IPC design:
@@ -677,13 +672,17 @@ MessageChannel::CanSend() const
 void
 MessageChannel::WillDestroyCurrentMessageLoop()
 {
-#if defined(DEBUG) && !defined(ANDROID)
+#if defined(DEBUG)
 #if defined(MOZ_CRASHREPORTER)
     CrashReporter::AnnotateCrashReport(NS_LITERAL_CSTRING("ProtocolName"),
                                        nsDependentCString(mName));
 #endif
     MOZ_CRASH("MessageLoop destroyed before MessageChannel that's bound to it");
 #endif
+
+    // Clear mWorkerThread to avoid posting to it in the future.
+    MonitorAutoLock lock(*mMonitor);
+    mWorkerLoop = nullptr;
 }
 
 void
@@ -1019,7 +1018,7 @@ MessageChannel::SendBuildID()
     MonitorAutoLock lock(*mMonitor);
     if (!Connected()) {
         ReportConnectionError("MessageChannel", msg);
-        MOZ_CRASH();
+        return;
     }
     mLink->SendMessage(msg.forget());
 }
@@ -1850,16 +1849,25 @@ MessageChannel::RunMessage(MessageTask& aTask)
     }
 
     // Check that we're going to run the first message that's valid to run.
+#if 0
 #ifdef DEBUG
+    nsCOMPtr<nsIEventTarget> messageTarget =
+        mListener->GetMessageEventTarget(msg);
+
     for (MessageTask* task : mPending) {
         if (task == &aTask) {
             break;
         }
 
+        nsCOMPtr<nsIEventTarget> taskTarget =
+            mListener->GetMessageEventTarget(task->Msg());
+
         MOZ_ASSERT(!ShouldRunMessage(task->Msg()) ||
+                   taskTarget != messageTarget ||
                    aTask.Msg().priority() != task->Msg().priority());
 
     }
+#endif
 #endif
 
     if (!mDeferred.empty()) {
@@ -1960,7 +1968,7 @@ MessageChannel::MessageTask::Post()
 
     if (eventTarget) {
         eventTarget->Dispatch(self.forget(), NS_DISPATCH_NORMAL);
-    } else {
+    } else if (mChannel->mWorkerLoop) {
         mChannel->mWorkerLoop->PostTask(self.forget());
     }
 }
@@ -1976,9 +1984,32 @@ MessageChannel::MessageTask::Clear()
 NS_IMETHODIMP
 MessageChannel::MessageTask::GetPriority(uint32_t* aPriority)
 {
-  *aPriority = mMessage.priority() == Message::HIGH_PRIORITY ?
-               PRIORITY_HIGH : PRIORITY_NORMAL;
+  switch (mMessage.priority()) {
+  case Message::NORMAL_PRIORITY:
+    *aPriority = PRIORITY_NORMAL;
+    break;
+  case Message::INPUT_PRIORITY:
+    *aPriority = PRIORITY_INPUT;
+    break;
+  case Message::HIGH_PRIORITY:
+    *aPriority = PRIORITY_HIGH;
+    break;
+  default:
+    MOZ_ASSERT(false);
+    break;
+  }
   return NS_OK;
+}
+
+bool
+MessageChannel::MessageTask::GetAffectedSchedulerGroups(nsTArray<RefPtr<SchedulerGroup>>& aGroups)
+{
+    if (!mChannel) {
+        return false;
+    }
+
+    mChannel->AssertWorkerThread();
+    return mChannel->mListener->GetMessageSchedulerGroups(mMessage, aGroups);
 }
 
 void
@@ -2064,11 +2095,7 @@ MessageChannel::DispatchSyncMessage(const Message& aMsg, Message*& aReply)
     }
 
     if (!MaybeHandleError(rv, aMsg, "DispatchSyncMessage")) {
-        aReply = new Message();
-        aReply->set_sync();
-        aReply->set_nested_level(aMsg.nested_level());
-        aReply->set_reply();
-        aReply->set_reply_error();
+        aReply = Message::ForSyncDispatchError(aMsg.nested_level());
     }
     aReply->set_seqno(aMsg.seqno());
     aReply->set_transaction_id(aMsg.transaction_id());
@@ -2125,10 +2152,7 @@ MessageChannel::DispatchInterruptMessage(Message&& aMsg, size_t stackDepth)
     --mRemoteStackDepthGuess;
 
     if (!MaybeHandleError(rv, aMsg, "DispatchInterruptMessage")) {
-        reply = new Message();
-        reply->set_interrupt();
-        reply->set_reply();
-        reply->set_reply_error();
+        reply = Message::ForInterruptDispatchError();
     }
     reply->set_seqno(aMsg.seqno());
 
@@ -2386,7 +2410,9 @@ MessageChannel::OnChannelConnected(int32_t peer_id)
     mPeerPidSet = true;
     mPeerPid = peer_id;
     RefPtr<CancelableRunnable> task = mOnChannelConnectedTask;
-    mWorkerLoop->PostTask(task.forget());
+    if (mWorkerLoop) {
+        mWorkerLoop->PostTask(task.forget());
+    }
 }
 
 void
@@ -2579,7 +2605,9 @@ MessageChannel::OnNotifyMaybeChannelError()
         &MessageChannel::OnNotifyMaybeChannelError);
       RefPtr<Runnable> task = mChannelErrorTask;
       // 10 ms delay is completely arbitrary
-      mWorkerLoop->PostDelayedTask(task.forget(), 10);
+      if (mWorkerLoop) {
+          mWorkerLoop->PostDelayedTask(task.forget(), 10);
+      }
       return;
     }
 
@@ -2591,7 +2619,7 @@ MessageChannel::PostErrorNotifyTask()
 {
     mMonitor->AssertCurrentThreadOwns();
 
-    if (mChannelErrorTask)
+    if (mChannelErrorTask || !mWorkerLoop)
         return;
 
     // This must be the last code that runs on this thread!

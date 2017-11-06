@@ -576,7 +576,8 @@ WriteBitmap(nsIFile* aFile, imgIContainer* aImage)
 
 NS_IMETHODIMP
 nsWindowsShellService::SetDesktopBackground(nsIDOMElement* aElement,
-                                            int32_t aPosition)
+                                            int32_t aPosition,
+                                            const nsACString& aImageName)
 {
   nsresult rv;
 
@@ -614,10 +615,9 @@ nsWindowsShellService::SetDesktopBackground(nsIDOMElement* aElement,
   NS_ENSURE_SUCCESS(rv, rv);
 
   // e.g. "Desktop Background.bmp"
-  nsString fileLeafName;
-  rv = shellBundle->GetStringFromName
-                      ("desktopBackgroundLeafNameWin",
-                       getter_Copies(fileLeafName));
+  nsAutoString fileLeafName;
+  rv = shellBundle->GetStringFromName("desktopBackgroundLeafNameWin",
+                                      fileLeafName);
   NS_ENSURE_SUCCESS(rv, rv);
 
   // get the profile root directory

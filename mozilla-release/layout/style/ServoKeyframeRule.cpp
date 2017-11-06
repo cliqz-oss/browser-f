@@ -31,7 +31,7 @@ public:
 
   NS_IMETHOD GetParentRule(nsIDOMCSSRule** aParent) final
   {
-    *aParent = mRule;
+    NS_IF_ADDREF(*aParent = mRule);
     return NS_OK;
   }
 
@@ -108,7 +108,7 @@ NS_IMPL_ADDREF_INHERITED(ServoKeyframeRule, dom::CSSKeyframeRule)
 NS_IMPL_RELEASE_INHERITED(ServoKeyframeRule, dom::CSSKeyframeRule)
 
 // QueryInterface implementation for nsCSSKeyframeRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ServoKeyframeRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ServoKeyframeRule)
 NS_INTERFACE_MAP_END_INHERITING(dom::CSSKeyframeRule)
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(ServoKeyframeRule)

@@ -132,7 +132,7 @@ nsXMLContentSink::Init(nsIDocument* aDoc,
   return NS_OK;
 }
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(nsXMLContentSink)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsXMLContentSink)
   NS_INTERFACE_MAP_ENTRY(nsIContentSink)
   NS_INTERFACE_MAP_ENTRY(nsIXMLContentSink)
   NS_INTERFACE_MAP_ENTRY(nsIExpatSink)
@@ -662,7 +662,8 @@ nsXMLContentSink::ProcessStyleLink(nsIContent* aElement,
                                    bool aAlternate,
                                    const nsAString& aTitle,
                                    const nsAString& aType,
-                                   const nsAString& aMedia)
+                                   const nsAString& aMedia,
+                                   const nsAString& aReferrerPolicy)
 {
   nsresult rv = NS_OK;
   mPrettyPrintXML = false;
@@ -720,7 +721,7 @@ nsXMLContentSink::ProcessStyleLink(nsIContent* aElement,
 
   // Let nsContentSink deal with css.
   rv = nsContentSink::ProcessStyleLink(aElement, aHref, aAlternate,
-                                       aTitle, aType, aMedia);
+                                       aTitle, aType, aMedia, aReferrerPolicy);
 
   // nsContentSink::ProcessStyleLink handles the bookkeeping here wrt
   // pending sheets.
@@ -1070,6 +1071,17 @@ nsXMLContentSink::HandleEndElement(const char16_t *aName,
                isTemplateElement, "Wrong element being closed");
 #endif
 
+  // Make sure to notify on our kids before we call out to any other code that
+  // might reenter us and call FlushTags, in a state in which we've already
+  // popped "content" from the stack but haven't notified on its kids yet.
+  int32_t stackLen = mContentStack.Length();
+  if (mNotifyLevel >= stackLen) {
+    if (numFlushed < content->GetChildCount()) {
+      NotifyAppend(content, numFlushed);
+    }
+    mNotifyLevel = stackLen - 1;
+  }
+
   result = CloseElement(content);
 
   if (mCurrentHead == content) {
@@ -1085,13 +1097,6 @@ nsXMLContentSink::HandleEndElement(const char16_t *aName,
     MaybeStartLayout(false);
   }
 
-  int32_t stackLen = mContentStack.Length();
-  if (mNotifyLevel >= stackLen) {
-    if (numFlushed < content->GetChildCount()) {
-      NotifyAppend(content, numFlushed);
-    }
-    mNotifyLevel = stackLen - 1;
-  }
   DidAddContent();
 
   if (content->IsSVGElement(nsGkAtoms::svg)) {
@@ -1258,7 +1263,9 @@ nsXMLContentSink::HandleProcessingInstruction(const char16_t *aTarget,
       return DidProcessATokenImpl();
   }
 
-  rv = ProcessStyleLink(node, href, isAlternate, title, type, media);
+  // <?xml-stylesheet?> processing instructions don't have a referrerpolicy
+  // pseudo-attribute, so we pass in an empty string
+  rv = ProcessStyleLink(node, href, isAlternate, title, type, media, EmptyString());
   return NS_SUCCEEDED(rv) ? DidProcessATokenImpl() : rv;
 }
 

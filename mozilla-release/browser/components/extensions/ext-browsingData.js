@@ -17,6 +17,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
 XPCOMUtils.defineLazyServiceGetter(this, "serviceWorkerManager",
                                    "@mozilla.org/serviceworkers/manager;1",
                                    "nsIServiceWorkerManager");
+XPCOMUtils.defineLazyServiceGetter(this, "quotaManagerService",
+                                   "@mozilla.org/dom/quota-manager-service;1",
+                                   "nsIQuotaManagerService");
 
 /**
 * A number of iterations after which to yield time back
@@ -50,10 +53,7 @@ const clearCookies = async function(options) {
 
   if (options.since || options.hostnames) {
     // Iterate through the cookies and delete any created after our cutoff.
-    let cookiesEnum = cookieMgr.enumerator;
-    while (cookiesEnum.hasMoreElements()) {
-      let cookie = cookiesEnum.getNext().QueryInterface(Ci.nsICookie2);
-
+    for (const cookie of XPCOMUtils.IterSimpleEnumerator(cookieMgr.enumerator, Ci.nsICookie2)) {
       if ((!options.since || cookie.creationTime >= PlacesUtils.toPRTime(options.since)) &&
           (!options.hostnames || options.hostnames.includes(cookie.host.replace(/^\./, "")))) {
         // This cookie was created after our cutoff, clear it.
@@ -81,6 +81,40 @@ const clearFormData = options => {
 
 const clearHistory = options => {
   return sanitizer.items.history.clear(makeRange(options));
+};
+
+const clearIndexedDB = async function(options) {
+  let promises = [];
+
+  await new Promise(resolve => {
+    quotaManagerService.getUsage(request => {
+      if (request.resultCode != Components.results.NS_OK) {
+        // We are probably shutting down. We don't want to propagate the error,
+        // rejecting the promise.
+        resolve();
+        return;
+      }
+
+      for (let item of request.result) {
+        let principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(item.origin);
+        let uri = principal.URI;
+        if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "file") {
+          promises.push(new Promise(r => {
+            let req = quotaManagerService.clearStoragesForPrincipal(principal, null, true);
+            req.callback = () => { r(); };
+          }));
+        }
+      }
+
+      resolve();
+    });
+  });
+
+  return Promise.all(promises);
+};
+
+const clearLocalStorage = async function(options) {
+  Services.obs.notifyObservers(null, "extension:purge-localStorage");
 };
 
 const clearPasswords = async function(options) {
@@ -151,6 +185,12 @@ const doRemoval = (options, dataToRemove, extension) => {
           break;
         case "history":
           removalPromises.push(clearHistory(options));
+          break;
+        case "indexedDB":
+          removalPromises.push(clearIndexedDB(options));
+          break;
+        case "localStorage":
+          removalPromises.push(clearLocalStorage(options));
           break;
         case "passwords":
           removalPromises.push(clearPasswords(options));
@@ -224,6 +264,12 @@ this.browsingData = class extends ExtensionAPI {
         },
         removeHistory(options) {
           return doRemoval(options, {history: true});
+        },
+        removeIndexedDB(options) {
+          return doRemoval(options, {indexedDB: true});
+        },
+        removeLocalStorage(options) {
+          return doRemoval(options, {localStorage: true});
         },
         removePasswords(options) {
           return doRemoval(options, {passwords: true});

@@ -214,7 +214,7 @@ NS_IMPL_RELEASE_INHERITED(ImportRule, CSSImportRule)
 NS_IMPL_CYCLE_COLLECTION_INHERITED(ImportRule, CSSImportRule, mMedia, mChildSheet)
 
 // QueryInterface implementation for ImportRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(ImportRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(ImportRule)
 NS_INTERFACE_MAP_END_INHERITING(CSSImportRule)
 
 #ifdef DEBUG
@@ -338,7 +338,7 @@ NS_IMPL_ADDREF_INHERITED(MediaRule, CSSMediaRule)
 NS_IMPL_RELEASE_INHERITED(MediaRule, CSSMediaRule)
 
 // QueryInterface implementation for MediaRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(MediaRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(MediaRule)
 NS_INTERFACE_MAP_END_INHERITING(CSSMediaRule)
 
 NS_IMPL_CYCLE_COLLECTION_INHERITED(MediaRule, CSSMediaRule,
@@ -862,18 +862,15 @@ nsCSSFontFaceStyleDecl::GetPropertyValue(nsCSSFontDesc aFontDescID,
     }
 
   case eCSSFontDesc_Style:
-    val.AppendToString(eCSSProperty_font_style, aResult,
-                        nsCSSValue::eNormalized);
+    val.AppendToString(eCSSProperty_font_style, aResult);
     return NS_OK;
 
   case eCSSFontDesc_Weight:
-    val.AppendToString(eCSSProperty_font_weight, aResult,
-                       nsCSSValue::eNormalized);
+    val.AppendToString(eCSSProperty_font_weight, aResult);
     return NS_OK;
 
   case eCSSFontDesc_Stretch:
-    val.AppendToString(eCSSProperty_font_stretch, aResult,
-                       nsCSSValue::eNormalized);
+    val.AppendToString(eCSSProperty_font_stretch, aResult);
     return NS_OK;
 
   case eCSSFontDesc_FontFeatureSettings:
@@ -881,8 +878,7 @@ nsCSSFontFaceStyleDecl::GetPropertyValue(nsCSSFontDesc aFontDescID,
     return NS_OK;
 
   case eCSSFontDesc_FontLanguageOverride:
-    val.AppendToString(eCSSProperty_font_language_override, aResult,
-                       nsCSSValue::eNormalized);
+    val.AppendToString(eCSSProperty_font_language_override, aResult);
     return NS_OK;
 
   case eCSSFontDesc_Display:
@@ -949,15 +945,6 @@ NS_IMETHODIMP
 nsCSSFontFaceStyleDecl::GetPropertyValue(const nsAString & propertyName,
                                          nsAString & aResult)
 {
-  return GetPropertyValue(nsCSSProps::LookupFontDesc(propertyName), aResult);
-}
-
-NS_IMETHODIMP
-nsCSSFontFaceStyleDecl::GetAuthoredPropertyValue(const nsAString& propertyName,
-                                                 nsAString& aResult)
-{
-  // We don't return any authored property values different from
-  // GetPropertyValue, currently.
   return GetPropertyValue(nsCSSProps::LookupFontDesc(propertyName), aResult);
 }
 
@@ -1141,7 +1128,7 @@ nsCSSFontFaceRule::IsCCLeaf() const
 }
 
 // QueryInterface implementation for nsCSSFontFaceRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(nsCSSFontFaceRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsCSSFontFaceRule)
   NS_INTERFACE_MAP_ENTRY(nsIDOMCSSFontFaceRule)
 NS_INTERFACE_MAP_END_INHERITING(Rule)
 
@@ -1577,7 +1564,7 @@ nsCSSKeyframeRule::IsCCLeaf() const
 }
 
 // QueryInterface implementation for nsCSSKeyframeRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(nsCSSKeyframeRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsCSSKeyframeRule)
 NS_INTERFACE_MAP_END_INHERITING(dom::CSSKeyframeRule)
 
 #ifdef DEBUG
@@ -2022,7 +2009,7 @@ nsCSSPageRule::IsCCLeaf() const
 }
 
 // QueryInterface implementation for nsCSSPageRule
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(nsCSSPageRule)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsCSSPageRule)
 NS_INTERFACE_MAP_END_INHERITING(dom::CSSPageRule)
 
 #ifdef DEBUG
@@ -2372,8 +2359,7 @@ nsCSSCounterStyleRule::GetSystem(nsAString& aSystem)
           GetSystem(), nsCSSProps::kCounterSystemKTable));
   if (value.GetUnit() == eCSSUnit_Pair) {
     aSystem.Append(' ');
-    GetSystemArgument().AppendToString(
-        eCSSProperty_UNKNOWN, aSystem, nsCSSValue::eNormalized);
+    GetSystemArgument().AppendToString(eCSSProperty_UNKNOWN, aSystem);
   }
   return NS_OK;
 }
@@ -2387,9 +2373,7 @@ nsCSSCounterStyleRule::GetSymbols(nsAString& aSymbols)
   if (value.GetUnit() == eCSSUnit_List) {
     for (const nsCSSValueList* item = value.GetListValue();
          item; item = item->mNext) {
-      item->mValue.AppendToString(eCSSProperty_UNKNOWN,
-                                  aSymbols,
-                                  nsCSSValue::eNormalized);
+      item->mValue.AppendToString(eCSSProperty_UNKNOWN, aSymbols);
       if (item->mNext) {
         aSymbols.Append(' ');
       }
@@ -2407,11 +2391,9 @@ nsCSSCounterStyleRule::GetAdditiveSymbols(nsAString& aSymbols)
   if (value.GetUnit() == eCSSUnit_PairList) {
     for (const nsCSSValuePairList* item = value.GetPairListValue();
          item; item = item->mNext) {
-      item->mXValue.AppendToString(eCSSProperty_UNKNOWN,
-                                   aSymbols, nsCSSValue::eNormalized);
+      item->mXValue.AppendToString(eCSSProperty_UNKNOWN, aSymbols);
       aSymbols.Append(' ');
-      item->mYValue.AppendToString(eCSSProperty_UNKNOWN,
-                                   aSymbols, nsCSSValue::eNormalized);
+      item->mYValue.AppendToString(eCSSProperty_UNKNOWN, aSymbols);
       if (item->mNext) {
         aSymbols.AppendLiteral(", ");
       }
@@ -2493,8 +2475,7 @@ nsCSSCounterStyleRule::GetSpeakAs(nsAString& aSpeakAs)
     case eCSSUnit_Auto:
     case eCSSUnit_AtomIdent:
       aSpeakAs.Truncate();
-      value.AppendToString(eCSSProperty_UNKNOWN,
-                           aSpeakAs, nsCSSValue::eNormalized);
+      value.AppendToString(eCSSProperty_UNKNOWN, aSpeakAs);
       break;
 
     case eCSSUnit_Null:
@@ -2521,8 +2502,7 @@ nsCSSCounterStyleRule::GetDescriptor(nsCSSCounterDesc aDescID,
   const nsCSSValue& value = GetDesc(aDescID);
   aValue.Truncate();
   if (value.GetUnit() != eCSSUnit_Null) {
-    value.AppendToString(
-        eCSSProperty_UNKNOWN, aValue, nsCSSValue::eNormalized);
+    value.AppendToString(eCSSProperty_UNKNOWN, aValue);
   }
   return NS_OK;
 }

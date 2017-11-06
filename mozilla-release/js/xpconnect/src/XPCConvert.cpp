@@ -10,7 +10,6 @@
 #include "mozilla/Range.h"
 
 #include "xpcprivate.h"
-#include "nsIAtom.h"
 #include "nsIScriptError.h"
 #include "nsWrapperCache.h"
 #include "nsJSUtils.h"
@@ -691,20 +690,7 @@ XPCConvert::JSData2Native(void* d, HandleValue s,
 
             variant.forget(static_cast<nsISupports**>(d));
             return true;
-        } else if (iid->Equals(NS_GET_IID(nsIAtom)) && s.isString()) {
-            // We're trying to pass a string as an nsIAtom.  Let's atomize!
-            JSString* str = s.toString();
-            nsAutoJSString autoStr;
-            if (!autoStr.init(cx, str)) {
-                if (pErr)
-                    *pErr = NS_ERROR_XPC_BAD_CONVERT_JS_NULL_REF;
-                return false;
-            }
-            nsCOMPtr<nsIAtom> atom = NS_Atomize(autoStr);
-            atom.forget((nsISupports**)d);
-            return true;
         }
-        //else ...
 
         if (s.isNullOrUndefined()) {
             *((nsISupports**)d) = nullptr;
@@ -1006,11 +992,11 @@ XPCConvert::ConstructException(nsresult rv, const char* message,
 
     static const char format[] = "\'%s\' when calling method: [%s::%s]";
     const char * msg = message;
-    nsXPIDLString xmsg;
-    nsAutoCString sxmsg;
+    nsAutoCString sxmsg;    // must have the same lifetime as msg
 
     nsCOMPtr<nsIScriptError> errorObject = do_QueryInterface(data);
     if (errorObject) {
+        nsString xmsg;
         if (NS_SUCCEEDED(errorObject->GetMessageMoz(getter_Copies(xmsg)))) {
             CopyUTF16toUTF8(xmsg, sxmsg);
             msg = sxmsg.get();

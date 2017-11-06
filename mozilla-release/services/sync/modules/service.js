@@ -22,6 +22,7 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("resource://services-common/async.js");
+Cu.import("resource://services-common/utils.js");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/engines.js");
 Cu.import("resource://services-sync/engines/clients.js");
@@ -48,13 +49,13 @@ function getEngineModules() {
     ExtensionStorage: {module: "extension-storage.js", symbol: "ExtensionStorageEngine"},
   }
   if (Svc.Prefs.get("engine.addresses.available", false)) {
-    result["Addresses"] = {
+    result.Addresses = {
       module: "resource://formautofill/FormAutofillSync.jsm",
       symbol: "AddressesEngine",
     };
   }
   if (Svc.Prefs.get("engine.creditcards.available", false)) {
-    result["CreditCards"] = {
+    result.CreditCards = {
       module: "resource://formautofill/FormAutofillSync.jsm",
       symbol: "CreditCardsEngine",
     };
@@ -343,7 +344,7 @@ Sync11Service.prototype = {
     // Send an event now that Weave service is ready.  We don't do this
     // synchronously so that observers can import this module before
     // registering an observer.
-    Utils.nextTick(() => {
+    CommonUtils.nextTick(() => {
       this.status.ready = true;
 
       // UI code uses the flag on the XPCOM service so it doesn't have
@@ -615,6 +616,20 @@ Sync11Service.prototype = {
       this.errorHandler.checkServerError(ex);
       return false;
     }
+  },
+
+  getMaxRecordPayloadSize() {
+    let config = this.serverConfiguration;
+    if (!config || !config.max_record_payload_bytes) {
+      this._log.warn("No config or incomplete config in getMaxRecordPayloadSize."
+                     + " Are we running tests?");
+      return 256 * 1024;
+    }
+    let payloadMax = config.max_record_payload_bytes;
+    if (config.max_post_bytes && payloadMax <= config.max_post_bytes) {
+      return config.max_post_bytes - 4096;
+    }
+    return payloadMax;
   },
 
   async verifyLogin(allow40XRecovery = true) {
@@ -1048,7 +1063,10 @@ Sync11Service.prototype = {
    */
   _checkSync: function _checkSync(ignore) {
     let reason = "";
-    if (!this.enabled)
+    // Ideally we'd call _checkSetup() here but that has too many side-effects.
+    if (Status.service == CLIENT_NOT_CONFIGURED)
+      reason = kSyncNotConfigured;
+    else if (Status.service == STATUS_DISABLED || !this.enabled)
       reason = kSyncWeaveDisabled;
     else if (Services.io.offline)
       reason = kSyncNetworkOffline;

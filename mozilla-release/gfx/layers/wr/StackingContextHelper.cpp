@@ -7,6 +7,7 @@
 
 #include "mozilla/layers/WebRenderLayer.h"
 #include "UnitTransforms.h"
+#include "nsDisplayList.h"
 
 namespace mozilla {
 namespace layers {
@@ -15,33 +16,6 @@ StackingContextHelper::StackingContextHelper()
   : mBuilder(nullptr)
 {
   // mOrigin remains at 0,0
-}
-
-StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
-                                             wr::DisplayListBuilder& aBuilder,
-                                             LayerRect aBoundForSC,
-                                             LayerPoint aOrigin,
-                                             uint64_t aAnimationsId,
-                                             float* aOpacityPtr,
-                                             gfx::Matrix4x4* aTransformPtr,
-                                             const nsTArray<wr::WrFilterOp>& aFilters)
-  : mBuilder(&aBuilder)
-{
-  wr::LayoutRect scBounds = aParentSC.ToRelativeLayoutRect(aBoundForSC);
-  if (aTransformPtr) {
-    mTransform = *aTransformPtr;
-  }
-
-  mBuilder->PushStackingContext(scBounds,
-                                aAnimationsId,
-                                aOpacityPtr,
-                                aTransformPtr,
-                                wr::TransformStyle::Flat,
-                                // TODO: set correct blend mode.
-                                wr::ToMixBlendMode(gfx::CompositionOp::OP_OVER),
-                                aFilters);
-
-  mOrigin = aOrigin;
 }
 
 StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
@@ -59,8 +33,10 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
   mBuilder->PushStackingContext(scBounds, 0, &opacity,
                                 mTransform.IsIdentity() ? nullptr : &mTransform,
                                 wr::TransformStyle::Flat,
+                                nullptr,
                                 wr::ToMixBlendMode(layer->GetMixBlendMode()),
-                                aFilters);
+                                aFilters,
+                                true);
   mOrigin = aLayer->Bounds().TopLeft();
 }
 
@@ -83,9 +59,42 @@ StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParen
                                 aOpacityPtr,
                                 aTransformPtr,
                                 wr::TransformStyle::Flat,
+                                nullptr,
                                 wr::ToMixBlendMode(aLayer->GetLayer()->GetMixBlendMode()),
-                                aFilters);
+                                aFilters,
+                                true);
   mOrigin = aLayer->Bounds().TopLeft();
+}
+
+StackingContextHelper::StackingContextHelper(const StackingContextHelper& aParentSC,
+                                             wr::DisplayListBuilder& aBuilder,
+                                             nsDisplayListBuilder* aDisplayListBuilder,
+                                             nsDisplayItem* aItem,
+                                             nsDisplayList* aDisplayList,
+                                             gfx::Matrix4x4Typed<LayerPixel, LayerPixel>* aBoundTransform,
+                                             uint64_t aAnimationsId,
+                                             float* aOpacityPtr,
+                                             gfx::Matrix4x4* aTransformPtr,
+                                             gfx::Matrix4x4* aPerspectivePtr,
+                                             const nsTArray<wr::WrFilterOp>& aFilters,
+                                             const gfx::CompositionOp& aMixBlendMode,
+                                             bool aBackfaceVisible)
+  : mBuilder(&aBuilder)
+{
+  bool is2d = !aTransformPtr || (aTransformPtr->Is2D() && !aPerspectivePtr);
+  if (aTransformPtr) {
+    mTransform = *aTransformPtr;
+  }
+
+  mBuilder->PushStackingContext(wr::LayoutRect(),
+                                aAnimationsId,
+                                aOpacityPtr,
+                                aTransformPtr,
+                                is2d ? wr::TransformStyle::Flat : wr::TransformStyle::Preserve3D,
+                                aPerspectivePtr,
+                                wr::ToMixBlendMode(aMixBlendMode),
+                                aFilters,
+                                aBackfaceVisible);
 }
 
 StackingContextHelper::~StackingContextHelper()
@@ -98,25 +107,20 @@ StackingContextHelper::~StackingContextHelper()
 wr::LayoutRect
 StackingContextHelper::ToRelativeLayoutRect(const LayerRect& aRect) const
 {
-  return wr::ToLayoutRect(aRect - mOrigin);
+  return wr::ToLayoutRect(RoundedToInt(aRect - mOrigin));
 }
 
 wr::LayoutRect
 StackingContextHelper::ToRelativeLayoutRect(const LayoutDeviceRect& aRect) const
 {
-  return wr::ToLayoutRect(ViewAs<LayerPixel>(aRect, PixelCastJustification::WebRenderHasUnitResolution) - mOrigin);
+  return wr::ToLayoutRect(RoundedToInt(ViewAs<LayerPixel>(aRect,
+                                                          PixelCastJustification::WebRenderHasUnitResolution) - mOrigin));
 }
 
 wr::LayoutPoint
 StackingContextHelper::ToRelativeLayoutPoint(const LayerPoint& aPoint) const
 {
   return wr::ToLayoutPoint(aPoint - mOrigin);
-}
-
-wr::LayoutRect
-StackingContextHelper::ToRelativeLayoutRectRounded(const LayoutDeviceRect& aRect) const
-{
-  return wr::ToLayoutRect(RoundedToInt(ViewAs<LayerPixel>(aRect, PixelCastJustification::WebRenderHasUnitResolution) - mOrigin));
 }
 
 } // namespace layers

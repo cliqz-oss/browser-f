@@ -12,16 +12,17 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 const {actionTypes: at, actionUtils: au} = Cu.import("resource://activity-stream/common/Actions.jsm", {});
 const {Prefs} = Cu.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm", {});
 
-XPCOMUtils.defineLazyModuleGetter(this, "ClientID",
-  "resource://gre/modules/ClientID.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "perfService",
   "resource://activity-stream/common/PerfService.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetrySender",
-  "resource://activity-stream/lib/TelemetrySender.jsm");
+XPCOMUtils.defineLazyModuleGetter(this, "PingCentre",
+  "resource:///modules/PingCentre.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "gUUIDGenerator",
   "@mozilla.org/uuid-generator;1",
   "nsIUUIDGenerator");
+
+const ACTIVITY_STREAM_ID = "activity-stream";
+const ACTIVITY_STREAM_ENDPOINT_PREF = "browser.newtabpage.activity-stream.telemetry.ping.endpoint";
 
 // This is a mapping table between the user preferences and its encoding code
 const USER_PREFS_ENCODING = {
@@ -34,6 +35,7 @@ const IMPRESSION_STATS_RESET_TIME = 60 * 60 * 1000; // 60 minutes
 const PREF_IMPRESSION_STATS_CLICKED = "impressionStats.clicked";
 const PREF_IMPRESSION_STATS_BLOCKED = "impressionStats.blocked";
 const PREF_IMPRESSION_STATS_POCKETED = "impressionStats.pocketed";
+const TELEMETRY_PREF = "telemetry";
 
 /**
  * A pref persistent GUID set
@@ -101,6 +103,11 @@ this.TelemetryFeed = class TelemetryFeed {
       blocked: new PersistentGuidSet(this._prefs, PREF_IMPRESSION_STATS_BLOCKED),
       pocketed: new PersistentGuidSet(this._prefs, PREF_IMPRESSION_STATS_POCKETED)
     };
+
+    this.telemetryEnabled = this._prefs.get(TELEMETRY_PREF);
+    this._aboutHomeSeen = false;
+    this._onTelemetryPrefChange = this._onTelemetryPrefChange.bind(this);
+    this._prefs.observe(TELEMETRY_PREF, this._onTelemetryPrefChange);
   }
 
   init() {
@@ -146,20 +153,22 @@ this.TelemetryFeed = class TelemetryFeed {
     this.saveSessionPerfData(port, data_to_save);
   }
 
-  /**
-   * Lazily get the Telemetry id promise
-   */
-  get telemetryClientId() {
-    Object.defineProperty(this, "telemetryClientId", {value: ClientID.getClientID()});
-    return this.telemetryClientId;
+  _onTelemetryPrefChange(prefVal) {
+    this.telemetryEnabled = prefVal;
   }
 
   /**
-   * Lazily initialize TelemetrySender to send pings
+   * Lazily initialize PingCentre to send pings
    */
-  get telemetrySender() {
-    Object.defineProperty(this, "telemetrySender", {value: new TelemetrySender()});
-    return this.telemetrySender;
+  get pingCentre() {
+    Object.defineProperty(this, "pingCentre",
+      {
+        value: new PingCentre({
+          topic: ACTIVITY_STREAM_ID,
+          overrideEndpointPref: ACTIVITY_STREAM_ENDPOINT_PREF
+        })
+      });
+    return this.pingCentre;
   }
 
   /**
@@ -180,16 +189,62 @@ this.TelemetryFeed = class TelemetryFeed {
    * addSession - Start tracking a new session
    *
    * @param  {string} id the portID of the open session
-   *
+   * @param  {string} the URL being loaded for this session (optional)
    * @return {obj}    Session object
    */
-  addSession(id) {
+  addSession(id, url) {
+    // XXX refactor to use setLoadTriggerInfo or saveSessionPerfData
+
+    // "unexpected" will be overwritten when appropriate
+    let load_trigger_type = "unexpected";
+    let load_trigger_ts;
+
+    if (!this._aboutHomeSeen && url === "about:home") {
+      this._aboutHomeSeen = true;
+
+      // XXX note that this will be incorrectly set in the following cases:
+      // session_restore following by clicking on the toolbar button,
+      // or someone who has changed their default home page preference to
+      // something else and later clicks the toolbar.  It will also be
+      // incorrectly unset if someone changes their "Home Page" preference to
+      // about:newtab.
+      //
+      // That said, the ratio of these mistakes to correct cases should
+      // be very small, and these issues should follow away as we implement
+      // the remaining load_trigger_type values for about:home in issue 3556.
+      //
+      // XXX file a bug to implement remaining about:home cases so this
+      // problem will go away and link to it here.
+      load_trigger_type = "first_window_opened";
+
+      // The real perceived trigger of first_window_opened is the OS-level
+      // clicking of the icon.  We use perfService.timeOrigin because it's the
+      // earliest number on this time scale that's easy to get.; We could
+      // actually use 0, but maybe that could be before the browser started?
+      // [bug 1401406](https://bugzilla.mozilla.org/show_bug.cgi?id=1401406)
+      // getting sorted out may help clarify. Even better, presumably, would be
+      // to use the process creation time for the main process, which is
+      // available, but somewhat harder to get. However, these are all more or
+      // less proxies for the same thing, so it's not clear how much the better
+      // numbers really matter, since we (activity stream) only control a
+      // relatively small amount of the code that's executing between the
+      // OS-click and when the first <browser> element starts loading.  That
+      // said, it's conceivable that it could help us catch regressions in the
+      // number of cycles early chrome code takes to execute, but it's likely
+      // that there are more direct ways to measure that.
+      load_trigger_ts = perfService.timeOrigin;
+    }
+
     const session = {
       session_id: String(gUUIDGenerator.generateUUID()),
-      page: "about:newtab", // TODO: Handle about:home here
-      // "unexpected" will be overwritten when appropriate
-      perf: {load_trigger_type: "unexpected"}
+      // "unknown" will be overwritten when appropriate
+      page: url ? url : "unknown",
+      perf: {load_trigger_type}
     };
+
+    if (load_trigger_ts) {
+      session.perf.load_trigger_ts = load_trigger_ts;
+    }
 
     this.sessions.set(id, session);
     return session;
@@ -222,10 +277,9 @@ this.TelemetryFeed = class TelemetryFeed {
    * @param  {string} id The portID of the session, if a session is relevant (optional)
    * @return {obj}    A telemetry ping
    */
-  async createPing(portID) {
+  createPing(portID) {
     const appInfo = this.store.getState().App;
     const ping = {
-      client_id: await this.telemetryClientId,
       addon_version: appInfo.version,
       locale: appInfo.locale,
       user_prefs: this.userPreferences
@@ -234,10 +288,11 @@ this.TelemetryFeed = class TelemetryFeed {
     // If the ping is part of a user session, add session-related info
     if (portID) {
       const session = this.sessions.get(portID) || this.addSession(portID);
-      Object.assign(ping, {
-        session_id: session.session_id,
-        page: session.page
-      });
+      Object.assign(ping, {session_id: session.session_id});
+
+      if (session.page) {
+        Object.assign(ping, {page: session.page});
+      }
     }
     return ping;
   }
@@ -251,9 +306,9 @@ this.TelemetryFeed = class TelemetryFeed {
    *                     all the user specific IDs with "n/a" in the ping.
    * @return {obj}    A telemetry ping
    */
-  async createImpressionStats(action) {
+  createImpressionStats(action) {
     let ping = Object.assign(
-      await this.createPing(au.getPortIdOfSender(action)),
+      this.createPing(au.getPortIdOfSender(action)),
       action.data,
       {action: "activity_stream_impression_stats"}
     );
@@ -267,34 +322,34 @@ this.TelemetryFeed = class TelemetryFeed {
     return ping;
   }
 
-  async createUserEvent(action) {
+  createUserEvent(action) {
     return Object.assign(
-      await this.createPing(au.getPortIdOfSender(action)),
+      this.createPing(au.getPortIdOfSender(action)),
       action.data,
       {action: "activity_stream_user_event"}
     );
   }
 
-  async createUndesiredEvent(action) {
+  createUndesiredEvent(action) {
     return Object.assign(
-      await this.createPing(au.getPortIdOfSender(action)),
+      this.createPing(au.getPortIdOfSender(action)),
       {value: 0}, // Default value
       action.data,
       {action: "activity_stream_undesired_event"}
     );
   }
 
-  async createPerformanceEvent(action) {
+  createPerformanceEvent(action) {
     return Object.assign(
-      await this.createPing(),
+      this.createPing(),
       action.data,
       {action: "activity_stream_performance_event"}
     );
   }
 
-  async createSessionEndEvent(session) {
+  createSessionEndEvent(session) {
     return Object.assign(
-      await this.createPing(),
+      this.createPing(),
       {
         session_id: session.session_id,
         page: session.page,
@@ -305,8 +360,11 @@ this.TelemetryFeed = class TelemetryFeed {
     );
   }
 
-  async sendEvent(eventPromise) {
-    this.telemetrySender.sendPing(await eventPromise);
+  async sendEvent(event_object) {
+    if (this.telemetryEnabled) {
+      this.pingCentre.sendPing(event_object,
+      {filter: ACTIVITY_STREAM_ID});
+    }
   }
 
   handleImpressionStats(action) {
@@ -332,6 +390,14 @@ this.TelemetryFeed = class TelemetryFeed {
     }
   }
 
+  handleUserEvent(action) {
+    this.sendEvent(this.createUserEvent(action));
+  }
+
+  handleUndesiredEvent(action) {
+    this.sendEvent(this.createUndesiredEvent(action));
+  }
+
   resetImpressionStats() {
     for (const key of Object.keys(this._impressionStats)) {
       this._impressionStats[key].clear();
@@ -345,7 +411,7 @@ this.TelemetryFeed = class TelemetryFeed {
         this.init();
         break;
       case at.NEW_TAB_INIT:
-        this.addSession(au.getPortIdOfSender(action));
+        this.addSession(au.getPortIdOfSender(action), action.data.url);
         break;
       case at.NEW_TAB_UNLOAD:
         this.endSession(au.getPortIdOfSender(action));
@@ -362,13 +428,16 @@ this.TelemetryFeed = class TelemetryFeed {
         this.handleImpressionStats(action);
         break;
       case at.TELEMETRY_UNDESIRED_EVENT:
-        this.sendEvent(this.createUndesiredEvent(action));
+        this.handleUndesiredEvent(action);
         break;
       case at.TELEMETRY_USER_EVENT:
-        this.sendEvent(this.createUserEvent(action));
+        this.handleUserEvent(action);
         break;
       case at.TELEMETRY_PERFORMANCE_EVENT:
         this.sendEvent(this.createPerformanceEvent(action));
+        break;
+      case at.UNINIT:
+        this.uninit();
         break;
     }
   }
@@ -391,12 +460,18 @@ this.TelemetryFeed = class TelemetryFeed {
     // get blows up.
     let session = this.sessions.get(port);
 
-    // Partial workaround for #3118; avoids the worst incorrect associations of
-    // times with browsers, by associating the load trigger with the visibility
-    // event as the user is most likely associating the trigger to the tab just
-    // shown. This helps avoid associateing with a preloaded browser as those
-    // don't get the event until shown. Better fix for more cases forthcoming.
-    if (data.visibility_event_rcvd_ts) {
+    // XXX Partial workaround for #3118; avoids the worst incorrect associations
+    // of times with browsers, by associating the load trigger with the
+    // visibility event as the user is most likely associating the trigger to
+    // the tab just shown. This helps avoid associating with a preloaded
+    // browser as those don't get the event until shown. Better fix for more
+    // cases forthcoming.
+    //
+    // XXX the about:home check (and the corresponding test) should go away
+    // once the load_trigger stuff in addSession is refactored into
+    // setLoadTriggerInfo.
+    //
+    if (data.visibility_event_rcvd_ts && session.page !== "about:home") {
       this.setLoadTriggerInfo(port);
     }
 
@@ -408,8 +483,14 @@ this.TelemetryFeed = class TelemetryFeed {
       "browser-open-newtab-start");
 
     // Only uninit if the getter has initialized it
-    if (Object.prototype.hasOwnProperty.call(this, "telemetrySender")) {
-      this.telemetrySender.uninit();
+    if (Object.prototype.hasOwnProperty.call(this, "pingCentre")) {
+      this.pingCentre.uninit();
+    }
+
+    try {
+      this._prefs.ignore(TELEMETRY_PREF, this._onTelemetryPrefChange);
+    } catch (e) {
+      Cu.reportError(e);
     }
     // TODO: Send any unfinished sessions
   }
@@ -420,6 +501,7 @@ this.EXPORTED_SYMBOLS = [
   "PersistentGuidSet",
   "USER_PREFS_ENCODING",
   "IMPRESSION_STATS_RESET_TIME",
+  "TELEMETRY_PREF",
   "PREF_IMPRESSION_STATS_CLICKED",
   "PREF_IMPRESSION_STATS_BLOCKED",
   "PREF_IMPRESSION_STATS_POCKETED"

@@ -16,10 +16,12 @@
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/layers/TextureClientSharedSurface.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
+#include "mozilla/layers/IpcResourceUpdateQueue.h"
 #include "PersistentBufferProvider.h"
 #include "SharedSurface.h"
 #include "SharedSurfaceGL.h"
 #include "mozilla/webrender/WebRenderTypes.h"
+#include "WebRenderCanvasRenderer.h"
 
 namespace mozilla {
 namespace layers {
@@ -27,52 +29,32 @@ namespace layers {
 WebRenderCanvasLayer::~WebRenderCanvasLayer()
 {
   MOZ_COUNT_DTOR(WebRenderCanvasLayer);
-  ClearWrResources();
 }
 
-void
-WebRenderCanvasLayer::ClearWrResources()
+CanvasRenderer*
+WebRenderCanvasLayer::CreateCanvasRendererInternal()
 {
-  if (mExternalImageId.isSome()) {
-    WrBridge()->DeallocExternalImageId(mExternalImageId.ref());
-    mExternalImageId = Nothing();
-  }
-}
-
-void
-WebRenderCanvasLayer::Initialize(const Data& aData)
-{
-  ShareableCanvasLayer::Initialize(aData);
-
-  // XXX: Use basic surface factory until we support shared surface.
-  if (!mGLContext || mGLFrontbuffer)
-    return;
-
-  gl::GLScreenBuffer* screen = mGLContext->Screen();
-  auto factory = MakeUnique<gl::SurfaceFactory_Basic>(mGLContext, screen->mCaps, mFlags);
-  screen->Morph(Move(factory));
+  return new WebRenderCanvasRendererSync(mManager->AsWebRenderLayerManager());
 }
 
 void
 WebRenderCanvasLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
+                                  wr::IpcResourceUpdateQueue& aResources,
                                   const StackingContextHelper& aSc)
 {
-  UpdateCompositableClient();
-
-  if (mExternalImageId.isNothing()) {
-    mExternalImageId = Some(WrBridge()->AllocExternalImageIdForCompositable(mCanvasClient));
-  }
+  WebRenderCanvasRendererSync* canvasRenderer = mCanvasRenderer->AsWebRenderCanvasRendererSync();
+  MOZ_ASSERT(canvasRenderer);
+  canvasRenderer->UpdateCompositableClient();
 
   Maybe<gfx::Matrix4x4> transform;
-  const bool needsYFlip = (mOriginPos == gl::OriginPos::BottomLeft);
-  if (needsYFlip) {
-    transform = Some(GetTransform().PreTranslate(0, mBounds.height, 0).PreScale(1, -1, 1));
+  if (canvasRenderer->NeedsYFlip()) {
+    transform = Some(GetTransform().PreTranslate(0, mBounds.Height(), 0).PreScale(1, -1, 1));
   }
 
-  ScrollingLayersHelper scroller(this, aBuilder, aSc);
+  ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc);
   StackingContextHelper sc(aSc, aBuilder, this, transform);
 
-  LayerRect rect(0, 0, mBounds.width, mBounds.height);
+  LayerRect rect(0, 0, mBounds.Width(), mBounds.Height());
   DumpLayerInfo("CanvasLayer", rect);
 
   wr::ImageRendering filter = wr::ToImageRendering(mSamplingFilter);
@@ -83,36 +65,21 @@ WebRenderCanvasLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
                   Stringify(filter).c_str());
   }
 
+  // Eww. Re-creating image keys every time is bad. Probably not worth fixing here
+  // since layers-full webrender is going away soon-ish. But don't reproduce what
+  // you see here.
   wr::WrImageKey key = GenerateImageKey();
-  WrBridge()->AddWebRenderParentCommand(OpAddExternalImage(mExternalImageId.value(), key));
+  aResources.AddExternalImage(canvasRenderer->GetExternalImageId().value(), key);
   WrManager()->AddImageKeyForDiscard(key);
 
   wr::LayoutRect r = sc.ToRelativeLayoutRect(rect);
-  aBuilder.PushImage(r, r, filter, key);
-}
-
-void
-WebRenderCanvasLayer::AttachCompositable()
-{
-  mCanvasClient->Connect();
-}
-
-CompositableForwarder*
-WebRenderCanvasLayer::GetForwarder()
-{
-  return WrManager()->WrBridge();
+  aBuilder.PushImage(r, r, true, filter, key);
 }
 
 void
 WebRenderCanvasLayer::ClearCachedResources()
 {
-  ClearWrResources();
-  if (mBufferProvider) {
-    mBufferProvider->ClearCachedResources();
-  }
-  if (mCanvasClient) {
-    mCanvasClient->Clear();
-  }
+  mCanvasRenderer->ClearCachedResources();
 }
 
 } // namespace layers

@@ -193,9 +193,6 @@ user_pref("layout.css.prefixes.device-pixel-ratio-webkit", true);
 // Enable CSS shape-outside for testing
 user_pref("layout.css.shape-outside.enabled", true);
 
-// Enable CSS text-justify for testing
-user_pref("layout.css.text-justify.enabled", true);
-
 // Disable spammy layout warnings because they pollute test logs
 user_pref("layout.spammy_warnings.enabled", false);
 
@@ -254,12 +251,18 @@ user_pref("toolkit.telemetry.server", "https://%(server)s/telemetry-dummy/");
 // Don't send 'new-profile' ping on new profiles during tests, otherwise the testing framework
 // might wait on the pingsender to finish and slow down tests.
 user_pref("toolkit.telemetry.newProfilePing.enabled", false);
+// Don't send 'bhr' ping during tests, otherwise the testing framework might
+// wait on the pingsender to finish and slow down tests.
+user_pref("toolkit.telemetry.bhrPing.enabled", false);
 // Don't send the 'shutdown' ping using the pingsender on the first session using
 // the 'pingsender' process. Valgrind marks the process as leaky (e.g. see bug 1364068
 // for the 'new-profile' ping) but does not provide enough information
 // to suppress the leak. Running locally does not reproduce the issue,
 // so disable this until we rewrite the pingsender in Rust (bug 1339035).
 user_pref("toolkit.telemetry.shutdownPingSender.enabledFirstSession", false);
+// Don't send the 'first-shutdown' during tests, otherwise tests expecting
+// main and subsession pings will fail.
+user_pref("toolkit.telemetry.firstShutdownPing.enabled", false);
 
 // A couple of preferences with default values to test that telemetry preference
 // watching is working.
@@ -323,6 +326,10 @@ user_pref("browser.search.geoSpecificDefaults", false);
 
 // Make sure Shield doesn't hit the network.
 user_pref("extensions.shield-recipe-client.api_url", "");
+
+// Make sure PingCentre doesn't hit the network.
+user_pref("browser.ping-centre.staging.endpoint", "");
+user_pref("browser.ping-centre.production.endpoint", "");
 
 user_pref("media.eme.enabled", true);
 
@@ -388,7 +395,7 @@ user_pref("extensions.formautofill.available", "on");
 user_pref("marionette.prefs.recommended", false);
 
 // Disable Screenshots by default for now
-user_pref("extensions.screenshots.system-disabled", true);
+user_pref("extensions.screenshots.disabled", true);
 
 // Set places maintenance far in the future to avoid it kicking in during tests.
 // The maintenance can take a relatively long time which may cause unnecessary

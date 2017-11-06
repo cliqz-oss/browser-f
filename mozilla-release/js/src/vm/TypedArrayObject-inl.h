@@ -19,6 +19,8 @@
 #include "jscntxt.h"
 #include "jsnum.h"
 
+#include "gc/Zone.h"
+
 #include "jit/AtomicOperations.h"
 
 #include "js/Conversions.h"
@@ -237,8 +239,7 @@ class ElementSpecific
      * case the two memory ranges overlap.
      */
     static bool
-    setFromTypedArray(JSContext* cx,
-                      Handle<TypedArrayObject*> target, Handle<TypedArrayObject*> source,
+    setFromTypedArray(Handle<TypedArrayObject*> target, Handle<TypedArrayObject*> source,
                       uint32_t offset)
     {
         // WARNING: |source| may be an unwrapped typed array from a different
@@ -253,7 +254,7 @@ class ElementSpecific
         MOZ_ASSERT(source->length() <= target->length() - offset);
 
         if (TypedArrayObject::sameBuffer(target, source))
-            return setFromOverlappingTypedArray(cx, target, source, offset);
+            return setFromOverlappingTypedArray(target, source, offset);
 
         SharedMem<T*> dest = target->viewDataEither().template cast<T*>() + offset;
         uint32_t count = source->length();
@@ -264,7 +265,7 @@ class ElementSpecific
         }
 
         // Inhibit unaligned accesses on ARM (bug 1097253, a compiler bug).
-#ifdef __arm__
+#if defined(__arm__) && defined(__GNUC__) && !defined(__clang__)
 #  define JS_VOLATILE_ARM volatile
 #else
 #  define JS_VOLATILE_ARM
@@ -448,8 +449,7 @@ class ElementSpecific
 
   private:
     static bool
-    setFromOverlappingTypedArray(JSContext* cx,
-                                 Handle<TypedArrayObject*> target,
+    setFromOverlappingTypedArray(Handle<TypedArrayObject*> target,
                                  Handle<TypedArrayObject*> source,
                                  uint32_t offset)
     {

@@ -23,7 +23,8 @@ INSTALLER_FILES += \
 endif
 
 BRANDING_FILES = \
-	bgstub.bmp \
+	bgstub.jpg \
+	bgstub_2x.jpg \
 	branding.nsi \
 	firefox64.ico \
 	wizHeader.bmp \
@@ -33,9 +34,9 @@ BRANDING_FILES = \
 
 include $(topsrcdir)/config/config.mk
 
-ifdef LOCALE_MERGEDIR
+ifdef IS_LANGUAGE_REPACK
 PPL_LOCALE_ARGS = \
-  --l10n-dir=$(LOCALE_MERGEDIR)/browser/installer \
+  --l10n-dir=$(REAL_LOCALE_MERGEDIR)/browser/installer \
   --l10n-dir=$(call EXPAND_LOCALE_SRCDIR,browser/locales)/installer \
   --l10n-dir=$(topsrcdir)/browser/locales/en-US/installer \
   $(NULL)
@@ -54,7 +55,7 @@ uninstaller::
 	$(RM) -r $(CONFIG_DIR)
 	$(MKDIR) $(CONFIG_DIR)
 	$(INSTALL) $(addprefix $(srcdir)/,$(INSTALLER_FILES)) $(CONFIG_DIR)
-	$(INSTALL) $(addprefix $(DIST)/branding/,$(BRANDING_FILES)) $(CONFIG_DIR)
+	$(INSTALL) $(addprefix $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)/,$(BRANDING_FILES)) $(CONFIG_DIR)
 	$(call py_action,preprocessor,-Fsubstitution $(DEFINES) $(ACDEFINES) \
 	  $(srcdir)/nsis/defines.nsi.in -o $(CONFIG_DIR)/defines.nsi)
 	$(PYTHON) $(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \
@@ -76,7 +77,7 @@ $(CONFIG_DIR)/setup.exe::
 	$(RM) -r $(CONFIG_DIR)
 	$(MKDIR) $(CONFIG_DIR)
 	$(INSTALL) $(addprefix $(srcdir)/,$(INSTALLER_FILES)) $(CONFIG_DIR)
-	$(INSTALL) $(addprefix $(DIST)/branding/,$(BRANDING_FILES)) $(CONFIG_DIR)
+	$(INSTALL) $(addprefix $(topsrcdir)/$(MOZ_BRANDING_DIRECTORY)/,$(BRANDING_FILES)) $(CONFIG_DIR)
 	$(call py_action,preprocessor,-Fsubstitution $(DEFINES) $(ACDEFINES) \
 	  $(srcdir)/nsis/defines.nsi.in -o $(CONFIG_DIR)/defines.nsi)
 	$(PYTHON) $(topsrcdir)/toolkit/mozapps/installer/windows/nsis/preprocess-locale.py \

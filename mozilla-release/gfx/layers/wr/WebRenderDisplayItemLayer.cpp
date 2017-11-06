@@ -25,21 +25,21 @@ WebRenderDisplayItemLayer::~WebRenderDisplayItemLayer()
 
 void
 WebRenderDisplayItemLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
+                                       wr::IpcResourceUpdateQueue& aResources,
                                        const StackingContextHelper& aSc)
 {
   if (mVisibleRegion.IsEmpty()) {
     return;
   }
 
-  ScrollingLayersHelper scroller(this, aBuilder, aSc);
+  ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc);
 
   if (mItem) {
     wr::LayoutSize contentSize; // this won't actually be used by anything
     wr::DisplayListBuilder builder(WrBridge()->GetPipeline(), contentSize);
     // We might have recycled this layer. Throw away the old commands.
-    mParentCommands.Clear();
 
-    mItem->CreateWebRenderCommands(builder, aSc, mParentCommands, WrManager(),
+    mItem->CreateWebRenderCommands(builder, aResources, aSc, WrManager(),
                                    GetDisplayListBuilder());
     builder.Finalize(contentSize, mBuiltDisplayList);
   } else {
@@ -57,7 +57,6 @@ WebRenderDisplayItemLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
   }
 
   aBuilder.PushBuiltDisplayList(mBuiltDisplayList);
-  WrBridge()->AddWebRenderParentCommands(mParentCommands);
 }
 
 } // namespace layers

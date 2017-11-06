@@ -10,9 +10,9 @@ const { require } =
   Cu.import("resource://devtools/shared/Loader.jsm", {});
 const Services = require("Services");
 const defer = require("devtools/shared/defer");
-const EventEmitter = require("devtools/shared/event-emitter");
+const EventEmitter = require("devtools/shared/old-event-emitter");
 const discovery = require("devtools/shared/discovery/discovery");
-const { setTimeout, clearTimeout } = require("sdk/timers");
+const { setTimeout, clearTimeout } = Cu.import("resource://gre/modules/Timer.jsm", {});
 
 Services.prefs.setBoolPref("devtools.discovery.log", true);
 
@@ -75,10 +75,6 @@ Object.defineProperty(discovery.device, "name", {
     return "test-device";
   }
 });
-
-function run_test() {
-  run_next_test();
-}
 
 add_task(function* () {
   // At startup, no remote devices are known
