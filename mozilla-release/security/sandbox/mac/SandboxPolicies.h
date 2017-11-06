@@ -312,7 +312,7 @@ static const char contentSandboxRules[] = R"(
 ; level 2: global read access permitted, no global write access,
 ;          no read/write access to ~/Library,
 ;          no read/write access to $PROFILE,
-;          read access permitted to $PROFILE/{extensions,chrome}
+;          read access permitted to $PROFILE/{extensions,features,chrome}
   (if (string=? sandbox-level-2 "TRUE")
     (if (string=? hasFilePrivileges "TRUE")
       ; This process has blanket file read privileges
@@ -329,12 +329,13 @@ static const char contentSandboxRules[] = R"(
                 (require-not (subpath profileDir))))
             (allow file-read*
                 (profile-subpath "/extensions")
+                (profile-subpath "/features")
                 (profile-subpath "/chrome")))
           ; we don't have a profile dir
           (allow file-read* (require-not (home-subpath "/Library")))))))
 
   ; level 3: no global read/write access,
-  ;          read access permitted to $PROFILE/{extensions,chrome}
+  ;          read access permitted to $PROFILE/{extensions,features,chrome}
   (if (string=? sandbox-level-3 "TRUE")
     (if (string=? hasFilePrivileges "TRUE")
       ; This process has blanket file read privileges
@@ -344,6 +345,7 @@ static const char contentSandboxRules[] = R"(
         ; we have a profile dir
           (allow file-read*
             (profile-subpath "/extensions")
+            (profile-subpath "/features")
             (profile-subpath "/chrome")))))
 
 ; accelerated graphics
