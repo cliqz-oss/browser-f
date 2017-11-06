@@ -53,7 +53,7 @@ const OBSERVING = [
 // final URLs after redirections.
 // See DB-1219.
 const redirectedURLs = {
-  "about:cliqz": "chrome://cliqz/content/freshtab/home.html",
+  "about:cliqz": "resource://cliqz/freshtab/home.html",
 };
 
 // XUL Window properties to (re)store
