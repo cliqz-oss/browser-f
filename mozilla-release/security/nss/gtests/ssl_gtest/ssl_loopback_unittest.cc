@@ -6,10 +6,12 @@
 
 #include <functional>
 #include <memory>
+#include <vector>
 #include "secerr.h"
 #include "ssl.h"
 #include "sslerr.h"
 #include "sslproto.h"
+#include "ssl3prot.h"
 
 extern "C" {
 // This is not something that should make you happy.
@@ -166,24 +168,6 @@ TEST_P(TlsConnectDatagram, ConnectSrtp) {
   SendReceive();
 }
 
-// 1.3 is disabled in the next few tests because we don't
-// presently support resumption in 1.3.
-TEST_P(TlsConnectStreamPre13, ConnectAndClientRenegotiate) {
-  Connect();
-  server_->PrepareForRenegotiate();
-  client_->StartRenegotiate();
-  Handshake();
-  CheckConnected();
-}
-
-TEST_P(TlsConnectStreamPre13, ConnectAndServerRenegotiate) {
-  Connect();
-  client_->PrepareForRenegotiate();
-  server_->StartRenegotiate();
-  Handshake();
-  CheckConnected();
-}
-
 TEST_P(TlsConnectGeneric, ConnectSendReceive) {
   Connect();
   SendReceive();
@@ -224,14 +208,14 @@ TEST_P(TlsConnectStream, ShortRead) {
   ASSERT_EQ(50U, client_->received_bytes());
 }
 
-TEST_P(TlsConnectGeneric, ConnectWithCompressionMaybe) {
+// We enable compression via the API but it's disabled internally,
+// so we should never get it.
+TEST_P(TlsConnectGeneric, ConnectWithCompressionEnabled) {
   EnsureTlsSetup();
-  client_->EnableCompression();
-  server_->EnableCompression();
+  client_->SetOption(SSL_ENABLE_DEFLATE, PR_TRUE);
+  server_->SetOption(SSL_ENABLE_DEFLATE, PR_TRUE);
   Connect();
-  EXPECT_EQ(client_->version() < SSL_LIBRARY_VERSION_TLS_1_3 &&
-                variant_ != ssl_variant_datagram,
-            client_->is_compressed());
+  EXPECT_FALSE(client_->is_compressed());
   SendReceive();
 }
 
@@ -321,6 +305,42 @@ TEST_F(TlsConnectStreamTls13, NegotiateShortHeaders) {
   client_->ExpectShortHeaders();
   server_->ExpectShortHeaders();
   Connect();
+}
+
+TEST_F(TlsConnectStreamTls13, ClientAltHandshakeType) {
+  client_->SetAltHandshakeTypeEnabled();
+  auto filter = std::make_shared<TlsHeaderRecorder>();
+  server_->SetPacketFilter(filter);
+  Connect();
+  ASSERT_EQ(kTlsHandshakeType, filter->header(0)->content_type());
+}
+
+TEST_F(TlsConnectStreamTls13, ServerAltHandshakeType) {
+  server_->SetAltHandshakeTypeEnabled();
+  auto filter = std::make_shared<TlsHeaderRecorder>();
+  server_->SetPacketFilter(filter);
+  Connect();
+  ASSERT_EQ(kTlsHandshakeType, filter->header(0)->content_type());
+}
+
+TEST_F(TlsConnectStreamTls13, BothAltHandshakeType) {
+  client_->SetAltHandshakeTypeEnabled();
+  server_->SetAltHandshakeTypeEnabled();
+  auto header_filter = std::make_shared<TlsHeaderRecorder>();
+  auto sh_filter = std::make_shared<TlsInspectorRecordHandshakeMessage>(
+      kTlsHandshakeServerHello);
+  std::vector<std::shared_ptr<PacketFilter>> filters = {header_filter,
+                                                        sh_filter};
+  auto chained = std::make_shared<ChainedPacketFilter>(filters);
+  server_->SetPacketFilter(chained);
+  header_filter->SetAgent(server_.get());
+  header_filter->EnableDecryption();
+  Connect();
+  ASSERT_EQ(kTlsAltHandshakeType, header_filter->header(0)->content_type());
+  ASSERT_EQ(kTlsHandshakeType, header_filter->header(1)->content_type());
+  uint32_t ver;
+  ASSERT_TRUE(sh_filter->buffer().Read(0, 2, &ver));
+  ASSERT_EQ((uint32_t)(0x7a00 | TLS_1_3_DRAFT_VERSION), ver);
 }
 
 INSTANTIATE_TEST_CASE_P(

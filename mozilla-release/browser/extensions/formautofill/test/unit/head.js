@@ -29,20 +29,8 @@ do_get_profile();
 // Load mocking/stubbing library, sinon
 // docs: http://sinonjs.org/releases/v2.3.2/
 Cu.import("resource://gre/modules/Timer.jsm");
-var {Loader} = Cu.import("resource://gre/modules/commonjs/toolkit/loader.js", {});
-var loader = new Loader.Loader({
-  paths: {
-    "": "resource://testing-common/",
-  },
-  globals: {
-    setTimeout,
-    setInterval,
-    clearTimeout,
-    clearInterval,
-  },
-});
-var require = Loader.Require(loader, {id: ""});
-var sinon = require("sinon-2.3.2");
+Services.scriptloader.loadSubScript("resource://testing-common/sinon-2.3.2.js", this);
+/* globals sinon */
 // ================================================
 
 // Load our bootstrap extension manifest so we can access our chrome/resource URIs.
@@ -208,12 +196,14 @@ function objectMatches(object, fields) {
 
 add_task(async function head_initialize() {
   Services.prefs.setStringPref("extensions.formautofill.available", "on");
+  Services.prefs.setBoolPref("extensions.formautofill.creditCards.available", true);
   Services.prefs.setBoolPref("extensions.formautofill.heuristics.enabled", true);
   Services.prefs.setBoolPref("dom.forms.autocomplete.formautofill", true);
 
   // Clean up after every test.
   do_register_cleanup(function head_cleanup() {
     Services.prefs.clearUserPref("extensions.formautofill.available");
+    Services.prefs.clearUserPref("extensions.formautofill.creditCards.available");
     Services.prefs.clearUserPref("extensions.formautofill.heuristics.enabled");
     Services.prefs.clearUserPref("dom.forms.autocomplete.formautofill");
   });

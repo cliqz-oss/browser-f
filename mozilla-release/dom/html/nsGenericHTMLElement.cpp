@@ -30,7 +30,6 @@
 #include "nsIDOMAttr.h"
 #include "nsIDOMDocumentFragment.h"
 #include "nsIDOMHTMLElement.h"
-#include "nsIDOMHTMLMenuElement.h"
 #include "nsIDOMWindow.h"
 #include "nsIDOMDocument.h"
 #include "nsMappedAttributes.h"
@@ -76,7 +75,6 @@
 #include "mozilla/InternalMutationEvent.h"
 #include "nsDOMStringMap.h"
 
-#include "nsIEditor.h"
 #include "nsLayoutUtils.h"
 #include "mozAutoDocUpdate.h"
 #include "nsHtml5Module.h"
@@ -109,6 +107,7 @@
 #include "mozilla/StyleSetHandleInlines.h"
 #include "ReferrerPolicy.h"
 #include "mozilla/dom/HTMLLabelElement.h"
+#include "mozilla/dom/HTMLInputElement.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -546,7 +545,7 @@ nsGenericHTMLElement::FindAncestorForm(HTMLFormElement* aCurrentForm)
                "FindAncestorForm should not be called if @form is set!");
 
   // Make sure we don't end up finding a form that's anonymous from
-  // our point of view.
+  // our point of view. See also nsGenericHTMLFormElement::UpdateFieldSet.
   nsIContent* bindingParent = GetBindingParent();
 
   nsIContent* content = this;
@@ -2320,7 +2319,9 @@ nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
                      "element should be equals to the current element "
                      "associated with the id in @form!");
 
-        if (element && element->IsHTMLElement(nsGkAtoms::form)) {
+        if (element &&
+            element->IsHTMLElement(nsGkAtoms::form) &&
+            nsContentUtils::IsInSameAnonymousTree(this, element)) {
           SetForm(static_cast<HTMLFormElement*>(element), aBindToTree);
         }
       }
@@ -2366,7 +2367,11 @@ nsGenericHTMLFormElement::UpdateFieldSet(bool aNotify)
   nsIContent* parent = nullptr;
   nsIContent* prev = nullptr;
 
-  for (parent = GetParent(); parent;
+  // Don't walk out of anonymous subtrees. Note the similar code in
+  // nsGenericHTMLElement::FindAncestorForm.
+  nsIContent* bindingParent = GetBindingParent();
+
+  for (parent = GetParent(); parent && parent != bindingParent;
        prev = parent, parent = parent->GetParent()) {
     HTMLFieldSetElement* fieldset =
       HTMLFieldSetElement::FromContent(parent);
@@ -2419,6 +2424,40 @@ void nsGenericHTMLFormElement::UpdateDisabledState(bool aNotify)
 
   EventStates oldDisabledStates = State() & DISABLED_STATES;
   EventStates changedStates = disabledStates ^ oldDisabledStates;
+
+  if (!changedStates.IsEmpty()) {
+    ToggleStates(changedStates, aNotify);
+  }
+}
+
+void
+nsGenericHTMLFormElement::UpdateRequiredState(bool aIsRequired, bool aNotify)
+{
+#ifdef DEBUG
+  int32_t type = ControlType();
+#endif
+  MOZ_ASSERT((type & NS_FORM_INPUT_ELEMENT) ||
+              type == NS_FORM_SELECT ||
+              type == NS_FORM_TEXTAREA,
+             "This should be called only on types that @required applies");
+
+#ifdef DEBUG
+  HTMLInputElement* input = HTMLInputElement::FromContent(this);
+  if (input) {
+    MOZ_ASSERT(input->DoesRequiredApply(),
+               "This should be called only on input types that @required applies");
+  }
+#endif
+
+  EventStates requiredStates;
+  if (aIsRequired) {
+    requiredStates |= NS_EVENT_STATE_REQUIRED;
+  } else {
+    requiredStates |= NS_EVENT_STATE_OPTIONAL;
+  }
+
+  EventStates oldRequiredStates = State() & REQUIRED_STATES;
+  EventStates changedStates = requiredStates ^ oldRequiredStates;
 
   if (!changedStates.IsEmpty()) {
     ToggleStates(changedStates, aNotify);
@@ -2624,7 +2663,7 @@ nsGenericHTMLElement::DispatchSimulatedClick(nsGenericHTMLElement* aElement,
   return EventDispatcher::Dispatch(ToSupports(aElement), aPresContext, &event);
 }
 
-already_AddRefed<nsIEditor>
+already_AddRefed<TextEditor>
 nsGenericHTMLElement::GetAssociatedEditor()
 {
   // If contenteditable is ever implemented, it might need to do something different here?
@@ -2660,9 +2699,9 @@ nsGenericHTMLElement::SyncEditorsOnSubtree(nsIContent* content)
   /* Sync this node */
   nsGenericHTMLElement* element = FromContent(content);
   if (element) {
-    nsCOMPtr<nsIEditor> editor = element->GetAssociatedEditor();
-    if (editor) {
-      editor->SyncRealTimeSpell();
+    RefPtr<TextEditor> textEditor = element->GetAssociatedEditor();
+    if (textEditor) {
+      textEditor->SyncRealTimeSpell();
     }
   }
 

@@ -106,6 +106,7 @@ const XHR_ERROR_TYPE = [
 var Policy = {
   now: () => new Date(),
   midnightPingFuzzingDelay: () => MIDNIGHT_FUZZING_DELAY_MS,
+  pingSubmissionTimeout: () => PING_SUBMIT_TIMEOUT_MS,
   setSchedulerTickTimeout: (callback, delayMs) => setTimeout(callback, delayMs),
   clearSchedulerTickTimeout: (id) => clearTimeout(id),
 };
@@ -178,14 +179,6 @@ this.TelemetrySend = {
 
   get pendingPingCount() {
     return TelemetrySendImpl.pendingPingCount;
-  },
-
-  testSetTimeoutForPingSubmit(timeoutInMS) {
-    TelemetrySendImpl._pingSubmissionTimeout = timeoutInMS;
-  },
-
-  testResetTimeOutToDefault() {
-    TelemetrySendImpl._pingSubmissionTimeout = PING_SUBMIT_TIMEOUT_MS;
   },
 
   /**
@@ -594,8 +587,6 @@ var TelemetrySendImpl = {
   // Count of pending pings that were overdue.
   _overduePingCount: 0,
 
-  _pingSubmissionTimeout: PING_SUBMIT_TIMEOUT_MS,
-
   OBSERVER_TOPICS: [
     TOPIC_IDLE_DAILY,
     TOPIC_QUIT_APPLICATION_GRANTED,
@@ -805,7 +796,6 @@ var TelemetrySendImpl = {
     let setOSShutdown = () => {
       this._log.trace("setOSShutdown - in OS shutdown");
       this._isOSShutdown = true;
-      Telemetry.scalarSet("telemetry.os_shutting_down", true);
     };
 
     switch (topic) {
@@ -947,6 +937,12 @@ var TelemetrySendImpl = {
   sendPings(currentPings, persistedPingIds) {
     let pingSends = [];
 
+    // Prioritize health pings to enable low-latency monitoring.
+    currentPings = [
+      ...currentPings.filter(ping => ping.type === "health"),
+      ...currentPings.filter(ping => ping.type !== "health"),
+    ];
+
     for (let current of currentPings) {
       let ping = current;
       let p = (async () => {
@@ -1087,7 +1083,7 @@ var TelemetrySendImpl = {
 
     let request = new ServiceRequest();
     request.mozBackgroundRequest = true;
-    request.timeout = this._pingSubmissionTimeout;
+    request.timeout = Policy.pingSubmissionTimeout();
 
     request.open("POST", url, true);
     request.overrideMimeType("text/plain");
@@ -1202,7 +1198,7 @@ var TelemetrySendImpl = {
 
     const compressedPingSizeKB = Math.floor(payloadStream.data.length / 1024);
     Telemetry.getHistogramById("TELEMETRY_COMPRESS").add(Utils.monotonicNow() - startTime);
-    request.send(payloadStream);
+    request.sendInputStream(payloadStream);
 
     return deferred.promise;
   },

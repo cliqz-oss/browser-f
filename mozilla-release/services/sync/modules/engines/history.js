@@ -14,6 +14,7 @@ const THIRTY_DAYS_IN_MS = 2592000000; // 30 days in milliseconds
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://services-common/async.js");
+Cu.import("resource://services-common/utils.js");
 Cu.import("resource://services-sync/constants.js");
 Cu.import("resource://services-sync/engines.js");
 Cu.import("resource://services-sync/record.js");
@@ -158,7 +159,11 @@ HistoryStore.prototype = {
   },
 
   async changeItemID(oldID, newID) {
-    this.setGUID(await PlacesSyncUtils.history.fetchURLInfoForGuid(oldID).url, newID);
+    let info = await PlacesSyncUtils.history.fetchURLInfoForGuid(oldID);
+    if (!info) {
+      throw new Error(`Can't change ID for nonexistent history entry ${oldID}`);
+    }
+    this.setGUID(info.url, newID);
   },
 
   async getAllIDs() {
@@ -174,7 +179,6 @@ HistoryStore.prototype = {
 
   async applyIncomingBatch(records) {
     let failed = [];
-    let blockers = [];
 
     // Convert incoming records to mozIPlaceInfo objects. Some records can be
     // ignored or handled directly, so we're rewriting the array in-place.
@@ -185,9 +189,7 @@ HistoryStore.prototype = {
 
       try {
         if (record.deleted) {
-          let promise = this.remove(record);
-          promise = promise.catch(ex => failed.push(record.id));
-          blockers.push(promise);
+          await this.remove(record);
 
           // No further processing needed. Remove it from the list.
           shouldApply = false;
@@ -209,20 +211,9 @@ HistoryStore.prototype = {
     records.length = k; // truncate array
 
     if (records.length) {
-      blockers.push(new Promise(resolve => {
-        let updatePlacesCallback = {
-          handleResult: function handleResult() {},
-          handleError: function handleError(resultCode, placeInfo) {
-            failed.push(placeInfo.guid);
-          },
-          handleCompletion: resolve,
-        };
-        this._asyncHistory.updatePlaces(records, updatePlacesCallback);
-      }));
+      await PlacesUtils.history.insertMany(records)
     }
 
-    // failed is updated asynchronously, hence the await on blockers.
-    await Promise.all(blockers);
     return failed;
   },
 
@@ -235,11 +226,8 @@ HistoryStore.prototype = {
    */
   async _recordToPlaceInfo(record) {
     // Sort out invalid URIs and ones Places just simply doesn't want.
-    record.uri = Utils.makeURI(record.histUri);
-    if (!record.uri) {
-      this._log.warn("Attempted to process invalid URI, skipping.");
-      throw new Error("Invalid URI in record");
-    }
+    record.url = PlacesUtils.normalizeToURLOrGUID(record.histUri);
+    record.uri = CommonUtils.makeURI(record.histUri);
 
     if (!Utils.checkGUID(record.id)) {
       this._log.warn("Encountered record with invalid GUID: " + record.id);
@@ -287,17 +275,24 @@ HistoryStore.prototype = {
         continue;
       }
 
-      // Dates need to be integers.
-      visit.date = Math.round(visit.date);
+      // Dates need to be integers. Future and far past dates are clamped to the
+      // current date and earliest sensible date, respectively.
+      let originalVisitDate = PlacesUtils.toDate(Math.round(visit.date));
+      visit.date = PlacesSyncUtils.history.clampVisitDate(originalVisitDate);
 
-      if (curVisits.indexOf(visit.date + "," + visit.type) != -1) {
+      let visitDateAsPRTime = PlacesUtils.toPRTime(visit.date);
+      let visitKey = visitDateAsPRTime + "," + visit.type;
+      if (curVisits.indexOf(visitKey) != -1) {
         // Visit is a dupe, don't increment 'k' so the element will be
         // overwritten.
         continue;
       }
 
-      visit.visitDate = visit.date;
-      visit.transitionType = visit.type;
+      // Note the visit key, so that we don't add duplicate visits with
+      // clamped timestamps.
+      curVisits.push(visitKey);
+
+      visit.transition = visit.type;
       k += 1;
     }
     record.visits.length = k; // truncate array

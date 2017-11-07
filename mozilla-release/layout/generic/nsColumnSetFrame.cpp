@@ -31,7 +31,7 @@ public:
    * Returns the frame's visual overflow rect instead of the frame's bounds.
    */
   virtual nsRect GetBounds(nsDisplayListBuilder* aBuilder,
-                           bool* aSnap) override
+                           bool* aSnap) const override
   {
     *aSnap = false;
     return static_cast<nsColumnSetFrame*>(mFrame)->CalculateBounds(ToReferenceFrame());
@@ -44,14 +44,14 @@ public:
                                              LayerManager* aManager,
                                              const ContainerLayerParameters& aContainerParameters) override;
   virtual bool CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                       mozilla::wr::IpcResourceUpdateQueue& aResources,
                                        const StackingContextHelper& aSc,
-                                       nsTArray<WebRenderParentCommand>& aParentCommands,
                                        mozilla::layers::WebRenderLayerManager* aManager,
                                        nsDisplayListBuilder* aDisplayListBuilder) override;
   virtual void Paint(nsDisplayListBuilder* aBuilder,
                      gfxContext* aCtx) override;
 
-  NS_DISPLAY_DECL_NAME("ColumnRule", nsDisplayItem::TYPE_COLUMN_RULE);
+  NS_DISPLAY_DECL_NAME("ColumnRule", TYPE_COLUMN_RULE);
 
 private:
   nsTArray<nsCSSBorderRenderer> mBorderRenderers;
@@ -105,8 +105,8 @@ nsDisplayColumnRule::BuildLayer(nsDisplayListBuilder* aBuilder,
 
 bool
 nsDisplayColumnRule::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aBuilder,
+                                             mozilla::wr::IpcResourceUpdateQueue& aResources,
                                              const StackingContextHelper& aSc,
-                                             nsTArray<WebRenderParentCommand>& aParentCommands,
                                              mozilla::layers::WebRenderLayerManager* aManager,
                                              nsDisplayListBuilder* aDisplayListBuilder)
 {
@@ -129,7 +129,7 @@ nsDisplayColumnRule::CreateWebRenderCommands(mozilla::wr::DisplayListBuilder& aB
   }
 
   for (auto iter = mBorderRenderers.begin(); iter != mBorderRenderers.end(); iter++) {
-    iter->CreateWebRenderCommands(aBuilder, aSc);
+    iter->CreateWebRenderCommands(aBuilder, aResources, aSc);
   }
 
   return true;
@@ -803,6 +803,7 @@ nsColumnSetFrame::ReflowChildren(ReflowOutput&     aDesiredSize,
                           kidReflowInput.ComputedLogicalMargin().IStart(wm),
                           childOrigin.B(wm) +
                           kidReflowInput.ComputedLogicalMargin().BStart(wm));
+      aStatus.Reset();
       ReflowChild(child, PresContext(), kidDesiredSize, kidReflowInput,
                   wm, origin, containerSize, 0, aStatus);
 
@@ -1189,9 +1190,7 @@ nsColumnSetFrame::Reflow(nsPresContext*           aPresContext,
 
   DO_GLOBAL_REFLOW_COUNT("nsColumnSetFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
-
-  // Initialize OUT parameter
-  aStatus.Reset();
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // Our children depend on our block-size if we have a fixed block-size.
   if (aReflowInput.ComputedBSize() != NS_AUTOHEIGHT) {
@@ -1277,19 +1276,18 @@ nsColumnSetFrame::Reflow(nsPresContext*           aPresContext,
 
 void
 nsColumnSetFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                   const nsRect&           aDirtyRect,
                                    const nsDisplayListSet& aLists)
 {
   DisplayBorderBackgroundOutline(aBuilder, aLists);
 
   if (IsVisibleForPainting(aBuilder)) {
     aLists.BorderBackground()->
-      AppendNewToTop(new (aBuilder)nsDisplayColumnRule(aBuilder, this));
+      AppendNewToTop(new (aBuilder) nsDisplayColumnRule(aBuilder, this));
   }
 
   // Our children won't have backgrounds so it doesn't matter where we put them.
   for (nsFrameList::Enumerator e(mFrames); !e.AtEnd(); e.Next()) {
-    BuildDisplayListForChild(aBuilder, e.get(), aDirtyRect, aLists);
+    BuildDisplayListForChild(aBuilder, e.get(), aLists);
   }
 }
 

@@ -39,7 +39,7 @@
 #include "nsContentUtils.h"
 #include "nsLayoutUtils.h"
 #include "nsIContentPolicy.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 
 #include "gfxPrefs.h"
 
@@ -256,7 +256,7 @@ nsImageLoadingContent::OnLoadComplete(imgIRequest* aRequest, nsresult aStatus)
   }
 
   nsCOMPtr<nsINode> thisNode = do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
-  nsSVGEffects::InvalidateDirectRenderingObservers(thisNode->AsElement());
+  SVGObserverUtils::InvalidateDirectRenderingObservers(thisNode->AsElement());
 
   return NS_OK;
 }
@@ -1372,8 +1372,6 @@ nsImageLoadingContent::PrepareNextRequest(ImageLoadType aImageLoadType)
   // available. bz says the web depends on this behavior.
   // Otherwise, we get rid of any half-baked request that might be sitting there
   // and make this one current.
-  // TODO: Bug 583491
-  // Investigate/Cleanup NS_ERROR_IMAGE_SRC_CHANGED use in nsImageFrame.cpp
   return HaveSize(mCurrentRequest) ?
            PreparePendingRequest(aImageLoadType) :
            PrepareCurrentRequest(aImageLoadType);

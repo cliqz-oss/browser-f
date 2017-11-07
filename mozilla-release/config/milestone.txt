@@ -10,4 +10,10 @@
 # hardcoded milestones in the tree from these two files.
 #--------------------------------------------------------
 
+<<<<<<< HEAD
 56.0.1
+||||||| merged common ancestors
+56.0
+=======
+57.0
+>>>>>>> origin/upstream-releases

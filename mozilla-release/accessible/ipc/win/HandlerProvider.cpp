@@ -9,6 +9,8 @@
 #include "mozilla/a11y/HandlerProvider.h"
 
 #include "Accessible2_3.h"
+#include "AccessibleTable.h"
+#include "AccessibleTable2.h"
 #include "HandlerData.h"
 #include "HandlerData_i.c"
 #include "mozilla/Assertions.h"
@@ -16,6 +18,7 @@
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/Move.h"
 #include "mozilla/mscom/AgileReference.h"
+#include "mozilla/mscom/FastMarshaler.h"
 #include "mozilla/mscom/MainThreadInvoker.h"
 #include "mozilla/mscom/Ptr.h"
 #include "mozilla/mscom/StructStream.h"
@@ -43,18 +46,25 @@ HandlerProvider::QueryInterface(REFIID riid, void** ppv)
     return E_INVALIDARG;
   }
 
-  RefPtr<IUnknown> punk;
-
   if (riid == IID_IUnknown || riid == IID_IGeckoBackChannel) {
-    punk = static_cast<IGeckoBackChannel*>(this);
+    RefPtr<IUnknown> punk(static_cast<IGeckoBackChannel*>(this));
+    punk.forget(ppv);
+    return S_OK;
   }
 
-  if (!punk) {
-    return E_NOINTERFACE;
+  if (riid == IID_IMarshal) {
+    if (!mFastMarshalUnk) {
+      HRESULT hr = mscom::FastMarshaler::Create(
+        static_cast<IGeckoBackChannel*>(this), getter_AddRefs(mFastMarshalUnk));
+      if (FAILED(hr)) {
+        return hr;
+      }
+    }
+
+    return mFastMarshalUnk->QueryInterface(riid, ppv);
   }
 
-  punk.forget(ppv);
-  return S_OK;
+  return E_NOINTERFACE;
 }
 
 ULONG
@@ -204,6 +214,18 @@ HandlerProvider::MarshalAs(REFIID aIid)
   }
   // Otherwise we juse return the identity.
   return aIid;
+}
+
+REFIID
+HandlerProvider::GetEffectiveOutParamIid(REFIID aCallIid,
+                                         ULONG aCallMethod)
+{
+  if (aCallIid == IID_IAccessibleTable || aCallIid == IID_IAccessibleTable2) {
+    return IID_IAccessible2_3;
+  }
+
+  MOZ_ASSERT(false);
+  return IID_IUnknown;
 }
 
 HRESULT

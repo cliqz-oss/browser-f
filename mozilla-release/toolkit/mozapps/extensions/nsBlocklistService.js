@@ -627,7 +627,6 @@ Blocklist.prototype = {
     request.channel.notificationCallbacks = new gCertUtils.BadCertHandler();
     request.overrideMimeType("text/xml");
     request.setRequestHeader("Cache-Control", "no-cache");
-    request.QueryInterface(Components.interfaces.nsIJSXMLHttpRequest);
 
     request.addEventListener("error", event => this.onXMLError(event));
     request.addEventListener("load", event => this.onXMLLoad(event));
@@ -923,10 +922,6 @@ Blocklist.prototype = {
                                                       this._handleEmItemNode);
           break;
         case "pluginItems":
-          // We don't support plugins on b2g.
-          if (AppConstants.MOZ_B2G) {
-            return;
-          }
           this._pluginEntries = this._processItemNodes(element.childNodes, "pluginItem",
                                                        this._handlePluginItemNode);
           break;
@@ -1162,8 +1157,7 @@ Blocklist.prototype = {
 
   /* See nsIBlocklistService */
   getPluginBlocklistState(plugin, appVersion, toolkitVersion) {
-    if (AppConstants.platform == "android" ||
-        AppConstants.MOZ_B2G) {
+    if (AppConstants.platform == "android") {
       return Ci.nsIBlocklistService.STATE_NOT_BLOCKED;
     }
     if (!this._isBlocklistLoaded())
@@ -1325,10 +1319,6 @@ Blocklist.prototype = {
   },
 
   _blocklistUpdated(oldAddonEntries, oldPluginEntries) {
-    if (AppConstants.MOZ_B2G) {
-      return;
-    }
-
     var addonList = [];
 
     // A helper function that reverts the prefs passed to default values.
@@ -1428,7 +1418,7 @@ Blocklist.prototype = {
             addonList.push({
               name: plugin.name,
               version: plugin.version,
-              icon: "chrome://mozapps/skin/plugins/pluginGeneric.png",
+              icon: "chrome://mozapps/skin/plugins/pluginGeneric.svg",
               disable: false,
               blocked: state == Ci.nsIBlocklistService.STATE_BLOCKED,
               item: plugin,

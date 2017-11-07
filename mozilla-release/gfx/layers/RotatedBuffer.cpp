@@ -27,6 +27,7 @@
 #include "mozilla/gfx/Point.h"          // for IntSize
 #include "gfx2DGlue.h"
 #include "nsLayoutUtils.h"              // for invalidation debugging
+#include "PaintThread.h"
 
 namespace mozilla {
 
@@ -40,8 +41,8 @@ RotatedBuffer::GetQuadrantRectangle(XSide aXSide, YSide aYSide) const
   // quadrantTranslation is the amount we translate the top-left
   // of the quadrant by to get coordinates relative to the layer
   IntPoint quadrantTranslation = -mBufferRotation;
-  quadrantTranslation.x += aXSide == LEFT ? mBufferRect.width : 0;
-  quadrantTranslation.y += aYSide == TOP ? mBufferRect.height : 0;
+  quadrantTranslation.x += aXSide == LEFT ? mBufferRect.Width() : 0;
+  quadrantTranslation.y += aYSide == TOP ? mBufferRect.Height() : 0;
   return mBufferRect + quadrantTranslation;
 }
 
@@ -51,17 +52,17 @@ RotatedBuffer::GetSourceRectangle(XSide aXSide, YSide aYSide) const
   Rect result;
   if (aXSide == LEFT) {
     result.x = 0;
-    result.width = mBufferRotation.x;
+    result.SetWidth(mBufferRotation.x);
   } else {
     result.x = mBufferRotation.x;
-    result.width = mBufferRect.width - mBufferRotation.x;
+    result.SetWidth(mBufferRect.Width() - mBufferRotation.x);
   }
   if (aYSide == TOP) {
     result.y = 0;
-    result.height = mBufferRotation.y;
+    result.SetHeight(mBufferRotation.y);
   } else {
     result.y = mBufferRotation.y;
-    result.height = mBufferRect.height - mBufferRotation.y;
+    result.SetHeight(mBufferRect.Height() - mBufferRotation.y);
   }
   return result;
 }
@@ -245,7 +246,9 @@ RotatedContentBuffer::DrawTo(PaintedLayer* aLayer,
 DrawTarget*
 RotatedContentBuffer::BorrowDrawTargetForQuadrantUpdate(const IntRect& aBounds,
                                                         ContextSource aSource,
-                                                        DrawIterator* aIter)
+                                                        DrawIterator* aIter,
+                                                        bool aSetTransform,
+                                                        Matrix* aOutMatrix)
 {
   IntRect bounds = aBounds;
   if (aIter) {
@@ -299,10 +302,18 @@ RotatedContentBuffer::BorrowDrawTargetForQuadrantUpdate(const IntRect& aBounds,
   IntRect quadrantRect = GetQuadrantRectangle(sideX, sideY);
   NS_ASSERTION(quadrantRect.Contains(bounds), "Messed up quadrants");
 
-  mLoanedTransform = mLoanedDrawTarget->GetTransform();
-  mLoanedDrawTarget->SetTransform(Matrix(mLoanedTransform).
-                                    PreTranslate(-quadrantRect.x,
-                                                 -quadrantRect.y));
+  if (aSetTransform) {
+    mLoanedTransform = mLoanedDrawTarget->GetTransform();
+    Matrix transform = Matrix(mLoanedTransform)
+                            .PreTranslate(-quadrantRect.x,
+                                          -quadrantRect.y);
+    mLoanedDrawTarget->SetTransform(transform);
+    mSetTransform = true;
+  } else {
+    MOZ_ASSERT(aOutMatrix);
+    *aOutMatrix = Matrix::Translation(-quadrantRect.x, -quadrantRect.y);
+    mSetTransform = false;
+  }
 
   return mLoanedDrawTarget;
 }
@@ -313,7 +324,9 @@ BorrowDrawTarget::ReturnDrawTarget(gfx::DrawTarget*& aReturned)
   MOZ_ASSERT(mLoanedDrawTarget);
   MOZ_ASSERT(aReturned == mLoanedDrawTarget);
   if (mLoanedDrawTarget) {
-    mLoanedDrawTarget->SetTransform(mLoanedTransform);
+    if (mSetTransform) {
+      mLoanedDrawTarget->SetTransform(mLoanedTransform);
+    }
     mLoanedDrawTarget = nullptr;
   }
   aReturned = nullptr;
@@ -404,7 +417,7 @@ ComputeBufferRect(const IntRect& aRequestedRect)
   // dimensions). 64 used to be the magic number needed to work around
   // a rendering glitch on b2g (see bug 788411). Now that we don't support
   // this device anymore we should be fine with 8 pixels as the minimum.
-  rect.width = std::max(aRequestedRect.width, 8);
+  rect.SetWidth(std::max(aRequestedRect.Width(), 8));
   return rect;
 }
 
@@ -576,8 +589,8 @@ RotatedContentBuffer::BeginPaint(PaintedLayer* aLayer,
       // changes to destBufferRect.
       IntPoint newRotation = mBufferRotation +
         (destBufferRect.TopLeft() - mBufferRect.TopLeft());
-      WrapRotationAxis(&newRotation.x, mBufferRect.width);
-      WrapRotationAxis(&newRotation.y, mBufferRect.height);
+      WrapRotationAxis(&newRotation.x, mBufferRect.Width());
+      WrapRotationAxis(&newRotation.y, mBufferRect.Height());
       NS_ASSERTION(gfx::IntRect(gfx::IntPoint(0,0), mBufferRect.Size()).Contains(newRotation),
                    "newRotation out of bounds");
       int32_t xBoundary = destBufferRect.XMost() - newRotation.x;
@@ -651,8 +664,8 @@ RotatedContentBuffer::BeginPaint(PaintedLayer* aLayer,
                          &destDTBuffer, &destDTBufferOnWhite);
             if (!destDTBuffer ||
                 (!destDTBufferOnWhite && (bufferFlags & BUFFER_COMPONENT_ALPHA))) {
-              if (Factory::ReasonableSurfaceSize(IntSize(destBufferRect.width, destBufferRect.height))) {
-                gfxCriticalNote << "Failed 1 buffer db=" << hexa(destDTBuffer.get()) << " dw=" << hexa(destDTBufferOnWhite.get()) << " for " << destBufferRect.x << ", " << destBufferRect.y << ", " << destBufferRect.width << ", " << destBufferRect.height;
+              if (Factory::ReasonableSurfaceSize(IntSize(destBufferRect.Width(), destBufferRect.Height()))) {
+                gfxCriticalNote << "Failed 1 buffer db=" << hexa(destDTBuffer.get()) << " dw=" << hexa(destDTBufferOnWhite.get()) << " for " << destBufferRect.x << ", " << destBufferRect.y << ", " << destBufferRect.Width() << ", " << destBufferRect.Height();
               }
               return result;
             }
@@ -675,8 +688,8 @@ RotatedContentBuffer::BeginPaint(PaintedLayer* aLayer,
                  &destDTBuffer, &destDTBufferOnWhite);
     if (!destDTBuffer ||
         (!destDTBufferOnWhite && (bufferFlags & BUFFER_COMPONENT_ALPHA))) {
-      if (Factory::ReasonableSurfaceSize(IntSize(destBufferRect.width, destBufferRect.height))) {
-        gfxCriticalNote << "Failed 2 buffer db=" << hexa(destDTBuffer.get()) << " dw=" << hexa(destDTBufferOnWhite.get()) << " for " << destBufferRect.x << ", " << destBufferRect.y << ", " << destBufferRect.width << ", " << destBufferRect.height;
+      if (Factory::ReasonableSurfaceSize(IntSize(destBufferRect.Width(), destBufferRect.Height()))) {
+        gfxCriticalNote << "Failed 2 buffer db=" << hexa(destDTBuffer.get()) << " dw=" << hexa(destDTBufferOnWhite.get()) << " for " << destBufferRect.x << ", " << destBufferRect.y << ", " << destBufferRect.Width() << ", " << destBufferRect.Height();
       }
       return result;
     }
@@ -730,20 +743,76 @@ RotatedContentBuffer::BeginPaint(PaintedLayer* aLayer,
   return result;
 }
 
-DrawTarget*
-RotatedContentBuffer::BorrowDrawTargetForPainting(PaintState& aPaintState,
-                                                  DrawIterator* aIter /* = nullptr */)
+RefPtr<CapturedPaintState>
+RotatedContentBuffer::BorrowDrawTargetForRecording(PaintState& aPaintState,
+                                                   DrawIterator* aIter,
+                                                   bool aSetTransform)
 {
   if (aPaintState.mMode == SurfaceMode::SURFACE_NONE) {
     return nullptr;
   }
 
+  Matrix transform;
   DrawTarget* result = BorrowDrawTargetForQuadrantUpdate(aPaintState.mRegionToDraw.GetBounds(),
-                                                         BUFFER_BOTH, aIter);
+                                                         BUFFER_BOTH, aIter,
+                                                         aSetTransform,
+                                                         &transform);
   if (!result) {
     return nullptr;
   }
 
+  nsIntRegion regionToDraw =
+    ExpandDrawRegion(aPaintState, aIter, result->GetBackendType());
+
+  RefPtr<CapturedPaintState> state =
+    new CapturedPaintState(regionToDraw,
+                           result,
+                           mDTBufferOnWhite,
+                           transform,
+                           aPaintState.mMode,
+                           aPaintState.mContentType);
+  return state;
+}
+
+/*static */ bool
+RotatedContentBuffer::PrepareDrawTargetForPainting(CapturedPaintState* aState)
+{
+  MOZ_ASSERT(aState);
+  RefPtr<DrawTarget> target = aState->mTarget;
+  RefPtr<DrawTarget> whiteTarget = aState->mTargetOnWhite;
+
+  if (aState->mSurfaceMode == SurfaceMode::SURFACE_COMPONENT_ALPHA) {
+    if (!target || !target->IsValid() ||
+        !whiteTarget || !whiteTarget->IsValid()) {
+      // This can happen in release builds if allocating one of the two buffers
+      // failed. This in turn can happen if unreasonably large textures are
+      // requested.
+      return false;
+    }
+    for (auto iter = aState->mRegionToDraw.RectIter(); !iter.Done(); iter.Next()) {
+      const IntRect& rect = iter.Get();
+      target->FillRect(Rect(rect.x, rect.y, rect.Width(), rect.Height()),
+                            ColorPattern(Color(0.0, 0.0, 0.0, 1.0)));
+      whiteTarget->FillRect(Rect(rect.x, rect.y, rect.Width(), rect.Height()),
+                                 ColorPattern(Color(1.0, 1.0, 1.0, 1.0)));
+    }
+  } else if (aState->mContentType == gfxContentType::COLOR_ALPHA &&
+             target->IsValid()) {
+    // HaveBuffer() => we have an existing buffer that we must clear
+    for (auto iter = aState->mRegionToDraw.RectIter(); !iter.Done(); iter.Next()) {
+      const IntRect& rect = iter.Get();
+      target->ClearRect(Rect(rect.x, rect.y, rect.Width(), rect.Height()));
+    }
+  }
+
+  return true;
+}
+
+nsIntRegion
+RotatedContentBuffer::ExpandDrawRegion(PaintState& aPaintState,
+                                       DrawIterator* aIter,
+                                       BackendType aBackendType)
+{
   nsIntRegion* drawPtr = &aPaintState.mRegionToDraw;
   if (aIter) {
     // The iterators draw region currently only contains the bounds of the region,
@@ -751,37 +820,31 @@ RotatedContentBuffer::BorrowDrawTargetForPainting(PaintState& aPaintState,
     aIter->mDrawRegion.And(aIter->mDrawRegion, aPaintState.mRegionToDraw);
     drawPtr = &aIter->mDrawRegion;
   }
-  if (result->GetBackendType() == BackendType::DIRECT2D ||
-      result->GetBackendType() == BackendType::DIRECT2D1_1) {
+  if (aBackendType == BackendType::DIRECT2D ||
+      aBackendType == BackendType::DIRECT2D1_1) {
     // Simplify the draw region to avoid hitting expensive drawing paths
     // for complex regions.
     drawPtr->SimplifyOutwardByArea(100 * 100);
   }
+  return *drawPtr;
+}
 
-  if (aPaintState.mMode == SurfaceMode::SURFACE_COMPONENT_ALPHA) {
-    if (!mDTBuffer || !mDTBuffer->IsValid() ||
-        !mDTBufferOnWhite || !mDTBufferOnWhite->IsValid()) {
-      // This can happen in release builds if allocating one of the two buffers
-      // failed. This in turn can happen if unreasonably large textures are
-      // requested.
-      return nullptr;
-    }
-    for (auto iter = drawPtr->RectIter(); !iter.Done(); iter.Next()) {
-      const IntRect& rect = iter.Get();
-      mDTBuffer->FillRect(Rect(rect.x, rect.y, rect.width, rect.height),
-                          ColorPattern(Color(0.0, 0.0, 0.0, 1.0)));
-      mDTBufferOnWhite->FillRect(Rect(rect.x, rect.y, rect.width, rect.height),
-                                 ColorPattern(Color(1.0, 1.0, 1.0, 1.0)));
-    }
-  } else if (aPaintState.mContentType == gfxContentType::COLOR_ALPHA && HaveBuffer()) {
-    // HaveBuffer() => we have an existing buffer that we must clear
-    for (auto iter = drawPtr->RectIter(); !iter.Done(); iter.Next()) {
-      const IntRect& rect = iter.Get();
-      result->ClearRect(Rect(rect.x, rect.y, rect.width, rect.height));
-    }
+DrawTarget*
+RotatedContentBuffer::BorrowDrawTargetForPainting(PaintState& aPaintState,
+                                                  DrawIterator* aIter /* = nullptr */)
+{
+  RefPtr<CapturedPaintState> capturedState =
+    BorrowDrawTargetForRecording(aPaintState, aIter, true);
+
+  if (!capturedState) {
+    return nullptr;
   }
 
-  return result;
+  if (!RotatedContentBuffer::PrepareDrawTargetForPainting(capturedState)) {
+    return nullptr;
+  }
+
+  return capturedState->mTarget;
 }
 
 already_AddRefed<SourceSurface>

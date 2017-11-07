@@ -1218,11 +1218,11 @@ JSStructuredCloneWriter::writeDataView(HandleObject obj)
 bool
 JSStructuredCloneWriter::writeArrayBuffer(HandleObject obj)
 {
-    ArrayBufferObject& buffer = CheckedUnwrap(obj)->as<ArrayBufferObject>();
-    JSAutoCompartment ac(context(), &buffer);
+    Rooted<ArrayBufferObject*> buffer(context(), &CheckedUnwrap(obj)->as<ArrayBufferObject>());
+    JSAutoCompartment ac(context(), buffer);
 
-    return out.writePair(SCTAG_ARRAY_BUFFER_OBJECT, buffer.byteLength()) &&
-           out.writeBytes(buffer.dataPointer(), buffer.byteLength());
+    return out.writePair(SCTAG_ARRAY_BUFFER_OBJECT, buffer->byteLength()) &&
+           out.writeBytes(buffer->dataPointer(), buffer->byteLength());
 }
 
 bool
@@ -2557,7 +2557,7 @@ JSStructuredCloneReader::read(MutableHandleValue vp)
             if (!ValueToId<CanGC>(context(), key, &id))
                 return false;
 
-            if (!DefineProperty(context(), obj, id, val))
+            if (!DefineDataProperty(context(), obj, id, val))
                 return false;
          }
     }

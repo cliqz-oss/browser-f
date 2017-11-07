@@ -6,6 +6,7 @@
 #include "PaintedLayerMLGPU.h"
 #include "LayerManagerMLGPU.h"
 #include "mozilla/layers/LayersHelpers.h"
+#include "UnitTransforms.h"
 
 namespace mozilla {
 
@@ -39,6 +40,13 @@ PaintedLayerMLGPU::OnPrepareToRender(FrameBuilder* aBuilder)
     return false;
   }
   mTextureOnWhite = mHost->AcquireTextureSourceOnWhite();
+  return true;
+}
+
+void
+PaintedLayerMLGPU::SetRenderRegion(LayerIntRegion&& aRegion)
+{
+  mRenderRegion = Move(aRegion);
 
 #ifndef MOZ_IGNORE_PAINT_WILL_RESAMPLE
   // Note: we don't set PaintWillResample on our ContentTextureHost. The old
@@ -49,12 +57,13 @@ PaintedLayerMLGPU::OnPrepareToRender(FrameBuilder* aBuilder)
   // behavior), we might break up the visible region again. If that turns
   // out to be a problem, we can factor this into ForEachDrawRect instead.
   if (MayResample()) {
-    LayerIntRegion visible = Move(GetShadowVisibleRegion());
-    visible = visible.GetBounds();
-    SetShadowVisibleRegion(Move(visible));
+    mRenderRegion = mRenderRegion.GetBounds();
   }
 #endif
-  return true;
+
+  LayerIntRect bounds(mRenderRegion.GetBounds().TopLeft(),
+                      ViewAs<LayerPixel>(mTexture->GetSize()));
+  mRenderRegion.AndWith(bounds);
 }
 
 bool

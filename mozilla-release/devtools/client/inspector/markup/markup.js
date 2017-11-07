@@ -6,11 +6,10 @@
 
 const promise = require("promise");
 const Services = require("Services");
-const defer = require("devtools/shared/defer");
 const {Task} = require("devtools/shared/task");
 const nodeConstants = require("devtools/shared/dom-node-constants");
 const nodeFilterConstants = require("devtools/shared/dom-node-filter-constants");
-const EventEmitter = require("devtools/shared/event-emitter");
+const EventEmitter = require("devtools/shared/old-event-emitter");
 const {LocalizationHelper} = require("devtools/shared/l10n");
 const {PluralForm} = require("devtools/shared/plural-form");
 const AutocompletePopup = require("devtools/client/shared/autocomplete-popup");
@@ -185,7 +184,7 @@ MarkupView.prototype = {
   _onToolboxPickerHover: function (event, nodeFront) {
     this.showNode(nodeFront).then(() => {
       this._showContainerAsHovered(nodeFront);
-    }, e => console.error(e));
+    }, console.error);
   },
 
   /**
@@ -453,15 +452,17 @@ MarkupView.prototype = {
   _brieflyShowBoxModel: function (nodeFront) {
     this._clearBriefBoxModelTimer();
     let onShown = this._showBoxModel(nodeFront);
-    this._briefBoxModelPromise = defer();
 
-    this._briefBoxModelTimer = setTimeout(() => {
-      this._hideBoxModel()
-          .then(this._briefBoxModelPromise.resolve,
-                this._briefBoxModelPromise.resolve);
-    }, NEW_SELECTION_HIGHLIGHTER_TIMER);
+    let _resolve;
+    this._briefBoxModelPromise = new Promise(resolve => {
+      _resolve = resolve;
+      this._briefBoxModelTimer = setTimeout(() => {
+        this._hideBoxModel().then(resolve, resolve);
+      }, NEW_SELECTION_HIGHLIGHTER_TIMER);
+    });
+    this._briefBoxModelPromise.resolve = _resolve;
 
-    return promise.all([onShown, this._briefBoxModelPromise.promise]);
+    return promise.all([onShown, this._briefBoxModelPromise]);
   },
 
   /**
@@ -1154,7 +1155,7 @@ MarkupView.prototype = {
    */
   expandNode: function (node) {
     let container = this.getContainer(node);
-    this._expandContainer(container);
+    return this._expandContainer(container);
   },
 
   /**
@@ -1354,15 +1355,13 @@ MarkupView.prototype = {
       return promise.reject();
     }
 
-    let def = defer();
-
-    container.undo.do(() => {
-      this.walker.setInnerHTML(node, newValue).then(def.resolve, def.reject);
-    }, () => {
-      this.walker.setInnerHTML(node, oldValue);
+    return new Promise((resolve, reject) => {
+      container.undo.do(() => {
+        this.walker.setInnerHTML(node, newValue).then(resolve, reject);
+      }, () => {
+        this.walker.setInnerHTML(node, oldValue);
+      });
     });
-
-    return def.promise;
   },
 
   /**
@@ -1384,20 +1383,22 @@ MarkupView.prototype = {
       return promise.reject();
     }
 
-    let def = defer();
-
     let injectedNodes = [];
-    container.undo.do(() => {
-      // eslint-disable-next-line no-unsanitized/method
-      this.walker.insertAdjacentHTML(node, position, value).then(nodeArray => {
-        injectedNodes = nodeArray.nodes;
-        return nodeArray;
-      }).then(def.resolve, def.reject);
-    }, () => {
-      this.walker.removeNodes(injectedNodes);
-    });
 
-    return def.promise;
+    return new Promise((resolve, reject) => {
+      container.undo.do(() => {
+        // eslint-disable-next-line no-unsanitized/method
+        this.walker
+            .insertAdjacentHTML(node, position, value)
+            .then(nodeArray => {
+              injectedNodes = nodeArray.nodes;
+              return nodeArray;
+            })
+            .then(resolve, reject);
+      }, () => {
+        this.walker.removeNodes(injectedNodes);
+      });
+    });
   },
 
   /**
@@ -1647,7 +1648,7 @@ MarkupView.prototype = {
         // If children are dirty, we got a change notification for this node
         // while the request was in progress, we need to do it again.
         if (container.childrenDirty) {
-          return this._updateChildren(container, {expand: centered});
+          return this._updateChildren(container, {expand: centered || expand});
         }
 
         let fragment = this.doc.createDocumentFragment();

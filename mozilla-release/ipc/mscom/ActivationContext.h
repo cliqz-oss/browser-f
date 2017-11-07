@@ -9,6 +9,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/Move.h"
+#include "mozilla/Result.h"
 
 #include <windows.h>
 
@@ -18,6 +19,11 @@ namespace mscom {
 class ActivationContext final
 {
 public:
+  ActivationContext()
+    : mActCtx(INVALID_HANDLE_VALUE)
+  {
+  }
+
   explicit ActivationContext(WORD aResourceId);
   explicit ActivationContext(HMODULE aLoadFromModule, WORD aResourceId = 2);
 
@@ -33,6 +39,8 @@ public:
   {
     return mActCtx != INVALID_HANDLE_VALUE;
   }
+
+  static Result<uintptr_t,HRESULT> GetCurrent();
 
 private:
   void Init(ACTCTX& aActCtx);
@@ -56,14 +64,28 @@ public:
     Activate();
   }
 
+  ActivationContextRegion();
+
   explicit ActivationContextRegion(const ActivationContext& aActCtx);
+  ActivationContextRegion& operator=(const ActivationContext& aActCtx);
+
   explicit ActivationContextRegion(ActivationContext&& aActCtx);
+  ActivationContextRegion& operator=(ActivationContext&& aActCtx);
+
+  ActivationContextRegion(ActivationContextRegion&& aRgn);
+  ActivationContextRegion& operator=(ActivationContextRegion&& aRgn);
+
   ~ActivationContextRegion();
 
+  explicit operator bool() const
+  {
+    return !!mActCookie;
+  }
+
   ActivationContextRegion(const ActivationContextRegion&) = delete;
-  ActivationContextRegion(ActivationContextRegion&&) = delete;
   ActivationContextRegion& operator=(const ActivationContextRegion&) = delete;
-  ActivationContextRegion& operator=(ActivationContextRegion&&) = delete;
+
+  bool Deactivate();
 
 private:
   void Activate();

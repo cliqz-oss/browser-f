@@ -13,12 +13,9 @@ XPCOMUtils.defineLazyModuleGetter(this, "OS",
                                   "resource://gre/modules/osfile.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
                                   "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "EventEmitter",
-                                  "resource://gre/modules/EventEmitter.jsm");
 
 var {
+  EventEmitter,
   normalizeTime,
 } = ExtensionUtils;
 
@@ -33,6 +30,8 @@ const DOWNLOAD_ITEM_FIELDS = ["id", "url", "referrer", "filename", "incognito",
                               "bytesReceived", "totalBytes",
                               "fileSize", "exists",
                               "byExtensionId", "byExtensionName"];
+
+const DOWNLOAD_DATE_FIELDS = ["startTime", "endTime", "estimatedEndTime"];
 
 // Fields that we generate onChanged events for.
 const DOWNLOAD_ITEM_CHANGE_FIELDS = ["endTime", "state", "paused", "canResume",
@@ -63,7 +62,14 @@ class DownloadItem {
   get mime() { return this.download.contentType; }
   get startTime() { return this.download.startTime; }
   get endTime() { return null; } // TODO
-  get estimatedEndTime() { return null; } // TODO
+  get estimatedEndTime() {
+    // Based on the code in summarizeDownloads() in DownloadsCommon.jsm
+    if (this.download.hasProgress && this.download.speed > 0) {
+      let sizeLeft = this.download.totalBytes - this.download.currentBytes;
+      let timeLeftInSeconds  = sizeLeft / this.download.speed;
+      return new Date(Date.now() + (timeLeftInSeconds * 1000));
+    }
+  }
   get state() {
     if (this.download.succeeded) {
       return "complete";
@@ -123,8 +129,10 @@ class DownloadItem {
     for (let field of DOWNLOAD_ITEM_FIELDS) {
       obj[field] = this[field];
     }
-    if (obj.startTime) {
-      obj.startTime = obj.startTime.toISOString();
+    for (let field of DOWNLOAD_DATE_FIELDS) {
+      if (obj[field]) {
+        obj[field] = obj[field].toISOString();
+      }
     }
     return obj;
   }
@@ -144,19 +152,22 @@ class DownloadItem {
 // DownloadMap maps back and forth betwen the numeric identifiers used in
 // the downloads WebExtension API and a Download object from the Downloads jsm.
 // todo: make id and extension info persistent (bug 1247794)
-const DownloadMap = {
-  currentId: 0,
-  loadPromise: null,
+const DownloadMap = new class extends EventEmitter {
+  constructor() {
+    super();
 
-  // Maps numeric id -> DownloadItem
-  byId: new Map(),
+    this.currentId = 0;
+    this.loadPromise = null;
 
-  // Maps Download object -> DownloadItem
-  byDownload: new WeakMap(),
+    // Maps numeric id -> DownloadItem
+    this.byId = new Map();
+
+    // Maps Download object -> DownloadItem
+    this.byDownload = new WeakMap();
+  }
 
   lazyInit() {
     if (this.loadPromise == null) {
-      EventEmitter.decorate(this);
       this.loadPromise = Downloads.getList(Downloads.ALL).then(list => {
         let self = this;
         return list.addView({
@@ -194,15 +205,15 @@ const DownloadMap = {
       });
     }
     return this.loadPromise;
-  },
+  }
 
   getDownloadList() {
     return this.lazyInit();
-  },
+  }
 
   getAll() {
     return this.lazyInit().then(() => this.byId.values());
-  },
+  }
 
   fromId(id) {
     const download = this.byId.get(id);
@@ -210,7 +221,7 @@ const DownloadMap = {
       throw new Error(`Invalid download id ${id}`);
     }
     return download;
-  },
+  }
 
   newFromDownload(download, extension) {
     if (this.byDownload.has(download)) {
@@ -222,7 +233,7 @@ const DownloadMap = {
     this.byId.set(id, item);
     this.byDownload.set(download, item);
     return item;
-  },
+  }
 
   erase(item) {
     // This will need to get more complicated for bug 1255507 but for now we
@@ -230,8 +241,8 @@ const DownloadMap = {
     return this.getDownloadList().then(list => {
       list.remove(item.download);
     });
-  },
-};
+  }
+}();
 
 // Create a callable function that filters a DownloadItem based on a
 // query object of the type passed to search() or erase().
@@ -417,6 +428,10 @@ this.downloads = class extends ExtensionAPI {
             if (path.components.some(component => component == "..")) {
               return Promise.reject({message: "filename must not contain back-references (..)"});
             }
+
+            if (AppConstants.platform === "win" && /[|"*?:<>]/.test(filename)) {
+              return Promise.reject({message: "filename must not contain illegal characters"});
+            }
           }
 
           if (options.conflictAction == "prompt") {
@@ -461,13 +476,13 @@ this.downloads = class extends ExtensionAPI {
             if (filename) {
               target = OS.Path.join(downloadsDir, filename);
             } else {
-              let uri = NetUtil.newURI(options.url);
+              let uri = Services.io.newURI(options.url);
 
-              let remote = "download";
+              let remote;
               if (uri instanceof Ci.nsIURL) {
                 remote = uri.fileName;
               }
-              target = OS.Path.join(downloadsDir, remote);
+              target = OS.Path.join(downloadsDir, remote || "download");
             }
 
             // Create any needed subdirectories if required by filename.
@@ -525,6 +540,7 @@ this.downloads = class extends ExtensionAPI {
             .then(target => {
               const source = {
                 url: options.url,
+                isPrivate: options.incognito,
               };
 
               if (options.method || options.headers || options.body) {

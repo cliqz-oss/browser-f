@@ -19,6 +19,9 @@
 #include "nsPrintfCString.h"
 #include "gfxPrefs.h"
 #include "AudioConverter.h"
+#if defined(XP_WIN)
+#include "nsXULAppAPI.h"
+#endif
 
 namespace mozilla {
 
@@ -328,8 +331,7 @@ int AudioStream::InvokeCubeb(Function aFunction, Args&&... aArgs)
 }
 
 nsresult
-AudioStream::Init(uint32_t aNumChannels, uint32_t aChannelMap, uint32_t aRate,
-                  const dom::AudioChannel aAudioChannel)
+AudioStream::Init(uint32_t aNumChannels, uint32_t aChannelMap, uint32_t aRate)
 {
   auto startTime = TimeStamp::Now();
 
@@ -343,19 +345,8 @@ AudioStream::Init(uint32_t aNumChannels, uint32_t aChannelMap, uint32_t aRate,
   params.rate = aRate;
   params.channels = mOutChannels;
   params.layout = CubebUtils::ConvertChannelMapToCubebLayout(aChannelMap);
-#if defined(__ANDROID__)
-#if defined(MOZ_B2G)
-  params.stream_type = CubebUtils::ConvertChannelToCubebType(aAudioChannel);
-#else
-  params.stream_type = CUBEB_STREAM_TYPE_MUSIC;
-#endif
-
-  if (params.stream_type == CUBEB_STREAM_TYPE_MAX) {
-    return NS_ERROR_INVALID_ARG;
-  }
-#endif
-
   params.format = ToCubebFormat<AUDIO_OUTPUT_FORMAT>::value;
+
   mAudioClock.Init(aRate);
 
   cubeb* cubebContext = CubebUtils::GetCubebContext();

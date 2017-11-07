@@ -315,15 +315,14 @@ async function test_contextmenu(selector, menuItems, options = {}) {
   }
 
   if (menuItems) {
-    if (Services.prefs.getBoolPref("devtools.inspector.enabled")) {
+    if (Services.prefs.getBoolPref("devtools.inspector.enabled", true)) {
       let inspectItems = ["---", null,
                           "context-inspect", true];
       menuItems = menuItems.concat(inspectItems);
     }
 
     if (options.maybeScreenshotsPresent &&
-        !Services.prefs.getBoolPref("extensions.screenshots.disabled", false) &&
-        !Services.prefs.getBoolPref("extensions.screenshots.system-disabled", false)) {
+        !Services.prefs.getBoolPref("extensions.screenshots.disabled", false)) {
       let screenshotItems = [
         "---", null,
         "screenshots_mozilla_org_create-screenshot", true

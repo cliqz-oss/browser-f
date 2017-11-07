@@ -31,8 +31,16 @@ disabled data sharing options in developer builds or builds with no Telemetry su
 available. -->
 <!ENTITY healthReportingDisabled.label   "Data reporting is disabled for this build configuration">
 
+<<<<<<< HEAD
 <!ENTITY enableHealthReport1.label       "Allow &brandShortName; to automatically send technical and interaction data to Cliqz">
 <!ENTITY enableHealthReport1.accesskey   "r">
+||||||| merged common ancestors
+<!ENTITY enableHealthReport1.label       "Allow &brandShortName; to automatically send technical and interaction data to Mozilla">
+<!ENTITY enableHealthReport1.accesskey   "r">
+=======
+<!ENTITY enableHealthReport2.label       "Allow &brandShortName; to send technical and interaction data to Mozilla">
+<!ENTITY enableHealthReport2.accesskey   "r">
+>>>>>>> origin/upstream-releases
 <!ENTITY healthReportLearnMore.label     "Learn more">
 
 <!ENTITY dataCollection.label            "&brandShortName; Data Collection and Use">
@@ -118,7 +126,7 @@ available. -->
 <!ENTITY offlineStorageNotifyExceptions.label     "Exceptions…">
 <!ENTITY offlineStorageNotifyExceptions.accesskey "x">
 
-<!ENTITY offlineAppsList2.label          "The following websites are allowed to store data for offline use:">
+<!ENTITY offlineAppsList3.label          "The following websites are allowed to store data for offline use">
 <!ENTITY offlineAppsList.height          "7em">
 <!ENTITY offlineAppsListRemove.label     "Remove…">
 <!ENTITY offlineAppsListRemove.accesskey "R">

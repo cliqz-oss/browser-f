@@ -82,6 +82,21 @@ enum NSWindowOcclusionState {
 
 #endif
 
+#if !defined(MAC_OS_X_VERSION_10_10) || \
+    MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_10
+
+enum NSWindowTitleVisibility {
+  NSWindowTitleVisible = 0,
+  NSWindowTitleHidden  = 1
+};
+
+@interface NSWindow(TitleVisibility)
+- (void)setTitleVisibility:(NSWindowTitleVisibility)visibility;
+- (void)setTitlebarAppearsTransparent:(BOOL)isTitlebarTransparent;
+@end
+
+#endif
+
 #if !defined(MAC_OS_X_VERSION_10_12) || \
     MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_12
 
@@ -1476,6 +1491,13 @@ nsCocoaWindow::PerformFullscreenTransition(FullscreenTransitionStage aStage,
   [mFullscreenTransitionAnimation startAnimation];
 }
 
+void nsCocoaWindow::WillEnterFullScreen(bool aFullScreen)
+{
+  if (mWidgetListener) {
+    mWidgetListener->FullscreenWillChange(aFullScreen);
+  }
+}
+
 void nsCocoaWindow::EnteredFullScreen(bool aFullScreen, bool aNativeMode)
 {
   mInFullScreenTransition = false;
@@ -1830,15 +1852,16 @@ nsCocoaWindow::SetTitle(const nsAString& aTitle)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_NSRESULT;
 
-  if (!mWindow)
+  if (!mWindow) {
     return NS_OK;
+  }
 
   const nsString& strTitle = PromiseFlatString(aTitle);
-  NSString* title = [NSString stringWithCharacters:reinterpret_cast<const unichar*>(strTitle.get())
+  const unichar* uniTitle = reinterpret_cast<const unichar*>(strTitle.get());
+  NSString* title = [NSString stringWithCharacters:uniTitle
                                             length:strTitle.Length()];
-
   if ([mWindow drawsContentsIntoWindowFrame] && ![mWindow wantsTitleDrawn]) {
-    // Don't cause invalidations.
+    // Don't cause invalidations when the title isn't displayed.
     [mWindow disableSetNeedsDisplay];
     [mWindow setTitle:title];
     [mWindow enableSetNeedsDisplay];
@@ -2362,7 +2385,13 @@ nsCocoaWindow::SetDrawsTitle(bool aDrawTitle)
 {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK;
 
-  [mWindow setWantsTitleDrawn:aDrawTitle];
+  if (![mWindow drawsContentsIntoWindowFrame]) {
+    // If we don't draw into the window frame, we always want to display window
+    // titles.
+    [mWindow setWantsTitleDrawn:YES];
+  } else {
+    [mWindow setWantsTitleDrawn:aDrawTitle];
+  }
 
   NS_OBJC_END_TRY_ABORT_BLOCK;
 }
@@ -2620,6 +2649,15 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   mGeckoWindow->ReportMoveEvent();
 }
 
+- (void)windowWillEnterFullScreen:(NSNotification *)notification
+{
+  if (!mGeckoWindow) {
+    return;
+  }
+
+  mGeckoWindow->WillEnterFullScreen(true);
+}
+
 // Lion's full screen mode will bypass our internal fullscreen tracking, so
 // we need to catch it when we transition and call our own methods, which in
 // turn will fire "fullscreen" events.
@@ -2653,6 +2691,15 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   if ([titlebarContainerView respondsToSelector:@selector(setTransparent:)]) {
     [titlebarContainerView setTransparent:NO];
   }
+}
+
+- (void)windowWillExitFullScreen:(NSNotification *)notification
+{
+  if (!mGeckoWindow) {
+    return;
+  }
+
+  mGeckoWindow->WillEnterFullScreen(false);
 }
 
 - (void)windowDidExitFullScreen:(NSNotification *)notification
@@ -2918,6 +2965,11 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   return defaultPosition;
 }
 
+- (BOOL)FrameView__wantsFloatingTitlebar
+{
+  return NO;
+}
+
 @end
 
 static NSMutableSet *gSwizzledFrameViewClasses = nil;
@@ -3160,6 +3212,9 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
   if (changed) {
     [self updateContentViewSize];
     [self reflowTitlebarElements];
+    if ([self respondsToSelector:@selector(setTitlebarAppearsTransparent:)]) {
+      [self setTitlebarAppearsTransparent:mDrawsIntoWindowFrame];
+    }
   }
 }
 
@@ -3171,6 +3226,10 @@ static const NSString* kStateCollectionBehavior = @"collectionBehavior";
 - (void)setWantsTitleDrawn:(BOOL)aDrawTitle
 {
   mDrawTitle = aDrawTitle;
+  if ([self respondsToSelector:@selector(setTitleVisibility:)]) {
+    [self setTitleVisibility:mDrawTitle ? NSWindowTitleVisible :
+                                          NSWindowTitleHidden];
+  }
 }
 
 - (BOOL)wantsTitleDrawn

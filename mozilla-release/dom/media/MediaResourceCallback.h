@@ -12,6 +12,7 @@
 
 namespace mozilla {
 
+class AbstractThread;
 class MediaDecoderOwner;
 class MediaResource;
 
@@ -28,11 +29,11 @@ class MediaResourceCallback {
 public:
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(MediaResourceCallback);
 
+  // Return an abstract thread on which to run main thread runnables.
+  virtual AbstractThread* AbstractMainThread() const { return nullptr; }
+
   // Returns a weak reference to the media decoder owner.
   virtual MediaDecoderOwner* GetMediaOwner() const { return nullptr; }
-
-  // Notify is duration is known to this MediaResource.
-  virtual void SetInfinite(bool aInfinite) {}
 
   // Notify that a network error is encountered.
   virtual void NotifyNetworkError() {}
@@ -49,7 +50,7 @@ public:
   virtual void NotifyPrincipalChanged() {}
 
   // Notify that the "cache suspended" status of MediaResource changes.
-  virtual void NotifySuspendedStatusChanged() {}
+  virtual void NotifySuspendedStatusChanged(bool aSuspendedByCache) {}
 
   // Notify the number of bytes read from the resource.
   virtual void NotifyBytesConsumed(int64_t aBytes, int64_t aOffset) {}

@@ -20,7 +20,7 @@
 #include "nsIContentInlines.h"
 #include "nsIDocument.h"
 #include "nsIDocumentEncoder.h"
-#include "nsIParserService.h"
+#include "nsElementTable.h"
 #include "nsNameSpaceManager.h"
 #include "nsTextFragment.h"
 #include "nsString.h"
@@ -366,15 +366,13 @@ nsXMLContentSerializer::AppendDoctype(nsIContent* aDocType,
   nsCOMPtr<nsIDOMDocumentType> docType = do_QueryInterface(aDocType);
   NS_ENSURE_ARG(docType);
   nsresult rv;
-  nsAutoString name, publicId, systemId, internalSubset;
+  nsAutoString name, publicId, systemId;
 
   rv = docType->GetName(name);
   if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
   rv = docType->GetPublicId(publicId);
   if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
   rv = docType->GetSystemId(systemId);
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
-  rv = docType->GetInternalSubset(internalSubset);
   if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
 
   NS_ENSURE_TRUE(MaybeAddNewlineForRootNode(aStr), NS_ERROR_OUT_OF_MEMORY);
@@ -419,12 +417,6 @@ nsXMLContentSerializer::AppendDoctype(nsIContent* aDocType,
     NS_ENSURE_TRUE(AppendToString(quote, aStr), NS_ERROR_OUT_OF_MEMORY);
     NS_ENSURE_TRUE(AppendToString(systemId, aStr), NS_ERROR_OUT_OF_MEMORY);
     NS_ENSURE_TRUE(AppendToString(quote, aStr), NS_ERROR_OUT_OF_MEMORY);
-  }
-
-  if (!internalSubset.IsEmpty()) {
-    NS_ENSURE_TRUE(AppendToString(NS_LITERAL_STRING(" ["), aStr), NS_ERROR_OUT_OF_MEMORY);
-    NS_ENSURE_TRUE(AppendToString(internalSubset, aStr), NS_ERROR_OUT_OF_MEMORY);
-    NS_ENSURE_TRUE(AppendToString(char16_t(']'), aStr), NS_ERROR_OUT_OF_MEMORY);
   }
 
   NS_ENSURE_TRUE(AppendToString(kGreaterThan, aStr), NS_ERROR_OUT_OF_MEMORY);
@@ -1003,14 +995,9 @@ ElementNeedsSeparateEndTag(Element* aElement, Element* aOriginalElement)
   // HTML container tags should have a separate end tag even if empty, per spec.
   // See
   // https://w3c.github.io/DOM-Parsing/#dfn-concept-xml-serialization-algorithm
-  bool isHTMLContainer = true; // Default in case we get no parser service.
-  nsIParserService* parserService = nsContentUtils::GetParserService();
-  if (parserService) {
-    nsIAtom* localName = aElement->NodeInfo()->NameAtom();
-    parserService->IsContainer(
-      parserService->HTMLCaseSensitiveAtomTagToId(localName),
-      isHTMLContainer);
-  }
+  nsIAtom* localName = aElement->NodeInfo()->NameAtom();
+  bool isHTMLContainer =
+    nsHTMLElement::IsContainer(nsHTMLTags::CaseSensitiveAtomTagToId(localName));
   return isHTMLContainer;
 }
 

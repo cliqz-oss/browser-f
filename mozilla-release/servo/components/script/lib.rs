@@ -2,14 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#![feature(ascii_ctype)]
 #![feature(box_syntax)]
 #![feature(conservative_impl_trait)]
 #![feature(const_fn)]
+#![feature(const_ptr_null)]
+#![feature(const_ptr_null_mut)]
 #![feature(core_intrinsics)]
 #![feature(mpsc_select)]
 #![feature(nonzero)]
 #![feature(on_unimplemented)]
-#![feature(option_entry)]
 #![feature(plugin)]
 #![feature(proc_macro)]
 #![feature(stmt_expr_attributes)]
@@ -106,6 +108,9 @@ extern crate webrender_api;
 extern crate webvr_traits;
 extern crate xml5ever;
 
+#[macro_use]
+mod task;
+
 mod body;
 pub mod clipboard_provider;
 mod devtools;
@@ -142,7 +147,7 @@ pub mod layout_exports {
     pub use dom::characterdata::LayoutCharacterDataHelpers;
     pub use dom::document::{Document, LayoutDocumentHelpers, PendingRestyle};
     pub use dom::element::{Element, LayoutElementHelpers, RawLayoutElementHelpers};
-    pub use dom::node::{CAN_BE_FRAGMENTED, DIRTY_ON_VIEWPORT_SIZE_CHANGE, HAS_DIRTY_DESCENDANTS, IS_IN_DOC};
+    pub use dom::node::{CAN_BE_FRAGMENTED, HAS_DIRTY_DESCENDANTS, IS_IN_DOC};
     pub use dom::node::{HANDLED_SNAPSHOT, HAS_SNAPSHOT};
     pub use dom::node::{LayoutNodeHelpers, Node};
     pub use dom::text::Text;

@@ -15,7 +15,9 @@ import org.mozilla.gecko.tests.helpers.DeviceHelper;
 import org.mozilla.gecko.tests.helpers.NavigationHelper;
 import org.mozilla.gecko.tests.helpers.WaitHelper;
 import org.mozilla.gecko.toolbar.PageActionLayout;
+import org.mozilla.gecko.toolbar.TabCounter;
 
+import android.net.Uri;
 import android.view.View;
 import android.widget.EditText;
 import android.widget.ImageButton;
@@ -24,6 +26,8 @@ import android.widget.TextView;
 
 import com.robotium.solo.Condition;
 import com.robotium.solo.Solo;
+
+import java.net.IDN;
 
 /**
  * A class representing any interactions that take place on the Toolbar.
@@ -116,13 +120,12 @@ public class ToolbarComponent extends BaseComponent {
         return (TextView) getToolbarView().findViewById(R.id.url_bar_title);
     }
 
-    private TextSwitcher getTabsCounter() {
-        return (TextSwitcher) getToolbarView().findViewById(R.id.tabs_counter);
+    private TabCounter getTabsCounter() {
+        return (TabCounter) getToolbarView().findViewById(R.id.tabs_counter);
     }
 
     private int getTabsCount() {
-        TextView currentView = (TextView) getTabsCounter().getCurrentView();
-        String tabsCountText = currentView.getText().toString();
+        String tabsCountText = getTabsCounter().getText().toString();
         return Integer.parseInt(tabsCountText);
     }
 
@@ -256,8 +259,11 @@ public class ToolbarComponent extends BaseComponent {
         fAssertTrue("The UrlEditText is the input method target",
                 urlEditText.isInputMethodTarget());
 
+        // Solo doesn't handle typing text with Unicode characters, so if the input looks like a
+        // genuine URL, we work around this by converting it to Punycode beforehand.
+        final String textToType = url.contains("://") ? convertUrlToPunycode(url) : url;
         mSolo.clearEditText(urlEditText);
-        mSolo.typeText(urlEditText, url);
+        mSolo.typeText(urlEditText, textToType);
 
         return this;
     }
@@ -338,5 +344,12 @@ public class ToolbarComponent extends BaseComponent {
 
     private boolean isBackButtonEnabled() {
         return getBackButton().isEnabled();
+    }
+
+    private String convertUrlToPunycode(final String url) {
+        final Uri uri = Uri.parse(url);
+        final Uri.Builder uriBuilder = uri.buildUpon();
+        uriBuilder.encodedAuthority(IDN.toASCII(uri.getAuthority()));
+        return uriBuilder.toString();
     }
 }

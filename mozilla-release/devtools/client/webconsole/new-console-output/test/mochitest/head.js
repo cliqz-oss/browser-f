@@ -4,7 +4,8 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 /* import-globals-from ../../../../framework/test/shared-head.js */
 /* exported WCUL10n, openNewTabAndConsole, waitForMessages, waitFor, findMessage,
-   openContextMenu, hideContextMenu, loadDocument, waitForNodeMutation */
+   openContextMenu, hideContextMenu, loadDocument,
+   waitForNodeMutation, testOpenInDebugger, checkClickOnNode */
 
 "use strict";
 
@@ -52,7 +53,7 @@ var openNewTabAndConsole = Task.async(function* (url) {
 });
 
 /**
- * Wait for messages in the web console output, resolving once they are receieved.
+ * Wait for messages in the web console output, resolving once they are received.
  *
  * @param object options
  *        - hud: the webconsole
@@ -99,7 +100,7 @@ function waitForMessages({ hud, messages }) {
  *        idempotent function, since we have to run it a second time after it returns
  *        true in order to return the value.
  * @param string message [optional]
- *        A message to output if the condition failes.
+ *        A message to output if the condition fails.
  * @param number interval [optional]
  *        How often the predicate is invoked, in milliseconds.
  * @return object
@@ -143,6 +144,7 @@ function findMessages(hud, text, selector = ".message") {
   );
   return elements;
 }
+
 /**
  * Simulate a context menu event on the provided element, and wait for the console context
  * menu to open. Returns a promise that resolves the menu popup element.
@@ -153,10 +155,10 @@ function findMessages(hud, text, selector = ".message") {
  *        The dom element on which the context menu event should be synthesized.
  * @return promise
  */
-function* openContextMenu(hud, element) {
+async function openContextMenu(hud, element) {
   let onConsoleMenuOpened = hud.ui.newConsoleOutput.once("menu-open");
   synthesizeContextMenuEvent(element);
-  yield onConsoleMenuOpened;
+  await onConsoleMenuOpened;
   return hud.ui.newConsoleOutput.toolbox.doc.getElementById("webconsole-menu");
 }
 
@@ -179,7 +181,7 @@ function hideContextMenu(hud) {
   return onPopupHidden;
 }
 
-function loadDocument(browser, url) {
+function loadDocument(url, browser = gBrowser.selectedBrowser) {
   return new Promise(resolve => {
     browser.addEventListener("load", resolve, {capture: true, once: true});
     BrowserTestUtils.loadURI(gBrowser.selectedBrowser, url);
@@ -202,4 +204,52 @@ function waitForNodeMutation(node, observeConfig = {}) {
     });
     observer.observe(node, observeConfig);
   });
+}
+
+/**
+ * Search for a given message.  When found, simulate a click on the
+ * message's location, checking to make sure that the debugger opens
+ * the corresponding URL.
+ *
+ * @param {Object} hud
+ *        The webconsole
+ * @param {Object} toolbox
+ *        The toolbox
+ * @param {String} text
+ *        The text to search for.  This should be contained in the
+ *        message.  The searching is done with @see findMessage.
+ */
+function* testOpenInDebugger(hud, toolbox, text) {
+  info(`Finding message for open-in-debugger test; text is "${text}"`);
+  let messageNode = yield waitFor(() => findMessage(hud, text));
+  let frameLinkNode = messageNode.querySelector(".message-location .frame-link");
+  ok(frameLinkNode, "The message does have a location link");
+  yield checkClickOnNode(hud, toolbox, frameLinkNode);
+}
+
+/**
+ * Helper function for testOpenInDebugger.
+ */
+function* checkClickOnNode(hud, toolbox, frameLinkNode) {
+  info("checking click on node location");
+
+  let url = frameLinkNode.getAttribute("data-url");
+  ok(url, `source url found ("${url}")`);
+
+  let line = frameLinkNode.getAttribute("data-line");
+  ok(line, `source line found ("${line}")`);
+
+  let onSourceInDebuggerOpened = once(hud.ui, "source-in-debugger-opened");
+
+  EventUtils.sendMouseEvent({ type: "click" },
+    frameLinkNode.querySelector(".frame-link-filename"));
+
+  yield onSourceInDebuggerOpened;
+
+  let dbg = toolbox.getPanel("jsdebugger");
+  is(
+    dbg._selectors.getSelectedSource(dbg._getState()).get("url"),
+    url,
+    "expected source url"
+  );
 }

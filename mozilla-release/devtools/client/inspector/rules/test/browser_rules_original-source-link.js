@@ -8,7 +8,7 @@
 // are involved.
 
 const TESTCASE_URI = URL_ROOT + "doc_sourcemaps.html";
-const PREF = "devtools.styleeditor.source-maps-enabled";
+const PREF = "devtools.source-map.client-service.enabled";
 const SCSS_LOC = "doc_sourcemaps.scss:4";
 const CSS_LOC = "doc_sourcemaps.css:1";
 
@@ -50,20 +50,18 @@ function* testClickingLink(toolbox, view) {
 }
 
 function checkDisplayedStylesheet(toolbox) {
-  let def = defer();
-
   let panel = toolbox.getCurrentPanel();
-  panel.UI.on("editor-selected", (event, editor) => {
-    // The style editor selects the first sheet at first load before
-    // selecting the desired sheet.
-    if (editor.styleSheet.href.endsWith("scss")) {
-      info("Original source editor selected");
-      editor.getSourceEditor().then(editorSelected)
-        .then(def.resolve, def.reject);
-    }
+  return new Promise((resolve, reject) => {
+    panel.UI.on("editor-selected", (event, editor) => {
+      // The style editor selects the first sheet at first load before
+      // selecting the desired sheet.
+      if (editor.styleSheet.href.endsWith("scss")) {
+        info("Original source editor selected");
+        editor.getSourceEditor().then(editorSelected)
+          .then(resolve, reject);
+      }
+    });
   });
-
-  return def.promise;
 }
 
 function editorSelected(editor) {

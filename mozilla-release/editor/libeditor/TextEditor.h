@@ -56,11 +56,6 @@ public:
 
   TextEditor();
 
-  virtual TextEditor* AsTextEditor() override { return this; }
-  virtual const TextEditor* AsTextEditor() const override { return this; }
-  virtual HTMLEditor* AsHTMLEditor() override;
-  virtual const HTMLEditor* AsHTMLEditor() const override;
-
   // nsIPlaintextEditor methods
   NS_DECL_NSIPLAINTEXTEDITOR
 
@@ -83,6 +78,7 @@ public:
                   nsISelectionController* aSelCon, uint32_t aFlags,
                   const nsAString& aValue) override;
 
+  nsresult DocumentIsEmpty(bool* aIsEmpty);
   NS_IMETHOD GetDocumentIsEmpty(bool* aDocumentIsEmpty) override;
 
   NS_IMETHOD DeleteSelection(EDirection aAction,
@@ -248,5 +244,17 @@ protected:
 };
 
 } // namespace mozilla
+
+mozilla::TextEditor*
+nsIEditor::AsTextEditor()
+{
+  return static_cast<mozilla::TextEditor*>(this);
+}
+
+const mozilla::TextEditor*
+nsIEditor::AsTextEditor() const
+{
+  return static_cast<const mozilla::TextEditor*>(this);
+}
 
 #endif // #ifndef mozilla_TextEditor_h

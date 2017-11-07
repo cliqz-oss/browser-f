@@ -22,7 +22,7 @@ add_task(function* () {
   yield selectNode("canvas", inspector);
   yield assertCopyImageDataAvailable(inspector);
   let expectedURL = yield testActor.eval(`
-    content.document.querySelector(".canvas").toDataURL();`);
+    document.querySelector(".canvas").toDataURL();`);
   yield triggerCopyImageUrlAndWaitForClipboard(expectedURL, inspector);
 
   // Check again that the menu isn't available on the DIV (to make sure our
@@ -48,20 +48,18 @@ function* assertCopyImageDataAvailable(inspector) {
 }
 
 function triggerCopyImageUrlAndWaitForClipboard(expected, inspector) {
-  let def = defer();
-
-  SimpleTest.waitForClipboard(expected, () => {
-    inspector.markup.getContainer(inspector.selection.nodeFront)
-                    .copyImageDataUri();
-  }, () => {
-    ok(true, "The clipboard contains the expected value " +
-             expected.substring(0, 50) + "...");
-    def.resolve();
-  }, () => {
-    ok(false, "The clipboard doesn't contain the expected value " +
-              expected.substring(0, 50) + "...");
-    def.resolve();
+  return new Promise(resolve => {
+    SimpleTest.waitForClipboard(expected, () => {
+      inspector.markup.getContainer(inspector.selection.nodeFront)
+                      .copyImageDataUri();
+    }, () => {
+      ok(true, "The clipboard contains the expected value " +
+               expected.substring(0, 50) + "...");
+      resolve();
+    }, () => {
+      ok(false, "The clipboard doesn't contain the expected value " +
+                expected.substring(0, 50) + "...");
+      resolve();
+    });
   });
-
-  return def.promise;
 }

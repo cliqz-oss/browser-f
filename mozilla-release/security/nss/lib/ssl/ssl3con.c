@@ -1,3 +1,4 @@
+
 /* -*- Mode: C; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 4 -*- */
 /*
  * SSL3 Protocol
@@ -233,11 +234,15 @@ static const unsigned int ssl_compression_method_count =
 static PRBool
 ssl_CompressionEnabled(sslSocket *ss, SSLCompressionMethod compression)
 {
-    SSL3ProtocolVersion version;
-
     if (compression == ssl_compression_null) {
         return PR_TRUE; /* Always enabled */
     }
+/* Compression was disabled in NSS 3.33. It is temporarily possible
+     * to re-enable it by unifdefing the following block. We will remove
+     * compression entirely in future versions of NSS. */
+#if 0
+    SSL3ProtocolVersion version;
+
     if (ss->sec.isServer) {
         /* We can't easily check that the client didn't attempt TLS 1.3,
          * so this will have to do. */
@@ -256,6 +261,7 @@ ssl_CompressionEnabled(sslSocket *ss, SSLCompressionMethod compression)
         }
         return ss->opt.enableDeflate;
     }
+#endif
 #endif
     return PR_FALSE;
 }
@@ -1090,7 +1096,8 @@ ssl_ClientReadVersion(sslSocket *ss, PRUint8 **b, unsigned int *len,
         PORT_SetError(SSL_ERROR_UNSUPPORTED_VERSION);
         return SECFailure;
     }
-    if (temp == tls13_EncodeDraftVersion(SSL_LIBRARY_VERSION_TLS_1_3)) {
+    if (temp == tls13_EncodeDraftVersion(SSL_LIBRARY_VERSION_TLS_1_3) || (ss->opt.enableAltHandshaketype &&
+                                                                          (temp == tls13_EncodeAltDraftVersion(SSL_LIBRARY_VERSION_TLS_1_3)))) {
         v = SSL_LIBRARY_VERSION_TLS_1_3;
     } else {
         v = (SSL3ProtocolVersion)temp;
@@ -2977,6 +2984,7 @@ ssl3_FlushHandshakeMessages(sslSocket *ss, PRInt32 flags)
                                         ssl_SEND_FLAG_CAP_RECORD_VERSION;
     PRInt32 count = -1;
     SECStatus rv;
+    SSL3ContentType ct = content_handshake;
 
     PORT_Assert(ss->opt.noLocks || ssl_HaveSSL3HandshakeLock(ss));
     PORT_Assert(ss->opt.noLocks || ssl_HaveXmitBufLock(ss));
@@ -2990,7 +2998,12 @@ ssl3_FlushHandshakeMessages(sslSocket *ss, PRInt32 flags)
         PORT_SetError(SEC_ERROR_INVALID_ARGS);
         return SECFailure;
     }
-    count = ssl3_SendRecord(ss, NULL, content_handshake,
+    /* Maybe send the first message with alt handshake type. */
+    if (ss->ssl3.hs.altHandshakeType) {
+        ct = content_alt_handshake;
+        ss->ssl3.hs.altHandshakeType = PR_FALSE;
+    }
+    count = ssl3_SendRecord(ss, NULL, ct,
                             ss->sec.ci.sendBuf.buf,
                             ss->sec.ci.sendBuf.len, flags);
     if (count < 0) {
@@ -8526,29 +8539,33 @@ ssl3_HandleClientHello(sslSocket *ss, PRUint8 *b, PRUint32 length)
             }
         }
     }
+
     /* This is a second check for TLS 1.3 and re-handshake to stop us
      * from re-handshake up to TLS 1.3, so it happens after version
      * negotiation. */
-    if (ss->firstHsDone && ss->version >= SSL_LIBRARY_VERSION_TLS_1_3) {
-        desc = unexpected_message;
-        errCode = SSL_ERROR_RENEGOTIATION_NOT_ALLOWED;
-        goto alert_loser;
-    }
-    if (ss->firstHsDone &&
-        (ss->opt.enableRenegotiation == SSL_RENEGOTIATE_REQUIRES_XTN ||
-         ss->opt.enableRenegotiation == SSL_RENEGOTIATE_TRANSITIONAL) &&
-        !ssl3_ExtensionNegotiated(ss, ssl_renegotiation_info_xtn)) {
-        desc = no_renegotiation;
-        level = alert_warning;
-        errCode = SSL_ERROR_RENEGOTIATION_NOT_ALLOWED;
-        goto alert_loser;
-    }
-    if ((ss->opt.requireSafeNegotiation ||
-         (ss->firstHsDone && ss->peerRequestedProtection)) &&
-        !ssl3_ExtensionNegotiated(ss, ssl_renegotiation_info_xtn)) {
-        desc = handshake_failure;
-        errCode = SSL_ERROR_UNSAFE_NEGOTIATION;
-        goto alert_loser;
+    if (ss->version >= SSL_LIBRARY_VERSION_TLS_1_3) {
+        if (ss->firstHsDone) {
+            desc = unexpected_message;
+            errCode = SSL_ERROR_RENEGOTIATION_NOT_ALLOWED;
+            goto alert_loser;
+        }
+    } else {
+        if (ss->firstHsDone &&
+            (ss->opt.enableRenegotiation == SSL_RENEGOTIATE_REQUIRES_XTN ||
+             ss->opt.enableRenegotiation == SSL_RENEGOTIATE_TRANSITIONAL) &&
+            !ssl3_ExtensionNegotiated(ss, ssl_renegotiation_info_xtn)) {
+            desc = no_renegotiation;
+            level = alert_warning;
+            errCode = SSL_ERROR_RENEGOTIATION_NOT_ALLOWED;
+            goto alert_loser;
+        }
+        if ((ss->opt.requireSafeNegotiation ||
+             (ss->firstHsDone && ss->peerRequestedProtection)) &&
+            !ssl3_ExtensionNegotiated(ss, ssl_renegotiation_info_xtn)) {
+            desc = handshake_failure;
+            errCode = SSL_ERROR_UNSAFE_NEGOTIATION;
+            goto alert_loser;
+        }
     }
 
     /* We do stateful resumes only if we are in TLS < 1.3 and
@@ -9321,7 +9338,7 @@ ssl3_SendServerHello(sslSocket *ss)
     if (IS_DTLS(ss) && ss->version < SSL_LIBRARY_VERSION_TLS_1_3) {
         version = dtls_TLSVersionToDTLSVersion(ss->version);
     } else {
-        version = tls13_EncodeDraftVersion(ss->version);
+        version = ss->ssl3.hs.altHandshakeType ? tls13_EncodeAltDraftVersion(ss->version) : tls13_EncodeDraftVersion(ss->version);
     }
 
     rv = ssl3_AppendHandshakeNumber(ss, version, 2);
@@ -12728,6 +12745,14 @@ process_it:
      */
     ssl_GetSSL3HandshakeLock(ss);
 
+    /* Special case: allow alt content type for TLS 1.3 ServerHello. */
+    if ((rType == content_alt_handshake) &&
+        (ss->vrange.max >= SSL_LIBRARY_VERSION_TLS_1_3) &&
+        (ss->ssl3.hs.ws == wait_server_hello) &&
+        (ss->opt.enableAltHandshaketype) &&
+        (!IS_DTLS(ss))) {
+        rType = content_handshake;
+    }
     /* All the functions called in this switch MUST set error code if
     ** they return SECFailure or SECWouldBlock.
     */

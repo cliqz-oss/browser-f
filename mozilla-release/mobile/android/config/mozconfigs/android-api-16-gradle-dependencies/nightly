@@ -7,6 +7,7 @@ MOZ_AUTOMATION_PACKAGE_TESTS=0
 MOZ_AUTOMATION_UPDATE_PACKAGING=0
 MOZ_AUTOMATION_UPLOAD=0
 MOZ_AUTOMATION_UPLOAD_SYMBOLS=0
+MOZ_AUTOMATION_PACKAGE_GENERATED_SOURCES=0
 
 NO_CACHE=1
 NO_NDK=1
@@ -47,6 +48,7 @@ STRIP_FLAGS="--strip-debug"
 
 export MOZILLA_OFFICIAL=1
 export MOZ_TELEMETRY_REPORTING=1
+export MOZ_ANDROID_POCKET=1
 
 . "$topsrcdir/mobile/android/config/mozconfigs/common.override"
 
@@ -54,4 +56,4 @@ export MOZ_TELEMETRY_REPORTING=1
 
 # Populated after checking out the sources and before building the
 # tree as part of the dependencies task bin/ scripts.
-ac_add_options --with-android-sdk="/home/worker/.mozbuild/android-sdk-linux"
+ac_add_options --with-android-sdk="/builds/worker/.mozbuild/android-sdk-linux"

@@ -16,14 +16,40 @@ const ALTERNATIVE_COUNTRY_NAMES = {
   "US": ["US", "United States of America", "United States", "America", "U.S.", "USA", "U.S.A.", "U.S.A"],
 };
 
+const ADDRESSES_COLLECTION_NAME = "addresses";
+const CREDITCARDS_COLLECTION_NAME = "creditCards";
 const ENABLED_AUTOFILL_ADDRESSES_PREF = "extensions.formautofill.addresses.enabled";
+const AUTOFILL_CREDITCARDS_AVAILABLE_PREF = "extensions.formautofill.creditCards.available";
+const ENABLED_AUTOFILL_CREDITCARDS_PREF = "extensions.formautofill.creditCards.enabled";
+const MANAGE_ADDRESSES_KEYWORDS = ["manageAddressesTitle", "addNewAddressTitle"];
+const EDIT_ADDRESS_KEYWORDS = [
+  "givenName", "additionalName", "familyName", "organization", "streetAddress",
+  "state", "province", "city", "country", "zip", "postalCode", "email", "tel",
+];
+const MANAGE_CREDITCARDS_KEYWORDS = ["manageCreditCardsTitle", "addNewCreditCardTitle", "showCreditCards"];
+const EDIT_CREDITCARD_KEYWORDS = ["cardNumber", "nameOnCard", "cardExpires"];
+
+// The maximum length of data to be saved in a single field for preventing DoS
+// attacks that fill the user's hard drive(s).
+const MAX_FIELD_VALUE_LENGTH = 200;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
 this.FormAutofillUtils = {
   get AUTOFILL_FIELDS_THRESHOLD() { return 3; },
-  get isAutofillEnabled() { return this.isAutofillAddressesEnabled; },
+  get isAutofillEnabled() { return this.isAutofillAddressesEnabled || this.isAutofillCreditCardsEnabled; },
+  get isAutofillCreditCardsEnabled() { return this.isAutofillCreditCardsAvailable && this._isAutofillCreditCardsEnabled; },
+
+  ADDRESSES_COLLECTION_NAME,
+  CREDITCARDS_COLLECTION_NAME,
+  ENABLED_AUTOFILL_ADDRESSES_PREF,
+  ENABLED_AUTOFILL_CREDITCARDS_PREF,
+  MANAGE_ADDRESSES_KEYWORDS,
+  EDIT_ADDRESS_KEYWORDS,
+  MANAGE_CREDITCARDS_KEYWORDS,
+  EDIT_CREDITCARD_KEYWORDS,
+  MAX_FIELD_VALUE_LENGTH,
 
   _fieldNameInfo: {
     "name": "name",
@@ -50,9 +76,13 @@ this.FormAutofillUtils = {
     "tel-extension": "tel",
     "email": "email",
     "cc-name": "creditCard",
+    "cc-given-name": "creditCard",
+    "cc-additional-name": "creditCard",
+    "cc-family-name": "creditCard",
     "cc-number": "creditCard",
     "cc-exp-month": "creditCard",
     "cc-exp-year": "creditCard",
+    "cc-exp": "creditCard",
   },
   _addressDataLoaded: false,
   _collators: {},
@@ -64,6 +94,13 @@ this.FormAutofillUtils = {
 
   isCreditCardField(fieldName) {
     return this._fieldNameInfo[fieldName] == "creditCard";
+  },
+
+  isCCNumber(ccNumber) {
+    // Based on the information on wiki[1], the shortest valid length should be
+    // 12 digits(Maestro).
+    // [1] https://en.wikipedia.org/wiki/Payment_card_number
+    return ccNumber ? ccNumber.replace(/\s/g, "").match(/^\d{12,}$/) : false;
   },
 
   getCategoryFromFieldName(fieldName) {
@@ -125,6 +162,13 @@ this.FormAutofillUtils = {
     }
   },
 
+  fmtMaskedCreditCardLabel(maskedCCNum = "") {
+    return {
+      affix: "****",
+      label: maskedCCNum.replace(/^\**/, ""),
+    };
+  },
+
   defineLazyLogGetter(scope, logPrefix) {
     XPCOMUtils.defineLazyGetter(scope, "log", () => {
       let ConsoleAPI = Cu.import("resource://gre/modules/Console.jsm", {}).ConsoleAPI;
@@ -141,10 +185,6 @@ this.FormAutofillUtils = {
 
   ALLOWED_TYPES: ["text", "email", "tel", "number"],
   isFieldEligibleForAutofill(element) {
-    if (element.autocomplete == "off") {
-      return false;
-    }
-
     let tagName = element.tagName;
     if (tagName == "INPUT") {
       // `element.type` can be recognized as `text`, if it's missing or invalid.
@@ -234,6 +274,16 @@ this.FormAutofillUtils = {
     return null;
   },
 
+  findSelectOption(selectEl, record, fieldName) {
+    if (this.isAddressField(fieldName)) {
+      return this.findAddressSelectOption(selectEl, record, fieldName);
+    }
+    if (this.isCreditCardField(fieldName)) {
+      return this.findCreditCardSelectOption(selectEl, record, fieldName);
+    }
+    return null;
+  },
+
   /**
    * Try to find the abbreviation of the given state name
    * @param   {string[]} stateValues A list of inferable state values.
@@ -284,7 +334,7 @@ this.FormAutofillUtils = {
    * @param   {string} fieldName
    * @returns {DOMElement}
    */
-  findSelectOption(selectEl, address, fieldName) {
+  findAddressSelectOption(selectEl, address, fieldName) {
     let value = address[fieldName];
     if (!value) {
       return null;
@@ -336,6 +386,66 @@ this.FormAutofillUtils = {
             if (this.identifyCountryCode(option.text, value) || this.identifyCountryCode(option.value, value)) {
               return option;
             }
+          }
+        }
+        break;
+      }
+    }
+
+    return null;
+  },
+
+  findCreditCardSelectOption(selectEl, creditCard, fieldName) {
+    let oneDigitMonth = creditCard["cc-exp-month"].toString();
+    let twoDigitsMonth = oneDigitMonth.padStart(2, "0");
+    let fourDigitsYear = creditCard["cc-exp-year"].toString();
+    let twoDigitsYear = fourDigitsYear.substr(2, 2);
+    let options = Array.from(selectEl.options);
+
+    switch (fieldName) {
+      case "cc-exp-month": {
+        for (let option of options) {
+          if ([option.text, option.label, option.value].some(s => {
+            let result = /[1-9]\d*/.exec(s);
+            return result && result[0] == oneDigitMonth;
+          })) {
+            return option;
+          }
+        }
+        break;
+      }
+      case "cc-exp-year": {
+        for (let option of options) {
+          if ([option.text, option.label, option.value].some(
+            s => s == twoDigitsYear || s == fourDigitsYear
+          )) {
+            return option;
+          }
+        }
+        break;
+      }
+      case "cc-exp": {
+        let patterns = [
+          oneDigitMonth + "/" + twoDigitsYear,    // 8/22
+          oneDigitMonth + "/" + fourDigitsYear,   // 8/2022
+          twoDigitsMonth + "/" + twoDigitsYear,   // 08/22
+          twoDigitsMonth + "/" + fourDigitsYear,  // 08/2022
+          oneDigitMonth + "-" + twoDigitsYear,    // 8-22
+          oneDigitMonth + "-" + fourDigitsYear,   // 8-2022
+          twoDigitsMonth + "-" + twoDigitsYear,   // 08-22
+          twoDigitsMonth + "-" + fourDigitsYear,  // 08-2022
+          twoDigitsYear + "-" + twoDigitsMonth,   // 22-08
+          fourDigitsYear + "-" + twoDigitsMonth,  // 2022-08
+          fourDigitsYear + "/" + oneDigitMonth,   // 2022/8
+          twoDigitsMonth + twoDigitsYear,         // 0822
+          twoDigitsYear + twoDigitsMonth,         // 2208
+        ];
+
+        for (let option of options) {
+          if ([option.text, option.label, option.value].some(
+            str => patterns.some(pattern => str.includes(pattern))
+          )) {
+            return option;
           }
         }
         break;
@@ -433,3 +543,7 @@ XPCOMUtils.defineLazyGetter(FormAutofillUtils, "stringBundle", function() {
 
 XPCOMUtils.defineLazyPreferenceGetter(this.FormAutofillUtils,
                                       "isAutofillAddressesEnabled", ENABLED_AUTOFILL_ADDRESSES_PREF);
+XPCOMUtils.defineLazyPreferenceGetter(this.FormAutofillUtils,
+                                      "isAutofillCreditCardsAvailable", AUTOFILL_CREDITCARDS_AVAILABLE_PREF);
+XPCOMUtils.defineLazyPreferenceGetter(this.FormAutofillUtils,
+                                      "_isAutofillCreditCardsEnabled", ENABLED_AUTOFILL_CREDITCARDS_PREF);

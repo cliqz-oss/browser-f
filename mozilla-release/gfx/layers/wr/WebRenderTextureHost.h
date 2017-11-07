@@ -63,12 +63,10 @@ public:
 
   int32_t GetRGBStride();
 
-  bool IsWrappingNativeHandle() { return mIsWrappingNativeHandle; }
-
   virtual void GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
                               const std::function<wr::ImageKey()>& aImageKeyAllocator) override;
 
-  virtual void AddWRImage(wr::WebRenderAPI* aAPI,
+  virtual void AddWRImage(wr::ResourceUpdateQueue& aResources,
                           Range<const wr::ImageKey>& aImageKeys,
                           const wr::ExternalImageId& aExtID) override;
 
@@ -83,8 +81,6 @@ protected:
 
   RefPtr<TextureHost> mWrappedTextureHost;
   wr::ExternalImageId mExternalImageId;
-
-  bool mIsWrappingNativeHandle;
 };
 
 } // namespace layers

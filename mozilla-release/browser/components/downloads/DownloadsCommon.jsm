@@ -37,32 +37,21 @@ const { classes: Cc, interfaces: Ci, utils: Cu, results: Cr } = Components;
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "NetUtil",
-                                  "resource://gre/modules/NetUtil.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PluralForm",
-                                  "resource://gre/modules/PluralForm.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
-                                  "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppMenuNotifications",
-                                  "resource://gre/modules/AppMenuNotifications.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "CustomizableUI",
-                                  "resource:///modules/CustomizableUI.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadHistory",
-                                  "resource://gre/modules/DownloadHistory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadUIHelper",
-                                  "resource://gre/modules/DownloadUIHelper.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadUtils",
-                                  "resource://gre/modules/DownloadUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FileUtils",
-                                  "resource://gre/modules/FileUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "OS",
-                                  "resource://gre/modules/osfile.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateBrowsingUtils",
-                                  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "RecentWindow",
-                                  "resource:///modules/RecentWindow.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  NetUtil: "resource://gre/modules/NetUtil.jsm",
+  PluralForm: "resource://gre/modules/PluralForm.jsm",
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
+  AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
+  CustomizableUI: "resource:///modules/CustomizableUI.jsm",
+  DownloadHistory: "resource://gre/modules/DownloadHistory.jsm",
+  Downloads: "resource://gre/modules/Downloads.jsm",
+  DownloadUIHelper: "resource://gre/modules/DownloadUIHelper.jsm",
+  DownloadUtils: "resource://gre/modules/DownloadUtils.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
+  OS: "resource://gre/modules/osfile.jsm",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
+  RecentWindow: "resource:///modules/RecentWindow.jsm",
+});
 
 XPCOMUtils.defineLazyGetter(this, "DownloadsLogger", () => {
   let { ConsoleAPI } = Cu.import("resource://gre/modules/Console.jsm", {});
@@ -88,6 +77,8 @@ const kDownloadsStringsRequiringPluralForm = {
 };
 
 const kPartialDownloadSuffix = ".part";
+
+const kMaxHistoryResultsForLimitedView = 42;
 
 const kPrefBranch = Services.prefs.getBranch("browser.download.");
 
@@ -196,15 +187,30 @@ this.DownloadsCommon = {
   },
 
   /**
-   * Get access to one of the DownloadsData or PrivateDownloadsData objects,
-   * depending on the privacy status of the window in question.
+   * Get access to one of the DownloadsData, PrivateDownloadsData, or
+   * HistoryDownloadsData objects, depending on the privacy status of the
+   * specified window and on whether history downloads should be included.
    *
-   * @param aWindow
+   * @param window
    *        The browser window which owns the download button.
+   * @param [optional] history
+   *        True to include history downloads when the window is public.
+   * @param [optional] privateAll
+   *        Whether to force the public downloads data to be returned together
+   *        with the private downloads data for a private window.
+   * @param [optional] limited
+   *        True to limit the amount of downloads returned to
+   *        `kMaxHistoryResultsForLimitedView`.
    */
-  getData(aWindow) {
-    if (PrivateBrowsingUtils.isContentWindowPrivate(aWindow)) {
+  getData(window, history = false, privateAll = false, limited = false) {
+    let isPrivate = PrivateBrowsingUtils.isContentWindowPrivate(window);
+    if (isPrivate && !privateAll) {
       return PrivateDownloadsData;
+    }
+    if (history) {
+      if (isPrivate && privateAll)
+        return LimitedPrivateHistoryDownloadData;
+      return limited ? LimitedHistoryDownloadsData : HistoryDownloadsData;
     }
     return DownloadsData;
   },
@@ -282,17 +288,6 @@ this.DownloadsCommon = {
       return DownloadsCommon.DOWNLOAD_CANCELED;
     }
     return DownloadsCommon.DOWNLOAD_NOTSTARTED;
-  },
-
-  /**
-   * Helper function required because the Downloads Panel and the Downloads View
-   * don't share the controller yet.
-   */
-  removeAndFinalizeDownload(download) {
-    Downloads.getList(Downloads.ALL)
-             .then(list => list.remove(download))
-             .then(() => download.finalize(true))
-             .catch(Cu.reportError);
   },
 
   /**
@@ -463,7 +458,7 @@ this.DownloadsCommon = {
         // URL handler.
         Cc["@mozilla.org/uriloader/external-protocol-service;1"]
           .getService(Ci.nsIExternalProtocolService)
-          .loadUrl(NetUtil.newURI(aFile));
+          .loadURI(NetUtil.newURI(aFile));
       }
     }).catch(Cu.reportError);
   },
@@ -508,7 +503,7 @@ this.DownloadsCommon = {
       // the OS handler try to open the directory.
       Cc["@mozilla.org/uriloader/external-protocol-service;1"]
         .getService(Ci.nsIExternalProtocolService)
-        .loadUrl(NetUtil.newURI(aDirectory));
+        .loadURI(NetUtil.newURI(aDirectory));
     }
   },
 
@@ -649,24 +644,43 @@ XPCOMUtils.defineLazyGetter(DownloadsCommon, "isWinVistaOrHigher", function() {
  * downloads. This is useful to display a neutral progress indicator in
  * the main browser window until the autostart timeout elapses.
  *
- * Note that DownloadsData and PrivateDownloadsData are two equivalent singleton
- * objects, one accessing non-private downloads, and the other accessing private
- * ones.
+ * This powers the DownloadsData, PrivateDownloadsData, and HistoryDownloadsData
+ * singleton objects.
  */
-function DownloadsDataCtor(aPrivate) {
-  this._isPrivate = aPrivate;
+function DownloadsDataCtor({ isPrivate, isHistory, maxHistoryResults } = {}) {
+  this._isPrivate = !!isPrivate;
 
   // Contains all the available Download objects and their integer state.
   this.oldDownloadStates = new Map();
+
+  // For the history downloads list we don't need to register this as a view,
+  // but we have to ensure that the DownloadsData object is initialized before
+  // we register more views. This ensures that the view methods of DownloadsData
+  // are invoked before those of views registered on HistoryDownloadsData,
+  // allowing the endTime property to be set correctly.
+  if (isHistory) {
+    if (isPrivate) {
+      PrivateDownloadsData.initializeDataLink();
+    }
+    DownloadsData.initializeDataLink();
+    this._promiseList = DownloadsData._promiseList.then(() => {
+      // For history downloads in Private Browsing mode, we'll fetch the combined
+      // list of public and private downloads.
+      return DownloadHistory.getList({
+        type: isPrivate ? Downloads.ALL : Downloads.PUBLIC,
+        maxHistoryResults
+      });
+    });
+    return;
+  }
 
   // This defines "initializeDataLink" and "_promiseList" synchronously, then
   // continues execution only when "initializeDataLink" is called, allowing the
   // underlying data to be loaded only when actually needed.
   this._promiseList = (async () => {
     await new Promise(resolve => this.initializeDataLink = resolve);
-
-    let list = await Downloads.getList(this._isPrivate ? Downloads.PRIVATE
-                                                       : Downloads.PUBLIC);
+    let list = await Downloads.getList(isPrivate ? Downloads.PRIVATE
+                                                 : Downloads.PUBLIC);
     await list.addView(this);
     return list;
   })();
@@ -710,7 +724,9 @@ DownloadsDataCtor.prototype = {
    * is only called after the data link has been initialized.
    */
   removeFinished() {
-    this._promiseList.then(list => list.removeFinished()).catch(Cu.reportError);
+    Downloads.getList(this._isPrivate ? Downloads.PRIVATE : Downloads.PUBLIC)
+             .then(list => list.removeFinished())
+             .catch(Cu.reportError);
     let indicatorData = this._isPrivate ? PrivateDownloadsIndicatorData
                                         : DownloadsIndicatorData;
     indicatorData.attention = DownloadsCommon.ATTENTION_NONE;
@@ -835,12 +851,25 @@ DownloadsDataCtor.prototype = {
   }
 };
 
+XPCOMUtils.defineLazyGetter(this, "HistoryDownloadsData", function() {
+  return new DownloadsDataCtor({ isHistory: true });
+});
+
+XPCOMUtils.defineLazyGetter(this, "LimitedHistoryDownloadsData", function() {
+  return new DownloadsDataCtor({ isHistory: true, maxHistoryResults: kMaxHistoryResultsForLimitedView });
+});
+
+XPCOMUtils.defineLazyGetter(this, "LimitedPrivateHistoryDownloadData", function() {
+  return new DownloadsDataCtor({ isPrivate: true, isHistory: true,
+    maxHistoryResults: kMaxHistoryResultsForLimitedView });
+});
+
 XPCOMUtils.defineLazyGetter(this, "PrivateDownloadsData", function() {
-  return new DownloadsDataCtor(true);
+  return new DownloadsDataCtor({ isPrivate: true });
 });
 
 XPCOMUtils.defineLazyGetter(this, "DownloadsData", function() {
-  return new DownloadsDataCtor(false);
+  return new DownloadsDataCtor();
 });
 
 // DownloadsViewPrototype
@@ -951,6 +980,7 @@ const DownloadsViewPrototype = {
    */
   onDownloadBatchEnded() {
     this._loading = false;
+    this._updateViews();
   },
 
   /**
@@ -1064,13 +1094,6 @@ DownloadsIndicatorDataCtor.prototype = {
     if (this._views.length == 0) {
       this._itemCount = 0;
     }
-  },
-
-  // Callback functions from DownloadsData
-
-  onDataLoadCompleted() {
-    DownloadsViewPrototype.onDataLoadCompleted.call(this);
-    this._updateViews();
   },
 
   onDownloadAdded(download) {
@@ -1221,7 +1244,14 @@ DownloadsIndicatorDataCtor.prototype = {
     // Determine if the indicator should be shown or get attention.
     this._hasDownloads = (this._itemCount > 0);
 
-    this._percentComplete = summary.percentComplete;
+    // Always show a progress bar if there are downloads in progress.
+    if (summary.percentComplete >= 0) {
+      this._percentComplete = summary.percentComplete;
+    } else if (summary.numDownloading > 0) {
+      this._percentComplete = 0;
+    } else {
+      this._percentComplete = -1;
+    }
   }
 };
 
@@ -1300,15 +1330,6 @@ DownloadsSummaryData.prototype = {
       // another view registered with us, this will get re-populated.
       this._downloads = [];
     }
-  },
-
-  // Callback functions from DownloadsData - see the documentation in
-  // DownloadsViewPrototype for more information on what these functions
-  // are used for.
-
-  onDataLoadCompleted() {
-    DownloadsViewPrototype.onDataLoadCompleted.call(this);
-    this._updateViews();
   },
 
   onDownloadAdded(download) {

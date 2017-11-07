@@ -52,6 +52,8 @@ public:
   // the responsibility of the apprunner.
   nsresult SetProfile(nsIFile* aProfileDir, nsIFile* aProfileLocalDir);
 
+  void InitializeUserPrefs();
+
   void DoShutdown();
 
   static nsresult GetUserAppDataDirectory(nsIFile* *aFile) {
@@ -102,6 +104,7 @@ protected:
   nsresult GetFilesInternal(const char* aProperty, nsISimpleEnumerator** aResult);
   static nsresult GetUserDataDirectoryHome(nsIFile* *aFile, bool aLocal);
   static nsresult GetSysUserExtensionsDirectory(nsIFile* *aFile);
+  static nsresult GetSysUserExtensionsDevDirectory(nsIFile* *aFile);
 #if defined(XP_UNIX) || defined(XP_MACOSX)
   static nsresult GetSystemExtensionsDirectory(nsIFile** aFile);
 #endif
@@ -116,6 +119,7 @@ protected:
                                     bool aLocal);
 
   static nsresult AppendSysUserExtensionPath(nsIFile* aFile);
+  static nsresult AppendSysUserExtensionsDevPath(nsIFile* aFile);
 
   // Internal helper that splits a path into components using the '/' and '\\'
   // delimiters.
@@ -124,11 +128,6 @@ protected:
 #if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
   // Load the temp directory for sandboxed content processes
   nsresult LoadContentProcessTempDir();
-#endif
-
-#ifdef MOZ_B2G
-  // Calculate and register app-bundled extension directories.
-  void LoadAppBundleDirs();
 #endif
 
   void Append(nsIFile* aDirectory);
@@ -143,6 +142,7 @@ protected:
   nsCOMPtr<nsIFile>      mProfileDir;
   nsCOMPtr<nsIFile>      mProfileLocalDir;
   bool                   mProfileNotified;
+  bool                   mPrefsInitialized = false;
 #if (defined(XP_WIN) || defined(XP_MACOSX)) && defined(MOZ_CONTENT_SANDBOX)
   nsCOMPtr<nsIFile>      mContentTempDir;
   nsCOMPtr<nsIFile>      mContentProcessSandboxTempDir;

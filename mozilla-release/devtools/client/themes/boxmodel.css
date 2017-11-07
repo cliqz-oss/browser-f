@@ -51,6 +51,11 @@
   color: var(--theme-highlight-blue);
 }
 
+.theme-dark .boxmodel-margin,
+.theme-dark .boxmodel-size {
+  color: var(--grey-60);
+}
+
 /* Regions are 3 nested elements with wide borders and outlines */
 
 .boxmodel-contents {
@@ -284,6 +289,10 @@
   color: var(--theme-highlight-blue);
 }
 
+.theme-dark .boxmodel-legend[data-box="margin"] {
+  color: var(--grey-60);
+}
+
 .boxmodel-legend[data-box="position"] {
   color: var(--theme-highlight-purple);
   margin: -18px -9px;
@@ -332,15 +341,15 @@
   column-rule: 1px solid var(--theme-splitter-color);
 }
 
-.boxmodel-properties-wrapper .property-view {
+.boxmodel-properties-wrapper .computed-property-view {
   padding-inline-start: 17px;
 }
 
-.boxmodel-properties-wrapper .property-name-container {
+.boxmodel-properties-wrapper .computed-property-name-container {
   flex: 1;
 }
 
-.boxmodel-properties-wrapper .property-value-container {
+.boxmodel-properties-wrapper .computed-property-value-container {
   flex: 1;
   display: block;
 }

@@ -15,12 +15,14 @@
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/TabChild.h"
 #include "mozilla/dom/TabGroup.h"
+#include "mozilla/extensions/StreamFilterParent.h"
 #include "mozilla/ipc/FileDescriptorSetChild.h"
 #include "mozilla/ipc/IPCStreamUtils.h"
 #include "mozilla/net/NeckoChild.h"
 #include "mozilla/net/HttpChannelChild.h"
 
 #include "AltDataOutputStreamChild.h"
+#include "CookieServiceChild.h"
 #include "HttpBackgroundChannelChild.h"
 #include "nsCOMPtr.h"
 #include "nsISupportsPrimitives.h"
@@ -197,6 +199,12 @@ HttpChannelChild::HttpChannelChild()
     sSecurityPrefChecked = true;
   }
 #endif
+
+  // Ensure that the cookie service is initialized before the first
+  // IPC HTTP channel is created.
+  // We require that the parent cookie service actor exists while
+  // processing HTTP responses.
+  RefPtr<CookieServiceChild> cookieService = CookieServiceChild::GetSingleton();
 }
 
 HttpChannelChild::~HttpChannelChild()
@@ -1154,6 +1162,7 @@ HttpChannelChild::DoOnStopRequest(nsIRequest* aRequest, nsresult aChannelStatus,
       aChannelStatus == NS_ERROR_MALWARE_URI ||
       aChannelStatus == NS_ERROR_UNWANTED_URI ||
       aChannelStatus == NS_ERROR_BLOCKED_URI ||
+      aChannelStatus == NS_ERROR_HARMFUL_URI ||
       aChannelStatus == NS_ERROR_PHISHING_URI) {
     nsCString list, provider, prefix;
 
@@ -1178,6 +1187,9 @@ HttpChannelChild::DoOnStopRequest(nsIRequest* aRequest, nsresult aChannelStatus,
     mListener->OnStopRequest(aRequest, aContext, mStatus);
   }
   mOnStopRequestCalled = true;
+
+  // notify "http-on-stop-connect" observers
+  gHttpHandler->OnStopRequest(this);
 
   ReleaseListeners();
 
@@ -1915,7 +1927,7 @@ HttpChannelChild::CleanupRedirectingChannel(nsresult rv)
 NS_IMETHODIMP
 HttpChannelChild::ConnectParent(uint32_t registrarId)
 {
-  LOG(("HttpChannelChild::ConnectParent [this=%p]\n", this));
+  LOG(("HttpChannelChild::ConnectParent [this=%p, id=%" PRIu32 "]\n", this, registrarId));
   mozilla::dom::TabChild* tabChild = nullptr;
   nsCOMPtr<nsITabChild> iTabChild;
   GetCallback(iTabChild);
@@ -2293,6 +2305,18 @@ HttpChannelChild::AsyncOpen(nsIStreamListener *listener, nsISupports *aContext)
 
   LOG(("HttpChannelChild::AsyncOpen [this=%p uri=%s]\n", this, mSpec.get()));
 
+  if (LOG4_ENABLED()) {
+    JSContext* cx = nsContentUtils::GetCurrentJSContext();
+    if (cx) {
+      nsAutoCString fileNameString;
+      uint32_t line = 0, col = 0;
+      if (nsJSUtils::GetCallingLocation(cx, fileNameString, &line, &col)) {
+        LOG(("HttpChannelChild %p source script=%s:%u:%u",
+             this, fileNameString.get(), line, col));
+      }
+    }
+  }
+
 #ifdef DEBUG
   AssertPrivateBrowsingId();
 #endif
@@ -2555,6 +2579,7 @@ HttpChannelChild::ContinueAsyncOpen()
   openArgs.allowSpdy() = mAllowSpdy;
   openArgs.allowAltSvc() = mAllowAltSvc;
   openArgs.beConservative() = mBeConservative;
+  openArgs.tlsFlags() = mTlsFlags;
   openArgs.initialRwin() = mInitialRwin;
 
   uint32_t cacheKey = 0;
@@ -2588,6 +2613,9 @@ HttpChannelChild::ContinueAsyncOpen()
   openArgs.contentWindowId() = contentWindowId;
   openArgs.topLevelOuterContentWindowId() = mTopLevelOuterContentWindowId;
 
+  LOG(("HttpChannelChild::ContinueAsyncOpen this=%p gid=%" PRIu64 " topwinid=%" PRIx64,
+       this, mChannelId, mTopLevelOuterContentWindowId));
+
   if (tabChild && !tabChild->IPCOpen()) {
     return NS_ERROR_FAILURE;
   }
@@ -2603,6 +2631,8 @@ HttpChannelChild::ContinueAsyncOpen()
   openArgs.dispatchFetchEventEnd()    = mDispatchFetchEventEnd;
   openArgs.handleFetchEventStart()    = mHandleFetchEventStart;
   openArgs.handleFetchEventEnd()      = mHandleFetchEventEnd;
+
+  openArgs.forceMainDocumentChannel() = mForceMainDocumentChannel;
 
   // This must happen before the constructor message is sent. Otherwise messages
   // from the parent could arrive quickly and be delivered to the wrong event
@@ -2917,6 +2947,8 @@ HttpChannelChild::ResumeAt(uint64_t startPos, const nsACString& entityID)
 NS_IMETHODIMP
 HttpChannelChild::SetPriority(int32_t aPriority)
 {
+  LOG(("HttpChannelChild::SetPriority %p p=%d", this, aPriority));
+
   int16_t newValue = clamped<int32_t>(aPriority, INT16_MIN, INT16_MAX);
   if (mPriority == newValue)
     return NS_OK;
@@ -2937,6 +2969,9 @@ HttpChannelChild::SetClassFlags(uint32_t inFlags)
   }
 
   mClassOfService = inFlags;
+
+  LOG(("HttpChannelChild %p ClassOfService=%u", this, mClassOfService));
+
   if (RemoteChannelExists()) {
     SendSetClassOfService(mClassOfService);
   }
@@ -2947,6 +2982,9 @@ NS_IMETHODIMP
 HttpChannelChild::AddClassFlags(uint32_t inFlags)
 {
   mClassOfService |= inFlags;
+
+  LOG(("HttpChannelChild %p ClassOfService=%u", this, mClassOfService));
+
   if (RemoteChannelExists()) {
     SendSetClassOfService(mClassOfService);
   }
@@ -2957,6 +2995,9 @@ NS_IMETHODIMP
 HttpChannelChild::ClearClassFlags(uint32_t inFlags)
 {
   mClassOfService &= ~inFlags;
+
+  LOG(("HttpChannelChild %p ClassOfService=%u", this, mClassOfService));
+
   if (RemoteChannelExists()) {
     SendSetClassOfService(mClassOfService);
   }
@@ -3321,6 +3362,19 @@ HttpChannelChild::RetargetDeliveryTo(nsIEventTarget* aNewTarget)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+HttpChannelChild::GetDeliveryTarget(nsIEventTarget** aEventTarget)
+{
+  MutexAutoLock lock(mEventTargetMutex);
+
+  nsCOMPtr<nsIEventTarget> target = mODATarget;
+  if (!mODATarget) {
+    target = GetCurrentThreadEventTarget();
+  }
+  target.forget(aEventTarget);
+  return NS_OK;
+}
+
 void
 HttpChannelChild::ResetInterception()
 {
@@ -3591,6 +3645,13 @@ mozilla::ipc::IPCResult
 HttpChannelChild::RecvSetPriority(const int16_t& aPriority)
 {
   mPriority = aPriority;
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+HttpChannelChild::RecvAttachStreamFilter(Endpoint<extensions::PStreamFilterParent>&& aEndpoint)
+{
+  extensions::StreamFilterParent::Attach(this, Move(aEndpoint));
   return IPC_OK();
 }
 

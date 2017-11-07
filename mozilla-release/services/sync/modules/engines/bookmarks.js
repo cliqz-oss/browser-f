@@ -357,6 +357,9 @@ BookmarksEngine.prototype = {
         guidMap[parentName] = {};
 
       // If the entry already exists, remember that there are explicit dupes.
+
+      // Changes below need to be processed in bug 1295510 that's why eslint is ignored
+      // eslint-disable-next-line no-new-wrappers
       let entry = new String(guid);
       entry.hasDupe = guidMap[parentName][key] != null;
 
@@ -972,13 +975,18 @@ BookmarksTracker.prototype = {
       case "bookmarks-restore-success":
         this._log.debug("Tracking all items on successful import.");
 
-        this._log.debug("Restore succeeded: wiping server and other clients.");
-        Async.promiseSpinningly((async () => {
-          await this.engine.service.resetClient([this.name]);
-          await this.engine.service.wipeServer([this.name]);
-          await this.engine.service.clientsEngine.sendCommand("wipeEngine", [this.name],
-                                                              null, { reason: "bookmark-restore" });
-        })());
+        if (data == "json") {
+          this._log.debug("Restore succeeded: wiping server and other clients.");
+          Async.promiseSpinningly((async () => {
+            await this.engine.service.resetClient([this.name]);
+            await this.engine.service.wipeServer([this.name]);
+            await this.engine.service.clientsEngine.sendCommand("wipeEngine", [this.name],
+                                                                null, { reason: "bookmark-restore" });
+          })());
+        } else {
+          // "html", "html-initial", or "json-append"
+          this._log.debug("Import succeeded.");
+        }
         break;
       case "bookmarks-restore-failed":
         this._log.debug("Tracking all items on failed import.");

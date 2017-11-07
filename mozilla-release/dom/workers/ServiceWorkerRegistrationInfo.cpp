@@ -77,15 +77,16 @@ ServiceWorkerRegistrationInfo::Clear()
   NotifyChromeRegistrationListeners();
 }
 
-ServiceWorkerRegistrationInfo::ServiceWorkerRegistrationInfo(const nsACString& aScope,
-                                                             nsIPrincipal* aPrincipal,
-                                                             nsLoadFlags aLoadFlags)
+ServiceWorkerRegistrationInfo::ServiceWorkerRegistrationInfo(
+    const nsACString& aScope,
+    nsIPrincipal* aPrincipal,
+    ServiceWorkerUpdateViaCache aUpdateViaCache)
   : mControlledDocumentsCounter(0)
   , mUpdateState(NoUpdate)
   , mCreationTime(PR_Now())
   , mCreationTimeStamp(TimeStamp::Now())
   , mLastUpdateTime(0)
-  , mLoadFlags(aLoadFlags)
+  , mUpdateViaCache(aUpdateViaCache)
   , mScope(aScope)
   , mPrincipal(aPrincipal)
   , mPendingUninstall(false)
@@ -125,6 +126,13 @@ ServiceWorkerRegistrationInfo::GetScriptSpec(nsAString& aScriptSpec)
     CopyUTF8toUTF16(newest->ScriptSpec(), aScriptSpec);
   }
   return NS_OK;
+}
+
+NS_IMETHODIMP
+ServiceWorkerRegistrationInfo::GetUpdateViaCache(uint16_t* aUpdateViaCache)
+{
+    *aUpdateViaCache = static_cast<uint16_t>(GetUpdateViaCache());
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -338,14 +346,14 @@ ServiceWorkerRegistrationInfo::IsLastUpdateCheckTimeOverOneDay() const
   }
 
   const int64_t kSecondsPerDay = 86400;
-  const int64_t now =
+  const int64_t nowMicros =
     mCreationTime + static_cast<PRTime>((TimeStamp::Now() -
                                          mCreationTimeStamp).ToMicroseconds());
 
   // now < mLastUpdateTime if the system time is reset between storing
   // and loading mLastUpdateTime from ServiceWorkerRegistrar.
-  if (now < mLastUpdateTime ||
-      (now - mLastUpdateTime) / PR_MSEC_PER_SEC > kSecondsPerDay) {
+  if (nowMicros < mLastUpdateTime ||
+      (nowMicros - mLastUpdateTime) / PR_USEC_PER_SEC > kSecondsPerDay) {
     return true;
   }
   return false;
@@ -637,16 +645,17 @@ ServiceWorkerRegistrationInfo::IsIdle() const
   return !mActiveWorker || mActiveWorker->WorkerPrivate()->IsIdle();
 }
 
-nsLoadFlags
-ServiceWorkerRegistrationInfo::GetLoadFlags() const
+ServiceWorkerUpdateViaCache
+ServiceWorkerRegistrationInfo::GetUpdateViaCache() const
 {
-  return mLoadFlags;
+  return mUpdateViaCache;
 }
 
 void
-ServiceWorkerRegistrationInfo::SetLoadFlags(nsLoadFlags aLoadFlags)
+ServiceWorkerRegistrationInfo::SetUpdateViaCache(
+    ServiceWorkerUpdateViaCache aUpdateViaCache)
 {
-  mLoadFlags = aLoadFlags;
+  mUpdateViaCache = aUpdateViaCache;
 }
 
 int64_t

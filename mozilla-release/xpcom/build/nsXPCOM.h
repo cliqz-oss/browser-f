@@ -18,21 +18,18 @@
 #define DECL_STRUCT(c) typedef struct c c
 #endif
 
-DECL_CLASS(nsAString);
-DECL_CLASS(nsACString);
-
 DECL_CLASS(nsISupports);
 DECL_CLASS(nsIModule);
 DECL_CLASS(nsIComponentManager);
 DECL_CLASS(nsIComponentRegistrar);
 DECL_CLASS(nsIServiceManager);
 DECL_CLASS(nsIFile);
-DECL_CLASS(nsILocalFile);
 DECL_CLASS(nsIDirectoryServiceProvider);
 DECL_CLASS(nsIMemory);
 DECL_CLASS(nsIDebug2);
 
 #ifdef __cplusplus
+#include "nsStringFwd.h"
 namespace mozilla {
 struct Module;
 } // namespace mozilla
@@ -358,6 +355,12 @@ XPCOM_API(void) NS_CycleCollectorSuspect3(void* aPtr,
                                           nsCycleCollectionParticipant* aCp,
                                           nsCycleCollectingAutoRefCnt* aRefCnt,
                                           bool* aShouldDelete);
+
+XPCOM_API(void)
+NS_CycleCollectorSuspectUsingNursery(void* aPtr,
+                                     nsCycleCollectionParticipant* aCp,
+                                     nsCycleCollectingAutoRefCnt* aRefCnt,
+                                     bool* aShouldDelete);
 
 #endif
 

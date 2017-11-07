@@ -9,7 +9,7 @@
 #include "jswrapper.h"
 #include "nsCRT.h"
 #include "nsError.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsReadableUtils.h"
 #include "nsJSProtocolHandler.h"
 #include "nsStringStream.h"
@@ -28,7 +28,6 @@
 #include "nsIWindowMediator.h"
 #include "nsPIDOMWindow.h"
 #include "nsIConsoleService.h"
-#include "nsXPIDLString.h"
 #include "nsEscape.h"
 #include "nsIWebNavigation.h"
 #include "nsIDocShell.h"
@@ -96,7 +95,7 @@ nsresult nsJSThunk::Init(nsIURI* uri)
     NS_ENSURE_ARG_POINTER(uri);
 
     // Get the script string to evaluate...
-    nsresult rv = uri->GetPath(mScript);
+    nsresult rv = uri->GetPathQueryRef(mScript);
     if (NS_FAILED(rv)) return rv;
 
     // Get the url.
@@ -182,7 +181,7 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel *aChannel,
         rv = csp->GetAllowsInline(nsIContentPolicy::TYPE_SCRIPT,
                                   EmptyString(), // aNonce
                                   true,         // aParserCreated
-                                  EmptyString(), // aContent
+                                  nullptr, // aContent
                                   0,             // aLineNumber
                                   &allowsInlineScript);
 

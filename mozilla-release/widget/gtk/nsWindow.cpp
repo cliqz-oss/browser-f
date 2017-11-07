@@ -97,7 +97,7 @@ using namespace mozilla::widget;
 
 /* For SetIcon */
 #include "nsAppDirectoryServiceDefs.h"
-#include "nsXPIDLString.h"
+#include "nsString.h"
 #include "nsIFile.h"
 
 /* SetCursor(imgIContainer*) */
@@ -176,7 +176,7 @@ static GdkWindow *get_inner_gdk_window (GdkWindow *aWindow,
 static int    is_parent_ungrab_enter(GdkEventCrossing *aEvent);
 static int    is_parent_grab_leave(GdkEventCrossing *aEvent);
 
-static void GetBrandName(nsXPIDLString& brandName);
+static void GetBrandName(nsAString& brandName);
 
 /* callbacks from widgets */
 #if (MOZ_WIDGET_GTK == 2)
@@ -440,6 +440,7 @@ nsWindow::nsWindow()
     mContainer           = nullptr;
     mGdkWindow           = nullptr;
     mShell               = nullptr;
+    mCompositorWidgetDelegate = nullptr;
     mHasMappedToplevel   = false;
     mIsFullyObscured     = false;
     mRetryPointerGrab    = false;
@@ -1622,7 +1623,7 @@ nsWindow::SetCursor(imgIContainer* aCursor,
         return window->SetCursor(aCursor, aHotspotX, aHotspotY);
     }
 
-    mCursor = nsCursor(-1);
+    mCursor = eCursorInvalid;
 
     // Get the image's current frame
     GdkPixbuf* pixbuf = nsImageToPixbuf::ImageToPixbuf(aCursor);
@@ -1766,7 +1767,7 @@ nsWindow::SetIcon(const nsAString& aIconSpec)
     nsAutoCString iconName;
 
     if (aIconSpec.EqualsLiteral("default")) {
-        nsXPIDLString brandName;
+        nsAutoString brandName;
         GetBrandName(brandName);
         AppendUTF16toUTF8(brandName, iconName);
         ToLowerCase(iconName);
@@ -3497,7 +3498,7 @@ nsWindow::OnTouchEvent(GdkEventTouch* aEvent)
 #endif
 
 static void
-GetBrandName(nsXPIDLString& brandName)
+GetBrandName(nsAString& aBrandName)
 {
     nsCOMPtr<nsIStringBundleService> bundleService =
         do_GetService(NS_STRINGBUNDLE_CONTRACTID);
@@ -3509,12 +3510,10 @@ GetBrandName(nsXPIDLString& brandName)
             getter_AddRefs(bundle));
 
     if (bundle)
-        bundle->GetStringFromName(
-            "brandShortName",
-            getter_Copies(brandName));
+        bundle->GetStringFromName("brandShortName", aBrandName);
 
-    if (brandName.IsEmpty())
-        brandName.AssignLiteral(u"Mozilla");
+    if (aBrandName.IsEmpty())
+        aBrandName.AssignLiteral(u"Mozilla");
 }
 
 static GdkWindow *
@@ -6548,6 +6547,18 @@ nsWindow::GetLayerManager(PLayerTransactionChild* aShadowManager,
 }
 
 void
+nsWindow::SetCompositorWidgetDelegate(CompositorWidgetDelegate* delegate)
+{
+    if (delegate) {
+        mCompositorWidgetDelegate = delegate->AsPlatformSpecificDelegate();
+        MOZ_ASSERT(mCompositorWidgetDelegate,
+                   "nsWindow::SetCompositorWidgetDelegate called with a non-PlatformCompositorWidgetDelegate");
+    } else {
+        mCompositorWidgetDelegate = nullptr;
+    }
+}
+
+void
 nsWindow::ClearCachedResources()
 {
     if (mLayerManager &&
@@ -6843,7 +6854,7 @@ nsWindow::RoundsWidgetCoordinatesTo()
 void nsWindow::GetCompositorWidgetInitData(mozilla::widget::CompositorWidgetInitData* aInitData)
 {
   #ifdef MOZ_X11
-  *aInitData = mozilla::widget::CompositorWidgetInitData(
+  *aInitData = mozilla::widget::X11CompositorWidgetInitData(
                                   mXWindow,
                                   nsCString(XDisplayString(mXDisplay)),
                                   GetClientSize());

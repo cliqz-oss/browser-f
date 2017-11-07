@@ -230,6 +230,26 @@ IDBTransaction::Create(JSContext* aCx, IDBDatabase* aDatabase,
 
   transaction->SetScriptOwner(aDatabase->GetScriptOwner());
 
+  if (!NS_IsMainThread()) {
+    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
+    MOZ_ASSERT(workerPrivate);
+
+    workerPrivate->AssertIsOnWorkerThread();
+
+    nsAutoPtr<WorkerHolder> workerHolder(
+      new WorkerHolder(workerPrivate, transaction));
+    if (NS_WARN_IF(!workerHolder->HoldWorker(workerPrivate, Canceling))) {
+      // Silence the destructor assertion if we never made this object live.
+#ifdef DEBUG
+      MOZ_ASSERT(!transaction->mSentCommitOrAbort);
+      transaction->mSentCommitOrAbort = true;
+#endif
+      return nullptr;
+    }
+
+    transaction->mWorkerHolder = Move(workerHolder);
+  }
+
   nsCOMPtr<nsIRunnable> runnable = do_QueryObject(transaction);
   nsContentUtils::RunInMetastableState(runnable.forget());
 
@@ -237,16 +257,6 @@ IDBTransaction::Create(JSContext* aCx, IDBDatabase* aDatabase,
 
   aDatabase->RegisterTransaction(transaction);
   transaction->mRegistered = true;
-
-  if (!NS_IsMainThread()) {
-    WorkerPrivate* workerPrivate = GetCurrentThreadWorkerPrivate();
-    MOZ_ASSERT(workerPrivate);
-
-    workerPrivate->AssertIsOnWorkerThread();
-
-    transaction->mWorkerHolder = new WorkerHolder(workerPrivate, transaction);
-    MOZ_ALWAYS_TRUE(transaction->mWorkerHolder->HoldWorker(workerPrivate, Canceling));
-  }
 
   return transaction.forget();
 }
@@ -1008,7 +1018,7 @@ IDBTransaction::ObjectStore(const nsAString& aName, ErrorResult& aRv)
 NS_IMPL_ADDREF_INHERITED(IDBTransaction, IDBWrapperCache)
 NS_IMPL_RELEASE_INHERITED(IDBTransaction, IDBWrapperCache)
 
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(IDBTransaction)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(IDBTransaction)
   NS_INTERFACE_MAP_ENTRY(nsIRunnable)
 NS_INTERFACE_MAP_END_INHERITING(IDBWrapperCache)
 

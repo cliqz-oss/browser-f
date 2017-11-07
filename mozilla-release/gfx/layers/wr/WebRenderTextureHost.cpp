@@ -18,7 +18,6 @@ WebRenderTextureHost::WebRenderTextureHost(const SurfaceDescriptor& aDesc,
                                            wr::ExternalImageId& aExternalImageId)
   : TextureHost(aFlags)
   , mExternalImageId(aExternalImageId)
-  , mIsWrappingNativeHandle(false)
 {
   // The wrapped textureHost will be used in WebRender, and the WebRender could
   // run at another thread. It's hard to control the life-time when gecko
@@ -46,25 +45,6 @@ WebRenderTextureHost::CreateRenderTextureHost(const layers::SurfaceDescriptor& a
                                               TextureHost* aTexture)
 {
   MOZ_ASSERT(aTexture);
-
-  switch (aDesc.type()) {
-    case SurfaceDescriptor::TSurfaceDescriptorBuffer: {
-      mIsWrappingNativeHandle = false;
-      break;
-    }
-#ifdef XP_MACOSX
-    case SurfaceDescriptor::TSurfaceDescriptorMacIOSurface: {
-      mIsWrappingNativeHandle = true;
-      break;
-    }
-#endif
-    case SurfaceDescriptor::TSurfaceDescriptorGPUVideo: {
-      mIsWrappingNativeHandle = !aTexture->HasIntermediateBuffer();
-      break;
-    }
-    default:
-      gfxCriticalError() << "No WR implement for texture type:" << aDesc.type();
-  }
 
   aTexture->CreateRenderTexture(mExternalImageId);
 }
@@ -165,14 +145,14 @@ WebRenderTextureHost::GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
 }
 
 void
-WebRenderTextureHost::AddWRImage(wr::WebRenderAPI* aAPI,
+WebRenderTextureHost::AddWRImage(wr::ResourceUpdateQueue& aResources,
                                  Range<const wr::ImageKey>& aImageKeys,
                                  const wr::ExternalImageId& aExtID)
 {
   MOZ_ASSERT(mWrappedTextureHost);
   MOZ_ASSERT(mExternalImageId == aExtID);
 
-  mWrappedTextureHost->AddWRImage(aAPI, aImageKeys, aExtID);
+  mWrappedTextureHost->AddWRImage(aResources, aImageKeys, aExtID);
 }
 
 void

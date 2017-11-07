@@ -90,9 +90,6 @@ static Color ComputeColorForLine(uint32_t aLineIndex,
                                    nscolor aBorderColor,
                                    nscolor aBackgroundColor);
 
-static Color ComputeCompositeColorForLine(uint32_t aLineIndex,
-                                          const nsBorderColors* aBorderColors);
-
 // little helper function to check if the array of 4 floats given are
 // equal to the given value
 static bool
@@ -178,24 +175,27 @@ nsCSSBorderRenderer::nsCSSBorderRenderer(nsPresContext* aPresContext,
                                          const Float* aBorderWidths,
                                          RectCornerRadii& aBorderRadii,
                                          const nscolor* aBorderColors,
-                                         nsBorderColors* const* aCompositeColors,
-                                         nscolor aBackgroundColor)
+                                         const nsBorderColors* aCompositeColors,
+                                         nscolor aBackgroundColor,
+                                         bool aBackfaceIsVisible)
   : mPresContext(aPresContext),
     mDocument(aDocument),
     mDrawTarget(aDrawTarget),
     mDirtyRect(aDirtyRect),
     mOuterRect(aOuterRect),
     mBorderRadii(aBorderRadii),
-    mBackgroundColor(aBackgroundColor)
+    mBackgroundColor(aBackgroundColor),
+    mBackfaceIsVisible(aBackfaceIsVisible)
 {
   PodCopy(mBorderStyles, aBorderStyles, 4);
   PodCopy(mBorderWidths, aBorderWidths, 4);
   PodCopy(mBorderColors, aBorderColors, 4);
-  if (aCompositeColors) {
-    PodCopy(mCompositeColors, aCompositeColors, 4);
-  } else {
-    static nsBorderColors * const noColors[4] = { nullptr };
-    PodCopy(mCompositeColors, noColors, 4);
+  NS_FOR_CSS_SIDES(side) {
+    if (aCompositeColors && !(*aCompositeColors)[side].IsEmpty()) {
+      mCompositeColors[side] = &(*aCompositeColors)[side];
+    } else {
+      mCompositeColors[side] = nullptr;
+    }
   }
 
   mInnerRect = mOuterRect;
@@ -210,6 +210,8 @@ nsCSSBorderRenderer::nsCSSBorderRenderer(nsPresContext* aPresContext,
 
   mOneUnitBorder = CheckFourFloatsEqual(mBorderWidths, 1.0);
   mNoBorderRadius = AllCornersZeroSize(mBorderRadii);
+  mAllBordersSameStyle = AreBorderSideFinalStylesSame(eSideBitsAll);
+  mAllBordersSameWidth = AllBordersSameWidth();
   mAvoidStroke = false;
 }
 
@@ -317,9 +319,11 @@ nsCSSBorderRenderer::AreBorderSideFinalStylesSame(uint8_t aSides)
 
     if (mBorderStyles[firstStyle] != mBorderStyles[i] ||
         mBorderColors[firstStyle] != mBorderColors[i] ||
-        !nsBorderColors::Equal(mCompositeColors[firstStyle],
-                               mCompositeColors[i]))
+        !mCompositeColors[firstStyle] != !mCompositeColors[i] ||
+        (mCompositeColors[firstStyle] &&
+         *mCompositeColors[firstStyle] != *mCompositeColors[i])) {
       return false;
+    }
   }
 
   /* Then if it's one of the two-tone styles and we're not
@@ -1263,18 +1267,9 @@ ComputeColorForLine(uint32_t aLineIndex,
                          aBorderColorStyle[aLineIndex]);
 }
 
-Color
-ComputeCompositeColorForLine(uint32_t aLineIndex,
-                             const nsBorderColors* aBorderColors)
-{
-  while (aLineIndex-- && aBorderColors->mNext)
-    aBorderColors = aBorderColors->mNext;
-
-  return Color::FromABGR(aBorderColors->mColor);
-}
-
 void
-nsCSSBorderRenderer::DrawBorderSidesCompositeColors(int aSides, const nsBorderColors *aCompositeColors)
+nsCSSBorderRenderer::DrawBorderSidesCompositeColors(
+  int aSides, const nsTArray<nscolor>& aCompositeColors)
 {
   RectCornerRadii radii = mBorderRadii;
 
@@ -1290,9 +1285,14 @@ nsCSSBorderRenderer::DrawBorderSidesCompositeColors(int aSides, const nsBorderCo
   Point itl = mInnerRect.TopLeft();
   Point ibr = mInnerRect.BottomRight();
 
+  MOZ_ASSERT(!aCompositeColors.IsEmpty());
+  Color compositeColor;
   for (uint32_t i = 0; i < uint32_t(maxBorderWidth); i++) {
-    ColorPattern color(ToDeviceColor(
-                         ComputeCompositeColorForLine(i, aCompositeColors)));
+    // advance to next color if exists.
+    if (i < aCompositeColors.Length()) {
+      compositeColor = ToDeviceColor(Color::FromABGR(aCompositeColors[i]));
+    }
+    ColorPattern color(compositeColor);
 
     Rect siRect = soRect;
     siRect.Deflate(1.0);
@@ -1332,7 +1332,7 @@ nsCSSBorderRenderer::DrawBorderSides(int aSides)
 
   uint8_t borderRenderStyle = NS_STYLE_BORDER_STYLE_NONE;
   nscolor borderRenderColor;
-  const nsBorderColors *compositeColors = nullptr;
+  const nsTArray<nscolor>* compositeColors = nullptr;
 
   uint32_t borderColorStyleCount = 0;
   BorderColorStyle borderColorStyleTopLeft[3], borderColorStyleBottomRight[3];
@@ -1390,7 +1390,7 @@ nsCSSBorderRenderer::DrawBorderSides(int aSides)
       maxBorderWidth = std::max(maxBorderWidth, mBorderWidths[i]);
     }
     if (maxBorderWidth <= MAX_COMPOSITE_BORDER_WIDTH) {
-      DrawBorderSidesCompositeColors(aSides, compositeColors);
+      DrawBorderSidesCompositeColors(aSides, *compositeColors);
       return;
     }
     NS_WARNING("DrawBorderSides: too large border width for composite colors");
@@ -1634,6 +1634,10 @@ nsCSSBorderRenderer::SetupDashedOptions(StrokeOptions* aStrokeOptions,
                                         mozilla::Side aSide,
                                         Float aBorderLength, bool isCorner)
 {
+  MOZ_ASSERT(mBorderStyles[aSide] == NS_STYLE_BORDER_STYLE_DASHED ||
+             mBorderStyles[aSide] == NS_STYLE_BORDER_STYLE_DOTTED,
+             "Style should be dashed or dotted.");
+
   uint8_t style = mBorderStyles[aSide];
   Float borderWidth = mBorderWidths[aSide];
 
@@ -1665,16 +1669,26 @@ nsCSSBorderRenderer::SetupDashedOptions(StrokeOptions* aStrokeOptions,
   bool fullStart = false, fullEnd = false;
   Float halfDash;
   if (style == NS_STYLE_BORDER_STYLE_DASHED) {
-    if (IsZeroSize(mBorderRadii[GetCCWCorner(aSide)]) &&
-        (mBorderStyles[PREV_SIDE(aSide)] == NS_STYLE_BORDER_STYLE_DOTTED ||
-         mBorderWidths[PREV_SIDE(aSide)] == 0.0f ||
+    // If either end of the side is not connecting onto a corner then we want a
+    // full dash at that end.
+    //
+    // Note that in the case that a corner is empty, either the adjacent side
+    // has zero width, or else DrawBorders() set the corner to be empty
+    // (it does that if the adjacent side has zero length and the border widths
+    // of this and the adjacent sides are thin enough that the corner will be
+    // insignificantly small).
+
+    if (mBorderRadii[GetCCWCorner(aSide)].IsEmpty() &&
+        (mBorderCornerDimensions[GetCCWCorner(aSide)].IsEmpty() ||
+         mBorderStyles[PREV_SIDE(aSide)] == NS_STYLE_BORDER_STYLE_DOTTED ||
+         // XXX why this <=1 check?
          borderWidth <= 1.0f)) {
       fullStart = true;
     }
 
-    if (IsZeroSize(mBorderRadii[GetCWCorner(aSide)]) &&
-        (mBorderStyles[NEXT_SIDE(aSide)] == NS_STYLE_BORDER_STYLE_DOTTED ||
-         mBorderWidths[NEXT_SIDE(aSide)] == 0.0f)) {
+    if (mBorderRadii[GetCWCorner(aSide)].IsEmpty() &&
+        (mBorderCornerDimensions[GetCWCorner(aSide)].IsEmpty() ||
+         mBorderStyles[NEXT_SIDE(aSide)] == NS_STYLE_BORDER_STYLE_DOTTED)) {
       fullEnd = true;
     }
 
@@ -3129,8 +3143,10 @@ nsCSSBorderRenderer::DrawNoCompositeColorSolidBorder()
 void
 nsCSSBorderRenderer::DrawRectangularCompositeColors()
 {
-  nsBorderColors *currentColors[4];
-  memcpy(currentColors, mCompositeColors, sizeof(nsBorderColors*) * 4);
+  nscolor currentColors[4];
+  NS_FOR_CSS_SIDES(side) {
+    currentColors[side] = mBorderColors[side];
+  }
   Rect rect = mOuterRect;
   rect.Deflate(0.5);
 
@@ -3141,22 +3157,25 @@ nsCSSBorderRenderer::DrawRectangularCompositeColors()
 
   for (int i = 0; i < mBorderWidths[0]; i++) {
     NS_FOR_CSS_SIDES(side) {
+      // advance to the next composite color if one exists
+      if (mCompositeColors[side] &&
+          uint32_t(i) < mCompositeColors[side]->Length()) {
+        currentColors[side] = (*mCompositeColors[side])[i];
+      }
+    }
+    NS_FOR_CSS_SIDES(side) {
       int sideNext = (side + 1) % 4;
 
       Point firstCorner = rect.CCWCorner(side) + cornerAdjusts[side];
       Point secondCorner = rect.CWCorner(side) - cornerAdjusts[side];
 
-      Color currentColor = Color::FromABGR(
-        currentColors[side] ? currentColors[side]->mColor
-                            : mBorderColors[side]);
+      Color currentColor = Color::FromABGR(currentColors[side]);
 
       mDrawTarget->StrokeLine(firstCorner, secondCorner,
                               ColorPattern(ToDeviceColor(currentColor)));
 
       Point cornerTopLeft = rect.CWCorner(side) - Point(0.5, 0.5);
-      Color nextColor = Color::FromABGR(
-        currentColors[sideNext] ? currentColors[sideNext]->mColor
-                                : mBorderColors[sideNext]);
+      Color nextColor = Color::FromABGR(currentColors[sideNext]);
 
       Color cornerColor((currentColor.r + nextColor.r) / 2.f,
                         (currentColor.g + nextColor.g) / 2.f,
@@ -3164,17 +3183,6 @@ nsCSSBorderRenderer::DrawRectangularCompositeColors()
                         (currentColor.a + nextColor.a) / 2.f);
       mDrawTarget->FillRect(Rect(cornerTopLeft, Size(1, 1)),
                             ColorPattern(ToDeviceColor(cornerColor)));
-
-      if (side != 0) {
-        // We'll have to keep side 0 for the color averaging on side 3.
-        if (currentColors[side] && currentColors[side]->mNext) {
-          currentColors[side] = currentColors[side]->mNext;
-        }
-      }
-    }
-    // Now advance the color for side 0.
-    if (currentColors[0] && currentColors[0]->mNext) {
-      currentColors[0] = currentColors[0]->mNext;
     }
     rect.Deflate(1);
   }
@@ -3185,25 +3193,25 @@ nsCSSBorderRenderer::DrawBorders()
 {
   bool forceSeparateCorners = false;
 
-  // Examine the border style to figure out if we can draw it in one
-  // go or not.
-  bool tlBordersSame = AreBorderSideFinalStylesSame(eSideBitsTop | eSideBitsLeft);
-  bool brBordersSame = AreBorderSideFinalStylesSame(eSideBitsBottom | eSideBitsRight);
-  bool allBordersSame = AreBorderSideFinalStylesSame(eSideBitsAll);
-  if (allBordersSame &&
+  if (mAllBordersSameStyle &&
       ((mCompositeColors[0] == nullptr &&
        (mBorderStyles[0] == NS_STYLE_BORDER_STYLE_NONE ||
         mBorderStyles[0] == NS_STYLE_BORDER_STYLE_HIDDEN ||
         mBorderColors[0] == NS_RGBA(0,0,0,0))) ||
-       (mCompositeColors[0] &&
-        (mCompositeColors[0]->mColor == NS_RGBA(0,0,0,0) &&
-         !mCompositeColors[0]->mNext))))
+       (mCompositeColors[0] && mCompositeColors[0]->Length() == 1 &&
+        (*mCompositeColors[0])[0] == NS_RGBA(0,0,0,0))))
   {
     // All borders are the same style, and the style is either none or hidden, or the color
     // is transparent.
     // This also checks if the first composite color is transparent, and there are
     // no others. It doesn't check if there are subsequent transparent ones, because
     // that would be very silly.
+    return;
+  }
+
+  if (mAllBordersSameWidth && mBorderWidths[0] == 0.0) {
+    // Some of the mAllBordersSameWidth codepaths depend on the border
+    // width being greater than zero.
     return;
   }
 
@@ -3234,26 +3242,16 @@ nsCSSBorderRenderer::DrawBorders()
     mInnerRect.Round();
   }
 
-  bool allBordersSameWidth = AllBordersSameWidth();
-
-  if (allBordersSameWidth && mBorderWidths[0] == 0.0) {
-    // Some of the allBordersSameWidth codepaths depend on the border
-    // width being greater than zero.
-    return;
-  }
-
   // Initial values only used when the border colors/widths are all the same:
   ColorPattern color(ToDeviceColor(mBorderColors[eSideTop]));
   StrokeOptions strokeOptions(mBorderWidths[eSideTop]); // stroke width
 
-  bool allBordersSolid;
-
   // First there's a couple of 'special cases' that have specifically optimized
   // drawing paths, when none of these can be used we move on to the generalized
   // border drawing code.
-  if (allBordersSame &&
+  if (mAllBordersSameStyle &&
       mCompositeColors[0] == nullptr &&
-      allBordersSameWidth &&
+      mAllBordersSameWidth &&
       mBorderStyles[0] == NS_STYLE_BORDER_STYLE_SOLID &&
       mNoBorderRadius &&
       !mAvoidStroke)
@@ -3265,7 +3263,7 @@ nsCSSBorderRenderer::DrawBorders()
     return;
   }
 
-  if (allBordersSame &&
+  if (mAllBordersSameStyle &&
       mCompositeColors[0] == nullptr &&
       mBorderStyles[0] == NS_STYLE_BORDER_STYLE_SOLID &&
       !mAvoidStroke &&
@@ -3297,12 +3295,12 @@ nsCSSBorderRenderer::DrawBorders()
   }
 
   bool hasCompositeColors;
+  const bool allBordersSolid = AllBordersSolid(&hasCompositeColors);
 
-  allBordersSolid = AllBordersSolid(&hasCompositeColors);
   // This leaves the border corners non-interpolated for single width borders.
   // Doing this is slightly faster and shouldn't be a problem visually.
   if (allBordersSolid &&
-      allBordersSameWidth &&
+      mAllBordersSameWidth &&
       mCompositeColors[0] == nullptr &&
       mBorderWidths[0] == 1 &&
       mNoBorderRadius &&
@@ -3320,7 +3318,7 @@ nsCSSBorderRenderer::DrawBorders()
   }
 
   if (allBordersSolid &&
-      allBordersSameWidth &&
+      mAllBordersSameWidth &&
       mNoBorderRadius &&
       !mAvoidStroke)
   {
@@ -3332,7 +3330,7 @@ nsCSSBorderRenderer::DrawBorders()
   // If we have composite colors -and- border radius,
   // then use separate corners so we get OP_ADD for the corners.
   // Otherwise, we'll get artifacts as we draw stacked 1px-wide curves.
-  if (allBordersSame && mCompositeColors[0] != nullptr && !mNoBorderRadius)
+  if (mAllBordersSameStyle && mCompositeColors[0] != nullptr && !mNoBorderRadius)
     forceSeparateCorners = true;
 
   PrintAsString(" mOuterRect: "); PrintAsString(mOuterRect); PrintAsStringNewline();
@@ -3360,16 +3358,15 @@ nsCSSBorderRenderer::DrawBorders()
     if (style == NS_STYLE_BORDER_STYLE_DASHED ||
         style == NS_STYLE_BORDER_STYLE_DOTTED)
     {
-      // pretend that all borders aren't the same; we need to draw
-      // things separately for dashed/dotting
-      allBordersSame = false;
+      // we need to draw things separately for dashed/dotting
+      forceSeparateCorners = true;
       dashedSides |= (1 << i);
     }
   }
 
-  PrintAsFormatString(" allBordersSame: %d dashedSides: 0x%02x\n", allBordersSame, dashedSides);
+  PrintAsFormatString(" mAllBordersSameStyle: %d dashedSides: 0x%02x\n", mAllBordersSameStyle, dashedSides);
 
-  if (allBordersSame && !forceSeparateCorners) {
+  if (mAllBordersSameStyle && !forceSeparateCorners) {
     /* Draw everything in one go */
     DrawBorderSides(eSideBitsAll);
     PrintAsStringNewline("---------------- (1)");
@@ -3378,15 +3375,61 @@ nsCSSBorderRenderer::DrawBorders()
 
     /* We have more than one pass to go.  Draw the corners separately from the sides. */
 
-    /*
-     * If we have a 1px-wide border, the corners are going to be
-     * negligible, so don't bother doing anything fancy.  Just extend
-     * the top and bottom borders to the right 1px and the left border
-     * to the bottom 1px.  We do this by twiddling the corner dimensions,
-     * which causes the right to happen later on.  Only do this if we have
-     * a 1.0 unit border all around and no border radius.
-     */
-
+    // The corner is going to have negligible size if its two adjacent border
+    // sides are only 1px wide and there is no border radius.  In that case we
+    // skip the overhead of painting the corner by setting the width or height
+    // of the corner to zero, which effectively extends one of the corner's
+    // adjacent border sides.  We extend the longer adjacent side so that
+    // opposite sides will be the same length, which is necessary for opposite
+    // dashed/dotted sides to be symmetrical.
+    //
+    //   if width > height
+    //     +--+--------------+--+    +--------------------+
+    //     |  |              |  |    |                    |
+    //     +--+--------------+--+    +--+--------------+--+
+    //     |  |              |  |    |  |              |  |
+    //     |  |              |  | => |  |              |  |
+    //     |  |              |  |    |  |              |  |
+    //     +--+--------------+--+    +--+--------------+--+
+    //     |  |              |  |    |                    |
+    //     +--+--------------+--+    +--------------------+
+    //
+    //   if width <= height
+    //     +--+--------+--+    +--+--------+--+
+    //     |  |        |  |    |  |        |  |
+    //     +--+--------+--+    |  +--------+  |
+    //     |  |        |  |    |  |        |  |
+    //     |  |        |  |    |  |        |  |
+    //     |  |        |  |    |  |        |  |
+    //     |  |        |  | => |  |        |  |
+    //     |  |        |  |    |  |        |  |
+    //     |  |        |  |    |  |        |  |
+    //     |  |        |  |    |  |        |  |
+    //     +--+--------+--+    |  +--------+  |
+    //     |  |        |  |    |  |        |  |
+    //     +--+--------+--+    +--+--------+--+
+    //
+    // Note that if we have different border widths we could end up with
+    // opposite sides of different length.  For example, if the left and
+    // bottom borders are 2px wide instead of 1px, we will end up doing
+    // something like:
+    //
+    //     +----+------------+--+    +----+---------------+
+    //     |    |            |  |    |    |               |
+    //     +----+------------+--+    +----+------------+--+
+    //     |    |            |  |    |    |            |  |
+    //     |    |            |  | => |    |            |  |
+    //     |    |            |  |    |    |            |  |
+    //     +----+------------+--+    +----+------------+--+
+    //     |    |            |  |    |    |            |  |
+    //     |    |            |  |    |    |            |  |
+    //     +----+------------+--+    +----+------------+--+
+    //
+    // XXX Should we only do this optimization if |mAllBordersSameWidth| is true?
+    //
+    // XXX In fact is this optimization even worth the complexity it adds to
+    // the code?  1px wide dashed borders are not overly common, and drawing
+    // corners for them is not that expensive.
     NS_FOR_CSS_FULL_CORNERS(corner) {
       const mozilla::Side sides[2] = { mozilla::Side(corner), PREV_SIDE(corner) };
 
@@ -3394,10 +3437,11 @@ nsCSSBorderRenderer::DrawBorders()
         continue;
 
       if (mBorderWidths[sides[0]] == 1.0 && mBorderWidths[sides[1]] == 1.0) {
-        if (corner == eCornerTopLeft || corner == eCornerTopRight)
+        if (mOuterRect.Width() > mOuterRect.Height()) {
           mBorderCornerDimensions[corner].width = 0.0;
-        else
+        } else {
           mBorderCornerDimensions[corner].height = 0.0;
+        }
       }
     }
 
@@ -3480,12 +3524,18 @@ nsCSSBorderRenderer::DrawBorders()
         mNoBorderRadius &&
         (dashedSides & (eSideBitsTop | eSideBitsLeft)) == 0)
     {
-      if (tlBordersSame) {
+      bool tlBordersSameStyle = AreBorderSideFinalStylesSame(eSideBitsTop |
+                                                             eSideBitsLeft);
+      bool brBordersSameStyle = AreBorderSideFinalStylesSame(eSideBitsBottom |
+                                                             eSideBitsRight);
+
+      if (tlBordersSameStyle) {
         DrawBorderSides(eSideBitsTop | eSideBitsLeft);
         alreadyDrawnSides |= (eSideBitsTop | eSideBitsLeft);
       }
 
-      if (brBordersSame && (dashedSides & (eSideBitsBottom | eSideBitsRight)) == 0) {
+      if (brBordersSameStyle &&
+          (dashedSides & (eSideBitsBottom | eSideBitsRight)) == 0) {
         DrawBorderSides(eSideBitsBottom | eSideBitsRight);
         alreadyDrawnSides |= (eSideBitsBottom | eSideBitsRight);
       }
@@ -3552,6 +3602,7 @@ nsCSSBorderRenderer::CanCreateWebRenderCommands()
 
 void
 nsCSSBorderRenderer::CreateWebRenderCommands(wr::DisplayListBuilder& aBuilder,
+                                             wr::IpcResourceUpdateQueue& aResources,
                                              const layers::StackingContextHelper& aSc)
 {
   LayoutDeviceRect outerRect = LayoutDeviceRect::FromUnknownRect(mOuterRect);
@@ -3568,6 +3619,7 @@ nsCSSBorderRenderer::CreateWebRenderCommands(wr::DisplayListBuilder& aBuilder,
   Range<const wr::BorderSide> wrsides(side, 4);
   aBuilder.PushBorder(transformedRect,
                       transformedRect,
+                      mBackfaceIsVisible,
                       wr::ToBorderWidths(mBorderWidths[0], mBorderWidths[1], mBorderWidths[2], mBorderWidths[3]),
                       wrsides,
                       borderRadius);

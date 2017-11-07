@@ -9,9 +9,23 @@ const {withMockExperiments} = PreferenceExperiments;
 const DefaultPreferences = new Preferences({defaultBranch: true});
 const startupPrefs = "extensions.shield-recipe-client.startupExperimentPrefs";
 
+function experimentFactory(attrs) {
+  return Object.assign({
+    name: "fakename",
+    branch: "fakebranch",
+    expired: false,
+    lastSeen: new Date().toJSON(),
+    preferenceName: "fake.preference",
+    preferenceValue: "falkevalue",
+    preferenceType: "string",
+    previousPreferenceValue: "oldfakevalue",
+    preferenceBranchType: "default",
+  }, attrs);
+}
+
 // clearAllExperimentStorage
 add_task(withMockExperiments(async function(experiments) {
-  experiments["test"] = experimentFactory({name: "test"});
+  experiments.test = experimentFactory({name: "test"});
   ok(await PreferenceExperiments.has("test"), "Mock experiment is detected.");
   await PreferenceExperiments.clearAllExperimentStorage();
   ok(
@@ -22,7 +36,7 @@ add_task(withMockExperiments(async function(experiments) {
 
 // start should throw if an experiment with the given name already exists
 add_task(withMockExperiments(async function(experiments) {
-  experiments["test"] = experimentFactory({name: "test"});
+  experiments.test = experimentFactory({name: "test"});
   await Assert.rejects(
     PreferenceExperiments.start({
       name: "test",
@@ -38,7 +52,7 @@ add_task(withMockExperiments(async function(experiments) {
 
 // start should throw if an experiment for the given preference is active
 add_task(withMockExperiments(async function(experiments) {
-  experiments["test"] = experimentFactory({name: "test", preferenceName: "fake.preference"});
+  experiments.test = experimentFactory({name: "test", preferenceName: "fake.preference"});
   await Assert.rejects(
     PreferenceExperiments.start({
       name: "different",
@@ -310,10 +324,10 @@ add_task(withMockExperiments(async function() {
 // markLastSeen should update the lastSeen date
 add_task(withMockExperiments(async function(experiments) {
   const oldDate = new Date(1988, 10, 1).toJSON();
-  experiments["test"] = experimentFactory({name: "test", lastSeen: oldDate});
+  experiments.test = experimentFactory({name: "test", lastSeen: oldDate});
   await PreferenceExperiments.markLastSeen("test");
   Assert.notEqual(
-    experiments["test"].lastSeen,
+    experiments.test.lastSeen,
     oldDate,
     "markLastSeen updated the experiment lastSeen date",
   );
@@ -329,7 +343,7 @@ add_task(withMockExperiments(async function() {
 
 // stop should throw if the experiment is already expired
 add_task(withMockExperiments(async function(experiments) {
-  experiments["test"] = experimentFactory({name: "test", expired: true});
+  experiments.test = experimentFactory({name: "test", expired: true});
   await Assert.rejects(
     PreferenceExperiments.stop("test"),
     "stop threw an error because the experiment was already expired",
@@ -380,7 +394,7 @@ add_task(withMockExperiments(withMockPreferences(async function(experiments, moc
   hasObserver.returns(true);
 
   mockPreferences.set("fake.preference", "experimentvalue", "user");
-  experiments["test"] = experimentFactory({
+  experiments.test = experimentFactory({
     name: "test",
     expired: false,
     preferenceName: "fake.preference",
@@ -393,25 +407,12 @@ add_task(withMockExperiments(withMockPreferences(async function(experiments, moc
 
   await PreferenceExperiments.stop("test");
   ok(stopObserver.calledWith("test"), "stop removed an observer");
-  is(experiments["test"].expired, true, "stop marked the experiment as expired");
+  is(experiments.test.expired, true, "stop marked the experiment as expired");
   is(
     Preferences.get("fake.preference"),
     "oldvalue",
     "stop reverted the preference to its previous value",
   );
-
-  stopObserver.restore();
-  hasObserver.restore();
-})));
-
-// stop should not call stopObserver if there is no observer registered.
-add_task(withMockExperiments(withMockPreferences(async function(experiments) {
-  const stopObserver = sinon.spy(PreferenceExperiments, "stopObserver");
-  experiments["test"] = experimentFactory({name: "test", expired: false});
-
-  await PreferenceExperiments.stop("test");
-  ok(!stopObserver.called, "stop did not bother to stop an observer that wasn't active");
-
   stopObserver.restore();
   PreferenceExperiments.stopAllObservers();
 })));
@@ -420,7 +421,7 @@ add_task(withMockExperiments(withMockPreferences(async function(experiments) {
 add_task(withMockExperiments(withMockPreferences(async function(experiments, mockPreferences) {
   const stopObserver = sinon.stub(PreferenceExperiments, "stopObserver");
   mockPreferences.set("fake.preference", "experimentvalue", "user");
-  experiments["test"] = experimentFactory({
+  experiments.test = experimentFactory({
     name: "test",
     expired: false,
     preferenceName: "fake.preference",
@@ -443,7 +444,7 @@ add_task(withMockExperiments(withMockPreferences(async function(experiments, moc
 add_task(withMockExperiments(withMockPreferences(async function(experiments, mockPreferences) {
   const stopObserver = sinon.stub(PreferenceExperiments, "stopObserver");
   mockPreferences.set("fake.preference", "customvalue", "default");
-  experiments["test"] = experimentFactory({
+  experiments.test = experimentFactory({
     name: "test",
     expired: false,
     preferenceName: "fake.preference",
@@ -474,21 +475,21 @@ add_task(withMockExperiments(async function() {
 // get
 add_task(withMockExperiments(async function(experiments) {
   const experiment = experimentFactory({name: "test"});
-  experiments["test"] = experiment;
+  experiments.test = experiment;
 
   const fetchedExperiment = await PreferenceExperiments.get("test");
   Assert.deepEqual(fetchedExperiment, experiment, "get fetches the correct experiment");
 
   // Modifying the fetched experiment must not edit the data source.
   fetchedExperiment.name = "othername";
-  is(experiments["test"].name, "test", "get returns a copy of the experiment");
+  is(experiments.test.name, "test", "get returns a copy of the experiment");
 }));
 
 add_task(withMockExperiments(async function testGetAll(experiments) {
   const experiment1 = experimentFactory({name: "experiment1"});
   const experiment2 = experimentFactory({name: "experiment2", disabled: true});
-  experiments["experiment1"] = experiment1;
-  experiments["experiment2"] = experiment2;
+  experiments.experiment1 = experiment1;
+  experiments.experiment2 = experiment2;
 
   const fetchedExperiments = await PreferenceExperiments.getAll();
   is(fetchedExperiments.length, 2, "getAll returns a list of all stored experiments");
@@ -509,11 +510,11 @@ add_task(withMockExperiments(async function testGetAll(experiments) {
 }));
 
 add_task(withMockExperiments(withMockPreferences(async function testGetAllActive(experiments) {
-  experiments["active"] = experimentFactory({
+  experiments.active = experimentFactory({
     name: "active",
     expired: false,
   });
-  experiments["inactive"] = experimentFactory({
+  experiments.inactive = experimentFactory({
     name: "inactive",
     expired: true,
   });
@@ -521,13 +522,13 @@ add_task(withMockExperiments(withMockPreferences(async function testGetAllActive
   const activeExperiments = await PreferenceExperiments.getAllActive();
   Assert.deepEqual(
     activeExperiments,
-    [experiments["active"]],
+    [experiments.active],
     "getAllActive only returns active experiments",
   );
 
   activeExperiments[0].name = "newfakename";
   Assert.notEqual(
-    experiments["active"].name,
+    experiments.active.name,
     "newfakename",
     "getAllActive returns copies of stored experiments",
   );
@@ -535,7 +536,7 @@ add_task(withMockExperiments(withMockPreferences(async function testGetAllActive
 
 // has
 add_task(withMockExperiments(async function(experiments) {
-  experiments["test"] = experimentFactory({name: "test"});
+  experiments.test = experimentFactory({name: "test"});
   ok(await PreferenceExperiments.has("test"), "has returned true for a stored experiment");
   ok(!(await PreferenceExperiments.has("missing")), "has returned false for a missing experiment");
 }));
@@ -605,7 +606,7 @@ decorate_task(
 add_task(withMockExperiments(withMockPreferences(async function testInitChanges(experiments, mockPreferences) {
   const stopStub = sinon.stub(PreferenceExperiments, "stop");
   mockPreferences.set("fake.preference", "experiment value", "default");
-  experiments["test"] = experimentFactory({
+  experiments.test = experimentFactory({
     name: "test",
     preferenceName: "fake.preference",
     preferenceValue: "experiment value",
@@ -622,7 +623,7 @@ add_task(withMockExperiments(withMockPreferences(async function testInitChanges(
 add_task(withMockExperiments(withMockPreferences(async function testInitRegistersObserver(experiments, mockPreferences) {
   const startObserver = sinon.stub(PreferenceExperiments, "startObserver");
   mockPreferences.set("fake.preference", "experiment value", "default");
-  experiments["test"] = experimentFactory({
+  experiments.test = experimentFactory({
     name: "test",
     preferenceName: "fake.preference",
     preferenceValue: "experiment value",

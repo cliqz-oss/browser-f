@@ -75,6 +75,9 @@ class SVGContextPaint;
 namespace gfx {
 class GlyphRenderingOptions;
 } // namespace gfx
+namespace layout {
+class TextDrawTarget;
+} // namespace layout
 } // namespace mozilla
 
 struct gfxFontStyle {
@@ -387,7 +390,7 @@ protected:
 
     static gfxFontCache *gGlobalCache;
 
-    struct Key {
+    struct MOZ_STACK_CLASS Key {
         const gfxFontEntry* mFontEntry;
         const gfxFontStyle* mStyle;
         const gfxCharacterMap* mUnicodeRangeMap;
@@ -417,7 +420,11 @@ protected:
         }
         enum { ALLOW_MEMMOVE = true };
 
-        gfxFont* mFont;
+        // The cache tracks gfxFont objects whose refcount has dropped to zero,
+        // so they are not immediately deleted but may be "resurrected" if they
+        // have not yet expired from the tracker when they are needed again.
+        // See the custom AddRef/Release methods in gfxFont.
+        gfxFont* MOZ_UNSAFE_REF("tracking for deferred deletion") mFont;
     };
 
     nsTHashtable<HashEntry> mFonts;
@@ -593,7 +600,7 @@ public:
     /**
      * This record contains all the parameters needed to initialize a textrun.
      */
-    struct Parameters {
+    struct MOZ_STACK_CLASS Parameters {
         // Shape text params suggesting where the textrun will be rendered
         DrawTarget   *mDrawTarget;
         // Pointer to arbitrary user data (which should outlive the textrun)
@@ -1496,7 +1503,7 @@ public:
     const nsString& GetName() const { return mFontEntry->Name(); }
     const gfxFontStyle *GetStyle() const { return &mStyle; }
 
-    virtual cairo_scaled_font_t* GetCairoScaledFont() { return mScaledFont; }
+    cairo_scaled_font_t* GetCairoScaledFont() { return mScaledFont; }
 
     virtual mozilla::UniquePtr<gfxFont>
     CopyWithAntialiasOption(AntialiasOption anAAOption) {
@@ -1881,10 +1888,7 @@ public:
         return mUnscaledFont;
     }
 
-    virtual already_AddRefed<mozilla::gfx::ScaledFont> GetScaledFont(DrawTarget* aTarget)
-    {
-        return gfxPlatform::GetPlatform()->GetScaledFontForFont(aTarget, this);
-    }
+    virtual already_AddRefed<mozilla::gfx::ScaledFont> GetScaledFont(DrawTarget* aTarget) = 0;
 
     bool KerningDisabled() {
         return mKerningSet && !mKerningEnabled;
@@ -2274,7 +2278,7 @@ protected:
 // The TextRunDrawParams are set up once per textrun; the FontDrawParams
 // are dependent on the specific font, so they are set per GlyphRun.
 
-struct TextRunDrawParams {
+struct MOZ_STACK_CLASS TextRunDrawParams {
     RefPtr<mozilla::gfx::DrawTarget> dt;
     gfxContext              *context;
     gfxFont::Spacing        *spacing;
@@ -2293,7 +2297,7 @@ struct TextRunDrawParams {
     bool                     paintSVGGlyphs;
 };
 
-struct FontDrawParams {
+struct MOZ_STACK_CLASS FontDrawParams {
     RefPtr<mozilla::gfx::ScaledFont>            scaledFont;
     RefPtr<mozilla::gfx::GlyphRenderingOptions> renderingOptions;
     mozilla::SVGContextPaint *contextPaint;
@@ -2307,8 +2311,9 @@ struct FontDrawParams {
     bool                      haveColorGlyphs;
 };
 
-struct EmphasisMarkDrawParams {
+struct MOZ_STACK_CLASS EmphasisMarkDrawParams {
     gfxContext* context;
+    mozilla::layout::TextDrawTarget* textDrawer = nullptr;
     gfxFont::Spacing* spacing;
     gfxTextRun* mark;
     gfxFloat advance;

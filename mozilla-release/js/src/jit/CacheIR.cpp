@@ -12,7 +12,6 @@
 #include "jit/BaselineCacheIRCompiler.h"
 #include "jit/BaselineIC.h"
 #include "jit/CacheIRSpewer.h"
-#include "jit/IonCaches.h"
 
 #include "vm/SelfHosting.h"
 #include "jsobjinlines.h"
@@ -125,6 +124,33 @@ GetProxyStubType(JSContext* cx, HandleObject obj, HandleId id)
 
     MOZ_ASSERT(shadows == DoesntShadow || shadows == DoesntShadowUnique);
     return ProxyStubType::DOMUnshadowed;
+}
+
+static bool
+ValueToNameOrSymbolId(JSContext* cx, HandleValue idval, MutableHandleId id,
+                      bool* nameOrSymbol)
+{
+    *nameOrSymbol = false;
+
+    if (!idval.isString() && !idval.isSymbol())
+        return true;
+
+    if (!ValueToId<CanGC>(cx, idval, id))
+        return false;
+
+    if (!JSID_IS_STRING(id) && !JSID_IS_SYMBOL(id)) {
+        id.set(JSID_VOID);
+        return true;
+    }
+
+    uint32_t dummy;
+    if (JSID_IS_STRING(id) && JSID_TO_ATOM(id)->isIndex(&dummy)) {
+        id.set(JSID_VOID);
+        return true;
+    }
+
+    *nameOrSymbol = true;
+    return true;
 }
 
 bool
@@ -273,6 +299,99 @@ GetPropIRGenerator::tryAttachIdempotentStub()
 }
 
 static bool
+IsCacheableProtoChain(JSObject* obj, JSObject* holder)
+{
+    while (obj != holder) {
+        /*
+         * We cannot assume that we find the holder object on the prototype
+         * chain and must check for null proto. The prototype chain can be
+         * altered during the lookupProperty call.
+         */
+        JSObject* proto = obj->staticPrototype();
+        if (!proto || !proto->isNative())
+            return false;
+        obj = proto;
+    }
+    return true;
+}
+
+static bool
+IsCacheableGetPropReadSlot(JSObject* obj, JSObject* holder, PropertyResult prop)
+{
+    if (!prop || !IsCacheableProtoChain(obj, holder))
+        return false;
+
+    Shape* shape = prop.shape();
+    if (!shape->hasSlot() || !shape->hasDefaultGetter())
+        return false;
+
+    return true;
+}
+
+static bool
+IsCacheableGetPropCallNative(JSObject* obj, JSObject* holder, Shape* shape)
+{
+    if (!shape || !IsCacheableProtoChain(obj, holder))
+        return false;
+
+    if (!shape->hasGetterValue() || !shape->getterValue().isObject())
+        return false;
+
+    if (!shape->getterValue().toObject().is<JSFunction>())
+        return false;
+
+    JSFunction& getter = shape->getterValue().toObject().as<JSFunction>();
+    if (!getter.isNative())
+        return false;
+
+    if (getter.isClassConstructor())
+        return false;
+
+    // Check for a getter that has jitinfo and whose jitinfo says it's
+    // OK with both inner and outer objects.
+    if (getter.jitInfo() && !getter.jitInfo()->needsOuterizedThisObject())
+        return true;
+
+    // For getters that need the WindowProxy (instead of the Window) as this
+    // object, don't cache if obj is the Window, since our cache will pass that
+    // instead of the WindowProxy.
+    return !IsWindow(obj);
+}
+
+static bool
+IsCacheableGetPropCallScripted(JSObject* obj, JSObject* holder, Shape* shape,
+                               bool* isTemporarilyUnoptimizable = nullptr)
+{
+    if (!shape || !IsCacheableProtoChain(obj, holder))
+        return false;
+
+    if (!shape->hasGetterValue() || !shape->getterValue().isObject())
+        return false;
+
+    if (!shape->getterValue().toObject().is<JSFunction>())
+        return false;
+
+    // See IsCacheableGetPropCallNative.
+    if (IsWindow(obj))
+        return false;
+
+    JSFunction& getter = shape->getterValue().toObject().as<JSFunction>();
+    if (getter.isNative())
+        return false;
+
+    if (!getter.hasJITCode()) {
+        if (isTemporarilyUnoptimizable)
+            *isTemporarilyUnoptimizable = true;
+        return false;
+    }
+
+    if (getter.isClassConstructor())
+        return false;
+
+    return true;
+}
+
+static bool
 IsCacheableNoProperty(JSContext* cx, JSObject* obj, JSObject* holder, Shape* shape, jsid id,
                       jsbytecode* pc, GetPropertyResultFlags resultFlags)
 {
@@ -327,7 +446,7 @@ CanAttachNativeGetProp(JSContext* cx, HandleObject obj, HandleId id,
     }
     shape.set(prop.maybeShape());
 
-    if (IsCacheableGetPropReadSlotForIonOrCacheIR(obj, holder, prop))
+    if (IsCacheableGetPropReadSlot(obj, holder, prop))
         return CanAttachReadSlot;
 
     if (IsCacheableNoProperty(cx, obj, holder, shape, id, pc, resultFlags))
@@ -1561,7 +1680,7 @@ CanAttachDenseElementHole(JSObject* obj, bool ownProp)
     // because we would have to lookup a property on the prototype instead.
     do {
         // The first two checks are also relevant to the receiver object.
-        if (obj->isIndexed())
+        if (obj->isNative() && obj->as<NativeObject>().isIndexed())
             return false;
 
         if (ClassCanHaveExtraProperties(obj->getClass()))
@@ -1866,8 +1985,7 @@ GetNameIRGenerator::tryAttachGlobalNameValue(ObjOperandId objId, HandleId id)
         // prototype. Ignore the global lexical scope as it doesn't figure
         // into the prototype chain. We guard on the global lexical
         // scope's shape independently.
-        if (!IsCacheableGetPropReadSlotForIonOrCacheIR(&globalLexical->global(), holder,
-                                                       PropertyResult(shape)))
+        if (!IsCacheableGetPropReadSlot(&globalLexical->global(), holder, PropertyResult(shape)))
             return false;
 
         // Shape guard for global lexical.
@@ -1987,7 +2105,7 @@ GetNameIRGenerator::tryAttachEnvironmentName(ObjOperandId objId, HandleId id)
     }
 
     holder = &env->as<NativeObject>();
-    if (!IsCacheableGetPropReadSlotForIonOrCacheIR(holder, holder, PropertyResult(shape)))
+    if (!IsCacheableGetPropReadSlot(holder, holder, PropertyResult(shape)))
         return false;
     if (holder->getSlot(shape->slot()).isMagic())
         return false;
@@ -2527,6 +2645,10 @@ SetPropIRGenerator::tryAttachStub()
             return false;
 
         ObjOperandId objId = writer.guardIsObject(objValId);
+        if (IsPropertySetOp(JSOp(*pc_))) {
+            if (tryAttachMegamorphicSetElement(obj, objId, rhsValId))
+                return true;
+        }
         if (nameOrSymbol) {
             if (tryAttachNativeSetSlot(obj, objId, id, rhsValId))
                 return true;
@@ -2589,22 +2711,33 @@ EmitStoreSlotAndReturn(CacheIRWriter& writer, ObjOperandId objId, NativeObject* 
 }
 
 static Shape*
-LookupShapeForSetSlot(NativeObject* obj, jsid id)
+LookupShapeForSetSlot(JSOp op, NativeObject* obj, jsid id)
 {
     Shape* shape = obj->lookupPure(id);
-    if (shape && shape->hasSlot() && shape->hasDefaultSetter() && shape->writable())
-        return shape;
-    return nullptr;
+    if (!shape || !shape->hasSlot() || !shape->hasDefaultSetter() || !shape->writable())
+        return nullptr;
+
+    // If this is an op like JSOP_INITELEM / [[DefineOwnProperty]], the
+    // property's attributes may have to be changed too, so make sure it's a
+    // simple data property.
+    if (IsPropertyInitOp(op) && (!shape->configurable() ||
+                                 !shape->enumerable() ||
+                                 !shape->hasDefaultGetter()))
+    {
+        return nullptr;
+    }
+
+    return shape;
 }
 
 static bool
-CanAttachNativeSetSlot(JSContext* cx, HandleObject obj, HandleId id,
+CanAttachNativeSetSlot(JSContext* cx, JSOp op, HandleObject obj, HandleId id,
                        bool* isTemporarilyUnoptimizable, MutableHandleShape propShape)
 {
     if (!obj->isNative())
         return false;
 
-    propShape.set(LookupShapeForSetSlot(&obj->as<NativeObject>(), id));
+    propShape.set(LookupShapeForSetSlot(op, &obj->as<NativeObject>(), id));
     if (!propShape)
         return false;
 
@@ -2632,7 +2765,7 @@ SetPropIRGenerator::tryAttachNativeSetSlot(HandleObject obj, ObjOperandId objId,
                                            ValOperandId rhsId)
 {
     RootedShape propShape(cx_);
-    if (!CanAttachNativeSetSlot(cx_, obj, id, isTemporarilyUnoptimizable_, &propShape))
+    if (!CanAttachNativeSetSlot(cx_, JSOp(*pc_), obj, id, isTemporarilyUnoptimizable_, &propShape))
         return false;
 
     if (mode_ == ICState::Mode::Megamorphic && cacheKind_ == CacheKind::SetProp) {
@@ -2676,7 +2809,7 @@ SetPropIRGenerator::tryAttachUnboxedExpandoSetSlot(HandleObject obj, ObjOperandI
     if (!expando)
         return false;
 
-    Shape* propShape = LookupShapeForSetSlot(expando, id);
+    Shape* propShape = LookupShapeForSetSlot(JSOp(*pc_), expando, id);
     if (!propShape)
         return false;
 
@@ -2828,6 +2961,63 @@ SetPropIRGenerator::trackNotAttached()
 }
 
 static bool
+IsCacheableSetPropCallNative(JSObject* obj, JSObject* holder, Shape* shape)
+{
+    if (!shape || !IsCacheableProtoChain(obj, holder))
+        return false;
+
+    if (!shape->hasSetterValue())
+        return false;
+
+    if (!shape->setterObject() || !shape->setterObject()->is<JSFunction>())
+        return false;
+
+    JSFunction& setter = shape->setterObject()->as<JSFunction>();
+    if (!setter.isNative())
+        return false;
+
+    if (setter.isClassConstructor())
+        return false;
+
+    if (setter.jitInfo() && !setter.jitInfo()->needsOuterizedThisObject())
+        return true;
+
+    return !IsWindow(obj);
+}
+
+static bool
+IsCacheableSetPropCallScripted(JSObject* obj, JSObject* holder, Shape* shape,
+                               bool* isTemporarilyUnoptimizable = nullptr)
+{
+    if (!shape || !IsCacheableProtoChain(obj, holder))
+        return false;
+
+    if (IsWindow(obj))
+        return false;
+
+    if (!shape->hasSetterValue())
+        return false;
+
+    if (!shape->setterObject() || !shape->setterObject()->is<JSFunction>())
+        return false;
+
+    JSFunction& setter = shape->setterObject()->as<JSFunction>();
+    if (setter.isNative())
+        return false;
+
+    if (!setter.hasJITCode()) {
+        if (isTemporarilyUnoptimizable)
+            *isTemporarilyUnoptimizable = true;
+        return false;
+    }
+
+    if (setter.isClassConstructor())
+        return false;
+
+    return true;
+}
+
+static bool
 CanAttachSetter(JSContext* cx, jsbytecode* pc, HandleObject obj, HandleId id,
                 MutableHandleObject holder, MutableHandleShape propShape,
                 bool* isTemporarilyUnoptimizable)
@@ -2959,7 +3149,7 @@ CanAttachAddElement(JSObject* obj, bool isInit)
     // or that such properties can't appear without a shape change.
     do {
         // The first two checks are also relevant to the receiver object.
-        if (obj->isIndexed())
+        if (obj->isNative() && obj->as<NativeObject>().isIndexed())
             return false;
 
         const Class* clasp = obj->getClass();
@@ -2967,7 +3157,6 @@ CanAttachAddElement(JSObject* obj, bool isInit)
             (clasp->getAddProperty() ||
              clasp->getResolve() ||
              clasp->getOpsLookupProperty() ||
-             clasp->getSetProperty() ||
              clasp->getOpsSetProperty()))
         {
             return false;
@@ -3301,7 +3490,9 @@ SetPropIRGenerator::tryAttachDOMProxyExpando(HandleObject obj, ObjOperandId objI
     }
 
     RootedShape propShape(cx_);
-    if (CanAttachNativeSetSlot(cx_, expandoObj, id, isTemporarilyUnoptimizable_, &propShape)) {
+    if (CanAttachNativeSetSlot(cx_, JSOp(*pc_), expandoObj, id, isTemporarilyUnoptimizable_,
+                               &propShape))
+    {
         maybeEmitIdGuard(id);
         ObjOperandId expandoObjId =
             guardDOMProxyExpandoObjectAndShape(obj, objId, expandoVal, expandoObj);
@@ -3398,6 +3589,26 @@ SetPropIRGenerator::tryAttachProxyElement(HandleObject obj, ObjOperandId objId, 
 }
 
 bool
+SetPropIRGenerator::tryAttachMegamorphicSetElement(HandleObject obj, ObjOperandId objId,
+                                                   ValOperandId rhsId)
+{
+    MOZ_ASSERT(IsPropertySetOp(JSOp(*pc_)));
+
+    if (mode_ != ICState::Mode::Megamorphic || cacheKind_ != CacheKind::SetElem)
+        return false;
+
+    // The generic proxy stubs are faster.
+    if (obj->is<ProxyObject>())
+        return false;
+
+    writer.megamorphicSetElement(objId, setElemKeyValueId(), rhsId, IsStrictSetPC(pc_));
+    writer.returnFromIC();
+
+    trackAttached("MegamorphicSetElement");
+    return true;
+}
+
+bool
 SetPropIRGenerator::tryAttachWindowProxy(HandleObject obj, ObjOperandId objId, HandleId id,
                                          ValOperandId rhsId)
 {
@@ -3422,8 +3633,11 @@ SetPropIRGenerator::tryAttachWindowProxy(HandleObject obj, ObjOperandId objId, H
     Handle<GlobalObject*> windowObj = cx_->global();
 
     RootedShape propShape(cx_);
-    if (!CanAttachNativeSetSlot(cx_, windowObj, id, isTemporarilyUnoptimizable_, &propShape))
+    if (!CanAttachNativeSetSlot(cx_, JSOp(*pc_), windowObj, id, isTemporarilyUnoptimizable_,
+                                &propShape))
+    {
         return false;
+    }
 
     maybeEmitIdGuard(id);
 
@@ -3742,10 +3956,11 @@ GetIteratorIRGenerator::tryAttachNativeIterator(ObjOperandId objId, HandleObject
     return true;
 }
 
-CallIRGenerator::CallIRGenerator(JSContext* cx, HandleScript script, jsbytecode* pc,
+CallIRGenerator::CallIRGenerator(JSContext* cx, HandleScript script, jsbytecode* pc, JSOp op,
                                  ICCall_Fallback* stub, ICState::Mode mode, uint32_t argc,
                                  HandleValue callee, HandleValue thisval, HandleValueArray args)
   : IRGenerator(cx, script, pc, CacheKind::Call, mode),
+    op_(op),
     argc_(argc),
     callee_(callee),
     thisval_(thisval),
@@ -3898,8 +4113,88 @@ CallIRGenerator::tryAttachArrayPush()
 }
 
 bool
+CallIRGenerator::tryAttachArrayJoin()
+{
+    // Only handle argc <= 1.
+    if (argc_ > 1)
+        return false;
+
+    // Only optimize on obj.join(...);
+    if (!thisval_.isObject())
+        return false;
+
+    // Where |obj| is a native array.
+    RootedObject thisobj(cx_, &thisval_.toObject());
+    if (!thisobj->is<ArrayObject>())
+        return false;
+
+    RootedArrayObject thisarray(cx_, &thisobj->as<ArrayObject>());
+
+    // And the array is of length 0 or 1.
+    if (thisarray->length() > 1)
+        return false;
+
+    // And the array is packed.
+    if (thisarray->getDenseInitializedLength() != thisarray->length())
+        return false;
+
+    // We don't need to worry about indexed properties because we can perform
+    // hole check manually.
+
+    // Generate code.
+    AutoAssertNoPendingException aanpe(cx_);
+    Int32OperandId argcId(writer.setInputOperandId(0));
+
+    // if 0 arguments:
+    //  1: Callee
+    //  0: ThisValue <-- Top of stack.
+    //
+    // if 1 argument:
+    //  2: Callee
+    //  1: ThisValue
+    //  0: Arg0 [optional] <-- Top of stack.
+
+    // Guard callee is the |js::array_join| native function.
+    uint32_t calleeIndex = (argc_ == 0) ? 1 : 2;
+    ValOperandId calleeValId = writer.loadStackValue(calleeIndex);
+    ObjOperandId calleeObjId = writer.guardIsObject(calleeValId);
+    writer.guardIsNativeFunction(calleeObjId, js::array_join);
+
+    if (argc_ == 1) {
+        // If argcount is 1, guard that the argument is a string.
+        ValOperandId argValId = writer.loadStackValue(0);
+        writer.guardIsString(argValId);
+    }
+
+    // Guard this is an array object.
+    uint32_t thisIndex = (argc_ == 0) ? 0 : 1;
+    ValOperandId thisValId = writer.loadStackValue(thisIndex);
+    ObjOperandId thisObjId = writer.guardIsObject(thisValId);
+    writer.guardClass(thisObjId, GuardClassKind::Array);
+
+    // Do the join.
+    writer.arrayJoinResult(thisObjId);
+
+    writer.returnFromIC();
+
+    // The result of this stub does not need to be monitored because it will
+    // always return a string.  We will add String to the stack typeset when
+    // attaching this stub.
+
+    // Set the stub kind to Regular 
+    cacheIRStubKind_ = BaselineCacheIRStubKind::Regular;
+
+    trackAttached("ArrayJoin");
+    return true;
+}
+
+bool
 CallIRGenerator::tryAttachStub()
 {
+    // Only optimize on JSOP_CALL or JSOP_CALL_IGNORES_RV.  No fancy business for now.
+    if ((op_ != JSOP_CALL) && (op_ != JSOP_CALL_IGNORES_RV))
+        return false;
+
     // Only optimize when the mode is Specialized.
     if (mode_ != ICState::Mode::Specialized)
         return false;
@@ -3912,7 +4207,6 @@ CallIRGenerator::tryAttachStub()
 
     // Check for native-function optimizations.
     if (calleeFunc->isNative()) {
-
         if (calleeFunc->native() == js::intrinsic_StringSplitString) {
             if (tryAttachStringSplit())
                 return true;
@@ -3920,6 +4214,11 @@ CallIRGenerator::tryAttachStub()
 
         if (calleeFunc->native() == js::array_push) {
             if (tryAttachArrayPush())
+                return true;
+        }
+
+        if (calleeFunc->native() == js::array_join) {
+            if (tryAttachArrayJoin())
                 return true;
         }
     }
@@ -3942,6 +4241,43 @@ CallIRGenerator::trackAttached(const char* name)
         sp.endCache(guard);
     }
 #endif
+}
+
+// Class which holds a shape pointer for use when caches might reference data in other zones.
+static const Class shapeContainerClass = {
+    "ShapeContainer",
+    JSCLASS_HAS_RESERVED_SLOTS(1)
+};
+
+static const size_t SHAPE_CONTAINER_SLOT = 0;
+
+JSObject*
+jit::NewWrapperWithObjectShape(JSContext* cx, HandleNativeObject obj)
+{
+    MOZ_ASSERT(cx->compartment() != obj->compartment());
+
+    RootedObject wrapper(cx);
+    {
+        AutoCompartment ac(cx, obj);
+        wrapper = NewObjectWithClassProto(cx, &shapeContainerClass, nullptr);
+        if (!obj)
+            return nullptr;
+        wrapper->as<NativeObject>().setSlot(SHAPE_CONTAINER_SLOT, PrivateGCThingValue(obj->lastProperty()));
+    }
+    if (!JS_WrapObject(cx, &wrapper))
+        return nullptr;
+    MOZ_ASSERT(IsWrapper(wrapper));
+    return wrapper;
+}
+
+void
+jit::LoadShapeWrapperContents(MacroAssembler& masm, Register obj, Register dst, Label* failure)
+{
+    masm.loadPtr(Address(obj, ProxyObject::offsetOfReservedSlots()), dst);
+    Address privateAddr(dst, detail::ProxyReservedSlots::offsetOfPrivateSlot());
+    masm.branchTestObject(Assembler::NotEqual, privateAddr, failure);
+    masm.unboxObject(privateAddr, dst);
+    masm.unboxNonDouble(Address(dst, NativeObject::getFixedSlotOffset(SHAPE_CONTAINER_SLOT)), dst);
 }
 
 void
@@ -4076,41 +4412,4 @@ CompareIRGenerator::trackNotAttached()
         sp.endCache(guard);
     }
 #endif
-}
-
-// Class which holds a shape pointer for use when caches might reference data in other zones.
-static const Class shapeContainerClass = {
-    "ShapeContainer",
-    JSCLASS_HAS_RESERVED_SLOTS(1)
-};
-
-static const size_t SHAPE_CONTAINER_SLOT = 0;
-
-JSObject*
-jit::NewWrapperWithObjectShape(JSContext* cx, HandleNativeObject obj)
-{
-    MOZ_ASSERT(cx->compartment() != obj->compartment());
-
-    RootedObject wrapper(cx);
-    {
-        AutoCompartment ac(cx, obj);
-        wrapper = NewObjectWithClassProto(cx, &shapeContainerClass, nullptr);
-        if (!obj)
-            return nullptr;
-        wrapper->as<NativeObject>().setSlot(SHAPE_CONTAINER_SLOT, PrivateGCThingValue(obj->lastProperty()));
-    }
-    if (!JS_WrapObject(cx, &wrapper))
-        return nullptr;
-    MOZ_ASSERT(IsWrapper(wrapper));
-    return wrapper;
-}
-
-void
-jit::LoadShapeWrapperContents(MacroAssembler& masm, Register obj, Register dst, Label* failure)
-{
-    masm.loadPtr(Address(obj, ProxyObject::offsetOfReservedSlots()), dst);
-    Address privateAddr(dst, detail::ProxyReservedSlots::offsetOfPrivateSlot());
-    masm.branchTestObject(Assembler::NotEqual, privateAddr, failure);
-    masm.unboxObject(privateAddr, dst);
-    masm.unboxNonDouble(Address(dst, NativeObject::getFixedSlotOffset(SHAPE_CONTAINER_SLOT)), dst);
 }

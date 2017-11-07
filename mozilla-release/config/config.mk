@@ -166,23 +166,19 @@ ifndef MOZ_DEBUG
 # Used for generating an optimized build with debugging symbols.
 # Used in the Windows nightlies to generate symbols for crash reporting.
 ifdef MOZ_DEBUG_SYMBOLS
-ifdef HAVE_64BIT_BUILD
-OS_LDFLAGS += -DEBUG -OPT:REF,ICF
-else
-OS_LDFLAGS += -DEBUG -OPT:REF
-endif
+OS_LDFLAGS += -DEBUG
 endif
 
 #
 # Handle DMD in optimized builds.
 #
 ifdef MOZ_DMD
-ifdef HAVE_64BIT_BUILD
-OS_LDFLAGS = -DEBUG -OPT:REF,ICF
-else
-OS_LDFLAGS = -DEBUG -OPT:REF
-endif
+OS_LDFLAGS = -DEBUG
 endif # MOZ_DMD
+
+ifdef MOZ_OPTIMIZE
+OS_LDFLAGS += -OPT:REF,ICF
+endif # MOZ_OPTIMIZE
 
 endif # MOZ_DEBUG
 
@@ -257,18 +253,6 @@ INCLUDES = \
   -I$(ABS_DIST)/include \
   $(NULL)
 
-ifndef IS_GYP_DIR
-# NSPR_CFLAGS and NSS_CFLAGS must appear ahead of the other flags to avoid Linux
-# builds wrongly picking up system NSPR/NSS header files.
-OS_INCLUDES := \
-  $(NSPR_CFLAGS) $(NSS_CFLAGS) \
-  $(MOZ_JPEG_CFLAGS) \
-  $(MOZ_PNG_CFLAGS) \
-  $(MOZ_ZLIB_CFLAGS) \
-  $(MOZ_PIXMAN_CFLAGS) \
-  $(NULL)
-endif
-
 include $(MOZILLA_DIR)/config/static-checking-config.mk
 
 CFLAGS		= $(OS_CPPFLAGS) $(OS_CFLAGS)
@@ -328,8 +312,8 @@ CXXFLAGS += $(WARNINGS_AS_ERRORS)
 CFLAGS   += $(WARNINGS_AS_ERRORS)
 endif # ALLOW_COMPILER_WARNINGS
 
-COMPILE_CFLAGS	= $(VISIBILITY_FLAGS) $(DEFINES) $(INCLUDES) $(OS_INCLUDES) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CFLAGS) $(_DEPEND_CFLAGS) $(CFLAGS) $(MOZBUILD_CFLAGS)
-COMPILE_CXXFLAGS = $(if $(DISABLE_STL_WRAPPING),,$(STL_FLAGS)) $(VISIBILITY_FLAGS) $(DEFINES) $(INCLUDES) $(OS_INCLUDES) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CXXFLAGS) $(_DEPEND_CFLAGS) $(CXXFLAGS) $(MOZBUILD_CXXFLAGS)
+COMPILE_CFLAGS	= $(COMPUTED_CFLAGS) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CFLAGS) $(_DEPEND_CFLAGS) $(CFLAGS) $(MOZBUILD_CFLAGS) $(MK_COMPILE_DEFINES)
+COMPILE_CXXFLAGS = $(COMPUTED_CXXFLAGS) $(DSO_CFLAGS) $(DSO_PIC_CFLAGS) $(RTL_FLAGS) $(OS_COMPILE_CXXFLAGS) $(_DEPEND_CFLAGS) $(CXXFLAGS) $(MOZBUILD_CXXFLAGS) $(MK_COMPILE_DEFINES)
 COMPILE_CMFLAGS = $(OS_COMPILE_CMFLAGS) $(MOZBUILD_CMFLAGS)
 COMPILE_CMMFLAGS = $(OS_COMPILE_CMMFLAGS) $(MOZBUILD_CMMFLAGS)
 ASFLAGS += $(MOZBUILD_ASFLAGS)
@@ -481,8 +465,6 @@ ACDEFINES += -DAB_CD=$(AB_CD)
 
 ifndef L10NBASEDIR
   L10NBASEDIR = $(error L10NBASEDIR not defined by configure)
-else
-  IS_LANGUAGE_REPACK = 1
 endif
 
 EXPAND_LOCALE_SRCDIR = $(if $(filter en-US,$(AB_CD)),$(topsrcdir)/$(1)/en-US,$(or $(realpath $(L10NBASEDIR)),$(abspath $(L10NBASEDIR)))/$(AB_CD)/$(subst /locales,,$(1)))
@@ -494,8 +476,8 @@ endif
 ifdef relativesrcdir
 MAKE_JARS_FLAGS += --relativesrcdir=$(relativesrcdir)
 ifneq (en-US,$(AB_CD))
-ifdef LOCALE_MERGEDIR
-MAKE_JARS_FLAGS += --locale-mergedir=$(LOCALE_MERGEDIR)
+ifdef IS_LANGUAGE_REPACK
+MAKE_JARS_FLAGS += --locale-mergedir=$(REAL_LOCALE_MERGEDIR)
 endif
 ifdef IS_LANGUAGE_REPACK
 MAKE_JARS_FLAGS += --l10n-base=$(L10NBASEDIR)/$(AB_CD)
@@ -507,9 +489,9 @@ else
 MAKE_JARS_FLAGS += -c $(LOCALE_SRCDIR)
 endif # ! relativesrcdir
 
-ifdef LOCALE_MERGEDIR
+ifdef IS_LANGUAGE_REPACK
 MERGE_FILE = $(firstword \
-  $(wildcard $(LOCALE_MERGEDIR)/$(subst /locales,,$(relativesrcdir))/$(1)) \
+  $(wildcard $(REAL_LOCALE_MERGEDIR)/$(subst /locales,,$(relativesrcdir))/$(1)) \
   $(wildcard $(LOCALE_SRCDIR)/$(1)) \
   $(srcdir)/en-US/$(1) )
 else

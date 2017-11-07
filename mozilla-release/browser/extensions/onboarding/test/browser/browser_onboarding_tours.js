@@ -5,19 +5,6 @@
 
 requestLongerTimeout(2);
 
-function assertOnboardingDestroyed(browser) {
-  return ContentTask.spawn(browser, {}, function() {
-    let expectedRemovals = [
-      "#onboarding-overlay",
-      "#onboarding-overlay-button"
-    ];
-    for (let selector of expectedRemovals) {
-      let removal = content.document.querySelector(selector);
-      ok(!removal, `Should remove ${selector} onboarding element`);
-    }
-  });
-}
-
 function assertTourCompleted(tourId, expectComplete, browser) {
   return ContentTask.spawn(browser, { tourId, expectComplete }, function(args) {
     let item = content.document.querySelector(`#${args.tourId}.onboarding-tour-item`);
@@ -38,10 +25,15 @@ function assertTourCompleted(tourId, expectComplete, browser) {
   });
 }
 
-add_task(async function test_hide_onboarding_tours() {
+add_task(async function test_set_right_tour_completed_style_on_overlay() {
   resetOnboardingDefaultState();
 
   let tourIds = TOUR_IDs;
+  // Mark the tours of even number as completed
+  for (let i = 0; i < tourIds.length; ++i) {
+    setTourCompletedState(tourIds[i], i % 2 == 0);
+  }
+
   let tabs = [];
   for (let url of URLs) {
     let tab = await openTab(url);
@@ -51,27 +43,28 @@ add_task(async function test_hide_onboarding_tours() {
     tabs.push(tab);
   }
 
-  let expectedPrefUpdates = [
-    promisePrefUpdated("browser.onboarding.hidden", true),
-    promisePrefUpdated("browser.onboarding.notification.finished", true)
-  ];
-  tourIds.forEach(id => expectedPrefUpdates.push(promisePrefUpdated(`browser.onboarding.tour.${id}.completed`, true)));
-
-  await BrowserTestUtils.synthesizeMouseAtCenter("#onboarding-tour-hidden-checkbox", {}, gBrowser.selectedBrowser);
-  await BrowserTestUtils.synthesizeMouseAtCenter("#onboarding-overlay-close-btn", {}, gBrowser.selectedBrowser);
-  await Promise.all(expectedPrefUpdates);
-
   for (let i = tabs.length - 1; i >= 0; --i) {
     let tab = tabs[i];
-    await assertOnboardingDestroyed(tab.linkedBrowser);
+    await assertOverlaySemantics(tab.linkedBrowser);
+    for (let j = 0; j < tourIds.length; ++j) {
+      await assertTourCompleted(tourIds[j], j % 2 == 0, tab.linkedBrowser);
+    }
     await BrowserTestUtils.removeTab(tab);
   }
 });
 
 add_task(async function test_click_action_button_to_set_tour_completed() {
   resetOnboardingDefaultState();
+  const CUSTOM_TOUR_IDs = [
+    "onboarding-tour-private-browsing",
+    "onboarding-tour-addons",
+    "onboarding-tour-customize",
+  ];
+  await SpecialPowers.pushPrefEnv({set: [
+    ["browser.onboarding.newtour", "private,addons,customize"],
+  ]});
 
-  let tourIds = TOUR_IDs;
+  let tourIds = CUSTOM_TOUR_IDs;
   let tabs = [];
   for (let url of URLs) {
     let tab = await openTab(url);
@@ -96,14 +89,12 @@ add_task(async function test_click_action_button_to_set_tour_completed() {
   }
 });
 
-add_task(async function test_set_right_tour_completed_style_on_overlay() {
+add_task(async function test_set_watermark_after_all_tour_completed() {
   resetOnboardingDefaultState();
 
-  let tourIds = TOUR_IDs;
-  // Make the tours of even number as completed
-  for (let i = 0; i < tourIds.length; ++i) {
-    setTourCompletedState(tourIds[i], i % 2 == 0);
-  }
+  await SpecialPowers.pushPrefEnv({set: [
+    ["browser.onboarding.tour-type", "new"]
+  ]});
 
   let tabs = [];
   for (let url of URLs) {
@@ -113,13 +104,12 @@ add_task(async function test_set_right_tour_completed_style_on_overlay() {
     await promiseOnboardingOverlayOpened(tab.linkedBrowser);
     tabs.push(tab);
   }
+  let expectedPrefUpdate = promisePrefUpdated("browser.onboarding.state", ICON_STATE_WATERMARK);
+  TOUR_IDs.forEach(id => Preferences.set(`browser.onboarding.tour.${id}.completed`, true));
+  await expectedPrefUpdate;
 
-  for (let i = tabs.length - 1; i >= 0; --i) {
-    let tab = tabs[i];
-    await assertOverlaySemantics(tab.linkedBrowser);
-    for (let j = 0; j < tourIds.length; ++j) {
-      await assertTourCompleted(tourIds[j], j % 2 == 0, tab.linkedBrowser);
-    }
+  for (let tab of tabs) {
+    await assertWatermarkIconDisplayed(tab.linkedBrowser);
     await BrowserTestUtils.removeTab(tab);
   }
 });

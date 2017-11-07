@@ -784,7 +784,7 @@ nsFtpState::S_pass() {
             // XXX Is UTF-8 the best choice?
             AppendUTF16toUTF8(mPassword, passwordStr);
         } else {
-            nsXPIDLCString anonPassword;
+            nsCString anonPassword;
             bool useRealEmail = false;
             nsCOMPtr<nsIPrefBranch> prefs =
                     do_GetService(NS_PREFSERVICE_CONTRACTID);
@@ -796,7 +796,7 @@ nsFtpState::S_pass() {
                 }
             }
             if (!anonPassword.IsEmpty()) {
-                passwordStr.AppendASCII(anonPassword);
+                passwordStr.AppendASCII(anonPassword.get());
             } else {
                 // We need to default to a valid email address - bug 101027
                 // example.com is reserved (rfc2606), so use that
@@ -943,10 +943,10 @@ nsFtpState::R_syst() {
             char16_t* ucs2Response = ToNewUnicode(mResponseMsg);
             const char16_t *formatStrings[1] = { ucs2Response };
 
-            nsXPIDLString formattedString;
+            nsAutoString formattedString;
             rv = bundle->FormatStringFromName("UnsupportedFTPServer",
                                               formatStrings, 1,
-                                              getter_Copies(formattedString));
+                                              formattedString);
             free(ucs2Response);
             if (NS_FAILED(rv))
                 return FTP_ERROR;
@@ -1636,7 +1636,7 @@ nsFtpState::Init(nsFtpChannel *channel)
     if (url) {
         rv = url->GetFilePath(path);
     } else {
-        rv = mChannel->URI()->GetPath(path);
+        rv = mChannel->URI()->GetPathQueryRef(path);
     }
     if (NS_FAILED(rv))
         return rv;
@@ -1647,7 +1647,7 @@ nsFtpState::Init(nsFtpChannel *channel)
     if (url) {
         url->SetFilePath(path);
     } else {
-        mChannel->URI()->SetPath(path);
+        mChannel->URI()->SetPathQueryRef(path);
     }
 
     // Skip leading slash

@@ -8,6 +8,7 @@
 #include "LayersLogging.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/layers/ImageClient.h"
+#include "mozilla/layers/IpcResourceUpdateQueue.h"
 #include "mozilla/layers/ScrollingLayersHelper.h"
 #include "mozilla/layers/StackingContextHelper.h"
 #include "mozilla/layers/WebRenderBridgeChild.h"
@@ -91,24 +92,27 @@ WebRenderPaintedLayer::UpdateImageClient()
 
 void
 WebRenderPaintedLayer::CreateWebRenderDisplayList(wr::DisplayListBuilder& aBuilder,
+                                                  wr::IpcResourceUpdateQueue& aResources,
                                                   const StackingContextHelper& aSc)
 {
-  ScrollingLayersHelper scroller(this, aBuilder, aSc);
+  ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc);
   StackingContextHelper sc(aSc, aBuilder, this);
 
   LayerRect rect = Bounds();
   DumpLayerInfo("PaintedLayer", rect);
 
   wr::WrImageKey key = GenerateImageKey();
-  WrBridge()->AddWebRenderParentCommand(OpAddExternalImage(mExternalImageId.value(), key));
+  aResources.AddExternalImage(mExternalImageId.value(), key);
+  // TODO: reuse image keys!
   WrManager()->AddImageKeyForDiscard(key);
 
   wr::LayoutRect r = sc.ToRelativeLayoutRect(rect);
-  aBuilder.PushImage(r, r, wr::ImageRendering::Auto, key);
+  aBuilder.PushImage(r, r, true, wr::ImageRendering::Auto, key);
 }
 
 void
 WebRenderPaintedLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
+                                   wr::IpcResourceUpdateQueue& aResources,
                                    const StackingContextHelper& aSc)
 {
   if (!SetupExternalImages()) {
@@ -160,7 +164,7 @@ WebRenderPaintedLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
     MOZ_ASSERT(mImageContainer->HasCurrentImage());
   }
 
-  CreateWebRenderDisplayList(aBuilder, aSc);
+  CreateWebRenderDisplayList(aBuilder, aResources, aSc);
 }
 
 void

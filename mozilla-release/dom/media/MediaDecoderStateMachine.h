@@ -163,7 +163,6 @@ public:
   enum State
   {
     DECODER_STATE_DECODING_METADATA,
-    DECODER_STATE_WAIT_FOR_CDM,
     DECODER_STATE_DORMANT,
     DECODER_STATE_DECODING_FIRSTFRAME,
     DECODER_STATE_DECODING,
@@ -208,10 +207,26 @@ public:
     OwnerThread()->Dispatch(r.forget());
   }
 
-  // Drop reference to mResource. Only called during shutdown dance.
-  void BreakCycles() {
-    MOZ_ASSERT(NS_IsMainThread());
-    mResource = nullptr;
+  void DispatchCanPlayThrough(bool aCanPlayThrough)
+  {
+    RefPtr<MediaDecoderStateMachine> self = this;
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "MediaDecoderStateMachine::DispatchCanPlayThrough",
+      [self, aCanPlayThrough]() {
+        self->mCanPlayThrough = aCanPlayThrough;
+      });
+    OwnerThread()->DispatchStateChange(r.forget());
+  }
+
+  void DispatchIsLiveStream(bool aIsLiveStream)
+  {
+    RefPtr<MediaDecoderStateMachine> self = this;
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+      "MediaDecoderStateMachine::DispatchIsLiveStream",
+      [self, aIsLiveStream]() {
+        self->mIsLiveStream = aIsLiveStream;
+      });
+    OwnerThread()->DispatchStateChange(r.forget());
   }
 
   TimedMetadataEventSource& TimedMetadataEvent() {
@@ -237,6 +252,9 @@ public:
   MediaEventSource<DecoderDoctorEvent>&
   OnDecoderDoctorEvent() { return mOnDecoderDoctorEvent; }
 
+  MediaEventSource<NextFrameStatus>&
+  OnNextFrameStatus() { return mOnNextFrameStatus; }
+
   size_t SizeOfVideoQueue() const;
 
   size_t SizeOfAudioQueue() const;
@@ -247,7 +265,6 @@ public:
 private:
   class StateObject;
   class DecodeMetadataState;
-  class WaitForCDMState;
   class DormantState;
   class DecodingFirstFrameState;
   class DecodingState;
@@ -261,7 +278,6 @@ private:
   class ShutdownState;
 
   static const char* ToStateStr(State aState);
-  static const char* ToStr(NextFrameStatus aStatus);
   const char* ToStateStr();
 
   nsCString GetDebugInfo();
@@ -289,10 +305,6 @@ private:
   // Only called on the decoder thread. Must be called with
   // the decode monitor held.
   void UpdatePlaybackPosition(const media::TimeUnit& aTime);
-
-  bool CanPlayThrough();
-
-  MediaStatistics GetStatistics();
 
   bool HasAudio() const { return mInfo.ref().HasAudio(); }
   bool HasVideo() const { return mInfo.ref().HasVideo(); }
@@ -372,8 +384,6 @@ protected:
 
   // Returns true if we have less than aThreshold of buffered data available.
   bool HasLowBufferedData(const media::TimeUnit& aThreshold);
-
-  void UpdateNextFrameStatus(NextFrameStatus aStatus);
 
   // Return the current time, either the audio clock if available (if the media
   // has audio, and the playback is possible), or a clock for the video.
@@ -489,7 +499,6 @@ private:
   const RefPtr<AbstractThread> mAbstractMainThread;
   const RefPtr<FrameStatistics> mFrameStats;
   const RefPtr<VideoFrameContainer> mVideoFrameContainer;
-  const dom::AudioChannel mAudioChannel;
 
   // Task queue for running the state machine.
   RefPtr<TaskQueue> mTaskQueue;
@@ -519,16 +528,8 @@ private:
     return mDuration.Ref().ref();
   }
 
-  // Recomputes the canonical duration from various sources.
-  void RecomputeDuration();
-
-
   // FrameID which increments every time a frame is pushed to our queue.
   FrameID mCurrentFrameID;
-
-  // The highest timestamp that our position has reached. Monotonically
-  // increasing.
-  Watchable<media::TimeUnit> mObservedDuration;
 
   // Media Fragment end time.
   media::TimeUnit mFragmentEndTime = media::TimeUnit::Invalid();
@@ -584,6 +585,10 @@ private:
   void OnSuspendTimerResolved();
   void CancelSuspendTimer();
 
+  bool mCanPlayThrough = false;
+
+  bool mIsLiveStream = false;
+
   // True if we shouldn't play our audio (but still write it to any capturing
   // streams). When this is true, the audio thread will never start again after
   // it has stopped.
@@ -633,9 +638,6 @@ private:
   // Data about MediaStreams that are being fed by the decoder.
   const RefPtr<OutputStreamManager> mOutputStreamManager;
 
-  // Media data resource from the decoder.
-  RefPtr<MediaResource> mResource;
-
   // Track the current video decode mode.
   VideoDecodeMode mVideoDecodeMode;
 
@@ -659,19 +661,13 @@ private:
 
   MediaEventProducer<DecoderDoctorEvent> mOnDecoderDoctorEvent;
 
-  void OnCDMProxyReady(RefPtr<CDMProxy> aProxy);
-  void OnCDMProxyNotReady();
-  RefPtr<CDMProxy> mCDMProxy;
-  MozPromiseRequestHolder<MediaDecoder::CDMProxyPromise> mCDMProxyPromise;
+  MediaEventProducer<NextFrameStatus> mOnNextFrameStatus;
 
   const bool mIsMSE;
 
 private:
   // The buffered range. Mirrored from the decoder thread.
   Mirror<media::TimeIntervals> mBuffered;
-
-  // The duration explicitly set by JS, mirrored from the main thread.
-  Mirror<Maybe<double>> mExplicitDuration;
 
   // The current play state, mirrored from the main thread.
   Mirror<MediaDecoder::PlayState> mPlayState;
@@ -694,23 +690,9 @@ private:
   // main-thread induced principal changes get reflected on MSG thread.
   Mirror<PrincipalHandle> mMediaPrincipalHandle;
 
-  // Estimate of the current playback rate (bytes/second).
-  Mirror<double> mPlaybackBytesPerSecond;
-
-  // True if mPlaybackBytesPerSecond is a reliable estimate.
-  Mirror<bool> mPlaybackRateReliable;
-
-  // Current decoding position in the stream.
-  Mirror<int64_t> mDecoderPosition;
-
-
   // Duration of the media. This is guaranteed to be non-null after we finish
   // decoding the first frame.
   Canonical<media::NullableTimeUnit> mDuration;
-
-  // The status of our next frame. Mirrored on the main thread and used to
-  // compute ready state.
-  Canonical<NextFrameStatus> mNextFrameStatus;
 
   // The time of the current frame, corresponding to the "current
   // playback position" in HTML5. This is referenced from 0, which is the initial
@@ -729,10 +711,6 @@ public:
   AbstractCanonical<media::NullableTimeUnit>* CanonicalDuration()
   {
     return &mDuration;
-  }
-  AbstractCanonical<NextFrameStatus>* CanonicalNextFrameStatus()
-  {
-    return &mNextFrameStatus;
   }
   AbstractCanonical<media::TimeUnit>* CanonicalCurrentPosition()
   {

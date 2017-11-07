@@ -225,6 +225,7 @@ var pktUI = (function() {
             onShow() {
                 var saveLinkMessageId = "saveLink";
                 _lastAddSucceeded = false;
+                getPanelFrame().setAttribute("itemAdded", "false");
 
                 // Send error message for invalid url
                 if (!isValidURL) {
@@ -257,6 +258,7 @@ var pktUI = (function() {
                         };
                         pktUIMessaging.sendMessageToPanel(panelId, saveLinkMessageId, successResponse);
                         _lastAddSucceeded = true;
+                        getPanelFrame().setAttribute("itemAdded", "true");
                     },
                     error(error, request) {
                         // If user is not authorized show singup page
@@ -336,17 +338,10 @@ var pktUI = (function() {
      */
     function resizePanel(options) {
         var iframe = getPanelFrame();
-        var subview = getSubview();
 
-        if (subview) {
-          // Use the subview's size
-          iframe.style.width = "100%";
-          iframe.style.height = subview.parentNode.clientHeight + "px";
-        } else {
-          // Set an explicit size, panel will adapt.
-          iframe.style.width  = options.width + "px";
-          iframe.style.height = options.height + "px";
-        }
+        // Set an explicit size, panel will adapt.
+        iframe.style.width  = options.width + "px";
+        iframe.style.height = options.height + "px";
     }
 
     /**
@@ -487,6 +482,7 @@ var pktUI = (function() {
                     var successResponse = {status: "success"};
                     pktUIMessaging.sendResponseMessageToPanel(panelId, _deleteItemMessageId, successResponse);
                     _lastAddSucceeded = false;
+                    getPanelFrame().setAttribute("itemAdded", "false");
                 },
                 error(error, response) {
                     pktUIMessaging.sendErrorResponseMessageToPanel(panelId, _deleteItemMessageId, error);
@@ -567,28 +563,18 @@ var pktUI = (function() {
         return panel;
     }
 
-    function getPanelFrame() {
-        var frame = document.getElementById("pocket-panel-iframe");
-        if (!frame) {
-            var frameParent = document.getElementById("PanelUI-pocketView").firstChild;
-            frame = document.createElement("iframe");
-            frame.id = "pocket-panel-iframe";
-            frame.setAttribute("type", "content");
-            frameParent.appendChild(frame);
-        }
-        return frame;
+    var photonPageActionPanelFrame;
+
+    function setPhotonPageActionPanelFrame(frame) {
+        photonPageActionPanelFrame = frame;
     }
 
-    function getSubview() {
-        var view = document.getElementById("PanelUI-pocketView");
-        if (view && view.getAttribute("current") == "true" && !view.getAttribute("mainview"))
-            return view;
-        return null;
+    function getPanelFrame() {
+        return photonPageActionPanelFrame;
     }
 
     function isInOverflowMenu() {
-        var subview = getSubview();
-        return !!subview;
+        return false;
     }
 
     function getFirefoxAccountSignedInUser(callback) {
@@ -607,6 +593,7 @@ var pktUI = (function() {
      * Public functions
      */
     return {
+        setPhotonPageActionPanelFrame,
         getPanelFrame,
 
         openTabWithUrl,

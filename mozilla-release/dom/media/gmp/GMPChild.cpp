@@ -23,7 +23,6 @@
 #include "prio.h"
 #include "base/task.h"
 #include "base/command_line.h"
-#include "widevine-adapter/WidevineAdapter.h"
 #include "ChromiumCDMAdapter.h"
 #include "GMPLog.h"
 
@@ -74,23 +73,23 @@ GetFileBase(const nsAString& aPluginPath,
 {
   nsresult rv = NS_NewLocalFile(aPluginPath,
                                 true, getter_AddRefs(aFileBase));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }
 
-  if (NS_FAILED(aFileBase->Clone(getter_AddRefs(aLibDirectory)))) {
+  if (NS_WARN_IF(NS_FAILED(aFileBase->Clone(getter_AddRefs(aLibDirectory))))) {
     return false;
   }
 
   nsCOMPtr<nsIFile> parent;
   rv = aFileBase->GetParent(getter_AddRefs(parent));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }
 
   nsAutoString parentLeafName;
   rv = parent->GetLeafName(parentLeafName);
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }
 
@@ -187,12 +186,12 @@ GetAppPaths(nsCString &aAppPath, nsCString &aAppBinaryPath)
   nsCOMPtr<nsIFile> app, appBinary;
   nsresult rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appPath),
                                 true, getter_AddRefs(app));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }
   rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appBinaryPath),
                        true, getter_AddRefs(appBinary));
-  if (NS_FAILED(rv)) {
+  if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }
 
@@ -305,8 +304,8 @@ GMPChild::ResolveLinks(nsCOMPtr<nsIFile>& aPath)
 #elif defined(XP_MACOSX)
   nsCString targetPath = GetNativeTarget(aPath);
   nsCOMPtr<nsIFile> newFile;
-  if (NS_FAILED(
-        NS_NewNativeLocalFile(targetPath, true, getter_AddRefs(newFile)))) {
+  if (NS_WARN_IF(NS_FAILED(
+        NS_NewNativeLocalFile(targetPath, true, getter_AddRefs(newFile))))) {
     return false;
   }
   aPath = newFile;
@@ -367,7 +366,7 @@ GetFirefoxAppPath(nsCOMPtr<nsIFile> aPluginContainerPath,
   nsCOMPtr<nsIFile> path = aPluginContainerPath;
   for (int i = 0; i < 4; i++) {
     nsCOMPtr<nsIFile> parent;
-    if (NS_FAILED(path->GetParent(getter_AddRefs(parent)))) {
+    if (NS_WARN_IF(NS_FAILED(path->GetParent(getter_AddRefs(parent))))) {
       return false;
     }
     path = parent;
@@ -394,7 +393,7 @@ GetSigPath(const int aRelativeLayers,
   nsCOMPtr<nsIFile> path = aExecutablePath;
   for (int i = 0; i < aRelativeLayers; i++) {
     nsCOMPtr<nsIFile> parent;
-    if (NS_FAILED(path->GetParent(getter_AddRefs(parent)))) {
+    if (NS_WARN_IF(NS_FAILED(path->GetParent(getter_AddRefs(parent))))) {
       return false;
     }
     path = parent;
@@ -561,12 +560,10 @@ GMPChild::AnswerStartPlugin(const nsString& aAdapter)
     return IPC_FAIL_NO_REASON(this);
   }
 #endif
-
-  bool isWidevine = aAdapter.EqualsLiteral("widevine");
   bool isChromium = aAdapter.EqualsLiteral("chromium");
 #if defined(MOZ_GMP_SANDBOX) && defined(XP_MACOSX)
   MacSandboxPluginType pluginType = MacSandboxPluginType_GMPlugin_Default;
-  if (isWidevine || isChromium) {
+  if (isChromium) {
     pluginType = MacSandboxPluginType_GMPlugin_EME_Widevine;
   }
   if (!SetMacSandboxInfo(pluginType)) {
@@ -577,9 +574,7 @@ GMPChild::AnswerStartPlugin(const nsString& aAdapter)
 #endif
 
   GMPAdapter* adapter = nullptr;
-  if (isWidevine) {
-    adapter = new WidevineAdapter();
-  } else if (isChromium) {
+  if (isChromium) {
     auto&& paths = MakeCDMHostVerificationPaths();
     GMP_LOG("%s CDM host paths=%s", __func__, ToCString(paths).get());
     adapter = new ChromiumCDMAdapter(Move(paths));

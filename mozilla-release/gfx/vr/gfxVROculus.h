@@ -37,6 +37,7 @@ enum class OculusControllerAxisType : uint16_t {
 class VROculusSession
 {
   NS_INLINE_DECL_REFCOUNTING(VROculusSession);
+  friend class VRDisplayOculus;
 public:
   VROculusSession();
   void Refresh();
@@ -56,14 +57,14 @@ private:
   ovrInitFlags mInitFlags;
   ovrTextureSwapChain mTextureSet;
   nsTArray<RefPtr<layers::CompositingRenderTargetD3D11>> mRenderTargets;
-  bool mPresenting;
   IntSize mPresentationSize;
   RefPtr<ID3D11Device> mDevice;
   // The timestamp of the last time Oculus set ShouldQuit to true.
   TimeStamp mLastShouldQuit;
   // The timestamp of the last ending presentation
   TimeStamp mLastPresentationEnd;
-  TimeStamp mPresentationStart;
+  VRTelemetry mTelemetry;
+  bool mPresenting;
 
   ~VROculusSession();
   void Uninitialize(bool aUnloadLib);
@@ -107,8 +108,6 @@ protected:
   RefPtr<VROculusSession> mSession;
   ovrFovPort mFOVPort[2];
 
-  RefPtr<ID3D11Device> mDevice;
-  RefPtr<ID3D11DeviceContext> mContext;
   ID3D11VertexShader* mQuadVS;
   ID3D11PixelShader* mQuadPS;
   RefPtr<ID3D11SamplerState> mLinearSamplerState;

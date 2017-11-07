@@ -33,21 +33,16 @@ shippingAddress.init("USA",              // country
 
 const NormalUIService = {
   shippingOptionChanged: false,
-  canMakePayment: function(requestId) {
-    return null;
-  },
   showPayment: function(requestId) {
     paymentSrv.changeShippingAddress(requestId, shippingAddress);
-    return null;
   },
   abortPayment: function(requestId) {
-    return null;
   },
   completePayment: function(requestId) {
     let completeResponse = Cc["@mozilla.org/dom/payments/payment-complete-action-response;1"].
                            createInstance(Ci.nsIPaymentCompleteActionResponse);
     completeResponse.init(requestId, Ci.nsIPaymentActionResponse.COMPLETE_SUCCEEDED);
-    return completeResponse;
+    paymentSrv.respondPayment(completeResponse.QueryInterface(Ci.nsIPaymentActionResponse));
   },
   updatePayment: function(requestId) {
     let showResponse = null;
@@ -87,16 +82,13 @@ const NormalUIService = {
                         "Bill A. Pacheco",          // payer name
                         "",                         // payer email
                         "");                        // payer phone
+      paymentSrv.respondPayment(showResponse.QueryInterface(Ci.nsIPaymentActionResponse));
     }
-    return showResponse;
   },
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIPaymentUIService]),
 };
 
 const RejectUIService = {
-  canMakePayment: function(requestId) {
-    return null;
-  },
   showPayment: function(requestId) {
     const responseData = Cc["@mozilla.org/dom/payments/general-response-data;1"].
                             createInstance(Ci.nsIGeneralResponseData);
@@ -115,34 +107,24 @@ const RejectUIService = {
                       "",                 // payer name
                       "",                 // payer email
                       "");                // payer phone
-
-    return showResponse;
+    paymentSrv.respondPayment(showResponse.QueryInterface(Ci.nsIPaymentActionResponse));
   },
   abortPayment: function(requestId) {
-    return null;
   },
   completePayment: function(requestId) {
-    return null;
   },
   updatePayment: function(requestId) {
-    return null;
   },
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIPaymentUIService]),
 };
 
 const ErrorUIService = {
-  canMakePayment: function(requestId) {
-    return null;
-  },
   showPayment: function(requestId) {
     paymentSrv.changeShippingOption(requestId, "");
-    return null;
   },
   abortPayment: function(requestId) {
-    return null;
   },
   completePayment: function(requestId) {
-    return null;
   },
   updatePayment: function(requestId) {
     let payRequest = paymentSrv.getPaymentRequestById(requestId);
@@ -168,14 +150,13 @@ const ErrorUIService = {
                       "",                 // payer name
                       "",                 // payer email
                       "");                // payer phone
-
-    return showResponse;
+    paymentSrv.respondPayment(showResponse.QueryInterface(Ci.nsIPaymentActionResponse));
   },
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIPaymentUIService]),
 
 };
 
-function testNullDetailsResponseHandler() {
+function testInitDataAndResponse() {
   const showResponseData = Cc["@mozilla.org/dom/payments/general-response-data;1"].
                               createInstance(Ci.nsIGeneralResponseData);
   try {
@@ -197,9 +178,36 @@ function testNullDetailsResponseHandler() {
                       "",                         // payer email
                       "");                        // payer phone
   } catch (e) {
-    emitTestFail("Unexpected error " + e.name + " when initializing nsIPaymentShowActionResponse.");
+    emitTestFail("Unexpected error " + e.name + " when initializing response with accepted and empty data.");
   }
-  sendAsyncMessage("test-null-details-response-complete");
+
+  try {
+    showResponse.init("test request id",
+                      Ci.nsIPaymentActionResponse.PAYMENT_REJECTED,
+                      "testing-payment-method",
+                      null,
+                      "Bill A. Pacheco",
+                      "",
+                      "");
+  } catch (e) {
+    emitTestFail("Unexpected error " + e.name + " when initializing response with rejected and null data.");
+  }
+
+  try {
+    showResponse.init("test request id",
+                      Ci.nsIPaymentActionResponse.PAYMENT_ACCEPTED,
+                      "testing-payment-method",
+                      null,
+                      "Bill A. Pacheco",
+                      "",
+                      "");
+    emitTestFail("nsIPaymentShowActionResponse can not be initialized with accpeted and null data.");
+  } catch (e) {
+    if (e.name != "NS_ERROR_ILLEGAL_VALUE") {
+      emitTestFail("Expected 'NS_ERROR_ILLEGAL_VALUE', but got " + e.name + ".");
+    }
+  }
+  sendAsyncMessage("test-init-data-and-response-complete");
 }
 
 addMessageListener("set-normal-ui-service", function() {
@@ -212,9 +220,9 @@ addMessageListener("set-reject-ui-service", function() {
 
 addMessageListener("set-update-with-error-ui-service", function() {
   paymentSrv.setTestingUIService(ErrorUIService.QueryInterface(Ci.nsIPaymentUIService));
-})
+});
 
-addMessageListener("test-null-details-response", testNullDetailsResponseHandler);
+addMessageListener("test-init-data-and-response", testInitDataAndResponse);
 
 
 addMessageListener("teardown", function() {

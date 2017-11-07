@@ -51,7 +51,6 @@ namespace console {
 dictionary ConsoleEvent {
   (unsigned long long or DOMString) ID;
   (unsigned long long or DOMString) innerID;
-  any originAttributes = null;
   DOMString addonId = "";
   DOMString level = "";
   DOMString filename = "";
@@ -85,7 +84,6 @@ dictionary ConsoleStackEntry {
   unsigned long lineNumber = 0;
   unsigned long columnNumber = 0;
   DOMString functionName = "";
-  unsigned long language = 0;
   DOMString? asyncCause;
 };
 

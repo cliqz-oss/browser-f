@@ -2,42 +2,19 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import json
 import os
-import sys
+from functools import partial
 
+import mozunit
 import pytest
+from moztest.selftest.output import get_mozharness_status, filter_action
 
-from conftest import build, filter_action
-
-sys.path.insert(0, os.path.join(build.topsrcdir, 'testing', 'mozharness'))
 from mozharness.base.log import INFO, WARNING, ERROR
-from mozharness.base.errors import BaseErrorList
 from mozharness.mozilla.buildbot import TBPL_SUCCESS, TBPL_WARNING, TBPL_FAILURE
-from mozharness.mozilla.structuredlog import StructuredOutputParser
-from mozharness.mozilla.testing.errors import HarnessErrorList
+
 
 here = os.path.abspath(os.path.dirname(__file__))
-
-
-def get_mozharness_status(lines, status):
-    parser = StructuredOutputParser(
-        config={'log_level': INFO},
-        error_list=BaseErrorList+HarnessErrorList,
-        strict=False,
-        suite_category='mochitest',
-    )
-
-    # Processing the log with mozharness will re-print all the output to stdout
-    # Since this exact same output has already been printed by the actual test
-    # run, temporarily redirect stdout to devnull.
-    with open(os.devnull, 'w') as fh:
-        orig = sys.stdout
-        sys.stdout = fh
-        for line in lines:
-            parser.parse_single_line(json.dumps(line))
-        sys.stdout = orig
-    return parser.evaluate_parser(status)
+get_mozharness_status = partial(get_mozharness_status, 'mochitest')
 
 
 def test_output_pass(runtests):
@@ -78,6 +55,7 @@ def test_output_fail(runtests):
         assert set(lines[0].values()) == set(lines[1].values())
 
 
+@pytest.mark.skip_mozinfo("!crashreporter")
 def test_output_crash(runtests):
     status, lines = runtests('test_crash.html', environment=["MOZ_CRASHREPORTER_SHUTDOWN=1"])
     assert status == 1
@@ -94,6 +72,23 @@ def test_output_crash(runtests):
 
     lines = filter_action('test_end', lines)
     assert len(lines) == 0
+
+
+@pytest.mark.skip_mozinfo("!asan")
+def test_output_asan(runtests):
+    status, lines = runtests('test_crash.html', environment=["MOZ_CRASHREPORTER_SHUTDOWN=1"])
+    # TODO: mochitest should return non-zero here
+    assert status == 0
+
+    tbpl_status, log_level = get_mozharness_status(lines, status)
+    assert tbpl_status == TBPL_FAILURE
+    assert log_level == ERROR
+
+    crash = filter_action('crash', lines)
+    assert len(crash) == 0
+
+    process_output = filter_action('process_output', lines)
+    assert any('ERROR: AddressSanitizer' in l['data'] for l in process_output)
 
 
 @pytest.mark.skip_mozinfo("!debug")
@@ -144,4 +139,4 @@ def test_output_leak(monkeypatch, runtests):
 
 
 if __name__ == '__main__':
-    sys.exit(pytest.main(['--verbose', __file__]))
+    mozunit.main()

@@ -4,12 +4,13 @@
 
 use attr::CaseSensitivity;
 use bloom::BloomFilter;
+use nth_index_cache::NthIndexCache;
 
 /// What kind of selector matching mode we should use.
 ///
 /// There are two modes of selector matching. The difference is only noticeable
 /// in presence of pseudo-elements.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub enum MatchingMode {
     /// Don't ignore any pseudo-element selectors.
     Normal,
@@ -29,7 +30,7 @@ pub enum MatchingMode {
 }
 
 /// The mode to use when matching unvisited and visited links.
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum VisitedHandlingMode {
     /// All links are matched as if they are unvisted.
     AllLinksUnvisited,
@@ -48,7 +49,7 @@ pub enum VisitedHandlingMode {
 /// Which quirks mode is this document in.
 ///
 /// See: https://quirks.spec.whatwg.org/
-#[derive(PartialEq, Eq, Copy, Clone, Hash, Debug)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum QuirksMode {
     /// Quirks mode.
     Quirks,
@@ -72,12 +73,13 @@ impl QuirksMode {
 /// Data associated with the matching process for a element.  This context is
 /// used across many selectors for an element, so it's not appropriate for
 /// transient data that applies to only a single selector.
-#[derive(Clone)]
 pub struct MatchingContext<'a> {
     /// Input with the matching mode we should use when matching selectors.
     pub matching_mode: MatchingMode,
     /// Input with the bloom filter used to fast-reject selectors.
     pub bloom_filter: Option<&'a BloomFilter>,
+    /// An optional cache to speed up nth-index-like selectors.
+    pub nth_index_cache: Option<&'a mut NthIndexCache>,
     /// Input that controls how matching for links is handled.
     pub visited_handling: VisitedHandlingMode,
     /// Output that records whether we encountered a "relevant link" while
@@ -94,12 +96,14 @@ impl<'a> MatchingContext<'a> {
     /// Constructs a new `MatchingContext`.
     pub fn new(matching_mode: MatchingMode,
                bloom_filter: Option<&'a BloomFilter>,
+               nth_index_cache: Option<&'a mut NthIndexCache>,
                quirks_mode: QuirksMode)
                -> Self
     {
         Self {
             matching_mode: matching_mode,
             bloom_filter: bloom_filter,
+            nth_index_cache: nth_index_cache,
             visited_handling: VisitedHandlingMode::AllLinksUnvisited,
             relevant_link_found: false,
             quirks_mode: quirks_mode,
@@ -110,6 +114,7 @@ impl<'a> MatchingContext<'a> {
     /// Constructs a new `MatchingContext` for use in visited matching.
     pub fn new_for_visited(matching_mode: MatchingMode,
                            bloom_filter: Option<&'a BloomFilter>,
+                           nth_index_cache: Option<&'a mut NthIndexCache>,
                            visited_handling: VisitedHandlingMode,
                            quirks_mode: QuirksMode)
                            -> Self
@@ -119,6 +124,7 @@ impl<'a> MatchingContext<'a> {
             bloom_filter: bloom_filter,
             visited_handling: visited_handling,
             relevant_link_found: false,
+            nth_index_cache: nth_index_cache,
             quirks_mode: quirks_mode,
             classes_and_ids_case_sensitivity: quirks_mode.classes_and_ids_case_sensitivity(),
         }

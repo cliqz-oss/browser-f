@@ -19,6 +19,7 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Monitor.h"
+#include "mozilla/UniquePtr.h"
 
 #include <algorithm>
 
@@ -110,7 +111,8 @@ private:
     }
 
     static bool
-    UniquePtrLessThan(UniquePtr<Entry>& aLeft, UniquePtr<Entry>& aRight)
+    UniquePtrLessThan(mozilla::UniquePtr<Entry>& aLeft,
+                      mozilla::UniquePtr<Entry>& aRight)
     {
       // This is reversed because std::push_heap() sorts the "largest" to
       // the front of the heap.  We want that to be the earliest timer.
@@ -123,40 +125,8 @@ private:
     }
   };
 
-  nsTArray<UniquePtr<Entry>> mTimers;
+  nsTArray<mozilla::UniquePtr<Entry>> mTimers;
   uint32_t mAllowedEarlyFiringMicroseconds;
-};
-
-struct TimerAdditionComparator
-{
-  TimerAdditionComparator(const mozilla::TimeStamp& aNow,
-                          nsTimerImpl* aTimerToInsert) :
-    now(aNow)
-#ifdef DEBUG
-    , timerToInsert(aTimerToInsert)
-#endif
-  {
-  }
-
-  bool LessThan(nsTimerImpl* aFromArray, nsTimerImpl* aNewTimer) const
-  {
-    MOZ_ASSERT(aNewTimer == timerToInsert, "Unexpected timer ordering");
-
-    // Skip any overdue timers.
-    return aFromArray->mTimeout <= now ||
-           aFromArray->mTimeout <= aNewTimer->mTimeout;
-  }
-
-  bool Equals(nsTimerImpl* aFromArray, nsTimerImpl* aNewTimer) const
-  {
-    return false;
-  }
-
-private:
-  const mozilla::TimeStamp& now;
-#ifdef DEBUG
-  const nsTimerImpl* const timerToInsert;
-#endif
 };
 
 #endif /* TimerThread_h___ */

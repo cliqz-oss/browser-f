@@ -59,8 +59,12 @@ add_task(async function system_shutdown() {
       try {
         await deferred.promise;
         resolved = true;
-      } catch (ex if ex == "timeout") {
-        resolved = false;
+      } catch (ex) {
+        if (ex == "timeout") {
+          resolved = false;
+        } else {
+          throw ex;
+        }
       }
       Services.console.unregisterListener(observer);
       Services.prefs.clearUserPref("toolkit.osfile.log");
@@ -90,8 +94,3 @@ add_task(async function system_shutdown() {
   do_print("At this stage, we don't leak the file anymore");
   do_check_false((await testLeaksOf(TEST_FILE, "test.shutdown.file.leak.2")));
 });
-
-
-function run_test() {
-  run_next_test();
-}

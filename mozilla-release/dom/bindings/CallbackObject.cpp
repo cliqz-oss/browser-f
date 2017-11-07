@@ -145,22 +145,30 @@ CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
     return;
   }
 
-  // First, find the real underlying callback.
-  JSObject* realCallback = js::UncheckedUnwrap(wrappedCallback);
   nsIGlobalObject* globalObject = nullptr;
 
-  JSContext* cx;
   {
-    // Bug 955660: we cannot do "proper" rooting here because we need the
-    // global to get a context. Everything here is simple getters that cannot
-    // GC, so just paper over the necessary dataflow inversion.
-    JS::AutoSuppressGCAnalysis nogc;
+    // First, find the real underlying callback.
+    JSObject* realCallback = js::UncheckedUnwrap(wrappedCallback);
+
+    // Check that it's ok to run this callback. JS-implemented WebIDL is always
+    // OK to run, since it runs with Chrome privileges anyway.
+    if (mIsMainThread && !aIsJSImplementedWebIDL) {
+      // Make sure to use realCallback to get the global of the callback
+      // object, not the wrapper.
+      if (!xpc::Scriptability::Get(realCallback).Allowed()) {
+        aRv.ThrowDOMException(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+          NS_LITERAL_CSTRING("Refusing to execute function from global in which "
+                             "script is disabled."));
+        return;
+      }
+    }
 
     // Now get the global for this callback. Note that for the case of
     // JS-implemented WebIDL we never have a window here.
     nsGlobalWindow* win = mIsMainThread && !aIsJSImplementedWebIDL
-                        ? xpc::WindowGlobalOrNull(realCallback)
-                        : nullptr;
+                            ? xpc::WindowGlobalOrNull(realCallback)
+                            : nullptr;
     if (win) {
       MOZ_ASSERT(win->IsInnerWindow());
       // We don't want to run script in windows that have been navigated away
@@ -178,62 +186,46 @@ CallbackObject::CallSetup::CallSetup(CallbackObject* aCallback,
       globalObject = xpc::NativeGlobal(global);
       MOZ_ASSERT(globalObject);
     }
+  }
 
-    // Bail out if there's no useful global. This seems to happen intermittently
-    // on gaia-ui tests, probably because nsInProcessTabChildGlobal is returning
-    // null in some kind of teardown state.
-    if (!globalObject->GetGlobalJSObject()) {
-      aRv.ThrowDOMException(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
-        NS_LITERAL_CSTRING("Refusing to execute function from global which is "
-                           "being torn down."));
-      return;
-    }
+  // Bail out if there's no useful global. This seems to happen intermittently
+  // on gaia-ui tests, probably because nsInProcessTabChildGlobal is returning
+  // null in some kind of teardown state.
+  if (!globalObject->GetGlobalJSObject()) {
+    aRv.ThrowDOMException(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+      NS_LITERAL_CSTRING("Refusing to execute function from global which is "
+                         "being torn down."));
+    return;
+  }
 
-    mAutoEntryScript.emplace(globalObject, aExecutionReason, mIsMainThread);
-    mAutoEntryScript->SetWebIDLCallerPrincipal(webIDLCallerPrincipal);
-    nsIGlobalObject* incumbent = aCallback->IncumbentGlobalOrNull();
-    if (incumbent) {
-      // The callback object traces its incumbent JS global, so in general it
-      // should be alive here. However, it's possible that we could run afoul
-      // of the same IPC global weirdness described above, wherein the
-      // nsIGlobalObject has severed its reference to the JS global. Let's just
-      // be safe here, so that nobody has to waste a day debugging gaia-ui tests.
-      if (!incumbent->GetGlobalJSObject()) {
+  mAutoEntryScript.emplace(globalObject, aExecutionReason, mIsMainThread);
+  mAutoEntryScript->SetWebIDLCallerPrincipal(webIDLCallerPrincipal);
+  nsIGlobalObject* incumbent = aCallback->IncumbentGlobalOrNull();
+  if (incumbent) {
+    // The callback object traces its incumbent JS global, so in general it
+    // should be alive here. However, it's possible that we could run afoul
+    // of the same IPC global weirdness described above, wherein the
+    // nsIGlobalObject has severed its reference to the JS global. Let's just
+    // be safe here, so that nobody has to waste a day debugging gaia-ui tests.
+    if (!incumbent->GetGlobalJSObject()) {
       aRv.ThrowDOMException(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
         NS_LITERAL_CSTRING("Refusing to execute function because our "
                            "incumbent global is being torn down."));
-        return;
-      }
-      mAutoIncumbentScript.emplace(incumbent);
-    }
-
-    cx = mAutoEntryScript->cx();
-
-    // Unmark the callable (by invoking CallbackOrNull() and not the
-    // CallbackPreserveColor() variant), and stick it in a Rooted before it can
-    // go gray again.
-    // Nothing before us in this function can trigger a CC, so it's safe to wait
-    // until here it do the unmark. This allows us to construct mRootedCallable
-    // with the cx from mAutoEntryScript, avoiding the cost of finding another
-    // JSContext. (Rooted<> does not care about requests or compartments.)
-    mRootedCallable.emplace(cx, aCallback->CallbackOrNull());
-  }
-
-  // JS-implemented WebIDL is always OK to run, since it runs with Chrome
-  // privileges anyway.
-  if (mIsMainThread && !aIsJSImplementedWebIDL) {
-    // Check that it's ok to run this callback at all.
-    // Make sure to use realCallback to get the global of the callback object,
-    // not the wrapper.
-    bool allowed = xpc::Scriptability::Get(realCallback).Allowed();
-
-    if (!allowed) {
-      aRv.ThrowDOMException(NS_ERROR_DOM_NOT_SUPPORTED_ERR,
-        NS_LITERAL_CSTRING("Refusing to execute function from global in which "
-                           "script is disabled."));
       return;
     }
+    mAutoIncumbentScript.emplace(incumbent);
   }
+
+  JSContext* cx = mAutoEntryScript->cx();
+
+  // Unmark the callable (by invoking CallbackOrNull() and not the
+  // CallbackPreserveColor() variant), and stick it in a Rooted before it can
+  // go gray again.
+  // Nothing before us in this function can trigger a CC, so it's safe to wait
+  // until here it do the unmark. This allows us to construct mRootedCallable
+  // with the cx from mAutoEntryScript, avoiding the cost of finding another
+  // JSContext. (Rooted<> does not care about requests or compartments.)
+  mRootedCallable.emplace(cx, aCallback->CallbackOrNull());
 
   mAsyncStack.emplace(cx, aCallback->GetCreationStack());
   if (*mAsyncStack) {

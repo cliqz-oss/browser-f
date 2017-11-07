@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
 add_task(async function test_update_address() {
@@ -25,7 +26,7 @@ add_task(async function test_update_address() {
       });
 
       await promiseShown;
-      await clickDoorhangerButton(MAIN_BUTTON_INDEX);
+      await clickDoorhangerButton(MAIN_BUTTON);
     }
   );
 
@@ -58,7 +59,7 @@ add_task(async function test_create_new_address() {
       });
 
       await promiseShown;
-      await clickDoorhangerButton(SECONDARY_BUTTON_INDEX);
+      await clickDoorhangerButton(SECONDARY_BUTTON);
     }
   );
 
@@ -91,7 +92,7 @@ add_task(async function test_create_new_address_merge() {
       });
 
       await promiseShown;
-      await clickDoorhangerButton(SECONDARY_BUTTON_INDEX);
+      await clickDoorhangerButton(SECONDARY_BUTTON);
     }
   );
 
@@ -127,7 +128,7 @@ add_task(async function test_submit_untouched_fields() {
       });
 
       await promiseShown;
-      await clickDoorhangerButton(MAIN_BUTTON_INDEX);
+      await clickDoorhangerButton(MAIN_BUTTON);
     }
   );
 
@@ -162,7 +163,7 @@ add_task(async function test_submit_reduced_fields() {
       });
 
       await promiseShown;
-      await clickDoorhangerButton(MAIN_BUTTON_INDEX);
+      await clickDoorhangerButton(MAIN_BUTTON);
     }
   );
 

@@ -40,6 +40,14 @@
       }
     }
   },
+  "imageCroppedWarning": {
+    "message": "Это изображение было обрезано до $PIXELS$ пикселей.",
+    "placeholders": {
+      "pixels": {
+        "content": "$1"
+      }
+    }
+  },
   "requestErrorTitle": {
     "message": "Произошла ошибка."
   },
@@ -79,25 +87,31 @@
   "genericErrorDetails": {
     "message": "Мы не уверены, в чём проблема. Попробуете ещё раз или сделаете снимок другой страницы?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Делайте, сохраняйте и делитесь скриншотами прямо в Firefox."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Новый способ сохранения"
+  },
+  "tourBodyPageAction": {
+    "message": "Раскройте меню действий на странице в адресной строке в любой момент, когда вы захотите сделать снимок экрана."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Делайте снимки чего угодно"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Щелкните и потяните мышью для захвата части страницы. Вы также можете навести курсор мыши для подсветки выбранной области."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Захватывайте окна или целые страницы"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "С помощью кнопок в верхнем правом углу выбирайте захват видимой области окна или страницы целиком."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Как вам нравится"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Сохраняйте свои снимки в Интернете, чтобы легко ими делиться, или загружайте их на свой компьютер. Вы также можете просмотреть все сохранённые снимки, нажав на кнопку Мои снимки."
   },
   "tourSkip": {
@@ -112,8 +126,8 @@
   "tourDone": {
     "message": "Готово"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Используя Скриншоты Firefox, вы соглашаетесь с $TERMSANDPRIVACYNOTICETERMSLINK$ и $TERMSANDPRIVACYNOTICEPRIVACYLINK$ облачных сервисов Firefox.",
+  "termsAndPrivacyNotice2": {
+    "message": "Используя Firefox Screenshots, вы соглашаетесь с нашими $TERMSANDPRIVACYNOTICETERMSLINK$ и $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +142,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Уведомлением о приватности"
+  },
+  "libraryLabel": {
+    "message": "Скриншоты"
   }
 }

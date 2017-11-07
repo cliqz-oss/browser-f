@@ -41,10 +41,8 @@ static const char sPrintSettingsServiceContractID[] = "@mozilla.org/gfx/printset
 // Printing
 #include "nsIWebBrowserPrint.h"
 #include "nsIDOMHTMLFrameElement.h"
-#include "nsIDOMHTMLFrameSetElement.h"
 #include "nsIDOMHTMLIFrameElement.h"
 #include "nsIDOMHTMLObjectElement.h"
-#include "nsIDOMHTMLEmbedElement.h"
 
 // Print Preview
 #include "imgIContainer.h" // image animation mode constants
@@ -1026,7 +1024,7 @@ nsPrintEngine::CheckForPrinters(nsIPrintSettings* aPrintSettings)
   NS_ENSURE_ARG_POINTER(aPrintSettings);
 
   // See if aPrintSettings already has a printer
-  nsXPIDLString printerName;
+  nsString printerName;
   nsresult rv = aPrintSettings->GetPrinterName(getter_Copies(printerName));
   if (NS_SUCCEEDED(rv) && !printerName.IsEmpty()) {
     return NS_OK;
@@ -1508,7 +1506,7 @@ nsPrintEngine::GetDisplayTitleAndURL(const UniquePtr<nsPrintObject>& aPO,
       if (aDefType == eDocTitleDefURLDoc) {
         if (!aURLStr.IsEmpty()) {
           aTitle = aURLStr;
-        } else if (mPrt->mBrandName) {
+        } else if (!mPrt->mBrandName.IsEmpty()) {
           aTitle = mPrt->mBrandName;
         }
       }
@@ -1849,9 +1847,7 @@ nsPrintEngine::SetupToPrintContent()
   printData->mPrintSettings->GetPrintToFile(&isPrintToFile);
   if (isPrintToFile) {
     // On some platforms The BeginDocument needs to know the name of the file.
-    char16_t* fileName = nullptr;
-    printData->mPrintSettings->GetToFileName(&fileName);
-    fileNameStr = fileName;
+    printData->mPrintSettings->GetToFileName(getter_Copies(fileNameStr));
   }
 
   nsAutoString docTitleStr;
@@ -3195,7 +3191,8 @@ nsPrintEngine::FindFocusedDOMWindow()
   NS_ENSURE_TRUE(rootWindow, nullptr);
 
   nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
-  nsFocusManager::GetFocusedDescendant(rootWindow, true,
+  nsFocusManager::GetFocusedDescendant(rootWindow,
+                                       nsFocusManager::eIncludeAllDescendants,
                                        getter_AddRefs(focusedWindow));
   NS_ENSURE_TRUE(focusedWindow, nullptr);
 

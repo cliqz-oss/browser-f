@@ -7,7 +7,8 @@ function checkWindowProperties(expectPresent, l) {
 }
 function checkElements(expectPresent, l) {
   for (let id of l) {
-    is(!!document.getElementById(id), expectPresent, "element " + id + (expectPresent ? " is" : " is not") + " present");
+    let el = document.getElementById(id) || gNavToolbox.palette.querySelector("#" + id);
+    is(!!el, expectPresent, "element " + id + (expectPresent ? " is" : " is not") + " present");
   }
 }
 
@@ -27,9 +28,8 @@ add_task(async function() {
   await promisePocketEnabled();
 
   checkWindowProperties(true, ["Pocket", "pktUI", "pktUIMessaging"]);
-  checkElements(true, ["pocket-button", "panelMenu_pocket", "menu_pocket", "BMB_pocket",
-                       "panelMenu_pocketSeparator", "menu_pocketSeparator",
-                       "BMB_pocketSeparator"]);
+  checkElements(true, ["pocket-button", "panelMenu_pocket",
+                       "panelMenu_pocketSeparator"]);
 
   // check context menu exists
   info("checking content context menu");
@@ -53,9 +53,8 @@ add_task(async function() {
   await promisePocketDisabled();
 
   checkWindowProperties(false, ["Pocket", "pktUI", "pktUIMessaging"]);
-  checkElements(false, ["pocket-button", "panelMenu_pocket", "menu_pocket", "BMB_pocket",
-                       "panelMenu_pocketSeparator", "menu_pocketSeparator",
-                       "BMB_pocketSeparator", "context-pocket", "context-savelinktopocket"]);
+  checkElements(false, ["pocket-button", "panelMenu_pocket", "panelMenu_pocketSeparator",
+                        "context-pocket", "context-savelinktopocket"]);
 
   await promisePocketReset();
 });

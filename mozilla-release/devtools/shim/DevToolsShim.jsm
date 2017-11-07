@@ -195,31 +195,26 @@ this.DevToolsShim = {
   /**
    * Called from SessionStore.jsm in mozilla-central when saving the current state.
    *
-   * @return {Array} array of currently opened scratchpad windows. Empty array if devtools
-   *         are not installed
+   * @param {Object} state
+   *                 A SessionStore state object that gets modified by reference
    */
-  getOpenedScratchpads: function () {
+  saveDevToolsSession: function (state) {
     if (!this.isInitialized()) {
-      return [];
+      return;
     }
-
-    return this._gDevTools.getOpenedScratchpads();
+    this._gDevTools.saveDevToolsSession(state);
   },
 
   /**
    * Called from SessionStore.jsm in mozilla-central when restoring a state that contained
-   * opened scratchpad windows.
+   * opened scratchpad windows and browser console.
    */
-  restoreScratchpadSession: function (scratchpads) {
+  restoreDevToolsSession: function (session) {
     if (!this.isInstalled()) {
       return;
     }
 
-    if (!this.isInitialized()) {
-      this._initDevTools();
-    }
-
-    this._gDevTools.restoreScratchpadSession(scratchpads);
+    this.gDevTools.restoreDevToolsSession(session);
   },
 
   /**
@@ -291,7 +286,6 @@ let addonSdkMethods = [
   "closeToolbox",
   "connectDebuggerServer",
   "createDebuggerClient",
-  "getTargetForTab",
   "getToolbox",
   "initBrowserToolboxProcessForAddon",
   "showToolbox",
@@ -304,7 +298,11 @@ let addonSdkMethods = [
  * therefore DevTools should always be available when they are called.
  */
 let webExtensionsMethods = [
+  "createTargetForTab",
+  "createWebExtensionInspectedWindowFront",
+  "getTargetForTab",
   "getTheme",
+  "openBrowserConsole",
 ];
 
 for (let method of [...addonSdkMethods, ...webExtensionsMethods]) {

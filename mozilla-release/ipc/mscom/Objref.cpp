@@ -8,10 +8,12 @@
 
 #include "mozilla/Assertions.h"
 #include "mozilla/mscom/Utils.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/UniquePtr.h"
 
 #include <guiddef.h>
 #include <objidl.h>
+#include <winnt.h>
 
 namespace {
 
@@ -56,9 +58,14 @@ struct DUALSTRINGARRAY
 
 struct OBJREF_STANDARD
 {
+  static size_t SizeOfFixedLenHeader()
+  {
+    return sizeof(mStd);
+  }
+
   size_t SizeOf() const
   {
-    return sizeof(mStd) + mResAddr.SizeOf();
+    return SizeOfFixedLenHeader() + mResAddr.SizeOf();
   }
 
   STDOBJREF       mStd;
@@ -67,14 +74,32 @@ struct OBJREF_STANDARD
 
 struct OBJREF_HANDLER
 {
+  static size_t SizeOfFixedLenHeader()
+  {
+    return sizeof(mStd) + sizeof(mClsid);
+  }
+
   size_t SizeOf() const
   {
-    return sizeof(mStd) + sizeof(mClsid) + mResAddr.SizeOf();
+    return SizeOfFixedLenHeader() + mResAddr.SizeOf();
   }
 
   STDOBJREF       mStd;
   CLSID           mClsid;
   DUALSTRINGARRAY mResAddr;
+};
+
+struct OBJREF_CUSTOM
+{
+  static size_t SizeOfFixedLenHeader()
+  {
+    return sizeof(mClsid) + sizeof(mCbExtension) + sizeof(mReserved);
+  }
+
+  CLSID           mClsid;
+  uint32_t        mCbExtension;
+  uint32_t        mReserved;
+  uint8_t         mPayload[1];
 };
 
 enum OBJREF_FLAGS
@@ -112,6 +137,7 @@ struct OBJREF
   union {
     OBJREF_STANDARD mObjRefStd;
     OBJREF_HANDLER  mObjRefHandler;
+    OBJREF_CUSTOM   mObjRefCustom;
     // There are others but we're not supporting them here
   };
 };
@@ -140,15 +166,14 @@ namespace mozilla {
 namespace mscom {
 
 bool
-StripHandlerFromOBJREF(NotNull<IStream*> aStream)
+StripHandlerFromOBJREF(NotNull<IStream*> aStream, const uint64_t aStartPos,
+                       const uint64_t aEndPos)
 {
-  // Get current stream position
+  // Ensure that the current stream position is set to the beginning
   LARGE_INTEGER seekTo;
-  seekTo.QuadPart = 0;
+  seekTo.QuadPart = aStartPos;
 
-  ULARGE_INTEGER objrefPos;
-
-  HRESULT hr = aStream->Seek(seekTo, STREAM_SEEK_CUR, &objrefPos);
+  HRESULT hr = aStream->Seek(seekTo, STREAM_SEEK_SET, nullptr);
   if (FAILED(hr)) {
     return false;
   }
@@ -164,10 +189,14 @@ StripHandlerFromOBJREF(NotNull<IStream*> aStream)
 
   uint32_t type;
   hr = aStream->Read(&type, sizeof(type), &bytesRead);
-  if (FAILED(hr) || bytesRead != sizeof(type) ||
-      type != OBJREF_TYPE_HANDLER) {
-    // If we're not a handler then just return success
-    return true;
+  if (FAILED(hr) || bytesRead != sizeof(type)) {
+    return false;
+  }
+  if (type != OBJREF_TYPE_HANDLER) {
+    // If we're not a handler then just seek to the end of the OBJREF and return
+    // success; there is nothing left to do.
+    seekTo.QuadPart = aEndPos;
+    return SUCCEEDED(aStream->Seek(seekTo, STREAM_SEEK_SET, nullptr));
   }
 
   IID iid;
@@ -180,7 +209,7 @@ StripHandlerFromOBJREF(NotNull<IStream*> aStream)
   seekTo.QuadPart = sizeof(STDOBJREF) + sizeof(CLSID);
   hr = aStream->Seek(seekTo, STREAM_SEEK_CUR, nullptr);
   if (FAILED(hr)) {
-    return hr;
+    return false;
   }
 
   uint16_t numEntries;
@@ -217,7 +246,7 @@ StripHandlerFromOBJREF(NotNull<IStream*> aStream)
   }
 
   // Signature doesn't change so we'll seek past that
-  seekTo.QuadPart = objrefPos.QuadPart + sizeof(signature);
+  seekTo.QuadPart = aStartPos + sizeof(signature);
   hr = aStream->Seek(seekTo, STREAM_SEEK_SET, nullptr);
   if (FAILED(hr)) {
     return false;
@@ -251,7 +280,116 @@ StripHandlerFromOBJREF(NotNull<IStream*> aStream)
     return false;
   }
 
-  return true;
+  // Back up to the end of the tweaked OBJREF.
+  // There are now sizeof(CLSID) less bytes.
+  // Bug 1403180: Using -sizeof(CLSID) with a relative seek sometimes
+  // doesn't work on Windows 7.
+  // It succeeds, but doesn't seek the stream for some unknown reason.
+  // Use an absolute seek instead.
+  seekTo.QuadPart = aEndPos - sizeof(CLSID);
+  return SUCCEEDED(aStream->Seek(seekTo, STREAM_SEEK_SET, nullptr));
+}
+
+uint32_t
+GetOBJREFSize(NotNull<IStream*> aStream)
+{
+  // Make a clone so that we don't manipulate aStream's seek pointer
+  RefPtr<IStream> cloned;
+  HRESULT hr = aStream->Clone(getter_AddRefs(cloned));
+  if (FAILED(hr)) {
+    return 0;
+  }
+
+  uint32_t accumulatedSize = 0;
+
+  ULONG bytesRead;
+
+  uint32_t signature;
+  hr = cloned->Read(&signature, sizeof(signature), &bytesRead);
+  if (FAILED(hr) || bytesRead != sizeof(signature) ||
+      signature != OBJREF_SIGNATURE) {
+    return 0;
+  }
+
+  accumulatedSize += bytesRead;
+
+  uint32_t type;
+  hr = cloned->Read(&type, sizeof(type), &bytesRead);
+  if (FAILED(hr) || bytesRead != sizeof(type)) {
+    return 0;
+  }
+
+  accumulatedSize += bytesRead;
+
+  IID iid;
+  hr = cloned->Read(&iid, sizeof(iid), &bytesRead);
+  if (FAILED(hr) || bytesRead != sizeof(iid) || !IsValidGUID(iid)) {
+    return 0;
+  }
+
+  accumulatedSize += bytesRead;
+
+  LARGE_INTEGER seekTo;
+
+  if (type == OBJREF_TYPE_CUSTOM) {
+    CLSID clsid;
+    hr = cloned->Read(&clsid, sizeof(CLSID), &bytesRead);
+    if (FAILED(hr) || bytesRead != sizeof(CLSID)) {
+      return 0;
+    }
+
+    if (clsid != CLSID_StdMarshal) {
+      // We can only calulate the size if the payload is a standard OBJREF as
+      // identified by clsid == CLSID_StdMarshal.
+      return 0;
+    }
+
+    accumulatedSize += bytesRead;
+
+    seekTo.QuadPart = sizeof(OBJREF_CUSTOM::mCbExtension) +
+                      sizeof(OBJREF_CUSTOM::mReserved);
+    hr = cloned->Seek(seekTo, STREAM_SEEK_CUR, nullptr);
+    if (FAILED(hr)) {
+      return 0;
+    }
+
+    accumulatedSize += seekTo.LowPart;
+
+    uint32_t payloadLen = GetOBJREFSize(WrapNotNull(cloned.get()));
+    if (!payloadLen) {
+      return 0;
+    }
+
+    accumulatedSize += payloadLen;
+    return accumulatedSize;
+  }
+
+  switch (type) {
+    case OBJREF_TYPE_STANDARD:
+      seekTo.QuadPart = OBJREF_STANDARD::SizeOfFixedLenHeader();
+      break;
+    case OBJREF_TYPE_HANDLER:
+      seekTo.QuadPart = OBJREF_HANDLER::SizeOfFixedLenHeader();
+      break;
+    default:
+      return 0;
+  }
+
+  hr = cloned->Seek(seekTo, STREAM_SEEK_CUR, nullptr);
+  if (FAILED(hr)) {
+    return 0;
+  }
+
+  accumulatedSize += seekTo.LowPart;
+
+  uint16_t numEntries;
+  hr = cloned->Read(&numEntries, sizeof(numEntries), &bytesRead);
+  if (FAILED(hr) || bytesRead != sizeof(numEntries)) {
+    return 0;
+  }
+
+  accumulatedSize += DUALSTRINGARRAY::SizeFromNumEntries(numEntries);
+  return accumulatedSize;
 }
 
 } // namespace mscom

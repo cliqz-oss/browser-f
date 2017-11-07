@@ -263,6 +263,7 @@ define(function (require, exports, module) {
               ref,
               role: "presentation",
             },
+              DOM.span({className: "devtools-tab-line"}),
               DOM.a({
                 id: id ? id + "-tab" : "tab-" + index,
                 tabIndex: isTabSelected ? 0 : -1,
@@ -324,14 +325,20 @@ define(function (require, exports, module) {
 
           let id = tab.props.id;
 
-          // Use 'visibility:hidden' + 'width/height:0' for hiding
-          // content of non-selected tab. It's faster (not sure why)
-          // than display:none and visibility:collapse.
+          // Use 'visibility:hidden' + 'height:0' for hiding content of non-selected
+          // tab. It's faster than 'display:none' because it avoids triggering frame
+          // destruction and reconstruction. 'width' is not changed to avoid relayout.
           let style = {
             visibility: selected ? "visible" : "hidden",
             height: selected ? "100%" : "0",
-            width: selected ? "100%" : "0",
           };
+
+          // Allows lazy loading panels by creating them only if they are selected,
+          // then store a copy of the lazy created panel in `tab.panel`.
+          if (typeof tab.panel == "function" && selected) {
+            tab.panel = tab.panel(tab);
+          }
+          let panel = tab.panel || tab;
 
           return (
             DOM.div({
@@ -342,7 +349,7 @@ define(function (require, exports, module) {
               role: "tabpanel",
               "aria-labelledby": id ? id + "-tab" : "tab-" + index,
             },
-              (selected || this.state.created[index]) ? tab : null
+              (selected || this.state.created[index]) ? panel : null
             )
           );
         });

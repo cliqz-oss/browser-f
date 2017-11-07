@@ -4,13 +4,14 @@
 
 #![deny(warnings)]
 
-extern crate atomic_refcell;
 extern crate cssparser;
 extern crate env_logger;
 extern crate libc;
 #[macro_use] extern crate log;
+extern crate malloc_size_of;
 extern crate selectors;
 extern crate servo_arc;
+extern crate smallvec;
 #[macro_use] extern crate style;
 extern crate style_traits;
 

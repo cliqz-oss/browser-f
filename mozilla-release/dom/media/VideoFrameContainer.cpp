@@ -11,7 +11,7 @@
 
 #include "nsIFrame.h"
 #include "nsDisplayList.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 
 using namespace mozilla::layers;
 
@@ -384,12 +384,12 @@ void VideoFrameContainer::InvalidateWithFlags(uint32_t aFlags)
     if (invalidateFrame) {
       frame->InvalidateFrame();
     } else {
-      frame->InvalidateLayer(nsDisplayItem::TYPE_VIDEO, nullptr, nullptr,
+      frame->InvalidateLayer(DisplayItemType::TYPE_VIDEO, nullptr, nullptr,
                              asyncInvalidate ? nsIFrame::UPDATE_IS_ASYNC : 0);
     }
   }
 
-  nsSVGEffects::InvalidateDirectRenderingObservers(mElement);
+  SVGObserverUtils::InvalidateDirectRenderingObservers(mElement);
 }
 
 } // namespace mozilla

@@ -56,7 +56,7 @@ public:
   static void Shutdown();
 
   void SetDelayInternal(uint32_t aDelay, TimeStamp aBase = TimeStamp::Now());
-  bool CancelCheckIfFiring();
+  void CancelImpl(bool aClearITimer);
 
   void Fire(int32_t aGeneration);
 
@@ -132,7 +132,7 @@ public:
   nsresult InitCommon(uint32_t aDelayMS, uint32_t aType,
                       Callback&& newCallback);
 
-  nsresult InitCommon(const TimeDuration& aDelay, uint32_t aType,
+  nsresult InitCommon(const mozilla::TimeDuration& aDelay, uint32_t aType,
                       Callback&& newCallback);
 
   Callback& GetCallback()
@@ -200,9 +200,9 @@ public:
   // Updated only after this timer has been removed from the timer thread.
   int32_t               mGeneration;
 
-  TimeDuration          mDelay;
+  mozilla::TimeDuration mDelay;
   // Updated only after this timer has been removed from the timer thread.
-  TimeStamp             mTimeout;
+  mozilla::TimeStamp    mTimeout;
 
 #ifdef MOZ_TASK_TRACER
   mozilla::tasktracer::TracedTaskCommon mTracedTask;
@@ -211,7 +211,7 @@ public:
   static double         sDeltaSum;
   static double         sDeltaSumSquared;
   static double         sDeltaNum;
-  const RefPtr<nsITimer>      mITimer;
+  RefPtr<nsITimer>      mITimer;
   mozilla::Mutex mMutex;
   Callback              mCallback;
   Callback              mCallbackDuringFire;
@@ -225,7 +225,6 @@ public:
 
   friend class TimerThread;
   friend class nsTimerEvent;
-  friend struct TimerAdditionComparator;
 
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_FORWARD_SAFE_NSITIMER(mImpl);

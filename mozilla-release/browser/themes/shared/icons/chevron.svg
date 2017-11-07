@@ -2,5 +2,11 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">
+<<<<<<< HEAD
   <path fill="context-fill" d="M7.8,14.3c-0.2,0-0.3-0.1-0.5-0.2c-0.3-0.3-0.3-0.7,0-0.9L12.6,8L7.3,2.7c-0.3-0.3-0.3-0.7,0-0.9c0.3-0.3,0.7-0.3,0.9,0L14.3,8l-6.1,6.1C8.1,14.2,7.9,14.3,7.8,14.3z M2.9,14.3c-0.2,0-0.3-0.1-0.5-0.2c-0.3-0.3-0.3-0.7,0-0.9L7.7,8L2.5,2.7c-0.3-0.3-0.3-0.7,0-0.9c0.3-0.3,0.7-0.3,0.9,0L9.5,8l-6.1,6.1C3.2,14.2,3,14.3,2.9,14.3z"/>
+||||||| merged common ancestors
+  <path fill="context-fill" d="M10.6 12H7.5l3.8-4-3.8-4h3l3.9 4zm-5 0H2.5l3.8-4-3.8-4h3l3.9 4z"/>
+=======
+  <path fill="context-fill" fill-opacity="context-fill-opacity" d="M8.707,7.293l-5-5A1,1,0,0,0,2.293,3.707L6.586,8,2.293,12.293a1,1,0,1,0,1.414,1.414l5-5A1,1,0,0,0,8.707,7.293Zm6,0-5-5A1,1,0,0,0,8.293,3.707L12.586,8,8.293,12.293a1,1,0,1,0,1.414,1.414l5-5A1,1,0,0,0,14.707,7.293Z"/>
+>>>>>>> origin/upstream-releases
 </svg>

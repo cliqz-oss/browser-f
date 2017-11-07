@@ -6,35 +6,19 @@
 #if !defined(WebMDecoder_h_)
 #define WebMDecoder_h_
 
-#include "ChannelMediaDecoder.h"
-#include "MediaFormatReader.h"
-
 namespace mozilla {
 
 class MediaContainerType;
 
-class WebMDecoder : public ChannelMediaDecoder
+class WebMDecoder
 {
 public:
-  explicit WebMDecoder(MediaDecoderInit& aInit)
-    : ChannelMediaDecoder(aInit)
-  {
-  }
-  ChannelMediaDecoder* Clone(MediaDecoderInit& aInit) override
-  {
-    if (!IsWebMEnabled()) {
-      return nullptr;
-    }
-    return new WebMDecoder(aInit);
-  }
-  MediaDecoderStateMachine* CreateStateMachine() override;
 
   // Returns true if aContainerType is a WebM type that we think we can render
   // with an enabled platform decoder backend.
   // If provided, codecs are checked for support.
   static bool IsSupportedType(const MediaContainerType& aContainerType);
 
-  void GetMozDebugReaderData(nsACString& aString) override;
 };
 
 } // namespace mozilla

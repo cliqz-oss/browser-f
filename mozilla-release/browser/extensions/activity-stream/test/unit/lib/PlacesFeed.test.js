@@ -3,7 +3,7 @@ const {HistoryObserver, BookmarksObserver} = PlacesFeed;
 const {GlobalOverrider} = require("test/unit/utils");
 const {actionTypes: at} = require("common/Actions.jsm");
 
-const FAKE_BOOKMARK = {bookmarkGuid: "xi31", bookmarkTitle: "Foo", lastModified: 123214232, url: "foo.com"};
+const FAKE_BOOKMARK = {bookmarkGuid: "xi31", bookmarkTitle: "Foo", dateAdded: 123214232, url: "foo.com"};
 const TYPE_BOOKMARK = 0; // This is fake, for testing
 
 const BLOCKED_EVENT = "newtab-linkBlocked"; // The event dispatched in NewTabUtils when a link is blocked;
@@ -98,8 +98,14 @@ describe("PlacesFeed", () => {
       assert.calledWith(global.NewTabUtils.activityStreamLinks.deleteBookmark, "g123kd");
     });
     it("should delete a history entry on DELETE_HISTORY_URL", () => {
-      feed.onAction({type: at.DELETE_HISTORY_URL, data: "guava.com"});
+      feed.onAction({type: at.DELETE_HISTORY_URL, data: {url: "guava.com", forceBlock: null}});
       assert.calledWith(global.NewTabUtils.activityStreamLinks.deleteHistoryEntry, "guava.com");
+      assert.notCalled(global.NewTabUtils.activityStreamLinks.blockURL);
+    });
+    it("should delete a history entry on DELETE_HISTORY_URL and force a site to be blocked if specified", () => {
+      feed.onAction({type: at.DELETE_HISTORY_URL, data: {url: "guava.com", forceBlock: "g123kd"}});
+      assert.calledWith(global.NewTabUtils.activityStreamLinks.deleteHistoryEntry, "guava.com");
+      assert.calledWith(global.NewTabUtils.activityStreamLinks.blockURL, {url: "guava.com"});
     });
     it("should call openNewWindow with the correct url on OPEN_NEW_WINDOW", () => {
       sinon.stub(feed, "openNewWindow");
@@ -173,15 +179,38 @@ describe("PlacesFeed", () => {
       assert.property(observer, "QueryInterface");
     });
     describe("#onDeleteURI", () => {
-      it("should dispatch a PLACES_LINK_DELETED action with the right url", () => {
+      it("should dispatch a PLACES_LINKS_DELETED action with the right url", async() => {
+        await observer.onDeleteURI({spec: "foo.com"});
+
+        assert.calledWith(dispatch, {type: at.PLACES_LINKS_DELETED, data: ["foo.com"]});
+      });
+      it("should dispatch a PLACES_LINKS_DELETED action with multiple urls", async() => {
+        const promise = observer.onDeleteURI({spec: "bar.com"});
         observer.onDeleteURI({spec: "foo.com"});
-        assert.calledWith(dispatch, {type: at.PLACES_LINK_DELETED, data: {url: "foo.com"}});
+        await promise;
+
+        const result = dispatch.firstCall.args[0].data;
+        assert.lengthOf(result, 2);
+        assert.equal(result[0], "bar.com");
+        assert.equal(result[1], "foo.com");
       });
     });
     describe("#onClearHistory", () => {
       it("should dispatch a PLACES_HISTORY_CLEARED action", () => {
         observer.onClearHistory();
         assert.calledWith(dispatch, {type: at.PLACES_HISTORY_CLEARED});
+      });
+    });
+    describe("Other empty methods (to keep code coverage happy)", () => {
+      it("should have a various empty functions for xpconnect happiness", () => {
+        observer.onBeginUpdateBatch();
+        observer.onEndUpdateBatch();
+        observer.onVisit();
+        observer.onTitleChanged();
+        observer.onFrecencyChanged();
+        observer.onManyFrecenciesChanged();
+        observer.onPageChanged();
+        observer.onDeleteVisits();
       });
     });
   });
@@ -198,27 +227,17 @@ describe("PlacesFeed", () => {
     });
     describe("#onItemAdded", () => {
       beforeEach(() => {
-        // Make sure getBookmark returns our fake bookmark if it is called with the expected guid
-        sandbox.stub(global.NewTabUtils.activityStreamProvider, "getBookmark")
-          .withArgs(FAKE_BOOKMARK.guid).returns(Promise.resolve(FAKE_BOOKMARK));
       });
       it("should dispatch a PLACES_BOOKMARK_ADDED action with the bookmark data", async () => {
         // Yes, onItemAdded has at least 8 arguments. See function definition for docs.
-        const args = [null, null, null, TYPE_BOOKMARK, null, null, null, FAKE_BOOKMARK.guid];
+        const args = [null, null, null, TYPE_BOOKMARK,
+          {spec: FAKE_BOOKMARK.url}, FAKE_BOOKMARK.bookmarkTitle,
+          FAKE_BOOKMARK.dateAdded,
+          FAKE_BOOKMARK.bookmarkGuid
+        ];
         await observer.onItemAdded(...args);
 
         assert.calledWith(dispatch, {type: at.PLACES_BOOKMARK_ADDED, data: FAKE_BOOKMARK});
-      });
-      it("should catch errors gracefully", async () => {
-        const e = new Error("test error");
-        global.NewTabUtils.activityStreamProvider.getBookmark.restore();
-        sandbox.stub(global.NewTabUtils.activityStreamProvider, "getBookmark")
-          .returns(Promise.reject(e));
-
-        const args = [null, null, null, TYPE_BOOKMARK, null, null, null, FAKE_BOOKMARK.guid];
-        await observer.onItemAdded(...args);
-
-        assert.calledWith(global.Components.utils.reportError, e);
       });
       it("should ignore events that are not of TYPE_BOOKMARK", async () => {
         const args = [null, null, null, "nottypebookmark"];
@@ -241,13 +260,17 @@ describe("PlacesFeed", () => {
         sandbox.stub(global.NewTabUtils.activityStreamProvider, "getBookmark")
           .withArgs(FAKE_BOOKMARK.guid).returns(Promise.resolve(FAKE_BOOKMARK));
       });
-      it("should dispatch a PLACES_BOOKMARK_CHANGED action with the bookmark data", async () => {
+      it("has an empty function to keep xpconnect happy", async () => {
+        await observer.onItemChanged();
+      });
+      // Disabled in Issue 3203, see observer.onItemChanged for more information.
+      it.skip("should dispatch a PLACES_BOOKMARK_CHANGED action with the bookmark data", async () => {
         const args = [null, "title", null, null, null, TYPE_BOOKMARK, null, FAKE_BOOKMARK.guid];
         await observer.onItemChanged(...args);
 
         assert.calledWith(dispatch, {type: at.PLACES_BOOKMARK_CHANGED, data: FAKE_BOOKMARK});
       });
-      it("should catch errors gracefully", async () => {
+      it.skip("should catch errors gracefully", async () => {
         const e = new Error("test error");
         global.NewTabUtils.activityStreamProvider.getBookmark.restore();
         sandbox.stub(global.NewTabUtils.activityStreamProvider, "getBookmark")
@@ -258,13 +281,21 @@ describe("PlacesFeed", () => {
 
         assert.calledWith(global.Components.utils.reportError, e);
       });
-      it("should ignore events that are not of TYPE_BOOKMARK", async () => {
+      it.skip("should ignore events that are not of TYPE_BOOKMARK", async () => {
         await observer.onItemChanged(null, "title", null, null, null, "nottypebookmark");
         assert.notCalled(dispatch);
       });
-      it("should ignore events that are not changes to uri/title", async () => {
+      it.skip("should ignore events that are not changes to uri/title", async () => {
         await observer.onItemChanged(null, "tags", null, null, null, TYPE_BOOKMARK);
         assert.notCalled(dispatch);
+      });
+    });
+    describe("Other empty methods (to keep code coverage happy)", () => {
+      it("should have a various empty functions for xpconnect happiness", () => {
+        observer.onBeginUpdateBatch();
+        observer.onEndUpdateBatch();
+        observer.onItemVisited();
+        observer.onItemMoved();
       });
     });
   });

@@ -12,6 +12,7 @@
 #ifndef mozilla_DeclarationBlock_h
 #define mozilla_DeclarationBlock_h
 
+#include "mozilla/Atomics.h"
 #include "mozilla/ServoUtils.h"
 #include "mozilla/StyleBackendType.h"
 
@@ -33,8 +34,8 @@ class DeclarationBlock
 protected:
   explicit DeclarationBlock(StyleBackendType aType)
     : mImmutable(false)
-    , mIsDirty(false)
     , mType(aType)
+    , mIsDirty(false)
   {
     mContainer.mRaw = 0;
   }
@@ -130,8 +131,6 @@ public:
                                nsAString& aValue) const;
   inline void GetPropertyValueByID(nsCSSPropertyID aPropID,
                                    nsAString& aValue) const;
-  inline void GetAuthoredPropertyValue(const nsAString& aProperty,
-                                       nsAString& aValue) const;
   inline bool GetPropertyIsImportant(const nsAString& aProperty) const;
   inline void RemoveProperty(const nsAString& aProperty);
   inline void RemovePropertyByID(nsCSSPropertyID aProperty);
@@ -156,10 +155,21 @@ private:
 
   // set when declaration put in the rule tree;
   bool mImmutable;
-  // True if this declaration has not been restyled after modified.
-  bool mIsDirty;
 
   const StyleBackendType mType;
+
+  // True if this declaration has not been restyled after modified.
+  //
+  // Since we can clear this flag from style worker threads, we use an Atomic.
+  //
+  // Note that although a single DeclarationBlock can be shared between
+  // different rule nodes (due to the style="" attribute cache), whenever a
+  // DeclarationBlock has its mIsDirty flag set to true, we always clone it to
+  // a unique object first. So when we clear this flag during Servo traversal,
+  // we know that we are clearing it on a DeclarationBlock that has a single
+  // reference, and there is no problem with another user of the same
+  // DeclarationBlock thinking that it is not dirty.
+  Atomic<bool, MemoryOrdering::Relaxed> mIsDirty;
 };
 
 } // namespace mozilla

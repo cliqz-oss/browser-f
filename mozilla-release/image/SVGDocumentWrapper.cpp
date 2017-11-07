@@ -25,7 +25,7 @@
 #include "nsSMILAnimationController.h"
 #include "nsServiceManagerUtils.h"
 #include "mozilla/dom/SVGSVGElement.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "mozilla/dom/SVGAnimatedLength.h"
 #include "nsMimeTypes.h"
 #include "DOMSVGLength.h"
@@ -276,7 +276,7 @@ SVGDocumentWrapper::Observe(nsISupports* aSubject,
     // Sever ties from rendering observers to helper-doc's root SVG node
     SVGSVGElement* svgElem = GetRootSVGElem();
     if (svgElem) {
-      nsSVGEffects::RemoveAllRenderingObservers(svgElem);
+      SVGObserverUtils::RemoveAllRenderingObservers(svgElem);
     }
 
     // Clean up at XPCOM shutdown time.
@@ -331,12 +331,12 @@ SVGDocumentWrapper::SetupViewer(nsIRequest* aRequest,
   nsCOMPtr<nsICategoryManager> catMan =
     do_GetService(NS_CATEGORYMANAGER_CONTRACTID);
   NS_ENSURE_TRUE(catMan, NS_ERROR_NOT_AVAILABLE);
-  nsXPIDLCString contractId;
+  nsCString contractId;
   nsresult rv = catMan->GetCategoryEntry("Gecko-Content-Viewers", IMAGE_SVG_XML,
                                          getter_Copies(contractId));
   NS_ENSURE_SUCCESS(rv, rv);
   nsCOMPtr<nsIDocumentLoaderFactory> docLoaderFactory =
-    do_GetService(contractId);
+    do_GetService(contractId.get());
   NS_ENSURE_TRUE(docLoaderFactory, NS_ERROR_NOT_AVAILABLE);
 
   nsCOMPtr<nsIContentViewer> viewer;

@@ -13,6 +13,7 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/APZCTreeManager.h"
 #include "mozilla/layers/APZCTreeManagerChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
@@ -224,16 +225,13 @@ GPUProcessManager::EnsureProtocolsReady()
 void
 GPUProcessManager::EnsureCompositorManagerChild()
 {
-  base::ProcessId gpuPid = EnsureGPUReady()
-                           ? mGPUChild->OtherPid()
-                           : base::GetCurrentProcId();
-
-  if (CompositorManagerChild::IsInitialized(gpuPid)) {
+  bool gpuReady = EnsureGPUReady();
+  if (CompositorManagerChild::IsInitialized(mProcessToken)) {
     return;
   }
 
-  if (!EnsureGPUReady()) {
-    CompositorManagerChild::InitSameProcess(AllocateNamespace());
+  if (!gpuReady) {
+    CompositorManagerChild::InitSameProcess(AllocateNamespace(), mProcessToken);
     return;
   }
 
@@ -250,7 +248,8 @@ GPUProcessManager::EnsureCompositorManagerChild()
   }
 
   mGPUChild->SendInitCompositorManager(Move(parentPipe));
-  CompositorManagerChild::Init(Move(childPipe), AllocateNamespace());
+  CompositorManagerChild::Init(Move(childPipe), AllocateNamespace(),
+                               mProcessToken);
 }
 
 void
@@ -429,6 +428,46 @@ GPUProcessManager::SimulateDeviceReset()
 }
 
 void
+GPUProcessManager::DisableWebRender(wr::WebRenderError aError)
+{
+  if (!gfx::gfxVars::UseWebRender()) {
+    return;
+  }
+  // Disable WebRender
+  if (aError == wr::WebRenderError::INITIALIZE) {
+    gfx::gfxConfig::GetFeature(gfx::Feature::WEBRENDER).ForceDisable(
+      gfx::FeatureStatus::Unavailable,
+      "WebRender initialization failed",
+      NS_LITERAL_CSTRING("FEATURE_FAILURE_WEBRENDER_INITIALIZE"));
+  } else if (aError == wr::WebRenderError::MAKE_CURRENT) {
+    gfx::gfxConfig::GetFeature(gfx::Feature::WEBRENDER).ForceDisable(
+      gfx::FeatureStatus::Unavailable,
+      "Failed to make render context current",
+      NS_LITERAL_CSTRING("FEATURE_FAILURE_WEBRENDER_MAKE_CURRENT"));
+  } else if (aError == wr::WebRenderError::RENDER) {
+    gfx::gfxConfig::GetFeature(gfx::Feature::WEBRENDER).ForceDisable(
+      gfx::FeatureStatus::Unavailable,
+      "Failed to render WebRender",
+      NS_LITERAL_CSTRING("FEATURE_FAILURE_WEBRENDER_RENDER"));
+  } else {
+    MOZ_ASSERT_UNREACHABLE("Invalid value");
+  }
+  gfx::gfxVars::SetUseWebRender(false);
+
+  if (mProcess) {
+    OnRemoteProcessDeviceReset(mProcess);
+  } else {
+    OnInProcessDeviceReset();
+  }
+}
+
+void
+GPUProcessManager::NotifyWebRenderError(wr::WebRenderError aError)
+{
+  DisableWebRender(aError);
+}
+
+void
 GPUProcessManager::OnInProcessDeviceReset()
 {
   RebuildInProcessSessions();
@@ -482,7 +521,7 @@ GPUProcessManager::OnProcessUnexpectedShutdown(GPUProcessHost* aHost)
 {
   MOZ_ASSERT(mProcess && mProcess == aHost);
 
-  CompositorManagerChild::OnGPUProcessLost();
+  CompositorManagerChild::OnGPUProcessLost(aHost->GetProcessToken());
   DestroyProcess();
 
   if (mNumProcessAttempts > uint32_t(gfxPrefs::GPUProcessMaxRestarts())) {

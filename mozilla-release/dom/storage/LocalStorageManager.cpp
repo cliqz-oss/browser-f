@@ -336,17 +336,6 @@ LocalStorageManager::CheckStorage(nsIPrincipal* aPrincipal,
   return NS_OK;
 }
 
-// Obsolete nsIDOMStorageManager methods
-
-NS_IMETHODIMP
-LocalStorageManager::GetLocalStorageForPrincipal(nsIPrincipal* aPrincipal,
-                                                 const nsAString& aDocumentURI,
-                                                 bool aPrivate,
-                                                 nsIDOMStorage** aRetval)
-{
-  return CreateStorage(nullptr, aPrincipal, aDocumentURI, aPrivate, aRetval);
-}
-
 void
 LocalStorageManager::ClearCaches(uint32_t aUnloadFlags,
                                  const OriginAttributesPattern& aPattern,
@@ -386,7 +375,8 @@ LocalStorageManager::Observe(const char* aTopic,
   }
 
   // Clear everything, caches + database
-  if (!strcmp(aTopic, "cookie-cleared")) {
+  if (!strcmp(aTopic, "cookie-cleared") ||
+      !strcmp(aTopic, "extension:purge-localStorage-caches")) {
     ClearCaches(LocalStorageCache::kUnloadComplete, pattern, EmptyCString());
     return NS_OK;
   }

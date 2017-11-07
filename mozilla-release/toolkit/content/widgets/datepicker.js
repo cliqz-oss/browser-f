@@ -40,6 +40,7 @@ function DatePicker(context) {
       this._setDefaultState();
       this._createComponents();
       this._update();
+      document.dispatchEvent(new CustomEvent("PickerReady"));
     },
 
     /*
@@ -61,7 +62,7 @@ function DatePicker(context) {
         isMonthPickerVisible: false,
         datetimeOrders: new Intl.DateTimeFormat(locale)
                           .formatToParts(new Date(0)).map(part => part.type),
-        getDayString: new Intl.NumberFormat(locale).format,
+        getDayString: day => day ? new Intl.NumberFormat(locale).format(day) : "",
         getWeekHeaderString: weekday => weekdayStrings[weekday],
         getMonthString: month => monthStrings[month],
         setSelection: date => {
@@ -108,7 +109,10 @@ function DatePicker(context) {
       this.components = {
         calendar: new Calendar({
           calViewSize: CAL_VIEW_SIZE,
-          locale: this.state.locale
+          locale: this.state.locale,
+          setSelection: this.state.setSelection,
+          getDayString: this.state.getDayString,
+          getWeekHeaderString: this.state.getWeekHeaderString
         }, {
           weekHeader: this.context.weekHeader,
           daysView: this.context.daysView
@@ -129,7 +133,7 @@ function DatePicker(context) {
     /**
      * Update date picker and its components.
      */
-    _update() {
+    _update(options = {}) {
       const { dateKeeper, isMonthPickerVisible } = this.state;
 
       if (isMonthPickerVisible) {
@@ -144,15 +148,13 @@ function DatePicker(context) {
         dateObj: dateKeeper.state.dateObj,
         months: this.state.months,
         years: this.state.years,
-        toggleMonthPicker: this.state.toggleMonthPicker
+        toggleMonthPicker: this.state.toggleMonthPicker,
+        noSmoothScroll: options.noSmoothScroll
       });
       this.components.calendar.setProps({
         isVisible: !isMonthPickerVisible,
         days: this.state.days,
-        weekHeaders: dateKeeper.state.weekHeaders,
-        setSelection: this.state.setSelection,
-        getDayString: this.state.getDayString,
-        getWeekHeaderString: this.state.getWeekHeaderString
+        weekHeaders: dateKeeper.state.weekHeaders
       });
 
       isMonthPickerVisible ?
@@ -262,13 +264,13 @@ function DatePicker(context) {
     set({ year, month, day }) {
       const { dateKeeper } = this.state;
 
-      dateKeeper.set({
-        year, month, day
+      dateKeeper.setCalendarMonth({
+        year, month
       });
       dateKeeper.setSelection({
         year, month, day
       });
-      this._update();
+      this._update({ noSmoothScroll: true });
     }
   };
 
@@ -349,14 +351,14 @@ function DatePicker(context) {
           items: props.months,
           isInfiniteScroll: true,
           isValueSet: this.state.isMonthSet,
-          smoothScroll: !this.state.firstOpened
+          smoothScroll: !(this.state.firstOpened || props.noSmoothScroll)
         });
         this.components.year.setState({
           value: props.dateObj.getUTCFullYear(),
           items: props.years,
           isInfiniteScroll: false,
           isValueSet: this.state.isYearSet,
-          smoothScroll: !this.state.firstOpened
+          smoothScroll: !(this.state.firstOpened || props.noSmoothScroll)
         });
         this.state.firstOpened = false;
       } else {

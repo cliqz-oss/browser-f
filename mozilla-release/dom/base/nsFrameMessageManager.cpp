@@ -52,10 +52,6 @@
 #include <algorithm>
 #include "chrome/common/ipc_channel.h" // for IPC::Channel::kMaximumMessageSize
 
-#ifdef MOZ_CRASHREPORTER
-#include "nsExceptionHandler.h"
-#endif
-
 #ifdef ANDROID
 #include <android/log.h>
 #endif
@@ -812,6 +808,10 @@ nsFrameMessageManager::ReleaseCachedProcesses()
 NS_IMETHODIMP
 nsFrameMessageManager::Dump(const nsAString& aStr)
 {
+  if (!nsContentUtils::DOMWindowDumpEnabled()) {
+    return NS_OK;
+  }
+
 #ifdef ANDROID
   __android_log_print(ANDROID_LOG_INFO, "Gecko", "%s", NS_ConvertUTF16toUTF8(aStr).get());
 #endif
@@ -1311,6 +1311,16 @@ nsFrameMessageManager::GetProcessMessageManager(nsIMessageSender** aPMM)
   return NS_OK;
 }
 
+NS_IMETHODIMP
+nsFrameMessageManager::GetRemoteType(nsAString& aRemoteType)
+{
+  aRemoteType.Truncate();
+  if (mCallback) {
+    return mCallback->DoGetRemoteType(aRemoteType);
+  }
+  return NS_OK;
+}
+
 namespace {
 
 struct MessageManagerReferentCount
@@ -1648,7 +1658,7 @@ nsMessageManagerScriptExecutor::TryCacheLoadAndCompileScript(
       return;
     }
 
-    JS::CompileOptions options(cx, JSVERSION_LATEST);
+    JS::CompileOptions options(cx, JSVERSION_DEFAULT);
     options.setFileAndLine(url.get(), 1);
     options.setNoScriptRval(true);
 
@@ -1709,25 +1719,23 @@ nsMessageManagerScriptExecutor::InitChildGlobalInternal(
   AutoSafeJSContext cx;
   nsContentUtils::GetSecurityManager()->GetSystemPrincipal(getter_AddRefs(mPrincipal));
 
-  nsIXPConnect* xpc = nsContentUtils::XPConnect();
-  const uint32_t flags = nsIXPConnect::INIT_JS_STANDARD_CLASSES;
+  const uint32_t flags = xpc::INIT_JS_STANDARD_CLASSES;
 
   JS::CompartmentOptions options;
   options.creationOptions().setSystemZone();
-  options.behaviors().setVersion(JSVERSION_LATEST);
+  options.behaviors().setVersion(JSVERSION_DEFAULT);
 
   if (xpc::SharedMemoryEnabled()) {
     options.creationOptions().setSharedMemoryAndAtomicsEnabled(true);
   }
 
-  nsCOMPtr<nsIXPConnectJSObjectHolder> globalHolder;
-  nsresult rv =
-    xpc->InitClassesWithNewWrappedGlobal(cx, aScope, mPrincipal,
-                                         flags, options,
-                                         getter_AddRefs(globalHolder));
+  JS::Rooted<JSObject*> global(cx);
+  nsresult rv = xpc::InitClassesWithNewWrappedGlobal(cx, aScope, mPrincipal,
+                                                     flags, options,
+                                                     &global);
   NS_ENSURE_SUCCESS(rv, false);
 
-  mGlobal = globalHolder->GetJSObject();
+  mGlobal = global;
   NS_ENSURE_TRUE(mGlobal, false);
 
   // Set the location information for the new global, so that tools like

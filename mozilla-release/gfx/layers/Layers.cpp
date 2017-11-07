@@ -525,7 +525,7 @@ Layer::CalculateScissorRect(const RenderTargetIntRect& aCurrentScissorRect)
     // See DefaultComputeEffectiveTransforms below
     NS_ASSERTION(is2D && matrix.PreservesAxisAlignedRectangles(),
                  "Non preserves axis aligned transform with clipped child should have forced intermediate surface");
-    gfx::Rect r(scissor.x, scissor.y, scissor.width, scissor.height);
+    gfx::Rect r(scissor.x, scissor.y, scissor.Width(), scissor.Height());
     gfxRect trScissor = gfx::ThebesRect(matrix.TransformBounds(r));
     trScissor.Round();
     IntRect tmp;
@@ -687,6 +687,18 @@ Layer::GetEffectiveMixBlendMode()
   }
 
   return mSimpleAttrs.MixBlendMode();
+}
+
+Matrix4x4
+Layer::ComputeTransformToPreserve3DRoot()
+{
+  Matrix4x4 transform = GetLocalTransform();
+  for (Layer* layer = GetParent();
+       layer && layer->Extend3DContext();
+       layer = layer->GetParent()) {
+    transform = transform * layer->GetLocalTransform();
+  }
+  return transform;
 }
 
 void
@@ -1340,8 +1352,7 @@ ContainerLayer::DefaultComputeSupportsComponentAlphaChildren(bool* aNeedsSurface
       if (HasOpaqueAncestorLayer(this) &&
           GetEffectiveTransform().Is2D(&transform) &&
           !gfx::ThebesMatrix(transform).HasNonIntegerTranslation() &&
-          blendMode == gfx::CompositionOp::OP_OVER &&
-          Manager()->SupportsBackdropCopyForComponentAlpha())
+          blendMode == gfx::CompositionOp::OP_OVER)
       {
         mSupportsComponentAlphaChildren = true;
         needsSurfaceCopy = true;
@@ -1883,8 +1894,8 @@ DumpRect(layerscope::LayersPacket::Layer::Rect* aLayerRect,
 {
   aLayerRect->set_x(aRect.x);
   aLayerRect->set_y(aRect.y);
-  aLayerRect->set_w(aRect.width);
-  aLayerRect->set_h(aRect.height);
+  aLayerRect->set_w(aRect.Width());
+  aLayerRect->set_h(aRect.Height());
 }
 
 // The static helper function sets the nsIntRegion into the packet
@@ -2148,13 +2159,9 @@ BorderLayer::DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent)
 
 CanvasLayer::CanvasLayer(LayerManager* aManager, void* aImplData)
   : Layer(aManager, aImplData)
-  , mPreTransCallback(nullptr)
-  , mPreTransCallbackData(nullptr)
-  , mPostTransCallback(nullptr)
-  , mPostTransCallbackData(nullptr)
-  , mSamplingFilter(gfx::SamplingFilter::GOOD)
-  , mDirty(false)
-{}
+  , mSamplingFilter(SamplingFilter::GOOD)
+{
+}
 
 CanvasLayer::~CanvasLayer() = default;
 
@@ -2199,6 +2206,16 @@ CanvasLayer::DumpPacket(layerscope::LayersPacket* aPacket, const void* aParent)
   LayersPacket::Layer* layer = aPacket->mutable_layer(aPacket->layer_size()-1);
   layer->set_type(LayersPacket::Layer::CanvasLayer);
   DumpFilter(layer, mSamplingFilter);
+}
+
+CanvasRenderer*
+CanvasLayer::CreateOrGetCanvasRenderer()
+{
+  if (!mCanvasRenderer) {
+    mCanvasRenderer.reset(CreateCanvasRendererInternal());
+  }
+
+  return mCanvasRenderer.get();
 }
 
 void
@@ -2456,7 +2473,7 @@ SetAntialiasingFlags(Layer* aLayer, DrawTarget* aTarget)
 
   const IntRect& bounds = aLayer->GetVisibleRegion().ToUnknownRegion().GetBounds();
   gfx::Rect transformedBounds = aTarget->GetTransform().TransformBounds(gfx::Rect(Float(bounds.x), Float(bounds.y),
-                                                                                  Float(bounds.width), Float(bounds.height)));
+                                                                                  Float(bounds.Width()), Float(bounds.Height())));
   transformedBounds.RoundOut();
   IntRect intTransformedBounds;
   transformedBounds.ToIntRect(&intTransformedBounds);
@@ -2468,7 +2485,7 @@ SetAntialiasingFlags(Layer* aLayer, DrawTarget* aTarget)
 IntRect
 ToOutsideIntRect(const gfxRect &aRect)
 {
-  return IntRect::RoundOut(aRect.x, aRect.y, aRect.width, aRect.height);
+  return IntRect::RoundOut(aRect.x, aRect.y, aRect.Width(), aRect.Height());
 }
 
 TextLayer::TextLayer(LayerManager* aManager, void* aImplData)

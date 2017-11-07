@@ -32,15 +32,24 @@ protected:
 public:
   Layer* GetLayer() override { return this; }
   void RenderLayer(wr::DisplayListBuilder& aBuilder,
+                   wr::IpcResourceUpdateQueue& aResources,
                    const StackingContextHelper& aSc) override;
   Maybe<wr::WrImageMask> RenderMaskLayer(const StackingContextHelper& aSc,
-                                         const gfx::Matrix4x4& aTransform) override;
+                                         const gfx::Matrix4x4& aTransform,
+                                         wr::IpcResourceUpdateQueue& aResources) override;
 
 protected:
   CompositableType GetImageClientType();
   void ClearWrResources();
 
   void AddWRVideoImage(size_t aChannelNumber);
+
+  Maybe<wr::ImageKey>
+  UpdateImageKey(ImageClientSingle* aImageClient,
+                 ImageContainer* aContainer,
+                 Maybe<wr::ImageKey>& aOldKey,
+                 wr::ExternalImageId& aExternalImageId,
+                 wr::IpcResourceUpdateQueue& aResources);
 
   wr::MaybeExternalImageId mExternalImageId;
   Maybe<wr::ImageKey> mKey;

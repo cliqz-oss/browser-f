@@ -40,6 +40,14 @@
       }
     }
   },
+  "imageCroppedWarning": {
+    "message": "Esta imagem foi recortada para $PIXELS$px.",
+    "placeholders": {
+      "pixels": {
+        "content": "$1"
+      }
+    }
+  },
   "requestErrorTitle": {
     "message": "Oops! Fora do ar."
   },
@@ -79,25 +87,31 @@
   "genericErrorDetails": {
     "message": "Não temos certeza do que acabou de acontecer. Tentar novamente ou fazer uma captura de uma página diferente?"
   },
-  "tourBodyOne": {
+  "tourBodyIntro": {
     "message": "Capture, salve e compartilhe telas sem sair do Firefox."
   },
-  "tourHeaderTwo": {
+  "tourHeaderPageAction": {
+    "message": "Um novo jeito de salvar"
+  },
+  "tourBodyPageAction": {
+    "message": "Expandir o menu de ações de página na barra de endereços sempre que você quiser fazer uma captura de tela."
+  },
+  "tourHeaderClickAndDrag": {
     "message": "Capture apenas o que você quer"
   },
-  "tourBodyTwo": {
+  "tourBodyClickAndDrag": {
     "message": "Clique e arraste para capturar apenas uma parte de uma página. Você também pode passar o mouse para realçar sua seleção."
   },
-  "tourHeaderThree": {
+  "tourHeaderFullPage": {
     "message": "Capture janelas ou páginas inteiras"
   },
-  "tourBodyThree": {
+  "tourBodyFullPage": {
     "message": "Selecione os botões no canto superior direito para capturar a área visível na janela ou capturar uma página inteira."
   },
-  "tourHeaderFour": {
+  "tourHeaderDownloadUpload": {
     "message": "Como você quiser"
   },
-  "tourBodyFour": {
+  "tourBodyDownloadUpload": {
     "message": "Salve as suas capturas na Web para compartilhar mais facilmente ou baixe-as no seu computador. Você também pode clicar no botão Minhas capturas para encontras todas as capturas que tirou."
   },
   "tourSkip": {
@@ -112,8 +126,8 @@
   "tourDone": {
     "message": "Concluído"
   },
-  "termsAndPrivacyNoticeCloudServices": {
-    "message": "Usando o Firefox Screenshots, você concorda com os $TERMSANDPRIVACYNOTICETERMSLINK$ e $TERMSANDPRIVACYNOTICEPRIVACYLINK$ dos serviços na nuvem do Firefox.",
+  "termsAndPrivacyNotice2": {
+    "message": "Ao usar o Firefox Screenshots, você concorda com os $TERMSANDPRIVACYNOTICETERMSLINK$ e $TERMSANDPRIVACYNOTICEPRIVACYLINK$.",
     "placeholders": {
       "termsandprivacynoticetermslink": {
         "content": "$1"
@@ -128,5 +142,8 @@
   },
   "termsAndPrivacyNoticyPrivacyLink": {
     "message": "Política de privacidade"
+  },
+  "libraryLabel": {
+    "message": "Screenshots"
   }
 }

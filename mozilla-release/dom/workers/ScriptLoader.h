@@ -8,13 +8,13 @@
 #define mozilla_dom_workers_scriptloader_h__
 
 #include "Workers.h"
-#include "nsIContentPolicyBase.h"
+#include "nsIContentPolicy.h"
+#include "nsStringFwd.h"
 
 class nsIPrincipal;
 class nsIURI;
 class nsIDocument;
 class nsILoadGroup;
-class nsString;
 class nsIChannel;
 
 namespace mozilla {

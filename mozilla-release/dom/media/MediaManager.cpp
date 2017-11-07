@@ -69,10 +69,6 @@
 #include "browser_logging/WebRtcLog.h"
 #endif
 
-#ifdef MOZ_B2G
-#include "MediaPermissionGonk.h"
-#endif
-
 #if defined (XP_WIN)
 #include "mozilla/WindowsVersion.h"
 #include <winsock2.h>
@@ -956,7 +952,7 @@ protected:
 
 NS_IMPL_ADDREF_INHERITED(FakeTrackSourceGetter, MediaStreamTrackSourceGetter)
 NS_IMPL_RELEASE_INHERITED(FakeTrackSourceGetter, MediaStreamTrackSourceGetter)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(FakeTrackSourceGetter)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(FakeTrackSourceGetter)
 NS_INTERFACE_MAP_END_INHERITING(MediaStreamTrackSourceGetter)
 NS_IMPL_CYCLE_COLLECTION_INHERITED(FakeTrackSourceGetter,
                                    MediaStreamTrackSourceGetter,
@@ -1066,8 +1062,7 @@ public:
       mAudioDevice ? MediaStreamGraph::AUDIO_THREAD_DRIVER
                    : MediaStreamGraph::SYSTEM_THREAD_DRIVER;
     MediaStreamGraph* msg =
-      MediaStreamGraph::GetInstance(graphDriverType,
-                                    dom::AudioChannel::Normal, window);
+      MediaStreamGraph::GetInstance(graphDriverType, window);
 
     RefPtr<DOMMediaStream> domStream;
     RefPtr<SourceMediaStream> stream;
@@ -1942,10 +1937,6 @@ MediaManager::Get() {
                                             __LINE__,
                                             NS_LITERAL_STRING("Media shutdown"));
     MOZ_RELEASE_ASSERT(NS_SUCCEEDED(rv));
-#ifdef MOZ_B2G
-    // Init MediaPermissionManager before sending out any permission requests.
-    (void) MediaPermissionManager::GetInstance();
-#endif //MOZ_B2G
   }
   return sSingleton;
 }
@@ -2943,6 +2934,12 @@ MediaManager::AddWindowID(uint64_t aWindowId,
     MOZ_ASSERT(false, "Window already added");
     return;
   }
+
+  auto* window = nsGlobalWindow::GetInnerWindowWithId(aWindowId);
+  if (window) {
+    window->AsInner()->UpdateUserMediaCount(1);
+  }
+
   GetActiveWindows()->Put(aWindowId, aListener);
 }
 
@@ -2957,6 +2954,8 @@ MediaManager::RemoveWindowID(uint64_t aWindowId)
     LOG(("No inner window for %" PRIu64, aWindowId));
     return;
   }
+
+  window->AsInner()->UpdateUserMediaCount(-1);
 
   nsPIDOMWindowOuter* outer = window->AsInner()->GetOuterWindow();
   if (!outer) {
@@ -3735,8 +3734,7 @@ SourceListener::StopSharing()
     MOZ_RELEASE_ASSERT(window);
     window->SetAudioCapture(false);
     MediaStreamGraph* graph =
-      MediaStreamGraph::GetInstance(MediaStreamGraph::AUDIO_THREAD_DRIVER,
-                                    dom::AudioChannel::Normal, window);
+      MediaStreamGraph::GetInstance(MediaStreamGraph::AUDIO_THREAD_DRIVER, window);
     graph->UnregisterCaptureStreamForWindow(windowID);
     mStream->Destroy();
   }
@@ -4069,14 +4067,14 @@ GetUserMediaWindowListener::StopRawID(const nsString& removedDeviceID)
       nsString id;
       source->GetAudioDevice()->GetRawId(id);
       if (removedDeviceID.Equals(id)) {
-        source->Stop();
+        source->StopTrack(kAudioTrack);
       }
     }
     if (source->GetVideoDevice()) {
       nsString id;
       source->GetVideoDevice()->GetRawId(id);
       if (removedDeviceID.Equals(id)) {
-        source->Stop();
+        source->StopTrack(kVideoTrack);
       }
     }
   }

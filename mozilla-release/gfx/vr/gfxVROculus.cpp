@@ -233,7 +233,15 @@ VROculusSession::StartPresentation(const IntSize& aSize)
     mPresenting = true;
     mPresentationSize = aSize;
     Refresh();
-    mPresentationStart = TimeStamp::Now();
+    mTelemetry.Clear();
+    mTelemetry.mPresentationStart = TimeStamp::Now();
+
+    ovrPerfStats perfStats;
+    if (ovr_GetPerfStats(mSession, &perfStats) == ovrSuccess) {
+      if (perfStats.FrameStatsCount) {
+        mTelemetry.mLastDroppedFrameCount = perfStats.FrameStats[0].AppDroppedFrameCount;
+      }
+    }
   }
 }
 
@@ -243,9 +251,22 @@ VROculusSession::StopPresentation()
   if (mPresenting) {
     mLastPresentationEnd = TimeStamp::Now();
     mPresenting = false;
+
+    const TimeDuration duration = mLastPresentationEnd - mTelemetry.mPresentationStart;
     Telemetry::Accumulate(Telemetry::WEBVR_USERS_VIEW_IN, 1);
-    Telemetry::AccumulateTimeDelta(Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OCULUS,
-                                   mPresentationStart);
+    Telemetry::Accumulate(Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OCULUS,
+                          duration.ToMilliseconds());
+
+    if (mTelemetry.IsLastDroppedFrameValid() && duration.ToSeconds()) {
+      ovrPerfStats perfStats;
+      if (ovr_GetPerfStats(mSession, &perfStats) == ovrSuccess) {
+        if (perfStats.FrameStatsCount) {
+          const uint32_t droppedFramesPerSec = (perfStats.FrameStats[0].AppDroppedFrameCount -
+                                                mTelemetry.mLastDroppedFrameCount) / duration.ToSeconds();
+          Telemetry::Accumulate(Telemetry::WEBVR_DROPPED_FRAMES_IN_OCULUS, droppedFramesPerSec);
+        }
+      }
+    }
     Refresh();
   }
 }
@@ -889,25 +910,12 @@ VRDisplayOculus::GetSensorState(double absTime)
 void
 VRDisplayOculus::StartPresentation()
 {
+  if (!CreateD3DObjects()) {
+    return;
+  }
   mSession->StartPresentation(IntSize(mDisplayInfo.mEyeResolution.width * 2, mDisplayInfo.mEyeResolution.height));
   if (!mSession->IsRenderReady()) {
     return;
-  }
-
-  if (!mDevice) {
-    mDevice = gfx::DeviceManagerDx::Get()->GetCompositorDevice();
-    if (!mDevice) {
-      NS_WARNING("Failed to get a D3D11Device for Oculus");
-      return;
-    }
-  }
-
-  if (!mContext) {
-    mDevice->GetImmediateContext(getter_AddRefs(mContext));
-    if (!mContext) {
-      NS_WARNING("Failed to get immediate context for Oculus");
-      return;
-    }
   }
 
   if (!mQuadVS) {
@@ -1027,7 +1035,16 @@ VRDisplayOculus::SubmitFrame(TextureSourceD3D11* aSource,
   const gfx::Rect& aLeftEyeRect,
   const gfx::Rect& aRightEyeRect)
 {
-  if (!mSession->IsRenderReady() || !mDevice || !mContext) {
+  if (!CreateD3DObjects()) {
+    return false;
+  }
+
+  AutoRestoreRenderState restoreState(this);
+  if (!restoreState.IsSuccess()) {
+    return false;
+  }
+
+  if (!mSession->IsRenderReady()) {
     return false;
   }
   /**
@@ -1120,12 +1137,12 @@ VRDisplayOculus::SubmitFrame(TextureSourceD3D11* aSource,
   layer.Fov[1] = mFOVPort[1];
   layer.Viewport[0].Pos.x = aSize.width * aLeftEyeRect.x;
   layer.Viewport[0].Pos.y = aSize.height * aLeftEyeRect.y;
-  layer.Viewport[0].Size.w = aSize.width * aLeftEyeRect.width;
-  layer.Viewport[0].Size.h = aSize.height * aLeftEyeRect.height;
+  layer.Viewport[0].Size.w = aSize.width * aLeftEyeRect.Width();
+  layer.Viewport[0].Size.h = aSize.height * aLeftEyeRect.Height();
   layer.Viewport[1].Pos.x = aSize.width * aRightEyeRect.x;
   layer.Viewport[1].Pos.y = aSize.height * aRightEyeRect.y;
-  layer.Viewport[1].Size.w = aSize.width * aRightEyeRect.width;
-  layer.Viewport[1].Size.h = aSize.height * aRightEyeRect.height;
+  layer.Viewport[1].Size.w = aSize.width * aRightEyeRect.Width();
+  layer.Viewport[1].Size.h = aSize.height * aRightEyeRect.Height();
 
   const Point3D& l = mDisplayInfo.mEyeTranslation[0];
   const Point3D& r = mDisplayInfo.mEyeTranslation[1];

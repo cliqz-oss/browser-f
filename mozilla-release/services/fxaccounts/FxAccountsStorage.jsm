@@ -31,9 +31,8 @@ this.FxAccountsStorageManager = function(options = {}) {
     baseDir: options.baseDir || OS.Constants.Path.profileDir,
   }
   this.plainStorage = new JSONStorage(this.options);
-  // On b2g we have no loginManager for secure storage, and tests may want
-  // to pretend secure storage isn't available.
-  let useSecure = "useSecure" in options ? options.useSecure : haveLoginManager;
+  // Tests may want to pretend secure storage isn't available.
+  let useSecure = "useSecure" in options ? options.useSecure : true;
   if (useSecure) {
     this.secureStorage = new LoginManagerStorage();
   } else {
@@ -209,11 +208,8 @@ this.FxAccountsStorageManager.prototype = {
       // update fields.
       throw new Error("No user is logged in");
     }
-    if (!newFields || "uid" in newFields || "email" in newFields) {
-      // Once we support
-      // user changing email address this may need to change, but it's not
-      // clear how we would be told of such a change anyway...
-      throw new Error("Can't change uid or email address");
+    if (!newFields || "uid" in newFields) {
+      throw new Error("Can't change uid");
     }
     log.debug("_updateAccountData with items", Object.keys(newFields));
     // work out what bucket.
@@ -601,9 +597,3 @@ LoginManagerStorage.prototype = {
     return null;
   },
 }
-
-// A global variable to indicate if the login manager is available - it doesn't
-// exist on b2g. Defined here as the use of preprocessor directives skews line
-// numbers in the runtime, meaning stack-traces etc end up off by a few lines.
-// Doing it at the end of the file makes that less of a pita.
-var haveLoginManager = !AppConstants.MOZ_B2G;

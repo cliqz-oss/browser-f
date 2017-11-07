@@ -15,12 +15,6 @@
 
 #  include "mozjemalloc_types.h"
 
-#ifndef MALLOC_USABLE_SIZE_CONST_PTR
-#define MALLOC_USABLE_SIZE_CONST_PTR const
-#endif
-
-typedef MALLOC_USABLE_SIZE_CONST_PTR void * usable_ptr_t;
-
 #  define MALLOC_FUNCS_MALLOC 1
 #  define MALLOC_FUNCS_JEMALLOC 2
 #  define MALLOC_FUNCS_INIT 4
@@ -35,10 +29,6 @@ typedef MALLOC_USABLE_SIZE_CONST_PTR void * usable_ptr_t;
 #endif
 
 #ifdef MALLOC_DECL
-#  ifndef MALLOC_DECL_VOID
-#    define MALLOC_DECL_VOID(func, ...) MALLOC_DECL(func, void, __VA_ARGS__)
-#  endif
-
 #  if MALLOC_FUNCS & MALLOC_FUNCS_INIT
 MALLOC_DECL(init, void, const malloc_table_t *)
 #  endif
@@ -51,20 +41,61 @@ MALLOC_DECL(posix_memalign, int, void **, size_t, size_t)
 MALLOC_DECL(aligned_alloc, void *, size_t, size_t)
 MALLOC_DECL(calloc, void *, size_t, size_t)
 MALLOC_DECL(realloc, void *, void *, size_t)
-MALLOC_DECL_VOID(free, void *)
+MALLOC_DECL(free, void, void *)
 MALLOC_DECL(memalign, void *, size_t, size_t)
 MALLOC_DECL(valloc, void *, size_t)
 MALLOC_DECL(malloc_usable_size, size_t, usable_ptr_t)
 MALLOC_DECL(malloc_good_size, size_t, size_t)
 #  endif
 #  if MALLOC_FUNCS & MALLOC_FUNCS_JEMALLOC
-MALLOC_DECL_VOID(jemalloc_stats, jemalloc_stats_t *)
-MALLOC_DECL_VOID(jemalloc_purge_freed_pages)
-MALLOC_DECL_VOID(jemalloc_free_dirty_pages)
-MALLOC_DECL_VOID(jemalloc_thread_local_arena, jemalloc_bool)
+MALLOC_DECL(jemalloc_stats, void, jemalloc_stats_t *)
+/*
+ * On some operating systems (Mac), we use madvise(MADV_FREE) to hand pages
+ * back to the operating system.  On Mac, the operating system doesn't take
+ * this memory back immediately; instead, the OS takes it back only when the
+ * machine is running out of physical memory.
+ *
+ * This is great from the standpoint of efficiency, but it makes measuring our
+ * actual RSS difficult, because pages which we've MADV_FREE'd shouldn't count
+ * against our RSS.
+ *
+ * This function explicitly purges any MADV_FREE'd pages from physical memory,
+ * causing our reported RSS match the amount of memory we're actually using.
+ *
+ * Note that this call is expensive in two ways.  First, it may be slow to
+ * execute, because it may make a number of slow syscalls to free memory.  This
+ * function holds the big jemalloc locks, so basically all threads are blocked
+ * while this function runs.
+ *
+ * This function is also expensive in that the next time we go to access a page
+ * which we've just explicitly decommitted, the operating system has to attach
+ * to it a physical page!  If we hadn't run this function, the OS would have
+ * less work to do.
+ *
+ * If MALLOC_DOUBLE_PURGE is not defined, this function does nothing.
+ */
+MALLOC_DECL(jemalloc_purge_freed_pages, void)
+
+/*
+ * Free all unused dirty pages in all arenas. Calling this function will slow
+ * down subsequent allocations so it is recommended to use it only when
+ * memory needs to be reclaimed at all costs (see bug 805855). This function
+ * provides functionality similar to mallctl("arenas.purge") in jemalloc 3.
+ */
+MALLOC_DECL(jemalloc_free_dirty_pages, void)
+
+/*
+ * Opt in or out of a thread local arena (bool argument is whether to opt-in
+ * (true) or out (false)).
+ */
+MALLOC_DECL(jemalloc_thread_local_arena, void, bool)
+
+/*
+ * Provide information about any allocation enclosing the given address.
+ */
+MALLOC_DECL(jemalloc_ptr_info, void, const void*, jemalloc_ptr_info_t*)
 #  endif
 
-#  undef MALLOC_DECL_VOID
 #endif /* MALLOC_DECL */
 
 #undef MALLOC_DECL
