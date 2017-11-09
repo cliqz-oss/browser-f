@@ -19,16 +19,10 @@ def FirefoxBranding():
             'VisualElements_70.png',
         ]
         BRANDING_FILES += [
-<<<<<<< HEAD
             'appname.bmp',
             'bgintro.bmp',
-            'bgstub.bmp',
-||||||| merged common ancestors
-            'bgstub.bmp',
-=======
             'bgstub.jpg',
             'bgstub_2x.jpg',
->>>>>>> origin/upstream-releases
             'branding.nsi',
             'document.ico',
             'firefox.ico',

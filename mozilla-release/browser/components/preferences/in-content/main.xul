@@ -279,16 +279,6 @@
       hidden="true"
       data-category="paneGeneral">
   <label class="header-name" flex="1">&paneGeneral.title;</label>
-<<<<<<< HEAD
-  <label class="header-mozilla-support-label">
-    &mozillaSupportHelp.label;
-    <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
-  </label>
-
-||||||| merged common ancestors
-  <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
-=======
->>>>>>> origin/upstream-releases
 </hbox>
 
 <!-- Startup -->
@@ -318,21 +308,8 @@
 
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
-<<<<<<< HEAD
-    <hbox align="center">
-      <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
-                label="&alwaysCheckDefault2.label;"
-                accesskey="&alwaysCheckDefault2.accesskey;"/>
-    </hbox>
-||||||| merged common ancestors
-    <hbox align="center">
-      <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
-                label="&alwaysCheckDefault2.label;" accesskey="&alwaysCheckDefault2.accesskey;"/>
-    </hbox>
-=======
     <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
               label="&alwaysCheckDefault2.label;" accesskey="&alwaysCheckDefault2.accesskey;"/>
->>>>>>> origin/upstream-releases
     <deck id="setDefaultPane">
       <hbox align="center" class="indent">
         <image class="face-sad"/>
@@ -350,8 +327,9 @@
   </vbox>
 #endif
 
-<<<<<<< HEAD
-  <vbox id="startupPagesBox">
+  <vbox id="startupPageBox">
+    <label accesskey="&startupPage2.accesskey;"
+           control="browserStartupPage">&startupPage2.label;</label>
     <checkbox
         id="restoreSessionCheckbox"
         preference="browser.startup.restoreTabs"
@@ -360,142 +338,8 @@
         id="addCliqzFrashTabCheckbox"
         preference="browser.startup.addFreshTab"
         label="&startupUserHomePage.label;"/>
-  </vbox>
-  <html:table id="startupTable">
 # Replaced by two checkboxes above.
 #if 0
-    <html:tr>
-      <html:td class="label-cell">
-        <label accesskey="&startupPage.accesskey;"
-               control="browserStartupPage">&startupPage.label;</label>
-      </html:td>
-      <html:td class="content-cell">
-        <menulist id="browserStartupPage"
-                  class="content-cell-item"
-                  preference="browser.startup.page">
-          <menupopup>
-          <menuitem label="&startupUserHomePage.label;"
-                    value="1"
-                    id="browserStartupHomePage"/>
-          <menuitem label="&startupBlankPage.label;"
-                    value="0"
-                    id="browserStartupBlank"/>
-          <menuitem label="&startupPrevSession.label;"
-                    value="3"
-                    id="browserStartupLastSession"/>
-          </menupopup>
-        </menulist>
-      </html:td>
-    </html:tr>
-#endif
-    <html:tr>
-      <html:td class="label-cell">
-        <label accesskey="&homepage.accesskey;"
-               control="browserHomePage">&homepage.label;</label>
-      </html:td>
-      <html:td class="content-cell">
-        <textbox id="browserHomePage"
-                 class="padded uri-element content-cell-item"
-                 type="autocomplete"
-                 autocompletesearch="unifiedcomplete"
-                 onsyncfrompreference="return gMainPane.syncFromHomePref();"
-                 onsynctopreference="return gMainPane.syncToHomePref(this.value);"
-                 placeholder="&abouthome.pageTitle;"
-                 preference="browser.startup.homepage"/>
-      </html:td>
-    </html:tr>
-    <html:tr>
-      <html:td class="label-cell" />
-      <html:td class="content-cell homepage-buttons">
-        <button id="useCurrent"
-                class="content-cell-item"
-                label=""
-                accesskey="&useCurrentPage.accesskey;"
-                label1="&useCurrentPage.label;"
-                label2="&useMultiple.label;"
-                preference="pref.browser.homepage.disable_button.current_page"/>
-        <button id="useBookmark"
-                class="content-cell-item"
-                label="&chooseBookmark.label;"
-                accesskey="&chooseBookmark.accesskey;"
-                preference="pref.browser.homepage.disable_button.bookmark_page"/>
-        <button id="restoreDefaultHomePage"
-                class="content-cell-item"
-                label="&restoreDefault.label;"
-                accesskey="&restoreDefault.accesskey;"
-                preference="pref.browser.homepage.disable_button.restore_default"/>
-      </html:td>
-    </html:tr>
-  </html:table>
-
-||||||| merged common ancestors
-  <html:table id="startupTable">
-    <html:tr>
-      <html:td class="label-cell">
-        <label accesskey="&startupPage.accesskey;"
-               control="browserStartupPage">&startupPage.label;</label>
-      </html:td>
-      <html:td class="content-cell">
-        <menulist id="browserStartupPage"
-                  class="content-cell-item"
-                  preference="browser.startup.page">
-          <menupopup>
-          <menuitem label="&startupUserHomePage.label;"
-                    value="1"
-                    id="browserStartupHomePage"/>
-          <menuitem label="&startupBlankPage.label;"
-                    value="0"
-                    id="browserStartupBlank"/>
-          <menuitem label="&startupPrevSession.label;"
-                    value="3"
-                    id="browserStartupLastSession"/>
-          </menupopup>
-        </menulist>
-      </html:td>
-    </html:tr>
-    <html:tr>
-      <html:td class="label-cell">
-        <label accesskey="&homepage.accesskey;"
-               control="browserHomePage">&homepage.label;</label>
-      </html:td>
-      <html:td class="content-cell">
-        <textbox id="browserHomePage"
-                 class="padded uri-element content-cell-item"
-                 type="autocomplete"
-                 autocompletesearch="unifiedcomplete"
-                 onsyncfrompreference="return gMainPane.syncFromHomePref();"
-                 onsynctopreference="return gMainPane.syncToHomePref(this.value);"
-                 placeholder="&abouthome.pageTitle;"
-                 preference="browser.startup.homepage"/>
-      </html:td>
-    </html:tr>
-    <html:tr>
-      <html:td class="label-cell" />
-      <html:td class="content-cell homepage-buttons">
-        <button id="useCurrent"
-                class="content-cell-item"
-                label=""
-                accesskey="&useCurrentPage.accesskey;"
-                label1="&useCurrentPage.label;"
-                label2="&useMultiple.label;"
-                preference="pref.browser.homepage.disable_button.current_page"/>
-        <button id="useBookmark"
-                class="content-cell-item"
-                label="&chooseBookmark.label;"
-                accesskey="&chooseBookmark.accesskey;"
-                preference="pref.browser.homepage.disable_button.bookmark_page"/>
-        <button id="restoreDefaultHomePage"
-                class="content-cell-item"
-                label="&restoreDefault.label;"
-                accesskey="&restoreDefault.accesskey;"
-                preference="pref.browser.homepage.disable_button.restore_default"/>
-      </html:td>
-    </html:tr>
-  </html:table>
-=======
-  <vbox id="startupPageBox">
-    <label accesskey="&startupPage2.accesskey;"
-           control="browserStartupPage">&startupPage2.label;</label>
     <radiogroup id="browserStartupPage"
                 preference="browser.startup.page">
       <radio label="&startupUserHomePage.label;"
@@ -508,8 +352,8 @@
              value="3"
              id="browserStartupLastSession"/>
     </radiogroup>
+#endif
   </vbox>
->>>>>>> origin/upstream-releases
 </groupbox>
 
 <!-- Home Page -->

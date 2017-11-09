@@ -483,18 +483,14 @@ SandboxBroker::SetSecurityLevelForContentProcess(int32_t aSandboxLevel,
     // Add rule to allow read access extensions directory within profile.
     AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_READONLY,
                      sProfileDir, NS_LITERAL_STRING("\\extensions\\*"));
-<<<<<<< HEAD
 
     // Add rule to allow read access features directory within profile.
     AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_READONLY,
                      sProfileDir, NS_LITERAL_STRING("\\features\\*"));
-||||||| merged common ancestors
-=======
 
     // Read access to a directory for system extension dev (see bug 1393805)
     AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_READONLY,
                      sUserExtensionsDevDir, NS_LITERAL_STRING("\\*"));
->>>>>>> origin/upstream-releases
   }
 
   // Add the policy for the client side of a pipe. It is just a file

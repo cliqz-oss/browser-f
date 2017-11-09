@@ -107,7 +107,7 @@ SessionStartup.prototype = {
 
     this._resumeSessionEnabled =
       Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-      Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
+      Services.prefs.getBoolPref("browser.startup.restoreTabs");
 
     SessionFile.read().then(
       this._onSessionFileRead.bind(this),
@@ -169,18 +169,6 @@ SessionStartup.prototype = {
       Services.telemetry.scalarSet("browser.engagement.restored_pinned_tabs_count", pinnedTabCount);
     }, 60000);
 
-<<<<<<< HEAD
-    let shouldResumeSessionOnce = Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-    let shouldResumeSession = shouldResumeSessionOnce ||
-          Services.prefs.getBoolPref("browser.startup.restoreTabs");
-
-||||||| merged common ancestors
-    let shouldResumeSessionOnce = Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-    let shouldResumeSession = shouldResumeSessionOnce ||
-          Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
-
-=======
->>>>>>> origin/upstream-releases
     // If this is a normal restore then throw away any previous session
     if (!this._resumeSessionEnabled && this._initialState) {
       delete this._initialState.lastSessionState;
@@ -322,6 +310,14 @@ SessionStartup.prototype = {
            this._sessionType == Ci.nsISessionStartup.RESUME_SESSION;
   },
 
+  _willRestoreCliqz() {
+    //     Either we'll show a recovery page
+    return this._sessionType == Ci.nsISessionStartup.RECOVER_SESSION ||
+    //        Or just previously open tabs (without start pages)
+              (this._sessionType == Ci.nsISessionStartup.RESUME_SESSION &&
+               !Services.prefs.getBoolPref("browser.startup.addFreshTab"));
+  },
+
   /**
    * Returns a promise that resolves to a boolean, indicating whether we will
    * restore a session that ends up replacing the homepage. True guarantees
@@ -329,26 +325,6 @@ SessionStartup.prototype = {
    * The browser uses this to avoid unnecessarily loading the homepage when
    * restoring a session.
    */
-<<<<<<< HEAD
-  get willOverrideHomepage() {
-    if (this._initialState &&  // last session data is there
-        // and either we'll show a recovery page
-        (this._sessionType == Ci.nsISessionStartup.RECOVER_SESSION ||
-         // or just previously open tabs (without start pages)
-         (this._sessionType == Ci.nsISessionStartup.RESUME_SESSION &&
-          !Services.prefs.getBoolPref("browser.startup.addFreshTab")))) {
-      let windows = this._initialState.windows || null;
-      // If there are valid windows with not only pinned tabs, signal that we
-      // will override the default homepage by restoring a session.
-      return windows && windows.some(w => w.tabs.some(t => !t.pinned));
-||||||| merged common ancestors
-  get willOverrideHomepage() {
-    if (this._initialState && this._willRestore()) {
-      let windows = this._initialState.windows || null;
-      // If there are valid windows with not only pinned tabs, signal that we
-      // will override the default homepage by restoring a session.
-      return windows && windows.some(w => w.tabs.some(t => !t.pinned));
-=======
   get willOverrideHomepagePromise() {
     // If the session file hasn't been read yet and resuming the session isn't
     // enabled via prefs, go ahead and load the homepage. We may still replace
@@ -357,14 +333,13 @@ SessionStartup.prototype = {
     // the non-crash case.
     if (!this._initialState && !this._resumeSessionEnabled) {
       return Promise.resolve(false);
->>>>>>> origin/upstream-releases
     }
 
     return new Promise(resolve => {
       this.onceInitialized.then(() => {
         // If there are valid windows with not only pinned tabs, signal that we
         // will override the default homepage by restoring a session.
-        resolve(this._willRestore() &&
+        resolve(this._willRestoreCliqz() &&
                 this._initialState &&
                 this._initialState.windows &&
                 this._initialState.windows.some(w => w.tabs.some(t => !t.pinned)));

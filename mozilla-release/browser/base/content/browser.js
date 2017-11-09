@@ -21,159 +21,6 @@ XPCOMUtils.defineLazyGetter(this, "extensionNameFromURI", () => {
 
 // lazy module getters
 
-<<<<<<< HEAD
-/* global AboutHome:false,
-          BrowserUITelemetry:false, BrowserUsageTelemetry:false, BrowserUtils:false,
-          CastingApps:false, CharsetMenu:false, Color:false, ContentSearch:false,
-          CustomizableUI: false, DownloadsCommon: false,
-          Deprecated:false, E10SUtils:false, ExtensionsUI: false, FormValidationHandler:false,
-          GMPInstallManager:false, LightweightThemeManager:false, Log:false,
-          LoginManagerParent:false, NewTabUtils:false, PageThumbs:false,
-          PluralForm:false, PrivateBrowsingUtils:false,
-          ProcessHangMonitor:false, PromiseUtils:false, ReaderMode:false,
-          ReaderParent:false, RecentWindow:false, SafeBrowsing: false,
-          SessionStore:false,
-          ShortcutUtils:false, SimpleServiceDiscovery:false, SitePermissions:false,
-          Social:false, TabCrashHandler:false, TelemetryStopwatch:false,
-          Translation:false, UITour:false, Utils:false, UpdateUtils:false,
-          Weave:false,
-          WebNavigationFrames: false, fxAccounts:false, gDevTools:false,
-          gDevToolsBrowser:false, webrtcUI:false, ZoomUI:false,
-          Marionette:false, PageActions:false,
- */
-
-/**
- * IF YOU ADD OR REMOVE FROM THIS LIST, PLEASE UPDATE THE LIST ABOVE AS WELL.
- * XXX Bug 1325373 is for making eslint detect these automatically.
- */
-[
-  ["AboutHome", "resource:///modules/AboutHome.jsm"],
-  ["BrowserUITelemetry", "resource:///modules/BrowserUITelemetry.jsm"],
-  ["BrowserUsageTelemetry", "resource:///modules/BrowserUsageTelemetry.jsm"],
-  ["BrowserUtils", "resource://gre/modules/BrowserUtils.jsm"],
-  ["CastingApps", "resource:///modules/CastingApps.jsm"],
-  ["CharsetMenu", "resource://gre/modules/CharsetMenu.jsm"],
-  ["Color", "resource://gre/modules/Color.jsm"],
-  ["ContentSearch", "resource:///modules/ContentSearch.jsm"],
-  ["ContextualIdentityService", "resource://gre/modules/ContextualIdentityService.jsm"],
-  ["CustomizableUI", "resource:///modules/CustomizableUI.jsm"],
-  ["Deprecated", "resource://gre/modules/Deprecated.jsm"],
-  ["DownloadsCommon", "resource:///modules/DownloadsCommon.jsm"],
-  ["E10SUtils", "resource:///modules/E10SUtils.jsm"],
-  ["ExtensionsUI", "resource:///modules/ExtensionsUI.jsm"],
-  ["FormValidationHandler", "resource:///modules/FormValidationHandler.jsm"],
-  ["GMPInstallManager", "resource://gre/modules/GMPInstallManager.jsm"],
-  ["LightweightThemeManager", "resource://gre/modules/LightweightThemeManager.jsm"],
-  ["Log", "resource://gre/modules/Log.jsm"],
-  ["LoginManagerParent", "resource://gre/modules/LoginManagerParent.jsm"],
-  ["NewTabUtils", "resource://gre/modules/NewTabUtils.jsm"],
-  ["PageActions", "resource:///modules/PageActions.jsm"],
-  ["PageThumbs", "resource://gre/modules/PageThumbs.jsm"],
-  ["PluralForm", "resource://gre/modules/PluralForm.jsm"],
-  ["PrivateBrowsingUtils", "resource://gre/modules/PrivateBrowsingUtils.jsm"],
-  ["ProcessHangMonitor", "resource:///modules/ProcessHangMonitor.jsm"],
-  ["PromiseUtils", "resource://gre/modules/PromiseUtils.jsm"],
-  ["ReaderMode", "resource://gre/modules/ReaderMode.jsm"],
-  ["ReaderParent", "resource:///modules/ReaderParent.jsm"],
-  ["RecentWindow", "resource:///modules/RecentWindow.jsm"],
-  ["SafeBrowsing", "resource://gre/modules/SafeBrowsing.jsm"],
-  ["SessionStore", "resource:///modules/sessionstore/SessionStore.jsm"],
-  ["ShortcutUtils", "resource://gre/modules/ShortcutUtils.jsm"],
-  ["SimpleServiceDiscovery", "resource://gre/modules/SimpleServiceDiscovery.jsm"],
-  ["SitePermissions", "resource:///modules/SitePermissions.jsm"],
-  ["Social", "resource:///modules/Social.jsm"],
-  ["TabCrashHandler", "resource:///modules/ContentCrashHandlers.jsm"],
-  ["TelemetryStopwatch", "resource://gre/modules/TelemetryStopwatch.jsm"],
-  ["Translation", "resource:///modules/translation/Translation.jsm"],
-  ["UITour", "resource:///modules/UITour.jsm"],
-  ["UpdateUtils", "resource://gre/modules/UpdateUtils.jsm"],
-  ["Utils", "resource://gre/modules/sessionstore/Utils.jsm"],
-#ifdef MOZ_SERVICES_SYNC
-  ["Weave", "resource://services-sync/main.js"],
-#endif
-  ["WebNavigationFrames", "resource://gre/modules/WebNavigationFrames.jsm"],
-  ["fxAccounts", "resource://gre/modules/FxAccounts.jsm"],
-  ["gDevTools", "resource://devtools/client/framework/gDevTools.jsm"],
-  ["gDevToolsBrowser", "resource://devtools/client/framework/gDevTools.jsm"],
-  ["webrtcUI", "resource:///modules/webrtcUI.jsm"],
-  ["ZoomUI", "resource:///modules/ZoomUI.jsm"],
-].forEach(([name, resource]) => XPCOMUtils.defineLazyModuleGetter(this, name, resource));
-||||||| merged common ancestors
-/* global AboutHome:false,
-          BrowserUITelemetry:false, BrowserUsageTelemetry:false, BrowserUtils:false,
-          CastingApps:false, CharsetMenu:false, Color:false, ContentSearch:false,
-          CustomizableUI: false, DownloadsCommon: false,
-          Deprecated:false, E10SUtils:false, ExtensionsUI: false, FormValidationHandler:false,
-          GMPInstallManager:false, LightweightThemeManager:false, Log:false,
-          LoginManagerParent:false, NewTabUtils:false, PageThumbs:false,
-          PluralForm:false, PrivateBrowsingUtils:false,
-          ProcessHangMonitor:false, PromiseUtils:false, ReaderMode:false,
-          ReaderParent:false, RecentWindow:false, SafeBrowsing: false,
-          SessionStore:false,
-          ShortcutUtils:false, SimpleServiceDiscovery:false, SitePermissions:false,
-          Social:false, TabCrashHandler:false, TelemetryStopwatch:false,
-          Translation:false, UITour:false, Utils:false, UpdateUtils:false,
-          Weave:false,
-          WebNavigationFrames: false, fxAccounts:false, gDevTools:false,
-          gDevToolsBrowser:false, webrtcUI:false, ZoomUI:false,
-          Marionette:false, PageActions:false,
- */
-
-/**
- * IF YOU ADD OR REMOVE FROM THIS LIST, PLEASE UPDATE THE LIST ABOVE AS WELL.
- * XXX Bug 1325373 is for making eslint detect these automatically.
- */
-[
-  ["AboutHome", "resource:///modules/AboutHome.jsm"],
-  ["BrowserUITelemetry", "resource:///modules/BrowserUITelemetry.jsm"],
-  ["BrowserUsageTelemetry", "resource:///modules/BrowserUsageTelemetry.jsm"],
-  ["BrowserUtils", "resource://gre/modules/BrowserUtils.jsm"],
-  ["CastingApps", "resource:///modules/CastingApps.jsm"],
-  ["CharsetMenu", "resource://gre/modules/CharsetMenu.jsm"],
-  ["Color", "resource://gre/modules/Color.jsm"],
-  ["ContentSearch", "resource:///modules/ContentSearch.jsm"],
-  ["ContextualIdentityService", "resource://gre/modules/ContextualIdentityService.jsm"],
-  ["CustomizableUI", "resource:///modules/CustomizableUI.jsm"],
-  ["Deprecated", "resource://gre/modules/Deprecated.jsm"],
-  ["DownloadsCommon", "resource:///modules/DownloadsCommon.jsm"],
-  ["E10SUtils", "resource:///modules/E10SUtils.jsm"],
-  ["ExtensionsUI", "resource:///modules/ExtensionsUI.jsm"],
-  ["FormValidationHandler", "resource:///modules/FormValidationHandler.jsm"],
-  ["GMPInstallManager", "resource://gre/modules/GMPInstallManager.jsm"],
-  ["LightweightThemeManager", "resource://gre/modules/LightweightThemeManager.jsm"],
-  ["Log", "resource://gre/modules/Log.jsm"],
-  ["LoginManagerParent", "resource://gre/modules/LoginManagerParent.jsm"],
-  ["NewTabUtils", "resource://gre/modules/NewTabUtils.jsm"],
-  ["PageActions", "resource:///modules/PageActions.jsm"],
-  ["PageThumbs", "resource://gre/modules/PageThumbs.jsm"],
-  ["PluralForm", "resource://gre/modules/PluralForm.jsm"],
-  ["PrivateBrowsingUtils", "resource://gre/modules/PrivateBrowsingUtils.jsm"],
-  ["ProcessHangMonitor", "resource:///modules/ProcessHangMonitor.jsm"],
-  ["PromiseUtils", "resource://gre/modules/PromiseUtils.jsm"],
-  ["ReaderMode", "resource://gre/modules/ReaderMode.jsm"],
-  ["ReaderParent", "resource:///modules/ReaderParent.jsm"],
-  ["RecentWindow", "resource:///modules/RecentWindow.jsm"],
-  ["SafeBrowsing", "resource://gre/modules/SafeBrowsing.jsm"],
-  ["SessionStore", "resource:///modules/sessionstore/SessionStore.jsm"],
-  ["ShortcutUtils", "resource://gre/modules/ShortcutUtils.jsm"],
-  ["SimpleServiceDiscovery", "resource://gre/modules/SimpleServiceDiscovery.jsm"],
-  ["SitePermissions", "resource:///modules/SitePermissions.jsm"],
-  ["Social", "resource:///modules/Social.jsm"],
-  ["TabCrashHandler", "resource:///modules/ContentCrashHandlers.jsm"],
-  ["TelemetryStopwatch", "resource://gre/modules/TelemetryStopwatch.jsm"],
-  ["Translation", "resource:///modules/translation/Translation.jsm"],
-  ["UITour", "resource:///modules/UITour.jsm"],
-  ["UpdateUtils", "resource://gre/modules/UpdateUtils.jsm"],
-  ["Utils", "resource://gre/modules/sessionstore/Utils.jsm"],
-  ["Weave", "resource://services-sync/main.js"],
-  ["WebNavigationFrames", "resource://gre/modules/WebNavigationFrames.jsm"],
-  ["fxAccounts", "resource://gre/modules/FxAccounts.jsm"],
-  ["gDevTools", "resource://devtools/client/framework/gDevTools.jsm"],
-  ["gDevToolsBrowser", "resource://devtools/client/framework/gDevTools.jsm"],
-  ["webrtcUI", "resource:///modules/webrtcUI.jsm"],
-  ["ZoomUI", "resource:///modules/ZoomUI.jsm"],
-].forEach(([name, resource]) => XPCOMUtils.defineLazyModuleGetter(this, name, resource));
-=======
 XPCOMUtils.defineLazyModuleGetters(this, {
   AboutHome: "resource:///modules/AboutHome.jsm",
   BrowserUITelemetry: "resource:///modules/BrowserUITelemetry.jsm",
@@ -213,7 +60,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   UITour: "resource:///modules/UITour.jsm",
   UpdateUtils: "resource://gre/modules/UpdateUtils.jsm",
   Utils: "resource://gre/modules/sessionstore/Utils.jsm",
+#ifdef MOZ_SERVICES_SYNC
   Weave: "resource://services-sync/main.js",
+#endif
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   fxAccounts: "resource://gre/modules/FxAccounts.jsm",
   gDevTools: "resource://devtools/client/framework/gDevTools.jsm",
@@ -221,7 +70,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   webrtcUI: "resource:///modules/webrtcUI.jsm",
   ZoomUI: "resource:///modules/ZoomUI.jsm",
 });
->>>>>>> origin/upstream-releases
 
 if (AppConstants.MOZ_CRASHREPORTER) {
   XPCOMUtils.defineLazyModuleGetter(this, "PluginCrashReporter",
@@ -452,7 +300,7 @@ let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
 #endif
-
+/*
 // CLIQZ Blue Theme
 // TODO - move this out into a separate file!
 try {
@@ -502,7 +350,7 @@ try {
   Cu.reportError(e);
 }
 // CLIQZ Blue Theme end
-
+*/
 var gInitialPages = [
   "about:blank",
   "about:newtab",
@@ -1771,22 +1619,6 @@ var gBrowserInit = {
       MenuTouchModeObserver.init();
     }
 
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-    // initialize the sync UI
-    requestIdleCallback(() => {
-      gSync.init();
-    }, {timeout: 1000 * 5});
-#endif
-
-||||||| merged common ancestors
-    // initialize the sync UI
-    requestIdleCallback(() => {
-      gSync.init();
-    }, {timeout: 1000 * 5});
-
-=======
->>>>>>> origin/upstream-releases
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
 
@@ -1974,8 +1806,10 @@ var gBrowserInit = {
     }
 
     scheduleIdleTask(() => {
+#ifdef MOZ_SERVICES_SYNC
       // Initialize the Sync UI
       gSync.init();
+#endif
     });
 
     scheduleIdleTask(() => {
@@ -2236,22 +2070,6 @@ if (AppConstants.platform == "macosx") {
     // initialize the private browsing UI
     gPrivateBrowsingUI.init();
 
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-    // initialize the sync UI
-    requestIdleCallback(() => {
-      gSync.init();
-    }, {timeout: 1000 * 5});
-#endif
-
-||||||| merged common ancestors
-    // initialize the sync UI
-    requestIdleCallback(() => {
-      gSync.init();
-    }, {timeout: 1000 * 5});
-
-=======
->>>>>>> origin/upstream-releases
     if (AppConstants.E10S_TESTING_ONLY) {
       gRemoteTabsUI.init();
     }
@@ -5380,22 +5198,6 @@ var CombinedStopReload = {
     }, 650, this);
   },
 
-<<<<<<< HEAD
-  _shouldSwitch(aRequest) {
-    // DB-1518: Switch to reload button in the url bar for CliqzTab
-    const cliqzNewTabURL = "resource://cliqz/freshtab/home.html"; // do we still need this?
-    if (!aRequest ||
-        !aRequest.originalURI ||
-        aRequest.originalURI.spec.startsWith("about:reader") ||
-        aRequest.originalURI.spec === cliqzNewTabURL)
-      return true;
-||||||| merged common ancestors
-  _shouldSwitch(aRequest) {
-    if (!aRequest ||
-        !aRequest.originalURI ||
-        aRequest.originalURI.spec.startsWith("about:reader"))
-      return true;
-=======
   _loadTimeExceedsMinimumForAnimation() {
     // If the time between switching to the stop button then switching to
     // the reload button exceeds 150ms, then we will show the animation.
@@ -5405,11 +5207,13 @@ var CombinedStopReload = {
     return this.timeWhenSwitchedToStop &&
            window.performance.now() - this.timeWhenSwitchedToStop > 150;
   },
->>>>>>> origin/upstream-releases
 
   _shouldSwitch(aRequest, aWebProgress) {
+    // DB-1518: Switch to reload button in the url bar for CliqzTab
+    const cliqzNewTabURL = "resource://cliqz/freshtab/home.html"; // do we still need this?
     if (aRequest &&
         aRequest.originalURI &&
+        aRequest.originalURI.spec !== cliqzNewTabURL &&
         (aRequest.originalURI.schemeIs("chrome") ||
          (aRequest.originalURI.schemeIs("about") &&
           aWebProgress.isTopLevel &&
@@ -7414,7 +7218,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|config|crashes|customizing|downloads|healthreport|license|newaddon|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
+  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|cliqz|config|crashes|customizing|downloads|healthreport|license|newaddon|newtab|permissions|preferences|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   get _isBroken() {
     return this._state & Ci.nsIWebProgressListener.STATE_IS_BROKEN;
@@ -8053,16 +7857,8 @@ var gIdentityHandler = {
       this._uriHasHost = false;
     }
 
-<<<<<<< HEAD
-    let whitelist = /^(?:accounts|addons|cache|cliqz|config|crashes|customizing|downloads|healthreport|home|license|newaddon|newtab|permissions|preferences|privatebrowsing|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i;
-    this._isSecureInternalUI = uri.schemeIs("about") && whitelist.test(uri.path);
-||||||| merged common ancestors
-    let whitelist = /^(?:accounts|addons|cache|config|crashes|customizing|downloads|healthreport|home|license|newaddon|permissions|preferences|privatebrowsing|rights|searchreset|sessionrestore|support|welcomeback)(?:[?#]|$)/i;
-    this._isSecureInternalUI = uri.schemeIs("about") && whitelist.test(uri.path);
-=======
     this._isSecureInternalUI = uri.schemeIs("about") &&
       this._secureInternalUIWhitelist.test(uri.pathQueryRef);
->>>>>>> origin/upstream-releases
 
     this._isExtensionPage = uri.schemeIs("moz-extension");
 

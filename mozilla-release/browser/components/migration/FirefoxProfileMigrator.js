@@ -259,7 +259,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     };
   };
 
-<<<<<<< HEAD
   let getHistoryAndBookmarksResource = function(aFileName) {
     let placesFile = this._getFileObject(sourceProfileDir, aFileName);
     if (!placesFile)
@@ -508,8 +507,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     };
   }.bind(this);
 
-||||||| merged common ancestors
-=======
   function savePrefs() {
     // If we've used the pref service to write prefs for the new profile, it's too
     // early in startup for the service to have a profile directory, so we have to
@@ -519,7 +516,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileD
     Services.prefs.savePrefFile(newPrefsFile);
   }
 
->>>>>>> origin/upstream-releases
   let types = MigrationUtils.resourceTypes;
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
     let places = getHistoryAndBookmarksResource("places.sqlite");

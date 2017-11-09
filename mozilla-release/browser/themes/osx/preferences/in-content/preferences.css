@@ -42,33 +42,8 @@ filefield + button {
   padding-bottom: 0 !important;
   border-bottom: none;
 }
-<<<<<<< HEAD
 
-#advancedPrefs, #connectPrefs {
+#connectPrefs {
   margin-right: 0; /*override margin from normal preferences.css */
   margin-left: 0;
 }
-
-/**
- * Dialog
- */
-
-#dialogTitle {
-  font-size: 1.1em;
-}
-||||||| merged common ancestors
-
-#advancedPrefs {
-  margin-right: 0; /*override margin from normal preferences.css */
-  margin-left: 0;
-}
-
-/**
- * Dialog
- */
-
-#dialogTitle {
-  font-size: 1.1em;
-}
-=======
->>>>>>> origin/upstream-releases

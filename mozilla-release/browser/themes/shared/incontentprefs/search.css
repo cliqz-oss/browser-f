@@ -2,19 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-<<<<<<< HEAD
 #suggestionsInSearchFieldsCheckbox {
   display: none !important;  /* Hidden in Cliqz. We have search! */
 }
 
- #defaultEngine {
-   margin-inline-start: 0;
- }
-||||||| merged common ancestors
- #defaultEngine {
-   margin-inline-start: 0;
- }
-=======
 .searchBarImage {
   height: 36px;
   width: 631px;
@@ -41,7 +32,6 @@
 #defaultEngine {
  margin-inline-start: 0;
 }
->>>>>>> origin/upstream-releases
 
 #defaultEngine > .menulist-label-box > .menulist-icon {
   height: 16px;

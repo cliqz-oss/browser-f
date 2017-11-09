@@ -183,122 +183,11 @@ var CustomizableUIInternal = {
     this._updateForNewVersion();
     this._markObsoleteBuiltinButtonsSeen();
 
-<<<<<<< HEAD
-    /**
-     * Please be advised that adding items to the panel by default could
-     * cause CART talos test regressions. This might happen when the
-     * number of items in the panel causes the area to become "scrollable"
-     * during the last phases of the transition. See bug 1230671 for an
-     * example of this. Be sure that what you're adding really needs to go
-     * into the panel by default, and if it does, consider swapping
-     * something out for it.
-     */
-    let panelPlacements = [
-      "edit-controls",
-      "zoom-controls",
-      "new-window-button",
-      "privatebrowsing-button",
-      "save-page-button",
-      "print-button",
-      "history-panelmenu",
-      "fullscreen-button",
-      "find-button",
-      "preferences-button",
-      "add-ons-button",
-      "sync-button",
-      "mobilepairing_btn", // Cliqz connect/pairing
-    ];
-
-    if (!AppConstants.MOZ_DEV_EDITION) {
-      panelPlacements.splice(-1, 0, "developer-button");
-    }
-
-    if (AppConstants.E10S_TESTING_ONLY) {
-      if (gPalette.has("e10s-button")) {
-        let newWindowIndex = panelPlacements.indexOf("new-window-button");
-        if (newWindowIndex > -1) {
-          panelPlacements.splice(newWindowIndex + 1, 0, "e10s-button");
-        }
-      }
-    }
-
-    let showCharacterEncoding = Services.prefs.getComplexValue(
-      "browser.menu.showCharacterEncoding",
-      Ci.nsIPrefLocalizedString
-    ).data;
-    if (showCharacterEncoding == "true") {
-      panelPlacements.push("characterencoding-button");
-    }
-
-    if (AppConstants.MOZ_DEV_EDITION || AppConstants.NIGHTLY_BUILD) {
-      if (Services.prefs.getBoolPref("extensions.webcompat-reporter.enabled")) {
-        panelPlacements.push("webcompat-reporter-button");
-      }
-    }
-
-    gDefaultPanelPlacements = panelPlacements;
-    this._updateAreasForPhoton();
-||||||| merged common ancestors
-    /**
-     * Please be advised that adding items to the panel by default could
-     * cause CART talos test regressions. This might happen when the
-     * number of items in the panel causes the area to become "scrollable"
-     * during the last phases of the transition. See bug 1230671 for an
-     * example of this. Be sure that what you're adding really needs to go
-     * into the panel by default, and if it does, consider swapping
-     * something out for it.
-     */
-    let panelPlacements = [
-      "edit-controls",
-      "zoom-controls",
-      "new-window-button",
-      "privatebrowsing-button",
-      "save-page-button",
-      "print-button",
-      "history-panelmenu",
-      "fullscreen-button",
-      "find-button",
-      "preferences-button",
-      "add-ons-button",
-      "sync-button",
-    ];
-
-    if (!AppConstants.MOZ_DEV_EDITION) {
-      panelPlacements.splice(-1, 0, "developer-button");
-    }
-
-    if (AppConstants.E10S_TESTING_ONLY) {
-      if (gPalette.has("e10s-button")) {
-        let newWindowIndex = panelPlacements.indexOf("new-window-button");
-        if (newWindowIndex > -1) {
-          panelPlacements.splice(newWindowIndex + 1, 0, "e10s-button");
-        }
-      }
-    }
-
-    let showCharacterEncoding = Services.prefs.getComplexValue(
-      "browser.menu.showCharacterEncoding",
-      Ci.nsIPrefLocalizedString
-    ).data;
-    if (showCharacterEncoding == "true") {
-      panelPlacements.push("characterencoding-button");
-    }
-
-    if (AppConstants.MOZ_DEV_EDITION || AppConstants.NIGHTLY_BUILD) {
-      if (Services.prefs.getBoolPref("extensions.webcompat-reporter.enabled")) {
-        panelPlacements.push("webcompat-reporter-button");
-      }
-    }
-
-    gDefaultPanelPlacements = panelPlacements;
-    this._updateAreasForPhoton();
-=======
     this.registerArea(CustomizableUI.AREA_FIXED_OVERFLOW_PANEL, {
       type: CustomizableUI.TYPE_MENU_PANEL,
       defaultPlacements: [],
       anchor: "nav-bar-overflow-button",
     }, true);
->>>>>>> origin/upstream-releases
 
     let navbarPlacements = [
       "back-button",
@@ -307,20 +196,10 @@ var CustomizableUIInternal = {
       "home-button",
       "spring",
       "urlbar-container",
-<<<<<<< HEAD
-#if 0
-      "search-container",
-#endif
-      "cliqz-vd-btn", // Cliqz video downloader 
+      "spring",
+      "cliqz-vd-btn", // Cliqz video downloader
       "control-center-browser-action", // Cliqz control center
       "cliqz-cc-btn", // Cliqz control center old
-      "bookmarks-menu-button",
-||||||| merged common ancestors
-      "search-container",
-      "bookmarks-menu-button",
-=======
-      "spring",
->>>>>>> origin/upstream-releases
       "downloads-button",
       "library-button",
       "sidebar-button",
@@ -470,6 +349,7 @@ var CustomizableUIInternal = {
         "add-ons-button",
         "sync-button",
         "e10s-button",
+        "mobilepairing_btn", // Cliqz connect/pairing
       ];
 
       if (!AppConstants.MOZ_DEV_EDITION) {

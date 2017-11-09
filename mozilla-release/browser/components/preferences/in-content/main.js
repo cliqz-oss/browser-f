@@ -176,20 +176,12 @@ var gMainPane = {
    */
   init() {
     function setEventListener(aId, aEventType, aCallback) {
-<<<<<<< HEAD
       try {
         document.getElementById(aId)
-            .addEventListener(aEventType, aCallback.bind(gMainPane));
+          .addEventListener(aEventType, aCallback.bind(gMainPane));
       } catch (e) {
         Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
       }
-||||||| merged common ancestors
-      document.getElementById(aId)
-              .addEventListener(aEventType, aCallback.bind(gMainPane));
-=======
-      document.getElementById(aId)
-        .addEventListener(aEventType, aCallback.bind(gMainPane));
->>>>>>> origin/upstream-releases
     }
 
     if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -855,17 +847,14 @@ var gMainPane = {
    */
   updateBrowserStartupLastSession() {
     let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let startupPref = document.getElementById("browser.startup.page");
-    let group = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
+    let restorePref = document.getElementById("browser.startup.restoreTabs");
+    let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
     if (pbAutoStartPref.value) {
-      option.setAttribute("disabled", "true");
-      if (option.selected) {
-        group.selectedItem = document.getElementById("browserStartupHomePage");
-      }
+      restoreCheckbox.setAttribute("disabled", "true");
+      restoreCheckbox.checked = false;
     } else {
-      option.removeAttribute("disabled");
-      startupPref.updateElements(); // select the correct radio in the startup group
+      restoreCheckbox.removeAttribute("disabled");
+      restorePref.updateElements(); // Update corresponding checkbox.
     }
   },
 
@@ -1108,40 +1097,6 @@ var gMainPane = {
     return preference.value;
   },
 
-<<<<<<< HEAD
-  /**
-   * Hide/show the "Show my windows and tabs from last time" option based
-   * on the value of the browser.privatebrowsing.autostart pref.
-   */
-  updateBrowserStartupLastSession() {
-    let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let restorePref = document.getElementById("browser.startup.restoreTabs");
-    let restoreCheckbox = document.getElementById("restoreSessionCheckbox");
-    if (pbAutoStartPref.value) {
-      restoreCheckbox.setAttribute("disabled", "true");
-      restoreCheckbox.checked = false;
-    } else {
-      restoreCheckbox.removeAttribute("disabled");
-      restorePref.updateElements(); // Update corresponding checkbox.
-||||||| merged common ancestors
-  /**
-   * Hide/show the "Show my windows and tabs from last time" option based
-   * on the value of the browser.privatebrowsing.autostart pref.
-   */
-  updateBrowserStartupLastSession() {
-    let pbAutoStartPref = document.getElementById("browser.privatebrowsing.autostart");
-    let startupPref = document.getElementById("browser.startup.page");
-    let menu = document.getElementById("browserStartupPage");
-    let option = document.getElementById("browserStartupLastSession");
-    if (pbAutoStartPref.value) {
-      option.setAttribute("disabled", "true");
-      if (option.selected) {
-        menu.selectedItem = document.getElementById("browserStartupHomePage");
-      }
-    } else {
-      option.removeAttribute("disabled");
-      startupPref.updateElements(); // select the correct index in the startup menulist
-=======
   _selectDefaultLanguageGroupPromise: Promise.resolve(),
 
   async _selectDefaultLanguageGroup(aLanguageGroup, aIsSerif) {
@@ -1202,7 +1157,6 @@ var gMainPane = {
 
         preference.setElementValue(element);
       }
->>>>>>> origin/upstream-releases
     }
   },
 

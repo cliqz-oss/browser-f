@@ -7403,6 +7403,41 @@
 !endif
 
 /**
+ * Modified version of the __NSD_SetStretchedImage macro from nsDialogs.nsh that
+ * supports transparency. See nsDialogs documentation for additional info.
+ */
+!macro __SetStretchedTransparentImage CONTROL IMAGE HANDLE
+  Push $0
+  Push $1
+  Push $2
+  Push $R0
+  StrCpy $R0 ${CONTROL} ; in case ${CONTROL} is $0
+  StrCpy $1 ""
+  StrCpy $2 ""
+  System::Call '*(i, i, i, i) i.s'
+  Pop $0
+  ${If} $0 <> 0
+    System::Call 'user32::GetClientRect(i R0, i r0)'
+    System::Call '*$0(i, i, i .s, i .s)'
+    System::Free $0
+    Pop $1
+    Pop $2
+  ${EndIf}
+  System::Call 'user32::LoadImageW(i 0, t s, i ${IMAGE_BITMAP}, i r1, i r2, \
+                                   i ${MOZ_LOADTRANSPARENT}) i .s' "${IMAGE}"
+  Pop $0
+  SendMessage $R0 ${STM_SETIMAGE} ${IMAGE_BITMAP} $0
+  SetCtlColors $R0 "" transparent
+  ${NSD_AddExStyle} $R0 ${WS_EX_TRANSPARENT}|${WS_EX_TOPMOST}
+  Pop $R0
+  Pop $2
+  Pop $1
+  Exch $0
+  Pop ${HANDLE}
+!macroend
+!define SetStretchedTransparentImage "!insertmacro __SetStretchedTransparentImage"
+
+/**
  * Draws an image file (BMP, GIF, or JPG) onto a bitmap control, with scaling.
  * Adapted from https://stackoverflow.com/a/13405711/1508094
  *

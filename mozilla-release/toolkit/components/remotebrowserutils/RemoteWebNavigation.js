@@ -73,13 +73,8 @@ RemoteWebNavigation.prototype = {
                             aPostData, aHeaders, null, null, false);
   },
   loadURIWithOptions(aURI, aLoadFlags, aReferrer, aReferrerPolicy,
-<<<<<<< HEAD
                      aPostData, aHeaders, aBaseURI, aTriggeringPrincipal,
                      aEnsurePrivate) {
-||||||| merged common ancestors
-                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal) {
-=======
-                     aPostData, aHeaders, aBaseURI, aTriggeringPrincipal) {
     // We know the url is going to be loaded, let's start requesting network
     // connection before the content process asks.
     // Note that we might have already setup the speculative connection in some
@@ -103,7 +98,6 @@ RemoteWebNavigation.prototype = {
         // reason (such as failing to parse the URI), just ignore it.
       }
     }
->>>>>>> origin/upstream-releases
     this._sendMessage("WebNavigation:LoadURI", {
       uri: aURI,
       flags: aLoadFlags,

@@ -89,33 +89,15 @@
     locale/browser/preferences/security.dtd           (%chrome/browser/preferences/security.dtd)
     locale/browser/preferences/selectBookmark.dtd     (%chrome/browser/preferences/selectBookmark.dtd)
     locale/browser/preferences/siteDataSettings.dtd     (%chrome/browser/preferences/siteDataSettings.dtd)
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-    locale/browser/preferences-old/sync.dtd           (%chrome/browser/preferences-old/sync.dtd)
-||||||| merged common ancestors
-    locale/browser/preferences-old/sync.dtd           (%chrome/browser/preferences-old/sync.dtd)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/preferences/sync.dtd               (%chrome/browser/preferences/sync.dtd)
-<<<<<<< HEAD
 #endif
-    locale/browser/preferences-old/tabs.dtd           (%chrome/browser/preferences-old/tabs.dtd)
-||||||| merged common ancestors
-    locale/browser/preferences-old/tabs.dtd           (%chrome/browser/preferences-old/tabs.dtd)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/preferences/tabs.dtd               (%chrome/browser/preferences/tabs.dtd)
     locale/browser/preferences/translation.dtd        (%chrome/browser/preferences/translation.dtd)
 #ifdef MOZ_SERVICES_SYNC
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
-<<<<<<< HEAD
 #endif
-% resource search-plugins chrome://browser/locale/searchplugins/
-||||||| merged common ancestors
-% resource search-plugins chrome://browser/locale/searchplugins/
-=======
->>>>>>> origin/upstream-releases
 #if BUILD_FASTER
     locale/browser/searchplugins/               (searchplugins/*.xml)
     locale/browser/searchplugins/list.json      (search/list.json)

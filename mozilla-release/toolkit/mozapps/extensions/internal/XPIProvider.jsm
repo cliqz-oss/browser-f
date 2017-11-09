@@ -2472,17 +2472,11 @@ this.XPIProvider = {
       for (let addon of addons) {
         if ((startupChanges.indexOf(addon.id) != -1) &&
             (addon.permissions() & AddonManager.PERM_CAN_UPGRADE) &&
-<<<<<<< HEAD
             // DB-556: Don't check updates for unsigned extensions, it will fail
             // in nearly 100% of cases, because there's only 1 extension with
             // acceptable signature in a whole world anyway.
             (addon.signedState >= AddonManager.SIGNEDSTATE_SIGNED) &&
-            !addon.isCompatible) {
-||||||| merged common ancestors
-            !addon.isCompatible) {
-=======
             (!addon.isCompatible || isDisabledLegacy(addon))) {
->>>>>>> origin/upstream-releases
           logger.debug("shouldForceUpdateCheck: can upgrade disabled add-on " + addon.id);
           forceUpdate.push(addon.id);
         }

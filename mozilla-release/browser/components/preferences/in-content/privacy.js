@@ -143,38 +143,15 @@ var gPrivacyPane = {
     setEventListener("showCookiesButton", "command",
       gPrivacyPane.showCookies);
     setEventListener("clearDataSettings", "command",
-<<<<<<< HEAD
-                     gPrivacyPane.showClearPrivateDataSettings);
-#if 0
-||||||| merged common ancestors
-                     gPrivacyPane.showClearPrivateDataSettings);
-=======
       gPrivacyPane.showClearPrivateDataSettings);
->>>>>>> origin/upstream-releases
+#if 0
     setEventListener("trackingProtectionRadioGroup", "command",
       gPrivacyPane.trackingProtectionWritePrefs);
     setEventListener("trackingProtectionExceptions", "command",
       gPrivacyPane.showTrackingProtectionExceptions);
     setEventListener("changeBlockList", "command",
-<<<<<<< HEAD
-                     gPrivacyPane.showBlockLists);
-    setEventListener("changeBlockListPBM", "command",
-                     gPrivacyPane.showBlockLists);
-#endif
-    setEventListener("browserContainersCheckbox", "command",
-                     gPrivacyPane._checkBrowserContainers);
-    setEventListener("browserContainersSettings", "command",
-                     gPrivacyPane.showContainerSettings);
-||||||| merged common ancestors
-                     gPrivacyPane.showBlockLists);
-    setEventListener("changeBlockListPBM", "command",
-                     gPrivacyPane.showBlockLists);
-    setEventListener("browserContainersCheckbox", "command",
-                     gPrivacyPane._checkBrowserContainers);
-    setEventListener("browserContainersSettings", "command",
-                     gPrivacyPane.showContainerSettings);
-=======
       gPrivacyPane.showBlockLists);
+#endif
     setEventListener("passwordExceptions", "command",
       gPrivacyPane.showPasswordExceptions);
     setEventListener("useMasterPassword", "command",
@@ -353,7 +330,6 @@ var gPrivacyPane = {
     Components.classes["@mozilla.org/observer-service;1"]
       .getService(Components.interfaces.nsIObserverService)
       .notifyObservers(window, "privacy-pane-loaded");
->>>>>>> origin/upstream-releases
   },
 
   // TRACKING PROTECTION MODE
@@ -644,29 +620,10 @@ var gPrivacyPane = {
       introText: bundlePreferences.getString("trackingprotectionpermissionstext2"),
     };
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
-<<<<<<< HEAD
-                    null, params);
-  },
-
-  /**
-||||||| merged common ancestors
-                    null, params);
-  },
-
-  /**
-   * Displays container panel for customising and adding containers.
-   */
-  showContainerSettings() {
-    gotoPref("containers");
-  },
-
-  /**
-=======
       null, params);
   },
 
   /**
->>>>>>> origin/upstream-releases
    * Displays the available block lists for tracking protection.
    */
   showBlockLists() {

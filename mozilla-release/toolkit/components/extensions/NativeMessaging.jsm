@@ -44,14 +44,6 @@ const MAX_WRITE = 0xffffffff;
 const PREF_MAX_READ = "webextensions.native-messaging.max-input-message-bytes";
 const PREF_MAX_WRITE = "webextensions.native-messaging.max-output-message-bytes";
 
-<<<<<<< HEAD
-const REGPATH = "Software\\Cliqz\\NativeMessagingHosts";
-
-||||||| merged common ancestors
-const REGPATH = "Software\\Mozilla\\NativeMessagingHosts";
-
-=======
->>>>>>> origin/upstream-releases
 const global = this;
 
 this.NativeApp = class extends EventEmitter {

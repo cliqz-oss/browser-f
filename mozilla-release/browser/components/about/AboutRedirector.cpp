@@ -75,20 +75,15 @@ static const RedirEntry kRedirMap[] = {
     nsIAboutModule::ALLOW_SCRIPT |
     nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "welcomeback", "chrome://browser/content/aboutWelcomeBack.xhtml",
-<<<<<<< HEAD
-    nsIAboutModule::ALLOW_SCRIPT },
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "importedtabs", "chrome://browser/content/aboutImportedTabs.xhtml",
-    nsIAboutModule::ALLOW_SCRIPT },
+    nsIAboutModule::ALLOW_SCRIPT |
+    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
   { "home", "resource://cliqz/freshtab/home.html",
     nsIAboutModule::ALLOW_SCRIPT },
 #if 0
 # Replaced by Cliqz
-||||||| merged common ancestors
-    nsIAboutModule::ALLOW_SCRIPT },
-=======
-    nsIAboutModule::ALLOW_SCRIPT |
-    nsIAboutModule::HIDE_FROM_ABOUTABOUT },
->>>>>>> origin/upstream-releases
   // Linkable because of indexeddb use (bug 1228118)
   { "home", "chrome://browser/content/abouthome/aboutHome.xhtml",
     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |

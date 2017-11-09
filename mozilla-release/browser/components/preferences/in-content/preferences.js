@@ -57,21 +57,9 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
-<<<<<<< HEAD
-  register_module("paneAdvanced", gAdvancedPane);
-  register_module("paneApplications", gApplicationsPane);
-  register_module("paneContent", gContentPane);
 #if MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-  register_module("paneAdvanced", gAdvancedPane);
-  register_module("paneApplications", gApplicationsPane);
-  register_module("paneContent", gContentPane);
-=======
->>>>>>> origin/upstream-releases
   register_module("paneSync", gSyncPane);
-<<<<<<< HEAD
 #endif
-  register_module("paneSecurity", gSecurityPane);
   register_module("paneConnect", gConnectPane);
   // Cliqz. DB-1230: Display the rich list item when connect module is available
   try {
@@ -83,13 +71,9 @@ function init_all() {
   } catch (e) {
     Cu.reportError(e);
   }
-||||||| merged common ancestors
-  register_module("paneSecurity", gSecurityPane);
-=======
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();
->>>>>>> origin/upstream-releases
 
   let categories = document.getElementById("categories");
   categories.addEventListener("select", event => gotoPref(event.target.value));
@@ -115,42 +99,7 @@ function init_all() {
   document.dispatchEvent(new CustomEvent("Initialized", {
     "bubbles": true,
     "cancelable": true
-<<<<<<< HEAD
-  });
-  document.dispatchEvent(initFinished);
-
-  categories = categories.querySelectorAll("richlistitem.category");
-  for (let category of categories) {
-    let name = internalPrefCategoryNameToFriendlyName(category.value);
-    // Cliqz. DB-1264: Connect pane doesn't have a help button
-    if (name !== 'connect') {
-      let helpSelector = `#header-${name} .help-button`;
-      let helpButton = document.querySelector(helpSelector);
-      helpButton.setAttribute("href", getHelpLinkURL(category.getAttribute("helpTopic")));
-    } 
-  }
-
-  // Wait until initialization of all preferences are complete before
-  // notifying observers that the UI is now ready.
-  Services.obs.notifyObservers(window, "advanced-pane-loaded");
-||||||| merged common ancestors
-  });
-  document.dispatchEvent(initFinished);
-
-  categories = categories.querySelectorAll("richlistitem.category");
-  for (let category of categories) {
-    let name = internalPrefCategoryNameToFriendlyName(category.value);
-    let helpSelector = `#header-${name} > .help-button`;
-    let helpButton = document.querySelector(helpSelector);
-    helpButton.setAttribute("href", getHelpLinkURL(category.getAttribute("helpTopic")));
-  }
-
-  // Wait until initialization of all preferences are complete before
-  // notifying observers that the UI is now ready.
-  Services.obs.notifyObservers(window, "advanced-pane-loaded");
-=======
   }));
->>>>>>> origin/upstream-releases
 }
 
 // Make the space above the categories list shrink on low window heights
@@ -194,12 +143,8 @@ function telemetryBucketForCategory(category) {
     case "privacy":
     case "search":
     case "sync":
-<<<<<<< HEAD
     case "connect":
-||||||| merged common ancestors
-=======
     case "searchresults":
->>>>>>> origin/upstream-releases
       return category;
     default:
       return "unknown";

@@ -114,7 +114,11 @@
 <!ENTITY  browserContainersEnabled.accesskey    "n">
 <!ENTITY  browserContainersSettings.label        "Settings…">
 <!ENTITY  browserContainersSettings.accesskey    "i">
-<<<<<<< HEAD
+
+<!ENTITY  a11yPrivacy.checkbox.label     "Prevent accessibility services from accessing your browser">
+<!ENTITY  a11yPrivacy.checkbox.accesskey "a">
+<!ENTITY  a11yPrivacy.learnmore.label    "Learn more">
+<!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
 
 <!-- Forget mode -->
 <!ENTITY  forgetMode.caption "Forget Mode">
@@ -125,11 +129,3 @@
 
 <!-- Cliqz addition -->
 <!ENTITY  cliqzFirefoxPrivacy.label "Parts of the Cliqz Browser are building upon the <label class='text-link' href='https://www.mozilla.org/en-US/'>Mozilla open source project</label>. The <label class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'>Firefox Privacy Notice</label> applies, unless otherwise stated in the Cliqz <label class='text-link' href='https://cliqz.com/en/privacy-browser'>Privacy Statement</label>.">
-||||||| merged common ancestors
-=======
-
-<!ENTITY  a11yPrivacy.checkbox.label     "Prevent accessibility services from accessing your browser">
-<!ENTITY  a11yPrivacy.checkbox.accesskey "a">
-<!ENTITY  a11yPrivacy.learnmore.label    "Learn more">
-<!ENTITY enableSafeBrowsingLearnMore.label "Learn more">
->>>>>>> origin/upstream-releases

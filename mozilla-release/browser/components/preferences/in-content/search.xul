@@ -28,15 +28,6 @@
           hidden="true"
           data-category="paneSearch">
       <label class="header-name" flex="1">&paneSearch.title;</label>
-<<<<<<< HEAD
-      <label class="header-mozilla-support-label">
-        &mozillaSupportHelp.label;
-        <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
-      </label>
-||||||| merged common ancestors
-      <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
-=======
->>>>>>> origin/upstream-releases
     </hbox>
 
     <groupbox id="searchbarGroup" data-category="paneSearch">
@@ -65,19 +56,9 @@
                 label="&provideSearchSuggestions.label;"
                 accesskey="&provideSearchSuggestions.accesskey;"
                 preference="browser.search.suggest.enabled"/>
-<<<<<<< HEAD
       <vbox class="indent" hidden="true">
-        <checkbox id="urlBarSuggestion" label="&showURLBarSuggestions.label;"
-                  accesskey="&showURLBarSuggestions.accesskey;"
-||||||| merged common ancestors
-      <vbox class="indent">
-        <checkbox id="urlBarSuggestion" label="&showURLBarSuggestions.label;"
-                  accesskey="&showURLBarSuggestions.accesskey;"
-=======
-      <vbox class="indent">
         <checkbox id="urlBarSuggestion" label="&showURLBarSuggestions2.label;"
                   accesskey="&showURLBarSuggestions2.accesskey;"
->>>>>>> origin/upstream-releases
                   preference="browser.urlbar.suggest.searches"/>
         <hbox id="urlBarSuggestionPermanentPBLabel"
               align="center" class="indent">
@@ -115,14 +96,8 @@
                 />
       </hbox>
       <hbox id="addEnginesBox" pack="start">
-<<<<<<< HEAD
-        <label id="addEngines" class="text-link" value="&addMoreSearchEngines.label;"/>
-        <html:br/>
-        <label>&addMoreSearchEnginesDesc.label;</label>
-||||||| merged common ancestors
-        <label id="addEngines" class="text-link" value="&addMoreSearchEngines.label;"/>
-=======
         <label id="addEngines" class="text-link">&findMoreSearchEngines.label;</label>
->>>>>>> origin/upstream-releases
+        <html:br/>
+        <label>&findMoreSearchEnginesDesc.label;</label>
       </hbox>
     </groupbox>

@@ -257,13 +257,7 @@
           if (this._docShell)
             return this._docShell;
 
-<<<<<<< HEAD
-          let frameLoader = this.asFrameLoaderOwner.frameLoader;
-||||||| merged common ancestors
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
-=======
           let {frameLoader} = this;
->>>>>>> origin/upstream-releases
           if (!frameLoader)
             return null;
           this._docShell = frameLoader.docShell;
@@ -278,13 +272,7 @@
           if (this._loadContext)
             return this._loadContext;
 
-<<<<<<< HEAD
-          let frameLoader = this.asFrameLoaderOwner.frameLoader;
-||||||| merged common ancestors
-          let frameLoader = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner).frameLoader;
-=======
           let {frameLoader} = this;
->>>>>>> origin/upstream-releases
           if (!frameLoader)
             return null;
           this._loadContext = frameLoader.loadContext;
@@ -365,18 +353,8 @@
                 readonly="true">
         <getter>
           <![CDATA[
-<<<<<<< HEAD
-            var owner = this.asFrameLoaderOwner;
-            if (!owner.frameLoader) {
-              return null;
-||||||| merged common ancestors
-            var owner = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);
-            if (!owner.frameLoader) {
-              return null;
-=======
             if (this.frameLoader) {
               return this.frameLoader.messageManager;
->>>>>>> origin/upstream-releases
             }
             return null;
           ]]>
@@ -1604,15 +1582,7 @@
         <parameter name="aPrintProgressListener"/>
         <body>
           <![CDATA[
-<<<<<<< HEAD
-            var owner = this.asFrameLoaderOwner;
-            if (!owner.frameLoader) {
-||||||| merged common ancestors
-            var owner = this.QueryInterface(Components.interfaces.nsIFrameLoaderOwner);
-            if (!owner.frameLoader) {
-=======
             if (!this.frameLoader) {
->>>>>>> origin/upstream-releases
               throw Components.Exception("No frame loader.",
                                          Components.results.NS_ERROR_FAILURE);
             }

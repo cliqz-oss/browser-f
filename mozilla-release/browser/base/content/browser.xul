@@ -12,7 +12,6 @@
 <?xml-stylesheet href="chrome://browser/skin/controlcenter/panel.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/customizableui/panelUI.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/" type="text/css"?>
-<?xml-stylesheet href="chrome://browser/skin/cliqz/theme.css" type="text/css"?>
 
 <?xul-overlay href="chrome://global/content/editMenuOverlay.xul"?>
 <?xul-overlay href="chrome://browser/content/baseMenuOverlay.xul"?>
@@ -786,109 +785,6 @@
         <toolbaritem id="urlbar-container" flex="400" persist="width"
                      removable="false"
                      class="chromeclass-location" overflows="false">
-<<<<<<< HEAD
-          <toolbarbutton id="back-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         removable="false" overflows="false"
-                         label="&backCmd.label;"
-                         command="Browser:BackOrBackDuplicate"
-                         onclick="checkForMiddleClick(this, event);"
-                         tooltip="back-button-tooltip"
-                         context="backForwardMenu"/>
-          <!-- Cliqz: Forward button must be here in Cliqz browser with custom theme -->
-          <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         label="&forwardCmd.label;"
-                         command="Browser:ForwardOrForwardDuplicate"
-                         onclick="checkForMiddleClick(this, event);"
-                         tooltip="forward-button-tooltip"
-                         context="backForwardMenu"/>
-#ifdef MOZ_PHOTON_THEME
-          <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         removable="false" overflows="false"
-                         label="&forwardCmd.label;"
-                         command="Browser:ForwardOrForwardDuplicate"
-                         onclick="checkForMiddleClick(this, event);"
-                         tooltip="forward-button-tooltip"
-                         context="backForwardMenu"/>
-          <toolbaritem id="stop-reload-button"
-                       removable="false" overflows="false"
-                       class="chromeclass-toolbar-additional">
-            <toolbarbutton id="reload-button"
-                           class="toolbarbutton-1"
-                           command="Browser:ReloadOrDuplicate"
-                           onclick="checkForMiddleClick(this, event);"
-                           tooltip="dynamic-shortcut-tooltip">
-              <box class="toolbarbutton-animatable-box">
-                <image class="toolbarbutton-animatable-image"/>
-              </box>
-            </toolbarbutton>
-            <toolbarbutton id="stop-button"
-                           class="toolbarbutton-1"
-                           command="Browser:Stop"
-                           tooltip="dynamic-shortcut-tooltip">
-              <box class="toolbarbutton-animatable-box">
-                <image class="toolbarbutton-animatable-image"/>
-              </box>
-            </toolbarbutton>
-          </toolbaritem>
-#endif
-          <hbox id="urlbar-wrapper" flex="1">
-#ifdef 0  <!--#ifndef MOZ_PHOTON_THEME-->
-            <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                           label="&forwardCmd.label;"
-                           command="Browser:ForwardOrForwardDuplicate"
-                           onclick="checkForMiddleClick(this, event);"
-                           tooltip="forward-button-tooltip"
-                           context="backForwardMenu"/>
-#endif
-||||||| merged common ancestors
-          <toolbarbutton id="back-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         removable="false" overflows="false"
-                         label="&backCmd.label;"
-                         command="Browser:BackOrBackDuplicate"
-                         onclick="checkForMiddleClick(this, event);"
-                         tooltip="back-button-tooltip"
-                         context="backForwardMenu"/>
-#ifdef MOZ_PHOTON_THEME
-          <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                         removable="false" overflows="false"
-                         label="&forwardCmd.label;"
-                         command="Browser:ForwardOrForwardDuplicate"
-                         onclick="checkForMiddleClick(this, event);"
-                         tooltip="forward-button-tooltip"
-                         context="backForwardMenu"/>
-          <toolbaritem id="stop-reload-button"
-                       removable="false" overflows="false"
-                       class="chromeclass-toolbar-additional">
-            <toolbarbutton id="reload-button"
-                           class="toolbarbutton-1"
-                           command="Browser:ReloadOrDuplicate"
-                           onclick="checkForMiddleClick(this, event);"
-                           tooltip="dynamic-shortcut-tooltip">
-              <box class="toolbarbutton-animatable-box">
-                <image class="toolbarbutton-animatable-image"/>
-              </box>
-            </toolbarbutton>
-            <toolbarbutton id="stop-button"
-                           class="toolbarbutton-1"
-                           command="Browser:Stop"
-                           tooltip="dynamic-shortcut-tooltip">
-              <box class="toolbarbutton-animatable-box">
-                <image class="toolbarbutton-animatable-image"/>
-              </box>
-            </toolbarbutton>
-          </toolbaritem>
-#endif
-          <hbox id="urlbar-wrapper" flex="1">
-#ifndef MOZ_PHOTON_THEME
-            <toolbarbutton id="forward-button" class="toolbarbutton-1 chromeclass-toolbar-additional"
-                           label="&forwardCmd.label;"
-                           command="Browser:ForwardOrForwardDuplicate"
-                           onclick="checkForMiddleClick(this, event);"
-                           tooltip="forward-button-tooltip"
-                           context="backForwardMenu"/>
-#endif
-=======
->>>>>>> origin/upstream-releases
             <textbox id="urlbar" flex="1"
                      placeholder="&urlbar.placeholder2;"
                      type="autocomplete"
@@ -1030,30 +926,7 @@
                 </hbox>
               </hbox>
             </textbox>
-<<<<<<< HEAD
-          </hbox>
         </toolbaritem>
-
-# Cliqz. DB-1349: doesn't used in Cliqz browser
-#ifdef 0
-        <toolbaritem id="search-container" title="&searchItem.title;"
-                     align="center" class="chromeclass-toolbar-additional panel-wide-item"
-                     cui-areatype="toolbar"
-                     flex="100" persist="width" removable="true">
-          <searchbar id="searchbar" flex="1"/>
-||||||| merged common ancestors
-          </hbox>
-        </toolbaritem>
-
-        <toolbaritem id="search-container" title="&searchItem.title;"
-                     align="center" class="chromeclass-toolbar-additional panel-wide-item"
-                     cui-areatype="toolbar"
-                     flex="100" persist="width" removable="true">
-          <searchbar id="searchbar" flex="1"/>
-=======
->>>>>>> origin/upstream-releases
-        </toolbaritem>
-#endif
 
         <toolbarspring cui-areatype="toolbar" class="chromeclass-toolbar-additional"/>
 

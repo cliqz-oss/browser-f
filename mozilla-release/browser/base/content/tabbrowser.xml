@@ -2714,63 +2714,12 @@
 
               this.tabContainer.updateVisibility();
 
-<<<<<<< HEAD
-            // If we open a new tab with the newtab URL in the default
-            // userContext, check if there is a preloaded browser ready.
-            // Private windows are not included because both the label and the
-            // icon for the tab would be set incorrectly (see bug 1195981).
-            if (aURI == BROWSER_NEW_TAB_URL &&
-                !aUserContextId &&
-                !aPrivate &&
-                !PrivateBrowsingUtils.isWindowPrivate(window)) {
-              b = this._getPreloadedBrowser();
-              if (b) {
-                usingPreloadedContent = true;
-||||||| merged common ancestors
-            // If we open a new tab with the newtab URL in the default
-            // userContext, check if there is a preloaded browser ready.
-            // Private windows are not included because both the label and the
-            // icon for the tab would be set incorrectly (see bug 1195981).
-            if (aURI == BROWSER_NEW_TAB_URL &&
-                !aUserContextId &&
-                !PrivateBrowsingUtils.isWindowPrivate(window)) {
-              b = this._getPreloadedBrowser();
-              if (b) {
-                usingPreloadedContent = true;
-=======
               // If we don't have a preferred remote type, and we have a remote
               // opener, use the opener's remote type.
               if (!aPreferredRemoteType && aOpenerBrowser) {
                 aPreferredRemoteType = aOpenerBrowser.remoteType;
->>>>>>> origin/upstream-releases
               }
 
-<<<<<<< HEAD
-            if (!b) {
-              // No preloaded browser found, create one.
-              b = this._createBrowser({ remoteType,
-                                        uriIsAboutBlank,
-                                        userContextId: aUserContextId,
-                                        sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
-                                        opener: aOpener,
-                                        isPrerendered: aIsPrerendered,
-                                        nextTabParentId: aNextTabParentId,
-                                        name: aName,
-                                        private: !!aPrivate });
-            }
-||||||| merged common ancestors
-            if (!b) {
-              // No preloaded browser found, create one.
-              b = this._createBrowser({ remoteType,
-                                        uriIsAboutBlank,
-                                        userContextId: aUserContextId,
-                                        sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
-                                        opener: aOpener,
-                                        isPrerendered: aIsPrerendered,
-                                        nextTabParentId: aNextTabParentId,
-                                        name: aName });
-            }
-=======
               // If URI is about:blank and we don't have a preferred remote type,
               // then we need to use the referrer, if we have one, to get the
               // correct remote type for the new tab.
@@ -2779,7 +2728,6 @@
                   E10SUtils.getRemoteTypeForURI(aReferrerURI.spec,
                                                 gMultiProcessBrowser);
               }
->>>>>>> origin/upstream-releases
 
               let remoteType =
                 aForceNotRemote ? E10SUtils.NOT_REMOTE
@@ -2792,6 +2740,7 @@
               // icon for the tab would be set incorrectly (see bug 1195981).
               if (aURI == BROWSER_NEW_TAB_URL &&
                   !aUserContextId &&
+                  !aPrivate &&
                   !PrivateBrowsingUtils.isWindowPrivate(window)) {
                 b = this._getPreloadedBrowser();
                 if (b) {
@@ -2808,7 +2757,8 @@
                                           openerWindow: aOpener,
                                           isPrerendered: aIsPrerendered,
                                           nextTabParentId: aNextTabParentId,
-                                          name: aName });
+                                          name: aName,
+                                          private: !!aPrivate });
               }
 
               t.linkedBrowser = b;
@@ -4140,15 +4090,8 @@
           let linkedBrowser = aTab.linkedBrowser;
           let params = { eventDetail: { adoptedTab: aTab },
                          preferredRemoteType: linkedBrowser.remoteType,
-<<<<<<< HEAD
                          sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-                         private: !!aTab.private };
-||||||| merged common ancestors
-                         sameProcessAsFrameLoader: linkedBrowser.frameLoader };
-=======
-                         sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-                         skipAnimation: true };
->>>>>>> origin/upstream-releases
+                         skipAnimation: true, private: !!aTab.private };
           if (aTab.hasAttribute("usercontextid")) {
             // new tab must have the same usercontextid as the old one
             params.userContextId = aTab.getAttribute("usercontextid");
@@ -7831,25 +7774,6 @@
       <xul:stack class="tab-stack" flex="1">
         <xul:vbox xbl:inherits="selected=visuallyselected,fadein"
                   class="tab-background">
-<<<<<<< HEAD
-          <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
-                    class="tab-background-start"/>
-          <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
-                    class="tab-background-middle"/>
-          <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
-                    class="tab-background-end"/>
-        </xul:hbox>
-        <xul:hbox xbl:inherits="pinned,selected=visuallyselected,titlechanged,attention,private"
-||||||| merged common ancestors
-          <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
-                    class="tab-background-start"/>
-          <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
-                    class="tab-background-middle"/>
-          <xul:hbox xbl:inherits="pinned,selected=visuallyselected"
-                    class="tab-background-end"/>
-        </xul:hbox>
-        <xul:hbox xbl:inherits="pinned,selected=visuallyselected,titlechanged,attention"
-=======
           <xul:hbox xbl:inherits="selected=visuallyselected"
                     class="tab-line"/>
           <xul:spacer flex="1"/>
@@ -7858,8 +7782,7 @@
         <xul:hbox xbl:inherits="pinned,bursting,notselectedsinceload"
                   anonid="tab-loading-burst"
                   class="tab-loading-burst"/>
-        <xul:hbox xbl:inherits="pinned,selected=visuallyselected,titlechanged,attention"
->>>>>>> origin/upstream-releases
+        <xul:hbox xbl:inherits="pinned,selected=visuallyselected,titlechanged,attention,private"
                   class="tab-content" align="center">
           <xul:hbox xbl:inherits="fadein,pinned,busy,progress,selected=visuallyselected"
                     anonid="tab-throbber"

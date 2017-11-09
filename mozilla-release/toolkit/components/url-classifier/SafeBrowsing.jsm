@@ -41,12 +41,8 @@ const tablePreferences = [
   "urlclassifier.malwareTable",
   "urlclassifier.downloadBlockTable",
   "urlclassifier.downloadAllowTable",
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-=======
   "urlclassifier.passwordAllowTable",
->>>>>>> origin/upstream-releases
+#if 0
   "urlclassifier.trackingTable",
   "urlclassifier.trackingWhitelistTable",
 #endif
@@ -284,12 +280,8 @@ this.SafeBrowsing = {
      this.malwareLists,
      this.downloadBlockLists,
      this.downloadAllowLists,
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-=======
      this.passwordAllowLists,
->>>>>>> origin/upstream-releases
+#if 0
      this.trackingProtectionLists,
      this.trackingProtectionWhitelists,
 #endif

@@ -31,16 +31,8 @@ disabled data sharing options in developer builds or builds with no Telemetry su
 available. -->
 <!ENTITY healthReportingDisabled.label   "Datenübermittlung ist für diese Build-Konfiguration deaktiviert">
 
-<<<<<<< HEAD
-<!ENTITY enableHealthReport1.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Cliqz zu senden">
-<!ENTITY enableHealthReport1.accesskey   "t">
-||||||| merged common ancestors
-<!ENTITY enableHealthReport1.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Mozilla zu senden">
-<!ENTITY enableHealthReport1.accesskey   "t">
-=======
-<!ENTITY enableHealthReport2.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Mozilla zu senden">
+<!ENTITY enableHealthReport2.label       "&brandShortName; erlauben, Daten zu technischen Details und Interaktionen an Cliqz zu senden">
 <!ENTITY enableHealthReport2.accesskey   "t">
->>>>>>> origin/upstream-releases
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
 
 <!ENTITY dataCollection.label            "Datenerhebung durch &brandShortName; und deren Verwendung">
@@ -161,6 +153,6 @@ available. -->
 <!ENTITY limitContentProcessOption.disabledDescription
                                          "Das Ändern der Anzahl der Inhaltsprozesse ist nur in &brandShortName; mit mehreren Prozessen möglich.">
 <!ENTITY limitContentProcessOption.disabledDescriptionLink
-                                         "Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird">
+                                         "Wie Sie herausfinden, ob Cliqz mit mehreren Prozessen ausgeführt wird">
 <!ENTITY allowHWAccel.label              "Hardwarebeschleunigung verwenden, wenn verfügbar">
 <!ENTITY allowHWAccel.accesskey          "v">

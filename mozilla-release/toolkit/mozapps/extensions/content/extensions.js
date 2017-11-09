@@ -727,30 +727,14 @@ var gViewController = {
     this.headeredViews = document.getElementById("headered-views");
     this.headeredViewsDeck = document.getElementById("headered-views-content");
 
-<<<<<<< HEAD
 #if 0
-    this.viewObjects["search"] = gSearchView;
-    this.viewObjects["discover"] = gDiscoverView;
-#endif
-    this.viewObjects["list"] = gListView;
-    this.viewObjects["legacy"] = gLegacyView;
-    this.viewObjects["detail"] = gDetailView;
-    this.viewObjects["updates"] = gUpdatesView;
-||||||| merged common ancestors
-    this.viewObjects["search"] = gSearchView;
-    this.viewObjects["discover"] = gDiscoverView;
-    this.viewObjects["list"] = gListView;
-    this.viewObjects["legacy"] = gLegacyView;
-    this.viewObjects["detail"] = gDetailView;
-    this.viewObjects["updates"] = gUpdatesView;
-=======
     this.viewObjects.search = gSearchView;
     this.viewObjects.discover = gDiscoverView;
+#endif
     this.viewObjects.list = gListView;
     this.viewObjects.legacy = gLegacyView;
     this.viewObjects.detail = gDetailView;
     this.viewObjects.updates = gUpdatesView;
->>>>>>> origin/upstream-releases
 
     for (let type in this.viewObjects) {
       let view = this.viewObjects[type];

@@ -181,88 +181,9 @@
       class="subcategory"
       hidden="true"
       data-category="panePrivacy">
-<<<<<<< HEAD
-  <label class="header-name" flex="1">&panePrivacy.title;</label>
-  <label class="header-mozilla-support-label">
-    &mozillaSupportHelp.label;
-    <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
-  </label>
-||||||| merged common ancestors
-  <label class="header-name" flex="1">&panePrivacy.title;</label>
-  <html:a class="help-button" target="_blank" aria-label="&helpButton.label;"></html:a>
-=======
   <label class="header-name" flex="1">&browserPrivacy.label;</label>
->>>>>>> origin/upstream-releases
 </hbox>
 
-<<<<<<< HEAD
-<!-- Tracking -->
-<groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-#if 0
-  <vbox id="trackingprotectionbox" hidden="true">
-    <hbox align="start">
-      <vbox>
-        <caption><label>&trackingProtectionHeader.label;
-          <label id="trackingProtectionLearnMore" class="learnMore text-link"
-                 value="&trackingProtectionLearnMore.label;"/>
-        </label></caption>
-        <radiogroup id="trackingProtectionRadioGroup">
-          <radio value="always"
-                 label="&trackingProtectionAlways.label;"
-                 accesskey="&trackingProtectionAlways.accesskey;"/>
-          <radio value="private"
-                 label="&trackingProtectionPrivate.label;"
-                 accesskey="&trackingProtectionPrivate.accesskey;"/>
-          <radio value="never"
-                 label="&trackingProtectionNever.label;"
-                 accesskey="&trackingProtectionNever.accesskey;"/>
-        </radiogroup>
-      </vbox>
-      <spacer flex="1" />
-      <vbox>
-        <button id="trackingProtectionExceptions"
-                label="&trackingProtectionExceptions.label;"
-                accesskey="&trackingProtectionExceptions.accesskey;"
-                preference="pref.privacy.disable_button.tracking_protection_exceptions"/>
-        <button id="changeBlockList"
-                label="&changeBlockList.label;"
-                accesskey="&changeBlockList.accesskey;"
-                preference="pref.privacy.disable_button.change_blocklist"/>
-      </vbox>
-||||||| merged common ancestors
-<!-- Tracking -->
-<groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-  <vbox id="trackingprotectionbox" hidden="true">
-    <hbox align="start">
-      <vbox>
-        <caption><label>&trackingProtectionHeader.label;
-          <label id="trackingProtectionLearnMore" class="learnMore text-link"
-                 value="&trackingProtectionLearnMore.label;"/>
-        </label></caption>
-        <radiogroup id="trackingProtectionRadioGroup">
-          <radio value="always"
-                 label="&trackingProtectionAlways.label;"
-                 accesskey="&trackingProtectionAlways.accesskey;"/>
-          <radio value="private"
-                 label="&trackingProtectionPrivate.label;"
-                 accesskey="&trackingProtectionPrivate.accesskey;"/>
-          <radio value="never"
-                 label="&trackingProtectionNever.label;"
-                 accesskey="&trackingProtectionNever.accesskey;"/>
-        </radiogroup>
-      </vbox>
-      <spacer flex="1" />
-      <vbox>
-        <button id="trackingProtectionExceptions"
-                label="&trackingProtectionExceptions.label;"
-                accesskey="&trackingProtectionExceptions.accesskey;"
-                preference="pref.privacy.disable_button.tracking_protection_exceptions"/>
-        <button id="changeBlockList"
-                label="&changeBlockList.label;"
-                accesskey="&changeBlockList.accesskey;"
-                preference="pref.privacy.disable_button.change_blocklist"/>
-      </vbox>
-=======
 <!-- Passwords -->
 <groupbox id="passwordsGroup" orient="vertical" data-category="panePrivacy" hidden="true">
   <caption><label>&formsAndPasswords.label;</label></caption>
@@ -283,7 +204,6 @@
                 preference="pref.privacy.disable_button.view_passwords_exceptions"
                 searchkeywords="&address2.label;"/>
       </hbox>
->>>>>>> origin/upstream-releases
     </hbox>
     <hbox id="showPasswordBox" pack="end">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
@@ -296,20 +216,6 @@
       </hbox>
     </hbox>
   </vbox>
-<<<<<<< HEAD
-#endif
-  <vbox>
-    <description>&doNotTrack.pre.label;<label
-    class="text-link" id="doNotTrackSettings"
-    >&doNotTrack.settings.label;</label>&doNotTrack.post.label;</description>
-  </vbox>
-||||||| merged common ancestors
-  <vbox>
-    <description>&doNotTrack.pre.label;<label
-    class="text-link" id="doNotTrackSettings"
-    >&doNotTrack.settings.label;</label>&doNotTrack.post.label;</description>
-  </vbox>
-=======
   <hbox id="masterPasswordRow">
     <checkbox id="useMasterPassword"
               label="&useMasterPassword.label;"
@@ -323,7 +229,6 @@
               accesskey="&changeMasterPassword.accesskey;"/>
     </hbox>
   </hbox>
->>>>>>> origin/upstream-releases
 </groupbox>
 
 <!-- History -->
@@ -504,7 +409,6 @@
   </deck>
 </groupbox>
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
 <!-- Forget mode tabs -->
 <vbox data-category="panePrivacy" hidden="true">
@@ -526,12 +430,7 @@
 </vbox>
 #endif
 
-<!-- Location Bar -->
-||||||| merged common ancestors
-<!-- Location Bar -->
-=======
 <!-- Address Bar -->
->>>>>>> origin/upstream-releases
 <groupbox id="locationBarGroup"
           data-category="panePrivacy"
           hidden="true">

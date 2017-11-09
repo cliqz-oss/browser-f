@@ -38,18 +38,7 @@
       class="subcategory"
       hidden="true"
       data-category="paneSync">
-<<<<<<< HEAD
-  <label class="header-name" flex="1">&paneSync.title;</label>
-  <label class="header-mozilla-support-label">
-    &mozillaSupportHelp.label;
-    <html:a class="help-button text-link" target="_blank" aria-label="&helpButton.label;"></html:a>
-  </label>
-||||||| merged common ancestors
-  <label class="header-name" flex="1">&paneSync.title;</label>
-  <html:a class="help-button text-link" target="_blank" aria-label="&helpButton.label;"></html:a>
-=======
   <label class="header-name" flex="1">&paneSync1.title;</label>
->>>>>>> origin/upstream-releases
 </hbox>
 
 <deck id="weavePrefsDeck" data-category="paneSync" hidden="true">

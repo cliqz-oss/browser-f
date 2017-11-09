@@ -853,12 +853,6 @@ bin/libfreebl_32int64_3.so
 @RESPATH@/fix_linux_stack.py
 #endif
 #endif
-<<<<<<< HEAD
-
-; Extra distrubution files
-@RESPATH@/cliqz.cfg
-||||||| merged common ancestors
-=======
 
 ; Background Hang Monitor
 @RESPATH@/components/backgroundhangmonitor.xpt
@@ -869,4 +863,6 @@ bin/libfreebl_32int64_3.so
 @RESPATH@/components/BHRTelemetryService.js
 @RESPATH@/components/BHRTelemetryService.manifest
 #endif
->>>>>>> origin/upstream-releases
+
+; Extra distrubution files
+@RESPATH@/cliqz.cfg

@@ -2,20 +2,13 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<<<<<<< HEAD
-<!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
-||||||| merged common ancestors
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
-
-=======
 <!ENTITY searchBar.label                       "Suchleiste">
 
 <!ENTITY searchBar.hidden.label                "Adressleiste für Suche und Seitenaufrufe verwenden">
 <!ENTITY searchBar.shown.label                 "Suchleiste zur Symbolleiste hinzufügen">
 
-<!ENTITY defaultSearchEngine.label             "Standardsuchmaschine">
+<!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
 
->>>>>>> origin/upstream-releases
 <!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
 
 <!ENTITY chooseYourDefaultSearchEngine.label   "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">

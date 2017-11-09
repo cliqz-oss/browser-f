@@ -109,16 +109,6 @@
 #endif
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
     <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
-<<<<<<< HEAD
-    <command id="Social:SharePage" oncommand="SocialShare.sharePage();"/>
-#if 0
-    <command id="Social:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/service');"/>
-#endif
-||||||| merged common ancestors
-    <command id="Social:SharePage" oncommand="SocialShare.sharePage();"/>
-    <command id="Social:Addons" oncommand="BrowserOpenAddonsMgr('addons://list/service');"/>
-=======
->>>>>>> origin/upstream-releases
   </commandset>
 
   <commandset id="placesCommands">

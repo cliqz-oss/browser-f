@@ -26,38 +26,12 @@ browser.jar:
   skin/classic/browser/panel-plus-sign.png
   skin/classic/browser/page-livemarks.png
   skin/classic/browser/pageInfo.css
-<<<<<<< HEAD
   skin/classic/browser/privatebrowsing-eraser.svg
-  skin/classic/browser/privatebrowsing-mask.png
-  skin/classic/browser/privatebrowsing-mask@2x.png
-  skin/classic/browser/privatebrowsing-mask-short.png
-  skin/classic/browser/privatebrowsing-mask-short@2x.png
-  skin/classic/browser/reload-stop-go.png
-  skin/classic/browser/reload-stop-go@2x.png
-||||||| merged common ancestors
-  skin/classic/browser/privatebrowsing-mask.png
-  skin/classic/browser/privatebrowsing-mask@2x.png
-  skin/classic/browser/privatebrowsing-mask-short.png
-  skin/classic/browser/privatebrowsing-mask-short@2x.png
-  skin/classic/browser/reload-stop-go.png
-  skin/classic/browser/reload-stop-go@2x.png
-=======
->>>>>>> origin/upstream-releases
   skin/classic/browser/searchbar.css
   skin/classic/browser/slowStartup-16.png
   skin/classic/browser/toolbarbutton-dropmarker.png
   skin/classic/browser/toolbarbutton-dropmarker@2x.png
   skin/classic/browser/webRTC-indicator.css
-  skin/classic/browser/cliqz/close.png                (cliqz/close.png)
-  skin/classic/browser/cliqz/close@2x.png             (cliqz/close@2x.png)
-  skin/classic/browser/cliqz/Lato-Regular.ttf         (cliqz/Lato-Regular.ttf)
-  skin/classic/browser/cliqz/newtab.svg               (cliqz/newtab.svg)
-  skin/classic/browser/cliqz/theme.css                (cliqz/theme.css)
-  skin/classic/browser/cliqz/urlbar-arrow.png         (cliqz/urlbar-arrow.png)
-  skin/classic/browser/cliqz/urlbar-arrow@2x.png      (cliqz/urlbar-arrow@2x.png)
-  skin/classic/browser/cliqz/close_blue.png           (cliqz/blue_theme/close.png)
-  skin/classic/browser/cliqz/close_blue@2x.png        (cliqz/blue_theme/close@2x.png)
-  skin/classic/browser/cliqz/newtab_blue.svg          (cliqz/blue_theme/newtab.svg)
 * skin/classic/browser/controlcenter/panel.css        (controlcenter/panel.css)
 * skin/classic/browser/customizableui/panelUI.css    (customizableui/panelUI.css)
 * skin/classic/browser/downloads/allDownloadsViewOverlay.css (downloads/allDownloadsViewOverlay.css)
@@ -100,21 +74,7 @@ browser.jar:
 #ifdef MOZ_SERVICES_SYNC
   skin/classic/browser/sync-desktopIcon.svg  (../shared/sync-desktopIcon.svg)
   skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
-<<<<<<< HEAD
-  skin/classic/browser/syncProgress-horizontalbar.png
-  skin/classic/browser/syncProgress-horizontalbar@2x.png
 #endif
-#ifndef MOZ_PHOTON_THEME
-  skin/classic/browser/Toolbar-background-noise.png         (Toolbar-background-noise.png)
-#endif
-||||||| merged common ancestors
-  skin/classic/browser/syncProgress-horizontalbar.png
-  skin/classic/browser/syncProgress-horizontalbar@2x.png
-#ifndef MOZ_PHOTON_THEME
-  skin/classic/browser/Toolbar-background-noise.png         (Toolbar-background-noise.png)
-#endif
-=======
->>>>>>> origin/upstream-releases
   skin/classic/browser/yosemite/menuPanel-customize.png                (menuPanel-customize-yosemite.png)
   skin/classic/browser/yosemite/menuPanel-customize@2x.png             (menuPanel-customize-yosemite@2x.png)
   skin/classic/browser/yosemite/menuPanel-exit.png                     (menuPanel-exit-yosemite.png)

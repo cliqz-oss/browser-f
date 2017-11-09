@@ -879,15 +879,11 @@ nsDocShell::~nsDocShell()
 {
   MOZ_ASSERT(!mObserved);
 
-<<<<<<< HEAD
   MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::DTOR!!!\n", this));
 
-||||||| merged common ancestors
-=======
   // Avoid notifying observers while we're in the dtor.
   mIsBeingDestroyed = true;
 
->>>>>>> origin/upstream-releases
   Destroy();
 
   nsCOMPtr<nsISHistoryInternal> shPrivate(do_QueryInterface(mSessionHistory));

@@ -519,26 +519,10 @@ Section "-Application" APP_IDX
     ${EndIf}
   ${EndIf}
 
-<<<<<<< HEAD
-  ; Fake update .lnk file of the Start Menu shortcut to clear the tile cache.
-||||||| merged common ancestors
-  ; Update lastwritetime of the Start Menu shortcut to clear the tile cache.
-=======
   ; Update lastwritetime of the Start Menu shortcut to clear the tile cache.
   ; Do this for both shell contexts in case the user has shortcuts in multiple
   ; locations, then restore the previous context at the end.
->>>>>>> origin/upstream-releases
   ${If} ${AtLeastWin8}
-<<<<<<< HEAD
-  ${AndIf} ${FileExists} "$SMPROGRAMS\${BrandFullName}.lnk"
-    ShellLink::GetShortCutTarget "$SMPROGRAMS\${BrandFullName}.lnk"
-    Pop $0
-    ShellLink::SetShortCutTarget "$SMPROGRAMS\${BrandFullName}.lnk" $0
-||||||| merged common ancestors
-  ${AndIf} ${FileExists} "$SMPROGRAMS\${BrandFullName}.lnk"
-    FileOpen $0 "$SMPROGRAMS\${BrandFullName}.lnk" a
-    FileClose $0
-=======
     SetShellVarContext all
     ${TouchStartMenuShortcut}
     SetShellVarContext current
@@ -548,7 +532,6 @@ Section "-Application" APP_IDX
     ${ElseIf} $TmpVal == "HKCU"
       SetShellVarContext current
     ${EndIf}
->>>>>>> origin/upstream-releases
   ${EndIf}
 
   ${If} $AddDesktopSC == 1

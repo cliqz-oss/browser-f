@@ -5,14 +5,6 @@
 %endif
 @namespace html "http://www.w3.org/1999/xhtml";
 
-<<<<<<< HEAD
-#help-button {
-  /* Hidden in Cliqz, probably because it leads to Mozilla URL */
-  display: none !important;
-}
-
-||||||| merged common ancestors
-=======
 * {
   -moz-user-select: text;
 }
@@ -21,7 +13,6 @@
   --in-content-category-background: #fafafc;
 }
 
->>>>>>> origin/upstream-releases
 .main-content {
   padding-top: 0;
 }
@@ -135,35 +126,11 @@ button > hbox > label {
 }
 
 #category-sync > .category-icon {
-<<<<<<< HEAD
-  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#sync");
+  list-style-image: url("chrome://browser/skin/preferences/in-content/sync.svg");
 }
 
 #category-connect > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/icons.svg#connect");
-}
-
-@media (max-width: 800px) {
-  .category-name {
-    display: none;
-  }
-  .help-button {
-    font-size: 0 !important;
-  }
-||||||| merged common ancestors
-  list-style-image: url("chrome://browser/skin/preferences/in-content-new/icons.svg#sync");
-}
-
-@media (max-width: 800px) {
-  .category-name {
-    display: none;
-  }
-  .help-button {
-    font-size: 0 !important;
-  }
-=======
-  list-style-image: url("chrome://browser/skin/preferences/in-content/sync.svg");
->>>>>>> origin/upstream-releases
+  list-style-image: url("chrome://browser/skin/preferences/in-content/connect.svg");
 }
 
 /* header */
@@ -188,17 +155,8 @@ button > hbox > label {
   font-weight: 600;
 }
 
-<<<<<<< HEAD
-/* Startup prefs table is hidden in Cliqz. */
-#startupTable > tr > td {
-  padding: 0; /* remove the padding from html.css */
-||||||| merged common ancestors
-#startupTable > tr > td {
-  padding: 0; /* remove the padding from html.css */
-=======
 #startupPageBox {
   padding-top: 32px;
->>>>>>> origin/upstream-releases
 }
 
 #browserHomePage {

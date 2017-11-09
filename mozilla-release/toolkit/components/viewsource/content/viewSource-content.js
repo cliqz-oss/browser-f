@@ -383,34 +383,6 @@ var ViewSourceContent = {
       if (target == errorDoc.getElementById("goBackButton")) {
         // Instead of loading some safe page, just close the window
         sendAsyncMessage("ViewSource:Close");
-<<<<<<< HEAD
-      } else if (target == errorDoc.getElementById("reportButton")) {
-        // This is the "Why is this site blocked" button. We redirect
-        // to the generic page describing phishing/malware protection.
-        let URL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-        sendAsyncMessage("ViewSource:OpenURL", { URL })
-      } else if (target == errorDoc.getElementById("ignoreWarningButton")) {
-        // Allow users to override and continue through to the site
-        docShell.QueryInterface(Ci.nsIWebNavigation)
-                .loadURIWithOptions(content.location.href,
-                                    Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER,
-                                    null, Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                                    null, null, null, null, false);
-||||||| merged common ancestors
-      } else if (target == errorDoc.getElementById("reportButton")) {
-        // This is the "Why is this site blocked" button. We redirect
-        // to the generic page describing phishing/malware protection.
-        let URL = Services.urlFormatter.formatURLPref("app.support.baseURL");
-        sendAsyncMessage("ViewSource:OpenURL", { URL })
-      } else if (target == errorDoc.getElementById("ignoreWarningButton")) {
-        // Allow users to override and continue through to the site
-        docShell.QueryInterface(Ci.nsIWebNavigation)
-                .loadURIWithOptions(content.location.href,
-                                    Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CLASSIFIER,
-                                    null, Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
-                                    null, null, null);
-=======
->>>>>>> origin/upstream-releases
       }
     }
   },

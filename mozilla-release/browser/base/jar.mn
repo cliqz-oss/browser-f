@@ -82,13 +82,7 @@ browser.jar:
         content/browser/browser-plugins.js            (content/browser-plugins.js)
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
         content/browser/browser-sidebar.js            (content/browser-sidebar.js)
-<<<<<<< HEAD
-        content/browser/browser-social.js             (content/browser-social.js)
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-        content/browser/browser-social.js             (content/browser-social.js)
-=======
->>>>>>> origin/upstream-releases
         content/browser/browser-sync.js               (content/browser-sync.js)
 #endif
 *       content/browser/browser-tabPreviews.xml       (content/browser-tabPreviews.xml)

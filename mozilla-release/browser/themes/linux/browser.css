@@ -660,23 +660,6 @@ html|span.ac-emphasize-text-url {
 
 /* End customization mode */
 
-<<<<<<< HEAD
-
-#main-window[privatebrowsingmode=temporary] #private-browsing-indicator {
-  background: url("chrome://browser/skin/privatebrowsing-eraser.svg") center no-repeat;
-  width: 24px;
-  height: 16px;
-}
-
-||||||| merged common ancestors
-
-#main-window[privatebrowsingmode=temporary] #private-browsing-indicator {
-  background: url("chrome://browser/skin/privatebrowsing-mask.png") center no-repeat;
-  width: 40px;
-}
-
-=======
->>>>>>> origin/upstream-releases
 %include ../shared/UITour.inc.css
 
 #UITourHighlight {

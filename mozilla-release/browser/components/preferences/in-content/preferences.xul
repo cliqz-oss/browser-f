@@ -20,19 +20,6 @@
 <!ENTITY % brandDTD SYSTEM "chrome://branding/locale/brand.dtd">
 <!ENTITY % globalPreferencesDTD SYSTEM "chrome://global/locale/preferences.dtd">
 <!ENTITY % preferencesDTD SYSTEM
-<<<<<<< HEAD
-  "chrome://browser/locale/preferences-old/preferences.dtd">
-<!ENTITY % privacyDTD SYSTEM "chrome://browser/locale/preferences-old/privacy.dtd">
-<!ENTITY % tabsDTD SYSTEM "chrome://browser/locale/preferences-old/tabs.dtd">
-<!ENTITY % searchDTD SYSTEM "chrome://browser/locale/preferences-old/search.dtd">
-||||||| merged common ancestors
-  "chrome://browser/locale/preferences-old/preferences.dtd">
-<!ENTITY % privacyDTD SYSTEM "chrome://browser/locale/preferences-old/privacy.dtd">
-<!ENTITY % tabsDTD SYSTEM "chrome://browser/locale/preferences-old/tabs.dtd">
-<!ENTITY % searchDTD SYSTEM "chrome://browser/locale/preferences-old/search.dtd">
-<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
-<!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences-old/sync.dtd">
-=======
   "chrome://browser/locale/preferences/preferences.dtd">
 <!ENTITY % selectBookmarkDTD SYSTEM
   "chrome://browser/locale/preferences/selectBookmark.dtd">
@@ -50,9 +37,6 @@
 <!ENTITY % privacyDTD SYSTEM "chrome://browser/locale/preferences/privacy.dtd">
 <!ENTITY % tabsDTD SYSTEM "chrome://browser/locale/preferences/tabs.dtd">
 <!ENTITY % searchDTD SYSTEM "chrome://browser/locale/preferences/search.dtd">
-<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
-<!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences/sync.dtd">
->>>>>>> origin/upstream-releases
 <!ENTITY % securityDTD SYSTEM
   "chrome://browser/locale/preferences/security.dtd">
 <!ENTITY % containersDTD SYSTEM
@@ -64,17 +48,11 @@
 <!ENTITY % applicationsDTD SYSTEM
   "chrome://browser/locale/preferences/applications.dtd">
 <!ENTITY % advancedDTD SYSTEM
-<<<<<<< HEAD
-  "chrome://browser/locale/preferences-old/advanced.dtd">
+  "chrome://browser/locale/preferences/advanced.dtd">
+<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd">
 <!ENTITY % connectDTD SYSTEM
   "chrome://browser/locale/preferences/connect.dtd">
-||||||| merged common ancestors
-  "chrome://browser/locale/preferences-old/advanced.dtd">
-=======
-  "chrome://browser/locale/preferences/advanced.dtd">
-<!ENTITY % aboutDialogDTD SYSTEM "chrome://browser/locale/aboutDialog.dtd" >
 %aboutDialogDTD;
->>>>>>> origin/upstream-releases
 %brandDTD;
 %globalPreferencesDTD;
 %preferencesDTD;
@@ -103,7 +81,9 @@
 %connectDTD;
 
 #if MOZ_SERVICES_SYNC
+<!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
 <!ENTITY % syncDTD SYSTEM "chrome://browser/locale/preferences/sync.dtd">
+%syncBrandDTD;
 %syncDTD;
 #endif
 ]>
@@ -194,35 +174,9 @@
                     tooltiptext="&paneSync1.title;"
                     align="center">
         <image class="category-icon"/>
-<<<<<<< HEAD
-        <label class="category-name" flex="1">&paneSync.title;</label>
+        <label class="category-name" flex="1">&paneSync1.title;</label>
       </richlistitem>
 #endif
-
-      <richlistitem id="category-advanced"
-                    class="category"
-                    value="paneAdvanced"
-                    helpTopic="prefs-advanced-general"
-                    tooltiptext="&paneAdvanced.title;"
-                    align="center">
-        <image class="category-icon"/>
-        <label class="category-name" flex="1">&paneAdvanced.title;</label>
-||||||| merged common ancestors
-        <label class="category-name" flex="1">&paneSync.title;</label>
-      </richlistitem>
-
-      <richlistitem id="category-advanced"
-                    class="category"
-                    value="paneAdvanced"
-                    helpTopic="prefs-advanced-general"
-                    tooltiptext="&paneAdvanced.title;"
-                    align="center">
-        <image class="category-icon"/>
-        <label class="category-name" flex="1">&paneAdvanced.title;</label>
-=======
-        <label class="category-name" flex="1">&paneSync1.title;</label>
->>>>>>> origin/upstream-releases
-      </richlistitem>
       <richlistitem id="category-connect"
                     hidden="true"
                     class="category"
@@ -255,28 +209,12 @@
 #include search.xul
 #include privacy.xul
 #include containers.xul
-<<<<<<< HEAD
-#include advanced.xul
-#include applications.xul
-#include content.xul
-#include security.xul
 #if MOZ_SERVICES_SYNC
   #include sync.xul
 #endif
 #include connect.xul
-      </prefpane>
-||||||| merged common ancestors
-#include advanced.xul
-#include applications.xul
-#include content.xul
-#include security.xul
-#include sync.xul
-      </prefpane>
-=======
-#include sync.xul
         </prefpane>
       </vbox>
->>>>>>> origin/upstream-releases
     </vbox>
   </hbox>
 

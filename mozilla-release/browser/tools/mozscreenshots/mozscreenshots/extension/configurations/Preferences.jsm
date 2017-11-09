@@ -25,57 +25,9 @@ this.Preferences = {
       ["panePrivacy", clearRecentHistoryDialog],
       ["panePrivacy", certManager],
       ["panePrivacy", deviceManager],
-<<<<<<< HEAD
-      ["paneConnect"],
-      ["paneAdvanced"],
-
-      /* The "old" organization. The third argument says to
-         set the pref to show the old organization when
-         opening the preferences. */
-      ["paneGeneral", null, true],
-      ["paneSearch", null, true],
-      ["paneContent", null, true],
-      ["paneApplications", null, true],
-      ["panePrivacy", null, true],
-      ["panePrivacy", DNTDialog, true],
-      ["panePrivacy", clearRecentHistoryDialog, true],
-      ["paneSecurity", null, true],
-      ["paneSync", null, true],
-      ["paneAdvanced", null, true, "generalTab"],
-      ["paneAdvanced", null, true, "dataChoicesTab"],
-      ["paneAdvanced", null, true, "networkTab"],
-      ["paneAdvanced", connectionDialog, true, "networkTab"],
-      ["paneAdvanced", null, true, "updateTab"],
-      ["paneAdvanced", null, true, "encryptionTab"],
-      ["paneAdvanced", certManager, true, "encryptionTab"],
-      ["paneAdvanced", deviceManager, true, "encryptionTab"],
-||||||| merged common ancestors
-      ["paneAdvanced"],
-
-      /* The "old" organization. The third argument says to
-         set the pref to show the old organization when
-         opening the preferences. */
-      ["paneGeneral", null, true],
-      ["paneSearch", null, true],
-      ["paneContent", null, true],
-      ["paneApplications", null, true],
-      ["panePrivacy", null, true],
-      ["panePrivacy", DNTDialog, true],
-      ["panePrivacy", clearRecentHistoryDialog, true],
-      ["paneSecurity", null, true],
-      ["paneSync", null, true],
-      ["paneAdvanced", null, true, "generalTab"],
-      ["paneAdvanced", null, true, "dataChoicesTab"],
-      ["paneAdvanced", null, true, "networkTab"],
-      ["paneAdvanced", connectionDialog, true, "networkTab"],
-      ["paneAdvanced", null, true, "updateTab"],
-      ["paneAdvanced", null, true, "encryptionTab"],
-      ["paneAdvanced", certManager, true, "encryptionTab"],
-      ["paneAdvanced", deviceManager, true, "encryptionTab"],
-=======
       ["panePrivacy", DNTDialog],
+      ["paneConnect"],
       ["paneSync"],
->>>>>>> origin/upstream-releases
     ];
 
     for (let [primary, customFn] of panes) {

@@ -464,15 +464,9 @@ pref("browser.tabs.loadInBackground", true);
 pref("browser.tabs.opentabfor.middleclick", true);
 pref("browser.tabs.loadDivertedInBackground", false);
 pref("browser.tabs.loadBookmarksInBackground", false);
-<<<<<<< HEAD
-pref("browser.tabs.tabClipWidth", 1); // CLIQZ DB-1418: Allow more tabs' close button to be visible
-||||||| merged common ancestors
-pref("browser.tabs.tabClipWidth", 140);
-=======
 pref("browser.tabs.loadBookmarksInTabs", false);
-pref("browser.tabs.tabClipWidth", 140);
+pref("browser.tabs.tabClipWidth", 1); // CLIQZ DB-1418: Allow more tabs' close button to be visible
 pref("browser.tabs.tabMinWidth", 76);
->>>>>>> origin/upstream-releases
 #ifdef UNIX_BUT_NOT_MAC
 pref("browser.tabs.drawInTitlebar", false);
 #else
