@@ -5209,11 +5209,8 @@ var CombinedStopReload = {
   },
 
   _shouldSwitch(aRequest, aWebProgress) {
-    // DB-1518: Switch to reload button in the url bar for CliqzTab
-    const cliqzNewTabURL = "resource://cliqz/freshtab/home.html"; // do we still need this?
     if (aRequest &&
         aRequest.originalURI &&
-        aRequest.originalURI.spec !== cliqzNewTabURL &&
         (aRequest.originalURI.schemeIs("chrome") ||
          (aRequest.originalURI.schemeIs("about") &&
           aWebProgress.isTopLevel &&

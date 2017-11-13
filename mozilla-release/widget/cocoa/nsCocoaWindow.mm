@@ -2951,11 +2951,6 @@ nsCocoaWindow::GetEditCommands(NativeKeyBindingsType aType,
   return defaultPosition;
 }
 
-- (BOOL)FrameView__wantsFloatingTitlebar
-{
-  return NO;
-}
-
 - (NSPoint)FrameView__fullScreenButtonOrigin
 {
   NSPoint defaultPosition = [self FrameView__fullScreenButtonOrigin];

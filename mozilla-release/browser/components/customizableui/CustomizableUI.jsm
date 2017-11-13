@@ -197,7 +197,6 @@ var CustomizableUIInternal = {
       "spring",
       "urlbar-container",
       "spring",
-      "cliqz-vd-btn", // Cliqz video downloader
       "control-center-browser-action", // Cliqz control center
       "cliqz-cc-btn", // Cliqz control center old
       "downloads-button",
