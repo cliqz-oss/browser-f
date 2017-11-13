@@ -13,8 +13,8 @@ const LineGraphWidget = require("devtools/client/shared/widgets/LineGraphWidget"
 const MountainGraphWidget = require("devtools/client/shared/widgets/MountainGraphWidget");
 const { CanvasGraphUtils } = require("devtools/client/shared/widgets/Graphs");
 
-const promise = require("promise");
-const EventEmitter = require("devtools/shared/event-emitter");
+const defer = require("devtools/shared/defer");
+const EventEmitter = require("devtools/shared/old-event-emitter");
 
 const { colorUtils } = require("devtools/shared/css/color");
 const { getColor } = require("devtools/client/shared/theme");
@@ -219,7 +219,7 @@ GraphsController.prototype = {
       return;
     }
 
-    this._rendering = promise.defer();
+    this._rendering = defer();
     for (let graph of (yield this._getEnabled())) {
       yield graph.setPerformanceData(recordingData, resolution);
       this.emit("rendered", graph.graphName);

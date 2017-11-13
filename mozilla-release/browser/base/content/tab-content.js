@@ -93,19 +93,6 @@ addMessageListener("MixedContent:ReenableProtection", function() {
   docShell.mixedContentChannel = null;
 });
 
-addMessageListener("SecondScreen:tab-mirror", function(message) {
-  if (!Services.prefs.getBoolPref("browser.casting.enabled")) {
-    return;
-  }
-  let app = SimpleServiceDiscovery.findAppForService(message.data.service);
-  if (app) {
-    let width = content.innerWidth;
-    let height = content.innerHeight;
-    let viewport = {cssWidth: width, cssHeight: height, width, height};
-    app.mirror(function() {}, content, viewport, function() {}, content);
-  }
-});
-
 var AboutHomeListener = {
   init(chromeGlobal) {
     chromeGlobal.addEventListener("AboutHomeLoad", this, false, true);
@@ -979,7 +966,6 @@ var RefreshBlocker = {
 
     let data = {
       URI: aURI.spec,
-      originCharset: aURI.originCharset,
       delay: aDelay,
       sameURI: aSameURI,
       outerWindowID,
@@ -1007,7 +993,7 @@ var RefreshBlocker = {
                           .getInterface(Ci.nsIDocShell)
                           .QueryInterface(Ci.nsIRefreshURI);
 
-      let URI = Services.io.newURI(data.URI, data.originCharset);
+      let URI = Services.io.newURI(data.URI);
 
       refreshURI.forceRefreshURI(URI, data.delay, true);
     }
@@ -1063,4 +1049,12 @@ addMessageListener("AllowScriptsToClose", () => {
 addEventListener("MozAfterPaint", function onFirstPaint() {
   removeEventListener("MozAfterPaint", onFirstPaint);
   sendAsyncMessage("Browser:FirstPaint");
+});
+
+// Remove this once bug 1397365 is fixed.
+addEventListener("MozAfterPaint", function onFirstNonBlankPaint() {
+  if (content.document.documentURI == "about:blank" && !content.opener)
+    return;
+  removeEventListener("MozAfterPaint", onFirstNonBlankPaint);
+  sendAsyncMessage("Browser:FirstNonBlankPaint");
 });

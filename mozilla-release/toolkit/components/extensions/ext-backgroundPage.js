@@ -1,9 +1,5 @@
 "use strict";
 
-Cu.import("resource://gre/modules/Services.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "AddonManager",
-                                  "resource://gre/modules/AddonManager.jsm");
 XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
                                   "resource://gre/modules/TelemetryStopwatch.jsm");
 
@@ -25,11 +21,6 @@ class BackgroundPage extends HiddenExtensionPage {
       this.url = this.extension.baseURI.resolve(this.page);
     } else if (this.isGenerated) {
       this.url = this.extension.baseURI.resolve("_generated_background_page.html");
-    }
-
-    if (!this.extension.isExtensionURL(this.url)) {
-      this.extension.manifestError("Background page must be a file within the extension");
-      this.url = this.extension.baseURI.resolve("_blank.html");
     }
   }
 

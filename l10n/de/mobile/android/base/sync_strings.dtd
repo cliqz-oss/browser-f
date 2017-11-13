@@ -51,25 +51,23 @@
 <!ENTITY fxaccount_getting_started_get_started 'Anmelden'>
 <!ENTITY fxaccount_getting_started_old_firefox 'Verwenden Sie eine ältere Version von &syncBrand.shortName.label;?'>
 
-<!ENTITY fxaccount_status_signed_in_as 'Angemeldet als'>
-<!ENTITY fxaccount_status_manage_account 'Benutzerkonto verwalten'>
 <!ENTITY fxaccount_status_auth_server 'Konto-Server'>
 <!ENTITY fxaccount_status_sync_now 'Jetzt synchronisieren'>
 <!ENTITY fxaccount_status_syncing2 'Synchronisierung durchführen…'>
 <!ENTITY fxaccount_status_device_name 'Gerätename'>
 <!ENTITY fxaccount_status_sync_server 'Sync-Server'>
-<!ENTITY fxaccount_status_sync '&syncBrand.shortName.label;'>
-<!ENTITY fxaccount_status_sync_enabled '&syncBrand.shortName.label;: Aktiviert'>
 <!ENTITY fxaccount_status_needs_verification2 'Ihr Konto muss verifiziert werden. Tippen Sie hier zum erneuten Senden der Verifizierungs-E-Mail.'>
 <!ENTITY fxaccount_status_needs_credentials 'Kann nicht verbinden. Tippen Sie zum Anmelden hier.'>
 <!ENTITY fxaccount_status_needs_upgrade 'Aktualisieren Sie &brandShortName;, um sich anmelden zu können.'>
 <!ENTITY fxaccount_status_needs_master_sync_automatically_enabled '&syncBrand.shortName.label; wurde eingerichtet, aber synchronisiert nicht automatisch. Schalten Sie “Daten automatisch synchronisieren” in Androids Systemeinstellungen &gt; Datenverbrauch um.'>
 <!ENTITY fxaccount_status_needs_master_sync_automatically_enabled_v21 '&syncBrand.shortName.label; wurde eingerichtet, aber synchronisiert nicht automatisch. Schalten Sie “Daten automatisch synchronisieren” in Androids Systemeinstellungen &gt; Konten um.'>
 <!ENTITY fxaccount_status_needs_finish_migrating 'Tippen Sie hier, um sich mit Ihrem neuen Firefox-Konto anzumelden.'>
+<!ENTITY fxaccount_status_choose_what 'Was soll synchronisiert werden?'>
 <!ENTITY fxaccount_status_bookmarks 'Lesezeichen'>
 <!ENTITY fxaccount_status_history 'Chronik'>
 <!ENTITY fxaccount_status_passwords2 'Zugangsdaten'>
 <!ENTITY fxaccount_status_tabs 'Offene Tabs'>
+<!ENTITY fxaccount_status_additional_settings 'Weitere Einstellungen'>
 <!ENTITY fxaccount_status_legal 'Rechtliches' >
 <!-- Localization note: when tapped, the following two strings link to
      external web pages.  Compare fxaccount_policy_{linktos,linkprivacy}:
@@ -77,7 +75,6 @@
      the two uses differently. -->
 <!ENTITY fxaccount_status_linktos2 'Nutzungsbedingungen'>
 <!ENTITY fxaccount_status_linkprivacy2 'Datenschutzhinweis'>
-<!ENTITY fxaccount_status_more 'Mehr&ellipsis;'>
 <!ENTITY fxaccount_remove_account 'Entfernen&ellipsis;'>
 
 <!ENTITY fxaccount_remove_account_dialog_title2 'Von Sync trennen?'>
@@ -102,21 +99,6 @@
      Account. -->
 <!ENTITY fxaccount_options_title '&syncBrand.shortName.label; - Einstellungen'>
 <!ENTITY fxaccount_options_configure_title '&syncBrand.shortName.label; konfigurieren'>
-
-<!-- Localization note: these error messages are shown after a request
-     has been made to the remote server, and an error of some type has
-     been returned. -->
-<!ENTITY fxaccount_remote_error_UPGRADE_REQUIRED 'Sie müssen Firefox aktualisieren.'>
-
-<!-- Localization note: the format string will be fxaccount_sign_in_button_label, linkified. -->
-<!ENTITY fxaccount_remote_error_ATTEMPT_TO_CREATE_AN_ACCOUNT_THAT_ALREADY_EXISTS_2 'Konto existiert bereits. &formatS1;'>
-<!ENTITY fxaccount_remote_error_ATTEMPT_TO_ACCESS_AN_ACCOUNT_THAT_DOES_NOT_EXIST 'Falsche E-Mail-Adresse oder falsches Passwort'>
-<!ENTITY fxaccount_remote_error_INCORRECT_PASSWORD 'Falsche E-Mail-Adresse oder falsches Passwort'>
-<!ENTITY fxaccount_remote_error_ATTEMPT_TO_OPERATE_ON_AN_UNVERIFIED_ACCOUNT 'Konto wurde nicht verifiziert.'>
-<!ENTITY fxaccount_remote_error_CLIENT_HAS_SENT_TOO_MANY_REQUESTS 'Server ausgelastet, versuchen Sie es in ein paar Minuten erneut.'>
-<!ENTITY fxaccount_remote_error_SERVICE_TEMPORARILY_UNAVAILABLE_TO_DUE_HIGH_LOAD 'Server ausgelastet, versuchen Sie es in ein paar Minuten erneut.'>
-<!ENTITY fxaccount_remote_error_UNKNOWN_ERROR 'Es trat ein Problem auf.'>
-<!ENTITY fxaccount_remote_error_ACCOUNT_LOCKED 'Konto ist gesperrt. &formatS1;'>
 
 <!ENTITY fxaccount_sync_sign_in_error_notification_title2 '&syncBrand.shortName.label; ist nicht verbunden'>
 <!-- Localization note: the format string below will be replaced

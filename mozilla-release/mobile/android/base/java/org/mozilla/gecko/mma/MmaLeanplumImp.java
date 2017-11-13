@@ -7,11 +7,19 @@
 package org.mozilla.gecko.mma;
 
 import android.app.Activity;
+import android.app.Notification;
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.os.Bundle;
+import android.support.annotation.DrawableRes;
+import android.support.annotation.NonNull;
+import android.support.v4.app.NotificationCompat;
 
 import com.leanplum.Leanplum;
 import com.leanplum.LeanplumActivityHelper;
+import com.leanplum.LeanplumPushNotificationCustomizer;
+import com.leanplum.LeanplumPushService;
+import com.leanplum.internal.Constants;
 
 import org.mozilla.gecko.AppConstants;
 import org.mozilla.gecko.MmaConstants;
@@ -22,7 +30,6 @@ import java.util.UUID;
 
 public class MmaLeanplumImp implements MmaInterface {
 
-    private static final String KEY_ANDROID_PREF_STRING_LEANPLUM_DEVICE_ID = "android.not_a_preference.leanplum.device_id";
 
     @Override
     public void init(final Activity activity, Map<String, ?> attributes) {
@@ -38,14 +45,6 @@ public class MmaLeanplumImp implements MmaInterface {
         } else {
             Leanplum.setAppIdForDevelopmentMode(MmaConstants.MOZ_LEANPLUM_SDK_CLIENTID, MmaConstants.MOZ_LEANPLUM_SDK_KEY);
         }
-
-        final SharedPreferences sharedPreferences = activity.getPreferences(0);
-        String deviceId = sharedPreferences.getString(KEY_ANDROID_PREF_STRING_LEANPLUM_DEVICE_ID, null);
-        if (deviceId == null) {
-            deviceId = UUID.randomUUID().toString();
-            sharedPreferences.edit().putString(KEY_ANDROID_PREF_STRING_LEANPLUM_DEVICE_ID, deviceId).apply();
-        }
-        Leanplum.setDeviceId(deviceId);
 
         if (attributes != null) {
             Leanplum.start(activity, attributes);
@@ -71,6 +70,23 @@ public class MmaLeanplumImp implements MmaInterface {
     }
 
     @Override
+    public void setGcmSenderId(String senderIds) {
+        LeanplumPushService.setGcmSenderId(senderIds);
+    }
+
+    @Override
+    public void setCustomIcon(@DrawableRes final int iconResId) {
+        LeanplumPushService.setCustomizer(new LeanplumPushNotificationCustomizer() {
+            @Override
+            public void customize(NotificationCompat.Builder builder, Bundle notificationPayload) {
+                builder.setSmallIcon(iconResId);
+                builder.setDefaults(Notification.DEFAULT_SOUND);
+            }
+
+        });
+    }
+
+    @Override
     public void start(Context context) {
 
     }
@@ -90,6 +106,25 @@ public class MmaLeanplumImp implements MmaInterface {
     @Override
     public void stop() {
         Leanplum.stop();
+    }
+
+    @Override
+    public boolean handleGcmMessage(Context context, String from, Bundle bundle) {
+        if (from != null && from.equals(MmaConstants.MOZ_MMA_SENDER_ID) && bundle.containsKey(Constants.Keys.PUSH_MESSAGE_TEXT)) {
+            LeanplumPushService.handleNotification(context, bundle);
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public String getMmaSenderId() {
+        return MmaConstants.MOZ_MMA_SENDER_ID;
+    }
+
+    @Override
+    public void setDeviceId(@NonNull String deviceId) {
+        Leanplum.setDeviceId(deviceId);
     }
 
 }

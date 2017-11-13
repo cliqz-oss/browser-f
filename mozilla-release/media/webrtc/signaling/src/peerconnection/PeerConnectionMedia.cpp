@@ -406,7 +406,7 @@ nsresult PeerConnectionMedia::Init(const std::vector<NrIceStunServer>& stun_serv
       CSFLogError(logTag, "%s: Failed to set turn servers", __FUNCTION__);
       return rv;
     }
-  } else if (turn_servers.size() != 0) {
+  } else if (!turn_servers.empty()) {
     CSFLogError(logTag, "%s: Setting turn servers disabled", __FUNCTION__);
   }
   if (NS_FAILED(rv = mDNSResolver->Init())) {
@@ -557,6 +557,7 @@ PeerConnectionMedia::ActivateOrRemoveTransport_s(
                 static_cast<unsigned>(aComponentCount));
 
     std::vector<std::string> attrs;
+    attrs.reserve(aCandidateList.size() + 2 /* ufrag + pwd */);
     for (const auto& candidate : aCandidateList) {
       attrs.push_back("candidate:" + candidate);
     }

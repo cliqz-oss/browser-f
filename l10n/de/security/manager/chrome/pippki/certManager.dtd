@@ -10,11 +10,11 @@
 <!ENTITY certmgr.tab.ca                       "Zertifizierungsstellen">
 <!ENTITY certmgr.tab.orphan2                  "Andere">
 
-<!ENTITY certmgr.mine                         "Du hast Zertifikate dieser Organisationen, die dich identifizieren:">
-<!ENTITY certmgr.others                       "Du hast Zertifikate gespeichert, die diese Personen identifizieren:">
-<!ENTITY certmgr.websites2                    "Du hast Zertifikate gespeichert, die diese Server identifizieren:">
-<!ENTITY certmgr.cas                          "Du hast Zertifikate gespeichert, die diese Zertifizierungsstellen identifizieren:">
-<!ENTITY certmgr.orphans                      "Du hast Zertifikate gespeichert, die in keine der übrigen Kategorien passen:">
+<!ENTITY certmgr.mine2                        "Du hast Zertifikate dieser Organisationen, die dich identifizieren:">
+<!ENTITY certmgr.others2                      "Du hast Zertifikate gespeichert, die diese Personen identifizieren:">
+<!ENTITY certmgr.websites3                    "Du hast Zertifikate gespeichert, die diese Server identifizieren:">
+<!ENTITY certmgr.cas2                         "Du hast Zertifikate gespeichert, die diese Zertifizierungsstellen identifizieren:">
+<!ENTITY certmgr.orphans2                     "Du hast Zertifikate gespeichert, die in keine der übrigen Kategorien passen:">
 
 <!ENTITY certmgr.detail.general_tab.title     "Allgemein">
 <!ENTITY certmgr.detail.general_tab.accesskey "A">

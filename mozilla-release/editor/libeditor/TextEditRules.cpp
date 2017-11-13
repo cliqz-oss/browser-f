@@ -132,11 +132,8 @@ TextEditRules::Init(TextEditor* aTextEditor)
 
   // If the selection hasn't been set up yet, set it up collapsed to the end of
   // our editable content.
-  int32_t rangeCount;
-  rv = selection->GetRangeCount(&rangeCount);
-  NS_ENSURE_SUCCESS(rv, rv);
-  if (!rangeCount) {
-    rv = mTextEditor->EndOfDocument();
+  if (!selection->RangeCount()) {
+    rv = mTextEditor->CollapseSelectionToEnd(selection);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -204,7 +201,7 @@ TextEditRules::BeforeEdit(EditAction action,
     mCachedSelectionOffset = 0;
   } else {
     mCachedSelectionNode = selection->GetAnchorNode();
-    selection->GetAnchorOffset(&mCachedSelectionOffset);
+    mCachedSelectionOffset = selection->AnchorOffset();
   }
 
   return NS_OK;
@@ -358,29 +355,12 @@ TextEditRules::DidDoAction(Selection* aSelection,
 NS_IMETHODIMP_(bool)
 TextEditRules::DocumentIsEmpty()
 {
-  if (mBogusNode) {
-    return true;
+  bool retVal = false;
+  if (!mTextEditor || NS_FAILED(mTextEditor->DocumentIsEmpty(&retVal))) {
+    retVal = true;
   }
 
-  // Even if there is no bogus node, we should detect as empty document
-  // if all children are text node and these are no content.
-  if (NS_WARN_IF(!mTextEditor)) {
-    return true;
-  }
-  Element* rootElement = mTextEditor->GetRoot();
-  if (!rootElement) {
-    return true;
-  }
-
-  uint32_t childCount = rootElement->GetChildCount();
-  for (uint32_t i = 0; i < childCount; i++) {
-    nsINode* node = rootElement->GetChildAt(i);
-    if (!EditorBase::IsTextNode(node) ||
-        node->Length()) {
-      return false;
-    }
-  }
-  return true;
+  return retVal;
 }
 
 void
@@ -442,10 +422,7 @@ TextEditRules::WillInsertBreak(Selection* aSelection,
     *aCancel = false;
 
     // if the selection isn't collapsed, delete it.
-    bool bCollapsed;
-    rv = aSelection->GetIsCollapsed(&bCollapsed);
-    NS_ENSURE_SUCCESS(rv, rv);
-    if (!bCollapsed) {
+    if (!aSelection->IsCollapsed()) {
       NS_ENSURE_STATE(mTextEditor);
       rv = mTextEditor->DeleteSelection(nsIEditor::eNone, nsIEditor::eStrip);
       NS_ENSURE_SUCCESS(rv, rv);
@@ -482,7 +459,7 @@ TextEditRules::CollapseSelectionToTrailingBRIfNeeded(Selection* aSelection)
   // This is usually performed in TextEditRules::Init(), however, if the
   // editor is reframed, this may be called by AfterEdit().
   if (!aSelection->RangeCount()) {
-    mTextEditor->EndOfDocument();
+    mTextEditor->CollapseSelectionToEnd(aSelection);
   }
 
   // if we are at the end of the textarea, we need to set the
@@ -505,22 +482,20 @@ TextEditRules::CollapseSelectionToTrailingBRIfNeeded(Selection* aSelection)
     return NS_OK;
   }
 
-  int32_t parentOffset;
-  nsINode* parentNode =
-    EditorBase::GetNodeLocation(selNode, &parentOffset);
-
   NS_ENSURE_STATE(mTextEditor);
   nsINode* root = mTextEditor->GetRoot();
   if (NS_WARN_IF(!root)) {
     return NS_ERROR_NULL_POINTER;
   }
+  nsINode* parentNode = selNode->GetParentNode();
   if (parentNode != root) {
     return NS_OK;
   }
 
-  nsINode* nextNode = parentNode->GetChildAt(parentOffset + 1);
+  nsINode* nextNode = selNode->GetNextSibling();
   if (nextNode && TextEditUtils::IsMozBR(nextNode)) {
-    rv = aSelection->Collapse(parentNode, parentOffset + 1);
+    int32_t offsetInParent = EditorBase::GetChildOffset(selNode, parentNode);
+    rv = aSelection->Collapse(parentNode, offsetInParent + 1);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -689,10 +664,7 @@ TextEditRules::WillInsertText(EditAction aAction,
   }
 
   // if the selection isn't collapsed, delete it.
-  bool bCollapsed;
-  rv = aSelection->GetIsCollapsed(&bCollapsed);
-  NS_ENSURE_SUCCESS(rv, rv);
-  if (!bCollapsed) {
+  if (!aSelection->IsCollapsed()) {
     NS_ENSURE_STATE(mTextEditor);
     rv = mTextEditor->DeleteSelection(nsIEditor::eNone, nsIEditor::eStrip);
     NS_ENSURE_SUCCESS(rv, rv);
@@ -840,7 +812,7 @@ TextEditRules::WillSetText(Selection& aSelection,
 
   if (!IsPlaintextEditor() || textEditor->IsIMEComposing() ||
       aMaxLength != -1) {
-    // SetTextTransaction only supports plain text editor without IME.
+    // SetTextImpl only supports plain text editor without IME.
     return NS_OK;
   }
 
@@ -881,7 +853,7 @@ TextEditRules::WillSetText(Selection& aSelection,
     if (NS_WARN_IF(!doc)) {
       return NS_OK;
     }
-    RefPtr<nsTextNode> newNode = doc->CreateTextNode(tString);
+    RefPtr<nsTextNode> newNode = EditorBase::CreateTextNode(*doc, tString);
     if (NS_WARN_IF(!newNode)) {
       return NS_OK;
     }
@@ -1046,11 +1018,7 @@ TextEditRules::WillDeleteSelection(Selection* aSelection,
     NS_ENSURE_SUCCESS(rv, rv);
     NS_ENSURE_TRUE(startNode, NS_ERROR_FAILURE);
 
-    bool bCollapsed;
-    rv = aSelection->GetIsCollapsed(&bCollapsed);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    if (!bCollapsed) {
+    if (!aSelection->IsCollapsed()) {
       return NS_OK;
     }
 
@@ -1435,11 +1403,12 @@ TextEditRules::CreateBogusNodeIfNeeded(Selection* aSelection)
   // Now we've got the body element. Iterate over the body element's children,
   // looking for editable content. If no editable content is found, insert the
   // bogus node.
-  for (nsCOMPtr<nsIContent> bodyChild = body->GetFirstChild();
+  bool bodyEditable = mTextEditor->IsEditable(body);
+  for (nsIContent* bodyChild = body->GetFirstChild();
        bodyChild;
        bodyChild = bodyChild->GetNextSibling()) {
     if (mTextEditor->IsMozEditorBogusNode(bodyChild) ||
-        !mTextEditor->IsEditable(body) || // XXX hoist out of the loop?
+        !bodyEditable ||
         mTextEditor->IsEditable(bodyChild) ||
         mTextEditor->IsBlockNode(bodyChild)) {
       return NS_OK;
@@ -1645,13 +1614,11 @@ TextEditRules::FillBufWithPWChars(nsAString* aOutString,
   }
 }
 
-/**
- * CreateMozBR() puts a BR node with moz attribute at {inParent, inOffset}.
- */
 nsresult
-TextEditRules::CreateMozBR(nsIDOMNode* inParent,
-                           int32_t inOffset,
-                           nsIDOMNode** outBRNode)
+TextEditRules::CreateBRInternal(nsIDOMNode* inParent,
+                                int32_t inOffset,
+                                bool aMozBR,
+                                nsIDOMNode** outBRNode)
 {
   NS_ENSURE_TRUE(inParent, NS_ERROR_NULL_POINTER);
 
@@ -1662,7 +1629,7 @@ TextEditRules::CreateMozBR(nsIDOMNode* inParent,
 
   // give it special moz attr
   nsCOMPtr<Element> brElem = do_QueryInterface(brNode);
-  if (brElem) {
+  if (aMozBR && brElem) {
     rv = mTextEditor->SetAttribute(brElem, nsGkAtoms::type,
                                    NS_LITERAL_STRING("_moz"));
     NS_ENSURE_SUCCESS(rv, rv);

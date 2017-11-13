@@ -32,11 +32,11 @@ protected:
 public:
   Layer* GetLayer() override { return this; }
   void RenderLayer(wr::DisplayListBuilder& aBuilder,
+                   wr::IpcResourceUpdateQueue& aResources,
                    const StackingContextHelper& aHelper) override;
 
 private:
   wr::BuiltDisplayList mBuiltDisplayList;
-  nsTArray<WebRenderParentCommand> mParentCommands;
 };
 
 } // namespace layers

@@ -1626,8 +1626,14 @@
     macro(JSOP_STRICTSETGNAME, 156, "strict-setgname",  NULL,       5,  2,  1, JOF_ATOM|JOF_NAME|JOF_PROPSET|JOF_DETECTING|JOF_GNAME|JOF_CHECKSTRICT) \
     /*
      * Pushes the implicit 'this' value for calls to the associated name onto
-     * the stack; only used when we know this implicit this will be our first
-     * non-syntactic scope.
+     * the stack; only used when the implicit this might be derived from a
+     * non-syntactic scope (instead of the global itself).
+     *
+     * Note that code evaluated via the Debugger API uses DebugEnvironmentProxy
+     * objects on its scope chain, which are non-syntactic environments that
+     * refer to syntactic environments. As a result, the binding we want may be
+     * held by a syntactic environments such as CallObject or
+     * VarEnvrionmentObject.
      *
      *   Category: Variables and Scopes
      *   Type: This
@@ -2269,8 +2275,16 @@
      *   Stack: => %BuiltinPrototype%
      */ \
     macro(JSOP_BUILTINPROTO, 221, "builtinproto", NULL, 2,  0,  1,  JOF_UINT8) \
-    macro(JSOP_UNUSED222,     222,"unused222",     NULL,  1,  0,  0,  JOF_BYTE) \
-    macro(JSOP_UNUSED223,     223,"unused223",     NULL,  1,  0,  0,  JOF_BYTE) \
+    \
+    /*
+     * NOP opcode to hint to IonBuilder that the value on top of the stack is
+     * the (likely string) key in a for-in loop.
+     *   Category: Other
+     *   Operands:
+     *   Stack: val => val
+     */ \
+    macro(JSOP_ITERNEXT,      222, "iternext",   NULL,  1,  1,  1,  JOF_BYTE) \
+    macro(JSOP_UNUSED223,     223, "unused223",  NULL,  1,  0,  0,  JOF_BYTE) \
     \
     /*
      * Creates rest parameter array for current function call, and pushes it

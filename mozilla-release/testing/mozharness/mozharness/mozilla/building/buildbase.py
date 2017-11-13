@@ -346,6 +346,7 @@ class BuildOptionParser(object):
         'add-on-devel': 'builds/releng_sub_%s_configs/%s_add-on-devel.py',
         'asan': 'builds/releng_sub_%s_configs/%s_asan.py',
         'asan-tc': 'builds/releng_sub_%s_configs/%s_asan_tc.py',
+        'asan-reporter-tc': 'builds/releng_sub_%s_configs/%s_asan_reporter_tc.py',
         'fuzzing-asan-tc': 'builds/releng_sub_%s_configs/%s_fuzzing_asan_tc.py',
         'tsan': 'builds/releng_sub_%s_configs/%s_tsan.py',
         'cross-debug': 'builds/releng_sub_%s_configs/%s_cross_debug.py',
@@ -358,8 +359,6 @@ class BuildOptionParser(object):
         'stat-and-debug': 'builds/releng_sub_%s_configs/%s_stat_and_debug.py',
         'code-coverage': 'builds/releng_sub_%s_configs/%s_code_coverage.py',
         'source': 'builds/releng_sub_%s_configs/%s_source.py',
-        'stylo': 'builds/releng_sub_%s_configs/%s_stylo.py',
-        'stylo-debug': 'builds/releng_sub_%s_configs/%s_stylo_debug.py',
         'noopt-debug': 'builds/releng_sub_%s_configs/%s_noopt_debug.py',
         'api-16-gradle-dependencies': 'builds/releng_sub_%s_configs/%s_api_16_gradle_dependencies.py',
         'api-16': 'builds/releng_sub_%s_configs/%s_api_16.py',
@@ -1694,7 +1693,6 @@ or run without that action (ie: --no-{action})"
             'multi_locale/%s_%s.json' % (branch, multi_config_pf),
             '--config-file',
             'multi_locale/android-mozharness-build.json',
-            '--merge-locales',
             '--pull-locale-source',
             '--add-locales',
             '--package-multi',
@@ -2096,7 +2094,7 @@ or run without that action (ie: --no-{action})"
             perfherder_data['suites'].append({
                 'name': 'compiler warnings',
                 'value': len(warnings.strip().splitlines()),
-                'alertThreshold': 1.0,
+                'alertThreshold': 100.0,
                 'subtests': [],
             })
 

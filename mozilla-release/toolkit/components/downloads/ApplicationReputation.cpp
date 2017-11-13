@@ -670,6 +670,9 @@ static const char16_t* const kBinaryFileExtensions[] = {
     u".wsh", // Windows script
     u".xar", // MS Excel
     u".xbap", // XAML Browser Application
+    u".xhtml",
+    u".xhtm",
+    u".xht",
     u".xip", // Mac archive
     //u".xlsm", // MS Excel
     //u".xlsx", // MS Excel
@@ -1573,6 +1576,8 @@ ApplicationReputationService::ApplicationReputationService()
 
 ApplicationReputationService::~ApplicationReputationService() {
   LOG(("Application reputation service shutting down"));
+  MOZ_ASSERT(gApplicationReputationService == this);
+  gApplicationReputationService = nullptr;
 }
 
 NS_IMETHODIMP
@@ -1583,7 +1588,6 @@ ApplicationReputationService::QueryReputation(
   NS_ENSURE_ARG_POINTER(aQuery);
   NS_ENSURE_ARG_POINTER(aCallback);
 
-  Accumulate(mozilla::Telemetry::APPLICATION_REPUTATION_COUNT, true);
   nsresult rv = QueryReputationInternal(aQuery, aCallback);
   if (NS_FAILED(rv)) {
     Accumulate(mozilla::Telemetry::APPLICATION_REPUTATION_SHOULD_BLOCK,

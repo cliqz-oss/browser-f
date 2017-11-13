@@ -165,15 +165,10 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLSelectElement,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mSelectedOptions)
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_ADDREF_INHERITED(HTMLSelectElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLSelectElement, Element)
-
-// QueryInterface implementation for HTMLSelectElement
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(HTMLSelectElement)
-  NS_INTERFACE_TABLE_INHERITED(HTMLSelectElement,
-                               nsIDOMHTMLSelectElement,
-                               nsIConstraintValidation)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsGenericHTMLFormElementWithState)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLSelectElement,
+                                             nsGenericHTMLFormElementWithState,
+                                             nsIDOMHTMLSelectElement,
+                                             nsIConstraintValidation)
 
 
 // nsIDOMHTMLSelectElement
@@ -1088,7 +1083,7 @@ HTMLSelectElement::IsOptionDisabled(int32_t aIndex, bool* aIsDisabled)
 }
 
 bool
-HTMLSelectElement::IsOptionDisabled(HTMLOptionElement* aOption)
+HTMLSelectElement::IsOptionDisabled(HTMLOptionElement* aOption) const
 {
   MOZ_ASSERT(aOption);
   if (aOption->Disabled()) {
@@ -1333,6 +1328,11 @@ HTMLSelectElement::AfterSetAttr(int32_t aNameSpaceID, nsIAtom* aName,
       UpdateValueMissingValidityState();
       UpdateBarredFromConstraintValidation();
     } else if (aName == nsGkAtoms::required) {
+      // This *has* to be called *before* UpdateValueMissingValidityState
+      // because UpdateValueMissingValidityState depends on our required
+      // state.
+      UpdateRequiredState(!!aValue, aNotify);
+
       UpdateValueMissingValidityState();
     } else if (aName == nsGkAtoms::autocomplete) {
       // Clear the cached @autocomplete attribute and autocompleteInfo state.
@@ -1530,12 +1530,6 @@ HTMLSelectElement::IntrinsicState() const
     }
   }
 
-  if (HasAttr(kNameSpaceID_None, nsGkAtoms::required)) {
-    state |= NS_EVENT_STATE_REQUIRED;
-  } else {
-    state |= NS_EVENT_STATE_OPTIONAL;
-  }
-
   return state;
 }
 
@@ -1544,6 +1538,11 @@ HTMLSelectElement::IntrinsicState() const
 NS_IMETHODIMP
 HTMLSelectElement::SaveState()
 {
+  nsPresState* presState = GetPrimaryPresState();
+  if (!presState) {
+    return NS_OK;
+  }
+
   RefPtr<SelectState> state = new SelectState();
 
   uint32_t len = Length();
@@ -1557,15 +1556,12 @@ HTMLSelectElement::SaveState()
     }
   }
 
-  nsPresState* presState = GetPrimaryPresState();
-  if (presState) {
-    presState->SetStateProperty(state);
+  presState->SetStateProperty(state);
 
-    if (mDisabledChanged) {
-      // We do not want to save the real disabled state but the disabled
-      // attribute.
-      presState->SetDisabled(HasAttr(kNameSpaceID_None, nsGkAtoms::disabled));
-    }
+  if (mDisabledChanged) {
+    // We do not want to save the real disabled state but the disabled
+    // attribute.
+    presState->SetDisabled(HasAttr(kNameSpaceID_None, nsGkAtoms::disabled));
   }
 
   return NS_OK;
@@ -1779,7 +1775,7 @@ HTMLSelectElement::RebuildOptionsArray(bool aNotify)
 }
 
 bool
-HTMLSelectElement::IsValueMissing()
+HTMLSelectElement::IsValueMissing() const
 {
   if (!Required()) {
     return false;
@@ -1824,7 +1820,7 @@ HTMLSelectElement::GetValidationMessage(nsAString& aValidationMessage,
 {
   switch (aType) {
     case VALIDITY_STATE_VALUE_MISSING: {
-      nsXPIDLString message;
+      nsAutoString message;
       nsresult rv = nsContentUtils::GetLocalizedString(nsContentUtils::eDOM_PROPERTIES,
                                                        "FormValidationSelectMissing",
                                                        message);

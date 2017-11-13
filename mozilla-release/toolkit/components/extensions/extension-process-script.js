@@ -12,18 +12,15 @@
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
+Cu.import("resource://gre/modules/MessageChannel.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyModuleGetter(this, "MessageChannel",
-                                  "resource://gre/modules/MessageChannel.jsm");
-
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionChild",
-                                  "resource://gre/modules/ExtensionChild.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionContent",
-                                  "resource://gre/modules/ExtensionContent.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "ExtensionPageChild",
-                                  "resource://gre/modules/ExtensionPageChild.jsm");
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ExtensionChild: "resource://gre/modules/ExtensionChild.jsm",
+  ExtensionContent: "resource://gre/modules/ExtensionContent.jsm",
+  ExtensionPageChild: "resource://gre/modules/ExtensionPageChild.jsm",
+});
 
 Cu.import("resource://gre/modules/ExtensionUtils.jsm");
 
@@ -57,7 +54,15 @@ function parseScriptOptions(options) {
 }
 
 var extensions = new DefaultWeakMap(policy => {
-  let extension = new ExtensionChild.BrowserExtensionContent(policy.initData);
+  let data = policy.initData;
+  if (data.serialize) {
+    // We have an actual Extension rather than serialized extension
+    // data, so serialize it now to make sure we have consistent inputs
+    // between parent and child processes.
+    data = data.serialize();
+  }
+
+  let extension = new ExtensionChild.BrowserExtensionContent(data);
   extension.policy = policy;
   return extension;
 });
@@ -187,11 +192,22 @@ DocumentManager = {
 
   injectExtensionScripts(extension) {
     for (let window of this.enumerateWindows()) {
+      let runAt = {document_start: [], document_end: [], document_idle: []};
+
       for (let script of extension.contentScripts) {
         if (script.matchesWindow(window)) {
-          contentScripts.get(script).injectInto(window);
+          runAt[script.runAt].push(script);
         }
       }
+
+      let inject = matcher => contentScripts.get(matcher).injectInto(window);
+      let injectAll = matchers => Promise.all(matchers.map(inject));
+
+      // Intentionally using `.then` instead of `await`, we only need to
+      // chain injecting other scripts into *this* window, not all windows.
+      injectAll(runAt.document_start)
+        .then(() => injectAll(runAt.document_end))
+        .then(() => injectAll(runAt.document_idle));
     }
   },
 
@@ -208,7 +224,6 @@ DocumentManager = {
    */
   checkParentFrames(window, addonId) {
     while (window.parent !== window) {
-      let {frameElement} = window;
       window = window.parent;
 
       let principal = window.document.nodePrincipal;
@@ -217,14 +232,6 @@ DocumentManager = {
         // The add-on manager is a special case, since it contains extension
         // options pages in same-type <browser> frames.
         if (window.location.href === "about:addons") {
-          return true;
-        }
-
-        // NOTE: Special handling for devtools panels using a chrome iframe here
-        // for the devtools panel, it is needed because a content iframe breaks
-        // switching between docked and undocked mode (see bug 1075490).
-        if (frameElement &&
-            frameElement.mozMatchesSelector("browser[webextension-view-type='devtools_panel']")) {
           return true;
         }
       }
@@ -293,34 +300,44 @@ ExtensionManager = {
     }
   },
 
-  initExtensionPolicy(data, extension) {
-    let policy = WebExtensionPolicy.getByID(data.id);
+  initExtensionPolicy(extension) {
+    let policy = WebExtensionPolicy.getByID(extension.id);
     if (!policy) {
-      let localizeCallback = (
-        extension ? extension.localize.bind(extension)
-                  : str => extensions.get(policy).localize(str));
+      let localizeCallback, allowedOrigins, webAccessibleResources;
+      if (extension.localize) {
+        // We have a real Extension object.
+        localizeCallback = extension.localize.bind(extension);
+        allowedOrigins = extension.whiteListedHosts;
+        webAccessibleResources = extension.webAccessibleResources;
+      } else {
+        // We have serialized extension data;
+        localizeCallback = str => extensions.get(policy).localize(str);
+        allowedOrigins = new MatchPatternSet(extension.whiteListedHosts);
+        webAccessibleResources = extension.webAccessibleResources.map(host => new MatchGlob(host));
+      }
 
       policy = new WebExtensionPolicy({
-        id: data.id,
-        mozExtensionHostname: data.uuid,
-        baseURL: data.resourceURL,
+        id: extension.id,
+        mozExtensionHostname: extension.uuid,
+        name: extension.name,
+        baseURL: extension.resourceURL,
 
-        permissions: Array.from(data.permissions),
-        allowedOrigins: new MatchPatternSet(data.whiteListedHosts),
-        webAccessibleResources: data.webAccessibleResources.map(host => new MatchGlob(host)),
+        permissions: Array.from(extension.permissions),
+        allowedOrigins,
+        webAccessibleResources,
 
-        contentSecurityPolicy: data.manifest.content_security_policy,
+        contentSecurityPolicy: extension.manifest.content_security_policy,
 
         localizeCallback,
 
-        backgroundScripts: (data.manifest.background &&
-                            data.manifest.background.scripts),
+        backgroundScripts: (extension.manifest.background &&
+                            extension.manifest.background.scripts),
 
-        contentScripts: (data.manifest.content_scripts || []).map(parseScriptOptions),
+        contentScripts: extension.contentScripts.map(parseScriptOptions),
       });
 
       policy.active = true;
-      policy.initData = data;
+      policy.initData = extension;
     }
     return policy;
   },
@@ -363,7 +380,19 @@ ExtensionManager = {
       }
 
       case "Schema:Add": {
-        this.schemaJSON.set(data.url, data.schema);
+        // If we're given a Map, the ordering of the initial items
+        // matters, so swap with our current data to make sure its
+        // entries appear first.
+        if (typeof data.get === "function") {
+          [this.schemaJSON, data] = [data, this.schemaJSON];
+
+          Services.cpmm.initialProcessData["Extension:Schemas"] =
+            this.schemaJSON;
+        }
+
+        for (let [url, schema] of data) {
+          this.schemaJSON.set(url, schema);
+        }
         break;
       }
     }
@@ -390,8 +419,8 @@ ExtensionProcessScript.prototype = {
     return extGlobal && extGlobal.getFrameData(force);
   },
 
-  initExtension(data, extension) {
-    return ExtensionManager.initExtensionPolicy(data, extension);
+  initExtension(extension) {
+    return ExtensionManager.initExtensionPolicy(extension);
   },
 
   initExtensionDocument(policy, doc) {

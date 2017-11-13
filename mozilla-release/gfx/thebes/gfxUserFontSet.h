@@ -403,11 +403,12 @@ public:
                   mPrivate(aKey->mPrivate)
             { }
 
-            Entry(const Entry& aOther)
-                : mURI(aOther.mURI),
-                  mPrincipal(aOther.mPrincipal),
-                  mFontEntry(aOther.mFontEntry),
-                  mPrivate(aOther.mPrivate)
+            Entry(Entry&& aOther)
+                : mAllowedFontSets(mozilla::Move(aOther.mAllowedFontSets)),
+                  mURI(mozilla::Move(aOther.mURI)),
+                  mPrincipal(mozilla::Move(aOther.mPrincipal)),
+                  mFontEntry(mozilla::Move(aOther.mFontEntry)),
+                  mPrivate(mozilla::Move(aOther.mPrivate))
             { }
 
             ~Entry() { }
@@ -630,8 +631,8 @@ public:
                  gfxCharacterMap* aUnicodeRanges,
                  uint8_t aFontDisplay);
 
-    virtual gfxFont* CreateFontInstance(const gfxFontStyle* aFontStyle,
-                                        bool aNeedsBold);
+    gfxFont* CreateFontInstance(const gfxFontStyle* aFontStyle,
+                                bool aNeedsBold) override;
 
     gfxFontEntry* GetPlatformFontEntry() const { return mPlatformFontEntry; }
 
@@ -672,6 +673,11 @@ public:
     uint32_t GetSrcIndex() { return mSrcIndex; }
     void GetFamilyNameAndURIForLogging(nsACString& aFamilyName,
                                        nsACString& aURI);
+
+    gfxFontEntry* Clone() const override {
+        MOZ_ASSERT_UNREACHABLE("cannot Clone user fonts");
+        return nullptr;
+    }
 
 protected:
     const uint8_t* SanitizeOpenTypeData(const uint8_t* aData,
@@ -746,7 +752,7 @@ protected:
     // This field is managed by the nsFontFaceLoader. In the destructor and Cancel()
     // methods of nsFontFaceLoader this reference is nulled out.
     nsFontFaceLoader* MOZ_NON_OWNING_REF mLoader; // current loader for this entry, if any
-    gfxUserFontSet*          mFontSet; // font-set which owns this userfont entry
+    gfxUserFontSet*   MOZ_NON_OWNING_REF mFontSet; // font-set which owns this userfont entry
     RefPtr<gfxFontSrcPrincipal> mPrincipal;
 };
 

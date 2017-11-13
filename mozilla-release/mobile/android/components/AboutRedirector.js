@@ -79,7 +79,7 @@ var modules = {
 };
 
 if (AppConstants.MOZ_SERVICES_HEALTHREPORT) {
-  modules['healthreport'] = {
+  modules.healthreport = {
     uri: "chrome://browser/content/aboutHealthReport.xhtml",
     privileged: true
   };
@@ -90,8 +90,8 @@ AboutRedirector.prototype = {
   QueryInterface: XPCOMUtils.generateQI([Ci.nsIAboutModule]),
   classID: Components.ID("{322ba47e-7047-4f71-aebf-cb7d69325cd9}"),
 
-  _getModuleInfo: function (aURI) {
-    let moduleName = aURI.path.replace(/[?#].*/, "").toLowerCase();
+  _getModuleInfo: function(aURI) {
+    let moduleName = aURI.pathQueryRef.replace(/[?#].*/, "").toLowerCase();
     return modules[moduleName];
   },
 

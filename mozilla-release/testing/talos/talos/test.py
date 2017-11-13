@@ -1,4 +1,7 @@
+from __future__ import absolute_import
+
 import os
+
 from talos import filter
 
 """
@@ -163,7 +166,7 @@ class sessionrestore(TsBase):
     3. Measure the delta between firstPaint and sessionRestored.
     """
     extensions = \
-        '${talos}/startup_test/sessionrestore/addon/sessionrestore-signed.xpi'
+        '${talos}/startup_test/sessionrestore/addon'
     cycles = 10
     timeout = 900
     gecko_profile_startup = True
@@ -207,7 +210,7 @@ class tresize(TsBase):
     """
     This test does some resize thing.
     """
-    extensions = '${talos}/startup_test/tresize/addon/tresize-signed.xpi'
+    extensions = '${talos}/startup_test/tresize/addon'
     cycles = 20
     url = 'startup_test/tresize/addon/content/tresize-test.html'
     timeout = 150
@@ -275,6 +278,7 @@ class tpaint(PageloaderTest):
     tpmozafterpaint = True
     filters = filter.ignore_first.prepare(5) + filter.median.prepare()
     unit = 'ms'
+    preferences = {'security.data_uri.block_toplevel_data_uri_navigations': False}
 
 
 @register_test()
@@ -283,7 +287,7 @@ class tabpaint(PageloaderTest):
     Tests the amount of time it takes to open new tabs, triggered from
     both the parent process and the content process.
     """
-    extensions = '${talos}/tests/tabpaint/tabpaint-signed.xpi'
+    extensions = '${talos}/tests/tabpaint'
     tpmanifest = '${talos}/tests/tabpaint/tabpaint.manifest'
     tppagecycles = 20
     gecko_profile_entries = 1000000
@@ -305,7 +309,7 @@ class tps(PageloaderTest):
     """
     Tests the amount of time it takes to switch between tabs
     """
-    extensions = '${talos}/tests/tabswitch/tabswitch-signed.xpi'
+    extensions = '${talos}/tests/tabswitch'
     tpmanifest = '${talos}/tests/tabswitch/tps.manifest'
     tppagecycles = 5
     gecko_profile_entries = 5000000
@@ -344,7 +348,7 @@ class tart(PageloaderTest):
       - all: average interval over all recorded intervals.
     """
     tpmanifest = '${talos}/tests/tart/tart.manifest'
-    extensions = '${talos}/tests/tart/addon/tart-signed.xpi'
+    extensions = '${talos}/tests/tart/addon'
     tpcycles = 1
     tppagecycles = 25
     tploadnocache = True
@@ -381,7 +385,7 @@ class cart(PageloaderTest):
     3-customize-enter-css - only the CSS animation part of entering customize
     """
     tpmanifest = '${talos}/tests/tart/cart.manifest'
-    extensions = '${talos}/tests/tart/addon/tart-signed.xpi'
+    extensions = '${talos}/tests/tart/addon'
     tpcycles = 1
     tppagecycles = 25
     tploadnocache = True
@@ -407,9 +411,10 @@ class damp(PageloaderTest):
     for each tool, across a very simple and very complicated page.
     """
     tpmanifest = '${talos}/tests/devtools/damp.manifest'
-    extensions = '${talos}/tests/devtools/addon/devtools-signed.xpi'
+    extensions = '${talos}/tests/devtools/addon'
+    cycles = 5
     tpcycles = 1
-    tppagecycles = 25
+    tppagecycles = 5
     tploadnocache = True
     tpmozafterpaint = False
     gecko_profile_interval = 10
@@ -819,13 +824,14 @@ class bloom_basic(PageloaderTest):
 
 
 @register_test()
-class bloom_basic_singleton(PageloaderTest):
+class perf_reftest_singletons(PageloaderTest):
     """
-    Stylo bloom_basic: runs bloom_basic and bloom_basic_ref and reports difference
+    Style perf-reftests run as individual tests
     """
-    tpmanifest = '${talos}/tests/perf-reftest-singletons/bloom_basic_singleton.manifest'
+    tpmanifest = '${talos}/tests/perf-reftest-singletons/perf_reftest_singletons.manifest'
     tpcycles = 1
-    tppagecycles = 25
+    tppagecycles = 15
+    tptimeout = 30000
     gecko_profile_interval = 1
     gecko_profile_entries = 2000000
     filters = filter.ignore_first.prepare(5) + filter.median.prepare()

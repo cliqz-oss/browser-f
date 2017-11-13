@@ -10,7 +10,6 @@ var gOverflowList = document.getElementById(gNavBar.getAttribute("overflowtarget
 const kBookmarksButton = "bookmarks-menu-button";
 const kBookmarksItems = "personal-bookmarks";
 const kOriginalWindowWidth = window.outerWidth;
-const kSmallWidth = 400;
 
 /**
  * Helper function that opens the bookmarks menu, and returns a Promise that
@@ -19,13 +18,13 @@ const kSmallWidth = 400;
 function bookmarksMenuPanelShown() {
   return new Promise(resolve => {
     let bookmarksMenuPopup = document.getElementById("BMB_bookmarksPopup");
-    let onTransitionEnd = (e) => {
+    let onPopupShown = (e) => {
       if (e.target == bookmarksMenuPopup) {
-        bookmarksMenuPopup.removeEventListener("transitionend", onTransitionEnd);
+        bookmarksMenuPopup.removeEventListener("popupshown", onPopupShown);
         resolve();
       }
     }
-    bookmarksMenuPopup.addEventListener("transitionend", onTransitionEnd);
+    bookmarksMenuPopup.addEventListener("popupshown", onPopupShown);
   });
 }
 
@@ -73,10 +72,7 @@ function checkSpecialContextMenus() {
     // Open the bookmarks menu button context menus and ensure that
     // they have the proper views attached.
     let shownPromise = bookmarksMenuPanelShown();
-    if (!AppConstants.MOZ_PHOTON_THEME) {
-      bookmarksMenuButton = document.getAnonymousElementByAttribute(bookmarksMenuButton,
-                                                                    "anonid", "dropmarker");
-    }
+
     EventUtils.synthesizeMouseAtCenter(bookmarksMenuButton, {});
     info("Waiting for bookmarks menu popup to show after clicking dropmarker.")
     await shownPromise;
@@ -144,7 +140,7 @@ function checkBookmarksItemsChevronContextMenu() {
  */
 function overflowEverything() {
   info("Waiting for overflow");
-  window.resizeTo(kSmallWidth, window.outerHeight);
+  window.resizeTo(kForceOverflowWidthPx, window.outerHeight);
   return waitForCondition(() => gNavBar.hasAttribute("overflowing"));
 }
 
@@ -192,9 +188,10 @@ function checkNotOverflowing(aID) {
  * context menus for the Unsorted and Bookmarks Toolbar menu items.
  */
 add_task(async function testOverflowingBookmarksButtonContextMenu() {
-  await SpecialPowers.pushPrefEnv({set: [["browser.photon.structure.enabled", false]]});
-  ok(!gNavBar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
   ok(CustomizableUI.inDefaultState, "Should start in default state.");
+  CustomizableUI.removeWidgetFromArea("library-button", CustomizableUI.AREA_NAVBAR);
+  CustomizableUI.addWidgetToArea(kBookmarksButton, CustomizableUI.AREA_NAVBAR);
+  ok(!gNavBar.hasAttribute("overflowing"), "Should start with a non-overflowing toolbar.");
 
   // Open the Unsorted and Bookmarks Toolbar context menus and ensure
   // that they have views attached.

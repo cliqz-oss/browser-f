@@ -20,16 +20,17 @@ using namespace mozilla::gfx;
 
 void
 WebRenderColorLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
+                                 wr::IpcResourceUpdateQueue& aResources,
                                  const StackingContextHelper& aSc)
 {
-  ScrollingLayersHelper scroller(this, aBuilder, aSc);
+  ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc);
   StackingContextHelper sc(aSc, aBuilder, this);
 
   LayerRect rect = Bounds();
   DumpLayerInfo("ColorLayer", rect);
 
   wr::LayoutRect r = sc.ToRelativeLayoutRect(rect);
-  aBuilder.PushRect(r, r, wr::ToColorF(mColor));
+  aBuilder.PushRect(r, r, true, wr::ToColorF(mColor));
 }
 
 } // namespace layers

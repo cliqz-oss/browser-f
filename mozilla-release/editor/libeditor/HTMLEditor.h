@@ -46,7 +46,7 @@ class nsIDOMRange;
 class nsRange;
 
 namespace mozilla {
-
+class AutoSelectionSetterAfterTableEdit;
 class HTMLEditorEventListener;
 class HTMLEditRules;
 class TextEditRules;
@@ -101,9 +101,6 @@ public:
 
   HTMLEditor();
 
-  virtual HTMLEditor* AsHTMLEditor() override { return this; }
-  virtual const HTMLEditor* AsHTMLEditor() const override { return this; }
-
   bool GetReturnInParagraphCreatesNewParagraph();
   Element* GetSelectionContainer();
 
@@ -123,7 +120,6 @@ public:
                                          nsINode *aNode) override;
   virtual bool IsAcceptableInputEvent(WidgetGUIEvent* aGUIEvent) override;
   virtual already_AddRefed<nsIContent> GetInputEventTargetContent() override;
-  virtual bool IsEditable(nsINode* aNode) override;
   using EditorBase::IsEditable;
   virtual nsresult RemoveAttributeOrEquivalent(
                      Element* aElement,
@@ -221,6 +217,36 @@ public:
   static bool NodeIsBlockStatic(const nsINode* aElement);
   static nsresult NodeIsBlockStatic(nsIDOMNode *aNode, bool *aIsBlock);
 
+  // non-virtual methods of interface methods
+  bool AbsolutePositioningEnabled() const
+  {
+    return mIsAbsolutelyPositioningEnabled;
+  }
+  nsresult GetAbsolutelyPositionedSelectionContainer(nsINode** aContainer);
+  Element* GetPositionedElement() const
+  {
+    return mAbsolutelyPositionedObject;
+  }
+  nsresult GetElementZIndex(Element* aElement, int32_t* aZindex);
+
+  nsresult SetInlineProperty(nsIAtom* aProperty,
+                             const nsAString& aAttribute,
+                             const nsAString& aValue);
+  nsresult GetInlineProperty(nsIAtom* aProperty,
+                             const nsAString& aAttribute,
+                             const nsAString& aValue,
+                             bool* aFirst,
+                             bool* aAny,
+                             bool* aAll);
+  nsresult GetInlinePropertyWithAttrValue(nsIAtom* aProperty,
+                                          const nsAString& aAttr,
+                                          const nsAString& aValue,
+                                          bool* aFirst,
+                                          bool* aAny,
+                                          bool* aAll,
+                                          nsAString& outValue);
+  nsresult RemoveInlineProperty(nsIAtom* aProperty,
+                                const nsAString& aAttribute);
 protected:
   virtual ~HTMLEditor();
 
@@ -291,8 +317,6 @@ public:
                                   nsIDocument* aDoc) override;
   NS_IMETHOD_(bool) IsModifiableNode(nsIDOMNode* aNode) override;
   virtual bool IsModifiableNode(nsINode* aNode) override;
-
-  NS_IMETHOD GetIsSelectionEditable(bool* aIsSelectionEditable) override;
 
   NS_IMETHOD SelectAll() override;
 
@@ -432,7 +456,7 @@ protected:
    */
   bool SetCaretInTableCell(nsIDOMElement* aElement);
 
-  NS_IMETHOD TabInTable(bool inIsShift, bool* outHandled);
+  nsresult TabInTable(bool inIsShift, bool* outHandled);
   already_AddRefed<Element> CreateBR(nsINode* aNode, int32_t aOffset,
                                      EDirection aSelect = eNone);
   NS_IMETHOD CreateBR(
@@ -729,7 +753,6 @@ protected:
                                 const nsAString* aAttribute,
                                 nsIContent** aOutLeftNode = nullptr,
                                 nsIContent** aOutRightNode = nullptr);
-  nsresult ApplyDefaultProperties();
   nsresult RemoveStyleInside(nsIContent& aNode,
                              nsIAtom* aProperty,
                              const nsAString* aAttribute,
@@ -790,8 +813,7 @@ protected:
                                  bool* aFirst,
                                  bool* aAny,
                                  bool* aAll,
-                                 nsAString* outValue,
-                                 bool aCheckDefaults = true);
+                                 nsAString* outValue);
   bool HasStyleOrIdOrClass(Element* aElement);
   nsresult RemoveElementIfNoStyleOrIdOrClass(Element& aElement);
 
@@ -828,6 +850,30 @@ protected:
 
   void SetElementPosition(Element& aElement, int32_t aX, int32_t aY);
 
+  /**
+   * Reset a selected cell or collapsed selection (the caret) after table
+   * editing.
+   *
+   * @param aTable      A table in the document.
+   * @param aRow        The row ...
+   * @param aCol        ... and column defining the cell where we will try to
+   *                    place the caret.
+   * @param aSelected   If true, we select the whole cell instead of setting
+   *                    caret.
+   * @param aDirection  If cell at (aCol, aRow) is not found, search for
+   *                    previous cell in the same column (aPreviousColumn) or
+   *                    row (ePreviousRow) or don't search for another cell
+   *                    (aNoSearch).  If no cell is found, caret is place just
+   *                    before table; and if that fails, at beginning of
+   *                    document.  Thus we generally don't worry about the
+   *                    return value and can use the
+   *                    AutoSelectionSetterAfterTableEdit stack-based object to
+   *                    insure we reset the caret in a table-editing method.
+   */
+  void SetSelectionAfterTableEdit(nsIDOMElement* aTable,
+                                  int32_t aRow, int32_t aCol,
+                                  int32_t aDirection, bool aSelected);
+
 protected:
   nsTArray<OwningNonNull<nsIContentFilter>> mContentFilters;
 
@@ -848,9 +894,6 @@ protected:
   nsTArray<nsString> mStyleSheetURLs;
   nsTArray<RefPtr<StyleSheet>> mStyleSheets;
 
-  // an array for holding default style settings
-  nsTArray<PropItem*> mDefaultStyles;
-
 protected:
   // ANONYMOUS UTILS
   void RemoveListenerAndDeleteRef(const nsAString& aEvent,
@@ -861,14 +904,14 @@ protected:
   void DeleteRefToAnonymousNode(ManualNACPtr aContent,
                                 nsIPresShell* aShell);
 
-  nsresult ShowResizersInner(nsIDOMElement *aResizedElement);
+  nsresult ShowResizersInner(Element& aResizedElement);
 
   /**
    * Returns the offset of an element's frame to its absolute containing block.
    */
-  nsresult GetElementOrigin(nsIDOMElement* aElement,
+  nsresult GetElementOrigin(Element& aElement,
                             int32_t& aX, int32_t& aY);
-  nsresult GetPositionAndDimensions(nsIDOMElement* aElement,
+  nsresult GetPositionAndDimensions(Element& aElement,
                                     int32_t& aX, int32_t& aY,
                                     int32_t& aW, int32_t& aH,
                                     int32_t& aBorderLeft,
@@ -944,17 +987,17 @@ protected:
 
   nsresult SetAllResizersPosition();
 
-  ManualNACPtr CreateResizer(int16_t aLocation, nsIDOMNode* aParentNode);
+  ManualNACPtr CreateResizer(int16_t aLocation, nsIContent& aParentContent);
   void SetAnonymousElementPosition(int32_t aX, int32_t aY,
                                    Element* aResizer);
 
-  ManualNACPtr CreateShadow(nsIDOMNode* aParentNode,
-                            nsIDOMElement* aOriginalObject);
+  ManualNACPtr CreateShadow(nsIContent& aParentContent,
+                            Element& aOriginalObject);
   nsresult SetShadowPosition(Element* aShadow, Element* aOriginalObject,
                              int32_t aOriginalObjectX,
                              int32_t aOriginalObjectY);
 
-  ManualNACPtr CreateResizingInfo(nsIDOMNode* aParentNode);
+  ManualNACPtr CreateResizingInfo(nsIContent& aParentContent);
   nsresult SetResizingInfoPosition(int32_t aX, int32_t aY,
                                    int32_t aW, int32_t aH);
 
@@ -966,7 +1009,6 @@ protected:
   int32_t GetNewResizingHeight(int32_t aX, int32_t aY);
   void HideShadowAndInfo();
   void SetFinalSize(int32_t aX, int32_t aY);
-  void DeleteRefToAnonymousNode(nsIDOMNode* aNode);
   void SetResizeIncrements(int32_t aX, int32_t aY, int32_t aW, int32_t aH,
                            bool aPreserveRatio);
   void HideAnonymousEditingUIs();
@@ -988,7 +1030,7 @@ protected:
 
   int32_t mGridSize;
 
-  ManualNACPtr CreateGrabber(nsINode* aParentNode);
+  ManualNACPtr CreateGrabber(nsIContent& aParentContent);
   nsresult StartMoving(nsIDOMElement* aHandle);
   nsresult SetFinalPosition(int32_t aX, int32_t aY);
   void AddPositioningOffset(int32_t& aX, int32_t& aY);
@@ -1017,6 +1059,7 @@ protected:
   ParagraphSeparator mDefaultParagraphSeparator;
 
 public:
+  friend class AutoSelectionSetterAfterTableEdit;
   friend class HTMLEditorEventListener;
   friend class HTMLEditRules;
   friend class TextEditRules;
@@ -1041,12 +1084,12 @@ private:
                               const nsAString& aTagName);
   /**
    * Returns an anonymous Element of type aTag,
-   * child of aParentNode. If aIsCreatedHidden is true, the class
+   * child of aParentContent. If aIsCreatedHidden is true, the class
    * "hidden" is added to the created element. If aAnonClass is not
    * the empty string, it becomes the value of the attribute "_moz_anonclass"
    * @return a Element
    * @param aTag             [IN] desired type of the element to create
-   * @param aParentNode      [IN] the parent node of the created anonymous
+   * @param aParentContent   [IN] the parent node of the created anonymous
    *                              element
    * @param aAnonClass       [IN] contents of the _moz_anonclass attribute
    * @param aIsCreatedHidden [IN] a boolean specifying if the class "hidden"
@@ -1054,11 +1097,25 @@ private:
    *                              element
    */
   ManualNACPtr CreateAnonymousElement(nsIAtom* aTag,
-                                      nsIDOMNode* aParentNode,
+                                      nsIContent& aParentContent,
                                       const nsAString& aAnonClass,
                                       bool aIsCreatedHidden);
 };
 
 } // namespace mozilla
+
+mozilla::HTMLEditor*
+nsIEditor::AsHTMLEditor()
+{
+  return static_cast<mozilla::EditorBase*>(this)->mIsHTMLEditorClass ?
+           static_cast<mozilla::HTMLEditor*>(this) : nullptr;
+}
+
+const mozilla::HTMLEditor*
+nsIEditor::AsHTMLEditor() const
+{
+  return static_cast<const mozilla::EditorBase*>(this)->mIsHTMLEditorClass ?
+           static_cast<const mozilla::HTMLEditor*>(this) : nullptr;
+}
 
 #endif // #ifndef mozilla_HTMLEditor_h

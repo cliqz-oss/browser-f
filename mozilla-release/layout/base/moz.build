@@ -36,7 +36,7 @@ EXPORTS += [
     'CaretAssociationHint.h',
     'FrameProperties.h',
     'LayoutLogging.h',
-    'nsArenaMemoryStats.h',
+    'MobileViewportManager.h',
     'nsBidi.h',
     'nsBidiPresUtils.h',
     'nsCaret.h',
@@ -62,9 +62,11 @@ EXPORTS += [
     'nsStyleSheetService.h',
     'ScrollbarStyles.h',
     'StackArena.h',
+    'TouchManager.h',
     'Units.h',
     'UnitTransforms.h',
     'WordMovementType.h',
+    'ZoomConstraintsClient.h',
 ]
 
 EXPORTS.mozilla += [

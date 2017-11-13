@@ -291,6 +291,8 @@ BlacklistOSToOperatingSystem(const nsAString& os)
     return OperatingSystem::OSX10_11;
   else if (os.EqualsLiteral("Darwin 16"))
     return OperatingSystem::OSX10_12;
+  else if (os.EqualsLiteral("Darwin 17"))
+    return OperatingSystem::OSX10_13;
   else if (os.EqualsLiteral("Android"))
     return OperatingSystem::Android;
   // For historical reasons, "All" in blocklist means "All Windows"
@@ -1470,6 +1472,13 @@ NS_IMETHODIMP
 GfxInfoBase::GetWebRenderEnabled(bool* aWebRenderEnabled)
 {
   *aWebRenderEnabled = gfxVars::UseWebRender();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfoBase::GetOffMainThreadPaintEnabled(bool* aOffMainThreadPaintEnabled)
+{
+  *aOffMainThreadPaintEnabled = gfxConfig::IsEnabled(Feature::OMTP);
   return NS_OK;
 }
 

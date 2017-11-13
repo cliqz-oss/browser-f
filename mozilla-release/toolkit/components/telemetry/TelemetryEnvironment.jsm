@@ -201,6 +201,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.shell.checkDefaultBrowser", {what: RECORD_PREF_VALUE}],
   ["browser.search.ignoredJAREngines", {what: RECORD_DEFAULTPREF_VALUE}],
   ["browser.search.suggest.enabled", {what: RECORD_PREF_VALUE}],
+  ["browser.search.widget.inNavBar", {what: RECORD_DEFAULTPREF_VALUE}],
   ["browser.startup.homepage", {what: RECORD_PREF_STATE}],
   ["browser.startup.restoreTabs", {what: RECORD_PREF_VALUE}],
   ["browser.startup.addFreshTab", {what: RECORD_PREF_VALUE}],
@@ -221,12 +222,12 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["extensions.blocklist.url", {what: RECORD_PREF_VALUE}],
   ["extensions.formautofill.addresses.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.formautofill.creditCards.enabled", {what: RECORD_PREF_VALUE}],
+  ["extensions.legacy.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.strictCompatibility", {what: RECORD_PREF_VALUE}],
   ["extensions.update.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.update.url", {what: RECORD_PREF_VALUE}],
   ["extensions.update.background.url", {what: RECORD_PREF_VALUE}],
   ["extensions.screenshots.disabled", {what: RECORD_PREF_VALUE}],
-  ["extensions.screenshots.system-disabled", {what: RECORD_PREF_VALUE}],
   ["extensions.https_everywhere.globalEnabled", {what: RECORD_PREF_VALUE}],
   ["general.smoothScroll", {what: RECORD_PREF_VALUE}],
   ["gfx.direct2d.disabled", {what: RECORD_PREF_VALUE}],
@@ -294,7 +295,7 @@ function enforceBoolean(aValue) {
   if (typeof(aValue) !== "number" && typeof(aValue) !== "boolean") {
     return null;
   }
-  return (new Boolean(aValue)).valueOf();
+  return Boolean(aValue);
 }
 
 /**
@@ -1293,6 +1294,7 @@ EnvironmentCache.prototype = {
       platformVersion: Services.appinfo.platformVersion || null,
       xpcomAbi: Services.appinfo.XPCOMABI,
       hotfixVersion: Services.prefs.getStringPref(PREF_HOTFIX_LASTVERSION, null),
+      updaterAvailable: AppConstants.MOZ_UPDATER,
     };
 
     // Add |architecturesInBinary| only for Mac Universal builds.
@@ -1363,7 +1365,13 @@ EnvironmentCache.prototype = {
       updateChannel = UpdateUtils.getUpdateChannel(false);
     } catch (e) {}
 
+    // Make sure to retain the attribution code across environment changes.
+    const attributionCode =
+      (this._currentEnvironment.settings &&
+       this._currentEnvironment.settings.attribution) || {};
+
     this._currentEnvironment.settings = {
+      attribution: attributionCode,
       blocklistEnabled: Services.prefs.getBoolPref(PREF_BLOCKLIST_ENABLED, true),
       e10sEnabled: Services.appinfo.browserTabsRemoteAutostart,
       e10sMultiProcesses: Services.appinfo.maxWebProcessCount,
@@ -1641,6 +1649,7 @@ EnvironmentCache.prototype = {
       os: this._getOSData(),
       hdd: this._getHDDData(),
       gfx: this._getGFXData(),
+      appleModelId: getSysinfoProperty("appleModelId", null),
     };
 
     if (AppConstants.platform === "win") {

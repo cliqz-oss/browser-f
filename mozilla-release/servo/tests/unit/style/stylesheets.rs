@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use cssparser::{self, Parser as CssParser, SourcePosition, SourceLocation};
+use cssparser::{self, SourceLocation};
 use html5ever::{Namespace as NsAtom};
 use media_queries::CSSErrorReporterTest;
 use parking_lot::RwLock;
@@ -14,7 +14,6 @@ use servo_url::ServoUrl;
 use std::borrow::ToOwned;
 use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
-use style::computed_values::font_family::FamilyName;
 use style::context::QuirksMode;
 use style::error_reporting::{ParseErrorReporter, ContextualParseError};
 use style::media_queries::MediaList;
@@ -25,8 +24,6 @@ use style::properties::longhands::animation_timing_function;
 use style::shared_lock::SharedRwLock;
 use style::stylesheets::{Origin, Namespaces};
 use style::stylesheets::{Stylesheet, StylesheetContents, NamespaceRule, CssRule, CssRules, StyleRule, KeyframesRule};
-use style::stylesheets::font_feature_values_rule::{FFVDeclaration, FontFeatureValuesRule};
-use style::stylesheets::font_feature_values_rule::{SingleValue, PairValues, VectorValues};
 use style::stylesheets::keyframes_rule::{Keyframe, KeyframeSelector, KeyframePercentage};
 use style::values::{KeyframesName, CustomIdent};
 use style::values::computed::Percentage;
@@ -68,20 +65,12 @@ fn test_parse_stylesheet() {
                 animation-name: 'foo'; /* animation properties not allowed here */
                 animation-timing-function: ease; /* … except animation-timing-function */
             }
-        }
-        @font-feature-values test {
-            @swash { foo: 12; bar: 24; }
-            @swash { bar: 36; baz: 48; }
-            @stylistic { fooo: 14; }
-            @rubbish { shouldnt-parse: 1; }
-            @styleset { hello: 10 11 12; }
-            @character-variant { ok: 78 2; }
         }";
     let url = ServoUrl::parse("about::test").unwrap();
     let lock = SharedRwLock::new();
     let media = Arc::new(lock.wrap(MediaList::empty()));
     let stylesheet = Stylesheet::from_str(css, url.clone(), Origin::UserAgent, media, lock,
-                                          None, &CSSErrorReporterTest, QuirksMode::NoQuirks, 0u64);
+                                          None, &CSSErrorReporterTest, QuirksMode::NoQuirks, 0);
     let mut namespaces = Namespaces::default();
     namespaces.default = Some((ns!(html), ()));
     let expected = Stylesheet {
@@ -89,7 +78,6 @@ fn test_parse_stylesheet() {
             origin: Origin::UserAgent,
             namespaces: RwLock::new(namespaces),
             url_data: RwLock::new(url),
-            dirty_on_viewport_size_change: AtomicBool::new(false),
             quirks_mode: QuirksMode::NoQuirks,
             rules: CssRules::new(vec![
                 CssRule::Namespace(Arc::new(stylesheet.shared_lock.wrap(NamespaceRule {
@@ -229,7 +217,11 @@ fn test_parse_stylesheet() {
                                 (PropertyDeclaration::Width(
                                     LengthOrPercentageOrAuto::Percentage(Percentage(0.))),
                                  Importance::Normal),
-                            ])))
+                            ]))),
+                            source_location: SourceLocation {
+                                line: 17,
+                                column: 13,
+                            },
                         })),
                         Arc::new(stylesheet.shared_lock.wrap(Keyframe {
                             selector: KeyframeSelector::new_for_unit_testing(
@@ -243,6 +235,10 @@ fn test_parse_stylesheet() {
                                         vec![TimingFunction::ease()])),
                                  Importance::Normal),
                             ]))),
+                            source_location: SourceLocation {
+                                line: 18,
+                                column: 13,
+                            },
                         })),
                     ],
                     vendor_prefix: None,
@@ -250,53 +246,10 @@ fn test_parse_stylesheet() {
                         line: 16,
                         column: 19,
                     },
-                }))),
-                CssRule::FontFeatureValues(Arc::new(stylesheet.shared_lock.wrap(FontFeatureValuesRule {
-                    family_names: vec![FamilyName {
-                        name: Atom::from("test"),
-                        quoted: false,
-                    }],
-                    swash: vec![
-                        FFVDeclaration {
-                            name: "foo".into(),
-                            value: SingleValue(12 as u32),
-                        },
-                        FFVDeclaration {
-                            name: "bar".into(),
-                            value: SingleValue(36 as u32),
-                        },
-                        FFVDeclaration {
-                            name: "baz".into(),
-                            value: SingleValue(48 as u32),
-                        }
-                    ],
-                    stylistic: vec![
-                        FFVDeclaration {
-                            name: "fooo".into(),
-                            value: SingleValue(14 as u32),
-                        }
-                    ],
-                    ornaments: vec![],
-                    annotation: vec![],
-                    character_variant: vec![
-                        FFVDeclaration {
-                            name: "ok".into(),
-                            value: PairValues(78 as u32, Some(2 as u32)),
-                        },
-                    ],
-                    styleset: vec![
-                        FFVDeclaration {
-                            name: "hello".into(),
-                            value: VectorValues(vec![10 as u32, 11 as u32, 12 as u32]),
-                        },
-                    ],
-                    source_location: SourceLocation {
-                        line: 25,
-                        column: 29,
-                    },
                 })))
-
             ], &stylesheet.shared_lock),
+            source_map_url: RwLock::new(None),
+            source_url: RwLock::new(None),
         },
         media: Arc::new(stylesheet.shared_lock.wrap(MediaList::empty())),
         shared_lock: stylesheet.shared_lock.clone(),
@@ -326,23 +279,17 @@ impl CSSInvalidErrorReporterTest {
 }
 
 impl ParseErrorReporter for CSSInvalidErrorReporterTest {
-    fn report_error<'a>(&self,
-                        input: &mut CssParser,
-                        position: SourcePosition,
-                        error: ContextualParseError<'a>,
-                        url: &ServoUrl,
-                        line_number_offset: u64) {
-
-        let location = input.source_location(position);
-        let line_offset = location.line + line_number_offset as u32;
-
+    fn report_error(&self,
+                    url: &ServoUrl,
+                    location: SourceLocation,
+                    error: ContextualParseError) {
         let mut errors = self.errors.lock().unwrap();
         errors.push(
             CSSError{
                 url: url.clone(),
-                line: line_offset,
+                line: location.line,
                 column: location.column,
-                message: error.to_string()
+                message: error.to_string(),
             }
         );
     }
@@ -366,7 +313,7 @@ fn test_report_error_stylesheet() {
     let lock = SharedRwLock::new();
     let media = Arc::new(lock.wrap(MediaList::empty()));
     Stylesheet::from_str(css, url.clone(), Origin::UserAgent, media, lock,
-                         None, &error_reporter, QuirksMode::NoQuirks, 5u64);
+                         None, &error_reporter, QuirksMode::NoQuirks, 5);
 
     let mut errors = errors.lock().unwrap();
 
@@ -374,13 +321,13 @@ fn test_report_error_stylesheet() {
     assert_eq!("Unsupported property declaration: 'invalid: true;', \
                 Custom(PropertyDeclaration(UnknownProperty(\"invalid\")))", error.message);
     assert_eq!(9, error.line);
-    assert_eq!(8, error.column);
+    assert_eq!(9, error.column);
 
     let error = errors.pop().unwrap();
     assert_eq!("Unsupported property declaration: 'display: invalid;', \
                 Custom(PropertyDeclaration(InvalidValue(\"display\", None)))", error.message);
     assert_eq!(8, error.line);
-    assert_eq!(8, error.column);
+    assert_eq!(9, error.column);
 
     // testing for the url
     assert_eq!(url, error.url);
@@ -403,7 +350,7 @@ fn test_no_report_unrecognized_vendor_properties() {
     let lock = SharedRwLock::new();
     let media = Arc::new(lock.wrap(MediaList::empty()));
     Stylesheet::from_str(css, url, Origin::UserAgent, media, lock,
-                         None, &error_reporter, QuirksMode::NoQuirks, 0u64);
+                         None, &error_reporter, QuirksMode::NoQuirks, 0);
 
     let mut errors = errors.lock().unwrap();
     let error = errors.pop().unwrap();
@@ -411,4 +358,42 @@ fn test_no_report_unrecognized_vendor_properties() {
                 Custom(PropertyDeclaration(UnknownProperty(\"-moz-background-color\")))",
                error.message);
     assert!(errors.is_empty());
+}
+
+#[test]
+fn test_source_map_url() {
+    let tests = vec![
+        ("", None),
+        ("/*# sourceMappingURL=something */", Some("something".to_string())),
+    ];
+
+    for test in tests {
+        let url = ServoUrl::parse("about::test").unwrap();
+        let lock = SharedRwLock::new();
+        let media = Arc::new(lock.wrap(MediaList::empty()));
+        let stylesheet = Stylesheet::from_str(test.0, url.clone(), Origin::UserAgent, media, lock,
+                                              None, &CSSErrorReporterTest, QuirksMode::NoQuirks,
+                                              0);
+        let url_opt = stylesheet.contents.source_map_url.read();
+        assert_eq!(*url_opt, test.1);
+    }
+}
+
+#[test]
+fn test_source_url() {
+    let tests = vec![
+        ("", None),
+        ("/*# sourceURL=something */", Some("something".to_string())),
+    ];
+
+    for test in tests {
+        let url = ServoUrl::parse("about::test").unwrap();
+        let lock = SharedRwLock::new();
+        let media = Arc::new(lock.wrap(MediaList::empty()));
+        let stylesheet = Stylesheet::from_str(test.0, url.clone(), Origin::UserAgent, media, lock,
+                                              None, &CSSErrorReporterTest, QuirksMode::NoQuirks,
+                                              0);
+        let url_opt = stylesheet.contents.source_url.read();
+        assert_eq!(*url_opt, test.1);
+    }
 }

@@ -6,6 +6,8 @@ from contextlib import closing
 import sys
 import logging
 import os
+import psutil
+import signal
 import time
 import tempfile
 import traceback
@@ -154,6 +156,7 @@ class RemoteReftest(RefTest):
         self.remoteProfile = options.remoteProfile
         self.remoteTestRoot = options.remoteTestRoot
         self.remoteLogFile = options.remoteLogFile
+        self.remoteCache = os.path.join(options.remoteTestRoot, "cache/")
         self.localLogName = options.localLogName
         self.pidFile = options.pidFile
         if self.automation.IS_DEBUG_BUILD:
@@ -162,6 +165,7 @@ class RemoteReftest(RefTest):
             self.SERVER_STARTUP_TIMEOUT = 90
         self.automation.deleteANRs()
         self.automation.deleteTombstones()
+        self._devicemanager.removeDir(self.remoteCache)
 
         self._populate_logger(options)
         outputHandler = OutputHandler(self.log, options.utilityPath, options.symbolsPath)
@@ -236,6 +240,26 @@ class RemoteReftest(RefTest):
     def stopWebServer(self, options):
         self.server.stop()
 
+    def killNamedProc(self, pname, orphans=True):
+        """ Kill processes matching the given command name """
+        self.log.info("Checking for %s processes..." % pname)
+
+        for proc in psutil.process_iter():
+            try:
+                if proc.name() == pname:
+                    procd = proc.as_dict(attrs=['pid', 'ppid', 'name', 'username'])
+                    if proc.ppid() == 1 or not orphans:
+                        self.log.info("killing %s" % procd)
+                        try:
+                            os.kill(proc.pid, getattr(signal, "SIGKILL", signal.SIGTERM))
+                        except Exception as e:
+                            self.log.info("Failed to kill process %d: %s" % (proc.pid, str(e)))
+                    else:
+                        self.log.info("NOT killing %s (not an orphan?)" % procd)
+            except:
+                # may not be able to access process info for all processes
+                continue
+
     def createReftestProfile(self, options, manifest, startAfter=None):
         profile = RefTest.createReftestProfile(self,
                                                options,
@@ -252,6 +276,8 @@ class RemoteReftest(RefTest):
         prefs["browser.firstrun.show.localepicker"] = False
         prefs["reftest.remote"] = True
         prefs["datareporting.policy.dataSubmissionPolicyBypassAcceptance"] = True
+        # move necko cache to a location that can be cleaned up
+        prefs["browser.cache.disk.parent_directory"] = self.remoteCache
 
         prefs["layout.css.devPixelsPerPx"] = "1.0"
         # Because Fennec is a little wacky (see bug 1156817) we need to load the
@@ -321,6 +347,9 @@ class RemoteReftest(RefTest):
                                                       debuggerInfo=debuggerInfo,
                                                       symbolsPath=symbolsPath,
                                                       timeout=timeout)
+        if status == 1:
+            # when max run time exceeded, avoid restart
+            lastTestSeen = RefTest.TEST_SEEN_FINAL
         return status, lastTestSeen
 
     def cleanup(self, profileDir):
@@ -332,6 +361,7 @@ class RemoteReftest(RefTest):
             print "WARNING: Unable to retrieve log file (%s) from remote " \
                 "device" % self.remoteLogFile
         self._devicemanager.removeDir(self.remoteProfile)
+        self._devicemanager.removeDir(self.remoteCache)
         self._devicemanager.removeDir(self.remoteTestRoot)
         RefTest.cleanup(self, profileDir)
         if (self.pidFile != ""):
@@ -392,6 +422,14 @@ def run_test_harness(parser, options):
 
     # Hack in a symbolic link for jsreftest
     os.system("ln -s ../jsreftest " + str(os.path.join(SCRIPT_DIRECTORY, "jsreftest")))
+
+    # Despite our efforts to clean up servers started by this script, in practice
+    # we still see infrequent cases where a process is orphaned and interferes
+    # with future tests, typically because the old server is keeping the port in use.
+    # Try to avoid those failures by checking for and killing servers before
+    # trying to start new ones.
+    reftest.killNamedProc('ssltunnel')
+    reftest.killNamedProc('xpcshell')
 
     # Start the webserver
     retVal = reftest.startWebServer(options)

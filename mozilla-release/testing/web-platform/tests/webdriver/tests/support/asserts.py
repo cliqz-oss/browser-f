@@ -15,11 +15,11 @@ errors = {
     "invalid session id": 404,
     "javascript error": 500,
     "move target out of bounds": 500,
-    "no such alert": 400,
+    "no such alert": 404,
     "no such cookie": 404,
     "no such element": 404,
-    "no such frame": 400,
-    "no such window": 400,
+    "no such frame": 404,
+    "no such window": 404,
     "script timeout": 408,
     "session not created": 500,
     "stale element reference": 400,
@@ -68,16 +68,19 @@ def assert_error(response, error_code):
     assert isinstance(response.body["value"]["message"], basestring)
     assert isinstance(response.body["value"]["stacktrace"], basestring)
 
-def assert_success(response, value):
+def assert_success(response, value=None):
     """Verify that the provided wdclient.Response instance described a valid
     error response as defined by `dfn-send-an-error` and the provided error
     code.
-    :param response: wdclient.Response instance
-    :param value: expected value of the response body
-    """
 
+    :param response: wdclient.Response instance.
+    :param value: Expected value of the response body, if any.
+
+    """
     assert response.status == 200
-    assert response.body["value"] == value
+    if value is not None:
+        assert response.body["value"] == value
+    return response.body.get("value")
 
 def assert_dialog_handled(session, expected_text):
     result = session.transport.send("GET",

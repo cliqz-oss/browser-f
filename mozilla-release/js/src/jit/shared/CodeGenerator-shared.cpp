@@ -9,7 +9,6 @@
 #include "mozilla/DebugOnly.h"
 
 #include "jit/CompactBuffer.h"
-#include "jit/IonCaches.h"
 #include "jit/JitcodeMap.h"
 #include "jit/JitSpewer.h"
 #include "jit/MacroAssembler.h"
@@ -606,7 +605,7 @@ CodeGeneratorShared::encode(LSnapshot* snapshot)
         lirOpcode = ins->op();
         lirId = ins->id();
         if (ins->mirRaw()) {
-            mirOpcode = ins->mirRaw()->op();
+            mirOpcode = uint32_t(ins->mirRaw()->op());
             mirId = ins->mirRaw()->id();
             if (ins->mirRaw()->trackedPc())
                 pcOpcode = *ins->mirRaw()->trackedPc();
@@ -1348,7 +1347,7 @@ CodeGeneratorShared::callVM(const VMFunction& fun, LInstruction* ins, const Regi
 {
     // If we're calling a function with an out parameter type of double, make
     // sure we have an FPU.
-    MOZ_ASSERT_IF(fun.outParam == Type_Double, GetJitContext()->runtime->jitSupportsFloatingPoint());
+    MOZ_ASSERT_IF(fun.outParam == Type_Double, gen->runtime->jitSupportsFloatingPoint());
 
 #ifdef DEBUG
     if (ins->mirRaw()) {

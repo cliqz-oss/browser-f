@@ -149,18 +149,12 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(HTMLFormElement,
   tmp->mExpandoAndGeneration.OwnerUnlinked();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_ADDREF_INHERITED(HTMLFormElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLFormElement, Element)
-
-
-// QueryInterface implementation for HTMLFormElement
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(HTMLFormElement)
-  NS_INTERFACE_TABLE_INHERITED(HTMLFormElement,
-                               nsIDOMHTMLFormElement,
-                               nsIForm,
-                               nsIWebProgressListener,
-                               nsIRadioGroupContainer)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLFormElement,
+                                             nsGenericHTMLElement,
+                                             nsIDOMHTMLFormElement,
+                                             nsIForm,
+                                             nsIWebProgressListener,
+                                             nsIRadioGroupContainer)
 
 // EventTarget
 void
@@ -195,21 +189,18 @@ HTMLFormElement::BeforeSetAttr(int32_t aNamespaceID, nsIAtom* aName,
 {
   if (aNamespaceID == kNameSpaceID_None) {
     if (aName == nsGkAtoms::action || aName == nsGkAtoms::target) {
-      // This check is mostly to preserve previous behavior.
-      if (aValue) {
-        if (mPendingSubmission) {
-          // aha, there is a pending submission that means we're in
-          // the script and we need to flush it. let's tell it
-          // that the event was ignored to force the flush.
-          // the second argument is not playing a role at all.
-          FlushPendingSubmission();
-        }
-        // Don't forget we've notified the password manager already if the
-        // page sets the action/target in the during submit. (bug 343182)
-        bool notifiedObservers = mNotifiedObservers;
-        ForgetCurrentSubmission();
-        mNotifiedObservers = notifiedObservers;
+      if (mPendingSubmission) {
+        // aha, there is a pending submission that means we're in
+        // the script and we need to flush it. let's tell it
+        // that the event was ignored to force the flush.
+        // the second argument is not playing a role at all.
+        FlushPendingSubmission();
       }
+      // Don't forget we've notified the password manager already if the
+      // page sets the action/target in the during submit. (bug 343182)
+      bool notifiedObservers = mNotifiedObservers;
+      ForgetCurrentSubmission();
+      mNotifiedObservers = notifiedObservers;
     }
   }
 
@@ -919,11 +910,11 @@ HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
   nsAutoString message;
   nsAutoString cont;
   stringBundle->GetStringFromName(
-    "formPostSecureToInsecureWarning.title", getter_Copies(title));
+    "formPostSecureToInsecureWarning.title", title);
   stringBundle->GetStringFromName(
-    "formPostSecureToInsecureWarning.message", getter_Copies(message));
+    "formPostSecureToInsecureWarning.message", message);
   stringBundle->GetStringFromName(
-    "formPostSecureToInsecureWarning.continue", getter_Copies(cont));
+    "formPostSecureToInsecureWarning.continue", cont);
   int32_t buttonPressed;
   bool checkState = false; // this is unused (ConfirmEx requires this parameter)
   rv = prompt->ConfirmEx(title.get(), message.get(),
@@ -2309,12 +2300,9 @@ HTMLFormElement::WalkRadioGroup(const nsAString& aName,
 
 void
 HTMLFormElement::AddToRadioGroup(const nsAString& aName,
-                                 nsIFormControl* aRadio)
+                                 HTMLInputElement* aRadio)
 {
-  nsCOMPtr<nsIContent> element = do_QueryInterface(aRadio);
-  NS_ASSERTION(element, "radio controls have to be content elements!");
-
-  if (element->HasAttr(kNameSpaceID_None, nsGkAtoms::required)) {
+  if (aRadio->IsRequired()) {
     auto entry = mRequiredRadioButtonCounts.LookupForAdd(aName);
     if (!entry) {
       entry.OrInsert([]() { return 1; });
@@ -2326,12 +2314,9 @@ HTMLFormElement::AddToRadioGroup(const nsAString& aName,
 
 void
 HTMLFormElement::RemoveFromRadioGroup(const nsAString& aName,
-                                      nsIFormControl* aRadio)
+                                      HTMLInputElement* aRadio)
 {
-  nsCOMPtr<nsIContent> element = do_QueryInterface(aRadio);
-  NS_ASSERTION(element, "radio controls have to be content elements!");
-
-  if (element->HasAttr(kNameSpaceID_None, nsGkAtoms::required)) {
+  if (aRadio->IsRequired()) {
     auto entry = mRequiredRadioButtonCounts.Lookup(aName);
     if (!entry) {
       MOZ_ASSERT_UNREACHABLE("At least one radio button has to be required!");

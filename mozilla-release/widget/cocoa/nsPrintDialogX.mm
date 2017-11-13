@@ -235,7 +235,7 @@ nsPrintDialogServiceX::ShowPageSetup(nsPIDOMWindowOuter *aParent,
 - (NSButton*)checkboxWithLabel:(const char*)aLabel andFrame:(NSRect)aRect;
 
 - (NSPopUpButton*)headerFooterItemListWithFrame:(NSRect)aRect
-                                   selectedItem:(const char16_t*)aCurrentString;
+                                   selectedItem:(const nsAString&)aCurrentString;
 
 - (void)addOptionsSection;
 
@@ -307,8 +307,8 @@ static const char sHeaderFooterTags[][4] =  {"", "&T", "&U", "&D", "&P", "&PT"};
   if (!mPrintBundle)
     return @"";
 
-  nsXPIDLString intlString;
-  mPrintBundle->GetStringFromName(aKey, getter_Copies(intlString));
+  nsAutoString intlString;
+  mPrintBundle->GetStringFromName(aKey, intlString);
   NSMutableString* s = [NSMutableString stringWithUTF8String:NS_ConvertUTF16toUTF8(intlString).get()];
 
   // Remove all underscores (they're used in the GTK dialog for accesskeys).
@@ -364,7 +364,7 @@ static const char sHeaderFooterTags[][4] =  {"", "&T", "&U", "&D", "&P", "&PT"};
 }
 
 - (NSPopUpButton*)headerFooterItemListWithFrame:(NSRect)aRect
-                                   selectedItem:(const char16_t*)aCurrentString
+                                   selectedItem:(const nsAString&)aCurrentString
 {
   NSPopUpButton* list = [[[NSPopUpButton alloc] initWithFrame:aRect pullsDown:NO] autorelease];
   [list setFont:[NSFont systemFontOfSize:[NSFont smallSystemFontSize]]];
@@ -513,7 +513,7 @@ static const char sHeaderFooterTags[][4] =  {"", "&T", "&U", "&D", "&P", "&PT"};
   [self addCenteredLabel:"right" withFrame:NSMakeRect(356, 22, 100, 22)];
 
   // Lists
-  nsXPIDLString sel;
+  nsString sel;
 
   mSettings->GetHeaderStrLeft(getter_Copies(sel));
   mHeaderLeftList = [self headerFooterItemListWithFrame:NSMakeRect(156, 44, 100, 22)

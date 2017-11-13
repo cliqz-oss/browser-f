@@ -6,6 +6,7 @@
 
 #include "mozilla/dom/HTMLCanvasElement.h"
 
+#include "gfxPrefs.h"
 #include "ImageEncoder.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
@@ -24,6 +25,7 @@
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/layers/AsyncCanvasRenderer.h"
+#include "mozilla/layers/WebRenderCanvasRenderer.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Telemetry.h"
@@ -402,12 +404,9 @@ NS_IMPL_CYCLE_COLLECTION_INHERITED(HTMLCanvasElement, nsGenericHTMLElement,
                                    mPrintState, mOriginalCanvas,
                                    mOffscreenCanvas)
 
-NS_IMPL_ADDREF_INHERITED(HTMLCanvasElement, Element)
-NS_IMPL_RELEASE_INHERITED(HTMLCanvasElement, Element)
-
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(HTMLCanvasElement)
-  NS_INTERFACE_TABLE_INHERITED(HTMLCanvasElement, nsIDOMHTMLCanvasElement)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsGenericHTMLElement)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLCanvasElement,
+                                             nsGenericHTMLElement,
+                                             nsIDOMHTMLCanvasElement)
 
 NS_IMPL_ELEMENT_CLONE(HTMLCanvasElement)
 
@@ -653,7 +652,7 @@ HTMLCanvasElement::ToDataURL(JSContext* aCx, const nsAString& aType,
 {
   // do a trust check if this is a write-only canvas
   if (mWriteOnly &&
-      !nsContentUtils::CallerHasPermission(aCx, NS_LITERAL_STRING("<all_urls>"))) {
+      !nsContentUtils::CallerHasPermission(aCx, nsGkAtoms::all_urlsPermission)) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return;
   }
@@ -713,7 +712,7 @@ NS_IMPL_ADDREF_INHERITED(CanvasCaptureTrackSource,
                          MediaStreamTrackSource)
 NS_IMPL_RELEASE_INHERITED(CanvasCaptureTrackSource,
                           MediaStreamTrackSource)
-NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(CanvasCaptureTrackSource)
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(CanvasCaptureTrackSource)
 NS_INTERFACE_MAP_END_INHERITING(MediaStreamTrackSource)
 NS_IMPL_CYCLE_COLLECTION_INHERITED(CanvasCaptureTrackSource,
                                    MediaStreamTrackSource,
@@ -836,7 +835,7 @@ HTMLCanvasElement::ToBlob(JSContext* aCx,
 {
   // do a trust check if this is a write-only canvas
   if (mWriteOnly &&
-      !nsContentUtils::CallerHasPermission(aCx, NS_LITERAL_STRING("<all_urls>"))) {
+      !nsContentUtils::CallerHasPermission(aCx, nsGkAtoms::all_urlsPermission)) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return;
   }
@@ -942,11 +941,6 @@ HTMLCanvasElement::MozGetAsFileImpl(const nsAString& aName,
   void* imgData = nullptr;
   rv = NS_ReadInputStreamToBuffer(stream, &imgData, (uint32_t)imgSize);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  JSContext* cx = nsContentUtils::GetCurrentJSContext();
-  if (cx) {
-    JS_updateMallocCounter(cx, imgSize);
-  }
 
   nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(OwnerDoc()->GetScopeObject());
 
@@ -1059,18 +1053,38 @@ HTMLCanvasElement::InvalidateCanvasContent(const gfx::Rect* damageRect)
 
   ActiveLayerTracker::NotifyContentChange(frame);
 
-  Layer* layer = nullptr;
-  if (damageRect) {
-    nsIntSize size = GetWidthHeight();
-    if (size.width != 0 && size.height != 0) {
-      gfx::IntRect invalRect = gfx::IntRect::Truncate(*damageRect);
-      layer = frame->InvalidateLayer(nsDisplayItem::TYPE_CANVAS, &invalRect);
+  // When using layers-free WebRender, we cannot invalidate the layer (because there isn't one).
+  // Instead, we mark the CanvasRenderer dirty and scheduling an empty transaction
+  // which is effectively equivalent.
+  CanvasRenderer* renderer = nullptr;
+  if (gfxPrefs::WebRenderLayersFree() && frame->HasProperty(nsIFrame::WebRenderUserDataProperty())) {
+    nsIFrame::WebRenderUserDataTable* userDataTable =
+      frame->GetProperty(nsIFrame::WebRenderUserDataProperty());
+    RefPtr<WebRenderUserData> data;
+    userDataTable->Get(static_cast<uint32_t>(DisplayItemType::TYPE_CANVAS), getter_AddRefs(data));
+    if (data && data->AsCanvasData()) {
+      renderer = data->AsCanvasData()->GetCanvasRenderer();
     }
-  } else {
-    layer = frame->InvalidateLayer(nsDisplayItem::TYPE_CANVAS);
   }
-  if (layer) {
-    static_cast<CanvasLayer*>(layer)->Updated();
+
+  if (renderer) {
+    renderer->SetDirty();
+    frame->SchedulePaint(nsIFrame::PAINT_COMPOSITE_ONLY);
+  } else {
+    Layer* layer = nullptr;
+    if (damageRect) {
+      nsIntSize size = GetWidthHeight();
+      if (size.width != 0 && size.height != 0) {
+        gfx::IntRect invalRect = gfx::IntRect::Truncate(*damageRect);
+        layer = frame->InvalidateLayer(DisplayItemType::TYPE_CANVAS, &invalRect);
+      }
+    } else {
+      layer = frame->InvalidateLayer(DisplayItemType::TYPE_CANVAS);
+    }
+
+    if (layer) {
+      static_cast<CanvasLayer*>(layer)->Updated();
+    }
   }
 
   /*
@@ -1165,16 +1179,36 @@ HTMLCanvasElement::GetCanvasLayer(nsDisplayListBuilder* aBuilder,
     LayerUserData* userData = nullptr;
     layer->SetUserData(&sOffscreenCanvasLayerUserDataDummy, userData);
 
-    CanvasLayer::Data data;
-    data.mRenderer = GetAsyncCanvasRenderer();
-    data.mSize = GetWidthHeight();
-    layer->Initialize(data);
+    CanvasRenderer* canvasRenderer = layer->CreateOrGetCanvasRenderer();
+
+    if (!InitializeCanvasRenderer(aBuilder, canvasRenderer)) {
+      return nullptr;
+    }
 
     layer->Updated();
     return layer.forget();
   }
 
   return nullptr;
+}
+
+bool
+HTMLCanvasElement::InitializeCanvasRenderer(nsDisplayListBuilder* aBuilder,
+                                            CanvasRenderer* aRenderer)
+{
+  if (mCurrentContext) {
+    return mCurrentContext->InitializeCanvasRenderer(aBuilder, aRenderer);
+  }
+
+  if (mOffscreenCanvas) {
+    CanvasInitializeData data;
+    data.mRenderer = GetAsyncCanvasRenderer();
+    data.mSize = GetWidthHeight();
+    aRenderer->Initialize(data);
+    return true;
+  }
+
+  return true;
 }
 
 bool

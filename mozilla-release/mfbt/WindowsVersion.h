@@ -158,7 +158,7 @@ IsNotWin7PreRTM()
   return IsWin7SP1OrLater() || IsWindowsBuildOrLater(7600);
 }
 
-MOZ_ALWAYS_INLINE bool
+inline bool
 IsWin7AndPre2000Compatible() {
   /*
    * See Bug 1279171.

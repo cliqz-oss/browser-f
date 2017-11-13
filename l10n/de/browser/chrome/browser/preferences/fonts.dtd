@@ -4,22 +4,22 @@
 
 <!ENTITY  fontsDialog.title                       "Schriftarten">
 
-<!ENTITY  language.label                          "Schriftarten für:">
-<!ENTITY  language.accesskey                      "S">
+<!ENTITY  fonts.label                             "Schriftarten für">
+<!ENTITY  fonts.accesskey                         "S">
 
-<!ENTITY  size.label                              "Größe">
+<!ENTITY  size2.label                             "Größe">
 <!ENTITY  sizeProportional.accesskey              "G">
 <!ENTITY  sizeMonospace.accesskey                 "r">
 
-<!ENTITY  proportional.label                      "Proportional:">
-<!ENTITY  proportional.accesskey                  "P">
+<!ENTITY  proportional2.label                     "Proportional:">
+<!ENTITY  proportional2.accesskey                 "P">
 
-<!ENTITY  serif.label                             "Serif:">
-<!ENTITY  serif.accesskey                         "e">
-<!ENTITY  sans-serif.label                        "Sans Serif:">
-<!ENTITY  sans-serif.accesskey                    "a">
-<!ENTITY  monospace.label                         "Feste Breite:">
-<!ENTITY  monospace.accesskey                     "F">
+<!ENTITY  serif2.label                            "Serif:">
+<!ENTITY  serif2.accesskey                        "e">
+<!ENTITY  sans-serif2.label                       "Sans Serif:">
+<!ENTITY  sans-serif2.accesskey                   "a">
+<!ENTITY  monospace2.label                        "Feste Breite:">
+<!ENTITY  monospace2.accesskey                    "F">
 
 <!-- LOCALIZATION NOTE (font.langGroup.latin) :
      Translate "Latin" as the name of Latin (Roman) script, not as the name of the Latin language. -->
@@ -53,8 +53,8 @@
 <!ENTITY  font.langGroup.sinhala                  "Singhalesisch">
 <!ENTITY  font.langGroup.tibetan                  "Tibetisch">
 <!-- Minimum font size -->
-<!ENTITY minSize.label                            "Mindestschriftgröße:">
-<!ENTITY minSize.accesskey                        "M">
+<!ENTITY minSize2.label                           "Mindestschriftgröße:">
+<!ENTITY minSize2.accesskey                       "M">
 <!ENTITY minSize.none                             "Keine">
 
 <!-- default font type -->
@@ -65,8 +65,8 @@
 <!ENTITY  allowPagesToUseOwn.accesskey            "d">
 
 <!ENTITY languages.customize.Fallback2.grouplabel "Textkodierung für veralteten Inhalt">
-<!ENTITY languages.customize.Fallback2.label      "Ersatz-Textkodierung:">
-<!ENTITY languages.customize.Fallback2.accesskey  "T">
+<!ENTITY languages.customize.Fallback3.label      "Ersatz-Textkodierung:">
+<!ENTITY languages.customize.Fallback3.accesskey  "T">
 <!ENTITY languages.customize.Fallback2.desc       "Diese Zeichenkodierung wird für veraltete Inhalte verwendet, welche ihre Zeichenkodierung nicht angeben.">
 
 <!ENTITY languages.customize.Fallback.auto        "Standard für derzeitige Sprache">

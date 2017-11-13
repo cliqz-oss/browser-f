@@ -5,10 +5,14 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ChromiumCDMProxy.h"
+#include "ChromiumCDMCallbackProxy.h"
 #include "mozilla/dom/MediaKeySession.h"
 #include "GMPUtils.h"
 #include "nsPrintfCString.h"
 #include "GMPService.h"
+#include "content_decryption_module.h"
+
+#define NS_DispatchToMainThread(...) CompileError_UseAbstractMainThreadInstead
 
 namespace mozilla {
 
@@ -94,9 +98,12 @@ ChromiumCDMProxy::Init(PromiseId aPromiseId,
         thread,
         __func__,
         [self, aPromiseId](RefPtr<gmp::ChromiumCDMParent> cdm) {
-          if (!cdm->Init(self,
+          self->mCallback =
+            MakeUnique<ChromiumCDMCallbackProxy>(self, self->mMainThread);
+          if (!cdm->Init(self->mCallback.get(),
                          self->mDistinctiveIdentifierRequired,
-                         self->mPersistentStateRequired)) {
+                         self->mPersistentStateRequired,
+                         self->mMainThread)) {
             self->RejectPromise(aPromiseId,
                                 NS_ERROR_FAILURE,
                                 NS_LITERAL_CSTRING("GetCDM failed."));
@@ -380,15 +387,15 @@ ChromiumCDMProxy::RejectPromise(PromiseId aId,
                                 const nsCString& aReason)
 {
   if (!NS_IsMainThread()) {
-    nsCOMPtr<nsIRunnable> task;
-    task = NewRunnableMethod<PromiseId, nsresult, nsCString>(
-      "ChromiumCDMProxy::RejectPromise",
-      this,
-      &ChromiumCDMProxy::RejectPromise,
-      aId,
-      aCode,
-      aReason);
-    NS_DispatchToMainThread(task);
+    mMainThread->Dispatch(
+        NewRunnableMethod<PromiseId, nsresult, nsCString>(
+            "ChromiumCDMProxy::RejectPromise",
+            this,
+            &ChromiumCDMProxy::RejectPromise,
+            aId,
+            aCode,
+            aReason),
+        NS_DISPATCH_NORMAL);
     return;
   }
   EME_LOG("ChromiumCDMProxy::RejectPromise(pid=%u, code=0x%x, reason='%s')",
@@ -404,12 +411,12 @@ void
 ChromiumCDMProxy::ResolvePromise(PromiseId aId)
 {
   if (!NS_IsMainThread()) {
-    nsCOMPtr<nsIRunnable> task;
-    task = NewRunnableMethod<PromiseId>("ChromiumCDMProxy::ResolvePromise",
-                                        this,
-                                        &ChromiumCDMProxy::ResolvePromise,
-                                        aId);
-    NS_DispatchToMainThread(task);
+    mMainThread->Dispatch(
+        NewRunnableMethod<PromiseId>("ChromiumCDMProxy::ResolvePromise",
+                                     this,
+                                     &ChromiumCDMProxy::ResolvePromise,
+                                     aId),
+        NS_DISPATCH_NORMAL);
     return;
   }
 
@@ -460,7 +467,7 @@ ChromiumCDMProxy::OnResolveLoadSessionPromise(uint32_t aPromiseId,
 void
 ChromiumCDMProxy::OnSessionMessage(const nsAString& aSessionId,
                                    dom::MediaKeyMessageType aMessageType,
-                                   nsTArray<uint8_t>& aMessage)
+                                   const nsTArray<uint8_t>& aMessage)
 {
   MOZ_ASSERT(NS_IsMainThread());
   if (mKeys.IsNull()) {
@@ -607,3 +614,5 @@ ChromiumCDMProxy::GetCDMParent()
 }
 
 } // namespace mozilla
+
+#undef NS_DispatchToMainThread

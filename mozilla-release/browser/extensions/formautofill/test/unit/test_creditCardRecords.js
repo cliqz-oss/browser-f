@@ -128,11 +128,13 @@ add_task(async function test_getAll() {
   // Check computed fields.
   do_check_eq(creditCards[0]["cc-given-name"], "John");
   do_check_eq(creditCards[0]["cc-family-name"], "Doe");
+  do_check_eq(creditCards[0]["cc-exp"], "2017-04");
 
   // Test with rawData set.
   creditCards = profileStorage.creditCards.getAll({rawData: true});
   do_check_eq(creditCards[0]["cc-given-name"], undefined);
   do_check_eq(creditCards[0]["cc-family-name"], undefined);
+  do_check_eq(creditCards[0]["cc-exp"], undefined);
 
   // Modifying output shouldn't affect the storage.
   creditCards[0]["cc-name"] = "test";
@@ -157,25 +159,6 @@ add_task(async function test_get() {
   do_check_credit_card_matches(profileStorage.creditCards.get(guid), TEST_CREDIT_CARD_1);
 
   do_check_eq(profileStorage.creditCards.get("INVALID_GUID"), null);
-});
-
-add_task(async function test_getByFilter() {
-  let path = getTempFile(TEST_STORE_FILE_NAME).path;
-  await prepareTestCreditCards(path);
-
-  let profileStorage = new ProfileStorage(path);
-  await profileStorage.initialize();
-
-  let filter = {info: {fieldName: "cc-name"}, searchString: "Tim"};
-  let creditCards = profileStorage.creditCards.getByFilter(filter);
-  do_check_eq(creditCards.length, 1);
-  do_check_credit_card_matches(creditCards[0], TEST_CREDIT_CARD_2);
-
-  // TODO: Uncomment this after decryption lands (bug 1389413).
-  // filter = {info: {fieldName: "cc-number"}, searchString: "11"};
-  // creditCards = profileStorage.creditCards.getByFilter(filter);
-  // do_check_eq(creditCards.length, 1);
-  // do_check_credit_card_matches(creditCards[0], TEST_CREDIT_CARD_2);
 });
 
 add_task(async function test_add() {
@@ -264,10 +247,13 @@ add_task(async function test_validate() {
 
   do_check_eq(creditCards[0]["cc-exp-month"], undefined);
   do_check_eq(creditCards[0]["cc-exp-year"], undefined);
+  do_check_eq(creditCards[0]["cc-exp"], undefined);
 
-  do_check_eq(creditCards[1]["cc-exp-month"], TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR["cc-exp-month"]);
-  do_check_eq(creditCards[1]["cc-exp-year"],
-    parseInt(TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR["cc-exp-year"], 10) + 2000);
+  let month = TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR["cc-exp-month"];
+  let year = parseInt(TEST_CREDIT_CARD_WITH_2_DIGITS_YEAR["cc-exp-year"], 10) + 2000;
+  do_check_eq(creditCards[1]["cc-exp-month"], month);
+  do_check_eq(creditCards[1]["cc-exp-year"], year);
+  do_check_eq(creditCards[1]["cc-exp"], year + "-" + month.toString().padStart(2, "0"));
 
   do_check_eq(creditCards[2]["cc-number"].length, 16);
 
@@ -275,14 +261,14 @@ add_task(async function test_validate() {
     await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_INVALID_NUMBERS);
     throw new Error("Not receiving invalid characters error");
   } catch (e) {
-    Assert.equal(e.message, "Credit card number contains invalid characters.");
+    Assert.equal(e.message, "Credit card number contains invalid characters or is under 12 digits.");
   }
 
   try {
     await profileStorage.creditCards.normalizeCCNumberFields(TEST_CREDIT_CARD_WITH_SHORT_NUMBERS);
     throw new Error("Not receiving invalid characters error");
   } catch (e) {
-    Assert.equal(e.message, "Invalid credit card number because length is under 12 digits.");
+    Assert.equal(e.message, "Credit card number contains invalid characters or is under 12 digits.");
   }
 });
 

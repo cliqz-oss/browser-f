@@ -6,7 +6,6 @@
 #ifndef nsTransferable_h__
 #define nsTransferable_h__
 
-#include "nsIContentPolicyBase.h"
 #include "nsIFormatConverter.h"
 #include "nsITransferable.h"
 #include "nsCOMPtr.h"
@@ -15,7 +14,6 @@
 #include "nsIPrincipal.h"
 
 class nsIMutableArray;
-class nsString;
 
 //
 // DataStruct

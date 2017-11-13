@@ -8,13 +8,6 @@ xul|caption {
   background-color: transparent;
 }
 
-xul|button,
-html|button,
-xul|colorpicker[type="button"],
-xul|menulist {
-  margin: 2px 4px;
-}
-
 xul|menulist:not([editable="true"]) > xul|*.menulist-dropmarker {
   margin-top: 1px;
   margin-bottom: 1px;
@@ -76,4 +69,12 @@ html|input[type="checkbox"]:-moz-focusring + html|label:before {
   xul|listbox xul|listitem[selected="true"] {
      border: 2px dotted Highlight;
   }
+}
+
+*|*.header-name {
+  font-size: 1.83rem;
+}
+
+*|*.category-name {
+  font-size: 1.33rem;
 }

@@ -65,6 +65,7 @@ enum class CallerType : uint32_t;
 enum PopupControlState {
   openAllowed = 0,  // open that window without worries
   openControlled,   // it's a popup, but allow it
+  openBlocked,      // it's a popup, but not from an allowed event
   openAbused,       // it's a popup. disallow it, but allow domain override.
   openOverridden    // disallow window open
 };
@@ -330,11 +331,6 @@ public:
   virtual bool CanClose() = 0;
   virtual void ForceClose() = 0;
 
-  bool IsModalContentWindow() const
-  {
-    return mIsModalContentWindow;
-  }
-
   /**
    * Call this to indicate that some node (this window, its document,
    * or content in that document) has a paint event listener.
@@ -392,6 +388,7 @@ public:
   virtual nsresult SetFullscreenInternal(
     FullscreenReason aReason, bool aIsFullscreen) = 0;
 
+  virtual void FullscreenWillChange(bool aIsFullscreen) = 0;
   /**
    * This function should be called when the fullscreen state is flipped.
    * If no widget is involved the fullscreen change, this method is called
@@ -496,24 +493,6 @@ public:
 
   virtual void EnableTimeChangeNotifications() = 0;
   virtual void DisableTimeChangeNotifications() = 0;
-
-#ifdef MOZ_B2G
-  /**
-   * Tell the window that it should start to listen to the network event of the
-   * given aType.
-   *
-   * Inner windows only.
-   */
-  virtual void EnableNetworkEvent(mozilla::EventMessage aEventMessage) = 0;
-
-  /**
-   * Tell the window that it should stop to listen to the network event of the
-   * given aType.
-   *
-   * Inner windows only.
-   */
-  virtual void DisableNetworkEvent(mozilla::EventMessage aEventMessage) = 0;
-#endif // MOZ_B2G
 
   /**
    * Tell this window that there is an observer for gamepad input
@@ -680,6 +659,8 @@ protected:
   // These variables are only used on inner windows.
   uint32_t               mMutationBits;
 
+  uint32_t               mActivePeerConnections;
+
   bool                   mIsDocumentLoaded;
   bool                   mIsHandlingResizeEvent;
   bool                   mIsInnerWindow;
@@ -694,10 +675,6 @@ protected:
   // This member is only used by inner windows.
   bool                   mInnerObjectsFreed;
 
-
-  // This variable is used on both inner and outer windows (and they
-  // should match).
-  bool                   mIsModalContentWindow;
 
   // Tracks activation state that's used for :-moz-window-inactive.
   // Only used on outer windows.
@@ -772,6 +749,12 @@ protected:
 
   // The number of active IndexedDB databases. Inner window only.
   uint32_t mNumOfIndexedDBDatabases;
+
+  // The number of open WebSockets. Inner window only.
+  uint32_t mNumOfOpenWebSockets;
+
+  // The number of active user media. Inner window only.
+  uint32_t mNumOfActiveUserMedia;
 };
 
 #define NS_PIDOMWINDOWINNER_IID \
@@ -803,6 +786,9 @@ public:
   // is not identical to IsCurrentInnerWindow() because document.open() will
   // keep the same document active but create a new window.
   inline bool HasActiveDocument();
+
+  // Returns true if this window is the same as mTopInnerWindow
+  inline bool IsTopInnerWindow() const;
 
   bool AddAudioContext(mozilla::dom::AudioContext* aAudioContext);
   void RemoveAudioContext(mozilla::dom::AudioContext* aAudioContext);
@@ -914,6 +900,21 @@ public:
   // window.
   void SyncStateFromParentWindow();
 
+  /**
+   * Increment active peer connection count.
+   */
+  void AddPeerConnection();
+
+  /**
+   * Decrement active peer connection count.
+   */
+  void RemovePeerConnection();
+
+  /**
+   * Check whether the active peer connection count is non-zero.
+   */
+  bool HasActivePeerConnections();
+
   bool IsPlayingAudio();
 
   bool IsDocumentLoaded() const;
@@ -934,6 +935,19 @@ public:
   // Return true if there is any active IndexedDB databases which could block
   // timeout-throttling.
   bool HasActiveIndexedDBDatabases();
+
+  // Increase/Decrease the number of open WebSockets.
+  void UpdateWebSocketCount(int32_t aDelta);
+
+  // Return true if there are any open WebSockets that could block
+  // timeout-throttling.
+  bool HasOpenWebSockets() const;
+
+  // Increase/Decrease the number of active user media.
+  void UpdateUserMediaCount(int32_t aDelta);
+
+  // Return true if there are any currently ongoing user media.
+  bool HasActiveUserMedia() const;
 
 protected:
   void CreatePerformanceObjectIfNeeded();

@@ -9,8 +9,9 @@ const {require} = Cu.import("resource://devtools/shared/Loader.jsm", {});
 const {XPCOMUtils} = require("resource://gre/modules/XPCOMUtils.jsm");
 const {SideMenuWidget} = require("resource://devtools/client/shared/widgets/SideMenuWidget.jsm");
 const promise = require("promise");
+const defer = require("devtools/shared/defer");
 const Services = require("Services");
-const EventEmitter = require("devtools/shared/event-emitter");
+const EventEmitter = require("devtools/shared/old-event-emitter");
 const Tooltip = require("devtools/client/shared/widgets/tooltip/Tooltip");
 const Editor = require("devtools/client/sourceeditor/editor");
 const {LocalizationHelper} = require("devtools/shared/l10n");
@@ -313,7 +314,7 @@ var ShadersListView = Heritage.extend(WidgetMethods, {
     getShaders()
       .then(getSources)
       .then(showSources)
-      .catch(e => console.error(e));
+      .catch(console.error);
   },
 
   /**
@@ -425,7 +426,7 @@ var ShadersEditorsView = {
       return this._editorPromises.get(type);
     }
 
-    let deferred = promise.defer();
+    let deferred = defer();
     this._editorPromises.set(type, deferred.promise);
 
     // Initialize the source editor and store the newly created instance

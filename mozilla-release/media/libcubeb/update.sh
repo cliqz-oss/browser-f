@@ -30,7 +30,8 @@ cp $1/src/cubeb_resampler_internal.h src
 cp $1/src/cubeb_ring_array.h src
 cp $1/src/cubeb_ringbuffer.h src
 cp $1/src/cubeb_sndio.c src
-cp $1/src/cubeb_utils.c src
+cp $1/src/cubeb_strings.c src
+cp $1/src/cubeb_strings.h src
 cp $1/src/cubeb_utils.h src
 cp $1/src/cubeb_utils_unix.h src
 cp $1/src/cubeb_utils_win.h src
@@ -74,5 +75,11 @@ patch -p3 < disable-assert.patch
 echo "Applying prefer-pulse-rust.patch on top of $rev"
 patch -p3 < prefer-pulse-rust.patch
 
-echo "Applying bug1386957.patch on top of $rev"
-patch -p1 < bug1386957.patch
+echo "Applying pulse-handle-no-sinks.patch on top of $rev"
+patch -p3 < pulse-handle-no-sinks.patch
+
+echo "Applying bug-1405258-beta-uplift.patch on top of $rev"
+patch -p1 < bug-1405258-beta-uplift.patch
+
+echo "Applying bug-1411866-beta-uplift.patch on top of $rev"
+patch -p3 < bug-1411866-beta-uplift.patch

@@ -39,7 +39,7 @@ const LOG_LEVELS = new class extends Map {
   }
 
   get(level) {
-    let s = new String(level).toLowerCase();
+    let s = String(level).toLowerCase();
     if (!this.has(s)) {
       return DEFAULT_LOG_LEVEL;
     }
@@ -176,6 +176,7 @@ MarionetteComponent.prototype = {
     Ci.nsICommandLineHandler,
     Ci.nsIMarionette,
   ]),
+  // eslint-disable-next-line camelcase
   _xpcom_categories: [
     {category: "command-line-handler", entry: "b-marionette"},
     {category: "profile-after-change", service: true},

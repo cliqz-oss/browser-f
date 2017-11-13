@@ -40,30 +40,8 @@ decorate_task(
 );
 
 decorate_task(
-  withPrefEnv({
-    set: [["browser.preferences.useOldOrganization", false]],
-  }),
   withAboutStudies,
   async function testUpdatePreferencesNewOrganization(browser) {
-    ContentTask.spawn(browser, null, () => {
-      content.document.getElementById("shield-studies-update-preferences").click();
-    });
-    await BrowserTestUtils.waitForLocationChange(gBrowser);
-
-    is(
-      browser.currentURI.spec,
-      "about:preferences#privacy-reports",
-      "Clicking Update Preferences opens the privacy section of the new about:prefernces.",
-    );
-  }
-);
-
-decorate_task(
-  withPrefEnv({
-    set: [["browser.preferences.useOldOrganization", true]],
-  }),
-  withAboutStudies,
-  async function testUpdatePreferencesOldOrganization(browser) {
     // We have to use gBrowser instead of browser in most spots since we're
     // dealing with a new tab outside of the about:studies tab.
     const tab = await BrowserTestUtils.switchTab(gBrowser, () => {
@@ -79,14 +57,8 @@ decorate_task(
     const location = gBrowser.contentWindow.location.href;
     is(
       location,
-      "about:preferences#advanced",
-      "Clicking Update Preferences opens the advanced section of the old about:prefernces.",
-    );
-
-    const dataChoicesTab = gBrowser.contentDocument.getElementById("dataChoicesTab");
-    ok(
-      dataChoicesTab.selected,
-      "Click Update preferences selects the Data Choices tab in the old about:preferences."
+      "about:preferences#privacy",
+      "Clicking Update Preferences opens the privacy section of the new about:preferences.",
     );
 
     await BrowserTestUtils.removeTab(tab);

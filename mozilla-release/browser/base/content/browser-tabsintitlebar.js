@@ -148,13 +148,22 @@ var TabsInTitlebar = {
       document.documentElement.setAttribute("tabsintitlebar", "true");
       updateTitlebarDisplay();
 
+      // Reset the custom titlebar height if the menubar is shown,
+      // because we will want to calculate its original height.
+      if (AppConstants.isPlatformAndVersionAtLeast("win", "10.0") &&
+          (menubar.getAttribute("inactive") != "true" ||
+          menubar.getAttribute("autohide") != "true")) {
+        $("titlebar-buttonbox").style.removeProperty("height");
+      }
+
       // Try to avoid reflows in this code by calculating dimensions first and
       // then later set the properties affecting layout together in a batch.
 
-      // Get the full height of the tabs toolbar:
+      // Get the height of the tabs toolbar:
       let tabsToolbar = $("TabsToolbar");
       let tabsStyles = window.getComputedStyle(tabsToolbar);
       let fullTabsHeight = rect(tabsToolbar).height + verticalMargins(tabsStyles);
+
       // Buttons first:
       let captionButtonsBoxWidth = rect($("titlebar-buttonbox-container")).width;
 
@@ -176,13 +185,13 @@ var TabsInTitlebar = {
 
       // Begin setting CSS properties which will cause a reflow
 
-      if (AppConstants.MOZ_PHOTON_THEME &&
-          AppConstants.isPlatformAndVersionAtLeast("win", "10.0")) {
-        if (!menuHeight && window.windowState == window.STATE_MAXIMIZED) {
-          titlebarContentHeight = Math.max(titlebarContentHeight, fullTabsHeight);
+      // On Windows 10, adjust the window controls to span the entire
+      // tab strip height if we're not showing a menu bar.
+      if (AppConstants.isPlatformAndVersionAtLeast("win", "10.0")) {
+        if (!menuHeight) {
+          // Add a pixel to slightly overlap the navbar border.
+          titlebarContentHeight = fullTabsHeight + 1;
           $("titlebar-buttonbox").style.height = titlebarContentHeight + "px";
-        } else {
-          $("titlebar-buttonbox").style.removeProperty("height");
         }
       }
 
@@ -280,26 +289,11 @@ var TabsInTitlebar = {
 
 function updateTitlebarDisplay() {
   if (AppConstants.platform == "macosx") {
-    // OS X and the other platforms differ enough to necessitate this kind of
-    // special-casing. Like the other platforms where we CAN_DRAW_IN_TITLEBAR,
-    // we draw in the OS X titlebar when putting the tabs up there. However, OS X
-    // also draws in the titlebar when a lightweight theme is applied, regardless
-    // of whether or not the tabs are drawn in the titlebar.
     if (TabsInTitlebar.enabled) {
-      document.documentElement.setAttribute("chromemargin-nonlwtheme", "0,-1,-1,-1");
       document.documentElement.setAttribute("chromemargin", "0,-1,-1,-1");
       document.documentElement.removeAttribute("drawtitle");
     } else {
-      // We set chromemargin-nonlwtheme to "" instead of removing it as a way of
-      // making sure that LightweightThemeConsumer doesn't take it upon itself to
-      // detect this value again if and when we do a lwtheme state change.
-      document.documentElement.setAttribute("chromemargin-nonlwtheme", "");
-      let isCustomizing = document.documentElement.hasAttribute("customizing");
-      let hasLWTheme = document.documentElement.hasAttribute("lwtheme");
-      let isPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-      if ((!hasLWTheme || isCustomizing) && !isPrivate) {
-        document.documentElement.removeAttribute("chromemargin");
-      }
+      document.documentElement.removeAttribute("chromemargin");
       document.documentElement.setAttribute("drawtitle", "true");
     }
   } else if (TabsInTitlebar.enabled) {

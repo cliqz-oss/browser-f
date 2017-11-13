@@ -98,13 +98,9 @@ add_test(function test_Proxy_ctor() {
   let props = [
     "proxyType",
     "httpProxy",
-    "httpProxyPort",
     "sslProxy",
-    "sslProxyPort",
     "ftpProxy",
-    "ftpProxyPort",
     "socksProxy",
-    "socksProxyPort",
     "socksVersion",
     "proxyAutoconfigUrl",
   ];
@@ -132,6 +128,12 @@ add_test(function test_Proxy_init() {
   equal(Preferences.get("network.proxy.autoconfig_url"),
       "http://localhost:1234");
 
+  // direct
+  p = new session.Proxy();
+  p.proxyType = "direct";
+  ok(p.init());
+  equal(Preferences.get("network.proxy.type"), 0);
+
   // autodetect
   p = new session.Proxy();
   p.proxyType = "autodetect";
@@ -144,11 +146,33 @@ add_test(function test_Proxy_init() {
   ok(p.init());
   equal(Preferences.get("network.proxy.type"), 5);
 
-  // noproxy
+  // manual
+  for (let proxy of ["ftp", "http", "ssl", "socks"]) {
+    p = new session.Proxy();
+    p.proxyType = "manual";
+    p.noProxy = ["foo", "bar"];
+    p[`${proxy}Proxy`] = "foo";
+    p[`${proxy}ProxyPort`] = 42;
+    if (proxy === "socks") {
+      p[`${proxy}Version`] = 4;
+    }
+
+    ok(p.init());
+    equal(Preferences.get("network.proxy.type"), 1);
+    equal(Preferences.get("network.proxy.no_proxies_on"), "foo, bar");
+    equal(Preferences.get(`network.proxy.${proxy}`), "foo");
+    equal(Preferences.get(`network.proxy.${proxy}_port`), 42);
+    if (proxy === "socks") {
+      equal(Preferences.get(`network.proxy.${proxy}_version`), 4);
+    }
+  }
+
+  // empty no proxy should reset default exclustions
   p = new session.Proxy();
-  p.proxyType = "noproxy";
+  p.proxyType = "manual";
+  p.noProxy = [];
   ok(p.init());
-  equal(Preferences.get("network.proxy.type"), 0);
+  equal(Preferences.get("network.proxy.no_proxies_on"), "");
 
   run_next_test();
 });
@@ -163,67 +187,178 @@ add_test(function test_Proxy_toJSON() {
   let p = new session.Proxy();
   deepEqual(p.toJSON(), {});
 
+  // autoconfig url
+  p = new session.Proxy();
+  p.proxyType = "pac";
+  p.proxyAutoconfigUrl = "foo";
+  deepEqual(p.toJSON(), {proxyType: "pac", proxyAutoconfigUrl: "foo"});
+
+  // manual proxy
   p = new session.Proxy();
   p.proxyType = "manual";
   deepEqual(p.toJSON(), {proxyType: "manual"});
+
+  for (let proxy of ["ftpProxy", "httpProxy", "sslProxy", "socksProxy"]) {
+    let expected = {proxyType: "manual"}
+
+    p = new session.Proxy();
+    p.proxyType = "manual";
+
+    if (proxy == "socksProxy") {
+      p.socksVersion = 5;
+      expected.socksVersion = 5;
+    }
+
+    // without port
+    p[proxy] = "foo";
+    expected[proxy] = "foo"
+    deepEqual(p.toJSON(), expected);
+
+    // with port
+    p[proxy] = "foo";
+    p[`${proxy}Port`] = 0;
+    expected[proxy] = "foo:0";
+    deepEqual(p.toJSON(), expected);
+
+    p[`${proxy}Port`] = 42;
+    expected[proxy] = "foo:42"
+    deepEqual(p.toJSON(), expected);
+
+    // add brackets for IPv6 address as proxy hostname
+    p[proxy] = "2001:db8::1";
+    p[`${proxy}Port`] = 42;
+    expected[proxy] = "foo:42"
+    expected[proxy] = "[2001:db8::1]:42";
+    deepEqual(p.toJSON(), expected);
+  }
+
+  // noProxy: add brackets for IPv6 address
+  p = new session.Proxy();
+  p.proxyType = "manual";
+  p.noProxy = ["2001:db8::1"];
+  let expected = {proxyType: "manual", noProxy: "[2001:db8::1]"};
+  deepEqual(p.toJSON(), expected);
 
   run_next_test();
 });
 
 add_test(function test_Proxy_fromJSON() {
-  deepEqual({}, session.Proxy.fromJSON(undefined).toJSON());
-  deepEqual({}, session.Proxy.fromJSON(null).toJSON());
+  let p = new session.Proxy();
+  deepEqual(p, session.Proxy.fromJSON(undefined));
+  deepEqual(p, session.Proxy.fromJSON(null));
 
   for (let typ of [true, 42, "foo", []]) {
-    Assert.throws(() => session.Proxy.fromJSON(typ), InvalidArgumentError);
+    Assert.throws(() => session.Proxy.fromJSON(typ), /InvalidArgumentError/);
   }
 
-  // must contain proxyType
-  Assert.throws(() => session.Proxy.fromJSON({}), InvalidArgumentError);
-  deepEqual({proxyType: "foo"},
-      session.Proxy.fromJSON({proxyType: "foo"}).toJSON());
+  // must contain a valid proxyType
+  Assert.throws(() => session.Proxy.fromJSON({}), /InvalidArgumentError/);
+  Assert.throws(() => session.Proxy.fromJSON({proxyType: "foo"}),
+      /InvalidArgumentError/);
 
-  // manual
-  session.Proxy.fromJSON({proxyType: "manual"});
+  // autoconfig url
+  for (let url of [true, 42, [], {}]) {
+    Assert.throws(() => session.Proxy.fromJSON(
+        {proxyType: "pac", proxyAutoconfigUrl: url}), /InvalidArgumentError/);
+  }
+
+  p = new session.Proxy();
+  p.proxyType = "pac";
+  p.proxyAutoconfigUrl = "foo";
+  deepEqual(p,
+      session.Proxy.fromJSON({proxyType: "pac", proxyAutoconfigUrl: "foo"}));
+
+  // manual proxy
+  p = new session.Proxy();
+  p.proxyType = "manual";
+  deepEqual(p, session.Proxy.fromJSON({proxyType: "manual"}));
 
   for (let proxy of ["httpProxy", "sslProxy", "ftpProxy", "socksProxy"]) {
     let manual = {proxyType: "manual"};
 
-    for (let typ of [true, 42, [], {}, null]) {
-      manual[proxy] = typ;
+    // invalid hosts
+    for (let host of [true, 42, [], {}, null, "http://foo",
+        "foo:-1", "foo:65536", "foo/test", "foo#42", "foo?foo=bar",
+        "2001:db8::1"]) {
+      manual[proxy] = host;
       Assert.throws(() => session.Proxy.fromJSON(manual),
-          InvalidArgumentError);
+          /InvalidArgumentError/);
     }
 
-    manual[proxy] = "foo";
-    Assert.throws(() => session.Proxy.fromJSON(manual),
-        InvalidArgumentError);
-
-    for (let typ of ["bar", true, [], {}, null, undefined]) {
-      manual[proxy + "Port"] = typ;
-      Assert.throws(() => session.Proxy.fromJSON(manual),
-          InvalidArgumentError);
+    p = new session.Proxy();
+    p.proxyType = "manual";
+    if (proxy == "socksProxy") {
+      manual.socksVersion = 5;
+      p.socksVersion = 5;
     }
 
-    manual[proxy] = "foo";
-    manual[proxy + "Port"] = 1234;
-
-    let expected = {
-      "proxyType": "manual",
-      [proxy]: "foo",
-      [proxy + "Port"]: 1234,
+    let host_map = {
+      "foo:1": {hostname: "foo", port: 1},
+      "foo:21": {hostname: "foo", port: 21},
+      "foo:80": {hostname: "foo", port: 80},
+      "foo:443": {hostname: "foo", port: 443},
+      "foo:65535": {hostname: "foo", port: 65535},
+      "127.0.0.1:42": {hostname: "127.0.0.1", port: 42},
+      "[2001:db8::1]:42": {hostname: "2001:db8::1", port: "42"},
     };
 
-    if (proxy == "socksProxy") {
-      manual.socksProxyVersion = 42;
-      expected.socksProxyVersion = 42;
+    // valid proxy hosts with port
+    for (let host in host_map) {
+      manual[proxy] = host;
+
+      p[`${proxy}`] = host_map[host]["hostname"];
+      p[`${proxy}Port`] = host_map[host]["port"];
+
+      deepEqual(p, session.Proxy.fromJSON(manual));
     }
-    deepEqual(expected, session.Proxy.fromJSON(manual).toJSON());
+
+    // Without a port the default port of the scheme is used
+    for (let host of ["foo", "foo:"]) {
+      manual[proxy] = host;
+
+      // For socks no default port is available
+      p[proxy] = `foo`;
+      if (proxy === "socksProxy") {
+        p[`${proxy}Port`] = null;
+      } else {
+        let default_ports = {"ftpProxy": 21, "httpProxy": 80,
+           "sslProxy": 443};
+
+        p[`${proxy}Port`] = default_ports[proxy];
+      }
+
+      deepEqual(p, session.Proxy.fromJSON(manual));
+    }
   }
 
+  // missing required socks version
   Assert.throws(() => session.Proxy.fromJSON(
-      {proxyType: "manual", socksProxy: "foo", socksProxyPort: 1234}),
-      InvalidArgumentError);
+      {proxyType: "manual", socksProxy: "foo:1234"}),
+      /InvalidArgumentError/);
+
+  // noProxy: invalid settings
+  for (let noProxy of [true, 42, {}, null, "foo",
+      [true], [42], [{}], [null]]) {
+    Assert.throws(() => session.Proxy.fromJSON(
+        {proxyType: "manual", noProxy: noProxy}),
+        /InvalidArgumentError/);
+  }
+
+  // noProxy: valid settings
+  p = new session.Proxy();
+  p.proxyType = "manual";
+  for (let noProxy of [[], ["foo"], ["foo", "bar"], ["127.0.0.1"]]) {
+    let manual = {proxyType: "manual", "noProxy": noProxy}
+    p.noProxy = noProxy;
+    deepEqual(p, session.Proxy.fromJSON(manual));
+  }
+
+  // noProxy: IPv6 needs brackets removed
+  p = new session.Proxy();
+  p.proxyType = "manual";
+  p.noProxy = ["2001:db8::1"];
+  let manual = {proxyType: "manual", "noProxy": ["[2001:db8::1]"]}
+  deepEqual(p, session.Proxy.fromJSON(manual));
 
   run_next_test();
 });
@@ -241,10 +376,10 @@ add_test(function test_Capabilities_ctor() {
 
   ok(caps.has("rotatable"));
 
-  equal(0, caps.get("specificationLevel"));
+  equal(false, caps.get("moz:accessibilityChecks"));
   ok(caps.has("moz:processID"));
   ok(caps.has("moz:profile"));
-  equal(false, caps.get("moz:accessibilityChecks"));
+  equal(false, caps.get("moz:webdriverClick"));
 
   run_next_test();
 });
@@ -270,10 +405,10 @@ add_test(function test_Capabilities_toJSON() {
 
   equal(caps.get("rotatable"), json.rotatable);
 
-  equal(caps.get("specificationLevel"), json.specificationLevel);
+  equal(caps.get("moz:accessibilityChecks"), json["moz:accessibilityChecks"]);
   equal(caps.get("moz:processID"), json["moz:processID"]);
   equal(caps.get("moz:profile"), json["moz:profile"]);
-  equal(caps.get("moz:accessibilityChecks"), json["moz:accessibilityChecks"]);
+  equal(caps.get("moz:webdriverClick"), json["moz:webdriverClick"]);
 
   run_next_test();
 });
@@ -283,61 +418,14 @@ add_test(function test_Capabilities_fromJSON() {
 
   // plain
   for (let typ of [{}, null, undefined]) {
-    ok(fromJSON(typ, {merge: true}).has("browserName"));
-    ok(fromJSON(typ, {merge: false}).has("browserName"));
+    ok(fromJSON(typ).has("browserName"));
   }
   for (let typ of [true, 42, "foo", []]) {
-    Assert.throws(() =>
-        fromJSON(typ, {merge: true}), InvalidArgumentError);
-    Assert.throws(() =>
-        fromJSON(typ, {merge: false}), InvalidArgumentError);
-  }
-
-  // merging
-  let desired = {"moz:accessibilityChecks": false};
-  let required = {"moz:accessibilityChecks": true};
-  let matched = fromJSON(
-      {desiredCapabilities: desired, requiredCapabilities: required},
-      {merge: true});
-  ok(matched.has("moz:accessibilityChecks"));
-  equal(true, matched.get("moz:accessibilityChecks"));
-
-  // desiredCapabilities/requriedCapabilities types
-  for (let typ of [undefined, null, {}]) {
-    ok(fromJSON({desiredCapabilities: typ}, {merge: true}));
-    ok(fromJSON({requiredCapabilities: typ}, {merge: true}));
-  }
-  for (let typ of [true, 42, "foo", []]) {
-    Assert.throws(() => fromJSON({desiredCapabilities: typ}, {merge: true}));
-    Assert.throws(() => fromJSON({requiredCapabilities: typ}, {merge: true}));
+    Assert.throws(() => fromJSON(typ), /InvalidArgumentError/);
   }
 
   // matching
   let caps = new session.Capabilities();
-
-  ok(fromJSON({browserName: caps.get("browserName")}));
-  ok(fromJSON({browserName: null}));
-  ok(fromJSON({browserName: undefined}));
-  ok(fromJSON({browserName: "*"}));
-  Assert.throws(() => fromJSON({browserName: "foo"}));
-
-  ok(fromJSON({browserVersion: caps.get("browserVersion")}));
-  ok(fromJSON({browserVersion: null}));
-  ok(fromJSON({browserVersion: undefined}));
-  ok(fromJSON({browserVersion: "*"}));
-  Assert.throws(() => fromJSON({browserVersion: "foo"}));
-
-  ok(fromJSON({platformName: caps.get("platformName")}));
-  ok(fromJSON({platformName: null}));
-  ok(fromJSON({platformName: undefined}));
-  ok(fromJSON({platformName: "*"}));
-  Assert.throws(() => fromJSON({platformName: "foo"}));
-
-  ok(fromJSON({platformVersion: caps.get("platformVersion")}));
-  ok(fromJSON({platformVersion: null}));
-  ok(fromJSON({platformVersion: undefined}));
-  ok(fromJSON({platformVersion: "*"}));
-  Assert.throws(() => fromJSON({platformVersion: "foo"}));
 
   caps = fromJSON({acceptInsecureCerts: true});
   equal(true, caps.get("acceptInsecureCerts"));
@@ -359,11 +447,11 @@ add_test(function test_Capabilities_fromJSON() {
   caps = fromJSON({timeouts: timeoutsConfig});
   equal(123, caps.get("timeouts").implicit);
 
-  equal(0, caps.get("specificationLevel"));
-  caps = fromJSON({specificationLevel: 123});
-  equal(123, caps.get("specificationLevel"));
-  Assert.throws(() => fromJSON({specificationLevel: "foo"}));
-  Assert.throws(() => fromJSON({specificationLevel: -1}));
+  equal(false, caps.get("moz:webdriverClick"));
+  caps = fromJSON({"moz:webdriverClick": true});
+  equal(true, caps.get("moz:webdriverClick"));
+  Assert.throws(() => fromJSON({"moz:webdriverClick": "foo"}));
+  Assert.throws(() => fromJSON({"moz:webdriverClick": 1}));
 
   caps = fromJSON({"moz:accessibilityChecks": true});
   equal(true, caps.get("moz:accessibilityChecks"));

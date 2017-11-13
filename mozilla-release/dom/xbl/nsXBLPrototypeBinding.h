@@ -131,7 +131,8 @@ public:
   void AppendStyleSheetsTo(nsTArray<mozilla::StyleSheet*>& aResult) const;
 
   nsIStyleRuleProcessor* GetRuleProcessor();
-  const mozilla::ServoStyleSet* GetServoStyleSet() const;
+  void ComputeServoStyleSet(nsPresContext* aPresContext);
+  mozilla::ServoStyleSet* GetServoStyleSet() const;
 
   nsresult FlushSkinSheets();
 

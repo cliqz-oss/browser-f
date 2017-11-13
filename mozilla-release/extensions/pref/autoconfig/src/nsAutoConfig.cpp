@@ -208,7 +208,6 @@ nsresult nsAutoConfig::downloadAutoConfig()
 {
     nsresult rv;
     nsAutoCString emailAddr;
-    nsXPIDLCString urlName;
     static bool firstTime = true;
 
     if (mConfigURL.IsEmpty()) {
@@ -463,7 +462,7 @@ nsresult nsAutoConfig::getEmailAddr(nsACString & emailAddr)
 {
 
     nsresult rv;
-    nsXPIDLCString prefValue;
+    nsCString prefValue;
 
     /* Getting an email address through set of three preferences:
        First getting a default account with
@@ -518,15 +517,15 @@ nsresult nsAutoConfig::PromptForEMailAddress(nsACString &emailAddress)
                                 getter_AddRefs(bundle));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsXPIDLString title;
-    rv = bundle->GetStringFromName("emailPromptTitle", getter_Copies(title));
+    nsAutoString title;
+    rv = bundle->GetStringFromName("emailPromptTitle", title);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsXPIDLString err;
-    rv = bundle->GetStringFromName("emailPromptMsg", getter_Copies(err));
+    nsAutoString err;
+    rv = bundle->GetStringFromName("emailPromptMsg", err);
     NS_ENSURE_SUCCESS(rv, rv);
     bool check = false;
-    nsXPIDLString emailResult;
+    nsString emailResult;
     bool success;
     rv = promptService->Prompt(nullptr, title.get(), err.get(), getter_Copies(emailResult), nullptr, &check, &success);
     if (!success)

@@ -47,6 +47,7 @@
 #include "nsIRedirectChannelRegistrar.h"
 #include "nsIRequestObserverProxy.h"
 #include "nsIScriptSecurityManager.h"
+#include "nsISensitiveInfoHiddenURI.h"
 #include "nsISimpleStreamListener.h"
 #include "nsISocketProvider.h"
 #include "nsISocketProviderService.h"
@@ -1338,48 +1339,6 @@ NS_NewLocalFileStream(nsIFileStream **result,
 }
 
 nsresult
-NS_BackgroundInputStream(nsIInputStream **result,
-                         nsIInputStream  *stream,
-                         uint32_t         segmentSize /* = 0 */,
-                         uint32_t         segmentCount /* = 0 */)
-{
-    nsresult rv;
-    nsCOMPtr<nsIStreamTransportService> sts =
-        do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv)) {
-        nsCOMPtr<nsITransport> inTransport;
-        rv = sts->CreateInputTransport(stream, int64_t(-1), int64_t(-1),
-                                       true, getter_AddRefs(inTransport));
-        if (NS_SUCCEEDED(rv))
-            rv = inTransport->OpenInputStream(nsITransport::OPEN_BLOCKING,
-                                              segmentSize, segmentCount,
-                                              result);
-    }
-    return rv;
-}
-
-nsresult
-NS_BackgroundOutputStream(nsIOutputStream **result,
-                          nsIOutputStream  *stream,
-                          uint32_t          segmentSize  /* = 0 */,
-                          uint32_t          segmentCount /* = 0 */)
-{
-    nsresult rv;
-    nsCOMPtr<nsIStreamTransportService> sts =
-        do_GetService(NS_STREAMTRANSPORTSERVICE_CONTRACTID, &rv);
-    if (NS_SUCCEEDED(rv)) {
-        nsCOMPtr<nsITransport> inTransport;
-        rv = sts->CreateOutputTransport(stream, int64_t(-1), int64_t(-1),
-                                        true, getter_AddRefs(inTransport));
-        if (NS_SUCCEEDED(rv))
-            rv = inTransport->OpenOutputStream(nsITransport::OPEN_BLOCKING,
-                                               segmentSize, segmentCount,
-                                               result);
-    }
-    return rv;
-}
-
-nsresult
 NS_NewBufferedOutputStream(nsIOutputStream **result,
                            nsIOutputStream  *str,
                            uint32_t          bufferSize)
@@ -1576,6 +1535,26 @@ NS_NewURI(nsIURI **result,
           nsIIOService *ioService /* = nullptr */)     // pass in nsIIOService to optimize callers
 {
     return NS_NewURI(result, nsDependentCString(spec), nullptr, baseURI, ioService);
+}
+
+nsresult
+NS_GetSanitizedURIStringFromURI(nsIURI *aUri, nsAString &aSanitizedSpec)
+{
+    aSanitizedSpec.Truncate();
+
+    nsCOMPtr<nsISensitiveInfoHiddenURI> safeUri = do_QueryInterface(aUri);
+    nsAutoCString cSpec;
+    nsresult rv;
+    if (safeUri) {
+        rv = safeUri->GetSensitiveInfoHiddenSpec(cSpec);
+    } else {
+        rv = aUri->GetSpec(cSpec);
+    }
+
+    if (NS_SUCCEEDED(rv)) {
+        aSanitizedSpec.Assign(NS_ConvertUTF8toUTF16(cSpec));
+    }
+    return rv;
 }
 
 nsresult
@@ -2396,16 +2375,8 @@ NS_GetContentDispositionFromHeader(const nsACString &aHeader,
   if (NS_FAILED(rv))
     return nsIChannel::DISPOSITION_ATTACHMENT;
 
-  nsAutoCString fallbackCharset;
-  if (aChan) {
-    nsCOMPtr<nsIURI> uri;
-    aChan->GetURI(getter_AddRefs(uri));
-    if (uri)
-      uri->GetOriginCharset(fallbackCharset);
-  }
-
   nsAutoString dispToken;
-  rv = mimehdrpar->GetParameterHTTP(aHeader, "", fallbackCharset, true, nullptr,
+  rv = mimehdrpar->GetParameterHTTP(aHeader, "", EmptyCString(), true, nullptr,
                                     dispToken);
 
   if (NS_FAILED(rv)) {
@@ -2431,14 +2402,9 @@ NS_GetFilenameFromDisposition(nsAString &aFilename,
   if (NS_FAILED(rv))
     return rv;
 
-  nsCOMPtr<nsIURL> url = do_QueryInterface(aURI);
-
-  nsAutoCString fallbackCharset;
-  if (url)
-    url->GetOriginCharset(fallbackCharset);
   // Get the value of 'filename' parameter
   rv = mimehdrpar->GetParameterHTTP(aDisposition, "filename",
-                                    fallbackCharset, true, nullptr,
+                                    EmptyCString(), true, nullptr,
                                     aFilename);
 
   if (NS_FAILED(rv)) {
@@ -2570,21 +2536,12 @@ NS_ShouldSecureUpgrade(nsIURI* aURI,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (!isHttps) {
-    // If any of the documents up the chain to the root doucment makes use of
-    // the CSP directive 'upgrade-insecure-requests', then it's time to fulfill
-    // the promise to CSP and mixed content blocking to upgrade the channel
-    // from http to https.
     if (aLoadInfo) {
-      // Please note that cross origin top level navigations are not subject
-      // to upgrade-insecure-requests, see:
-      // http://www.w3.org/TR/upgrade-insecure-requests/#examples
-      // Compare the principal we are navigating to (aChannelResultPrincipal)
-      // with the referring/triggering Principal.
-      bool crossOriginNavigation =
-        (aLoadInfo->GetExternalContentPolicyType() == nsIContentPolicy::TYPE_DOCUMENT) &&
-        (!aChannelResultPrincipal->Equals(aLoadInfo->TriggeringPrincipal()));
-
-      if (aLoadInfo->GetUpgradeInsecureRequests() && !crossOriginNavigation) {
+      // If any of the documents up the chain to the root document makes use of
+      // the CSP directive 'upgrade-insecure-requests', then it's time to fulfill
+      // the promise to CSP and mixed content blocking to upgrade the channel
+      // from http to https.
+      if (aLoadInfo->GetUpgradeInsecureRequests()) {
         // let's log a message to the console that we are upgrading a request
         nsAutoCString scheme;
         aURI->GetScheme(scheme);

@@ -267,6 +267,11 @@ class AddressResult extends ProfileAutoCompleteResult {
 
     return labels;
   }
+
+  getValueAt(index) {
+    this._checkIndexBounds(index);
+    return "";
+  }
 }
 
 class CreditCardResult extends ProfileAutoCompleteResult {
@@ -312,6 +317,10 @@ class CreditCardResult extends ProfileAutoCompleteResult {
         allFieldNames.includes(currentFieldName);
 
       if (matching) {
+        if (currentFieldName == "cc-number") {
+          let {affix, label} = FormAutofillUtils.fmtMaskedCreditCardLabel(profile[currentFieldName]);
+          return affix + label;
+        }
         return profile[currentFieldName];
       }
     }
@@ -333,8 +342,17 @@ class CreditCardResult extends ProfileAutoCompleteResult {
     let labels = profiles.filter(profile => {
       return !!profile[focusedFieldName];
     }).map(profile => {
+      let primaryAffix;
+      let primary = profile[focusedFieldName];
+
+      if (focusedFieldName == "cc-number") {
+        let {affix, label} = FormAutofillUtils.fmtMaskedCreditCardLabel(primary);
+        primaryAffix = affix;
+        primary = label;
+      }
       return {
-        primary: profile[focusedFieldName],
+        primaryAffix,
+        primary,
         secondary: this._getSecondaryLabel(focusedFieldName,
                                            allFieldNames,
                                            profile),
@@ -375,5 +393,10 @@ class CreditCardResult extends ProfileAutoCompleteResult {
     }
 
     return "autofill-profile";
+  }
+
+  getImageAt(index) {
+    this._checkIndexBounds(index);
+    return "chrome://formautofill/content/icon-credit-card-generic.svg";
   }
 }

@@ -21,20 +21,17 @@ const TEST_THRESHOLD = {
 // If a user qualifies for the e10s-multi experiement, this is how many
 // content processes to use and whether to allow addons for the experiment.
 const MULTI_EXPERIMENT = {
-  "beta": { buckets: { 4: 1, }, // 4 processes: 100%
+  "beta": { buckets: { 4: 1 }, // 4 processes: 100%
 
-            // When on the "beta" channel, getAddonsDisqualifyForMulti
-            // will return true if any addon installed is not a web extension.
-            // Therefore, this returns true if and only if all addons
-            // installed are web extensions or if no addons are installed
-            // at all.
-            addonsDisableExperiment(prefix) { return getAddonsDisqualifyForMulti(); } },
+            // The extensions code only allows webextensions and legacy-style
+            // extensions that have been verified to work with multi.
+            // Therefore, we can allow all extensions.
+            addonsDisableExperiment(prefix) { return false; } },
 
   "release": { buckets: { 4: 1 }, // 4 processes: 100%
 
-               // See above for an explanation of this: we only allow users
-               // with no extensions or users with WebExtensions.
-               addonsDisableExperiment(prefix) { return getAddonsDisqualifyForMulti(); } }
+               // See the comment above the "beta" addonsDisableExperiment.
+               addonsDisableExperiment(prefix) { return false; } }
 };
 
 const ADDON_ROLLOUT_POLICY = {
@@ -160,7 +157,7 @@ function defineCohort() {
     // Users who are qualified for e10s and on channels where some population
     // would not receive e10s can be pushed into e10s anyway via a temporary
     // qualification which overrides the user sample value when non-empty.
-    Services.prefs.setBoolPref.set(PREF_TOGGLE_E10S, true);
+    Services.prefs.setBoolPref(PREF_TOGGLE_E10S, true);
     eligibleForMulti = true;
     setCohort(`temp-qualified-${temporaryQualification}`);
   } else if (testGroup) {

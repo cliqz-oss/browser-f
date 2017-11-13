@@ -298,7 +298,9 @@ CompositorD3D11::GetTextureFactoryIdentifier()
   ident.mMaxTextureSize = GetMaxTextureSize();
   ident.mParentProcessType = XRE_GetProcessType();
   ident.mParentBackend = LayersBackend::LAYERS_D3D11;
-  ident.mSyncHandle = mAttachments->mSyncHandle;
+  if (mAttachments->mSyncObject) {
+    ident.mSyncHandle = mAttachments->mSyncObject->GetSyncHandle();
+  }
   return ident;
 }
 
@@ -324,13 +326,13 @@ already_AddRefed<CompositingRenderTarget>
 CompositorD3D11::CreateRenderTarget(const gfx::IntRect& aRect,
                                     SurfaceInitMode aInit)
 {
-  MOZ_ASSERT(aRect.width != 0 && aRect.height != 0);
+  MOZ_ASSERT(aRect.Width() != 0 && aRect.Height() != 0);
 
-  if (aRect.width * aRect.height == 0) {
+  if (aRect.Width() * aRect.Height() == 0) {
     return nullptr;
   }
 
-  CD3D11_TEXTURE2D_DESC desc(DXGI_FORMAT_B8G8R8A8_UNORM, aRect.width, aRect.height, 1, 1,
+  CD3D11_TEXTURE2D_DESC desc(DXGI_FORMAT_B8G8R8A8_UNORM, aRect.Width(), aRect.Height(), 1, 1,
                              D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET);
 
   RefPtr<ID3D11Texture2D> texture;
@@ -341,7 +343,7 @@ CompositorD3D11::CreateRenderTarget(const gfx::IntRect& aRect,
   }
 
   RefPtr<CompositingRenderTargetD3D11> rt = new CompositingRenderTargetD3D11(texture, aRect.TopLeft());
-  rt->SetSize(IntSize(aRect.width, aRect.height));
+  rt->SetSize(IntSize(aRect.Width(), aRect.Height()));
 
   if (aInit == INIT_MODE_CLEAR) {
     FLOAT clear[] = { 0, 0, 0, 0 };
@@ -356,14 +358,14 @@ CompositorD3D11::CreateTexture(const gfx::IntRect& aRect,
                                const CompositingRenderTarget* aSource,
                                const gfx::IntPoint& aSourcePoint)
 {
-  MOZ_ASSERT(aRect.width != 0 && aRect.height != 0);
+  MOZ_ASSERT(aRect.Width() != 0 && aRect.Height() != 0);
 
-  if (aRect.width * aRect.height == 0) {
+  if (aRect.Width() * aRect.Height() == 0) {
     return nullptr;
   }
 
   CD3D11_TEXTURE2D_DESC desc(DXGI_FORMAT_B8G8R8A8_UNORM,
-                             aRect.width, aRect.height, 1, 1,
+                             aRect.Width(), aRect.Height(), 1, 1,
                              D3D11_BIND_SHADER_RESOURCE | D3D11_BIND_RENDER_TARGET);
 
   RefPtr<ID3D11Texture2D> texture;
@@ -736,16 +738,16 @@ CompositorD3D11::DrawGeometry(const Geometry& aGeometry,
     bounds = maskTransform.As2D().TransformBounds(bounds);
 
     Matrix4x4 transform;
-    transform._11 = 1.0f / bounds.width;
-    transform._22 = 1.0f / bounds.height;
-    transform._41 = float(-bounds.x) / bounds.width;
-    transform._42 = float(-bounds.y) / bounds.height;
+    transform._11 = 1.0f / bounds.Width();
+    transform._22 = 1.0f / bounds.Height();
+    transform._41 = float(-bounds.x) / bounds.Width();
+    transform._42 = float(-bounds.y) / bounds.Height();
     memcpy(mVSConstants.maskTransform, &transform._11, 64);
   }
 
   D3D11_RECT scissor;
 
-  IntRect clipRect(aClipRect.x, aClipRect.y, aClipRect.width, aClipRect.height);
+  IntRect clipRect(aClipRect.x, aClipRect.y, aClipRect.Width(), aClipRect.Height());
   if (mCurrentRT == mDefaultRT) {
     clipRect = clipRect.Intersect(mCurrentClip);
   }
@@ -1012,7 +1014,7 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
 
   IntRect clipRect = invalidRect;
   if (aClipRectIn) {
-    clipRect.IntersectRect(clipRect, IntRect(aClipRectIn->x, aClipRectIn->y, aClipRectIn->width, aClipRectIn->height));
+    clipRect.IntersectRect(clipRect, IntRect(aClipRectIn->x, aClipRectIn->y, aClipRectIn->Width(), aClipRectIn->Height()));
   }
 
   if (clipRect.IsEmpty()) {
@@ -1057,36 +1059,19 @@ CompositorD3D11::BeginFrame(const nsIntRegion& aInvalidRegion,
 
   mContext->OMSetBlendState(mAttachments->mPremulBlendState, sBlendFactor, 0xFFFFFFFF);
 
-  if (mAttachments->mSyncTexture) {
-    RefPtr<IDXGIKeyedMutex> mutex;
-    mAttachments->mSyncTexture->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(mutex));
-
-    MOZ_ASSERT(mutex);
-    {
-      HRESULT hr;
-      AutoTextureLock lock(mutex, hr, 10000);
-      if (hr == WAIT_TIMEOUT) {
-        hr = mDevice->GetDeviceRemovedReason();
-        if (hr == S_OK) {
-          // There is no driver-removed event. Crash with this timeout.
-          MOZ_CRASH("GFX: D3D11 normal status timeout");
-        }
-
-        // Since the timeout is related to the driver-removed, clear the
-        // render-bounding size to skip this frame.
-        gfxCriticalNote << "GFX: D3D11 timeout with device-removed:" << gfx::hexa(hr);
-        *aRenderBoundsOut = IntRect();
-        return;
-      } else if (hr == WAIT_ABANDONED) {
-        gfxCriticalNote << "GFX: D3D11 abandoned sync";
-      }
+  if (mAttachments->mSyncObject) {
+    if (!mAttachments->mSyncObject->Synchronize()) {
+      // It's timeout here. Since the timeout is related to the driver-removed,
+      // clear the render-bounding size to skip this frame.
+      *aRenderBoundsOut = IntRect();
+      return;
     }
   }
 
   if (gfxPrefs::LayersDrawFPS()) {
     uint32_t pixelsPerFrame = 0;
     for (auto iter = mBackBufferInvalid.RectIter(); !iter.Done(); iter.Next()) {
-      pixelsPerFrame += iter.Get().width * iter.Get().height;
+      pixelsPerFrame += iter.Get().Width() * iter.Get().Height();
     }
 
     mDiagnostics->Start(pixelsPerFrame);
@@ -1178,8 +1163,9 @@ CompositorD3D11::Present()
   HRESULT hr = mSwapChain->QueryInterface((IDXGISwapChain1**)getter_AddRefs(chain));
 
   RefPtr<IDXGIKeyedMutex> mutex;
-  if (mUseMutexOnPresent && mAttachments->mSyncTexture) {
-    mAttachments->mSyncTexture->QueryInterface((IDXGIKeyedMutex**)getter_AddRefs(mutex));
+  if (mUseMutexOnPresent && mAttachments->mSyncObject) {
+    SyncObjectD3D11Host* d3dSyncObj = (SyncObjectD3D11Host*)mAttachments->mSyncObject.get();
+    mutex = d3dSyncObj->GetKeyedMutex();
     MOZ_ASSERT(mutex);
   }
 

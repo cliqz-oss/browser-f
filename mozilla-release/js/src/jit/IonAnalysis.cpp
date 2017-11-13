@@ -2050,7 +2050,7 @@ IsExclusiveFirstArg(MCall* call, MDefinition* def)
 }
 
 static bool
-IsRegExpHoistableCall(MCall* call, MDefinition* def)
+IsRegExpHoistableCall(CompileRuntime* runtime, MCall* call, MDefinition* def)
 {
     if (call->isConstructing())
         return false;
@@ -2073,7 +2073,6 @@ IsRegExpHoistableCall(MCall* call, MDefinition* def)
     }
 
     // Hoistable only if the RegExp is the first argument of RegExpBuiltinExec.
-    CompileRuntime* runtime = GetJitContext()->runtime;
     if (name == runtime->names().RegExpBuiltinExec ||
         name == runtime->names().UnwrapAndCallRegExpBuiltinExec ||
         name == runtime->names().RegExpMatcher ||
@@ -2201,7 +2200,7 @@ IsRegExpHoistable(MIRGenerator* mir, MDefinition* regexp, MDefinitionVector& wor
                     if (setProp->idval()->isConstant()) {
                         Value propIdVal = setProp->idval()->toConstant()->toJSValue();
                         if (propIdVal.isString()) {
-                            CompileRuntime* runtime = GetJitContext()->runtime;
+                            CompileRuntime* runtime = mir->runtime;
                             if (propIdVal.toString() == runtime->names().lastIndex)
                                 continue;
                         }
@@ -2210,7 +2209,7 @@ IsRegExpHoistable(MIRGenerator* mir, MDefinition* regexp, MDefinitionVector& wor
             }
             // MCall is safe only for some known safe functions.
             else if (useDef->isCall()) {
-                if (IsRegExpHoistableCall(useDef->toCall(), def))
+                if (IsRegExpHoistableCall(mir->runtime, useDef->toCall(), def))
                     continue;
             }
 
@@ -3466,27 +3465,27 @@ TryOptimizeLoadObjectOrNull(MDefinition* def, MDefinitionVector* peliminateList)
     for (MUseDefIterator iter(def); iter; ++iter) {
         MDefinition* ndef = iter.def();
         switch (ndef->op()) {
-          case MDefinition::Op_Compare:
+          case MDefinition::Opcode::Compare:
             if (ndef->toCompare()->compareType() != MCompare::Compare_Null)
                 return true;
             break;
-          case MDefinition::Op_Test:
+          case MDefinition::Opcode::Test:
             break;
-          case MDefinition::Op_PostWriteBarrier:
+          case MDefinition::Opcode::PostWriteBarrier:
             break;
-          case MDefinition::Op_StoreFixedSlot:
+          case MDefinition::Opcode::StoreFixedSlot:
             break;
-          case MDefinition::Op_StoreSlot:
+          case MDefinition::Opcode::StoreSlot:
             break;
-          case MDefinition::Op_ToObjectOrNull:
+          case MDefinition::Opcode::ToObjectOrNull:
             if (!eliminateList.append(ndef->toToObjectOrNull()))
                 return false;
             break;
-          case MDefinition::Op_Unbox:
+          case MDefinition::Opcode::Unbox:
             if (ndef->type() != MIRType::Object)
                 return true;
             break;
-          case MDefinition::Op_TypeBarrier:
+          case MDefinition::Opcode::TypeBarrier:
             // For now, only handle type barriers which are not consumed
             // anywhere and only test that the value is null.
             if (ndef->hasUses() || ndef->resultTypeSet()->getKnownMIRType() != MIRType::Null)
@@ -3599,17 +3598,17 @@ jit::EliminateRedundantChecks(MIRGraph& graph)
             bool eliminated = false;
 
             switch (def->op()) {
-              case MDefinition::Op_BoundsCheck:
+              case MDefinition::Opcode::BoundsCheck:
                 if (!TryEliminateBoundsCheck(checks, index, def->toBoundsCheck(), &eliminated))
                     return false;
                 break;
-              case MDefinition::Op_TypeBarrier:
+              case MDefinition::Opcode::TypeBarrier:
                 if (!TryEliminateTypeBarrier(def->toTypeBarrier(), &eliminated))
                     return false;
                 break;
-              case MDefinition::Op_LoadFixedSlot:
-              case MDefinition::Op_LoadSlot:
-              case MDefinition::Op_LoadUnboxedObjectOrNull:
+              case MDefinition::Opcode::LoadFixedSlot:
+              case MDefinition::Opcode::LoadSlot:
+              case MDefinition::Opcode::LoadUnboxedObjectOrNull:
                 if (!TryOptimizeLoadObjectOrNull(def, &eliminateList))
                     return false;
                 break;
@@ -3657,19 +3656,19 @@ NeedsKeepAlive(MInstruction* slotsOrElements, MInstruction* use)
             return false;
 
         switch (iter->op()) {
-          case MDefinition::Op_Nop:
-          case MDefinition::Op_Constant:
-          case MDefinition::Op_KeepAliveObject:
-          case MDefinition::Op_Unbox:
-          case MDefinition::Op_LoadSlot:
-          case MDefinition::Op_StoreSlot:
-          case MDefinition::Op_LoadFixedSlot:
-          case MDefinition::Op_StoreFixedSlot:
-          case MDefinition::Op_LoadElement:
-          case MDefinition::Op_StoreElement:
-          case MDefinition::Op_InitializedLength:
-          case MDefinition::Op_ArrayLength:
-          case MDefinition::Op_BoundsCheck:
+          case MDefinition::Opcode::Nop:
+          case MDefinition::Opcode::Constant:
+          case MDefinition::Opcode::KeepAliveObject:
+          case MDefinition::Opcode::Unbox:
+          case MDefinition::Opcode::LoadSlot:
+          case MDefinition::Opcode::StoreSlot:
+          case MDefinition::Opcode::LoadFixedSlot:
+          case MDefinition::Opcode::StoreFixedSlot:
+          case MDefinition::Opcode::LoadElement:
+          case MDefinition::Opcode::StoreElement:
+          case MDefinition::Opcode::InitializedLength:
+          case MDefinition::Opcode::ArrayLength:
+          case MDefinition::Opcode::BoundsCheck:
             iter++;
             break;
           default:
@@ -3693,19 +3692,19 @@ jit::AddKeepAliveInstructions(MIRGraph& graph)
 
             MDefinition* ownerObject;
             switch (ins->op()) {
-              case MDefinition::Op_ConstantElements:
+              case MDefinition::Opcode::ConstantElements:
                 continue;
-              case MDefinition::Op_ConvertElementsToDoubles:
+              case MDefinition::Opcode::ConvertElementsToDoubles:
                 // EliminateRedundantChecks should have replaced all uses.
                 MOZ_ASSERT(!ins->hasUses());
                 continue;
-              case MDefinition::Op_Elements:
-              case MDefinition::Op_TypedArrayElements:
-              case MDefinition::Op_TypedObjectElements:
+              case MDefinition::Opcode::Elements:
+              case MDefinition::Opcode::TypedArrayElements:
+              case MDefinition::Opcode::TypedObjectElements:
                 MOZ_ASSERT(ins->numOperands() == 1);
                 ownerObject = ins->getOperand(0);
                 break;
-              case MDefinition::Op_Slots:
+              case MDefinition::Opcode::Slots:
                 ownerObject = ins->toSlots()->object();
                 break;
               default:
@@ -4211,7 +4210,7 @@ jit::AnalyzeNewScriptDefiniteProperties(JSContext* cx, HandleFunction fun,
     if (!inlineScriptTree)
         return false;
 
-    CompileInfo info(script, fun,
+    CompileInfo info(CompileRuntime::get(cx->runtime()), script, fun,
                      /* osrPc = */ nullptr,
                      Analysis_DefiniteProperties,
                      script->needsArgsObj(),
@@ -4457,7 +4456,7 @@ jit::AnalyzeArgumentsUsage(JSContext* cx, JSScript* scriptArg)
         return false;
     }
 
-    CompileInfo info(script, script->functionNonDelazifying(),
+    CompileInfo info(CompileRuntime::get(cx->runtime()), script, script->functionNonDelazifying(),
                      /* osrPc = */ nullptr,
                      Analysis_ArgumentsUsage,
                      /* needsArgsObj = */ true,

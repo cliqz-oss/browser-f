@@ -1477,6 +1477,7 @@ DispatchFileHandleSuccessEvent(FileHandleResultHelper* aResultHelper)
 class BackgroundRequestChild::PreprocessHelper final
   : public CancelableRunnable
   , public nsIInputStreamCallback
+  , public nsIFileMetadataCallback
 {
   typedef std::pair<nsCOMPtr<nsIInputStream>,
                     nsCOMPtr<nsIInputStream>> StreamPair;
@@ -1560,9 +1561,13 @@ private:
   void
   ContinueWithStatus(nsresult aStatus);
 
+  nsresult
+  DataIsReady(nsIInputStream* aInputStream);
+
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_NSIRUNNABLE
   NS_DECL_NSIINPUTSTREAMCALLBACK
+  NS_DECL_NSIFILEMETADATACALLBACK
 
   virtual nsresult
   Cancel() override;
@@ -1750,6 +1755,7 @@ BackgroundFactoryRequestChild::BackgroundFactoryRequestChild(
                                                uint64_t aRequestedVersion)
   : BackgroundRequestChildBase(aOpenRequest)
   , mFactory(aFactory)
+  , mDatabaseActor(nullptr)
   , mRequestedVersion(aRequestedVersion)
   , mIsDeleteOp(aIsDeleteOp)
 {
@@ -1774,6 +1780,15 @@ BackgroundFactoryRequestChild::GetOpenDBRequest() const
   return static_cast<IDBOpenDBRequest*>(mRequest.get());
 }
 
+void
+BackgroundFactoryRequestChild::SetDatabaseActor(BackgroundDatabaseChild* aActor)
+{
+  AssertIsOnOwningThread();
+  MOZ_ASSERT(!aActor || !mDatabaseActor);
+
+  mDatabaseActor = aActor;
+}
+
 bool
 BackgroundFactoryRequestChild::HandleResponse(nsresult aResponse)
 {
@@ -1784,6 +1799,11 @@ BackgroundFactoryRequestChild::HandleResponse(nsresult aResponse)
   mRequest->Reset();
 
   DispatchErrorEvent(mRequest, aResponse);
+
+  if (mDatabaseActor) {
+    mDatabaseActor->ReleaseDOMObject();
+    MOZ_ASSERT(!mDatabaseActor);
+  }
 
   return true;
 }
@@ -1803,12 +1823,15 @@ BackgroundFactoryRequestChild::HandleResponse(
   IDBDatabase* database = databaseActor->GetDOMObject();
   if (!database) {
     databaseActor->EnsureDOMObject();
+    MOZ_ASSERT(mDatabaseActor);
 
     database = databaseActor->GetDOMObject();
     MOZ_ASSERT(database);
 
     MOZ_ASSERT(!database->IsClosed());
   }
+
+  MOZ_ASSERT(mDatabaseActor == databaseActor);
 
   if (database->IsClosed()) {
     // If the database was closed already, which is only possible if we fired an
@@ -1822,6 +1845,7 @@ BackgroundFactoryRequestChild::HandleResponse(
   }
 
   databaseActor->ReleaseDOMObject();
+  MOZ_ASSERT(!mDatabaseActor);
 
   return true;
 }
@@ -1841,6 +1865,8 @@ BackgroundFactoryRequestChild::HandleResponse(
   MOZ_ASSERT(successEvent);
 
   DispatchSuccessEvent(&helper, successEvent);
+
+  MOZ_ASSERT(!mDatabaseActor);
 
   return true;
 }
@@ -2090,6 +2116,8 @@ BackgroundDatabaseChild::EnsureDOMObject()
 
   mDatabase = mTemporaryStrongDatabase;
   mSpec.forget();
+
+  mOpenRequestActor->SetDatabaseActor(this);
 }
 
 void
@@ -2100,6 +2128,8 @@ BackgroundDatabaseChild::ReleaseDOMObject()
   mTemporaryStrongDatabase->AssertIsOnOwningThread();
   MOZ_ASSERT(mOpenRequestActor);
   MOZ_ASSERT(mDatabase == mTemporaryStrongDatabase);
+
+  mOpenRequestActor->SetDatabaseActor(nullptr);
 
   mOpenRequestActor = nullptr;
 
@@ -3518,6 +3548,17 @@ PreprocessHelper::WaitForStreamReady(nsIInputStream* aInputStream)
   MOZ_ASSERT(!IsOnOwningThread());
   MOZ_ASSERT(aInputStream);
 
+  nsCOMPtr<nsIAsyncFileMetadata> asyncFileMetadata =
+    do_QueryInterface(aInputStream);
+  if (asyncFileMetadata) {
+    nsresult rv = asyncFileMetadata->AsyncWait(this, mTaskQueueEventTarget);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    return NS_OK;
+  }
+
   nsCOMPtr<nsIAsyncInputStream> asyncStream = do_QueryInterface(aInputStream);
   if (!asyncStream) {
     return NS_ERROR_NO_INTERFACE;
@@ -3564,7 +3605,8 @@ PreprocessHelper::ContinueWithStatus(nsresult aStatus)
 }
 
 NS_IMPL_ISUPPORTS_INHERITED(BackgroundRequestChild::PreprocessHelper,
-                            CancelableRunnable, nsIInputStreamCallback)
+                            CancelableRunnable, nsIInputStreamCallback,
+                            nsIFileMetadataCallback)
 
 NS_IMETHODIMP
 BackgroundRequestChild::
@@ -3582,6 +3624,23 @@ PreprocessHelper::Run()
 NS_IMETHODIMP
 BackgroundRequestChild::
 PreprocessHelper::OnInputStreamReady(nsIAsyncInputStream* aStream)
+{
+  return DataIsReady(aStream);
+}
+
+NS_IMETHODIMP
+BackgroundRequestChild::
+PreprocessHelper::OnFileMetadataReady(nsIAsyncFileMetadata* aObject)
+{
+  nsCOMPtr<nsIInputStream> stream = do_QueryInterface(aObject);
+  MOZ_ASSERT(stream, "It was a stream before!");
+
+  return DataIsReady(stream);
+}
+
+nsresult
+BackgroundRequestChild::
+PreprocessHelper::DataIsReady(nsIInputStream* aStream)
 {
   MOZ_ASSERT(!IsOnOwningThread());
   MOZ_ASSERT(aStream);

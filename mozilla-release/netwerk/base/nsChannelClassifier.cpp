@@ -206,20 +206,36 @@ LowerPriorityHelper(nsIChannel* aChannel)
 {
   MOZ_ASSERT(aChannel);
 
-  nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(aChannel);
-  if (p) {
-    p->SetPriority(nsISupportsPriority::PRIORITY_LOWEST);
-  }
-}
-
-static void
-SetThrottleableHelper(nsIChannel* aChannel)
-{
-  MOZ_ASSERT(aChannel);
+  bool isBlockingResource = false;
 
   nsCOMPtr<nsIClassOfService> cos(do_QueryInterface(aChannel));
   if (cos) {
-    cos->AddClassFlags(nsIClassOfService::Throttleable);
+    if (nsContentUtils::IsTailingEnabled()) {
+      uint32_t cosFlags = 0;
+      cos->GetClassFlags(&cosFlags);
+      isBlockingResource = cosFlags & (nsIClassOfService::UrgentStart |
+                                       nsIClassOfService::Leader |
+                                       nsIClassOfService::Unblocked);
+
+      // Requests not allowed to be tailed are usually those with higher
+      // prioritization.  That overweights being a tracker: don't throttle
+      // them when not in background.
+      if (!(cosFlags & nsIClassOfService::TailForbidden)) {
+        cos->AddClassFlags(nsIClassOfService::Throttleable);
+      }
+    } else {
+      // Yes, we even don't want to evaluate the isBlockingResource when tailing is off
+      // see bug 1395525.
+
+      cos->AddClassFlags(nsIClassOfService::Throttleable);
+    }
+  }
+
+  if (!isBlockingResource) {
+    nsCOMPtr<nsISupportsPriority> p = do_QueryInterface(aChannel);
+    if (p) {
+      p->SetPriority(nsISupportsPriority::PRIORITY_LOWEST);
+    }
   }
 }
 
@@ -234,7 +250,13 @@ nsChannelClassifier::nsChannelClassifier(nsIChannel *aChannel)
     mTrackingProtectionEnabled(Nothing()),
     mTrackingAnnotationEnabled(Nothing())
 {
+  LOG(("nsChannelClassifier::nsChannelClassifier %p", this));
   MOZ_ASSERT(mChannel);
+}
+
+nsChannelClassifier::~nsChannelClassifier()
+{
+  LOG(("nsChannelClassifier::~nsChannelClassifier %p", this));
 }
 
 bool
@@ -747,7 +769,7 @@ nsChannelClassifier::HasBeenClassified(nsIChannel *aChannel)
         return false;
     }
 
-    nsXPIDLCString tag;
+    nsCString tag;
     cacheEntry->GetMetaDataElement("necko:classified", getter_Copies(tag));
     return tag.EqualsLiteral("1");
 }
@@ -1022,7 +1044,6 @@ IsTrackerBlacklistedCallback::OnClassifyComplete(nsresult aErrorCode,
     if (CachedPrefs::GetInstance()->IsLowerNetworkPriority()) {
       LowerPriorityHelper(channel);
     }
-    SetThrottleableHelper(channel);
 
     // We don't want to disable speculative connection when tracking protection
     // is disabled. So, change the status to NS_OK.
@@ -1069,7 +1090,6 @@ IsTrackerBlacklistedCallback::OnClassifyCompleteInternal(nsresult aErrorCode,
   if (CachedPrefs::GetInstance()->IsLowerNetworkPriority()) {
     LowerPriorityHelper(channel);
   }
-  SetThrottleableHelper(channel);
 
   return mChannelCallback->OnClassifyComplete(
       NS_OK, aLists, aProvider, aPrefix);

@@ -98,6 +98,12 @@ MFBT_API size_t moz_malloc_usable_size(void *ptr);
 
 MFBT_API size_t moz_malloc_size_of(const void *ptr);
 
+/*
+ * Like moz_malloc_size_of(), but works reliably with interior pointers, i.e.
+ * pointers into the middle of a live allocation.
+ */
+MFBT_API size_t moz_malloc_enclosing_size_of(const void *ptr);
+
 #if defined(HAVE_STRNDUP)
 MFBT_API char* moz_xstrndup(const char* str, size_t strsize)
     MOZ_ALLOCATOR;
@@ -175,6 +181,12 @@ MFBT_API void* moz_xvalloc(size_t size)
  */
 #define MOZALLOC_THROW_IF_HAS_EXCEPTIONS
 #define MOZALLOC_THROW_BAD_ALLOC_IF_HAS_EXCEPTIONS
+#elif __cplusplus >= 201103
+/*
+ * C++11 has deprecated exception-specifications in favour of |noexcept|.
+ */
+#define MOZALLOC_THROW_IF_HAS_EXCEPTIONS noexcept(true)
+#define MOZALLOC_THROW_BAD_ALLOC_IF_HAS_EXCEPTIONS noexcept(false)
 #else
 #define MOZALLOC_THROW_IF_HAS_EXCEPTIONS throw()
 #define MOZALLOC_THROW_BAD_ALLOC_IF_HAS_EXCEPTIONS throw(std::bad_alloc)

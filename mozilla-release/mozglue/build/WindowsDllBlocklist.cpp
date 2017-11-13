@@ -250,6 +250,12 @@ static const DllBlockInfo sWindowsDllBlocklist[] = {
   // Bug 1268470 - crashes with Kaspersky Lab on Windows 8
   { "klsihk64.dll", MAKE_VERSION(14, 0, 456, 0xffff), DllBlockInfo::BLOCK_WIN8_ONLY },
 
+  // Bug 1407337, crashes with OpenSC < 0.16.0
+  { "onepin-opensc-pkcs11.dll", MAKE_VERSION(0, 15, 0xffff, 0xffff) },
+
+  // Avecto Privilege Guard causes crashes, bug 1385542
+  { "pghook.dll", ALL_VERSIONS },
+
   { nullptr, 0 }
 };
 
@@ -304,7 +310,7 @@ printf_stderr(const char *fmt, ...)
 
 
 #ifdef _M_IX86
-typedef void (__fastcall* BaseThreadInitThunk_func)(BOOL aIsInitialThread, void* aStartAddress, void* aThreadParam);
+typedef MOZ_NORETURN_PTR void (__fastcall* BaseThreadInitThunk_func)(BOOL aIsInitialThread, void* aStartAddress, void* aThreadParam);
 static BaseThreadInitThunk_func stub_BaseThreadInitThunk = nullptr;
 #endif
 
@@ -524,7 +530,7 @@ DllBlockSet::Write(HANDLE file)
     for (DllBlockSet* b = gFirst; b; b = b->mNext) {
       // write name[,v.v.v.v];
       WriteFile(file, b->mName, strlen(b->mName), &nBytes, nullptr);
-      if (b->mVersion != -1) {
+      if (b->mVersion != ALL_VERSIONS) {
         WriteFile(file, ",", 1, &nBytes, nullptr);
         uint16_t parts[4];
         parts[0] = b->mVersion >> 48;

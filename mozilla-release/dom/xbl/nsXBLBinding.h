@@ -105,10 +105,11 @@ public:
   bool ImplementsInterface(REFNSIID aIID) const;
 
   void GenerateAnonymousContent();
-  void InstallAnonymousContent(nsIContent* aAnonParent, nsIContent* aElement,
-                               bool aNativeAnon);
-  static void UninstallAnonymousContent(nsIDocument* aDocument,
-                                        nsIContent* aAnonParent);
+  void BindAnonymousContent(nsIContent* aAnonParent, nsIContent* aElement,
+                            bool aNativeAnon);
+  static void UnbindAnonymousContent(nsIDocument* aDocument,
+                                     nsIContent* aAnonParent,
+                                     bool aNullParent = true);
   void InstallEventHandlers();
   nsresult InstallImplementation();
 
@@ -130,7 +131,7 @@ public:
 
   void WalkRules(nsIStyleRuleProcessor::EnumFunc aFunc, void* aData);
 
-  const mozilla::ServoStyleSet* GetServoStyleSet() const;
+  mozilla::ServoStyleSet* GetServoStyleSet() const;
 
   static nsresult DoInitJSClass(JSContext *cx, JS::Handle<JSObject*> obj,
                                 const nsString& aClassName,

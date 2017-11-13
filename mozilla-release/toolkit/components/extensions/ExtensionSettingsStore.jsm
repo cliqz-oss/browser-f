@@ -89,8 +89,10 @@ function initialize() {
 }
 
 // Test-only method to force reloading of the JSON file.
-async function reloadFile() {
-  await _store.finalize();
+async function reloadFile(finalize) {
+  if (finalize) {
+    await _store.finalize();
+  }
   _initializePromise = null;
   return initialize();
 }
@@ -108,8 +110,8 @@ function ensureType(type) {
   }
 }
 
-// Return an object with properties for key and value|initialValue, or null
-// if no setting has been stored for that key.
+// Return an object with properties for key, value|initialValue, id|null, or
+// null if no setting has been stored for that key.
 function getTopItem(type, key) {
   ensureType(type);
 
@@ -121,7 +123,7 @@ function getTopItem(type, key) {
   // Find the highest precedence, enabled setting.
   for (let item of keyInfo.precedenceList) {
     if (item.enabled) {
-      return {key, value: item.value};
+      return {key, value: item.value, id: item.id};
     }
   }
 
@@ -291,7 +293,7 @@ this.ExtensionSettingsStore = {
 
     // Check whether this is currently the top item.
     if (keyInfo.precedenceList[0].id == id) {
-      return {key, value};
+      return {id, key, value};
     }
     return null;
   },
@@ -452,16 +454,28 @@ this.ExtensionSettingsStore = {
       "controllable_by_this_extension";
   },
 
+  // Return the id of the controlling extension or null if no extension is
+  // controlling this setting.
+  getTopExtensionId(type, key) {
+    let item = getTopItem(type, key);
+    if (item) {
+      return item.id;
+    }
+    return null;
+  },
+
   /**
    * Test-only method to force reloading of the JSON file.
    *
    * Note that this method simply clears the local variable that stores the
    * file, so the next time the file is accessed it will be reloaded.
    *
+   * @param   {boolean} finalize
+   *          When false, skip finalizing the store (writing current state to file).
    * @returns {Promise}
    *          A promise that resolves once the settings store has been cleared.
    */
-  _reloadFile() {
-    return reloadFile();
+  _reloadFile(finalize = true) {
+    return reloadFile(finalize);
   },
 };

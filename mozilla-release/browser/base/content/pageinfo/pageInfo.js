@@ -232,7 +232,6 @@ var gBundle;
 
 const PERMISSION_CONTRACTID     = "@mozilla.org/permissionmanager;1";
 const PREFERENCES_CONTRACTID    = "@mozilla.org/preferences-service;1";
-const ATOM_CONTRACTID           = "@mozilla.org/atom-service;1";
 
 // a number of services I'll need later
 // the cache services
@@ -349,10 +348,10 @@ function loadPageInfo(frameOuterWindowID, imageElement, browser) {
   gStrings["application/xml"]      = gBundle.getString("feedXML");
   gStrings["application/rdf+xml"]  = gBundle.getString("feedXML");
 
+  let imageInfo = imageElement;
+
   // Look for pageInfoListener in content.js. Sends message to listener with arguments.
-  mm.sendAsyncMessage("PageInfo:getData", {strings: gStrings,
-                      frameOuterWindowID},
-                      { imageElement });
+  mm.sendAsyncMessage("PageInfo:getData", {strings: gStrings, frameOuterWindowID});
 
   let pageInfoData;
 
@@ -362,12 +361,11 @@ function loadPageInfo(frameOuterWindowID, imageElement, browser) {
     pageInfoData = message.data;
     let docInfo = pageInfoData.docInfo;
     let windowInfo = pageInfoData.windowInfo;
-    let uri = makeURI(docInfo.documentURIObject.spec,
-                      docInfo.documentURIObject.originCharset);
+    let uri = makeURI(docInfo.documentURIObject.spec);
     let principal = docInfo.principal;
     gDocInfo = docInfo;
 
-    gImageElement = pageInfoData.imageInfo;
+    gImageElement = imageInfo;
 
     var titleFormat = windowInfo.isTopWindow ? "pageInfo.page.title"
                                              : "pageInfo.frame.title";
@@ -669,14 +667,14 @@ function getSelectedRow(tree) {
 }
 
 function selectSaveFolder(aCallback) {
-  const nsILocalFile = Components.interfaces.nsILocalFile;
+  const nsIFile = Components.interfaces.nsIFile;
   const nsIFilePicker = Components.interfaces.nsIFilePicker;
   let titleText = gBundle.getString("mediaSelectFolder");
   let fp = Components.classes["@mozilla.org/filepicker;1"].
            createInstance(nsIFilePicker);
   let fpCallback = function fpCallback_done(aResult) {
     if (aResult == nsIFilePicker.returnOK) {
-      aCallback(fp.file.QueryInterface(nsILocalFile));
+      aCallback(fp.file.QueryInterface(nsIFile));
     } else {
       aCallback(null);
     }
@@ -687,7 +685,7 @@ function selectSaveFolder(aCallback) {
   try {
     let prefs = Components.classes[PREFERENCES_CONTRACTID].
                 getService(Components.interfaces.nsIPrefBranch);
-    let initialDir = prefs.getComplexValue("browser.download.dir", nsILocalFile);
+    let initialDir = prefs.getComplexValue("browser.download.dir", nsIFile);
     if (initialDir) {
       fp.displayDirectory = initialDir;
     }

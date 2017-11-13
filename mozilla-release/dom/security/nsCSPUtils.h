@@ -38,7 +38,7 @@ void CSP_LogLocalizedStr(const char* aName,
 void CSP_GetLocalizedStr(const char* aName,
                          const char16_t** aParams,
                          uint32_t aLength,
-                         char16_t** outResult);
+                         nsAString& outResult);
 
 void CSP_LogStrMessage(const nsAString& aMsg);
 
@@ -259,6 +259,9 @@ class nsCSPHostSrc : public nsCSPBaseSrc {
     inline void setGeneratedFromSelfKeyword() const
       { mGeneratedFromSelfKeyword = true; }
 
+    inline void setIsUniqueOrigin() const
+      { mIsUniqueOrigin = true; }
+
     inline void setWithinFrameAncestorsDir(bool aValue) const
       { mWithinFrameAncstorsDir = aValue; }
 
@@ -280,6 +283,7 @@ class nsCSPHostSrc : public nsCSPBaseSrc {
     nsString mPort;
     nsString mPath;
     mutable bool mGeneratedFromSelfKeyword;
+    mutable bool mIsUniqueOrigin;
     mutable bool mWithinFrameAncstorsDir;
 };
 

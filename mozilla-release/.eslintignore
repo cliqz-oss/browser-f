@@ -7,7 +7,6 @@ obj*/**
 # We ignore all these directories by default, until we get them enabled.
 # If you are enabling a directory, please add directory specific exclusions
 # below.
-addon-sdk/**
 chrome/**
 config/**
 docshell/**
@@ -98,7 +97,6 @@ devtools/client/performance/components/test/test_jit_optimizations_01.html
 devtools/client/projecteditor/**
 devtools/client/responsive.html/test/browser/touch.html
 devtools/client/responsivedesign/**
-!devtools/client/responsivedesign/responsivedesign.jsm
 devtools/client/scratchpad/**
 devtools/client/shadereditor/**
 devtools/client/shared/*.jsm
@@ -138,8 +136,9 @@ devtools/shared/qrcode/tests/mochitest/test_decode.html
 devtools/shared/tests/mochitest/*.html
 devtools/shared/webconsole/test/test_*.html
 
-# Ignore devtools pre-processed files
+# Ignore devtools preferences files
 devtools/client/preferences/**
+devtools/shim/devtools-startup-prefs.js
 
 # Ignore devtools third-party libs
 devtools/shared/jsbeautify/*
@@ -173,6 +172,8 @@ devtools/client/debugger/test/mochitest/code_worker-source-map.js
 devtools/client/framework/test/code_ugly*
 devtools/client/inspector/markup/test/events_bundle.js
 devtools/client/netmonitor/test/xhr_bundle.js
+devtools/client/webconsole/new-console-output/test/mochitest/code_bundle_nosource.js
+devtools/client/webconsole/new-console-output/test/mochitest/code_bundle_invalidmap.js
 devtools/server/tests/unit/babel_and_browserify_script_with_source_map.js
 devtools/server/tests/unit/setBreakpoint*
 devtools/server/tests/unit/sourcemapped.js
@@ -338,10 +339,6 @@ toolkit/components/workerloader/tests/moduleF-syntax-error.js
 # Tests old non-star function generators
 toolkit/modules/tests/xpcshell/test_task.js
 
-# Not yet updated
-toolkit/components/osfile/**
-toolkit/components/url-classifier/**
-
 # External code:
 toolkit/components/microformats/test/**
 toolkit/components/microformats/microformat-shiv.js
@@ -350,7 +347,7 @@ toolkit/components/reader/JSDOMParser.js
 
 # Uses preprocessing
 toolkit/content/widgets/wizard.xml
-toolkit/components/jsdownloads/src/DownloadIntegration.jsm
+toolkit/components/osfile/osfile.jsm
 toolkit/components/urlformatter/nsURLFormatter.js
 toolkit/modules/AppConstants.jsm
 toolkit/mozapps/downloads/nsHelperAppDlg.js

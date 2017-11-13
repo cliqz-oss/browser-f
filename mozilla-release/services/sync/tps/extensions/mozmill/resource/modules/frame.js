@@ -46,8 +46,7 @@ var timers = [];
  * Shutdown or restart the application
  *
  * @param {boolean} [aFlags=undefined]
- *        Additional flags how to handle the shutdown or restart. The attributes
- *        eRestarti386 and eRestartx86_64 have not been documented yet.
+ *        Additional flags how to handle the shutdown or restart.
  * @see https://developer.mozilla.org/nsIAppStartup#Attributes
  */
 function shutdownApplication(aFlags) {
@@ -286,7 +285,7 @@ events.fail = function (obj) {
     events.currentTest.__fails__.push(obj);
   }
 
-  for (var time of timers) {
+  for (var timer of timers) {
     timer.actions.push(
       {"currentTest": events.currentModule.__file__ + "::" + events.currentTest.__name__,
        "obj": obj,
@@ -458,7 +457,7 @@ function Collector() {
 }
 
 Collector.prototype.addHttpResource = function (aDirectory, aPath) {
-  var fp = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+  var fp = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   fp.initWithPath(os.abspath(aDirectory, this.current_file));
 
   return httpd.addHttpResource(fp, aPath);
@@ -514,7 +513,7 @@ Collector.prototype.loadFile = function (path, collector) {
   });
 
   // load a test module from a file and add some candy
-  var file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsILocalFile);
+  var file = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
   file.initWithPath(path);
   var uri = Services.io.newFileURI(file).spec;
 

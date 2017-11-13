@@ -42,11 +42,24 @@ class HistoryObserver extends Observer {
    * @param  {obj} uri        A URI object representing the link's url
    *         {str} uri.spec   The URI as a string
    */
-  onDeleteURI(uri) {
-    this.dispatch({
-      type: at.PLACES_LINK_DELETED,
-      data: {url: uri.spec}
-    });
+  async onDeleteURI(uri) {
+    // Add to an existing array of links if we haven't dispatched yet
+    const {spec} = uri;
+    if (this._deletedLinks) {
+      this._deletedLinks.push(spec);
+    } else {
+      // Store an array of synchronously deleted links
+      this._deletedLinks = [spec];
+
+      // Only dispatch a single action when we've gotten all deleted urls
+      await Promise.resolve().then(() => {
+        this.dispatch({
+          type: at.PLACES_LINKS_DELETED,
+          data: this._deletedLinks
+        });
+        delete this._deletedLinks;
+      });
+    }
   }
 
   /**
@@ -55,6 +68,16 @@ class HistoryObserver extends Observer {
   onClearHistory() {
     this.dispatch({type: at.PLACES_HISTORY_CLEARED});
   }
+
+  // Empty functions to make xpconnect happy
+  onBeginUpdateBatch() {}
+  onEndUpdateBatch() {}
+  onVisit() {}
+  onTitleChanged() {}
+  onFrecencyChanged() {}
+  onManyFrecenciesChanged() {}
+  onPageChanged() {}
+  onDeleteVisits() {}
 }
 
 /**
@@ -78,19 +101,24 @@ class BookmarksObserver extends Observer {
    * @param  {int} dateAdded
    * @param  {str} guid      The unique id of the bookmark
    */
-  async onItemAdded(...args) {
+  onItemAdded(...args) {
     const type = args[3];
-    const guid = args[7];
     if (type !== PlacesUtils.bookmarks.TYPE_BOOKMARK) {
       return;
     }
-    try {
-      // bookmark: {bookmarkGuid, bookmarkTitle, lastModified, url}
-      const bookmark = await NewTabUtils.activityStreamProvider.getBookmark(guid);
-      this.dispatch({type: at.PLACES_BOOKMARK_ADDED, data: bookmark});
-    } catch (e) {
-      Cu.reportError(e);
-    }
+    const uri = args[4];
+    const bookmarkTitle = args[5];
+    const dateAdded = args[6];
+    const bookmarkGuid = args[7];
+    this.dispatch({
+      type: at.PLACES_BOOKMARK_ADDED,
+      data: {
+        bookmarkGuid,
+        bookmarkTitle,
+        dateAdded,
+        url: uri.spec
+      }
+    });
   }
 
   /**
@@ -127,6 +155,16 @@ class BookmarksObserver extends Observer {
    * @param  {str} guid         The unique id of the bookmark
    */
   async onItemChanged(...args) {
+
+    /*
+    // Disabled due to performance cost, see Issue 3203 /
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1392267.
+    //
+    // If this is used, please consider avoiding the call to
+    // NewTabUtils.activityStreamProvider.getBookmark which performs an additional
+    // fetch to the database.
+    // If you need more fields, please talk to the places team.
+
     const property = args[1];
     const type = args[5];
     const guid = args[7];
@@ -142,7 +180,14 @@ class BookmarksObserver extends Observer {
     } catch (e) {
       Cu.reportError(e);
     }
+    */
   }
+
+  // Empty functions to make xpconnect happy
+  onBeginUpdateBatch() {}
+  onEndUpdateBatch() {}
+  onItemVisited() {}
+  onItemMoved() {}
 }
 
 class PlacesFeed {
@@ -207,14 +252,19 @@ class PlacesFeed {
         NewTabUtils.activityStreamLinks.blockURL({url: action.data});
         break;
       case at.BOOKMARK_URL:
-        NewTabUtils.activityStreamLinks.addBookmark(action.data);
+        NewTabUtils.activityStreamLinks.addBookmark(action.data, action._target.browser);
         break;
       case at.DELETE_BOOKMARK_BY_ID:
         NewTabUtils.activityStreamLinks.deleteBookmark(action.data);
         break;
-      case at.DELETE_HISTORY_URL:
-        NewTabUtils.activityStreamLinks.deleteHistoryEntry(action.data);
+      case at.DELETE_HISTORY_URL: {
+        const {url, forceBlock} = action.data;
+        NewTabUtils.activityStreamLinks.deleteHistoryEntry(url);
+        if (forceBlock) {
+          NewTabUtils.activityStreamLinks.blockURL({url});
+        }
         break;
+      }
       case at.OPEN_NEW_WINDOW:
         this.openNewWindow(action);
         break;
@@ -230,7 +280,7 @@ class PlacesFeed {
         if (action.data.referrer) {
           win.openLinkIn(action.data.url, where, {referrerURI: Services.io.newURI(action.data.referrer)});
         } else {
-          win.openLinkIn(action.data.url, where);
+          win.openLinkIn(action.data.url, where, {});
         }
         break;
       }

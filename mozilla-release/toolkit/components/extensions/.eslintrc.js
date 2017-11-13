@@ -56,9 +56,6 @@ module.exports = {
     // Require braces around blocks that start a new line
     "curly": ["error", "all"],
 
-    // Require function* name()
-    "generator-star-spacing": ["error", {"before": false, "after": true}],
-
     // Two space indent
     "indent": ["error", 2, {"SwitchCase": 1, "ArrayExpression": "first", "ObjectExpression": "first"}],
 
@@ -120,9 +117,6 @@ module.exports = {
     // Enforce dots on the next line with property name.
     "dot-location": ["error", "property"],
 
-    // Encourage the use of dot notation whenever possible.
-    "dot-notation": "error",
-
     // Allow using == instead of ===, in the interest of landing something since
     // the devtools codebase is split on convention here.
     "eqeqeq": "off",
@@ -158,9 +152,6 @@ module.exports = {
 
     // Allow use of bitwise operators.
     "no-bitwise": "off",
-
-    // Disallow use of arguments.caller or arguments.callee.
-    "no-caller": "error",
 
     // Disallow the catch clause parameter name being the same as a variable in
     // the outer scope, to avoid confusion.
@@ -304,8 +295,5 @@ module.exports = {
 
     // Disallow labels that share a name with a variable
     "no-label-var": "error",
-
-    // Disallow creating new instances of String, Number, and Boolean
-    "no-new-wrappers": "error",
   },
 };

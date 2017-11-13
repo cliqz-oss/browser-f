@@ -215,6 +215,9 @@ public:
   // The XPCOM SetDisabled is fine for WebIDL.
   void GetSourceMapURL(nsAString& aTitle);
   void SetSourceMapURL(const nsAString& aSourceMapURL);
+  void SetSourceMapURLFromComment(const nsAString& aSourceMapURLFromComment);
+  void GetSourceURL(nsAString& aSourceURL);
+  void SetSourceURL(const nsAString& aSourceURL);
 
   // WebIDL CSSStyleSheet API
   // Can't be inline because we can't include ImportRule here.  And can't be

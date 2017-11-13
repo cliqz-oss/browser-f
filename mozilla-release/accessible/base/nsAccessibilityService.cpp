@@ -161,6 +161,9 @@ static Accessible* New_HTMLFigcaption(nsIContent* aContent, Accessible* aContext
 static Accessible* New_HTMLFigure(nsIContent* aContent, Accessible* aContext)
   { return new HTMLFigureAccessible(aContent, aContext->Document()); }
 
+static Accessible* New_HTMLHeaderOrFooter(nsIContent* aContent, Accessible* aContext)
+  { return new HTMLHeaderOrFooterAccessible(aContent, aContext->Document()); }
+
 static Accessible* New_HTMLLegend(nsIContent* aContent, Accessible* aContext)
   { return new HTMLLegendAccessible(aContent, aContext->Document()); }
 
@@ -930,6 +933,21 @@ nsAccessibilityService::GetStringEventType(uint32_t aEventType,
 }
 
 void
+nsAccessibilityService::GetStringEventType(uint32_t aEventType,
+                                           nsACString& aString)
+{
+  MOZ_ASSERT(nsIAccessibleEvent::EVENT_LAST_ENTRY == ArrayLength(kEventTypeNames),
+             "nsIAccessibleEvent constants are out of sync to kEventTypeNames");
+
+  if (aEventType >= ArrayLength(kEventTypeNames)) {
+    aString.AssignLiteral("unknown");
+    return;
+  }
+
+  aString = nsDependentCString(kEventTypeNames[aEventType]);
+}
+
+void
 nsAccessibilityService::GetStringRelationType(uint32_t aRelationType,
                                               nsAString& aString)
 {
@@ -1248,6 +1266,13 @@ nsAccessibilityService::Init()
 
   observerService->AddObserver(this, NS_XPCOM_SHUTDOWN_OBSERVER_ID, false);
 
+#if defined(XP_WIN)
+  // This information needs to be initialized before the observer fires.
+  if (XRE_IsParentProcess()) {
+    Compatibility::Init();
+  }
+#endif // defined(XP_WIN)
+
   static const char16_t kInitIndicator[] = { '1', 0 };
   observerService->NotifyObservers(nullptr, "a11y-init-or-shutdown", kInitIndicator);
 
@@ -1282,9 +1307,11 @@ nsAccessibilityService::Init()
       // obtain a MSAA content process id.
       contentChild->SendGetA11yContentId();
     }
-#endif // defined(XP_WIN)
 
+    gApplicationAccessible = new ApplicationAccessibleWrap();
+#else
     gApplicationAccessible = new ApplicationAccessible();
+#endif // defined(XP_WIN)
   }
 
   NS_ADDREF(gApplicationAccessible); // will release in Shutdown()

@@ -19,7 +19,6 @@ Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 Cu.import("resource://gre/modules/Services.jsm");
 Cu.import("resource://gre/modules/AddonManager.jsm");
 /* globals AddonManagerPrivate*/
-Cu.import("resource://gre/modules/Preferences.jsm");
 Cu.import("resource://gre/modules/TelemetryController.jsm");
 
 XPCOMUtils.defineLazyModuleGetter(this, "AddonRepository",
@@ -38,9 +37,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "TelemetryController",
 XPCOMUtils.defineLazyServiceGetter(this, "Blocklist",
                                    "@mozilla.org/extensions/blocklist;1",
                                    Ci.nsIBlocklistService);
-
-XPCOMUtils.defineLazyPreferenceGetter(this, "ALLOW_NON_MPC",
-                                      "extensions.allow-non-mpc-extensions");
 
 Cu.import("resource://gre/modules/Log.jsm");
 const LOGGER_ID = "addons.xpi-utils";
@@ -1099,7 +1095,7 @@ this.XPIDatabase = {
 
     let blockE10s = false;
 
-    Preferences.set(PREF_E10S_HAS_NONEXEMPT_ADDON, false);
+    Services.prefs.setBoolPref(PREF_E10S_HAS_NONEXEMPT_ADDON, false);
     for (let [, addon] of this.addonDB) {
       let active = (addon.visible && !addon.disabled && !addon.pendingUninstall);
 
@@ -1108,7 +1104,7 @@ this.XPIDatabase = {
         break;
       }
     }
-    Preferences.set(PREF_E10S_BLOCKED_BY_ADDONS, blockE10s);
+    Services.prefs.setBoolPref(PREF_E10S_BLOCKED_BY_ADDONS, blockE10s);
   },
 
   updateAddonsBlockingE10sMulti() {
@@ -1122,7 +1118,7 @@ this.XPIDatabase = {
         break;
       }
     }
-    Preferences.set(PREF_E10S_MULTI_BLOCKED_BY_ADDONS, blockMulti);
+    Services.prefs.setBoolPref(PREF_E10S_MULTI_BLOCKED_BY_ADDONS, blockMulti);
   },
 
   /**
@@ -1312,7 +1308,7 @@ this.XPIDatabaseReconcile = {
     if (isDetectedInstall && aNewAddon.foreignInstall) {
       // If the add-on is a foreign install and is in a scope where add-ons
       // that were dropped in should default to disabled then disable it
-      let disablingScopes = Preferences.get(PREF_EM_AUTO_DISABLED_SCOPES, 0);
+      let disablingScopes = Services.prefs.getIntPref(PREF_EM_AUTO_DISABLED_SCOPES, 0);
       if (aInstallLocation.scope & disablingScopes) {
         logger.warn("Disabling foreign installed add-on " + aNewAddon.id + " in "
             + aInstallLocation.name);
@@ -1570,7 +1566,6 @@ this.XPIDatabaseReconcile = {
               }
             }
 
-            let wasDisabled = oldAddon.appDisabled;
             let oldPath = oldAddon.path || descriptorToPath(oldAddon.descriptor);
 
             // The add-on has changed if the modification time has changed, if
@@ -1596,18 +1591,6 @@ this.XPIDatabaseReconcile = {
             } else {
               // No change
               newAddon = oldAddon;
-            }
-
-            // If an extension has just become appDisabled and it appears to
-            // be due to the ALLOW_NON_MPC pref, show a notification.  If the
-            // extension is also disabled for some other reason(s), don't
-            // bother with the notification since flipping the pref will leave
-            // the extension disabled.
-            if (!wasDisabled && newAddon.appDisabled &&
-                !ALLOW_NON_MPC && !newAddon.multiprocessCompatible &&
-                (newAddon.blocklistState != Ci.nsIBlocklistService.STATE_BLOCKED) &&
-                newAddon.isPlatformCompatible && newAddon.isCompatible) {
-              AddonManagerPrivate.nonMpcDisabled = true;
             }
 
             if (newAddon)

@@ -93,13 +93,14 @@ impl CSSStyleRuleMethods for CSSStyleRule {
         let parser = SelectorParser {
             stylesheet_origin: Origin::Author,
             namespaces: &namespaces,
+            url_data: None,
         };
         let mut css_parser = CssParserInput::new(&*value);
         let mut css_parser = CssParser::new(&mut css_parser);
         if let Ok(mut s) = SelectorList::parse(&parser, &mut css_parser) {
             // This mirrors what we do in CSSStyleOwner::mutate_associated_block.
             let mut guard = self.cssrule.shared_lock().write();
-            let mut stylerule = self.stylerule.write_with(&mut guard);
+            let stylerule = self.stylerule.write_with(&mut guard);
             mem::swap(&mut stylerule.selectors, &mut s);
             // It seems like we will want to avoid having to invalidate all
             // stylesheets eventually!

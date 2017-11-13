@@ -18,7 +18,7 @@
 #include "nsGkAtoms.h"
 #include "nsSVGDisplayableFrame.h"
 #include "nsStyleContext.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "SVGGeometryFrame.h"
 #include "mozilla/dom/SVGPatternElement.h"
 #include "nsSVGUtils.h"
@@ -61,17 +61,17 @@ nsSVGPatternFrame::AttributeChanged(int32_t         aNameSpaceID,
        aAttribute == nsGkAtoms::height ||
        aAttribute == nsGkAtoms::preserveAspectRatio ||
        aAttribute == nsGkAtoms::viewBox)) {
-    nsSVGEffects::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
   }
 
   if ((aNameSpaceID == kNameSpaceID_XLink ||
        aNameSpaceID == kNameSpaceID_None) &&
       aAttribute == nsGkAtoms::href) {
     // Blow away our reference, if any
-    DeleteProperty(nsSVGEffects::HrefAsPaintingProperty());
+    DeleteProperty(SVGObserverUtils::HrefAsPaintingProperty());
     mNoHRefURI = false;
     // And update whoever references us
-    nsSVGEffects::InvalidateDirectRenderingObservers(this);
+    SVGObserverUtils::InvalidateDirectRenderingObservers(this);
   }
 
   return nsSVGPaintServerFrame::AttributeChanged(aNameSpaceID,
@@ -440,7 +440,7 @@ uint16_t
 nsSVGPatternFrame::GetEnumValue(uint32_t aIndex, nsIContent *aDefault)
 {
   nsSVGEnum& thisEnum =
-    static_cast<SVGPatternElement *>(mContent)->mEnumAttributes[aIndex];
+    static_cast<SVGPatternElement *>(GetContent())->mEnumAttributes[aIndex];
 
   if (thisEnum.IsExplicitlySet())
     return thisEnum.GetAnimValue();
@@ -466,7 +466,7 @@ nsSVGAnimatedTransformList*
 nsSVGPatternFrame::GetPatternTransformList(nsIContent* aDefault)
 {
   nsSVGAnimatedTransformList *thisTransformList =
-    static_cast<SVGPatternElement *>(mContent)->GetAnimatedTransformList();
+    static_cast<SVGPatternElement *>(GetContent())->GetAnimatedTransformList();
 
   if (thisTransformList && thisTransformList->IsExplicitlySet())
     return thisTransformList;
@@ -490,7 +490,7 @@ gfxMatrix
 nsSVGPatternFrame::GetPatternTransform()
 {
   nsSVGAnimatedTransformList* animTransformList =
-    GetPatternTransformList(mContent);
+    GetPatternTransformList(GetContent());
   if (!animTransformList)
     return gfxMatrix();
 
@@ -501,7 +501,7 @@ const nsSVGViewBox &
 nsSVGPatternFrame::GetViewBox(nsIContent* aDefault)
 {
   const nsSVGViewBox &thisViewBox =
-    static_cast<SVGPatternElement *>(mContent)->mViewBox;
+    static_cast<SVGPatternElement *>(GetContent())->mViewBox;
 
   if (thisViewBox.IsExplicitlySet())
     return thisViewBox;
@@ -525,7 +525,7 @@ const SVGAnimatedPreserveAspectRatio &
 nsSVGPatternFrame::GetPreserveAspectRatio(nsIContent *aDefault)
 {
   const SVGAnimatedPreserveAspectRatio &thisPar =
-    static_cast<SVGPatternElement *>(mContent)->mPreserveAspectRatio;
+    static_cast<SVGPatternElement *>(GetContent())->mPreserveAspectRatio;
 
   if (thisPar.IsExplicitlySet())
     return thisPar;
@@ -549,7 +549,7 @@ const nsSVGLength2 *
 nsSVGPatternFrame::GetLengthValue(uint32_t aIndex, nsIContent *aDefault)
 {
   const nsSVGLength2 *thisLength =
-    &static_cast<SVGPatternElement *>(mContent)->mLengthAttributes[aIndex];
+    &static_cast<SVGPatternElement *>(GetContent())->mLengthAttributes[aIndex];
 
   if (thisLength->IsExplicitlySet())
     return thisLength;
@@ -577,11 +577,11 @@ nsSVGPatternFrame::GetReferencedPattern()
     return nullptr;
 
   nsSVGPaintingProperty *property =
-    GetProperty(nsSVGEffects::HrefAsPaintingProperty());
+    GetProperty(SVGObserverUtils::HrefAsPaintingProperty());
 
   if (!property) {
     // Fetch our pattern element's href or xlink:href attribute
-    SVGPatternElement *pattern = static_cast<SVGPatternElement *>(mContent);
+    SVGPatternElement *pattern = static_cast<SVGPatternElement *>(GetContent());
     nsAutoString href;
     if (pattern->mStringAttributes[SVGPatternElement::HREF].IsExplicitlySet()) {
       pattern->mStringAttributes[SVGPatternElement::HREF]
@@ -603,8 +603,8 @@ nsSVGPatternFrame::GetReferencedPattern()
                                               mContent->GetUncomposedDoc(), base);
 
     property =
-      nsSVGEffects::GetPaintingProperty(targetURI, this,
-                                        nsSVGEffects::HrefAsPaintingProperty());
+      SVGObserverUtils::GetPaintingProperty(targetURI, this,
+                          SVGObserverUtils::HrefAsPaintingProperty());
     if (!property)
       return nullptr;
   }
@@ -660,7 +660,7 @@ nsSVGPatternFrame::ConstructCTM(const nsSVGViewBox& aViewBox,
                                 const Matrix &callerCTM,
                                 nsIFrame *aTarget)
 {
-  SVGSVGElement *ctx = nullptr;
+  SVGViewportElement *ctx = nullptr;
   nsIContent* targetContent = aTarget->GetContent();
   gfxFloat scaleX, scaleY;
 

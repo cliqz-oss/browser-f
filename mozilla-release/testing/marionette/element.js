@@ -12,10 +12,10 @@ Cu.import("resource://gre/modules/Log.jsm");
 Cu.import("chrome://marionette/content/assert.js");
 Cu.import("chrome://marionette/content/atom.js");
 const {
-  error,
   InvalidSelectorError,
   JavaScriptError,
   NoSuchElementError,
+  pprint,
   StaleElementReferenceError,
 } = Cu.import("chrome://marionette/content/error.js", {});
 Cu.import("chrome://marionette/content/wait.js");
@@ -107,7 +107,7 @@ element.Store = class {
   /**
    * Make an element seen.
    *
-   * @param {nsIDOMElement} el
+   * @param {Element} el
    *    Element to add to set of seen elements.
    *
    * @return {string}
@@ -140,6 +140,9 @@ element.Store = class {
    * Determine if the provided web element reference has been seen
    * before/is in the element store.
    *
+   * Unlike when getting the element, a staleness check is not
+   * performed.
+   *
    * @param {string} uuid
    *     Element's associated web element reference.
    *
@@ -153,51 +156,46 @@ element.Store = class {
   /**
    * Retrieve a DOM element by its unique web element reference/UUID.
    *
+   * Upon retrieving the element, an element staleness check is
+   * performed.
+   *
    * @param {string} uuid
    *     Web element reference, or UUID.
-   * @param {(nsIDOMWindow|ShadowRoot)} container
-   * Window and an optional shadow root that contains the element.
+   * @param {WindowProxy} window
+   *     Current browsing context, which may differ from the associate
+   *     browsing context of <var>el</var>.
    *
-   * @returns {nsIDOMElement}
+   * @returns {Element}
    *     Element associated with reference.
    *
-   * @throws {JavaScriptError}
-   *     If the provided reference is unknown.
+   * @throws {NoSuchElementError}
+   *     If the web element reference <var>uuid</var> has not been
+   *     seen before.
    * @throws {StaleElementReferenceError}
-   *     If element has gone stale, indicating it is no longer attached to
-   *     the DOM provided in the container.
+   *     If the element has gone stale, indicating it is no longer
+   *     attached to the DOM, or its node document is no longer the
+   *     active document.
    */
-  get(uuid, container) {
-    let el = this.els[uuid];
-    if (!el) {
-      throw new JavaScriptError(`Element reference not seen before: ${uuid}`);
+  get(uuid, window) {
+    if (!this.has(uuid)) {
+      throw new NoSuchElementError(
+          "Web element reference not seen before: " + uuid);
     }
 
+    let el;
+    let ref = this.els[uuid];
     try {
-      el = el.get();
+      el = ref.get();
     } catch (e) {
-      el = null;
       delete this.els[uuid];
     }
 
-    // use XPCNativeWrapper to compare elements (see bug 834266)
-    let wrappedFrame = new XPCNativeWrapper(container.frame);
-    let wrappedShadowRoot;
-    if (container.shadowRoot) {
-      wrappedShadowRoot = new XPCNativeWrapper(container.shadowRoot);
-    }
-    let wrappedEl = new XPCNativeWrapper(el);
-    let wrappedContainer = {
-      frame: wrappedFrame,
-      shadowRoot: wrappedShadowRoot,
-    };
-    if (!el ||
-        !(wrappedEl.ownerDocument == wrappedFrame.document) ||
-        element.isDisconnected(wrappedEl, wrappedContainer)) {
+    if (element.isStale(el, window)) {
       throw new StaleElementReferenceError(
-          error.pprint`The element reference of ${el} stale: ` +
-              "either the element is no longer attached to the DOM " +
-              "or the page has been refreshed");
+          pprint`The element reference of ${el || uuid} stale; ` +
+              "either the element is no longer attached to the DOM, " +
+              "it is not in the current frame context, " +
+              "or the document has been refreshed");
     }
 
     return el;
@@ -215,38 +213,41 @@ element.Store = class {
  * See the |element.Strategy| enum for a full list of supported
  * search strategies that can be passed to |strategy|.
  *
- * Available flags for |opts|:
+ * Available flags for <var>opts</var>:
  *
- *     |all|
- *       If true, a multi-element search selector is used and a sequence
- *       of elements will be returned.  Otherwise a single element.
+ * <dl>
+ *   <dt><code>all</code>
+ *   <dd>
+ *     If true, a multi-element search selector is used and a sequence
+ *     of elements will be returned.  Otherwise a single element.
  *
- *     |timeout|
- *       Duration to wait before timing out the search.  If |all| is
- *       false, a NoSuchElementError is thrown if unable to find
- *       the element within the timeout duration.
+ *   <dt><code>timeout</code>
+ *   <dd>
+ *     Duration to wait before timing out the search.  If <code>all</code>
+ *     is false, a {@link NoSuchElementError} is thrown if unable to
+ *     find the element within the timeout duration.
  *
- *     |startNode|
- *       Element to use as the root of the search.
+ *   <dt><code>startNode</code>
+ *   <dd>Element to use as the root of the search.
  *
- * @param {Object.<string, Window>} container
+ * @param {Object.<string, WindowProxy>} container
  *     Window object and an optional shadow root that contains the
  *     root shadow DOM element.
  * @param {string} strategy
  *     Search strategy whereby to locate the element(s).
  * @param {string} selector
  *     Selector search pattern.  The selector must be compatible with
- *     the chosen search |strategy|.
+ *     the chosen search <var>strategy</var>.
  * @param {Object.<string, ?>} opts
  *     Options.
  *
- * @return {Promise.<(nsIDOMElement|Array.<nsIDOMElement>)>}
+ * @return {Promise.<(Element|Array.<Element>)>}
  *     Single element or a sequence of elements.
  *
  * @throws InvalidSelectorError
- *     If |strategy| is unknown.
+ *     If <var>strategy</var> is unknown.
  * @throws InvalidSelectorError
- *     If |selector| is malformed.
+ *     If <var>selector</var> is malformed.
  * @throws NoSuchElementError
  *     If a single element is requested, this error will throw if the
  *     element is not found.
@@ -633,43 +634,43 @@ element.generateUUID = function() {
 };
 
 /**
- * Check if the element is detached from the current frame as well as
- * the optional shadow root (when inside a Shadow DOM context).
+ * Determines if <var>el</var> is stale.
  *
- * @param {nsIDOMElement} el
- *     Element to be checked.
- * @param {Container} container
- *     Container with |frame|, which is the window object that contains
- *     the element, and an optional |shadowRoot|.
+ * A stale element is an element no longer attached to the DOM or which
+ * node document is not the active document of the current browsing
+ * context.
+ *
+ * The currently selected browsing context, specified through
+ * <var>window<var>, is a WebDriver concept defining the target
+ * against which commands will run.  As the current browsing context
+ * may differ from <var>el</var>'s associated context, an element is
+ * considered stale even if it is connected to a living (not discarded)
+ * browsing context such as an <tt>&lt;iframe&gt;</tt>.
+ *
+ * @param {Element=} el
+ *     DOM element to check for staleness.  If null, which may be
+ *     the case if the element has been unwrapped from a weak
+ *     reference, it is always considered stale.
+ * @param {WindowProxy=} window
+ *     Current browsing context, which may differ from the associate
+ *     browsing context of <var>el</var>.  When retrieving XUL
+ *     elements, this is optional.
  *
  * @return {boolean}
- *     Flag indicating that the element is disconnected.
+ *     True if <var>el</var> is stale, false otherwise.
  */
-element.isDisconnected = function(el, container = {}) {
-  const {frame, shadowRoot} = container;
-  assert.defined(frame);
-
-  // shadow DOM
-  if (frame.ShadowRoot && shadowRoot) {
-    if (el.compareDocumentPosition(shadowRoot) &
-        DOCUMENT_POSITION_DISCONNECTED) {
-      return true;
-    }
-
-    // looking for next possible ShadowRoot ancestor
-    let parent = shadowRoot.host;
-    while (parent && !(parent instanceof frame.ShadowRoot)) {
-      parent = parent.parentNode;
-    }
-    return element.isDisconnected(
-        shadowRoot.host,
-        {frame, shadowRoot: parent});
+element.isStale = function(el, window = undefined) {
+  if (typeof window == "undefined") {
+    window = el.ownerGlobal;
   }
 
-  // outside shadow DOM
-  let docEl = frame.document.documentElement;
-  return el.compareDocumentPosition(docEl) &
-      DOCUMENT_POSITION_DISCONNECTED;
+  if (el === null ||
+      !el.ownerGlobal ||
+      el.ownerDocument !== window.document) {
+    return true;
+  }
+
+  return !el.isConnected;
 };
 
 /**
@@ -873,29 +874,32 @@ element.isObscured = function(el) {
   return !el.contains(tree[0]);
 };
 
+// TODO(ato): Only used by deprecated action API
+// https://bugzil.la/1354578
 /**
  * Calculate the in-view centre point of the area of the given DOM client
  * rectangle that is inside the viewport.
  *
  * @param {DOMRect} rect
- *     Element off a DOMRect sequence produced by calling |getClientRects|
- *     on a |DOMElement|.
- * @param {nsIDOMWindow} win
- *     Current browsing context.
+ *     Element off a DOMRect sequence produced by calling
+ *     <code>getClientRects</code> on an {@link Element}.
+ * @param {WindowProxy} window
+ *     Current window global.
  *
  * @return {Map.<string, number>}
- *     X and Y coordinates that denotes the in-view centre point of |rect|.
+ *     X and Y coordinates that denotes the in-view centre point of
+ *     <var>rect</var>.
  */
-element.getInViewCentrePoint = function(rect, win) {
+element.getInViewCentrePoint = function(rect, window) {
   const {max, min} = Math;
 
   let x = {
     left: max(0, min(rect.x, rect.x + rect.width)),
-    right: min(win.innerWidth, max(rect.x, rect.x + rect.width)),
+    right: min(window.innerWidth, max(rect.x, rect.x + rect.width)),
   };
   let y = {
     top: max(0, min(rect.y, rect.y + rect.height)),
-    bottom: min(win.innerHeight, max(rect.y, rect.y + rect.height)),
+    bottom: min(window.innerHeight, max(rect.y, rect.y + rect.height)),
   };
 
   return {
@@ -930,7 +934,7 @@ element.getPointerInteractablePaintTree = function(el) {
   }
 
   // pointer-interactable elements tree, step 1
-  if (element.isDisconnected(el, container)) {
+  if (!el.isConnected) {
     return [];
   }
 

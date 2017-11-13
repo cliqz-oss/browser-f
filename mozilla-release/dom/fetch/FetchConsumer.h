@@ -8,8 +8,9 @@
 #define mozilla_dom_FetchConsumer_h
 
 #include "Fetch.h"
-#include "nsIObserver.h"
+#include "mozilla/dom/AbortSignal.h"
 #include "mozilla/dom/MutableBlobStorage.h"
+#include "nsIObserver.h"
 #include "nsWeakReference.h"
 
 class nsIThread;
@@ -32,6 +33,7 @@ template <class Derived> class FetchBody;
 template <class Derived>
 class FetchBodyConsumer final : public nsIObserver
                               , public nsSupportsWeakReference
+                              , public AbortFollower
 {
 public:
   NS_DECL_THREADSAFE_ISUPPORTS
@@ -41,6 +43,7 @@ public:
   Create(nsIGlobalObject* aGlobal,
          nsIEventTarget* aMainThreadEventTarget,
          FetchBody<Derived>* aBody,
+         AbortSignal* aSignal,
          FetchConsumeType aType,
          ErrorResult& aRv);
 
@@ -71,6 +74,9 @@ public:
     mShuttingDown = true;
     mConsumeBodyPump = nullptr;
   }
+
+  // AbortFollower
+  void Abort() override;
 
 private:
   FetchBodyConsumer(nsIEventTarget* aMainThreadEventTarget,

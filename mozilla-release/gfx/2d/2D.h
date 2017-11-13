@@ -74,6 +74,7 @@ class Mutex;
 
 namespace gfx {
 class UnscaledFont;
+class ScaledFont;
 }
 
 template<>
@@ -85,6 +86,15 @@ struct WeakPtrTraits<gfx::UnscaledFont>
     // thread to be accessed from other threads if the Servo font metrics
     // mutex is locked, and for objects created on Servo style worker threads
     // to be accessed later back on the main thread.
+    AssertIsMainThreadOrServoFontMetricsLocked();
+  }
+};
+
+template<>
+struct WeakPtrTraits<gfx::ScaledFont>
+{
+  static void AssertSafeToAccessFromNonOwningThread()
+  {
     AssertIsMainThreadOrServoFontMetricsLocked();
   }
 };
@@ -769,22 +779,28 @@ protected:
   UnscaledFont() {}
 
 private:
-  static uint32_t sDeletionCounter;
+  static Atomic<uint32_t> sDeletionCounter;
 };
 
 /** This class is an abstraction of a backend/platform specific font object
  * at a particular size. It is passed into text drawing calls to describe
  * the font used for the drawing call.
  */
-class ScaledFont : public external::AtomicRefCounted<ScaledFont>
+class ScaledFont
+  : public external::AtomicRefCounted<ScaledFont>
+  , public SupportsWeakPtr<ScaledFont>
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(ScaledFont)
-  virtual ~ScaledFont() {}
+  MOZ_DECLARE_WEAKREFERENCE_TYPENAME(ScaledFont)
+
+  virtual ~ScaledFont();
 
   virtual FontType GetType() const = 0;
   virtual Float GetSize() const = 0;
   virtual AntialiasMode GetDefaultAAMode();
+
+  static uint32_t DeletionCounter() { return sDeletionCounter; }
 
   /** This allows getting a path that describes the outline of a set of glyphs.
    * A target is passed in so that the guarantee is made the returned path
@@ -823,6 +839,9 @@ public:
 
   const RefPtr<UnscaledFont>& GetUnscaledFont() const { return mUnscaledFont; }
 
+  virtual cairo_scaled_font_t* GetCairoScaledFont() { return nullptr; }
+  virtual void SetCairoScaledFont(cairo_scaled_font_t* font) {}
+
 protected:
   explicit ScaledFont(const RefPtr<UnscaledFont>& aUnscaledFont)
     : mUnscaledFont(aUnscaledFont)
@@ -830,6 +849,9 @@ protected:
 
   UserData mUserData;
   RefPtr<UnscaledFont> mUnscaledFont;
+
+private:
+  static Atomic<uint32_t> sDeletionCounter;
 };
 
 /**
@@ -882,7 +904,7 @@ class DrawTargetCapture;
  * may be used either through a Snapshot or by flushing the target and directly
  * accessing the backing store a DrawTarget was created with.
  */
-class DrawTarget : public RefCounted<DrawTarget>
+class DrawTarget : public external::AtomicRefCounted<DrawTarget>
 {
 public:
   MOZ_DECLARE_REFCOUNTED_VIRTUAL_TYPENAME(DrawTarget)

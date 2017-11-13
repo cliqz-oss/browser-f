@@ -98,8 +98,7 @@ WrapWithWebRenderTextureHost(ISurfaceAllocator* aDeallocator,
                              LayersBackend aBackend,
                              TextureFlags aFlags)
 {
-  if (!gfx::gfxVars::UseWebRender() ||
-      (aFlags & TextureFlags::SNAPSHOT) ||
+  if ((aFlags & TextureFlags::SNAPSHOT) ||
       (aBackend != LayersBackend::LAYERS_WR) ||
       (!aDeallocator->UsesImageBridge() && !aDeallocator->AsCompositorBridgeParentBase())) {
     return false;
@@ -587,7 +586,7 @@ BufferTextureHost::GetWRImageKeys(nsTArray<wr::ImageKey>& aImageKeys,
 }
 
 void
-BufferTextureHost::AddWRImage(wr::WebRenderAPI* aAPI,
+BufferTextureHost::AddWRImage(wr::ResourceUpdateQueue& aResources,
                               Range<const wr::ImageKey>& aImageKeys,
                               const wr::ExternalImageId& aExtID)
 {
@@ -597,28 +596,28 @@ BufferTextureHost::AddWRImage(wr::WebRenderAPI* aAPI,
     wr::ImageDescriptor descriptor(GetSize(),
                                    ImageDataSerializer::ComputeRGBStride(GetFormat(), GetSize().width),
                                    GetFormat());
-    aAPI->AddExternalImageBuffer(aImageKeys[0], descriptor, aExtID);
+    aResources.AddExternalImageBuffer(aImageKeys[0], descriptor, aExtID);
   } else {
     MOZ_ASSERT(aImageKeys.length() == 3);
 
     const layers::YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     wr::ImageDescriptor yDescriptor(desc.ySize(), desc.ySize().width, gfx::SurfaceFormat::A8);
     wr::ImageDescriptor cbcrDescriptor(desc.cbCrSize(), desc.cbCrSize().width, gfx::SurfaceFormat::A8);
-    aAPI->AddExternalImage(aImageKeys[0],
-                           yDescriptor,
-                           aExtID,
-                           wr::WrExternalImageBufferType::ExternalBuffer,
-                           0);
-    aAPI->AddExternalImage(aImageKeys[1],
-                           cbcrDescriptor,
-                           aExtID,
-                           wr::WrExternalImageBufferType::ExternalBuffer,
-                           1);
-    aAPI->AddExternalImage(aImageKeys[2],
-                           cbcrDescriptor,
-                           aExtID,
-                           wr::WrExternalImageBufferType::ExternalBuffer,
-                           2);
+    aResources.AddExternalImage(aImageKeys[0],
+                                yDescriptor,
+                                aExtID,
+                                wr::WrExternalImageBufferType::ExternalBuffer,
+                                0);
+    aResources.AddExternalImage(aImageKeys[1],
+                                cbcrDescriptor,
+                                aExtID,
+                                wr::WrExternalImageBufferType::ExternalBuffer,
+                                1);
+    aResources.AddExternalImage(aImageKeys[2],
+                                cbcrDescriptor,
+                                aExtID,
+                                wr::WrExternalImageBufferType::ExternalBuffer,
+                                2);
   }
 }
 
@@ -631,11 +630,12 @@ BufferTextureHost::PushExternalImage(wr::DisplayListBuilder& aBuilder,
 {
   if (GetFormat() != gfx::SurfaceFormat::YUV) {
     MOZ_ASSERT(aImageKeys.length() == 1);
-    aBuilder.PushImage(aBounds, aClip, aFilter, aImageKeys[0]);
+    aBuilder.PushImage(aBounds, aClip, true, aFilter, aImageKeys[0]);
   } else {
     MOZ_ASSERT(aImageKeys.length() == 3);
     aBuilder.PushYCbCrPlanarImage(aBounds,
                                   aClip,
+                                  true,
                                   aImageKeys[0],
                                   aImageKeys[1],
                                   aImageKeys[2],

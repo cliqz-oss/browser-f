@@ -41,6 +41,7 @@ use std::hash::{Hash, Hasher};
 use std::iter::{ExactSizeIterator, Iterator};
 use std::mem;
 use std::ops::{Deref, DerefMut};
+use std::os::raw::c_void;
 use std::process;
 use std::ptr;
 use std::slice;
@@ -121,6 +122,12 @@ impl<T: ?Sized + 'static> PartialEq for NonZeroPtrMut<T> {
 
 impl<T: ?Sized + 'static> Eq for NonZeroPtrMut<T> {}
 
+impl<T: Sized + 'static> Hash for NonZeroPtrMut<T> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.ptr().hash(state)
+    }
+}
+
 pub struct Arc<T: ?Sized + 'static> {
     p: NonZeroPtrMut<ArcInner<T>>,
 }
@@ -200,6 +207,7 @@ impl<T> Arc<T> {
     pub fn borrow_arc<'a>(&'a self) -> ArcBorrow<'a, T> {
         ArcBorrow(&**self)
     }
+
     /// Temporarily converts |self| into a bonafide RawOffsetArc and exposes it to the
     /// provided callback. The refcount is not modified.
     #[inline(always)]
@@ -217,6 +225,12 @@ impl<T> Arc<T> {
 
         // Forward the result.
         result
+    }
+
+    /// Returns the address on the heap of the Arc itself -- not the T within it -- for memory
+    /// reporting.
+    pub fn heap_ptr(&self) -> *const c_void {
+        self.p.ptr() as *const ArcInner<T> as *const c_void
     }
 }
 
@@ -323,7 +337,7 @@ impl<T: ?Sized> Arc<T> {
     }
 
     #[inline]
-    fn is_unique(&self) -> bool {
+    pub fn is_unique(&self) -> bool {
         // We can use Relaxed here, but the justification is a bit subtle.
         //
         // The reason to use Acquire would be to synchronize with other threads
@@ -668,6 +682,12 @@ impl<H: 'static, T: 'static> ThinArc<H, T> {
         // Forward the result.
         result
     }
+
+    /// Returns the address on the heap of the ThinArc itself -- not the T
+    /// within it -- for memory reporting.
+    pub fn heap_ptr(&self) -> *const c_void {
+        self.ptr as *const ArcInner<T> as *const c_void
+    }
 }
 
 impl<H, T> Deref for ThinArc<H, T> {
@@ -871,7 +891,7 @@ impl<T: 'static> Arc<T> {
 ///
 /// ArcBorrow lets us deal with borrows of known-refcounted objects
 /// without needing to worry about how they're actually stored.
-#[derive(PartialEq, Eq)]
+#[derive(Eq, PartialEq)]
 pub struct ArcBorrow<'a, T: 'a>(&'a T);
 
 impl<'a, T> Copy for ArcBorrow<'a, T> {}

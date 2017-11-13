@@ -390,7 +390,7 @@ nsFaviconService::SetAndFetchFaviconForPage(nsIURI* aPageURI,
       icon.host.Cut(0, 4);
     }
     nsAutoCString path;
-    rv = aFaviconURI->GetPath(path);
+    rv = aFaviconURI->GetPathQueryRef(path);
     if (NS_SUCCEEDED(rv) && path.EqualsLiteral("/favicon.ico")) {
       icon.rootIcon = 1;
     }
@@ -463,7 +463,7 @@ nsFaviconService::ReplaceFaviconData(nsIURI* aFaviconURI,
   nsresult rv = aFaviconURI->GetSpec(iconData->spec);
   NS_ENSURE_SUCCESS(rv, rv);
   nsAutoCString path;
-  rv = aFaviconURI->GetPath(path);
+  rv = aFaviconURI->GetPathQueryRef(path);
   if (NS_SUCCEEDED(rv) && path.EqualsLiteral("/favicon.ico")) {
     iconData->rootIcon = 1;
   }
@@ -825,8 +825,8 @@ nsFaviconService::OptimizeIconSizes(IconData& aIcon)
 
   // decode image
   nsCOMPtr<imgIContainer> container;
-  rv = GetImgTools()->DecodeImageData(stream, payload.mimeType,
-                                      getter_AddRefs(container));
+  rv = GetImgTools()->DecodeImage(stream, payload.mimeType,
+                                  getter_AddRefs(container));
   NS_ENSURE_SUCCESS(rv, rv);
 
   // For ICO files, we must evaluate each of the frames we care about.

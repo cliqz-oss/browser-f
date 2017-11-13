@@ -9,7 +9,7 @@ kind-dependencies:
 
 transforms:
    - taskgraph.transforms.build_attrs:transforms
-   - taskgraph.transforms.toolchain:transforms
+   - taskgraph.transforms.use_toolchains:transforms
    - taskgraph.transforms.job:transforms
    - taskgraph.transforms.task:transforms
 
@@ -33,7 +33,7 @@ jobs:
             docker-image: {in-tree: desktop-build}
             max-run-time: 36000
             env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/clang.manifest.centos6"
+                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         run:
             using: mozharness
             actions: [build]
@@ -44,6 +44,7 @@ jobs:
             tooltool-downloads: public
             keep-artifacts: false
         toolchains:
+            - linux64-clang
             - linux64-sccache
 
     linux64-st-an/opt:
@@ -57,7 +58,7 @@ jobs:
             docker-image: {in-tree: desktop-build}
             max-run-time: 36000
             env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/clang.manifest.centos6"
+                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/linux64/releng.manifest"
         run:
             using: mozharness
             actions: [build]
@@ -68,6 +69,7 @@ jobs:
             tooltool-downloads: public
             keep-artifacts: false
         toolchains:
+            - linux64-clang
             - linux64-sccache
 
     win32-st-an/debug:
@@ -83,7 +85,7 @@ jobs:
         worker:
             max-run-time: 7200
             env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/clang.manifest"
+                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
         run:
             using: mozharness
             script: mozharness/scripts/fx_desktop_build.py
@@ -106,7 +108,7 @@ jobs:
         worker:
             max-run-time: 7200
             env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/clang.manifest"
+                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
         run:
             using: mozharness
             script: mozharness/scripts/fx_desktop_build.py
@@ -129,7 +131,7 @@ jobs:
         worker:
             max-run-time: 7200
             env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/clang.manifest"
+                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
         run:
             using: mozharness
             script: mozharness/scripts/fx_desktop_build.py
@@ -152,7 +154,7 @@ jobs:
         worker:
             max-run-time: 7200
             env:
-                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/clang.manifest"
+                TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
         run:
             using: mozharness
             script: mozharness/scripts/fx_desktop_build.py

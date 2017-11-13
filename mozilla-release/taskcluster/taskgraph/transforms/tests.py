@@ -66,7 +66,7 @@ WINDOWS_WORKER_TYPES = {
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
       'hardware': 'releng-hardware/gecko-t-win7-32-hw',
     },
-    'windows7-32-stylo': {
+    'windows7-32-stylo-disabled': {
       'virtual': 'aws-provisioner-v1/gecko-t-win7-32',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win7-32-gpu',
       'hardware': 'releng-hardware/gecko-t-win7-32-hw',
@@ -91,7 +91,7 @@ WINDOWS_WORKER_TYPES = {
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
     },
-    'windows10-64-stylo': {
+    'windows10-64-stylo-disabled': {
       'virtual': 'aws-provisioner-v1/gecko-t-win10-64',
       'virtual-with-gpu': 'aws-provisioner-v1/gecko-t-win10-64-gpu',
       'hardware': 'releng-hardware/gecko-t-win10-64-hw',
@@ -198,7 +198,7 @@ test_description_schema = Schema({
     # without e10s; if true, run with e10s; if 'both', run one task with and
     # one task without e10s.  E10s tasks have "-e10s" appended to the test name
     # and treeherder group.
-    Required('e10s', default='both'): optionally_keyed_by(
+    Required('e10s', default='true'): optionally_keyed_by(
         'test-platform', 'project',
         Any(bool, 'both')),
 
@@ -230,13 +230,15 @@ test_description_schema = Schema({
     # name of the docker image or in-tree docker image to run the task in.  If
     # in-tree, then a dependency will be created automatically.  This is
     # generally `desktop-test`, or an image that acts an awful lot like it.
-    Required('docker-image', default={'in-tree': 'desktop-test'}): optionally_keyed_by(
+    Required('docker-image', default={'in-tree': 'desktop1604-test'}): optionally_keyed_by(
         'test-platform',
         Any(
             # a raw Docker image path (repo/image:tag)
             basestring,
             # an in-tree generated docker image (from `taskcluster/docker/<name>`)
-            {'in-tree': basestring}
+            {'in-tree': basestring},
+            # an indexed docker image
+            {'indexed': basestring},
         )
     ),
 
@@ -405,7 +407,7 @@ def set_defaults(config, tests):
         else:
             # all non-android tests want to run the bits that require node
             test['mozharness']['set-moz-node-path'] = True
-            test.setdefault('e10s', 'both')
+            test.setdefault('e10s', 'true')
 
         # software-gl-layers is only meaningful on linux unittests, where it defaults to True
         if test['test-platform'].startswith('linux') and test['suite'] != 'talos':
@@ -504,7 +506,7 @@ def set_treeherder_machine_platform(config, tests):
         # platform based on regular macOS builds, such as for Stylo.
         # Since it's unclear if the regular macOS builds can be removed from
         # the table, workaround the issue for Stylo.
-        if '-stylo' in test['test-platform']:
+        if '-stylo-disabled' in test['test-platform']:
             test['treeherder-machine-platform'] = test['test-platform']
         else:
             test['treeherder-machine-platform'] = translation.get(
@@ -526,24 +528,34 @@ def set_tier(config, tests):
                                          'linux32/debug',
                                          'linux32-nightly/opt',
                                          'linux32-devedition/opt',
+                                         'linux32-stylo-disabled/debug',
+                                         'linux32-stylo-disabled/opt',
                                          'linux64/opt',
                                          'linux64-nightly/opt',
                                          'linux64/debug',
                                          'linux64-pgo/opt',
                                          'linux64-devedition/opt',
                                          'linux64-asan/opt',
+                                         'linux64-stylo-disabled/debug',
+                                         'linux64-stylo-disabled/opt',
                                          'windows7-32/debug',
                                          'windows7-32/opt',
                                          'windows7-32-pgo/opt',
                                          'windows7-32-devedition/opt',
                                          'windows7-32-nightly/opt',
+                                         'windows7-32-stylo-disabled/debug',
+                                         'windows7-32-stylo-disabled/opt',
                                          'windows10-64/debug',
                                          'windows10-64/opt',
                                          'windows10-64-pgo/opt',
                                          'windows10-64-devedition/opt',
                                          'windows10-64-nightly/opt',
+                                         'windows10-64-stylo-disabled/debug',
+                                         'windows10-64-stylo-disabled/opt',
                                          'macosx64/opt',
                                          'macosx64/debug',
+                                         'macosx64-stylo-disabled/debug',
+                                         'macosx64-stylo-disabled/opt',
                                          'android-4.3-arm7-api-16/opt',
                                          'android-4.3-arm7-api-16/debug',
                                          'android-4.2-x86/opt']:
@@ -612,7 +624,8 @@ def handle_keyed_by(config, tests):
 def enable_code_coverage(config, tests):
     """Enable code coverage for the linux64-ccov/opt & linux64-jsdcov/opt build-platforms"""
     for test in tests:
-        if test['build-platform'] == 'linux64-ccov/opt':
+        if test['build-platform'] == 'linux64-ccov/opt' and \
+                not test['test-name'].startswith('test-verify'):
             test['mozharness'].setdefault('extra-options', []).append('--code-coverage')
             test['when'] = {}
             test['instance-size'] = 'xlarge'
@@ -684,6 +697,15 @@ def split_chunks(config, tests):
             test['this-chunk'] = 1
             yield test
             continue
+
+        # HACK: Bug 1373578 appears to pass with more chunks, non-e10s only though
+        if test['test-platform'] == 'windows7-32/debug' and test['test-name'] == 'reftest':
+            test['chunks'] = 32
+
+        if (test['test-platform'] == 'windows7-32/opt' or
+            test['test-platform'] == 'windows7-32-pgo/opt') and \
+                test['test-name'] in ['reftest-e10s', 'reftest-no-accel-e10s', 'reftest-gpu-e10s']:
+            test['chunks'] = 32
 
         for this_chunk in range(1, test['chunks'] + 1):
             # copy the test and update with the chunk number
@@ -768,18 +790,16 @@ def set_test_type(config, tests):
 
 
 @transforms.add
-def enable_stylo(config, tests):
+def disable_stylo(config, tests):
     """
-    Force Stylo on for all its tests, except Stylo vs. Gecko reftests where the
-    test harness will handle this.
+    Disable Stylo for all jobs on `-stylo-disabled` platforms.
     """
     for test in tests:
-        if '-stylo' not in test['test-platform']:
+        if '-stylo-disabled' not in test['test-platform']:
             yield test
             continue
 
-        if 'reftest-stylo' not in test['suite']:
-            test['mozharness'].setdefault('extra-options', []).append('--enable-stylo')
+        test['mozharness'].setdefault('extra-options', []).append('--disable-stylo')
 
         yield test
 

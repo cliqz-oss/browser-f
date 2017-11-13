@@ -2345,11 +2345,6 @@ public:
   static bool CSSFiltersEnabled();
 
   /**
-   * Checks if we should enable parsing for CSS clip-path basic shapes.
-   */
-  static bool CSSClipPathShapesEnabled();
-
-  /**
    * Checks whether support for the CSS-wide "unset" value is enabled.
    */
   static bool UnsetValueEnabled();
@@ -2365,6 +2360,11 @@ public:
    * 'true' value is enabled.
    */
   static bool IsTextAlignUnsafeValueEnabled();
+
+  /**
+   * Checks whether support for inter-character ruby is enabled.
+   */
+  static bool IsInterCharacterRubyEnabled();
 
   static bool InterruptibleReflowEnabled()
   {
@@ -2484,10 +2484,17 @@ public:
   // to disable it dynamically in stylo-enabled builds via a pref.
   static bool StyloEnabled() {
 #ifdef MOZ_STYLO
-    return sStyloEnabled;
+    return sStyloEnabled && StyloSupportedInCurrentProcess();
 #else
     return false;
 #endif
+  }
+
+  // Whether Stylo should be allowed to be enabled in this process.  This
+  // returns true for content processes and the non-e10s parent process.
+  static bool StyloSupportedInCurrentProcess() {
+     return XRE_IsContentProcess() ||
+            (XRE_IsParentProcess() && !XRE_IsE10sParentProcess());
   }
 
   static bool StyleAttrWithXMLBaseDisabled() {
@@ -2521,6 +2528,31 @@ public:
 
   static void Initialize();
   static void Shutdown();
+
+#ifdef MOZ_STYLO
+  /**
+   * Principal-based blocklist for stylo.
+   * Check if aPrincipal is blocked by stylo's blocklist and should fallback to
+   * use Gecko's style backend. Note that using a document's principal rather
+   * than the document URI will let us piggy-back off the existing principal
+   * relationships and symmetries.
+   */
+  static bool IsInStyloBlocklist(nsIPrincipal* aPrincipal);
+
+  /**
+   * Add aBlockedDomain to the existing stylo blocklist, i.e., sStyloBlocklist.
+   * This function is exposed to nsDOMWindowUtils and only for testing purpose.
+   * So, NEVER use this in any other cases.
+   */
+  static void AddToStyloBlocklist(const nsACString& aBlockedDomain);
+
+  /**
+   * Remove aBlockedDomain from the existing stylo blocklist, i.e., sStyloBlocklist.
+   * This function is exposed to nsDOMWindowUtils and only for testing purpose.
+   * So, NEVER use this in any other cases.
+   */
+  static void RemoveFromStyloBlocklist(const nsACString& aBlockedDomain);
+#endif
 
   /**
    * Register an imgIRequest object with a refresh driver.
@@ -2848,6 +2880,16 @@ public:
                                               const ContainerLayerParameters& aContainerParameters);
 
   /**
+   * Returns the metadata to put onto the root layer of a layer tree, if one is
+   * needed. The last argument is a callback function to check if the caller
+   * already has a metadata for a given scroll id.
+   */
+  static mozilla::Maybe<ScrollMetadata> GetRootMetadata(nsDisplayListBuilder* aBuilder,
+                                                        Layer* aRootLayer,
+                                                        const ContainerLayerParameters& aContainerParameters,
+                                                        const std::function<bool(ViewID& aScrollId)>& aCallback);
+
+  /**
    * If the given scroll frame needs an area excluded from its composition
    * bounds due to scrollbars, return that area, otherwise return an empty
    * margin.
@@ -2974,6 +3016,8 @@ private:
   static bool sTextCombineUprightDigitsEnabled;
 #ifdef MOZ_STYLO
   static bool sStyloEnabled;
+  static bool sStyloBlocklistEnabled;
+  static nsTArray<nsCString>* sStyloBlocklist;
 #endif
   static bool sStyleAttrWithXMLBaseDisabled;
   static uint32_t sIdlePeriodDeadlineLimit;
@@ -3132,6 +3176,23 @@ public:
 
   nsCOMPtr<nsIContent> mContent;
   nsCOMPtr<nsIAtom> mAttrName;
+};
+
+// This class allows you to easily set any pointer variable and ensure it's
+// set to nullptr when leaving its scope.
+template<typename T>
+class MOZ_RAII SetAndNullOnExit
+{
+public:
+  SetAndNullOnExit(T* &aVariable, T* aValue) {
+    aVariable = aValue;
+    mVariable = &aVariable;
+  }
+  ~SetAndNullOnExit() {
+    *mVariable = nullptr;
+  }
+private:
+  T** mVariable;
 };
 
 #endif // nsLayoutUtils_h__

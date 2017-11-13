@@ -952,7 +952,7 @@ nsHttpChannelAuthProvider::GetCredentialsForChallenge(const char *challenge,
     // that we don't transparently authenticate as someone they're not
     // expecting to authenticate as.
     //
-    nsXPIDLCString result;
+    nsCString result;
     rv = GenCredsAndSetEntry(auth, proxyAuth, scheme.get(), host, port,
                              path.get(), realm.get(), challenge, *ident,
                              sessionStateGrip, getter_Copies(result));
@@ -1353,7 +1353,7 @@ NS_IMETHODIMP nsHttpChannelAuthProvider::OnAuthAvailable(nsISupports *aContext,
         return NS_OK;
     }
 
-    nsXPIDLCString creds;
+    nsCString creds;
     rv = GenCredsAndSetEntry(auth, mProxyAuth,
                              scheme.get(), host, port, path.get(),
                              realm.get(), mCurrentChallenge.get(), *ident,
@@ -1586,9 +1586,9 @@ nsHttpChannelAuthProvider::ConfirmAuth(const char* bundleKey,
 
     const char16_t *strs[2] = { ucsHost.get(), ucsUser.get() };
 
-    nsXPIDLString msg;
-    bundle->FormatStringFromName(bundleKey, strs, 2, getter_Copies(msg));
-    if (!msg)
+    nsAutoString msg;
+    rv = bundle->FormatStringFromName(bundleKey, strs, 2, msg);
+    if (NS_FAILED(rv))
         return true;
 
     nsCOMPtr<nsIInterfaceRequestor> callbacks;
@@ -1614,7 +1614,7 @@ nsHttpChannelAuthProvider::ConfirmAuth(const char* bundleKey,
     if (doYesNoPrompt) {
         int32_t choice;
         bool checkState = false;
-        rv = prompt->ConfirmEx(nullptr, msg,
+        rv = prompt->ConfirmEx(nullptr, msg.get(),
                                nsIPrompt::BUTTON_POS_1_DEFAULT +
                                nsIPrompt::STD_YES_NO_BUTTONS,
                                nullptr, nullptr, nullptr, nullptr,
@@ -1625,7 +1625,7 @@ nsHttpChannelAuthProvider::ConfirmAuth(const char* bundleKey,
         confirmed = choice == 0;
     }
     else {
-        rv = prompt->Confirm(nullptr, msg, &confirmed);
+        rv = prompt->Confirm(nullptr, msg.get(), &confirmed);
         if (NS_FAILED(rv))
             return true;
     }
@@ -1693,7 +1693,7 @@ nsHttpChannelAuthProvider::SetAuthorizationHeader(nsHttpAuthCache    *authCache,
         else
             identFromURI = true;
 
-        nsXPIDLCString temp;
+        nsCString temp;  // this must have the same lifetime as creds
         const char *creds     = entry->Creds();
         const char *challenge = entry->Challenge();
         // we can only send a preemptive Authorization header if we have either
@@ -1748,7 +1748,7 @@ nsHttpChannelAuthProvider::GetCurrentPath(nsACString &path)
     if (url)
         rv = url->GetDirectory(path);
     else
-        rv = mURI->GetPath(path);
+        rv = mURI->GetPathQueryRef(path);
     return rv;
 }
 

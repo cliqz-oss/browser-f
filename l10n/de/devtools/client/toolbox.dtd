@@ -147,17 +147,12 @@
 <!-- LOCALIZATION NOTE (options.sourceMap.label): This is the
    - label for the checkbox that toggles source maps in the Debugger -->
 <!ENTITY options.sourceMaps.label      "Source-Maps aktivieren">
-<!ENTITY options.sourceMaps.tooltip    "Beim Aktivieren dieser Einstellung beziehen sich Quelltextverweise im Debugger und in der Konsole auf entsprechenden, meist lesbareren Quelltext anstatt den eigentlichen, meist minimierten Quelltext.">
+<!ENTITY options.sourceMaps.tooltip1   "Beim Aktivieren dieser Einstellung beziehen sich Quelltextverweise in den Werkzeugen auf entsprechenden, meist lesbareren Quelltext anstatt den eigentlichen, meist minimierten Quelltext.">
 
 <!-- LOCALIZATION NOTE (options.styleeditor.label): This is the label for the
   -  heading of the group of Style Editor preferences in the options
   -  panel. -->
 <!ENTITY options.styleeditor.label            "Stilbearbeitung">
-
-<!-- LOCALIZATION NOTE (options.stylesheetSourceMaps.label): This is the
-   - label for the checkbox that toggles showing original sources in the Style Editor -->
-<!ENTITY options.stylesheetSourceMaps.label      "Ursprüngliche Quellen anzeigen">
-<!ENTITY options.stylesheetSourceMaps.tooltip    "Ursprüngliche Quellen (z.B. Sass-Dateien) in Stilbearbeitung und Inspektor anzeigen">
 
 <!-- LOCALIZATION NOTE (options.stylesheetAutocompletion.label): This is the
    - label for the checkbox that toggles autocompletion of css in the Style Editor -->
@@ -176,20 +171,8 @@
 
 <!-- LOCALIZATION NOTE (options.screenshot.audio.label): This is the
    - label for the checkbox that toggles the camera shutter audio for screenshot tool -->
-<!ENTITY options.screenshot.audio.label      "Ton einer Kameraverschlusses abspielen">
+<!ENTITY options.screenshot.audio.label      "Ton eines Kameraverschlusses abspielen">
 <!ENTITY options.screenshot.audio.tooltip    "Toneffekt eines Kameraverschlusses während der Aufnahme eines Bildschirmfotos wiedergeben">
-
-<!-- LOCALIZATION NOTE (options.commonprefs): This is the label for the heading
-      of all preferences that affect both the Web Console and the Network
-      Monitor -->
-<!ENTITY options.commonPrefs.label           "Allgemeine Einstellungen">
-
-<!-- LOCALIZATION NOTE (options.enablePersistentLogs.label): This is the
-  -  label for the checkbox that toggles persistent logs in the Web Console and
-  -  network monitor,  i.e. devtools.webconsole.persistlog a boolean preference in
-  -  about:config, in the options panel. -->
-<!ENTITY options.enablePersistentLogs.label    "Logdaten bei Navigation behalten">
-<!ENTITY options.enablePersistentLogs.tooltip  "Beim Aktivieren dieser Einstellung wird der Inhalt der Web-Konsole und der Netzwerkanalyse nicht geleert, wenn eine neue Seite aufgerufen wird.">
 
 <!-- LOCALIZATION NOTE (options.showPlatformData.label): This is the
   -  label for the checkbox that toggles the display of the platform data in the,

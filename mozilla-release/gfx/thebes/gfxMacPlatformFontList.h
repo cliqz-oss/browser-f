@@ -43,6 +43,8 @@ public:
         ::CGFontRelease(mFontRef);
     }
 
+    gfxFontEntry* Clone() const override;
+
     CGFontRef GetFontRef();
 
     // override gfxFontEntry table access function to bypass table cache,
@@ -58,6 +60,8 @@ public:
 
     bool HasVariations();
     bool IsCFF();
+
+    bool SupportsOpenTypeFeature(Script aScript, uint32_t aFeatureTag) override;
 
 protected:
     gfxFont* CreateFontInstance(const gfxFontStyle *aFontStyle,
@@ -77,6 +81,8 @@ protected:
     bool mIsCFFInitialized;
     bool mHasVariations;
     bool mHasVariationsInitialized;
+    bool mHasAATSmallCaps;
+    bool mHasAATSmallCapsInitialized;
     nsTHashtable<nsUint32HashKey> mAvailableTables;
 
     mozilla::WeakPtr<mozilla::gfx::UnscaledFont> mUnscaledFont;
@@ -87,6 +93,8 @@ public:
     static gfxMacPlatformFontList* PlatformFontList() {
         return static_cast<gfxMacPlatformFontList*>(sPlatformFontList);
     }
+
+    gfxFontFamily* CreateFontFamily(const nsAString& aName) const override;
 
     static int32_t AppleWeightToCSSWeight(int32_t aAppleWeight);
 
@@ -106,6 +114,7 @@ public:
 
     bool FindAndAddFamilies(const nsAString& aFamily,
                             nsTArray<gfxFontFamily*>* aOutput,
+                            FindFamiliesFlags aFlags,
                             gfxFontStyle* aStyle = nullptr,
                             gfxFloat aDevToCssSize = 1.0) override;
 
@@ -176,6 +185,8 @@ private:
     void AddFamily(CFStringRef aFamily);
 
     void AddFamily(const nsAString& aFamilyName, bool aSystemFont);
+
+    void ActivateFontsFromDir(nsIFile* aDir);
 
 #ifdef MOZ_BUNDLED_FONTS
     void ActivateBundledFonts();

@@ -8,7 +8,6 @@
 #include "MockMediaResource.h"
 #include "DecoderTraits.h"
 #include "MediaContainerType.h"
-#include "MP4Decoder.h"
 #include "MP4Demuxer.h"
 #include "WebMDecoder.h"
 #include "WebMDemuxer.h"
@@ -50,8 +49,8 @@ TEST(MediaDataDecoder, H264)
          /* DecoderDoctorDiagnostics* */ nullptr)) {
     EXPECT_TRUE(true);
   } else {
-    RefPtr<MediaResource> resource = new MockMediaResource("gizmo.mp4");
-    nsresult rv = resource->Open(nullptr);
+    RefPtr<MockMediaResource> resource = new MockMediaResource("gizmo.mp4");
+    nsresult rv = resource->Open();
     EXPECT_TRUE(NS_SUCCEEDED(rv));
 
     BenchmarkRunner runner(new Benchmark(new MP4Demuxer(resource)));
@@ -64,8 +63,8 @@ TEST(MediaDataDecoder, VP9)
   if (!WebMDecoder::IsSupportedType(MediaContainerType(MEDIAMIMETYPE("video/webm")))) {
     EXPECT_TRUE(true);
   } else {
-    RefPtr<MediaResource> resource = new MockMediaResource("vp9cake.webm");
-    nsresult rv = resource->Open(nullptr);
+    RefPtr<MockMediaResource> resource = new MockMediaResource("vp9cake.webm");
+    nsresult rv = resource->Open();
     EXPECT_TRUE(NS_SUCCEEDED(rv));
 
     BenchmarkRunner runner(new Benchmark(new WebMDemuxer(resource)));

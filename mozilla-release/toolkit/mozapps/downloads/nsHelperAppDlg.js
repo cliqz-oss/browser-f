@@ -341,7 +341,7 @@ nsUnknownContentTypeDialog.prototype = {
               // permission error, will be handled below eventually somehow.
             }
 
-            var newDir = result.parent.QueryInterface(Components.interfaces.nsILocalFile);
+            var newDir = result.parent.QueryInterface(Components.interfaces.nsIFile);
 
             // Do not store the last save directory as a pref inside the private browsing mode
             gDownloadLastDir.setFile(aLauncher.source, newDir);
@@ -393,7 +393,7 @@ nsUnknownContentTypeDialog.prototype = {
    * @param   aFileExt
    *          the extension of the file, if one is known; this will be ignored
    *          if aLeafName is non-empty
-   * @return  nsILocalFile
+   * @return  nsIFile
    *          the created file
    * @throw   an error such as permission doesn't allow creation of
    *          file, etc.
@@ -453,8 +453,8 @@ nsUnknownContentTypeDialog.prototype = {
       this.mSourcePath += url.directory;
     } else {
       // A generic uri, use path.
-      fname = url.path;
-      this.mSourcePath += url.path;
+      fname = url.pathQueryRef;
+      this.mSourcePath += url.pathQueryRef;
     }
 
     if (suggestedFileName)
@@ -922,7 +922,7 @@ nsUnknownContentTypeDialog.prototype = {
         var targetFile = null;
         try {
           targetFile = prefs.getComplexValue("browser.download.defaultFolder",
-                                             Components.interfaces.nsILocalFile);
+                                             Components.interfaces.nsIFile);
           var leafName = this.dialogElement("location").getAttribute("realname");
           // Ensure that we don't overwrite any existing files here.
           targetFile = this.validateLeafName(targetFile, leafName, null);
@@ -1096,14 +1096,19 @@ nsUnknownContentTypeDialog.prototype = {
 
       fp.appendFilters(nsIFilePicker.filterApps);
 
-      if (fp.show() == nsIFilePicker.returnOK && fp.file) {
-        // Remember the file they chose to run.
-        var localHandlerApp =
-          Components.classes["@mozilla.org/uriloader/local-handler-app;1"].
-                     createInstance(Components.interfaces.nsILocalHandlerApp);
-        localHandlerApp.executable = fp.file;
-        this.chosenApp = localHandlerApp;
-      }
+      fp.open(aResult => {
+        if (aResult == nsIFilePicker.returnOK && fp.file) {
+          // Remember the file they chose to run.
+          var localHandlerApp =
+            Components.classes["@mozilla.org/uriloader/local-handler-app;1"].
+                       createInstance(Components.interfaces.nsILocalHandlerApp);
+          localHandlerApp.executable = fp.file;
+          this.chosenApp = localHandlerApp;
+        }
+        this.finishChooseApp();
+      });
+      // The finishChooseApp is called from fp.open() callback
+      return;
     }
 
     this.finishChooseApp();

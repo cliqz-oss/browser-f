@@ -7,22 +7,17 @@
 
 Components.utils.import("resource://gre/modules/XPCOMUtils.jsm");
 Components.utils.import("resource://gre/modules/Services.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "AppConstants",
-                                  "resource://gre/modules/AppConstants.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "PlacesUtils",
-                                  "resource://gre/modules/PlacesUtils.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "FormHistory",
-                                  "resource://gre/modules/FormHistory.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "Downloads",
-                                  "resource://gre/modules/Downloads.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "DownloadsCommon",
-                                  "resource:///modules/DownloadsCommon.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "TelemetryStopwatch",
-                                  "resource://gre/modules/TelemetryStopwatch.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "console",
-                                  "resource://gre/modules/Console.jsm");
-XPCOMUtils.defineLazyModuleGetter(this, "setTimeout",
-                                  "resource://gre/modules/Timer.jsm");
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
+  FormHistory: "resource://gre/modules/FormHistory.jsm",
+  Downloads: "resource://gre/modules/Downloads.jsm",
+  DownloadsCommon: "resource:///modules/DownloadsCommon.jsm",
+  TelemetryStopwatch: "resource://gre/modules/TelemetryStopwatch.jsm",
+  console: "resource://gre/modules/Console.jsm",
+  setTimeout: "resource://gre/modules/Timer.jsm",
+});
 
 
 XPCOMUtils.defineLazyServiceGetter(this, "serviceWorkerManager",
@@ -32,7 +27,7 @@ XPCOMUtils.defineLazyServiceGetter(this, "quotaManagerService",
                                    "@mozilla.org/dom/quota-manager-service;1",
                                    "nsIQuotaManagerService");
 
-var {classes: Cc, interfaces: Ci} = Components;
+var {classes: Cc, interfaces: Ci, results: Cr} = Components;
 
 /**
  * A number of iterations after which to yield time back
@@ -302,17 +297,37 @@ Sanitizer.prototype = {
         Services.obs.notifyObservers(null, "extension:purge-localStorage");
 
         // ServiceWorkers
+        let promises = [];
         let serviceWorkers = serviceWorkerManager.getAllRegistrations();
         for (let i = 0; i < serviceWorkers.length; i++) {
           let sw = serviceWorkers.queryElementAt(i, Ci.nsIServiceWorkerRegistrationInfo);
-          let host = sw.principal.URI.host;
-          serviceWorkerManager.removeAndPropagate(host);
+
+          promises.push(new Promise(resolve => {
+            let unregisterCallback = {
+              unregisterSucceeded: () => { resolve(true); },
+              // We don't care about failures.
+              unregisterFailed: () => { resolve(true); },
+              QueryInterface: XPCOMUtils.generateQI(
+                [Ci.nsIServiceWorkerUnregisterCallback])
+            };
+
+            serviceWorkerManager.propagateUnregister(sw.principal, unregisterCallback, sw.scope);
+          }));
         }
 
+        await Promise.all(promises);
+
         // QuotaManager
-        let promises = [];
+        promises = [];
         await new Promise(resolve => {
           quotaManagerService.getUsage(request => {
+            if (request.resultCode != Cr.NS_OK) {
+              // We are probably shutting down. We don't want to propagate the
+              // error, rejecting the promise.
+              resolve();
+              return;
+            }
+
             for (let item of request.result) {
               let principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(item.origin);
               let uri = principal.URI;

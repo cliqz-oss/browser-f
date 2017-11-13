@@ -33,6 +33,7 @@ WebRenderContainerLayer::UpdateTransformDataForAnimation()
 
 void
 WebRenderContainerLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
+                                     wr::IpcResourceUpdateQueue& aResources,
                                      const StackingContextHelper& aSc)
 {
   nsTArray<LayerPolygon> children = SortChildrenBy3DZOrder(SortMode::WITHOUT_GEOMETRY);
@@ -106,7 +107,7 @@ WebRenderContainerLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
     filters.AppendElement(wr::ToWrFilterOp(filter));
   }
 
-  ScrollingLayersHelper scroller(this, aBuilder, aSc);
+  ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc);
   StackingContextHelper sc(aSc, aBuilder, this, animationsId, opacityForSC, transformForSC, filters);
 
   LayerRect rect = Bounds();
@@ -116,15 +117,16 @@ WebRenderContainerLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
     if (child.layer->IsBackfaceHidden()) {
       continue;
     }
-    ToWebRenderLayer(child.layer)->RenderLayer(aBuilder, sc);
+    ToWebRenderLayer(child.layer)->RenderLayer(aBuilder, aResources, sc);
   }
 }
 
 void
 WebRenderRefLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
+                               wr::IpcResourceUpdateQueue& aResources,
                                const StackingContextHelper& aSc)
 {
-  ScrollingLayersHelper scroller(this, aBuilder, aSc);
+  ScrollingLayersHelper scroller(this, aBuilder, aResources, aSc);
 
   ParentLayerRect bounds = GetLocalTransformTyped().TransformBounds(Bounds());
   // As with WebRenderTextLayer, because we don't push a stacking context for
@@ -138,7 +140,7 @@ WebRenderRefLayer::RenderLayer(wr::DisplayListBuilder& aBuilder,
   DumpLayerInfo("RefLayer", rect);
 
   wr::LayoutRect r = aSc.ToRelativeLayoutRect(rect);
-  aBuilder.PushIFrame(r, wr::AsPipelineId(mId));
+  aBuilder.PushIFrame(r, true, wr::AsPipelineId(mId));
 }
 
 } // namespace layers

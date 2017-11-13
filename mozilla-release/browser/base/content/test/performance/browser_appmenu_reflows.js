@@ -68,7 +68,7 @@ const EXPECTED_APPMENU_SUBVIEW_REFLOWS = [
   {
     stack: [
       "descriptionHeightWorkaround@resource:///modules/PanelMultiView.jsm",
-      "onTransitionEnd@resource:///modules/PanelMultiView.jsm",
+      "hideAllViewsExcept@resource:///modules/PanelMultiView.jsm",
     ],
 
     times: 2, // This number should only ever go down - never up.
@@ -81,10 +81,6 @@ const EXPECTED_APPMENU_SUBVIEW_REFLOWS = [
 
 add_task(async function() {
   await ensureNoPreloadedBrowser();
-
-  await SpecialPowers.pushPrefEnv({
-    set: [["browser.photon.structure.enabled", true]],
-  });
 
   // First, open the appmenu.
   await withReflowObserver(async function() {

@@ -100,7 +100,7 @@ nsViewManager::~nsViewManager()
     gViewManagers = nullptr;
   }
 
-  mPresShell = nullptr;
+  MOZ_RELEASE_ASSERT(!mPresShell, "Releasing nsViewManager without having called Destroy on the PresShell!");
 }
 
 // We don't hold a reference to the presentation context because it
@@ -800,6 +800,15 @@ nsViewManager::DispatchEvent(WidgetGUIEvent *aEvent,
     // want to cause its destruction in, say, some JavaScript event handler.
     nsCOMPtr<nsIPresShell> shell = view->GetViewManager()->GetPresShell();
     if (shell) {
+      if (aEvent->mMessage == eMouseDown ||
+          aEvent->mMessage == eMouseUp) {
+        AutoWeakFrame weakFrame(frame);
+        shell->FlushPendingNotifications(FlushType::Layout);
+        if (!weakFrame.IsAlive()) {
+          *aStatus = nsEventStatus_eIgnore;
+          return;
+        }
+      }
       shell->HandleEvent(frame, aEvent, false, aStatus);
 	  return;
     }

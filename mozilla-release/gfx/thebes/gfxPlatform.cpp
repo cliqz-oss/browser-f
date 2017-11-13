@@ -598,6 +598,27 @@ void RecordingPrefChanged(const char *aPrefName, void *aClosure)
   }
 }
 
+#define WR_DEBUG_PREF "gfx.webrender.debug"
+
+void
+WebRenderDebugPrefChangeCallback(const char* aPrefName, void*)
+{
+  int32_t flags = 0;
+  // TODO: It would be nice to get the bit patterns directly from the rust code.
+  if (Preferences::GetBool(WR_DEBUG_PREF".profiler", false)) {
+    flags |= (1 << 0);
+  }
+  if (Preferences::GetBool(WR_DEBUG_PREF".texture-cache", false)) {
+    flags |= (1 << 1);
+  }
+  if (Preferences::GetBool(WR_DEBUG_PREF".render-targets", false)) {
+    flags |= (1 << 2);
+  }
+
+  gfx::gfxVars::SetWebRenderDebugFlags(flags);
+}
+
+
 #if defined(USE_SKIA)
 static uint32_t GetSkiaGlyphCacheSize()
 {
@@ -1044,6 +1065,8 @@ gfxPlatform::ShutdownLayersIPC()
         layers::CompositorThreadHolder::Shutdown();
         if (gfxVars::UseWebRender()) {
           wr::RenderThread::ShutDown();
+
+          Preferences::UnregisterCallback(WebRenderDebugPrefChangeCallback, WR_DEBUG_PREF);
         }
 
     } else {
@@ -1279,17 +1302,6 @@ gfxPlatform::GetWrappedDataSourceSurface(gfxASurface* aSurface)
   result->AddUserData(&kThebesSurface, srcSurfUD, SourceSurfaceDestroyed);
 
   return result.forget();
-}
-
-already_AddRefed<ScaledFont>
-gfxPlatform::GetScaledFontForFont(DrawTarget* aTarget, gfxFont *aFont)
-{
-  NativeFont nativeFont;
-  nativeFont.mType = NativeFontType::CAIRO_FONT_FACE;
-  nativeFont.mFont = aFont->GetCairoScaledFont();
-  return Factory::CreateScaledFontForNativeFont(nativeFont,
-                                                aFont->GetUnscaledFont(),
-                                                aFont->GetAdjustedSize());
 }
 
 void
@@ -2155,6 +2167,15 @@ gfxPlatform::FlushFontAndWordCaches()
     gfxPlatform::PurgeSkiaFontCache();
 }
 
+/* static */ void
+gfxPlatform::ForceGlobalReflow()
+{
+    // modify a preference that will trigger reflow everywhere
+    static const char kPrefName[] = "font.internaluseonly.changed";
+    bool fontInternalChange = Preferences::GetBool(kPrefName, false);
+    Preferences::SetBool(kPrefName, !fontInternalChange);
+}
+
 void
 gfxPlatform::FontsPrefsChanged(const char *aPref)
 {
@@ -2379,6 +2400,13 @@ gfxPlatform::InitGPUProcessPrefs()
     gpuProc.UserForceEnable("User force-enabled via pref");
   }
 
+  if (IsHeadless()) {
+    gpuProc.ForceDisable(
+      FeatureStatus::Blocked,
+      "Headless mode is enabled",
+      NS_LITERAL_CSTRING("FEATURE_FAILURE_HEADLESS_MODE"));
+    return;
+  }
   if (InSafeMode()) {
     gpuProc.ForceDisable(
       FeatureStatus::Blocked,
@@ -2425,10 +2453,14 @@ gfxPlatform::InitCompositorAccelerationPrefs()
     feature.UserForceEnable("Force-enabled by pref");
   }
 
-  // Safe mode trumps everything.
+  // Safe and headless modes override everything.
   if (InSafeMode()) {
     feature.ForceDisable(FeatureStatus::Blocked, "Acceleration blocked by safe-mode",
                          NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_SAFEMODE"));
+  }
+  if (IsHeadless()) {
+    feature.ForceDisable(FeatureStatus::Blocked, "Acceleration blocked by headless mode",
+                         NS_LITERAL_CSTRING("FEATURE_FAILURE_COMP_HEADLESSMODE"));
   }
 }
 
@@ -2462,6 +2494,14 @@ gfxPlatform::InitWebRenderConfig()
     if (env && *env == '1') {
       featureWebRender.UserEnable("Enabled by envvar");
     }
+  }
+
+  // HW_COMPOSITING being disabled implies interfacing with the GPU might break
+  if (!gfxConfig::IsEnabled(Feature::HW_COMPOSITING)) {
+    featureWebRender.ForceDisable(
+      FeatureStatus::Unavailable,
+      "Hardware compositing is disabled",
+      NS_LITERAL_CSTRING("FEATURE_FAILURE_WEBRENDER_NEED_HWCOMP"));
   }
 
   // WebRender relies on the GPU process when on Windows
@@ -2505,6 +2545,11 @@ gfxPlatform::InitWebRenderConfig()
   if (gfxConfig::IsEnabled(Feature::WEBRENDER)) {
     gfxVars::SetUseWebRender(true);
     reporter.SetSuccessful();
+
+    if (XRE_IsParentProcess()) {
+      Preferences::RegisterPrefixCallbackAndCall(WebRenderDebugPrefChangeCallback,
+                                                 WR_DEBUG_PREF);
+    }
   }
 }
 
@@ -2583,17 +2628,6 @@ gfxPlatform::DisableBufferRotation()
   MutexAutoLock autoLock(*gGfxPlatformPrefsLock);
 
   sBufferRotationCheckPref = false;
-}
-
-already_AddRefed<ScaledFont>
-gfxPlatform::GetScaledFontForFontWithCairoSkia(DrawTarget* aTarget, gfxFont* aFont)
-{
-    NativeFont nativeFont;
-    nativeFont.mType = NativeFontType::CAIRO_FONT_FACE;
-    nativeFont.mFont = aFont->GetCairoScaledFont();
-    return Factory::CreateScaledFontForNativeFont(nativeFont,
-                                                  aFont->GetUnscaledFont(),
-                                                  aFont->GetAdjustedSize());
 }
 
 /* static */ bool
@@ -2711,6 +2745,10 @@ gfxPlatform::GetApzSupportInfo(mozilla::widget::InfoObject& aObj)
 
   if (SupportsApzKeyboardInput() && !gfxPrefs::AccessibilityBrowseWithCaret()) {
     aObj.DefineProperty("ApzKeyboardInput", 1);
+  }
+
+  if (SupportsApzAutoscrolling()) {
+    aObj.DefineProperty("ApzAutoscrollInput", 1);
   }
 }
 
@@ -2885,6 +2923,12 @@ bool
 gfxPlatform::SupportsApzKeyboardInput() const
 {
   return gfxPrefs::APZKeyboardEnabled();
+}
+
+bool
+gfxPlatform::SupportsApzAutoscrolling() const
+{
+  return gfxPrefs::APZAutoscrollEnabled();
 }
 
 void

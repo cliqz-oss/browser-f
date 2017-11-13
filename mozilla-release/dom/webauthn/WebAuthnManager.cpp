@@ -7,19 +7,19 @@
 #include "hasht.h"
 #include "nsICryptoHash.h"
 #include "nsNetCID.h"
-#include "nsNetUtil.h" // Used by WD-05 compat support (Remove in Bug 1381126)
 #include "nsThreadUtils.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/dom/AuthenticatorAttestationResponse.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/dom/PWebAuthnTransaction.h"
+#include "mozilla/dom/U2FUtil.h"
 #include "mozilla/dom/WebAuthnCBORUtil.h"
 #include "mozilla/dom/WebAuthnManager.h"
-#include "mozilla/dom/WebAuthnUtil.h"
-#include "mozilla/dom/PWebAuthnTransaction.h"
 #include "mozilla/dom/WebAuthnTransactionChild.h"
+#include "mozilla/dom/WebAuthnUtil.h"
 #include "mozilla/dom/WebCryptoCommon.h"
-#include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/ipc/BackgroundChild.h"
+#include "mozilla/ipc/PBackgroundChild.h"
 
 using namespace mozilla::ipc;
 
@@ -42,7 +42,10 @@ StaticRefPtr<WebAuthnManager> gWebAuthnManager;
 static mozilla::LazyLogModule gWebAuthnManagerLog("webauthnmanager");
 }
 
-NS_IMPL_ISUPPORTS(WebAuthnManager, nsIIPCBackgroundChildCreateCallback);
+NS_NAMED_LITERAL_STRING(kVisibilityChange, "visibilitychange");
+
+NS_IMPL_ISUPPORTS(WebAuthnManager, nsIIPCBackgroundChildCreateCallback,
+                  nsIDOMEventListener);
 
 /***********************************************************************
  * Utility Functions
@@ -53,8 +56,6 @@ static nsresult
 GetAlgorithmName(const OOS& aAlgorithm,
                  /* out */ nsString& aName)
 {
-  MOZ_ASSERT(aAlgorithm.IsString()); // TODO: remove assertion when we coerce.
-
   if (aAlgorithm.IsString()) {
     // If string, then treat as algorithm name
     aName.Assign(aAlgorithm.GetAsString());
@@ -73,35 +74,6 @@ GetAlgorithmName(const OOS& aAlgorithm,
 }
 
 static nsresult
-HashCString(nsICryptoHash* aHashService, const nsACString& aIn,
-            /* out */ CryptoBuffer& aOut)
-{
-  MOZ_ASSERT(aHashService);
-
-  nsresult rv = aHashService->Init(nsICryptoHash::SHA256);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  rv = aHashService->Update(
-    reinterpret_cast<const uint8_t*>(aIn.BeginReading()),aIn.Length());
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  nsAutoCString fullHash;
-  // Passing false below means we will get a binary result rather than a
-  // base64-encoded string.
-  rv = aHashService->Finish(false, fullHash);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  aOut.Assign(fullHash);
-  return rv;
-}
-
-static nsresult
 AssembleClientData(const nsAString& aOrigin, const CryptoBuffer& aChallenge,
                    /* out */ nsACString& aJsonOut)
 {
@@ -116,7 +88,7 @@ AssembleClientData(const nsAString& aOrigin, const CryptoBuffer& aChallenge,
   CollectedClientData clientDataObject;
   clientDataObject.mChallenge.Assign(challengeBase64);
   clientDataObject.mOrigin.Assign(aOrigin);
-  clientDataObject.mHashAlg.Assign(NS_LITERAL_STRING("S256"));
+  clientDataObject.mHashAlg.Assign(NS_LITERAL_STRING("SHA-256"));
 
   nsAutoString temp;
   if (NS_WARN_IF(!clientDataObject.ToJSON(temp))) {
@@ -131,6 +103,7 @@ nsresult
 GetOrigin(nsPIDOMWindowInner* aParent,
           /*out*/ nsAString& aOrigin, /*out*/ nsACString& aHost)
 {
+  MOZ_ASSERT(aParent);
   nsCOMPtr<nsIDocument> doc = aParent->GetDoc();
   MOZ_ASSERT(doc);
 
@@ -168,6 +141,7 @@ RelaxSameOrigin(nsPIDOMWindowInner* aParent,
   MOZ_ASSERT(aParent);
   nsCOMPtr<nsIDocument> doc = aParent->GetDoc();
   MOZ_ASSERT(doc);
+
   nsCOMPtr<nsIPrincipal> principal = doc->NodePrincipal();
   nsCOMPtr<nsIURI> uri;
   if (NS_FAILED(principal->GetURI(getter_AddRefs(uri)))) {
@@ -186,30 +160,47 @@ RelaxSameOrigin(nsPIDOMWindowInner* aParent,
     return NS_ERROR_FAILURE;
   }
 
-  // WD-05 origin compatibility support - aInputRpId might be a URI/origin,
-  // so catch that (Bug 1380421). Remove in Bug 1381126.
-  nsAutoString inputRpId(aInputRpId);
-  nsCOMPtr<nsIURI> inputUri;
-  if (NS_SUCCEEDED(NS_NewURI(getter_AddRefs(inputUri), aInputRpId))) {
-    // If we parsed the input as a URI, then pull out the host and use it as the
-    // input
-    nsAutoCString uriHost;
-    if (NS_FAILED(inputUri->GetHost(uriHost))) {
-      return NS_ERROR_FAILURE;
-    }
-    CopyUTF8toUTF16(uriHost, inputRpId);
-    MOZ_LOG(gWebAuthnManagerLog, LogLevel::Debug,
-            ("WD-05 Fallback: Parsed input %s URI into host %s",
-             NS_ConvertUTF16toUTF8(aInputRpId).get(), uriHost.get()));
-  }
-  // End WD-05 origin compatibility support (Bug 1380421)
-
-  if (!html->IsRegistrableDomainSuffixOfOrEqualTo(inputRpId, originHost)) {
+  if (!html->IsRegistrableDomainSuffixOfOrEqualTo(aInputRpId, originHost)) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
   aRelaxedRpId.Assign(NS_ConvertUTF16toUTF8(aInputRpId));
   return NS_OK;
+}
+
+static void
+ListenForVisibilityEvents(nsPIDOMWindowInner* aParent,
+                          WebAuthnManager* aListener)
+{
+  MOZ_ASSERT(aParent);
+  MOZ_ASSERT(aListener);
+
+  nsCOMPtr<nsIDocument> doc = aParent->GetExtantDoc();
+  if (NS_WARN_IF(!doc)) {
+    return;
+  }
+
+  nsresult rv = doc->AddSystemEventListener(kVisibilityChange, aListener,
+                                            /* use capture */ true,
+                                            /* wants untrusted */ false);
+  Unused << NS_WARN_IF(NS_FAILED(rv));
+}
+
+static void
+StopListeningForVisibilityEvents(nsPIDOMWindowInner* aParent,
+                                 WebAuthnManager* aListener)
+{
+  MOZ_ASSERT(aParent);
+  MOZ_ASSERT(aListener);
+
+  nsCOMPtr<nsIDocument> doc = aParent->GetExtantDoc();
+  if (NS_WARN_IF(!doc)) {
+    return;
+  }
+
+  nsresult rv = doc->RemoveSystemEventListener(kVisibilityChange, aListener,
+                                               /* use capture */ true);
+  Unused << NS_WARN_IF(NS_FAILED(rv));
 }
 
 /***********************************************************************
@@ -227,6 +218,11 @@ WebAuthnManager::MaybeClearTransaction()
   mClientData.reset();
   mInfo.reset();
   mTransactionPromise = nullptr;
+  if (mCurrentParent) {
+    StopListeningForVisibilityEvents(mCurrentParent, this);
+    mCurrentParent = nullptr;
+  }
+
   if (mChild) {
     RefPtr<WebAuthnTransactionChild> c;
     mChild.swap(c);
@@ -310,11 +306,11 @@ WebAuthnManager::MakeCredential(nsPIDOMWindowInner* aParent,
   // reasonable range as defined by the platform and if not, correct it to the
   // closest value lying within that range.
 
-  double adjustedTimeout = 30.0;
+  uint32_t adjustedTimeout = 30000;
   if (aOptions.mTimeout.WasPassed()) {
     adjustedTimeout = aOptions.mTimeout.Value();
-    adjustedTimeout = std::max(15.0, adjustedTimeout);
-    adjustedTimeout = std::min(120.0, adjustedTimeout);
+    adjustedTimeout = std::max(15000u, adjustedTimeout);
+    adjustedTimeout = std::min(120000u, adjustedTimeout);
   }
 
   if (aOptions.mRp.mId.WasPassed()) {
@@ -446,10 +442,8 @@ WebAuthnManager::MakeCredential(nsPIDOMWindowInner* aParent,
     return promise.forget();
   }
 
-  // WD-05 vs. WD-06: In WD-06, the first parameter should be "origin". Fix
-  // this in Bug 1384776
   nsAutoCString clientDataJSON;
-  srv = AssembleClientData(NS_ConvertUTF8toUTF16(rpId), challenge, clientDataJSON);
+  srv = AssembleClientData(origin, challenge, clientDataJSON);
   if (NS_WARN_IF(NS_FAILED(srv))) {
     promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
     return promise.forget();
@@ -503,6 +497,8 @@ WebAuthnManager::MakeCredential(nsPIDOMWindowInner* aParent,
   mClientData = Some(clientDataJSON);
   mCurrentParent = aParent;
   mInfo = Some(info);
+  ListenForVisibilityEvents(aParent, this);
+
   return promise.forget();
 }
 
@@ -517,6 +513,13 @@ void
 WebAuthnManager::StartSign() {
   if (mChild) {
     mChild->SendRequestSign(mInfo.ref());
+  }
+}
+
+void
+WebAuthnManager::StartCancel() {
+  if (mChild) {
+    mChild->SendRequestCancel();
   }
 }
 
@@ -601,9 +604,7 @@ WebAuthnManager::GetAssertion(nsPIDOMWindowInner* aParent,
   }
 
   nsAutoCString clientDataJSON;
-  // WD-05 vs. WD-06: In WD-06, the first parameter should be "origin". Fix
-  // this in Bug 1384776
-  srv = AssembleClientData(NS_ConvertUTF8toUTF16(rpId), challenge, clientDataJSON);
+  srv = AssembleClientData(origin, challenge, clientDataJSON);
   if (NS_WARN_IF(NS_FAILED(srv))) {
     promise->MaybeReject(NS_ERROR_DOM_SECURITY_ERR);
     return promise.forget();
@@ -669,6 +670,8 @@ WebAuthnManager::GetAssertion(nsPIDOMWindowInner* aParent,
   mClientData = Some(clientDataJSON);
   mCurrentParent = aParent;
   mInfo = Some(info);
+  ListenForVisibilityEvents(aParent, this);
+
   return promise.forget();
 }
 
@@ -878,10 +881,39 @@ WebAuthnManager::FinishGetAssertion(nsTArray<uint8_t>& aCredentialId,
 void
 WebAuthnManager::Cancel(const nsresult& aError)
 {
+  MOZ_ASSERT(NS_IsMainThread());
+
   if (mTransactionPromise) {
     mTransactionPromise->MaybeReject(aError);
   }
+
   MaybeClearTransaction();
+}
+
+NS_IMETHODIMP
+WebAuthnManager::HandleEvent(nsIDOMEvent* aEvent)
+{
+  MOZ_ASSERT(aEvent);
+
+  nsAutoString type;
+  aEvent->GetType(type);
+  if (!type.Equals(kVisibilityChange)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<nsIDocument> doc =
+    do_QueryInterface(aEvent->InternalDOMEvent()->GetTarget());
+  MOZ_ASSERT(doc);
+
+  if (doc && doc->Hidden()) {
+    MOZ_LOG(gWebAuthnManagerLog, LogLevel::Debug,
+            ("Visibility change: WebAuthn window is hidden, cancelling job."));
+
+    StartCancel();
+    Cancel(NS_ERROR_ABORT);
+  }
+
+  return NS_OK;
 }
 
 void

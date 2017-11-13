@@ -234,10 +234,6 @@ CompareAtoms(JSAtom* atom1, JSAtom* atom2);
 extern bool
 StringEqualsAscii(JSLinearString* str, const char* asciiBytes);
 
-/* Return true if the string contains a pattern anywhere inside it. */
-extern bool
-StringHasPattern(JSLinearString* text, const char16_t* pat, uint32_t patlen);
-
 extern int
 StringFindPattern(JSLinearString* text, JSLinearString* pat, size_t start);
 
@@ -486,10 +482,10 @@ str_replace_string_raw(JSContext* cx, HandleString string, HandleString pattern,
                        HandleString replacement);
 
 extern JSString*
-StringToLowerCase(JSContext* cx, HandleLinearString string);
+StringToLowerCase(JSContext* cx, HandleString string);
 
 extern JSString*
-StringToUpperCase(JSContext* cx, HandleLinearString string);
+StringToUpperCase(JSContext* cx, HandleString string);
 
 extern bool
 StringConstructor(JSContext* cx, unsigned argc, Value* vp);

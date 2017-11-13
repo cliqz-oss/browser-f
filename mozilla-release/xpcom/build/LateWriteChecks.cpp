@@ -125,7 +125,7 @@ LateWriteObserver::Observe(IOInterposeObserver::Observation& aOb)
   std::vector<uintptr_t> rawStack;
 
   MozStackWalk(RecordStackWalker, /* skipFrames */ 0, /* maxFrames */ 0,
-               reinterpret_cast<void*>(&rawStack), 0, nullptr);
+               &rawStack);
   Telemetry::ProcessedStack stack = Telemetry::GetStackAndModules(rawStack);
 
   nsPrintfCString nameAux("%s%s%s", mProfileDirectory,
@@ -140,7 +140,7 @@ LateWriteObserver::Observe(IOInterposeObserver::Observation& aOb)
   HANDLE hFile;
   do {
     // mkstemp isn't supported so keep trying until we get a file
-    int result = _mktemp_s(name, strlen(name) + 1);
+    _mktemp_s(name, strlen(name) + 1);
     hFile = CreateFileA(name, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
                         FILE_ATTRIBUTE_NORMAL, nullptr);
   } while (GetLastError() == ERROR_FILE_EXISTS);

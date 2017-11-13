@@ -36,7 +36,6 @@
 #include "nsIDOMText.h" //for multiline getselection
 #include "nsFocusManager.h"
 #include "nsPresState.h"
-#include "nsContentList.h"
 #include "nsAttrValueInlines.h"
 #include "mozilla/dom/Selection.h"
 #include "mozilla/TextEditRules.h"
@@ -53,6 +52,7 @@
 #define DEFAULT_COLUMN_WIDTH 20
 
 using namespace mozilla;
+using namespace mozilla::dom;
 
 nsIFrame*
 NS_NewTextControlFrame(nsIPresShell* aPresShell, nsStyleContext* aContext)
@@ -102,17 +102,32 @@ private:
 };
 #endif
 
+class nsTextControlFrame::nsAnonDivObserver final : public nsStubMutationObserver
+{
+public:
+  explicit nsAnonDivObserver(nsTextControlFrame& aFrame)
+   : mFrame(aFrame) {}
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIMUTATIONOBSERVER_CHARACTERDATACHANGED
+  NS_DECL_NSIMUTATIONOBSERVER_CONTENTAPPENDED
+  NS_DECL_NSIMUTATIONOBSERVER_CONTENTINSERTED
+  NS_DECL_NSIMUTATIONOBSERVER_CONTENTREMOVED
+
+private:
+  ~nsAnonDivObserver() {}
+  nsTextControlFrame& mFrame;
+};
+
 nsTextControlFrame::nsTextControlFrame(nsStyleContext* aContext)
   : nsContainerFrame(aContext, kClassID)
   , mFirstBaseline(NS_INTRINSIC_WIDTH_UNKNOWN)
   , mEditorHasBeenInitialized(false)
   , mIsProcessing(false)
-  , mUsePlaceholder(false)
-  , mUsePreview(false)
 #ifdef DEBUG
   , mInEditorInitialization(false)
 #endif
 {
+  ClearCachedValue();
 }
 
 nsTextControlFrame::~nsTextControlFrame()
@@ -133,6 +148,16 @@ nsTextControlFrame::DestroyFrom(nsIFrame* aDestructRoot)
   txtCtrl->UnbindFromFrame(this);
 
   nsFormControlFrame::RegUnRegAccessKey(static_cast<nsIFrame*>(this), false);
+
+  if (mMutationObserver) {
+    mRootNode->RemoveMutationObserver(mMutationObserver);
+    mMutationObserver = nullptr;
+  }
+
+  // FIXME(emilio, bug 1400618): Do this after the child frames are destroyed.
+  DestroyAnonymousContent(mRootNode.forget());
+  DestroyAnonymousContent(mPlaceholderDiv.forget());
+  DestroyAnonymousContent(mPreviewDiv.forget());
 
   nsContainerFrame::DestroyFrom(aDestructRoot);
 }
@@ -313,120 +338,200 @@ nsTextControlFrame::EnsureEditorInitialized()
   return NS_OK;
 }
 
+static already_AddRefed<Element>
+CreateEmptyDiv(const nsTextControlFrame& aOwnerFrame)
+{
+  nsIDocument* doc = aOwnerFrame.PresContext()->Document();
+  RefPtr<mozilla::dom::NodeInfo> nodeInfo =
+    doc->NodeInfoManager()->GetNodeInfo(nsGkAtoms::div, nullptr,
+                                        kNameSpaceID_XHTML,
+                                        nsIDOMNode::ELEMENT_NODE);
+
+  RefPtr<Element> element = NS_NewHTMLDivElement(nodeInfo.forget());
+  return element.forget();
+}
+
+static already_AddRefed<Element>
+CreateEmptyDivWithTextNode(const nsTextControlFrame& aOwnerFrame)
+{
+  RefPtr<Element> element = CreateEmptyDiv(aOwnerFrame);
+
+  // Create the text node for DIV
+  RefPtr<nsTextNode> textNode =
+    new nsTextNode(element->OwnerDoc()->NodeInfoManager());
+  textNode->MarkAsMaybeModifiedFrequently();
+
+  element->AppendChildTo(textNode, false);
+
+  return element.forget();
+}
+
 nsresult
 nsTextControlFrame::CreateAnonymousContent(nsTArray<ContentInfo>& aElements)
 {
-  NS_ASSERTION(mContent, "We should have a content!");
+  MOZ_ASSERT(mContent, "We should have a content!");
 
-  mState |= NS_FRAME_INDEPENDENT_SELECTION;
+  AddStateBits(NS_FRAME_INDEPENDENT_SELECTION);
 
   nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
-  NS_ASSERTION(txtCtrl, "Content not a text control element");
+  MOZ_ASSERT(txtCtrl, "Content not a text control element");
 
-  // Bind the frame to its text control
-  nsresult rv = txtCtrl->BindToFrame(this);
+  nsresult rv = CreateRootNode();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsIContent* rootNode = txtCtrl->GetRootEditorNode();
-  NS_ENSURE_TRUE(rootNode, NS_ERROR_OUT_OF_MEMORY);
+  // Bind the frame to its text control
+  rv = txtCtrl->BindToFrame(this);
+  NS_ENSURE_SUCCESS(rv, rv);
 
-  if (!aElements.AppendElement(rootNode))
-    return NS_ERROR_OUT_OF_MEMORY;
-
-  // Do we need a placeholder node?
-  nsAutoString placeholderTxt;
-  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::placeholder,
-                    placeholderTxt);
-  nsContentUtils::RemoveNewlines(placeholderTxt);
-  mUsePlaceholder = !placeholderTxt.IsEmpty();
-
-  // Create the placeholder anonymous content if needed.
-  if (mUsePlaceholder) {
-    Element* placeholderNode = txtCtrl->CreatePlaceholderNode();
-    NS_ENSURE_TRUE(placeholderNode, NS_ERROR_OUT_OF_MEMORY);
-
-    // Associate ::placeholder pseudo-element with the placeholder node.
-    placeholderNode->SetPseudoElementType(CSSPseudoElementType::placeholder);
-    aElements.AppendElement(placeholderNode);
-
+  aElements.AppendElement(mRootNode);
+  CreatePlaceholderIfNeeded();
+  if (mPlaceholderDiv) {
     if (!IsSingleLineTextControl()) {
       // For textareas, UpdateValueDisplay doesn't initialize the visibility
       // status of the placeholder because it returns early, so we have to
       // do that manually here.
       txtCtrl->UpdateOverlayTextVisibility(true);
     }
+    aElements.AppendElement(mPlaceholderDiv);
   }
-
-  mUsePreview = txtCtrl->IsPreviewEnabled();
-
-  if (mUsePreview) {
-    // Create the preview anonymous content if needed.
-    Element* previewNode = txtCtrl->CreatePreviewNode();
-    NS_ENSURE_TRUE(previewNode, NS_ERROR_OUT_OF_MEMORY);
-
-    aElements.AppendElement(previewNode);
+  CreatePreviewIfNeeded();
+  if (mPreviewDiv) {
+    aElements.AppendElement(mPreviewDiv);
   }
 
   rv = UpdateValueDisplay(false);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  // textareas are eagerly initialized
-  bool initEagerly = !IsSingleLineTextControl();
-  if (!initEagerly) {
-    // Also, input elements which have a cached selection should get eager
-    // editor initialization.
-    nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
-    NS_ASSERTION(txtCtrl, "Content not a text control element");
-    initEagerly = txtCtrl->HasCachedSelection();
+  InitializeEagerlyIfNeeded();
+  return NS_OK;
+}
+
+bool
+nsTextControlFrame::ShouldInitializeEagerly() const
+{
+  // textareas are eagerly initialized.
+  if (!IsSingleLineTextControl()) {
+    return true;
   }
-  if (!initEagerly) {
-    nsCOMPtr<nsIDOMHTMLElement> element = do_QueryInterface(txtCtrl);
-    if (element) {
-      // so are input text controls with spellcheck=true
-      element->GetSpellcheck(&initEagerly);
+
+  // Also, input elements which have a cached selection should get eager
+  // editor initialization.
+  nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
+  if (txtCtrl->HasCachedSelection()) {
+    return true;
+  }
+
+  // So do input text controls with spellcheck=true
+  if (auto* htmlElement = nsGenericHTMLElement::FromContent(mContent)) {
+    if (htmlElement->Spellcheck()) {
+      return true;
     }
   }
 
-  if (initEagerly) {
-    NS_ASSERTION(!nsContentUtils::IsSafeToRunScript(),
-                 "Someone forgot a script blocker?");
-    EditorInitializer* initializer = new EditorInitializer(this);
-    SetProperty(TextControlInitializer(), initializer);
-    nsContentUtils::AddScriptRunner(initializer);
+  return false;
+}
+
+void
+nsTextControlFrame::InitializeEagerlyIfNeeded()
+{
+  MOZ_ASSERT(!nsContentUtils::IsSafeToRunScript(),
+             "Someone forgot a script blocker?");
+  if (!ShouldInitializeEagerly()) {
+    return;
   }
+
+  EditorInitializer* initializer = new EditorInitializer(this);
+  SetProperty(TextControlInitializer(), initializer);
+  nsContentUtils::AddScriptRunner(initializer);
+}
+
+nsresult
+nsTextControlFrame::CreateRootNode()
+{
+  MOZ_ASSERT(!mRootNode);
+
+  mRootNode = CreateEmptyDiv(*this);
+
+  mMutationObserver = new nsAnonDivObserver(*this);
+  mRootNode->AddMutationObserver(mMutationObserver);
+
+  // Make our root node editable
+  mRootNode->SetFlags(NODE_IS_EDITABLE);
+
+  // Set the necessary classes on the text control. We use class values instead
+  // of a 'style' attribute so that the style comes from a user-agent style
+  // sheet and is still applied even if author styles are disabled.
+  nsAutoString classValue;
+  classValue.AppendLiteral("anonymous-div");
+  if (GetWrapCols() > 0) {
+    classValue.AppendLiteral(" wrap");
+  }
+
+  if (!IsSingleLineTextControl()) {
+    // We can't just inherit the overflow because setting visible overflow will
+    // crash when the number of lines exceeds the height of the textarea and
+    // setting -moz-hidden-unscrollable overflow (NS_STYLE_OVERFLOW_CLIP)
+    // doesn't paint the caret for some reason.
+    const nsStyleDisplay* disp = StyleDisplay();
+    if (disp->mOverflowX != NS_STYLE_OVERFLOW_VISIBLE &&
+        disp->mOverflowX != NS_STYLE_OVERFLOW_CLIP) {
+      classValue.AppendLiteral(" inherit-overflow");
+    }
+    classValue.AppendLiteral(" inherit-scroll-behavior");
+  }
+  nsresult rv = mRootNode->SetAttr(kNameSpaceID_None, nsGkAtoms::_class,
+                                   classValue, false);
+  NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
 }
 
 void
-nsTextControlFrame::AppendAnonymousContentTo(nsTArray<nsIContent*>& aElements,
-                                             uint32_t aFilter)
+nsTextControlFrame::CreatePlaceholderIfNeeded()
 {
-  // This can be called off-main-thread during Servo traversal, so we take care
-  // to avoid QI-ing the DOM node.
-  nsITextControlElement* txtCtrl = nullptr;
-  nsIContent* content = GetContent();
-  if (content->IsHTMLElement(nsGkAtoms::input)) {
-    txtCtrl = static_cast<HTMLInputElement*>(content);
-  } else if (content->IsHTMLElement(nsGkAtoms::textarea)) {
-    txtCtrl = static_cast<HTMLTextAreaElement*>(content);
-  } else {
-    MOZ_CRASH("Unexpected content type for nsTextControlFrame");
+  MOZ_ASSERT(!mPlaceholderDiv);
+
+  // Do we need a placeholder node?
+  nsAutoString placeholderTxt;
+  mContent->GetAttr(kNameSpaceID_None, nsGkAtoms::placeholder, placeholderTxt);
+  nsContentUtils::RemoveNewlines(placeholderTxt);
+
+  if (placeholderTxt.IsEmpty()) {
+    return;
   }
 
-  nsIContent* root = txtCtrl->GetRootEditorNode();
-  if (root) {
-    aElements.AppendElement(root);
+  mPlaceholderDiv = CreateEmptyDivWithTextNode(*this);
+  // Associate ::placeholder pseudo-element with the placeholder node.
+  mPlaceholderDiv->SetPseudoElementType(CSSPseudoElementType::placeholder);
+  mPlaceholderDiv->GetFirstChild()->SetText(placeholderTxt, false);
+}
+
+void
+nsTextControlFrame::CreatePreviewIfNeeded()
+{
+  nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
+  if (!txtCtrl->IsPreviewEnabled()) {
+    return;
   }
 
-  nsIContent* placeholder = txtCtrl->GetPlaceholderNode();
-  if (placeholder && !(aFilter & nsIContent::eSkipPlaceholderContent)) {
-    aElements.AppendElement(placeholder);
+  mPreviewDiv = CreateEmptyDivWithTextNode(*this);
+  mPreviewDiv->SetAttr(kNameSpaceID_None, nsGkAtoms::_class,
+                       NS_LITERAL_STRING("preview-div"), false);
+}
+
+void
+nsTextControlFrame::AppendAnonymousContentTo(
+  nsTArray<nsIContent*>& aElements,
+  uint32_t aFilter)
+{
+  aElements.AppendElement(mRootNode);
+
+  if (mPlaceholderDiv && !(aFilter & nsIContent::eSkipPlaceholderContent)) {
+    aElements.AppendElement(mPlaceholderDiv);
   }
 
-  nsIContent* preview = txtCtrl->GetPreviewNode();
-  if (preview) {
-    aElements.AppendElement(preview);
+  if (mPreviewDiv) {
+    aElements.AppendElement(mPreviewDiv);
   }
 }
 
@@ -504,6 +609,7 @@ nsTextControlFrame::Reflow(nsPresContext*   aPresContext,
   MarkInReflow();
   DO_GLOBAL_REFLOW_COUNT("nsTextControlFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   // make sure that the form registers itself on the initial/first reflow
   if (mState & NS_FRAME_FIRST_REFLOW) {
@@ -547,7 +653,7 @@ nsTextControlFrame::Reflow(nsPresContext*   aPresContext,
   // take into account css properties that affect overflow handling
   FinishAndStoreOverflow(&aDesiredSize);
 
-  aStatus.Reset();
+  aStatus.Reset(); // This type of frame can't be split.
   NS_FRAME_SET_TRUNCATION(aStatus, aReflowInput, aDesiredSize);
 }
 
@@ -634,7 +740,7 @@ void nsTextControlFrame::SetFocus(bool aOn, bool aRepaint)
 
   // If 'dom.placeholeder.show_on_focus' preference is 'false', focusing or
   // blurring the frame can have an impact on the placeholder visibility.
-  if (mUsePlaceholder) {
+  if (mPlaceholderDiv) {
     txtCtrl->UpdateOverlayTextVisibility(true);
   }
 
@@ -1005,34 +1111,30 @@ nsTextControlFrame::AttributeChanged(int32_t         aNameSpaceID,
   }
 
   if (nsGkAtoms::readonly == aAttribute) {
-    uint32_t flags;
-    textEditor->GetFlags(&flags);
     if (AttributeExists(nsGkAtoms::readonly)) { // set readonly
-      flags |= nsIPlaintextEditor::eEditorReadonlyMask;
       if (nsContentUtils::IsFocusedContent(mContent)) {
         selCon->SetCaretEnabled(false);
       }
+      textEditor->AddFlags(nsIPlaintextEditor::eEditorReadonlyMask);
     } else { // unset readonly
-      flags &= ~(nsIPlaintextEditor::eEditorReadonlyMask);
       if (!textEditor->IsDisabled() &&
           nsContentUtils::IsFocusedContent(mContent)) {
         selCon->SetCaretEnabled(true);
       }
+      textEditor->RemoveFlags(nsIPlaintextEditor::eEditorReadonlyMask);
     }
-    textEditor->SetFlags(flags);
     return NS_OK;
   }
 
   if (nsGkAtoms::disabled == aAttribute) {
-    uint32_t flags;
-    textEditor->GetFlags(&flags);
     int16_t displaySelection = nsISelectionController::SELECTION_OFF;
     const bool focused = nsContentUtils::IsFocusedContent(mContent);
     const bool hasAttr = AttributeExists(nsGkAtoms::disabled);
+    bool disable;
     if (hasAttr) { // set disabled
-      flags |= nsIPlaintextEditor::eEditorDisabledMask;
+      disable = true;
     } else { // unset disabled
-      flags &= ~(nsIPlaintextEditor::eEditorDisabledMask);
+      disable = false;
       displaySelection = focused ? nsISelectionController::SELECTION_ON
                                  : nsISelectionController::SELECTION_HIDDEN;
     }
@@ -1040,7 +1142,11 @@ nsTextControlFrame::AttributeChanged(int32_t         aNameSpaceID,
     if (focused) {
       selCon->SetCaretEnabled(!hasAttr);
     }
-    textEditor->SetFlags(flags);
+    if (disable) {
+      textEditor->AddFlags(nsIPlaintextEditor::eEditorDisabledMask);
+    } else {
+      textEditor->RemoveFlags(nsIPlaintextEditor::eEditorDisabledMask);
+    }
     return NS_OK;
   }
 
@@ -1133,10 +1239,11 @@ nsTextControlFrame::SetInitialChildList(ChildListID     aListID,
 void
 nsTextControlFrame::SetValueChanged(bool aValueChanged)
 {
-  nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
-  NS_ASSERTION(txtCtrl, "Content not a text control element");
+  nsCOMPtr<nsITextControlElement> txtCtrl =
+    GetContent()->GetAsTextControlElement();
+  MOZ_ASSERT(txtCtrl, "Content not a text control element");
 
-  if (mUsePlaceholder) {
+  if (mPlaceholderDiv) {
     AutoWeakFrame weakFrame(this);
     txtCtrl->UpdateOverlayTextVisibility(true);
     if (!weakFrame.IsAlive()) {
@@ -1156,29 +1263,25 @@ nsTextControlFrame::UpdateValueDisplay(bool aNotify,
   if (!IsSingleLineTextControl()) // textareas don't use this
     return NS_OK;
 
-  nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
-  NS_ASSERTION(txtCtrl, "Content not a text control element");
-  nsIContent* rootNode = txtCtrl->GetRootEditorNode();
-
-  NS_PRECONDITION(rootNode, "Must have a div content\n");
+  NS_PRECONDITION(mRootNode, "Must have a div content\n");
   NS_PRECONDITION(!mEditorHasBeenInitialized,
                   "Do not call this after editor has been initialized");
-  NS_ASSERTION(!mUsePlaceholder || txtCtrl->GetPlaceholderNode(),
-               "A placeholder div must exist");
 
-  nsIContent *textContent = rootNode->GetChildAt(0);
+  nsIContent* textContent = mRootNode->GetChildAt(0);
   if (!textContent) {
     // Set up a textnode with our value
     RefPtr<nsTextNode> textNode =
       new nsTextNode(mContent->NodeInfo()->NodeInfoManager());
+    textNode->MarkAsMaybeModifiedFrequently();
 
-    NS_ASSERTION(textNode, "Must have textcontent!\n");
-
-    rootNode->AppendChildTo(textNode, aNotify);
+    mRootNode->AppendChildTo(textNode, aNotify);
     textContent = textNode;
   }
 
   NS_ENSURE_TRUE(textContent, NS_ERROR_UNEXPECTED);
+
+  nsCOMPtr<nsITextControlElement> txtCtrl = do_QueryInterface(GetContent());
+  MOZ_ASSERT(txtCtrl);
 
   // Get the current value of the textfield from the content.
   nsAutoString value;
@@ -1191,15 +1294,14 @@ nsTextControlFrame::UpdateValueDisplay(bool aNotify,
   // Update the display of the placeholder value and preview text if needed.
   // We don't need to do this if we're about to initialize the editor, since
   // EnsureEditorInitialized takes care of this.
-  if ((mUsePlaceholder || mUsePreview) && !aBeforeEditorInit)
-  {
+  if ((mPlaceholderDiv || mPreviewDiv) && !aBeforeEditorInit) {
     AutoWeakFrame weakFrame(this);
     txtCtrl->UpdateOverlayTextVisibility(aNotify);
     NS_ENSURE_STATE(weakFrame.IsAlive());
   }
 
   if (aBeforeEditorInit && value.IsEmpty()) {
-    rootNode->RemoveChildAt(0, true);
+    mRootNode->RemoveChildAt(0, true);
     return NS_OK;
   }
 
@@ -1286,7 +1388,6 @@ nsTextControlFrame::PeekOffset(nsPeekOffsetStruct *aPos)
 
 void
 nsTextControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                                     const nsRect&           aDirtyRect,
                                      const nsDisplayListSet& aLists)
 {
   /*
@@ -1316,7 +1417,7 @@ nsTextControlFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
            !txtCtrl->GetPlaceholderVisibility()) ||
           (kid->GetContent() == txtCtrl->GetPreviewNode() &&
            !txtCtrl->GetPreviewVisibility()))) {
-      BuildDisplayListForChild(aBuilder, kid, aDirtyRect, set, 0);
+      BuildDisplayListForChild(aBuilder, kid, set, 0);
     }
     kid = kid->GetNextSibling();
   }
@@ -1359,4 +1460,46 @@ nsTextControlFrame::EditorInitializer::Run()
 
   mFrame->FinishedInitializer();
   return NS_OK;
+}
+
+NS_IMPL_ISUPPORTS(nsTextControlFrame::nsAnonDivObserver, nsIMutationObserver)
+
+void
+nsTextControlFrame::nsAnonDivObserver::CharacterDataChanged(
+  nsIDocument* aDocument,
+  nsIContent* aContent,
+  CharacterDataChangeInfo* aInfo)
+{
+  mFrame.ClearCachedValue();
+}
+
+void
+nsTextControlFrame::nsAnonDivObserver::ContentAppended(
+  nsIDocument* aDocument,
+  nsIContent* aContainer,
+  nsIContent* aFirstNewContent,
+  int32_t /* unused */)
+{
+  mFrame.ClearCachedValue();
+}
+
+void
+nsTextControlFrame::nsAnonDivObserver::ContentInserted(
+  nsIDocument* aDocument,
+  nsIContent* aContainer,
+  nsIContent* aChild,
+  int32_t /* unused */)
+{
+  mFrame.ClearCachedValue();
+}
+
+void
+nsTextControlFrame::nsAnonDivObserver::ContentRemoved(
+  nsIDocument* aDocument,
+  nsIContent* aContainer,
+  nsIContent* aChild,
+  int32_t aIndexInContainer,
+  nsIContent* aPreviousSibling)
+{
+  mFrame.ClearCachedValue();
 }

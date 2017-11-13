@@ -33,17 +33,13 @@
 #include "nsIHTMLDocument.h"
 #include "nsIViewSourceChannel.h"
 #include "xpcpublic.h"
+#include "mozilla/IdleTaskRunner.h"
 
 using namespace mozilla;
 
-NS_INTERFACE_TABLE_HEAD_CYCLE_COLLECTION_INHERITED(nsHtml5TreeOpExecutor)
-  NS_INTERFACE_TABLE_INHERITED(nsHtml5TreeOpExecutor,
-                               nsIContentSink)
-NS_INTERFACE_TABLE_TAIL_INHERITING(nsHtml5DocumentBuilder)
-
-NS_IMPL_ADDREF_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
-
-NS_IMPL_RELEASE_INHERITED(nsHtml5TreeOpExecutor, nsContentSink)
+NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(nsHtml5TreeOpExecutor,
+                                             nsHtml5DocumentBuilder,
+                                             nsIContentSink)
 
 class nsHtml5ExecutorReflusher : public Runnable
 {
@@ -62,7 +58,7 @@ class nsHtml5ExecutorReflusher : public Runnable
 };
 
 static mozilla::LinkedList<nsHtml5TreeOpExecutor>* gBackgroundFlushList = nullptr;
-static nsITimer* gFlushTimer = nullptr;
+StaticRefPtr<IdleTaskRunner> gBackgroundFlushRunner;
 
 nsHtml5TreeOpExecutor::nsHtml5TreeOpExecutor()
   : nsHtml5DocumentBuilder(false)
@@ -86,9 +82,9 @@ nsHtml5TreeOpExecutor::~nsHtml5TreeOpExecutor()
     if (gBackgroundFlushList->isEmpty()) {
       delete gBackgroundFlushList;
       gBackgroundFlushList = nullptr;
-      if (gFlushTimer) {
-        gFlushTimer->Cancel();
-        NS_RELEASE(gFlushTimer);
+      if (gBackgroundFlushRunner) {
+        gBackgroundFlushRunner->Cancel();
+        gBackgroundFlushRunner = nullptr;
       }
     }
   }
@@ -250,8 +246,8 @@ nsHtml5TreeOpExecutor::MarkAsBroken(nsresult aReason)
   return aReason;
 }
 
-void
-FlushTimerCallback(nsITimer* aTimer, void* aClosure)
+static bool
+BackgroundFlushCallback(TimeStamp /*aDeadline*/)
 {
   RefPtr<nsHtml5TreeOpExecutor> ex = gBackgroundFlushList->popFirst();
   if (ex) {
@@ -260,9 +256,11 @@ FlushTimerCallback(nsITimer* aTimer, void* aClosure)
   if (gBackgroundFlushList && gBackgroundFlushList->isEmpty()) {
     delete gBackgroundFlushList;
     gBackgroundFlushList = nullptr;
-    gFlushTimer->Cancel();
-    NS_RELEASE(gFlushTimer);
+    gBackgroundFlushRunner->Cancel();
+    gBackgroundFlushRunner = nullptr;
+    return true;
   }
+  return true;
 }
 
 void
@@ -281,16 +279,18 @@ nsHtml5TreeOpExecutor::ContinueInterruptedParsingAsync()
     if (!isInList()) {
       gBackgroundFlushList->insertBack(this);
     }
-    if (!gFlushTimer) {
-      nsCOMPtr<nsITimer> t = do_CreateInstance("@mozilla.org/timer;1");
-      t.swap(gFlushTimer);
-      // The timer value 50 should not hopefully slow down background pages too
-      // much, yet lets event loop to process enough between ticks.
-      // See bug 734015.
-      gFlushTimer->InitWithNamedFuncCallback(FlushTimerCallback, nullptr,
-                                             50, nsITimer::TYPE_REPEATING_SLACK,
-                                             "FlushTimerCallback");
+    if (gBackgroundFlushRunner) {
+      NS_WARNING("We've already scheduled a task for background list flush.");
+      return;
     }
+    // Now we set up a repetitive idle scheduler for flushing background list.
+    gBackgroundFlushRunner =
+      IdleTaskRunner::Create(&BackgroundFlushCallback,
+                             "nsHtml5TreeOpExecutor::BackgroundFlushCallback",
+                             250, // The hard deadline: 250ms.
+                             nsContentSink::sInteractiveParseTime / 1000, // Required budget.
+                             true, // repeating
+                             []{ return false; }); // MayStopProcessing
   }
 }
 
@@ -964,14 +964,26 @@ void
 nsHtml5TreeOpExecutor::PreloadStyle(const nsAString& aURL,
                                     const nsAString& aCharset,
                                     const nsAString& aCrossOrigin,
+                                    const nsAString& aReferrerPolicy,
                                     const nsAString& aIntegrity)
 {
   nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
   if (!uri) {
     return;
   }
-  mDocument->PreloadStyle(uri, aCharset, aCrossOrigin,
-                          mSpeculationReferrerPolicy, aIntegrity);
+
+  mozilla::net::ReferrerPolicy referrerPolicy = mSpeculationReferrerPolicy;
+  mozilla::net::ReferrerPolicy styleReferrerPolicy =
+    mozilla::net::AttributeReferrerPolicyFromString(aReferrerPolicy);
+  if (styleReferrerPolicy != mozilla::net::RP_Unset) {
+    referrerPolicy = styleReferrerPolicy;
+  }
+
+  mDocument->PreloadStyle(uri,
+                          Encoding::ForLabel(aCharset),
+                          aCrossOrigin,
+                          referrerPolicy,
+                          aIntegrity);
 }
 
 void
@@ -982,8 +994,9 @@ nsHtml5TreeOpExecutor::PreloadImage(const nsAString& aURL,
                                     const nsAString& aImageReferrerPolicy)
 {
   nsCOMPtr<nsIURI> baseURI = BaseURIForPreload();
+  bool isImgSet = false;
   nsCOMPtr<nsIURI> uri = mDocument->ResolvePreloadImage(baseURI, aURL, aSrcset,
-                                                        aSizes);
+                                                        aSizes, &isImgSet);
   if (uri && ShouldPreloadURI(uri)) {
     // use document wide referrer policy
     mozilla::net::ReferrerPolicy referrerPolicy = mSpeculationReferrerPolicy;
@@ -993,7 +1006,7 @@ nsHtml5TreeOpExecutor::PreloadImage(const nsAString& aURL,
       referrerPolicy = imageReferrerPolicy;
     }
 
-    mDocument->MaybePreLoadImage(uri, aCrossOrigin, referrerPolicy);
+    mDocument->MaybePreLoadImage(uri, aCrossOrigin, referrerPolicy, isImgSet);
   }
 }
 

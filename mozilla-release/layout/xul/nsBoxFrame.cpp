@@ -124,11 +124,10 @@ nsBoxFrame::nsBoxFrame(nsStyleContext* aContext,
   , mFlex(0)
   , mAscent(0)
 {
-  mState |= NS_STATE_IS_HORIZONTAL;
-  mState |= NS_STATE_AUTO_STRETCH;
+  AddStateBits(NS_STATE_IS_HORIZONTAL | NS_STATE_AUTO_STRETCH);
 
   if (aIsRoot)
-     mState |= NS_STATE_IS_ROOT;
+     AddStateBits(NS_STATE_IS_ROOT);
 
   mValign = vAlign_Top;
   mHalign = hAlign_Left;
@@ -235,16 +234,16 @@ nsBoxFrame::CacheAttributes()
   bool orient = false;
   GetInitialOrientation(orient);
   if (orient)
-    mState |= NS_STATE_IS_HORIZONTAL;
+    AddStateBits(NS_STATE_IS_HORIZONTAL);
   else
-    mState &= ~NS_STATE_IS_HORIZONTAL;
+    RemoveStateBits(NS_STATE_IS_HORIZONTAL);
 
   bool normal = true;
   GetInitialDirection(normal);
   if (normal)
-    mState |= NS_STATE_IS_DIRECTION_NORMAL;
+    AddStateBits(NS_STATE_IS_DIRECTION_NORMAL);
   else
-    mState &= ~NS_STATE_IS_DIRECTION_NORMAL;
+    RemoveStateBits(NS_STATE_IS_DIRECTION_NORMAL);
 
   GetInitialVAlignment(mValign);
   GetInitialHAlignment(mHalign);
@@ -252,29 +251,29 @@ nsBoxFrame::CacheAttributes()
   bool equalSize = false;
   GetInitialEqualSize(equalSize);
   if (equalSize)
-        mState |= NS_STATE_EQUAL_SIZE;
+        AddStateBits(NS_STATE_EQUAL_SIZE);
     else
-        mState &= ~NS_STATE_EQUAL_SIZE;
+        RemoveStateBits(NS_STATE_EQUAL_SIZE);
 
   bool autostretch = !!(mState & NS_STATE_AUTO_STRETCH);
   GetInitialAutoStretch(autostretch);
   if (autostretch)
-        mState |= NS_STATE_AUTO_STRETCH;
+        AddStateBits(NS_STATE_AUTO_STRETCH);
      else
-        mState &= ~NS_STATE_AUTO_STRETCH;
+        RemoveStateBits(NS_STATE_AUTO_STRETCH);
 
 
 #ifdef DEBUG_LAYOUT
   bool debug = mState & NS_STATE_SET_TO_DEBUG;
   bool debugSet = GetInitialDebug(debug);
   if (debugSet) {
-        mState |= NS_STATE_DEBUG_WAS_SET;
+        AddStateBits(NS_STATE_DEBUG_WAS_SET);
         if (debug)
-            mState |= NS_STATE_SET_TO_DEBUG;
+            AddStateBits(NS_STATE_SET_TO_DEBUG);
         else
-            mState &= ~NS_STATE_SET_TO_DEBUG;
+            RemoveStateBits(NS_STATE_SET_TO_DEBUG);
   } else {
-        mState &= ~NS_STATE_DEBUG_WAS_SET;
+        RemoveStateBits(NS_STATE_DEBUG_WAS_SET);
   }
 #endif
 }
@@ -566,7 +565,7 @@ nsBoxFrame::DidReflow(nsPresContext*           aPresContext,
   nsFrameState preserveBits =
     mState & (NS_FRAME_IS_DIRTY | NS_FRAME_HAS_DIRTY_CHILDREN);
   nsFrame::DidReflow(aPresContext, aReflowInput, aStatus);
-  mState |= preserveBits;
+  AddStateBits(preserveBits);
 }
 
 bool
@@ -645,6 +644,7 @@ nsBoxFrame::Reflow(nsPresContext*          aPresContext,
 
   DO_GLOBAL_REFLOW_COUNT("nsBoxFrame");
   DISPLAY_REFLOW(aPresContext, this, aReflowInput, aDesiredSize, aStatus);
+  MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   NS_ASSERTION(aReflowInput.ComputedWidth() >=0 &&
                aReflowInput.ComputedHeight() >= 0, "Computed Size < 0");
@@ -661,8 +661,6 @@ nsBoxFrame::Reflow(nsPresContext*          aPresContext,
   printf(" *\n");
 
 #endif
-
-  aStatus.Reset();
 
   // create the layout state
   nsBoxLayoutState state(aPresContext, aReflowInput.mRenderingContext,
@@ -981,9 +979,9 @@ nsBoxFrame::SetXULDebug(nsBoxLayoutState& aState, bool aDebug)
   if (debugChanged)
   {
      if (aDebug) {
-         mState |= NS_STATE_CURRENTLY_IN_DEBUG;
+         AddStateBits(NS_STATE_CURRENTLY_IN_DEBUG);
      } else {
-         mState &= ~NS_STATE_CURRENTLY_IN_DEBUG;
+         RemoveStateBits(NS_STATE_CURRENTLY_IN_DEBUG);
      }
 
      SetDebugOnChildList(aState, mFirstChild, aDebug);
@@ -1175,16 +1173,16 @@ nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
       bool orient = true;
       GetInitialOrientation(orient);
       if (orient)
-        mState |= NS_STATE_IS_HORIZONTAL;
+        AddStateBits(NS_STATE_IS_HORIZONTAL);
       else
-        mState &= ~NS_STATE_IS_HORIZONTAL;
+        RemoveStateBits(NS_STATE_IS_HORIZONTAL);
 
       bool normal = true;
       GetInitialDirection(normal);
       if (normal)
-        mState |= NS_STATE_IS_DIRECTION_NORMAL;
+        AddStateBits(NS_STATE_IS_DIRECTION_NORMAL);
       else
-        mState &= ~NS_STATE_IS_DIRECTION_NORMAL;
+        RemoveStateBits(NS_STATE_IS_DIRECTION_NORMAL);
 
       GetInitialVAlignment(mValign);
       GetInitialHAlignment(mHalign);
@@ -1192,31 +1190,31 @@ nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
       bool equalSize = false;
       GetInitialEqualSize(equalSize);
       if (equalSize)
-        mState |= NS_STATE_EQUAL_SIZE;
+        AddStateBits(NS_STATE_EQUAL_SIZE);
       else
-        mState &= ~NS_STATE_EQUAL_SIZE;
+        RemoveStateBits(NS_STATE_EQUAL_SIZE);
 
 #ifdef DEBUG_LAYOUT
       bool debug = mState & NS_STATE_SET_TO_DEBUG;
       bool debugSet = GetInitialDebug(debug);
       if (debugSet) {
-        mState |= NS_STATE_DEBUG_WAS_SET;
+        AddStateBits(NS_STATE_DEBUG_WAS_SET);
 
         if (debug)
-          mState |= NS_STATE_SET_TO_DEBUG;
+          AddStateBits(NS_STATE_SET_TO_DEBUG);
         else
-          mState &= ~NS_STATE_SET_TO_DEBUG;
+          RemoveStateBits(NS_STATE_SET_TO_DEBUG);
       } else {
-        mState &= ~NS_STATE_DEBUG_WAS_SET;
+        RemoveStateBits(NS_STATE_DEBUG_WAS_SET);
       }
 #endif
 
       bool autostretch = !!(mState & NS_STATE_AUTO_STRETCH);
       GetInitialAutoStretch(autostretch);
       if (autostretch)
-        mState |= NS_STATE_AUTO_STRETCH;
+        AddStateBits(NS_STATE_AUTO_STRETCH);
       else
-        mState &= ~NS_STATE_AUTO_STRETCH;
+        RemoveStateBits(NS_STATE_AUTO_STRETCH);
     }
     else if (aAttribute == nsGkAtoms::left ||
              aAttribute == nsGkAtoms::top ||
@@ -1224,7 +1222,7 @@ nsBoxFrame::AttributeChanged(int32_t aNameSpaceID,
              aAttribute == nsGkAtoms::bottom ||
              aAttribute == nsGkAtoms::start ||
              aAttribute == nsGkAtoms::end) {
-      mState &= ~NS_STATE_STACK_NOT_POSITIONED;
+      RemoveStateBits(NS_STATE_STACK_NOT_POSITIONED);
     }
     else if (aAttribute == nsGkAtoms::mousethrough) {
       UpdateMouseThrough();
@@ -1314,7 +1312,6 @@ PaintXULDebugBackground(nsIFrame* aFrame, DrawTarget* aDrawTarget,
 
 void
 nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
-                             const nsRect&           aDirtyRect,
                              const nsDisplayListSet& aLists)
 {
   bool forceLayer = false;
@@ -1353,7 +1350,7 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
     contASRTracker.emplace(aBuilder);
   }
 
-  BuildDisplayListForChildren(aBuilder, aDirtyRect, destination);
+  BuildDisplayListForChildren(aBuilder, destination);
 
   // see if we have to draw a selection frame around this container
   DisplaySelectionOverlay(aBuilder, destination.Content());
@@ -1384,7 +1381,6 @@ nsBoxFrame::BuildDisplayList(nsDisplayListBuilder*   aBuilder,
 
 void
 nsBoxFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
-                                        const nsRect&           aDirtyRect,
                                         const nsDisplayListSet& aLists)
 {
   nsIFrame* kid = mFrames.FirstChild();
@@ -1393,7 +1389,7 @@ nsBoxFrame::BuildDisplayListForChildren(nsDisplayListBuilder*   aBuilder,
   nsDisplayListSet set(aLists, aLists.BlockBorderBackgrounds());
   // The children should be in the right order
   while (kid) {
-    BuildDisplayListForChild(aBuilder, kid, aDirtyRect, set);
+    BuildDisplayListForChild(aBuilder, kid, set);
     kid = kid->GetNextSibling();
   }
 }
@@ -1906,6 +1902,14 @@ bool
 nsBoxFrame::SupportsOrdinalsInChildren()
 {
   return true;
+}
+
+void
+nsBoxFrame::AppendDirectlyOwnedAnonBoxes(nsTArray<OwnedAnonBox>& aResult)
+{
+  if (GetStateBits() & NS_STATE_BOX_WRAPS_KIDS_IN_BLOCK) {
+    aResult.AppendElement(OwnedAnonBox(PrincipalChildList().FirstChild()));
+  }
 }
 
 // Helper less-than-or-equal function, used in CheckBoxOrder() as a

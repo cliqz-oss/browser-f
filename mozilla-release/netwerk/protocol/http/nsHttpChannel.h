@@ -31,6 +31,8 @@
 #include "AlternateServices.h"
 #include "nsIHstsPrimingCallback.h"
 #include "nsIRaceCacheWithNetwork.h"
+#include "mozilla/extensions/PStreamFilterParent.h"
+#include "mozilla/Mutex.h"
 
 class nsDNSPrefetch;
 class nsICancelable;
@@ -84,6 +86,7 @@ class nsHttpChannel final : public HttpBaseChannel
                           , public nsIChannelWithDivertableParentListener
                           , public nsIHstsPrimingCallback
                           , public nsIRaceCacheWithNetwork
+                          , public nsIRequestTailUnblockCallback
                           , public nsITimerCallback
 {
 public:
@@ -108,6 +111,7 @@ public:
     NS_DECLARE_STATIC_IID_ACCESSOR(NS_HTTPCHANNEL_IID)
     NS_DECL_NSIRACECACHEWITHNETWORK
     NS_DECL_NSITIMERCALLBACK
+    NS_DECL_NSIREQUESTTAILUNBLOCKCALLBACK
 
     // nsIHttpAuthenticableChannel. We can't use
     // NS_DECL_NSIHTTPAUTHENTICABLECHANNEL because it duplicates cancel() and
@@ -290,6 +294,10 @@ public: /* internal necko use only */
     // Should only be called on the same thread as ODA.
     bool IsReadingFromCache() const { return mIsReadingFromCache; }
 
+    base::ProcessId ProcessId();
+
+    MOZ_MUST_USE bool AttachStreamFilter(ipc::Endpoint<extensions::PStreamFilterParent>&& aEndpoint);
+
 private: // used for alternate service validation
     RefPtr<TransactionObserver> mTransactionObserver;
 public:
@@ -319,10 +327,11 @@ private:
     MOZ_MUST_USE nsresult BeginConnectContinue();
     MOZ_MUST_USE nsresult ContinueBeginConnectWithResult();
     void     ContinueBeginConnect();
+    MOZ_MUST_USE nsresult OnBeforeConnect();
+    void     OnBeforeConnectContinue();
     MOZ_MUST_USE nsresult Connect();
     void     SpeculativeConnect();
     MOZ_MUST_USE nsresult SetupTransaction();
-    void     SetupTransactionRequestContext();
     MOZ_MUST_USE nsresult CallOnStartRequest();
     MOZ_MUST_USE nsresult ProcessResponse();
     void                  AsyncContinueProcessResponse();
@@ -652,10 +661,6 @@ private:
     // the next authentication request can be sent on a whole new connection
     uint32_t                          mAuthConnectionRestartable : 1;
 
-    uint32_t                          mReqContentLengthDetermined : 1;
-
-    uint64_t                          mReqContentLength;
-
     nsTArray<nsContinueRedirectionFunc> mRedirectFuncStack;
 
     // Needed for accurate DNS timing
@@ -669,6 +674,25 @@ private:
     MOZ_MUST_USE nsresult WaitForRedirectCallback();
     void PushRedirectAsyncFunc(nsContinueRedirectionFunc func);
     void PopRedirectAsyncFunc(nsContinueRedirectionFunc func);
+
+    // If this resource is eligible for tailing based on class-of-service flags
+    // and load flags.  We don't tail Leaders/Unblocked/UrgentStart and top-level
+    // loads.
+    bool EligibleForTailing();
+
+    // Called exclusively only from AsyncOpen or after all classification callbacks.
+    // If this channel is 1) Tail, 2) assigned a request context, 3) the context is
+    // still in the tail-blocked phase, then the method will queue this channel.
+    // OnTailUnblock will be called after the context is tail-unblocked or canceled.
+    bool WaitingForTailUnblock();
+
+    // A function we trigger when untail callback is triggered by our request
+    // context in case this channel was tail-blocked.
+    nsresult (nsHttpChannel::*mOnTailUnblock)();
+    // Called on untail when tailed during AsyncOpen execution.
+    nsresult AsyncOpenOnTailUnblock();
+    // Called on untail when tailed because of being a tracking resource.
+    nsresult ConnectOnTailUnblock();
 
     nsCString mUsername;
 
@@ -687,17 +711,19 @@ private:
     uint32_t mCacheOpenDelay = 0;
 
     // We need to remember which is the source of the response we are using.
-    enum {
-        RESPONSE_PENDING,           // response is pending
-        RESPONSE_FROM_CACHE,        // response coming from cache. no network.
-        RESPONSE_FROM_NETWORK,      // response coming from the network
-    } mFirstResponseSource = RESPONSE_PENDING;
+    enum ResponseSource {
+        RESPONSE_PENDING      = 0,  // response is pending
+        RESPONSE_FROM_CACHE   = 1,  // response coming from cache. no network.
+        RESPONSE_FROM_NETWORK = 2   // response coming from the network
+    };
+    Atomic<ResponseSource, Relaxed> mFirstResponseSource;
 
     // Determines if it's possible and advisable to race the network request
     // with the cache fetch, and proceeds to do so.
     nsresult MaybeRaceCacheWithNetwork();
 
-    nsresult TriggerNetwork(int32_t aTimeout);
+    nsresult TriggerNetworkWithDelay(uint32_t aDelay);
+    nsresult TriggerNetwork();
     void CancelNetworkRequest(nsresult aStatus);
     // Timer used to delay the network request, or to trigger the network
     // request if retrieving the cache entry takes too long.
@@ -706,12 +732,19 @@ private:
     bool mNetworkTriggered = false;
     bool mWaitingForProxy = false;
     // Is true if the onCacheEntryAvailable callback has been called.
-    Atomic<bool> mOnCacheAvailableCalled;
+    bool mOnCacheAvailableCalled;
     // Will be true if the onCacheEntryAvailable callback is not called by the
     // time we send the network request
     Atomic<bool> mRaceCacheWithNetwork;
     uint32_t mRaceDelay;
     bool mCacheAsyncOpenCalled;
+    // If true then OnCacheEntryAvailable should ignore the entry, because
+    // SetupTransaction removed conditional headers and decisions made in
+    // OnCacheEntryCheck are no longer valid.
+    bool mIgnoreCacheEntry;
+    // Lock preventing OnCacheEntryCheck and SetupTransaction being called at
+    // the same time.
+    mozilla::Mutex mRCWNLock;
 
 protected:
     virtual void DoNotifyListenerCleanup() override;

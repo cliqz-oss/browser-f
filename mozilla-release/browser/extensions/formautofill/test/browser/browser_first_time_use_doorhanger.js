@@ -1,3 +1,4 @@
+/* eslint-disable mozilla/no-arbitrary-setTimeout */
 "use strict";
 
 add_task(async function test_first_time_save() {
@@ -6,7 +7,7 @@ add_task(async function test_first_time_save() {
   await SpecialPowers.pushPrefEnv({
     "set": [
       [FTU_PREF, true],
-      [ENABLED_PREF, true],
+      [ENABLED_AUTOFILL_ADDRESSES_PREF, true],
     ],
   });
 
@@ -31,7 +32,7 @@ add_task(async function test_first_time_save() {
       let cb = getDoorhangerCheckbox();
       ok(cb.hidden, "Sync checkbox should be hidden");
       // Open the panel via main button
-      await clickDoorhangerButton(MAIN_BUTTON_INDEX);
+      await clickDoorhangerButton(MAIN_BUTTON);
       let tab = await tabPromise;
       ok(tab, "Privacy panel opened");
       await BrowserTestUtils.removeTab(tab);
@@ -77,7 +78,7 @@ add_task(async function test_first_time_save_with_sync_account() {
   await SpecialPowers.pushPrefEnv({
     "set": [
       [FTU_PREF, true],
-      [ENABLED_PREF, true],
+      [ENABLED_AUTOFILL_ADDRESSES_PREF, true],
       [SYNC_USERNAME_PREF, "foo@bar.com"],
     ],
   });
@@ -110,7 +111,7 @@ add_task(async function test_first_time_save_with_sync_account() {
       is(SpecialPowers.getBoolPref(SYNC_ADDRESSES_PREF), true,
          "addresses sync should be enabled after checked");
       // Open the panel via main button
-      await clickDoorhangerButton(MAIN_BUTTON_INDEX);
+      await clickDoorhangerButton(MAIN_BUTTON);
       let tab = await tabPromise;
       ok(tab, "Privacy panel opened");
       await BrowserTestUtils.removeTab(tab);

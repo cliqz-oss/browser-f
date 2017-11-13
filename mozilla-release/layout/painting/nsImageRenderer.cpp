@@ -20,7 +20,7 @@
 #include "nsIFrame.h"
 #include "nsStyleStructInlines.h"
 #include "nsSVGDisplayableFrame.h"
-#include "nsSVGEffects.h"
+#include "SVGObserverUtils.h"
 #include "nsSVGIntegrationUtils.h"
 
 using namespace mozilla;
@@ -180,9 +180,9 @@ nsImageRenderer::PrepareImage()
       nsCOMPtr<nsIURI> base = mForFrame->GetContent()->GetBaseURI();
       nsContentUtils::NewURIWithDocumentCharset(getter_AddRefs(targetURI), elementId,
                                                 mForFrame->GetContent()->GetUncomposedDoc(), base);
-      nsSVGPaintingProperty* property = nsSVGEffects::GetPaintingPropertyForURI(
+      nsSVGPaintingProperty* property = SVGObserverUtils::GetPaintingPropertyForURI(
           targetURI, mForFrame->FirstContinuation(),
-          nsSVGEffects::BackgroundImageProperty());
+          SVGObserverUtils::BackgroundImageProperty());
       if (!property) {
         mPrepareResult = DrawResult::BAD_IMAGE;
         return false;
@@ -585,20 +585,20 @@ nsImageRenderer::Draw(nsPresContext*       aPresContext,
 }
 
 DrawResult
-nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext*       aPresContext,
-                                            mozilla::wr::DisplayListBuilder&            aBuilder,
+nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext* aPresContext,
+                                            mozilla::wr::DisplayListBuilder& aBuilder,
+                                            mozilla::wr::IpcResourceUpdateQueue& aResources,
                                             const mozilla::layers::StackingContextHelper& aSc,
-                                            nsTArray<WebRenderParentCommand>&           aParentCommands,
                                             mozilla::layers::WebRenderDisplayItemLayer* aLayer,
                                             mozilla::layers::WebRenderLayerManager* aManager,
-                                            nsDisplayItem*       aItem,
-                                            const nsRect&        aDirtyRect,
-                                            const nsRect&        aDest,
-                                            const nsRect&        aFill,
-                                            const nsPoint&       aAnchor,
-                                            const nsSize&        aRepeatSize,
-                                            const CSSIntRect&    aSrc,
-                                            float                aOpacity)
+                                            nsDisplayItem* aItem,
+                                            const nsRect& aDirtyRect,
+                                            const nsRect& aDest,
+                                            const nsRect& aFill,
+                                            const nsPoint& aAnchor,
+                                            const nsSize& aRepeatSize,
+                                            const CSSIntRect& aSrc,
+                                            float aOpacity)
 {
   if (!IsReady()) {
     NS_NOTREACHED("Ensure PrepareImage() has returned true before calling me");
@@ -615,7 +615,8 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext*       aPresContext,
       nsCSSGradientRenderer renderer =
         nsCSSGradientRenderer::Create(aPresContext, mGradientData, mSize);
 
-      renderer.BuildWebRenderDisplayItems(aBuilder, aSc, aLayer, aDest, aFill, aRepeatSize, aSrc, aOpacity);
+      renderer.BuildWebRenderDisplayItems(aBuilder, aSc, aLayer, aDest, aFill,
+                                          aRepeatSize, aSrc, !aItem->BackfaceIsHidden(), aOpacity);
       break;
     }
     case eStyleImageType_Image:
@@ -634,7 +635,7 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext*       aPresContext,
       }
 
       gfx::IntSize size;
-      Maybe<wr::ImageKey> key = aManager->CreateImageKey(aItem, container, aBuilder, aSc, size);
+      Maybe<wr::ImageKey> key = aManager->CreateImageKey(aItem, container, aBuilder, aResources, aSc, size);
 
       if (key.isNothing()) {
         return DrawResult::BAD_IMAGE;
@@ -657,9 +658,11 @@ nsImageRenderer::BuildWebRenderDisplayItems(nsPresContext*       aPresContext,
 
       LayoutDeviceSize gapSize = LayoutDeviceSize::FromAppUnits(
           aRepeatSize - aDest.Size(), appUnitsPerDevPixel);
-      aBuilder.PushImage(fill, clip,
+
+      SamplingFilter samplingFilter = nsLayoutUtils::GetSamplingFilterForFrame(mForFrame);
+      aBuilder.PushImage(fill, clip, !aItem->BackfaceIsHidden(),
                          wr::ToLayoutSize(destRect.Size()), wr::ToLayoutSize(gapSize),
-                         wr::ImageRendering::Auto, key.value());
+                         wr::ToImageRendering(samplingFilter), key.value());
       break;
     }
     default:
@@ -732,8 +735,8 @@ nsImageRenderer::DrawLayer(nsPresContext*       aPresContext,
 DrawResult
 nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresContext,
                                                     mozilla::wr::DisplayListBuilder& aBuilder,
+                                                    mozilla::wr::IpcResourceUpdateQueue& aResources,
                                                     const mozilla::layers::StackingContextHelper& aSc,
-                                                    nsTArray<WebRenderParentCommand>& aParentCommands,
                                                     WebRenderDisplayItemLayer*       aLayer,
                                                     mozilla::layers::WebRenderLayerManager* aManager,
                                                     nsDisplayItem*       aItem,
@@ -752,7 +755,7 @@ nsImageRenderer::BuildWebRenderDisplayItemsForLayer(nsPresContext*       aPresCo
       mSize.width <= 0 || mSize.height <= 0) {
     return DrawResult::SUCCESS;
   }
-  return BuildWebRenderDisplayItems(aPresContext, aBuilder, aSc, aParentCommands,
+  return BuildWebRenderDisplayItems(aPresContext, aBuilder, aResources, aSc,
                                     aLayer, aManager, aItem,
                                     aDirty, aDest, aFill, aAnchor, aRepeatSize,
                                     CSSIntRect(0, 0,

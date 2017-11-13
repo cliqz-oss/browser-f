@@ -288,9 +288,8 @@ nsGNOMEShellService::SetDefaultBrowser(bool aClaimAllTypes,
     rv = bundleService->CreateBundle(BRAND_PROPERTIES, getter_AddRefs(brandBundle));
     NS_ENSURE_SUCCESS(rv, rv);
 
-    nsString brandShortName;
-    brandBundle->GetStringFromName("brandShortName",
-                                   getter_Copies(brandShortName));
+    nsAutoString brandShortName;
+    brandBundle->GetStringFromName("brandShortName", brandShortName);
 
     // use brandShortName as the application id.
     NS_ConvertUTF16toUTF8 id(brandShortName);
@@ -367,7 +366,8 @@ WriteImage(const nsCString& aPath, imgIContainer* aImage)
 
 NS_IMETHODIMP
 nsGNOMEShellService::SetDesktopBackground(nsIDOMElement* aElement,
-                                          int32_t aPosition)
+                                          int32_t aPosition,
+                                          const nsACString& aImageName)
 {
   nsresult rv;
   nsCOMPtr<nsIImageLoadingContent> imageContent = do_QueryInterface(aElement, &rv);
@@ -399,7 +399,7 @@ nsGNOMEShellService::SetDesktopBackground(nsIDOMElement* aElement,
   nsAutoCString filePath(PR_GetEnv("HOME"));
 
   // get the product brand name from localized strings
-  nsString brandName;
+  nsAutoString brandName;
   nsCID bundleCID = NS_STRINGBUNDLESERVICE_CID;
   nsCOMPtr<nsIStringBundleService> bundleService(do_GetService(bundleCID));
   if (bundleService) {
@@ -407,8 +407,7 @@ nsGNOMEShellService::SetDesktopBackground(nsIDOMElement* aElement,
     rv = bundleService->CreateBundle(BRAND_PROPERTIES,
                                      getter_AddRefs(brandBundle));
     if (NS_SUCCEEDED(rv) && brandBundle) {
-      rv = brandBundle->GetStringFromName("brandShortName",
-                                          getter_Copies(brandName));
+      rv = brandBundle->GetStringFromName("brandShortName", brandName);
       NS_ENSURE_SUCCESS(rv, rv);
     }
   }

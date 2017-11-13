@@ -522,17 +522,16 @@ static bool
 str_enumerate(JSContext* cx, HandleObject obj)
 {
     RootedString str(cx, obj->as<StringObject>().unbox());
+    js::StaticStrings& staticStrings = cx->staticStrings();
+
     RootedValue value(cx);
     for (size_t i = 0, length = str->length(); i < length; i++) {
-        JSString* str1 = NewDependentString(cx, str, i, 1);
+        JSString* str1 = staticStrings.getUnitStringForElement(cx, str, i);
         if (!str1)
             return false;
         value.setString(str1);
-        if (!DefineElement(cx, obj, i, value, nullptr, nullptr,
-                           STRING_ELEMENT_ATTRS | JSPROP_RESOLVING))
-        {
+        if (!DefineDataElement(cx, obj, i, value, STRING_ELEMENT_ATTRS | JSPROP_RESOLVING))
             return false;
-        }
     }
 
     return true;
@@ -559,8 +558,8 @@ str_resolve(JSContext* cx, HandleObject obj, HandleId id, bool* resolvedp)
         if (!str1)
             return false;
         RootedValue value(cx, StringValue(str1));
-        if (!DefineElement(cx, obj, uint32_t(slot), value, nullptr, nullptr,
-                           STRING_ELEMENT_ATTRS | JSPROP_RESOLVING))
+        if (!DefineDataElement(cx, obj, uint32_t(slot), value,
+                               STRING_ELEMENT_ATTRS | JSPROP_RESOLVING))
         {
             return false;
         }
@@ -572,8 +571,6 @@ str_resolve(JSContext* cx, HandleObject obj, HandleId id, bool* resolvedp)
 static const ClassOps StringObjectClassOps = {
     nullptr, /* addProperty */
     nullptr, /* delProperty */
-    nullptr, /* getProperty */
-    nullptr, /* setProperty */
     str_enumerate,
     nullptr, /* newEnumerate */
     str_resolve,
@@ -942,10 +939,10 @@ ToLowerCase(JSContext* cx, JSLinearString* str)
         // Look for the first character that changes when lowercased.
         size_t i = 0;
         for (; i < length; i++) {
-            char16_t c = chars[i];
+            CharT c = chars[i];
             if (!IsSame<CharT, Latin1Char>::value) {
                 if (unicode::IsLeadSurrogate(c) && i + 1 < length) {
-                    char16_t trail = chars[i + 1];
+                    CharT trail = chars[i + 1];
                     if (unicode::IsTrailSurrogate(trail)) {
                         if (unicode::CanLowerCaseNonBMP(c, trail))
                             break;
@@ -987,11 +984,15 @@ ToLowerCase(JSContext* cx, JSLinearString* str)
 }
 
 JSString*
-js::StringToLowerCase(JSContext* cx, HandleLinearString string)
+js::StringToLowerCase(JSContext* cx, HandleString string)
 {
-    if (string->hasLatin1Chars())
-        return ToLowerCase<Latin1Char>(cx, string);
-    return ToLowerCase<char16_t>(cx, string);
+    JSLinearString* linear = string->ensureLinear(cx);
+    if (!linear)
+        return nullptr;
+
+    if (linear->hasLatin1Chars())
+        return ToLowerCase<Latin1Char>(cx, linear);
+    return ToLowerCase<char16_t>(cx, linear);
 }
 
 bool
@@ -1003,11 +1004,7 @@ js::str_toLowerCase(JSContext* cx, unsigned argc, Value* vp)
     if (!str)
         return false;
 
-    RootedLinearString linear(cx, str->ensureLinear(cx));
-    if (!linear)
-        return false;
-
-    JSString* result = StringToLowerCase(cx, linear);
+    JSString* result = StringToLowerCase(cx, str);
     if (!result)
         return false;
 
@@ -1252,10 +1249,10 @@ ToUpperCase(JSContext* cx, JSLinearString* str)
         // Look for the first character that changes when uppercased.
         size_t i = 0;
         for (; i < length; i++) {
-            char16_t c = chars[i];
+            CharT c = chars[i];
             if (!IsSame<CharT, Latin1Char>::value) {
                 if (unicode::IsLeadSurrogate(c) && i + 1 < length) {
-                    char16_t trail = chars[i + 1];
+                    CharT trail = chars[i + 1];
                     if (unicode::IsTrailSurrogate(trail)) {
                         if (unicode::CanUpperCaseNonBMP(c, trail))
                             break;
@@ -1267,7 +1264,7 @@ ToUpperCase(JSContext* cx, JSLinearString* str)
             }
             if (unicode::CanUpperCase(c))
                 break;
-            if (MOZ_UNLIKELY(c > 0x7f && CanUpperCaseSpecialCasing(static_cast<CharT>(c))))
+            if (MOZ_UNLIKELY(c > 0x7f && CanUpperCaseSpecialCasing(c)))
                 break;
         }
 
@@ -1324,11 +1321,15 @@ ToUpperCase(JSContext* cx, JSLinearString* str)
 }
 
 JSString*
-js::StringToUpperCase(JSContext* cx, HandleLinearString string)
+js::StringToUpperCase(JSContext* cx, HandleString string)
 {
-    if (string->hasLatin1Chars())
-        return ToUpperCase<Latin1Char>(cx, string);
-    return ToUpperCase<char16_t>(cx, string);
+    JSLinearString* linear = string->ensureLinear(cx);
+    if (!linear)
+        return nullptr;
+
+    if (linear->hasLatin1Chars())
+        return ToUpperCase<Latin1Char>(cx, linear);
+    return ToUpperCase<char16_t>(cx, linear);
 }
 
 bool
@@ -1340,11 +1341,7 @@ js::str_toUpperCase(JSContext* cx, unsigned argc, Value* vp)
     if (!str)
         return false;
 
-    RootedLinearString linear(cx, str->ensureLinear(cx));
-    if (!linear)
-        return false;
-
-    JSString* result = StringToUpperCase(cx, linear);
+    JSString* result = StringToUpperCase(cx, str);
     if (!result)
         return false;
 
@@ -1871,15 +1868,6 @@ StringMatch(JSLinearString* text, JSLinearString* pat, uint32_t start = 0)
 }
 
 static const size_t sRopeMatchThresholdRatioLog2 = 4;
-
-bool
-js::StringHasPattern(JSLinearString* text, const char16_t* pat, uint32_t patLen)
-{
-    AutoCheckCannotGC nogc;
-    return text->hasLatin1Chars()
-           ? StringMatch(text->latin1Chars(nogc), text->length(), pat, patLen) != -1
-           : StringMatch(text->twoByteChars(nogc), text->length(), pat, patLen) != -1;
-}
 
 int
 js::StringFindPattern(JSLinearString* text, JSLinearString* pat, size_t start)
@@ -3161,8 +3149,8 @@ static const JSFunctionSpec string_methods[] = {
     /* Java-like methods. */
     JS_FN(js_toString_str,     str_toString,          0,0),
     JS_FN(js_valueOf_str,      str_toString,          0,0),
-    JS_FN("toLowerCase",       str_toLowerCase,       0,0),
-    JS_FN("toUpperCase",       str_toUpperCase,       0,0),
+    JS_INLINABLE_FN("toLowerCase", str_toLowerCase,   0,0, StringToLowerCase),
+    JS_INLINABLE_FN("toUpperCase", str_toUpperCase,   0,0, StringToUpperCase),
     JS_INLINABLE_FN("charAt",  str_charAt,            1,0, StringCharAt),
     JS_INLINABLE_FN("charCodeAt", str_charCodeAt,     1,0, StringCharCodeAt),
     JS_SELF_HOSTED_FN("substring", "String_substring", 2,0),
@@ -3324,6 +3312,16 @@ static MOZ_ALWAYS_INLINE bool
 ToCodePoint(JSContext* cx, HandleValue code, uint32_t* codePoint)
 {
     // String.fromCodePoint, Steps 5.a-b.
+
+    // Fast path for the common case - the input is already an int32.
+    if (code.isInt32()) {
+        int32_t nextCP = code.toInt32();
+        if (nextCP >= 0 && nextCP <= int32_t(unicode::NonBMPMax)) {
+            *codePoint = uint32_t(nextCP);
+            return true;
+        }
+    }
+
     double nextCP;
     if (!ToNumber(cx, code, &nextCP))
         return false;

@@ -274,6 +274,12 @@ nsSimpleURI::GetDisplayHost(nsACString &aUnicodeHost)
 }
 
 NS_IMETHODIMP
+nsSimpleURI::GetDisplayPrePath(nsACString &aPrePath)
+{
+    return GetPrePath(aPrePath);
+}
+
+NS_IMETHODIMP
 nsSimpleURI::GetHasRef(bool *result)
 {
     *result = mIsRefValid;
@@ -285,28 +291,23 @@ nsSimpleURI::SetSpec(const nsACString &aSpec)
 {
     NS_ENSURE_STATE(mMutable);
 
-    // filter out unexpected chars "\r\n\t" if necessary
-    nsAutoCString filteredSpec;
-    net_FilterURIString(aSpec, filteredSpec);
-
-    // nsSimpleURI currently restricts the charset to US-ASCII
-    nsAutoCString spec;
-    nsresult rv = NS_EscapeURL(filteredSpec, esc_OnlyNonASCII, spec, fallible);
+    nsresult rv = net_ExtractURLScheme(aSpec, mScheme);
     if (NS_FAILED(rv)) {
-      return rv;
+        return rv;
+    }
+    ToLowerCase(mScheme);
+
+    nsAutoCString spec;
+    rv = net_FilterAndEscapeURI(aSpec, esc_OnlyNonASCII, spec);
+    if (NS_FAILED(rv)) {
+        return rv;
     }
 
     int32_t colonPos = spec.FindChar(':');
-    if (colonPos < 0 || !net_IsValidScheme(spec.get(), colonPos))
-        return NS_ERROR_MALFORMED_URI;
-
-    mScheme.Truncate();
-    DebugOnly<int32_t> n = spec.Left(mScheme, colonPos);
-    NS_ASSERTION(n == colonPos, "Left failed");
-    ToLowerCase(mScheme);
-
+    MOZ_ASSERT(colonPos != kNotFound, "A colon should be in this string");
     // This sets mPath, mQuery and mRef.
-    return SetPath(Substring(spec, colonPos + 1));
+    return SetPathQueryRefEscaped(Substring(spec, colonPos + 1),
+                                  /* needsEscape = */ false);
 }
 
 NS_IMETHODIMP
@@ -437,7 +438,7 @@ nsSimpleURI::SetPort(int32_t port)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetPath(nsACString &result)
+nsSimpleURI::GetPathQueryRef(nsACString &result)
 {
     result = mPath;
     if (mIsQueryValid) {
@@ -451,14 +452,26 @@ nsSimpleURI::GetPath(nsACString &result)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::SetPath(const nsACString &aPath)
+nsSimpleURI::SetPathQueryRef(const nsACString &aPath)
 {
     NS_ENSURE_STATE(mMutable);
 
+    return SetPathQueryRefEscaped(aPath, true);
+}
+nsresult
+nsSimpleURI::SetPathQueryRefEscaped(const nsACString &aPath, bool aNeedsEscape)
+{
+    nsresult rv;
     nsAutoCString path;
-    if (!path.Assign(aPath, fallible)) {
-        return NS_ERROR_OUT_OF_MEMORY;
+    if (aNeedsEscape) {
+        rv = NS_EscapeURL(aPath, esc_OnlyNonASCII, path, fallible);
+        if (NS_FAILED(rv)) {
+          return rv;
+        }
+    } else {
+        path.Assign(aPath);
     }
+
     int32_t queryPos = path.FindChar('?');
     int32_t hashPos = path.FindChar('#');
 
@@ -496,7 +509,7 @@ nsSimpleURI::SetPath(const nsACString &aPath)
         return NS_ERROR_OUT_OF_MEMORY;
     }
 
-    nsresult rv = SetQuery(query);
+    rv = SetQuery(query);
     if (NS_FAILED(rv)) {
         return rv;
     }
@@ -689,12 +702,12 @@ nsSimpleURI::Resolve(const nsACString &relativePath, nsACString &result)
 }
 
 NS_IMETHODIMP
-nsSimpleURI::GetAsciiSpec(nsACString &result)
+nsSimpleURI::GetAsciiSpec(nsACString &aResult)
 {
-    nsAutoCString buf;
-    nsresult rv = GetSpec(buf);
+    nsresult rv = GetSpec(aResult);
     if (NS_FAILED(rv)) return rv;
-    return NS_EscapeURL(buf, esc_OnlyNonASCII|esc_AlwaysCopy, result, fallible);
+    MOZ_ASSERT(IsASCII(aResult), "The spec should be ASCII");
+    return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -706,13 +719,6 @@ nsSimpleURI::GetAsciiHostPort(nsACString &result)
 
 NS_IMETHODIMP
 nsSimpleURI::GetAsciiHost(nsACString &result)
-{
-    result.Truncate();
-    return NS_OK;
-}
-
-NS_IMETHODIMP
-nsSimpleURI::GetOriginCharset(nsACString &result)
 {
     result.Truncate();
     return NS_OK;
@@ -868,6 +874,13 @@ nsSimpleURI::SetQuery(const nsACString& aQuery)
     }
 
     return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSimpleURI::SetQueryWithEncoding(const nsACString& aQuery,
+                                  const Encoding* aEncoding)
+{
+    return SetQuery(aQuery);
 }
 
 } // namespace net

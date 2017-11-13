@@ -53,6 +53,7 @@ var openInspectorSidebarTab = Task.async(function* (id) {
 
   info("Selecting the " + id + " sidebar");
 
+  let onSidebarSelect = inspector.sidebar.once("select");
   if (id === "computedview" || id === "layoutview") {
     // The layout and computed views should wait until the box-model widget is ready.
     let onBoxModelViewReady = inspector.once("boxmodel-view-updated");
@@ -61,6 +62,7 @@ var openInspectorSidebarTab = Task.async(function* (id) {
   } else {
     inspector.sidebar.select(id);
   }
+  yield onSidebarSelect;
 
   return {
     toolbox,
@@ -134,7 +136,7 @@ function openLayoutView() {
       toolbox: data.toolbox,
       inspector: data.inspector,
       boxmodel: data.inspector.getPanel("boxmodel"),
-      gridInspector: data.inspector.gridInspector,
+      gridInspector: data.inspector.layoutview.gridInspector,
       testActor: data.testActor
     };
   });
@@ -241,12 +243,12 @@ function waitForContentMessage(name) {
 
   let mm = gBrowser.selectedBrowser.messageManager;
 
-  let def = defer();
-  mm.addMessageListener(name, function onMessage(msg) {
-    mm.removeMessageListener(name, onMessage);
-    def.resolve(msg.data);
+  return new Promise(resolve => {
+    mm.addMessageListener(name, function onMessage(msg) {
+      mm.removeMessageListener(name, onMessage);
+      resolve(msg.data);
+    });
   });
-  return def.promise;
 }
 
 /**

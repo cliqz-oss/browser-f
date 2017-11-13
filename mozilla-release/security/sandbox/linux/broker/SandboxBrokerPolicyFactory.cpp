@@ -8,9 +8,12 @@
 #include "SandboxInfo.h"
 #include "SandboxLogging.h"
 
+#include "mozilla/Array.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/SandboxSettings.h"
+#include "mozilla/UniquePtr.h"
+#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/dom/ContentChild.h"
 #include "nsPrintfCString.h"
 #include "nsString.h"
@@ -28,6 +31,11 @@
 #include <glib.h>
 #endif
 
+#include <dirent.h>
+#include <sys/stat.h>
+#include <sys/sysmacros.h>
+#include <sys/types.h>
+
 namespace mozilla {
 
 #if defined(MOZ_CONTENT_SANDBOX)
@@ -38,6 +46,44 @@ static const int rdwr = rdonly | wronly;
 static const int rdwrcr = rdwr | SandboxBroker::MAY_CREATE;
 }
 #endif
+
+static void
+AddMesaSysfsPaths(SandboxBroker::Policy* aPolicy)
+{
+  // Bug 1384178: Mesa driver loader
+  aPolicy->AddPrefix(rdonly, "/sys/dev/char/226:");
+
+  // Bug 1401666: Mesa driver loader part 2: Mesa <= 12 using libudev
+  if (auto dir = opendir("/dev/dri")) {
+    while (auto entry = readdir(dir)) {
+      if (entry->d_name[0] != '.') {
+        nsPrintfCString devPath("/dev/dri/%s", entry->d_name);
+        struct stat sb;
+        if (stat(devPath.get(), &sb) == 0 && S_ISCHR(sb.st_mode)) {
+          // For both the DRI node and its parent (the physical
+          // device), allow reading the "uevent" file.
+          static const Array<const char*, 2> kSuffixes = { "", "/device" };
+          for (const auto suffix : kSuffixes) {
+            nsPrintfCString sysPath("/sys/dev/char/%u:%u%s",
+                                    major(sb.st_rdev),
+                                    minor(sb.st_rdev),
+                                    suffix);
+            // libudev will expand the symlink but not do full
+            // canonicalization, so it will leave in ".." path
+            // components that will be realpath()ed in the
+            // broker.  To match this, allow the canonical paths.
+            UniqueFreePtr<char[]> realSysPath(realpath(sysPath.get(), nullptr));
+            if (realSysPath) {
+              nsPrintfCString ueventPath("%s/uevent", realSysPath.get());
+              aPolicy->AddPath(rdonly, ueventPath.get());
+            }
+          }
+        }
+      }
+    }
+    closedir(dir);
+  }
+}
 
 SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
 {
@@ -79,38 +125,73 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
 #endif
 
 #ifdef MOZ_WIDGET_GTK
-  // Bug 1321134: DConf's single bit of shared memory
   if (const auto userDir = g_get_user_runtime_dir()) {
+    // Bug 1321134: DConf's single bit of shared memory
     // The leaf filename is "user" by default, but is configurable.
     nsPrintfCString shmPath("%s/dconf/", userDir);
     policy->AddPrefix(rdwrcr, shmPath.get());
+    policy->AddAncestors(shmPath.get());
+#ifdef MOZ_PULSEAUDIO
+    // PulseAudio, if it can't get server info from X11, will break
+    // unless it can open this directory (or create it, but in our use
+    // case we know it already exists).  See bug 1335329.
+    nsPrintfCString pulsePath("%s/pulse", userDir);
+    policy->AddPath(rdonly, pulsePath.get());
+#endif // MOZ_PULSEAUDIO
   }
-#endif
+#endif // MOZ_WIDGET_GTK
 
   // Read permissions
   policy->AddPath(rdonly, "/dev/urandom");
   policy->AddPath(rdonly, "/proc/cpuinfo");
   policy->AddPath(rdonly, "/proc/meminfo");
+  policy->AddDir(rdonly, "/sys/devices/cpu");
+  policy->AddDir(rdonly, "/sys/devices/system/cpu");
   policy->AddDir(rdonly, "/lib");
-  policy->AddDir(rdonly, "/etc");
-  policy->AddDir(rdonly, "/usr/share");
-  policy->AddDir(rdonly, "/usr/local/share");
+  policy->AddDir(rdonly, "/lib64");
   policy->AddDir(rdonly, "/usr/lib");
   policy->AddDir(rdonly, "/usr/lib32");
   policy->AddDir(rdonly, "/usr/lib64");
-  policy->AddDir(rdonly, "/usr/X11R6/lib/X11/fonts");
+  policy->AddDir(rdonly, "/etc");
+#ifdef MOZ_PULSEAUDIO
+  policy->AddPath(rdonly, "/var/lib/dbus/machine-id");
+#endif
+  policy->AddDir(rdonly, "/usr/share");
+  policy->AddDir(rdonly, "/usr/local/share");
   policy->AddDir(rdonly, "/usr/tmp");
   policy->AddDir(rdonly, "/var/tmp");
-  policy->AddDir(rdonly, "/sys/devices/cpu");
-  policy->AddDir(rdonly, "/sys/devices/system/cpu");
+  // Various places where fonts reside
+  policy->AddDir(rdonly, "/usr/X11R6/lib/X11/fonts");
+  policy->AddDir(rdonly, "/nix/store");
+  policy->AddDir(rdonly, "/run/host/fonts");
+  policy->AddDir(rdonly, "/run/host/user-fonts");
 
-  // Bug 1384178: mesa driver loader
-  policy->AddPrefix(rdonly, "/sys/dev/char/226:");
+  AddMesaSysfsPaths(policy);
 
-  // Configuration dirs in the homedir that we want to allow read
+  // Bug 1385715: NVIDIA PRIME support
+  policy->AddPath(rdonly, "/proc/modules");
+
+#ifdef MOZ_PULSEAUDIO
+  // See bug 1384986 comment #1.
+  if (const auto xauth = PR_GetEnv("XAUTHORITY")) {
+    policy->AddPath(rdonly, xauth);
+  }
+#endif
+
+  // Allow access to XDG_CONFIG_PATH and XDG_CONFIG_DIRS
+  if (const auto xdgConfigPath = PR_GetEnv("XDG_CONFIG_PATH")) {
+    policy->AddDir(rdonly, xdgConfigPath);
+  }
+
+  nsAutoCString xdgConfigDirs(PR_GetEnv("XDG_CONFIG_DIRS"));
+  for (const auto& path : xdgConfigDirs.Split(':')) {
+    policy->AddDir(rdonly, PromiseFlatCString(path).get());
+  }
+
+  // Extra configuration dirs in the homedir that we want to allow read
   // access to.
-  mozilla::Array<const char*, 3> confDirs = {
-    ".config",
+  mozilla::Array<const char*, 3> extraConfDirs = {
+    ".config",   // Fallback if XDG_CONFIG_PATH isn't set
     ".themes",
     ".fonts",
   };
@@ -120,7 +201,7 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
   if (NS_SUCCEEDED(rv)) {
     nsCOMPtr<nsIFile> confDir;
 
-    for (auto dir : confDirs) {
+    for (const auto& dir : extraConfDirs) {
       rv = homeDir->Clone(getter_AddRefs(confDir));
       if (NS_SUCCEEDED(rv)) {
         rv = confDir->AppendNative(nsDependentCString(dir));
@@ -180,13 +261,25 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory()
   // Firefox binary dir.
   // Note that unlike the previous cases, we use NS_GetSpecialDirectory
   // instead of GetSpecialSystemDirectory. The former requires a working XPCOM
-  // system, which may not be the case for some tests. For quering for the
+  // system, which may not be the case for some tests. For querying for the
   // location of XPCOM things, we can use it anyway.
   nsCOMPtr<nsIFile> ffDir;
   rv = NS_GetSpecialDirectory(NS_GRE_DIR, getter_AddRefs(ffDir));
   if (NS_SUCCEEDED(rv)) {
     nsAutoCString tmpPath;
     rv = ffDir->GetNativePath(tmpPath);
+    if (NS_SUCCEEDED(rv)) {
+      policy->AddDir(rdonly, tmpPath.get());
+    }
+  }
+
+  // ~/.mozilla/systemextensionsdev (bug 1393805)
+  nsCOMPtr<nsIFile> sysExtDevDir;
+  rv = NS_GetSpecialDirectory(XRE_USER_SYS_EXTENSION_DEV_DIR,
+                              getter_AddRefs(sysExtDevDir));
+  if (NS_SUCCEEDED(rv)) {
+    nsAutoCString tmpPath;
+    rv = sysExtDevDir->GetNativePath(tmpPath);
     if (NS_SUCCEEDED(rv)) {
       policy->AddDir(rdonly, tmpPath.get());
     }
@@ -211,7 +304,9 @@ UniquePtr<SandboxBroker::Policy>
 SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
 {
   // Policy entries that vary per-process (currently the only reason
-  // that can happen is because they contain the pid) are added here.
+  // that can happen is because they contain the pid) are added here,
+  // as well as entries that depend on preferences or paths not available
+  // in early startup.
 
   MOZ_ASSERT(NS_IsMainThread());
   // File broker usage is controlled through a pref.
@@ -229,20 +324,21 @@ SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
                      "security.sandbox.content.write_path_whitelist",
                      rdwr);
 
+  // Whitelisted for reading by the user/distro
+  AddDynamicPathList(policy.get(),
+                    "security.sandbox.content.read_path_whitelist",
+                    rdonly);
+
   // No read blocking at level 2 and below.
   // file:// processes also get global read permissions
   // This requires accessing user preferences so we can only do it now.
   // Our constructor is initialized before user preferences are read in.
   if (GetEffectiveContentSandboxLevel() <= 2 || aFileProcess) {
     policy->AddDir(rdonly, "/");
-    return policy;
+    // Any other read-only rules will be removed as redundant by
+    // Policy::FixRecursivePermissions, so there's no need to
+    // early-return here.
   }
-
-  // Read permissions only from here on!
-  // Whitelisted for reading by the user/distro
-  AddDynamicPathList(policy.get(),
-                    "security.sandbox.content.read_path_whitelist",
-                    rdonly);
 
   // Bug 1198550: the profiler's replacement for dl_iterate_phdr
   policy->AddPath(rdonly, nsPrintfCString("/proc/%d/maps", aPid).get());
@@ -251,9 +347,49 @@ SandboxBrokerPolicyFactory::GetContentPolicy(int aPid, bool aFileProcess)
   policy->AddPath(rdonly, nsPrintfCString("/proc/%d/statm", aPid).get());
   policy->AddPath(rdonly, nsPrintfCString("/proc/%d/smaps", aPid).get());
 
-  // Return the common policy.
-  return policy;
+  // Bug 1384804, notably comment 15
+  // Used by libnuma, included by x265/ffmpeg, who falls back
+  // to get_mempolicy if this fails
+  policy->AddPath(rdonly, nsPrintfCString("/proc/%d/status", aPid).get());
 
+  // userContent.css and the extensions dir sit in the profile, which is
+  // normally blocked and we can't get the profile dir earlier in startup,
+  // so this must happen here.
+  nsCOMPtr<nsIFile> profileDir;
+  nsresult rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
+                                       getter_AddRefs(profileDir));
+  if (NS_SUCCEEDED(rv)) {
+      nsCOMPtr<nsIFile> workDir;
+      rv = profileDir->Clone(getter_AddRefs(workDir));
+      if (NS_SUCCEEDED(rv)) {
+        rv = workDir->AppendNative(NS_LITERAL_CSTRING("chrome"));
+        if (NS_SUCCEEDED(rv)) {
+          rv = workDir->AppendNative(NS_LITERAL_CSTRING("userContent.css"));
+          if (NS_SUCCEEDED(rv)) {
+            nsAutoCString tmpPath;
+            rv = workDir->GetNativePath(tmpPath);
+            if (NS_SUCCEEDED(rv)) {
+              policy->AddPath(rdonly, tmpPath.get());
+            }
+          }
+        }
+      }
+      rv = profileDir->Clone(getter_AddRefs(workDir));
+      if (NS_SUCCEEDED(rv)) {
+        rv = workDir->AppendNative(NS_LITERAL_CSTRING("extensions"));
+        if (NS_SUCCEEDED(rv)) {
+          nsAutoCString tmpPath;
+          rv = workDir->GetNativePath(tmpPath);
+          if (NS_SUCCEEDED(rv)) {
+            policy->AddDir(rdonly, tmpPath.get());
+          }
+        }
+      }
+  }
+
+  // Return the common policy.
+  policy->FixRecursivePermissions();
+  return policy;
 }
 
 void

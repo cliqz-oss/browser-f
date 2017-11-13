@@ -142,7 +142,7 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
     registerParentListeners() {
       Services.mm.addMessageListener("Shield:GetStudyList", this);
       Services.mm.addMessageListener("Shield:RemoveStudy", this);
-      Services.mm.addMessageListener("Shield:OpenOldDataPreferences", this);
+      Services.mm.addMessageListener("Shield:OpenDataPreferences", this);
     },
 
     /**
@@ -151,7 +151,7 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
     unregisterParentListeners() {
       Services.mm.removeMessageListener("Shield:GetStudyList", this);
       Services.mm.removeMessageListener("Shield:RemoveStudy", this);
-      Services.mm.removeMessageListener("Shield:OpenOldDataPreferences", this);
+      Services.mm.removeMessageListener("Shield:OpenDataPreferences", this);
     },
 
     /**
@@ -167,8 +167,8 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
         case "Shield:RemoveStudy":
           this.removeStudy(message.data);
           break;
-        case "Shield:OpenOldDataPreferences":
-          this.openOldDataPreferences();
+        case "Shield:OpenDataPreferences":
+          this.openDataPreferences();
           break;
       }
     },
@@ -204,9 +204,9 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
       });
     },
 
-    openOldDataPreferences() {
+    openDataPreferences() {
       const browserWindow = Services.wm.getMostRecentWindow("navigator:browser");
-      browserWindow.openAdvancedPreferences("dataChoicesTab", {origin: "aboutStudies"});
+      browserWindow.openPreferences("privacy-reports", {origin: "aboutStudies"});
     },
 
     getShieldLearnMoreHref() {

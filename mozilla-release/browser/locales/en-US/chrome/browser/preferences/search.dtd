@@ -2,7 +2,13 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
+<!ENTITY searchBar.label                       "Search Bar">
+
+<!ENTITY searchBar.hidden.label                "Use the address bar for search and navigation">
+<!ENTITY searchBar.shown.label                 "Add search bar in toolbar">
+
 <!ENTITY defaultSearchEngine.label             "Complementary search engine">
+
 <!ENTITY chooseYourDefaultSearchEngine2.label   "Choose the default search engine to use in the address bar and search bar.">
 
 <!ENTITY chooseYourDefaultSearchEngine.label   "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">

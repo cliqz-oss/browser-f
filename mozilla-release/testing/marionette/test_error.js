@@ -4,7 +4,36 @@
 
 const {utils: Cu} = Components;
 
-Cu.import("chrome://marionette/content/error.js");
+const {
+  ElementClickInterceptedError,
+  ElementNotAccessibleError,
+  ElementNotInteractableError,
+  error,
+  InsecureCertificateError,
+  InvalidArgumentError,
+  InvalidCookieDomainError,
+  InvalidElementStateError,
+  InvalidSelectorError,
+  InvalidSessionIDError,
+  JavaScriptError,
+  MoveTargetOutOfBoundsError,
+  NoAlertOpenError,
+  NoSuchElementError,
+  NoSuchFrameError,
+  NoSuchWindowError,
+  pprint,
+  ScriptTimeoutError,
+  SessionNotCreatedError,
+  stack,
+  StaleElementReferenceError,
+  TimeoutError,
+  UnableToSetCookieError,
+  UnexpectedAlertOpenError,
+  UnknownCommandError,
+  UnknownError,
+  UnsupportedOperationError,
+  WebDriverError,
+} = Cu.import("chrome://marionette/content/error.js", {});
 
 function notok(condition) {
   ok(!(condition));
@@ -90,28 +119,42 @@ add_test(function test_stringify() {
 });
 
 add_test(function test_pprint() {
-  equal('[object Object] {"foo":"bar"}', error.pprint`${{foo: "bar"}}`);
+  equal('[object Object] {"foo":"bar"}', pprint`${{foo: "bar"}}`);
 
-  equal("[object Number] 42", error.pprint`${42}`);
-  equal("[object Boolean] true", error.pprint`${true}`);
-  equal("[object Undefined] undefined", error.pprint`${undefined}`);
-  equal("[object Null] null", error.pprint`${null}`);
+  equal("[object Number] 42", pprint`${42}`);
+  equal("[object Boolean] true", pprint`${true}`);
+  equal("[object Undefined] undefined", pprint`${undefined}`);
+  equal("[object Null] null", pprint`${null}`);
 
   let complexObj = {toJSON: () => "foo"};
-  equal('[object Object] "foo"', error.pprint`${complexObj}`);
+  equal('[object Object] "foo"', pprint`${complexObj}`);
 
   let cyclic = {};
   cyclic.me = cyclic;
-  equal("[object Object] <cyclic object value>", error.pprint`${cyclic}`);
+  equal("[object Object] <cyclic object value>", pprint`${cyclic}`);
 
   let el = {
+    hasAttribute: attr => attr in el,
+    getAttribute: attr => attr in el ? el[attr] : null,
     nodeType: 1,
     localName: "input",
     id: "foo",
-    classList: {length: 1},
-    className: "bar baz",
+    class: "a b",
+    href: "#",
+    name: "bar",
+    src: "s",
+    type: "t",
   };
-  equal('<input id="foo" class="bar baz">', error.pprint`${el}`);
+  equal('<input id="foo" class="a b" href="#" name="bar" src="s" type="t">',
+        pprint`${el}`);
+
+  run_next_test();
+});
+
+add_test(function test_stack() {
+  equal("string", typeof stack());
+  ok(stack().includes("test_stack"));
+  ok(!stack().includes("add_test"));
 
   run_next_test();
 });
@@ -200,14 +243,16 @@ add_test(function test_WebDriverError() {
 
 add_test(function test_ElementClickInterceptedError() {
   let otherEl = {
+    hasAttribute: attr => attr in otherEl,
+    getAttribute: attr => attr in otherEl ? otherEl[attr] : null,
     nodeType: 1,
     localName: "a",
-    classList: [],
   };
   let obscuredEl = {
+    hasAttribute: attr => attr in obscuredEl,
+    getAttribute: attr => attr in obscuredEl ? obscuredEl[attr] : null,
     nodeType: 1,
     localName: "b",
-    classList: [],
     ownerDocument: {
       elementFromPoint: function (x, y) {
         return otherEl;

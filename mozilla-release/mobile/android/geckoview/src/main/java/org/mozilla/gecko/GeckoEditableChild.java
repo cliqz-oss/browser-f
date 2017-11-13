@@ -134,13 +134,7 @@ final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild 
             Log.d(LOGTAG, "notifyIME(" + GeckoEditable.getConstantName(
                           GeckoEditableListener.class, "NOTIFY_IME_", type) + ")");
         }
-        if (type == GeckoEditableListener.NOTIFY_IME_TO_COMMIT_COMPOSITION) {
-            // Gecko already committed its composition. However, Android keyboards
-            // have trouble dealing with us removing the composition manually on
-            // the Java side. Therefore, we keep the composition intact on the Java
-            // side. The text content should still be in-sync on both sides.
-            return;
-        } else if (type == GeckoEditableListener.NOTIFY_IME_TO_CANCEL_COMPOSITION) {
+        if (type == GeckoEditableListener.NOTIFY_IME_TO_CANCEL_COMPOSITION) {
             // Composition should have been canceled on the parent side through text
             // update notifications. We cannot verify that here because we don't
             // keep track of spans on the child side, but it's simple to add the
@@ -158,16 +152,18 @@ final class GeckoEditableChild extends JNIObject implements IGeckoEditableChild 
 
     @WrapForJNI(calledFrom = "gecko")
     private void notifyIMEContext(final int state, final String typeHint,
-                                  final String modeHint, final String actionHint) {
+                                  final String modeHint, final String actionHint,
+                                  final boolean inPrivateBrowsing, final boolean isUserAction) {
         if (DEBUG) {
             ThreadUtils.assertOnGeckoThread();
             Log.d(LOGTAG, "notifyIMEContext(" + GeckoEditable.getConstantName(
                           GeckoEditableListener.class, "IME_STATE_", state) + ", \"" +
-                          typeHint + "\", \"" + modeHint + "\", \"" + actionHint + "\")");
+                          typeHint + "\", \"" + modeHint + "\", \"" + actionHint + "\", " +
+                          "inPrivateBrowsing=" + inPrivateBrowsing + ")");
         }
 
         try {
-            mEditableParent.notifyIMEContext(state, typeHint, modeHint, actionHint);
+            mEditableParent.notifyIMEContext(state, typeHint, modeHint, actionHint, inPrivateBrowsing, isUserAction);
         } catch (final RemoteException e) {
             Log.e(LOGTAG, "Remote call failed", e);
         }
