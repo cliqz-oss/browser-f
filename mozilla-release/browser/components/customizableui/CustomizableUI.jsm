@@ -194,14 +194,11 @@ var CustomizableUIInternal = {
       "forward-button",
       "stop-reload-button",
       "home-button",
-      "spring",
       "urlbar-container",
-      "spring",
+      "offers-cc-browser-action", // Cliqz offers hub
       "control-center-browser-action", // Cliqz control center
       "cliqz-cc-btn", // Cliqz control center old
       "downloads-button",
-      "library-button",
-      "sidebar-button",
     ];
 
     if (AppConstants.MOZ_DEV_EDITION) {
