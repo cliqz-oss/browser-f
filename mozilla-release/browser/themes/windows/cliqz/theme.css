@@ -1,0 +1,152 @@
+:root {
+  /* Style back button the same way as other toolbar buttons (remove border and border radius) */
+  /* Customize hover background on newtab and all-tabs button */ }
+  :root:not([uidensity="compact"]) #back-button {
+    padding: 0 var(--toolbarbutton-outer-padding); }
+    :root:not([uidensity="compact"]) #back-button > .toolbarbutton-icon {
+      background-color: unset;
+      border: unset;
+      border-radius: var(--toolbarbutton-border-radius);
+      padding: var(--toolbarbutton-inner-padding);
+      width: calc(2 * var(--toolbarbutton-inner-padding) + 16px); }
+    :root:not([uidensity="compact"]) #back-button:hover:not([disabled]):not([open]) > .toolbarbutton-icon {
+      background-color: var(--toolbarbutton-hover-background) !important;
+      box-shadow: unset; }
+  :root:not([uidensity="touch"]) .tabs-newtab-button:hover .toolbarbutton-icon, :root:not([uidensity="touch"]) .tabs-newtab-button[open="true"] .toolbarbutton-icon, :root:not([uidensity="touch"]) #new-tab-button:hover .toolbarbutton-icon, :root:not([uidensity="touch"]) #new-tab-button[open="true"] .toolbarbutton-icon, :root:not([uidensity="touch"]) #alltabs-button:hover .toolbarbutton-icon, :root:not([uidensity="touch"]) #alltabs-button[open="true"] .toolbarbutton-icon {
+    margin-left: 3px;
+    margin-right: 3px;
+    padding: 3px;
+    width: 22px; }
+
+#navigator-toolbox {
+  /* TABS TOOLBAR */
+  /* NAVIGATION TOOLBAR */
+  /* Line on the bottom of the nav-bar/toolbar */ }
+  #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    /* Customize tabs toolbar background color for light theme */
+    -moz-appearance: none;
+    background-color: #D1D1D1;
+    /* Remove the right border of the placehodler and replace by the first tab border(below) */
+    /* Remove the first tab's left border in full screen */ }
+    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext .titlebar-placeholder[type="pre-tabs"] {
+      border-inline-end-width: 0; }
+    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab {
+      /* Remove the tab-line effect on top when hovering a tab */
+      /* Move tab content 1px up :-) */
+      /* Add left border for the first tab (normal/pinned) and make sure to hide it in full screen */
+      /* Make the tabs' border thinner on retina */ }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-line {
+        height: unset; }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-throbber,
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-throbber-fallback,
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-icon-image,
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-sharing-icon-overlay,
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-icon-sound,
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-close-button {
+        margin-top: 0; }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-label {
+        margin-top: 0; }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-content .tab-close-button {
+        display: none; }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-background {
+        transition: background-color ease 150ms; }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+        border-left: 0.5px solid rgba(0, 0, 0, 0.2); }
+        #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type[visuallyselected="true"] {
+          border-left-color: rgba(0, 0, 0, 0.015); }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:after, #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:before {
+        opacity: 0.2;
+        border-left-width: 0.5px; }
+      #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:hover:not([pinned="true"]) .tab-content .tab-close-button, #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab[visuallyselected="true"]:not([pinned="true"]) .tab-content .tab-close-button {
+        display: unset; }
+    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext[inFullscreen] #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+      border-left: none; }
+  #navigator-toolbox #nav-bar {
+    border-top: unset !important;
+    /* Apply margin for all nav-bar's toolbar buttons/items, and the first button as well */
+    /* Remove border and border radius of url bar */ }
+    #navigator-toolbox #nav-bar #nav-bar-customization-target .toolbarbutton-1 {
+      margin: 0 2px; }
+    #navigator-toolbox #nav-bar #nav-bar-customization-target > *:first-child {
+      margin-left: 4px; }
+    #navigator-toolbox #nav-bar #urlbar {
+      border: unset;
+      border-radius: unset;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+      transition: background-color cubic-bezier(0.43, -0.01, 0.26, 1.01) 60ms;
+      transition-delay: 60ms;
+      /* Add 1px margin for page action buttons */
+      /* Change box-shadow and background color when focused and hovering */ }
+      #navigator-toolbox #nav-bar #urlbar #page-action-buttons {
+        margin-right: 1px; }
+      #navigator-toolbox #nav-bar #urlbar[focused="true"] {
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+        background-color: #fff; }
+      #navigator-toolbox #nav-bar #urlbar:hover {
+        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+        background-color: #fff; }
+  #navigator-toolbox #PersonalToolbar {
+    border-top: 1px solid #e1e1e1;
+    box-shadow: rgba(0, 0, 0, 0.19) 0 1px 1px 0;
+    border-bottom: unset;
+    -moz-box-ordinal-group: 101; }
+  #navigator-toolbox:after {
+    box-shadow: rgba(0, 0, 0, 0.19) 0 -2px 1px 3px;
+    border-bottom: unset; }
+  #navigator-toolbox:-moz-window-inactive:after {
+    box-shadow: rgba(0, 0, 0, 0.19) 0 -2px 1px 3px; }
+
+:root {
+  /* Override global variables */
+  --tab-min-height: 30px;
+  --tabs-top-border-width: 0;
+  --tab-toolbar-navbar-overlap: 0;
+  /* Override light theme variables */ }
+  :root:-moz-lwtheme {
+    --tabs-border: rgba(0, 0, 0, 0.08);
+    --tab-line-color: #0078CA; }
+  :root:-moz-lwtheme-darktext {
+    --toolbox-border-bottom-color: #f2f2f2;
+    --chrome-secondary-background-color: #f2f2f2;
+    --url-and-searchbar-background-color: #f2f2f2;
+    --chrome-background-color: #D1D1D1; }
+
+/* Add 2 more px padding on top of PersonalToolbar/Bookmark bar */
+#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar) {
+  padding-top: 2px; }
+
+/* Normal windows */
+#main-window[sizemode="maximized"] #TabsToolbar:-moz-lwtheme-darktext {
+  margin-top: 0;
+  /* Remove border left for first tab */ }
+  #main-window[sizemode="maximized"] #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+    border-left: none; }
+
+#main-window[sizemode="normal"][tabsintitlebar]:root {
+  border-top-color: #9C9C9C; }
+  #main-window[sizemode="normal"][tabsintitlebar]:root:-moz-window-inactive {
+    border-top-color: #D4D4D4; }
+
+@media (-moz-os-version: windows-win8) {
+  :root:-moz-lwtheme-darktext {
+    --chrome-background-color: transparent; }
+  #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    background-color: transparent; }
+  #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab .tab-line {
+    height: 1px; }
+  #main-window #navigator-toolbox {
+    /* Bring back the line on top of nav-bar on Windows 8 */ }
+    #main-window #navigator-toolbox #nav-bar {
+      border-top: 1px solid #d4d4d4 !important; }
+  #main-window[sizemode="normal"] #navigator-toolbox {
+    /* Add the missing line on the bottom of nav-bar on Windows 8 */ }
+    #main-window[sizemode="normal"] #navigator-toolbox:after {
+      box-shadow: rgba(0, 0, 0, 0.19) 0 -2px 1px 3px; } }
+
+@media (-moz-os-version: windows-win7) and (-moz-windows-default-theme) {
+  :root:-moz-lwtheme-darktext {
+    --chrome-background-color: rgba(204, 204, 204, 0.4); }
+  #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    background-color: transparent; } }
+
+/* TODO @panagiota */
