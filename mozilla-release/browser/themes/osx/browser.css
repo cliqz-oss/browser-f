@@ -1202,3 +1202,11 @@ html|*.addon-webext-perm-list {
 .webextension-popup-stack {
   border-radius: inherit;
 }
+
+#customization-uidensity-button {
+  /*
+    Cliqz
+    Disable "Density" menu on OSX
+   */
+  display: none!important;
+}

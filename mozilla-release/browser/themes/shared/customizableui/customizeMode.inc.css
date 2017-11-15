@@ -520,7 +520,8 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 #customization-panelHolder > #widget-overflow-fixed-list::before {
   display: block;
   content: "";
-  background-image: url("chrome://browser/skin/customizableui/empty-overflow-panel.png");
+  /* Hidden in Cliqz */
+  /* background-image: url("chrome://browser/skin/customizableui/empty-overflow-panel.png"); */
   background-position: center bottom 10px;
   background-size: 218px 134px;
   background-repeat: no-repeat;
@@ -551,4 +552,12 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 #downloads-button-autohide-checkbox {
   margin: 0;
   padding: 0;
+}
+
+/* Hidden in Cliqz
+   1. Search panel from the toolbar
+   2. "Compact" option in "Density" menu */
+toolbarpaletteitem#wrapper-search-container,
+#customization-uidensity-menuitem-compact {
+  display: none!important;
 }
