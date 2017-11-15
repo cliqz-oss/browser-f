@@ -2099,3 +2099,9 @@ photonpanelmultiview #panelMenu_pocket {
 }
 
 /* END photon adjustments */
+
+/* Hidden in Cliqz
+   Search pannel in navbar */
+toolbarpaletteitem#wrapper-search-container {
+  display: none!important;
+}
