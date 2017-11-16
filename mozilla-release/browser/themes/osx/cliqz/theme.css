@@ -107,6 +107,9 @@
     --url-and-searchbar-background-color: #f2f2f2; }
 
 /* Add 2 more px padding on top of PersonalToolbar */
+#navigator-toolbox > toolbar:not(#toolbar-menubar):not(#TabsToolbar):not(#nav-bar) {
+  padding-top: 2px; }
+
 /* Move caption buttons more to the right and top
    NOTE: Keep this code here
  */
