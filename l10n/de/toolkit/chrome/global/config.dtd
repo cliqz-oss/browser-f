@@ -7,7 +7,7 @@
 <!-- about:config warning page -->
 <!-- LOCALIZATION NOTE: aboutWarningTitle.label should be attention grabbing and playful -->
 <!ENTITY aboutWarningTitle.label "Hier endet möglicherweise die Gewährleistung!">
-<!ENTITY aboutWarningText.label "Änderungen der Standardwerte dieser erweiterten Einstellungen können gefährlich für Stabilität, Sicherheit und Geschwindigkeit dieser Anwendung sein. Sie sollten nur fortfahren, wenn Sie genau wissen, was Sie tun.">
+<!ENTITY aboutWarningText.label "Änderungen der Standardwerte dieser erweiterten Einstellungen können gefährlich für Stabilität, Sicherheit und Geschwindigkeit dieser Anwendung sein. Du solltest nur fortfahren, wenn du genau weisst, was du tust.">
 <!ENTITY aboutWarningButton2.label "Ich bin mir der Gefahren bewusst!">
 <!ENTITY aboutWarningCheckbox.label "Diese Meldung beim nächsten Mal anzeigen">
 
@@ -24,7 +24,7 @@
 
 <!-- Tooltips -->
 <!ENTITY prefColumnHeader.tooltip "Klicken zum Sortieren"> 
-<!ENTITY columnChooser.tooltip "Klicken Sie, um die anzuzeigenden Spalten auszuwählen"> 
+<!ENTITY columnChooser.tooltip "Klicke, um die anzuzeigenden Spalten auszuwählen"> 
 
 <!-- Context Menu -->
 <!ENTITY copyPref.key "C">

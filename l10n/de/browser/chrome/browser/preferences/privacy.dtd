@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  trackingProtectionHeader2.label      "Schutz vor Aktivitätenverfolgung">
-<!ENTITY  trackingProtection2.description      "Um Aktivitätenverfolgung handelt es sich, wenn Website-übergreifend Daten über Ihr Surfverhalten gesammelt werden. Aktivitätenverfolgung kann dazu eingesetzt werden, ein Profil von Ihnen zu erstellen, und Inhalte an Hand Ihrer besuchten Webseiten und persönlichen Daten anzuzeigen.">
+<!ENTITY  trackingProtection2.description      "Um Aktivitätenverfolgung handelt es sich, wenn Website-übergreifend Daten über dein Surfverhalten gesammelt werden. Aktivitätenverfolgung kann dazu eingesetzt werden, ein Profil von dir zu erstellen, und Inhalte an Hand deiner besuchten Webseiten und persönlichen Daten anzuzeigen.">
 <!ENTITY  trackingProtection2.radioGroupLabel  "Bekannte Aktivitäten verfolgende Skripte blockieren">
 <!ENTITY  trackingProtectionAlways.label       "Immer">
 <!ENTITY  trackingProtectionAlways.accesskey   "m">
@@ -115,7 +115,7 @@
 <!ENTITY  browserContainersSettings.label        "Einstellungen…">
 <!ENTITY  browserContainersSettings.accesskey    "u">
 
-<!ENTITY  a11yPrivacy.checkbox.label     "Dienste für Barrierefreiheit am Zugriff auf Ihren Browser hindern">
+<!ENTITY  a11yPrivacy.checkbox.label     "Dienste für Barrierefreiheit am Zugriff auf deinen Browser hindern">
 <!ENTITY  a11yPrivacy.checkbox.accesskey "B">
 <!ENTITY  a11yPrivacy.learnmore.label    "Weitere Informationen">
 <!ENTITY enableSafeBrowsingLearnMore.label "Weitere Informationen">

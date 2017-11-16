@@ -36,7 +36,7 @@ available. -->
 <!ENTITY healthReportLearnMore.label     "Weitere Informationen">
 
 <!ENTITY dataCollection.label            "Datenerhebung durch &brandShortName; und deren Verwendung">
-<!ENTITY dataCollectionDesc.label        "Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um &brandShortName; für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.">
+<!ENTITY dataCollectionDesc.label        "Wir lassen dir die Wahl, ob du uns Daten sendest, und sammeln nur die Daten, welche erforderlich sind, um &brandShortName; für jeden anbieten und verbessern zu können. Wir fragen immer um deine Erlaubnis, bevor wir persönliche Daten senden.">
 <!ENTITY dataCollectionPrivacyNotice.label    "Datenschutzhinweis">
 
 <!ENTITY alwaysSubmitCrashReports1.label  "&brandShortName; erlauben, Absturzberichte an Cliqz zu senden">
@@ -153,6 +153,6 @@ available. -->
 <!ENTITY limitContentProcessOption.disabledDescription
                                          "Das Ändern der Anzahl der Inhaltsprozesse ist nur in &brandShortName; mit mehreren Prozessen möglich.">
 <!ENTITY limitContentProcessOption.disabledDescriptionLink
-                                         "Wie Sie herausfinden, ob Cliqz mit mehreren Prozessen ausgeführt wird">
+                                         "Wie du herausfindest, ob Cliqz mit mehreren Prozessen ausgeführt wird">
 <!ENTITY allowHWAccel.label              "Hardwarebeschleunigung verwenden, wenn verfügbar">
 <!ENTITY allowHWAccel.accesskey          "v">

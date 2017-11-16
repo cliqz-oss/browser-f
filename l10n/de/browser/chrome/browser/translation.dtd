@@ -44,7 +44,7 @@
 <!ENTITY translation.errorTranslating.label     "Beim Übersetzen der Seite trat ein Fehler auf.">
 <!ENTITY translation.tryAgain.button            "Erneut versuchen">
 
-<!ENTITY translation.serviceUnavailable.label   "Die Übersetzungsfunktion steht derzeit nicht zur Verfügung. Bitte versuchen Sie es später noch einmal.">
+<!ENTITY translation.serviceUnavailable.label   "Die Übersetzungsfunktion steht derzeit nicht zur Verfügung. Bitte versuche es später noch einmal.">
 
 <!ENTITY translation.options.menu               "Einstellungen">
 <!-- LOCALIZATION NOTE (translation.options.neverForSite.accesskey,

@@ -132,7 +132,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fxaSignIn.label "Bei &syncBrand.shortName.label; anmelden">
 <!ENTITY fxaSignedIn.tooltip "&syncBrand.shortName.label;-Einstellungen öffnen">
 <!ENTITY fxaSignInError.label "Mit &syncBrand.shortName.label; neu verbinden">
-<!ENTITY fxaUnverified.label "Bestätigen Sie Ihr Konto">
+<!ENTITY fxaUnverified.label "Bestätige dein Konto">
 
 
 <!ENTITY fullScreenMinimize.tooltip "Minimieren">
@@ -166,8 +166,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      Localizers can use one of them, or both, to better adapt this
      sentence to their language. -->
 <!ENTITY pointerlockWarning.beforeDomain.label "">
-<!ENTITY pointerlockWarning.afterDomain.label "kontrolliert den Mauszeiger. Drücken Sie die Esc-Taste, wenn Sie wieder die Kontrolle übernehmen wollen.">
-<!ENTITY pointerlockWarning.generic.label "Dieses Dokument kontrolliert den Mauszeiger. Drücken Sie die Esc-Taste, wenn Sie wieder die Kontrolle übernehmen wollen.">
+<!ENTITY pointerlockWarning.afterDomain.label "kontrolliert den Mauszeiger. Drücke die Esc-Taste, wenn du wieder die Kontrolle übernehmen willst.">
+<!ENTITY pointerlockWarning.generic.label "Dieses Dokument kontrolliert den Mauszeiger. Drücke die Esc-Taste, wenn du wieder die Kontrolle übernehmen willst.">
 
 <!ENTITY closeWindow.label "Fenster schließen">
 <!ENTITY closeWindow.accesskey "h">
@@ -216,22 +216,22 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.persistentStorageNotificationAnchor.tooltip     "Daten im dauerhaften Speicher speichern">
 <!ENTITY urlbar.remoteControlNotificationAnchor.tooltip   "Browser wird ferngesteuert">
 
-<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf Ihre Kamera und/oder Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf Ihr Mikrofon durch diese Website">
-<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf Ihre Fenster oder Bildschirme durch diese Website">
+<!ENTITY urlbar.webRTCShareDevicesNotificationAnchor.tooltip      "Verwalten des Zugriffs auf deine Kamera und/oder dein Mikrofon durch diese Website">
+<!ENTITY urlbar.webRTCShareMicrophoneNotificationAnchor.tooltip   "Verwalten des Zugriffs auf dein Mikrofon durch diese Website">
+<!ENTITY urlbar.webRTCShareScreenNotificationAnchor.tooltip       "Verwalten des Zugriffs auf deine Fenster oder Bildschirme durch diese Website">
 
 <!ENTITY urlbar.servicesNotificationAnchor.tooltip        "Ansicht über eine Installation öffnen">
 <!ENTITY urlbar.translateNotificationAnchor.tooltip       "Diese Seite übersetzen">
 <!ENTITY urlbar.translatedNotificationAnchor.tooltip      "Übersetzung von Seiten verwalten">
 <!ENTITY urlbar.emeNotificationAnchor.tooltip             "Verwendung von DRM-geschützter Software verwalten">
 
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.indexedDBBlocked.tooltip         "Sie haben die Verwendung von Offline-Speicher durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
+<!ENTITY urlbar.cameraBlocked.tooltip            "Du hast den Zugriff auf deine Kamera durch diese Website blockiert.">
+<!ENTITY urlbar.microphoneBlocked.tooltip        "Du hast den Zugriff auf dein Mikrofon durch diese Website blockiert.">
+<!ENTITY urlbar.screenBlocked.tooltip            "Du hast den Zugriff auf deinen Bildschirm durch diese Website blockiert.">
+<!ENTITY urlbar.geolocationBlocked.tooltip       "Du hast den Zugriff auf deinen Standort durch diese Website blockiert.">
+<!ENTITY urlbar.indexedDBBlocked.tooltip         "Du hast die Verwendung von Offline-Speicher durch diese Website blockiert.">
+<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Du hast das Anzeigen von Benachrichtungen durch diese Website blockiert.">
+<!ENTITY urlbar.persistentStorageBlocked.tooltip "Du hast die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
@@ -379,14 +379,14 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY appMenuRemoteTabs.showAll.tooltip "Alle Tabs von diesem Gerät anzeigen">
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.tabsnotsyncing.label): This is shown
      when Sync is configured but syncing tabs is disabled. -->
-<!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktivieren Sie das Synchronisieren von Tabs, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+<!ENTITY appMenuRemoteTabs.tabsnotsyncing.label "Aktiviere das Synchronisieren von Tabs, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
 <!-- LOCALIZATION NOTE (appMenuRemoteTabs.noclients.label): This is shown
      when Sync is configured but this appears to be the only device attached to
      the account. We also show links to download Firefox for android/ios. -->
 <!ENTITY appMenuRemoteTabs.noclients.title "Noch keine synchronisierten Tabs">
-<!ENTITY appMenuRemoteTabs.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
+<!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY appMenuRemoteTabs.openprefs.label "Sync-Einstellungen">
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 <!ENTITY appMenuRemoteTabs.managedevices.label "Geräte verwalten…">
 <!ENTITY appMenuRemoteTabs.sidebar.label "Sidebar mit synchronisierten Tabs">
@@ -447,7 +447,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!-- LOCALIZATION NOTE (urlbar.searchSuggestionsNotification.hintPrefix): Shown just before the suggestions opt-out hint. -->
 <!ENTITY urlbar.searchSuggestionsNotification.hintPrefix "Tipp:">
 <!-- LOCALIZATION NOTE (urlbar.searchSuggestionsNotification.hint): &#x1F50E; is the magnifier icon emoji, please don't change it. -->
-<!ENTITY urlbar.searchSuggestionsNotification.hint "Erhalten Sie Hilfe beim Suchen! Achten Sie auf das &#x1F50E; neben Suchvorschlägen.">
+<!ENTITY urlbar.searchSuggestionsNotification.hint "Erhalte Hilfe beim Suchen! Achte auf das &#x1F50E; neben Suchvorschlägen.">
 <!ENTITY urlbar.searchSuggestionsNotification.changeSettingsWin "Einstellungen ändern…">
 <!ENTITY urlbar.searchSuggestionsNotification.changeSettingsWin.accesskey "E">
 <!ENTITY urlbar.searchSuggestionsNotification.changeSettingsUnix "Einstellungen ändern…">
@@ -755,28 +755,28 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
 <!ENTITY identity.connectionNotSecure "Verbindung ist nicht sicher">
-<!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
-<!ENTITY identity.connectionVerified2 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
+<!ENTITY identity.connectionFile "Diese Seite ist auf deinem Computer gespeichert.">
+<!ENTITY identity.connectionVerified2 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
 <!ENTITY identity.extensionPage "Diese Seite wurde durch eine Erweiterung bereitgestellt.">
-<!ENTITY identity.insecureLoginForms2 "Ihre Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
+<!ENTITY identity.insecureLoginForms2 "Deine Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
 
 <!-- Strings for connection state warnings. -->
 <!ENTITY identity.activeBlocked "&brandShortName; hat nicht sichere Inhalte dieser Seite blockiert.">
 <!ENTITY identity.passiveLoaded "Teile dieser Seite sind nicht sicher. Dies können z.B. Grafiken sein.">
-<!ENTITY identity.activeLoaded "Sie haben den Schutz vor Aktivitätenverfolgung für diese Seite deaktiviert.">
+<!ENTITY identity.activeLoaded "Du hast den Schutz vor Aktivitätenverfolgung für diese Seite deaktiviert.">
 <!ENTITY identity.weakEncryption "Diese Seite verwendet eine schwache Verschlüsselung.">
 
 <!-- Strings for connection state warnings in the subview. -->
-<!ENTITY identity.description.insecure "Ihre Verbindung zu dieser Website ist nicht vertraulich. Von Ihnen übermittelte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.">
-<!ENTITY identity.description.insecureLoginForms "Wenn Sie Ihre Zugangsdaten auf dieser Website eingeben, werden diese unverschlüsselt übertragen und können in falsche Hände geraten.">
-<!ENTITY identity.description.weakCipher "Ihre Verbindung zu dieser Website verwendet eine schwache Verschlüsselung.">
-<!ENTITY identity.description.weakCipher2 "Andere Personen können Ihre Informationen mitlesen oder das Verhalten der Website ändern.">
+<!ENTITY identity.description.insecure "Deine Verbindung zu dieser Website ist nicht vertraulich. Von dir übermittelte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.">
+<!ENTITY identity.description.insecureLoginForms "Wenn du deine Zugangsdaten auf dieser Website eingibst, werden diese unverschlüsselt übertragen und können in falsche Hände geraten.">
+<!ENTITY identity.description.weakCipher "Deine Verbindung zu dieser Website verwendet eine schwache Verschlüsselung.">
+<!ENTITY identity.description.weakCipher2 "Andere Personen können deine Informationen mitlesen oder das Verhalten der Website ändern.">
 <!ENTITY identity.description.activeBlocked "&brandShortName; hat nicht sichere Inhalte dieser Seite blockiert.">
-<!ENTITY identity.description.passiveLoaded "Ihre Verbindung ist nicht sicher und mit dieser Website geteilte Informationen können von Anderen eingesehen werden.">
+<!ENTITY identity.description.passiveLoaded "Deine Verbindung ist nicht sicher und mit dieser Website geteilte Informationen können von Anderen eingesehen werden.">
 <!ENTITY identity.description.passiveLoaded2 "Diese Website enthält nicht sichere Inhalte (wie z.B. Grafiken).">
 <!ENTITY identity.description.passiveLoaded3 "Obwohl &brandShortName; Inhalte blockiert hat, enthält die Seite noch nicht sichere Inhalte (wie z.B. Grafiken).">
-<!ENTITY identity.description.activeLoaded "Diese Website enthält nicht sichere Inhalte (wie z.B. Skripte) und Ihre Verbindung ist nicht vertraulich.">
+<!ENTITY identity.description.activeLoaded "Diese Website enthält nicht sichere Inhalte (wie z.B. Skripte) und deine Verbindung ist nicht vertraulich.">
 <!ENTITY identity.description.activeLoaded2 "Mit dieser Seite geteilte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.">
 
 <!ENTITY identity.enableMixedContentBlocking.label "Schutz aktivieren">
@@ -802,15 +802,15 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
 
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
-<!ENTITY syncedTabs.sidebar.noclients.label    "Melden Sie sich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
+<!ENTITY syncedTabs.sidebar.noclients.label    "Melde dich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.noclients.title    "Noch keine synchronisierten Tabs">
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
+<!ENTITY syncedTabs.sidebar.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
+<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melde dich an, um eine Liste der Tabs von deinen anderen Geräten angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
 <!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
 <!-- LOCALIZATION NOTE (syncedTabs.sidebar.tabsnotsyncing.label): This is shown
      when Sync is configured but syncing tabs is disabled. -->
-<!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktivieren Sie das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
+<!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktiviere das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.searchPlaceholder  "Synchronisierte Tabs durchsuchen">
 
 <!-- LOCALIZATION NOTE (syncedTabs.context.open.accesskey,
@@ -846,9 +846,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncReAuthItem.accesskey     "v">
 <!ENTITY syncToolbarButton.label      "Synchronisieren">
 
-<!ENTITY customizeMode.menuAndToolbars.header3 "Ziehen Sie Ihre Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
-<!ENTITY customizeMode.menuAndToolbars.empty "Wollen Sie mehr Werkzeuge?">
-<!ENTITY customizeMode.menuAndToolbars.emptyLink "Wählen Sie aus Tausenden von Add-ons.">
+<!ENTITY customizeMode.menuAndToolbars.header3 "Ziehe deine Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
+<!ENTITY customizeMode.menuAndToolbars.empty "Willst du mehr Werkzeuge?">
+<!ENTITY customizeMode.menuAndToolbars.emptyLink "Wähle aus Tausenden von Add-ons.">
 <!ENTITY customizeMode.restoreDefaults "Standard wiederherstellen">
 <!ENTITY customizeMode.done "Fertig">
 <!ENTITY customizeMode.titlebar "Titelleiste">
@@ -861,7 +861,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY customizeMode.lwthemes.menuManage.accessKey "V">
 <!ENTITY customizeMode.lwthemes.menuGetMore "Weitere Themes herunterladen">
 <!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
-<!ENTITY customizeMode.emptyOverflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
+<!ENTITY customizeMode.emptyOverflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
 <!ENTITY customizeMode.uidensity "Dichte">
 <!-- LOCALIZATION NOTE (customizeMode.uidensity.menuNormal.*):
      “Normal” is displayed in the Customize screen, under the Density menu. -->
@@ -881,7 +881,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY customizeMode.uidensity.menuTouch.label "Touch">
 <!ENTITY customizeMode.uidensity.menuTouch.tooltip "Touch">
 <!ENTITY customizeMode.uidensity.menuTouch.accessKey "T">
-<!ENTITY customizeMode.uidensity.autoTouchMode.checkbox.label "Verwenden Sie Touch für den Tablet-Modus">
+<!ENTITY customizeMode.uidensity.autoTouchMode.checkbox.label "Verwende Touch für den Tablet-Modus">
 
 <!ENTITY customizeMode.autoHideDownloadsButton.label "Automatisch ausblenden">
 
@@ -893,8 +893,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY getUserMedia.allWindowsShared.message "Alle sichtbaren Fenster auf dem Bildschirm werden weitergegeben.">
 
 <!ENTITY trackingProtection.title "Schutz vor Aktivitätenverfolgung">
-<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Teile der Seite, die Ihre Surfaktivitäten verfolgen könnten.">
-<!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die Ihre Surfaktivitäten verfolgen könnten. Sie haben den Schutz deaktiviert.">
+<!ENTITY trackingProtection.detectedBlocked3 "&brandShortName; blockiert Teile der Seite, die deine Surfaktivitäten verfolgen könnten.">
+<!ENTITY trackingProtection.detectedNotBlocked3 "Die Seite enthält Inhalte, die deine Surfaktivitäten verfolgen könnten. Du hast den Schutz deaktiviert.">
 <!ENTITY trackingProtection.notDetected3 "Keine Inhalte zur Aktivitätenverfolgung auf dieser Seite gefunden.">
 <!-- LOCALIZATION NOTE (trackingProtection.unblock.label, trackingProtection.unblock.accesskey):
      The associated button with this label and accesskey is only shown when opening the control
@@ -954,7 +954,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY emeLearnMoreContextMenu.label            "Mehr über DRM-Kopierschutz erfahren…">
 <!ENTITY emeLearnMoreContextMenu.accesskey        "D">
 
-<!ENTITY updateAvailable.message "Aktualisieren Sie &brandShorterName; für die neuesten Verbesserungen in Sachen Geschwindigkeit und Datenschutz.">
+<!ENTITY updateAvailable.message "Aktualisiere &brandShorterName; für die neuesten Verbesserungen in Sachen Geschwindigkeit und Datenschutz.">
 <!ENTITY updateAvailable.whatsnew.label "Die Änderungen im Detail.">
 <!ENTITY updateAvailable.header.message "Es ist ein neues &brandShorterName;-Update verfügbar.">
 <!ENTITY updateAvailable.acceptButton.label "Update herunterladen">
@@ -963,7 +963,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY updateAvailable.cancelButton.accesskey "N">
 <!ENTITY updateAvailable.panelUI.label "&brandShorterName;-Update herunterladen">
 
-<!ENTITY updateManual.message "Laden Sie sich die aktuelle Version von &brandShorterName; herunter und wir helfen Ihnen bei der Installation.">
+<!ENTITY updateManual.message "Lade dich die aktuelle Version von &brandShorterName; herunter und wir helfen dir bei der Installation.">
 <!ENTITY updateManual.whatsnew.label "Die Änderungen im Detail.">
 <!ENTITY updateManual.header.message "&brandShorterName; kann nicht auf die neueste Version aktualisieren.">
 <!ENTITY updateManual.acceptButton.label "&brandShorterName; herunterladen">

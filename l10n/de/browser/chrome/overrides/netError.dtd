@@ -22,11 +22,11 @@
 <!-- Localization note (dnsNotFound.title1) - "Hmm" is a sound made when considering or puzzling over something. You don't have to include it in your translation if your language does not have a written word like this. -->
 <!ENTITY dnsNotFound.title1 "Seite wurde nicht gefunden">
 <!ENTITY dnsNotFound.longDesc1 "
-<strong>Falls die Adresse korrekt ist, können Sie noch Folgendes versuchen:</strong>
+<strong>Falls die Adresse korrekt ist, kannst du noch Folgendes versuchen:</strong>
 <ul>
   <li>Die Seite später noch einmal aufrufen.</li>
   <li>Die Netzwerkverbindung überprüfen.</li>
-  <li>Falls der Computer sich hinter einer Firewall befindet, überprüfen Sie bitte, ob &brandShortName; der Internetzugriff erlaubt wurde.</li>
+  <li>Falls der Computer sich hinter einer Firewall befindet, überprüfe bitte, ob &brandShortName; der Internetzugriff erlaubt wurde.</li>
 </ul>
 ">
 
@@ -52,7 +52,7 @@
 
 <!ENTITY captivePortal.title "Anmeldung beim Netzwerk">
 <!ENTITY captivePortal.longDesc2 "
-<p>Sie müssen sich bei dem Netzwerk anmelden, um auf das Internet zugreifen zu können.</p>
+<p>Du musst dich bei dem Netzwerk anmelden, um auf das Internet zugreifen zu können.</p>
 ">
 
 <!ENTITY openPortalLoginPage.label2 "Anmeldeseite des Netzwerks öffnen">

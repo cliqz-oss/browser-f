@@ -22,8 +22,8 @@
 
 <!-- LOCALIZATION NOTE (doNotTrack.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (doNotTrack.post.label): include a starting space as needed -->
-<!ENTITY  doNotTrack.pre.label          "Sie können auch ">
-<!ENTITY  doNotTrack.settings.label     "Websites mitteilen, Ihre Aktivitäten nicht zu verfolgen">
+<!ENTITY  doNotTrack.pre.label          "du könntest auch ">
+<!ENTITY  doNotTrack.settings.label     "Websites mitteilen, deine Aktivitäten nicht zu verfolgen">
 <!ENTITY  doNotTrack.post.label         ".">
 
 <!ENTITY  history.label                 "Chronik">
@@ -76,17 +76,17 @@
 <!-- LOCALIZATION NOTE (rememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (rememberActions.middle.label): include a starting and trailing space as needed -->
 <!-- LOCALIZATION NOTE (rememberActions.post.label): include a starting space as needed -->
-<!ENTITY  rememberActions.pre.label           "Sie können auch die ">
+<!ENTITY  rememberActions.pre.label           "du könntest auch die ">
 <!ENTITY  rememberActions.clearHistory.label  "kürzlich angelegte Chronik">
 <!ENTITY  rememberActions.middle.label        " oder ">
 <!ENTITY  rememberActions.removeCookies.label "einzelne Cookies">
 <!ENTITY  rememberActions.post.label          " löschen.">
 
-<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie &brandShortName; benutzen.">
+<!ENTITY  dontrememberDescription.label  "&brandShortName; wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während du &brandShortName; benutzt.">
 
 <!-- LOCALIZATION NOTE (dontrememberActions.pre.label): include a trailing space as needed -->
 <!-- LOCALIZATION NOTE (dontrememberActions.post.label): include a starting space as needed -->
-<!ENTITY  dontrememberActions.pre.label          "Sie können auch die ">
+<!ENTITY  dontrememberActions.pre.label          "du könntest auch die ">
 <!ENTITY  dontrememberActions.clearHistory.label "gesamte bisherige Chronik">
 <!ENTITY  dontrememberActions.post.label         " löschen.">
 

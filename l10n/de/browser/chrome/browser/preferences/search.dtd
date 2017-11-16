@@ -9,9 +9,7 @@
 
 <!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
 
-<!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
-
-<!ENTITY chooseYourDefaultSearchEngine.label   "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
+<!ENTITY chooseYourDefaultSearchEngine.label   "Wähle deine alternative Suchmaschine. Wenn du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst du deren Ergebnisse wenn du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
@@ -21,7 +19,7 @@
 
 <!ENTITY oneClickSearchEngines.label           "Direkt suchen">
 
-<!ENTITY chooseWhichOneToDisplay2.label        "Wählen Sie eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem Sie den Suchbegriff eingegeben haben.">
+<!ENTITY chooseWhichOneToDisplay2.label        "Wähle eine andere Suchmaschine von den unterhalb der Adress- bzw. Suchleiste angezeigten Suchmaschinen, nachdem du den Suchbegriff eingegeben hast.">
 
 <!ENTITY engineNameColumn.label                "Suchmaschine">
 <!ENTITY engineKeywordColumn.label             "Schlüsselwort">

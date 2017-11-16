@@ -3,7 +3,7 @@
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
 <!ENTITY  applications.label       "Anwendungen">
-<!ENTITY  applications.description "Legen Sie fest, wie &brandShortName; mit Dateien verfährt, die Sie aus dem Web oder aus Anwendungen, die Sie beim Surfen verwenden, herunterladen.">
+<!ENTITY  applications.description "Lege fest, wie &brandShortName; mit Dateien verfährt, die du aus dem Web oder aus Anwendungen, die du beim Surfen verwendest, herunterlädst.">
 
 <!ENTITY  typeColumn.label        "Dateityp">
 <!ENTITY  typeColumn.accesskey    "D">
