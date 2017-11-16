@@ -17,6 +17,7 @@ Components.utils.import("resource://gre/modules/FileUtils.jsm");
 Components.utils.import("resource:///modules/ShellService.jsm");
 Components.utils.import("resource:///modules/TransientPrefs.jsm");
 Components.utils.import("resource://gre/modules/Services.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 Components.utils.import("resource://gre/modules/AppConstants.jsm");
 Components.utils.import("resource://gre/modules/DownloadUtils.jsm");
 Components.utils.import("resource://gre/modules/LoadContextInfo.jsm");
@@ -361,9 +362,18 @@ var gMainPane = {
       ? "aboutDialog.architecture.sixtyFourBit"
       : "aboutDialog.architecture.thirtyTwoBit";
     let arch = bundle.GetStringFromName(archResource);
-    version += ` (${arch})`;
 
-    document.getElementById("version").textContent = version;
+    // Add Firefox and nav-extension versions
+    let cliqzAddon = AddonManager.getAddonByID("cliqz@cliqz.com", cliqzAddon => {
+      let componentsVersion = Services.appinfo.platformVersion;
+      if (cliqzAddon) {
+        componentsVersion += `+${cliqzAddon.version}`;
+      }
+      version += ` (${componentsVersion})`;
+      version += ` (${arch})`;
+
+      document.getElementById("version").textContent = version;
+    });
 
     // Show a release notes link if we have a URL.
     let relNotesLink = document.getElementById("releasenotes");
@@ -376,6 +386,8 @@ var gMainPane = {
       }
     }
 
+#if 0
+    // Not used in Cliqz build because Cliqz itself a "distributed" build
     let distroId = Services.prefs.getCharPref("distribution.id", "");
     if (distroId) {
       let distroVersion = Services.prefs.getCharPref("distribution.version");
@@ -391,6 +403,7 @@ var gMainPane = {
         distroField.hidden = false;
       }
     }
+#endif
 
     if (AppConstants.MOZ_UPDATER) {
       gAppUpdater = new appUpdater();
@@ -1331,7 +1344,7 @@ var gMainPane = {
           var wrk = Components.classes["@mozilla.org/windows-registry-key;1"]
             .createInstance(Components.interfaces.nsIWindowsRegKey);
           wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-            "SOFTWARE\\Mozilla\\MaintenanceService",
+            "SOFTWARE\\Cliqz\\MaintenanceService",
             wrk.ACCESS_READ | wrk.WOW64_64);
           installed = wrk.readIntValue("Installed");
           wrk.close();

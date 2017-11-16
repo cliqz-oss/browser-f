@@ -9,9 +9,7 @@
 
 <!ENTITY defaultSearchEngine.label             "Complementary search engine">
 
-<!ENTITY chooseYourDefaultSearchEngine2.label   "Choose the default search engine to use in the address bar and search bar.">
-
-<!ENTITY chooseYourDefaultSearchEngine.label   "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
+<!ENTITY chooseYourDefaultSearchEngine2.label  "Choose your backup search engine. If you are not happy with &brandShortName;’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.">
 <!ENTITY provideSearchSuggestions.label        "Provide search suggestions">
 <!ENTITY provideSearchSuggestions.accesskey    "s">
 
