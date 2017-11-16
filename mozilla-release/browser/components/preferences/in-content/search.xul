@@ -11,11 +11,11 @@
       <preference id="browser.search.hiddenOneOffs"
                   name="browser.search.hiddenOneOffs"
                   type="unichar"/>
-
+#if 0
       <preference id="browser.search.widget.inNavBar"
                   name="browser.search.widget.inNavBar"
                   type="bool"/>
-
+#endif
     </preferences>
 
     <script type="application/javascript"
@@ -29,7 +29,7 @@
           data-category="paneSearch">
       <label class="header-name" flex="1">&paneSearch.title;</label>
     </hbox>
-
+#if 0
     <groupbox id="searchbarGroup" data-category="paneSearch">
       <caption><label id="searchbarLabel">&searchBar.label;</label></caption>
       <radiogroup id="searchBarVisibleGroup" aria-labelledby="searchbarLabel" preference="browser.search.widget.inNavBar">
@@ -39,7 +39,7 @@
         <image class="searchBarImage searchBarShownImage" role="presentation"/>
       </radiogroup>
     </groupbox>
-
+#endif
     <!-- Default Search Engine -->
     <groupbox id="defaultEngineGroup" data-category="paneSearch">
       <caption><label>&defaultSearchEngine.label;</label></caption>

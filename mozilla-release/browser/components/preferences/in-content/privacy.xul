@@ -9,11 +9,11 @@
 
 <preferences id="privacyPreferences" hidden="true" data-category="panePrivacy">
 
+#if 0
   <!-- Tracking -->
   <preference id="privacy.trackingprotection.enabled"
               name="privacy.trackingprotection.enabled"
               type="bool"/>
-#if 0
   <preference id="privacy.trackingprotection.pbmode.enabled"
               name="privacy.trackingprotection.pbmode.enabled"
               type="bool"/>
@@ -33,6 +33,7 @@
               name="pref.privacy.disable_button.tracking_protection_exceptions"
               type="bool"/>
 
+  <!-- Cliqz AFT -->
   <preference id="browser.privatebrowsing.apt"
               name="browser.privatebrowsing.apt"
               type="bool"/>
@@ -229,6 +230,24 @@
               accesskey="&changeMasterPassword.accesskey;"/>
     </hbox>
   </hbox>
+</groupbox>
+
+<groupbox id="additionsGroup" data-category="panePrivacy" hidden="false">
+  <vbox flex="1" class="view-pane password-managers" tabindex="0">
+    <caption><label>&passwordManager.title;</label></caption>
+    <label>&passwordManager.desc1;</label>
+    <label>&passwordManager.desc2;</label>
+    <caption> </caption>
+    <richlistbox id="password-managers-list" class="list" flex="1"></richlistbox>
+  </vbox>
+
+  <vbox flex="1" class="view-pane privacy-managers" tabindex="1">
+    <caption><label>&ghostery.title;</label></caption>
+    <label>&ghostery.desc1;</label>
+    <label>&ghostery.desc2;</label>
+    <caption> </caption>
+    <richlistbox id="privacy-managers-list" class="list" flex="1"></richlistbox>
+  </vbox>
 </groupbox>
 
 <!-- History -->
@@ -507,7 +526,8 @@
 
 <!-- Tracking -->
 <groupbox id="trackingGroup" data-category="panePrivacy" hidden="true">
-  <caption><label>&trackingProtectionHeader2.label;</label></caption>
+  <caption><label>&doNotTrackHeader.label;</label></caption>
+#if 0
   <vbox>
     <hbox align="start">
       <vbox flex="1">
@@ -573,16 +593,17 @@
         </hbox>
       </vbox>
     </hbox>
-    <vbox id="doNotTrackLearnMoreBox">
-      <label><label class="tail-with-learn-more">&doNotTrack.description;</label><label
-      class="learnMore text-link" href="https://www.mozilla.org/dnt"
-      >&doNotTrack.learnMore.label;</label></label>
-      <radiogroup id="doNotTrackRadioGroup" aria-labelledby="doNotTrackDesc" preference="privacy.donottrackheader.enabled">
-        <radio value="false" label="&doNotTrack.default.label;"/>
-        <radio value="true" label="&doNotTrack.always.label;"/>
-      </radiogroup>
-    </vbox>
+#endif
+    <hbox align="center">
+      <checkbox id="trackingProtectionPBM"
+                preference="privacy.donottrackheader.enabled"
+                label="&doNotTrack.description;"/>
+      <label class="learnMore text-link"
+             href="https://www.mozilla.org/dnt">&doNotTrack.learnMore.label;</label>
+    </hbox>
+#if 0
   </vbox>
+#endif
 </groupbox>
 
 <hbox id="permissionsCategory"
@@ -752,14 +773,21 @@
 
   <vbox>
     <description>
+      &healthReportIntro.label;
+#if 0
       <label class="tail-with-learn-more">&dataCollectionDesc.label;</label><label id="dataCollectionPrivacyNotice" class="learnMore text-link">&dataCollectionPrivacyNotice.label;</label>
+#endif
     </description>
     <description flex="1">
       <checkbox id="submitHealthReportBox" label="&enableHealthReport2.label;"
+#if 0
                 class="tail-with-learn-more"
+#endif
                 accesskey="&enableHealthReport2.accesskey;"/>
+#if 0
       <label id="FHRLearnMore"
              class="learnMore text-link">&healthReportLearnMore.label;</label>
+#endif
     </description>
 #ifndef MOZ_TELEMETRY_REPORTING
     <description id="TelemetryDisabledDesc" class="indent tip-caption" control="telemetryGroup">&healthReportingDisabled.label;</description>
@@ -768,14 +796,19 @@
 #ifdef MOZ_CRASHREPORTER
   <hbox align="center">
     <checkbox id="automaticallySubmitCrashesBox"
+#if 0
               class="tail-with-learn-more"
+#endif
               preference="browser.crashReports.unsubmittedCheck.autoSubmit"
               label="&alwaysSubmitCrashReports1.label;"
               accesskey="&alwaysSubmitCrashReports1.accesskey;"/>
+#if 0
     <label id="crashReporterLearnMore"
            class="learnMore text-link">&crashReporterLearnMore.label;</label>
+#endif
   </hbox>
 #endif
+  <description>&cliqzFirefoxPrivacy.label;</description>
 </groupbox>
 #endif
 
@@ -807,6 +840,22 @@
               label="&blockUncommonAndUnwanted.label;"
               accesskey="&blockUncommonAndUnwanted.accesskey;" />
   </vbox>
+</groupbox>
+
+<!-- HTTPS Everywhere -->
+<groupbox id="httpsEverywhereGroup" data-category="panePrivacy" hidden="true">
+  <caption><label>&httpsEverywhere.label;</label></caption>
+  <checkbox id="httpsEverywhereEnable"
+            label="&httpsEverywhereEnable.label;"
+            accesskey="&httpsEverywhere.accesskey;"
+            oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
+  <hbox align="start">
+    <label>&httpsEverywhereDesc.label;</label>
+    <label class="text-link"
+           style="padding-left: 10px;"
+           value="&httpsEverywhereMore.label;"
+           href="https://www.eff.org/https-everywhere"/>
+  </hbox>
 </groupbox>
 
 <!-- Certificates -->

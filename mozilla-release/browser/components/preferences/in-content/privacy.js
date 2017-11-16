@@ -18,8 +18,12 @@ XPCOMUtils.defineLazyModuleGetter(this, "SiteDataManager",
   "resource:///modules/SiteDataManager.jsm");
 
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
+const HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
+
+var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
 XPCOMUtils.defineLazyGetter(this, "AlertsServiceDND", function() {
   try {
@@ -114,6 +118,12 @@ var gPrivacyPane = {
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
+    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon) {
+      if (addon && addon.isActive) {
+        document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
+      }
+    })
+
     setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
       gPrivacyPane._updateSanitizeSettingsButton);
     setEventListener("browser.privatebrowsing.autostart", "change",
@@ -160,8 +170,10 @@ var gPrivacyPane = {
       gPrivacyPane.changeMasterPassword);
     setEventListener("showPasswords", "command",
       gPrivacyPane.showPasswords);
+#if 0
     setEventListener("addonExceptions", "command",
       gPrivacyPane.showAddonExceptions);
+#endif
     setEventListener("viewCertificatesButton", "command",
       gPrivacyPane.showCertificates);
     setEventListener("viewSecurityDevicesButton", "command",
@@ -174,6 +186,7 @@ var gPrivacyPane = {
     this._initSafeBrowsing();
     this.updateCacheSizeInputField();
     this.updateActualCacheSize();
+    this._initGhosteryUI();
 
     setEventListener("notificationSettingsButton", "command",
       gPrivacyPane.showNotificationExceptions);
@@ -285,6 +298,7 @@ var gPrivacyPane = {
       bundlePrefs.getString("removeAllShownCookies.label"),
       bundlePrefs.getString("removeSelectedCookies.label"),
     ]);
+#if 0
     appendSearchKeywords("trackingProtectionExceptions", [
       bundlePrefs.getString("trackingprotectionpermissionstitle"),
       bundlePrefs.getString("trackingprotectionpermissionstext2"),
@@ -293,6 +307,7 @@ var gPrivacyPane = {
       bundlePrefs.getString("blockliststitle"),
       bundlePrefs.getString("blockliststext"),
     ]);
+#endif
     appendSearchKeywords("popupPolicyButton", [
       bundlePrefs.getString("popuppermissionstitle2"),
       bundlePrefs.getString("popuppermissionstext"),
@@ -330,6 +345,12 @@ var gPrivacyPane = {
     Components.classes["@mozilla.org/observer-service;1"]
       .getService(Components.interfaces.nsIObserverService)
       .notifyObservers(window, "privacy-pane-loaded");
+  },
+
+  // HTTPS Everywhere part
+  toggleHttpsEverywhere() {
+    Services.prefs.setBoolPref(HTTPS_EVERYWHERE_PREF,
+        !Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF));
   },
 
   // TRACKING PROTECTION MODE
@@ -982,6 +1003,15 @@ var gPrivacyPane = {
 
     var checkbox = document.getElementById("useMasterPassword");
     checkbox.checked = !noMP;
+
+    gPasswordManagers.init();
+  },
+
+  /**
+   * Initialize Ghostery addon UI box
+   */
+  _initGhosteryUI() {
+    gPrivacyManagers.init();
   },
 
   /**
@@ -1175,6 +1205,7 @@ var gPrivacyPane = {
     blockUncommonUnwanted.checked = blockUnwantedPref.value && blockUncommonPref.value;
   },
 
+#if 0
   /**
    * Displays the exceptions lists for add-on installation warnings.
    */
@@ -1190,6 +1221,7 @@ var gPrivacyPane = {
     gSubDialog.open("chrome://browser/content/preferences/permissions.xul",
       null, params);
   },
+#endif
 
   /**
    * Parameters for the add-on install permissions dialog.
@@ -1416,13 +1448,17 @@ var gPrivacyPane = {
   },
 
   initDataCollection() {
+#if 0
     this._setupLearnMoreLink("toolkit.datacollection.infoURL",
       "dataCollectionPrivacyNotice");
+#endif
   },
 
   initSubmitCrashes() {
+#if 0
     this._setupLearnMoreLink("toolkit.crashreporter.infoURL",
       "crashReporterLearnMore");
+#endif
   },
 
   /**
@@ -1444,8 +1480,9 @@ var gPrivacyPane = {
    * Initialize the health report service reference and checkbox.
    */
   initSubmitHealthReport() {
+#if 0
     this._setupLearnMoreLink("datareporting.healthreport.infoURL", "FHRLearnMore");
-
+#endif
     let checkbox = document.getElementById("submitHealthReportBox");
 
     // Telemetry is only sending data if MOZ_TELEMETRY_REPORTING is defined.
@@ -1679,3 +1716,234 @@ var gPrivacyPane = {
     document.getElementById("a11yPrivacyCheckbox").checked = !checked;
   }
 };
+
+var gPasswordManagers = {
+  init: function() {
+    this._listBox = document.getElementById("password-managers-list");
+
+    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
+      var available = results[0],
+          existing  = results[1],
+          existingIDs = [];
+
+      //clean the view
+      while (this._listBox.firstChild && this._listBox.firstChild.localName == "richlistitem")
+        this._listBox.removeChild(this._listBox.firstChild);
+
+      // add already installed password managers
+      for (let addonObj of existing) {
+        let addonDescriptor = available.filter(function(addon){ return addon.id == addonObj.id })[0];
+        let _installed_addon = new ItemHandler(this._listBox, addonDescriptor, addonObj, 'installed');
+        this._listBox.appendChild(_installed_addon.listItem);
+        existingIDs.push(addonObj.id);
+      }
+
+      //remove the ones already installed
+      var available = available.filter(function(addon) { return existingIDs.indexOf(addon.id) == -1 });
+      for (let addonObjDesc of available) {
+        let _available_addon = new ItemHandler(this._listBox, addonObjDesc, undefined, 'new');
+        this._listBox.appendChild(_available_addon.listItem);
+      }
+
+    }).bind(this));
+  },
+
+  getExisting: function() {
+    let KNOWN_PW_MANAGERS = ["support@lastpass.com"];
+
+    return new Promise(function(resolve, reject) {
+      AddonManager.getAllAddons(function(all) {
+        // filter only installed extensions
+        var extensions = all.filter(function(addon) {
+          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
+        });
+
+        resolve(extensions);
+      });
+    });
+  },
+  // can be a promise if we decide to move the list to backend
+  getAvailable: function(){
+    return [{
+      "id": "support@lastpass.com",
+      "icons": {
+       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/8/8542-64.png?modified=1457436015"
+      },
+      "name": "LastPass",
+      "homepageURL": "https://lastpass.com/",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser_pre/support%40lastpass.com/support%40lastpass.com-4.2.1.21-browser-signed.xpi",
+      "afterInstall" : function() {
+        const timer = Cc['@mozilla.org/timer;1'].createInstance(Ci.nsITimer);
+        const doc = Services.wm.getMostRecentWindow("navigator:browser").document;
+        const nIframe = doc.getElementsByTagName('iframe').length;
+        var nTry = 10;
+
+        timer.initWithCallback(openPopup, 1500, Ci.nsITimer.TYPE_ONE_SHOT);
+
+        function openPopup() {
+          var lpBtn = doc.getElementById("toggle-button--supportlastpasscom-lastpass-button");
+          if(lpBtn) {
+            lpBtn.click();
+            if(doc.getElementsByTagName('iframe').length > nIframe) {
+              return;
+            }
+          }
+          nTry--;
+          if (nTry > 0) {
+            timer.initWithCallback(openPopup, 500, Ci.nsITimer.TYPE_ONE_SHOT);
+          }
+        }
+      }
+    }];
+  }
+}
+
+var gPrivacyManagers = {
+  init: function() {
+    this._listBox = document.getElementById("privacy-managers-list");
+
+    Promise.all([this.getAvailable(), this.getExisting()]).then((function(results) {
+      var available = results[0],
+          existing  = results[1],
+          existingIDs = [];
+
+      //clean the view
+      while (this._listBox.firstChild && this._listBox.firstChild.localName == "richlistitem")
+        this._listBox.removeChild(this._listBox.firstChild);
+
+      // add already installed privacy managers
+      for (let addonObj of existing) {
+        let addonDescriptor = available.filter(function(addon){ return addon.id == addonObj.id })[0];
+        let _installed_addon = new ItemHandler(this._listBox, addonDescriptor, addonObj, 'installed');
+        this._listBox.appendChild(_installed_addon.listItem);
+        existingIDs.push(addonObj.id);
+      }
+
+      //remove the ones already installed
+      var available = available.filter(function(addon){ return existingIDs.indexOf(addon.id) == -1 });
+      for (let addonObjDesc of available) {
+        let _available_addon = new ItemHandler(this._listBox, addonObjDesc, undefined, 'new');
+        this._listBox.appendChild(_available_addon.listItem);
+      }
+
+    }).bind(this));
+  },
+
+  getExisting: function() {
+    let KNOWN_PW_MANAGERS = ["firefox@ghostery.com"];
+
+    return new Promise(function(resolve, reject) {
+      AddonManager.getAllAddons(function(all) {
+        // filter only installed extensions
+        var extensions = all.filter(function(addon) {
+          return addon.type == "extension" && addon.hidden == false && KNOWN_PW_MANAGERS.indexOf(addon.id) != -1;
+        });
+
+        resolve(extensions);
+      });
+    });
+  },
+  // can be a promise if we decide to move the list to backend
+  getAvailable: function() {
+    return [{
+      "id": "firefox@ghostery.com",
+      "icons": {
+       "64": "https://addons.cdn.mozilla.net/user-media/addon_icons/9/9609-64.png?modified=1480432819"
+      },
+      "name": "Ghostery",
+      "homepageURL": "https://www.ghostery.com",
+      "sourceURI": "https://s3.amazonaws.com/cdncliqz/update/browser/firefox@ghostery.com/latest.xpi"
+    }];
+  },
+}
+
+function ItemHandler(container, addonDescriptor, addonObj, status) {
+  this._container = container;
+  this._desc = addonDescriptor;
+  this._addon = addonObj;
+  if (status == 'new') {
+    this._listItem = this.createItem(addonDescriptor, status);
+  } else { // installed
+    this._listItem = this.createItem(addonObj, status);
+  }
+  this._listItem.addEventListener("installClicked", this.onInstallClick.bind(this));
+  this._listItem.addEventListener("unInstallClicked", this.onUninstallClick.bind(this));
+}
+
+ItemHandler.prototype = {
+  get listContainer() { return this._container; },
+  get listItemDesc() { return this._desc; },
+  get listItemAddon() { return this._addon; },
+  get listItem() { return this._listItem; },
+
+
+  createItem: function(aObj, status) {
+    let item = document.createElement("richlistitem");
+
+    item.setAttribute("class", "cliqz-feature");
+    item.setAttribute("name", aObj.name);
+    item.setAttribute("description", aObj.description);
+    item.setAttribute("type", aObj.type);
+    item.setAttribute("value", aObj.id);
+    item.setAttribute("status", status);
+
+    item.mAddon = aObj;
+    return item;
+  },
+
+  onInstallClick: function() {
+    let self = this;
+    let reloadTimeout = 3000;
+
+    AddonManager.getInstallForURL(this.listItemDesc.sourceURI,
+      function(addon) {
+        addon.addListener({
+          onDownloadProgress: function(aInstall) {
+            let percent = gStrings.GetStringFromName("installDownloading") + ' ' + parseInt(aInstall.progress / aInstall.maxProgress * 100) + "%";
+            self.listItem.updateInstallationProgress(percent);
+          },
+          onDownloadFailed: function() {
+            let showText = gStrings.GetStringFromName("installDownloadFailed");
+            self.listItem.updateDownloadFailed(showText);
+            self.onFaliure(self, reloadTimeout);
+          },
+          onInstallFailed: function() {
+            let showText = gStrings.GetStringFromName("installFailed");
+            self.listItem.updateInstallFailed(showText);
+            self.onFaliure(self, reloadTimeout);
+          },
+          onInstallEnded: function(aInstall, aAddon) {
+            // redrawing the listItem as *installed*
+            AddonManager.getAddonByID(self.listItemDesc.id, (newlyInstalled) => {
+              self.listContainer.removeChild(self.listItem);
+              let installedItem = new ItemHandler(self.listContainer, self.listItemDesc, newlyInstalled, 'installed');
+              self.listContainer.appendChild(installedItem.listItem);
+              if (typeof(self.listItemDesc.afterInstall) == 'function') {
+                self.listItemDesc.afterInstall();
+              }
+            });
+          }
+        });
+        addon.install();
+      },
+      "application/x-xpinstall"
+    )
+  },
+
+  onUninstallClick: function() {
+    this.listItem.mAddon.uninstall();
+    // redrawing the listItem as *new* item
+    this.listContainer.removeChild(this.listItem);
+    let newItem = new ItemHandler(this.listContainer, this.listItemDesc, undefined, 'new');
+    this.listContainer.appendChild(newItem.listItem);
+  },
+
+  // reload the item in "new" state after reloadTimeout seconds
+  onFaliure: function(failedItem, reloadTimeout) {
+    setTimeout(function() {
+      failedItem.listContainer.removeChild(failedItem.listItem);
+      let renewItem = new ItemHandler(failedItem.listContainer, failedItem.listItemDesc, undefined, 'new');
+      failedItem.listContainer.appendChild(renewItem.listItem);
+    }, reloadTimeout);
+  }
+}

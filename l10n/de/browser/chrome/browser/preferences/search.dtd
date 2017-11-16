@@ -9,9 +9,7 @@
 
 <!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
 
-<!ENTITY chooseYourDefaultSearchEngine2.label   "Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.">
-
-<!ENTITY chooseYourDefaultSearchEngine.label   "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
+<!ENTITY chooseYourDefaultSearchEngine2.label  "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 
