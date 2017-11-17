@@ -191,19 +191,19 @@ this.SafeBrowsing = {
       case "Phish":
         pref = "browser.safebrowsing.reportPhishURL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(0);
-        reportPhishingURL(URI.asciiSpec, 'user-report-phish');
+        reportPhishingURL(info.uri, 'user-report-phish');
         break;
 
       case "PhishMistake":
         pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(1);
-        reportPhishingURL(URI.asciiSpec, 'user-report-phish-mistake');
+        reportPhishingURL(info.uri, 'user-report-phish-mistake');
         break;
 
       case "MalwareMistake":
         pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
-        reportPhishingURL(URI.asciiSpec, 'user-report-malware-mistake');
+        reportPhishingURL(info.uri, 'user-report-malware-mistake');
         break;
 
       default:
