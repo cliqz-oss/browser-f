@@ -85,6 +85,8 @@
       #navigator-toolbox #nav-bar #urlbar:hover {
         box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
         background-color: #fff; }
+      #navigator-toolbox #nav-bar #urlbar[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
+        color: #000; }
   #navigator-toolbox #PersonalToolbar {
     border-top: 1px solid #e1e1e1;
     box-shadow: rgba(0, 0, 0, 0.19) 0 1px 1px 0;
