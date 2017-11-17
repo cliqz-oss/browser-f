@@ -503,6 +503,10 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
+        <toolbarbutton id="appMenu-cliqz-connect-button"
+                       label="&connect.panelUI.label;"
+                       class="subviewbutton subviewbutton-iconic"
+                       oncommand="openPreferences('connect', {origin: 'ContainersCommand'});"/>
 #ifdef 0
         <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons">
           <hbox id="appMenu-fxa-status"
@@ -596,7 +600,7 @@
                        oncommand="PanelUI.showSubView('appMenu-libraryView', this)"/>
         <toolbarbutton id="appMenu-addons-button"
                        class="subviewbutton subviewbutton-iconic"
-                       label="&addons.label;"
+                       label="&plugins.label;"
                        key="key_openAddons"
                        command="Tools:Addons"
                        />
