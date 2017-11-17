@@ -20,7 +20,6 @@ XPCOMUtils.defineLazyModuleGetter(this, "SiteDataManager",
 Components.utils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
 Components.utils.import("resource://gre/modules/AddonManager.jsm");
 
-const HTTPS_EVERYWHERE_PREF = "extensions.https_everywhere.globalEnabled";
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 
 var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
@@ -92,6 +91,49 @@ var gPrivacyPane = {
   },
 
   /**
+   * Handles HttpsEverywhere integration
+   */
+  _initHttpsEverywhere() {
+    const ADDON_ID = "https-everywhere@cliqz.com";
+    const PREF = "extensions.https_everywhere.globalEnabled";
+    const versionChecker = Components.classes["@mozilla.org/xpcom/version-comparator;1"]
+                             .getService(Components.interfaces.nsIVersionComparator);
+    const FIRST_WEB_EXTENSION_VERSION = "2017.10.30";
+
+    AddonManager.getAddonByID(ADDON_ID, function(addon) {
+      if (!addon) {
+        return;
+      }
+      var stateCheckbox = document.getElementById("httpsEverywhereEnable");
+
+      document.getElementById("httpsEverywhereGroup").hidden = false;
+
+      if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
+        // HTTPS Everywhere is an web extension
+        stateCheckbox.checked = !addon.userDisabled;
+      }
+      else if (addon && addon.isActive) {
+        // HTTPS Everywhere is bootstraped
+        stateCheckbox.checked = Services.prefs.getBoolPref(PREF);
+      }
+    });
+
+    this.toggleHttpsEverywhere = function() {
+      AddonManager.getAddonByID(ADDON_ID, function(addon) {
+        if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
+          // HTTPS_Everywhere version 2017.10.30 and above is an WebExtension
+          // and we control it by its userDisabled state
+          addon.userDisabled = !addon.userDisabled;
+        } else {
+          // HTTPS_Everywhere version below 2017.10.30 is using bootstrap technology
+          // and we control it by the globalEnabled pref
+          Services.prefs.setBoolPref(PREF, !Services.prefs.getBoolPref(PREF));
+        }
+      })
+    };
+  },
+
+  /**
    * Sets up the UI for the number of days of history to keep, and updates the
    * label of the "Clear Now..." button.
    */
@@ -112,17 +154,12 @@ var gPrivacyPane = {
 #endif
     this._initAutocomplete();
 
+    this._initHttpsEverywhere();
 #if CQZ_AUTO_PRIVATE_TAB
     const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
         getService(Ci.nsISupports).wrappedJSObject;
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
-
-    AddonManager.getAddonByID("https-everywhere@cliqz.com", function(addon) {
-      if (addon && addon.isActive) {
-        document.getElementById("httpsEverywhereEnable").checked = Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF);
-      }
-    })
 
     setEventListener("privacy.sanitize.sanitizeOnShutdown", "change",
       gPrivacyPane._updateSanitizeSettingsButton);
@@ -345,12 +382,6 @@ var gPrivacyPane = {
     Components.classes["@mozilla.org/observer-service;1"]
       .getService(Components.interfaces.nsIObserverService)
       .notifyObservers(window, "privacy-pane-loaded");
-  },
-
-  // HTTPS Everywhere part
-  toggleHttpsEverywhere() {
-    Services.prefs.setBoolPref(HTTPS_EVERYWHERE_PREF,
-        !Services.prefs.getBoolPref(HTTPS_EVERYWHERE_PREF));
   },
 
   // TRACKING PROTECTION MODE
