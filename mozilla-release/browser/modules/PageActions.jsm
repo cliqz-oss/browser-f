@@ -1036,8 +1036,9 @@ var gBuiltInActions = [
     onCommand(event, buttonNode) {
       browserPageActions(buttonNode).emailLink.onCommand(event, buttonNode);
     },
-  },
+  }
 
+#ifdef MOZ_SERVICES_SYNC
   // send to device
   {
     id: "sendToDevice",
@@ -1066,6 +1067,7 @@ var gBuiltInActions = [
       },
     },
   }
+#endif
 ];
 
 
