@@ -37,6 +37,14 @@ var CompactTheme = {
     this.styleSheet.sheet.disabled = true;
   },
 
+  createCliqzStyleSheet() {
+    const url = "chrome://browser/skin/cliqz/theme.css";
+    let styleSheetAttr = `href="${url}" type="text/css"`;
+    this.cliqzStyleSheet = document.createProcessingInstruction(
+      "xml-stylesheet", styleSheetAttr);
+    document.insertBefore(this.cliqzStyleSheet, document.documentElement);
+  },
+
   observe(subject, topic, data) {
     if (topic == "lightweight-theme-styling-update") {
       let newTheme = JSON.parse(data);
@@ -60,6 +68,7 @@ var CompactTheme = {
       // needed on initial load.  Make it now.
       if (!this.styleSheet) {
         this.createStyleSheet();
+        this.createCliqzStyleSheet();
       }
       this.styleSheet.sheet.disabled = false;
     } else if (!enabled && wasEnabled) {
@@ -79,4 +88,5 @@ var CompactTheme = {
 if (AppConstants.INSTALL_COMPACT_THEMES &&
     this != Services.appShell.hiddenDOMWindow && CompactTheme.isThemeCurrentlyApplied) {
   CompactTheme.createStyleSheet();
+  CompactTheme.createCliqzStyleSheet();
 }

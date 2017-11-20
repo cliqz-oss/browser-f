@@ -1239,7 +1239,7 @@ pref("services.sync.syncedTabs.showRemoteIcons", true);
 #ifdef MOZ_DEV_EDITION
 sticky_pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org");
 #else
-sticky_pref("lightweightThemes.selectedThemeID", "");
+sticky_pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org");
 #endif
 
 // Whether the character encoding menu is under the main Firefox button. This
@@ -1528,11 +1528,7 @@ pref("browser.ping-centre.production.endpoint", "https://tiles.services.mozilla.
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
-#ifdef NIGHTLY_BUILD
 pref("privacy.trackingprotection.ui.enabled", true);
-#else
-pref("privacy.trackingprotection.ui.enabled", false);
-#endif
 pref("privacy.trackingprotection.introCount", 0);
 pref("privacy.trackingprotection.introURL", "https://www.mozilla.org/%LOCALE%/firefox/%VERSION%/tracking-protection/start/");
 

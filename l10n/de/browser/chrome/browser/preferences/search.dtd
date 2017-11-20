@@ -10,6 +10,7 @@
 <!ENTITY defaultSearchEngine.label             "Ergänzende Suchmaschine">
 
 <!ENTITY chooseYourDefaultSearchEngine.label   "Wähle deine alternative Suchmaschine. Wenn du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst du deren Ergebnisse wenn du „Enter“ drückst.">
+<!ENTITY chooseYourDefaultSearchEngine2.label  "Wähle Deine alternative Suchmaschine. Wenn Du mit &brandShortName;’ Vorschlägen nicht zufrieden bist, siehst Du deren Ergebnisse wenn Du „Enter“ drückst.">
 <!ENTITY provideSearchSuggestions.label        "Suchvorschläge anzeigen">
 <!ENTITY provideSearchSuggestions.accesskey    "S">
 

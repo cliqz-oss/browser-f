@@ -29,6 +29,7 @@ browser.jar:
   skin/classic/browser/sync-mobileIcon.svg  (../shared/sync-mobileIcon.svg)
   skin/classic/browser/toolbarbutton-dropdown-arrow-win7.png
   skin/classic/browser/webRTC-indicator.css  (../shared/webRTC-indicator.css)
+  skin/classic/browser/cliqz/theme.css                         (cliqz/theme.css)
 * skin/classic/browser/controlcenter/panel.css                 (controlcenter/panel.css)
   skin/classic/browser/customizableui/menu-arrow.svg           (customizableui/menu-arrow.svg)
 * skin/classic/browser/customizableui/panelUI.css       (customizableui/panelUI.css)

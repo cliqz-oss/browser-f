@@ -994,3 +994,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      used as a textual label for the indicator used by assistive technology
      users. -->
 <!ENTITY accessibilityIndicator.tooltip "Funktionen für Barrierefreiheit aktiviert">
+
+<!-- Cliqz -->
+<!ENTITY connect.panelUI.label "Connect">
