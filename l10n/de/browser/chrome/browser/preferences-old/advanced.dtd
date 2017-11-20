@@ -34,7 +34,7 @@
 disabled data sharing options in developer builds or builds with no Telemetry support
 available. -->
 <!ENTITY healthReportingDisabled.label   "Datenübermittlung ist für diese Build-Konfiguration deaktiviert">
-<!ENTITY healthReportDesc.label          "Hilft beim Verstehen Ihrer Browser-Leistung und übermittelt Daten über den Browser-Status an &vendorShortName;.">
+<!ENTITY healthReportDesc.label          "Hilft beim Verstehen deiner Browser-Leistung und übermittelt Daten über den Browser-Status an &vendorShortName;.">
 <!ENTITY healthReportDesc.label          "Hilft beim Verstehen deiner Browser-Leistung und übermittelt Daten über den Browser-Status an &vendorShortName;.">
 <!ENTITY enableHealthReport.label        "&brandShortName;-Statusbericht">
 <!ENTITY enableHealthReport.accesskey    "S">
@@ -147,6 +147,6 @@ available. -->
 <!ENTITY limitContentProcessOption.disabledDescription
                                          "Das Ändern der Anzahl der Inhaltsprozesse ist nur in &brandShortName; mit mehreren Prozessen möglich.">
 <!ENTITY limitContentProcessOption.disabledDescriptionLink
-                                         "Wie Sie herausfinden, ob Firefox mit mehreren Prozessen ausgeführt wird">
+                                         "Wie du herausfindest, ob Firefox mit mehreren Prozessen ausgeführt wird">
 <!ENTITY allowHWAccel.label              "Hardwarebeschleunigung verwenden, wenn verfügbar">
 <!ENTITY allowHWAccel.accesskey          "v">

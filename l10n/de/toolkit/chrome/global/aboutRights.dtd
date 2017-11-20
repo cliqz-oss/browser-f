@@ -4,7 +4,7 @@
 <!-- rights.locale-direction instead of the usual local.dir entity, so RTL can skip translating page. -->
 <!ENTITY rights.locale-direction "ltr">
 <!ENTITY rights.title "Über Ihre Rechte">
-<!ENTITY rights.intro "&brandFullName; ist freie und quelloffene Software, entwickelt von einer Gemeinschaft tausender Gleichgesinnter, verteilt über die gesamte Welt. Es gibt da einige Dinge, die Sie wissen sollten:"> 
+<!ENTITY rights.intro "&brandFullName; ist freie und quelloffene Software, entwickelt von einer Gemeinschaft tausender Gleichgesinnter, verteilt über die gesamte Welt. Es gibt da einige Dinge, die du wissen solltest:"> 
 
 <!-- Note on pointa / pointb / pointc form:
      These points each have an embedded link in the HTML, so each point is
@@ -14,9 +14,9 @@
 
      Also note the leading/trailing whitespace in strings here, which is
      deliberate for formatting around the embedded links. -->
-<!ENTITY rights.intro-point1a "&brandShortName; wird Ihnen unter den Bedingungen der ">
+<!ENTITY rights.intro-point1a "&brandShortName; wird dir unter den Bedingungen der ">
 <!ENTITY rights.intro-point1b "Mozilla Public License">
-<!ENTITY rights.intro-point1c " zur Verfügung gestellt. Das bedeutet, Sie dürfen &brandShortName; verwenden, kopieren und an andere verteilen. Sie sind auch gerne eingeladen, den Quellcode von &brandShortName; zu verändern und an Ihre eigenen Bedürfnisse anzupassen. Die Mozilla Public License gibt Ihnen auch das Recht, Ihre veränderte Version an andere zu verteilen."> 
+<!ENTITY rights.intro-point1c " zur Verfügung gestellt. Das bedeutet, du dürfst &brandShortName; verwenden, kopieren und an andere verteilen. Du bist auch gerne eingeladen, den Quellcode von &brandShortName; zu verändern und an deine eigenen Bedürfnisse anzupassen. Die Mozilla Public License gibt dir auch das Recht, deine veränderte Version an andere zu verteilen."> 
 
 <!ENTITY rights.intro-point2-a "Mozilla gibt Ihnen keine Markenrechte oder Lizenzen an den Handelsmarken der Mozilla Foundation oder irgendeiner Partei, einschließlich ohne Einschränkungen am Namen &quot;Firefox&quot; oder dem Firefox-Logo. Weitere Informationen zur Nutzung der Marken finden Sie ">
 <!ENTITY rights.intro-point2-b "hier">

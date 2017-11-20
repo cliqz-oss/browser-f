@@ -16,10 +16,10 @@
      vulgar, use it. If not, feel free to skip the word in your
      translation. -->
 <!ENTITY tabCrashed.header2 "Der Tab ist gerade abgestürzt.">
-<!ENTITY tabCrashed.offerHelp2 "So können wir Ihnen helfen:">
-<!ENTITY tabCrashed.single.offerHelpMessage2 "Wählen Sie &quot;&tabCrashed.restoreTab;&quot;, um die Seite neu zu laden.">
-<!ENTITY tabCrashed.multiple.offerHelpMessage2 "Wählen Sie &quot;&tabCrashed.restoreTab;&quot; oder &quot;&tabCrashed.restoreAll;&quot;, um die Seite bzw. alle Seiten neu zu laden.">
-<!ENTITY tabCrashed.requestHelp "Unterstützen Sie uns!">
+<!ENTITY tabCrashed.offerHelp2 "So können wir dir helfen:">
+<!ENTITY tabCrashed.single.offerHelpMessage2 "Wähle &quot;&tabCrashed.restoreTab;&quot;, um die Seite neu zu laden.">
+<!ENTITY tabCrashed.multiple.offerHelpMessage2 "Wähle &quot;&tabCrashed.restoreTab;&quot; oder &quot;&tabCrashed.restoreAll;&quot;, um die Seite bzw. alle Seiten neu zu laden.">
+<!ENTITY tabCrashed.requestHelp "Unterstütze uns!">
 <!ENTITY tabCrashed.requestHelpMessage "Absturzberichte helfen uns beim Analysieren von Problemen und dabei, &brandShortName; besser zu machen.">
 <!ENTITY tabCrashed.requestReport "Diesen Tab melden">
 <!ENTITY tabCrashed.sendReport3 "Automatischen Absturzbericht an Mozilla senden, damit solche Probleme von uns behoben werden können.">
