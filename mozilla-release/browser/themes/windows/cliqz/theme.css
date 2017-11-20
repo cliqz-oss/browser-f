@@ -21,7 +21,8 @@
 #navigator-toolbox {
   /* TABS TOOLBAR */
   /* NAVIGATION TOOLBAR */
-  /* Line on the bottom of the nav-bar/toolbar */ }
+  /* Line on the bottom of the nav-bar/toolbar */
+  /* Forget mode urlbar */ }
   #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
     /* Customize tabs toolbar background color for light theme */
     -moz-appearance: none;
@@ -59,33 +60,34 @@
         border-left-width: 0.5px; }
       #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:hover:not([pinned="true"]) .tab-content .tab-close-button, #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab[visuallyselected="true"]:not([pinned="true"]) .tab-content .tab-close-button {
         display: unset; }
+    #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabs-newtab-button {
+      margin-left: 2px; }
     #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext[inFullscreen] #tabbrowser-tabs .tabbrowser-tab:first-of-type {
       border-left: none; }
   #navigator-toolbox #nav-bar {
     border-top: unset !important;
-    /* Apply margin for all nav-bar's toolbar buttons/items, and the first button as well */
-    /* Remove border and border radius of url bar */ }
+    /* Apply margin for all nav-bar's toolbar buttons/items, and the first button as well */ }
     #navigator-toolbox #nav-bar #nav-bar-customization-target .toolbarbutton-1 {
-      margin: 0 2px; }
+      padding: 0 4px; }
     #navigator-toolbox #nav-bar #nav-bar-customization-target > *:first-child {
-      margin-left: 4px; }
-    #navigator-toolbox #nav-bar #urlbar {
-      border: unset;
-      border-radius: unset;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-      transition: background-color cubic-bezier(0.43, -0.01, 0.26, 1.01) 60ms;
-      transition-delay: 60ms;
-      /* Add 1px margin for page action buttons */
-      /* Change box-shadow and background color when focused and hovering */ }
-      #navigator-toolbox #nav-bar #urlbar #page-action-buttons {
-        margin-right: 1px; }
-      #navigator-toolbox #nav-bar #urlbar[focused="true"] {
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
-        background-color: #fff; }
-      #navigator-toolbox #nav-bar #urlbar:hover {
-        box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
-        background-color: #fff; }
-      #navigator-toolbox #nav-bar #urlbar[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
+      padding-inline-start: 10px !important; }
+    #navigator-toolbox #nav-bar #urlbar-container {
+      margin: 0 1px;
+      /* Remove border and border radius of url bar */ }
+      #navigator-toolbox #nav-bar #urlbar-container #urlbar {
+        border: unset;
+        border-radius: unset;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+        transition: background-color cubic-bezier(0.43, -0.01, 0.26, 1.01) 60ms;
+        transition-delay: 60ms;
+        /* Add 1px margin for page action buttons */
+        /* Change box-shadow and background color when focused and hovering */ }
+        #navigator-toolbox #nav-bar #urlbar-container #urlbar #page-action-buttons {
+          margin-right: 1px; }
+        #navigator-toolbox #nav-bar #urlbar-container #urlbar:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar[focused="true"] {
+          box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
+          background-color: #fff; }
+      #navigator-toolbox #nav-bar #urlbar-container[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
         color: #000; }
   #navigator-toolbox #PersonalToolbar {
     border-top: 1px solid #e1e1e1;
@@ -97,6 +99,10 @@
     border-bottom: unset; }
   #navigator-toolbox:-moz-window-inactive:after {
     box-shadow: rgba(0, 0, 0, 0.19) 0 -2px 1px 3px; }
+  #navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar {
+    /* Change box-shadow and background color when focused and hovering */ }
+    #navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar:hover, #navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar[focused="true"] {
+      background-color: #cbd3de; }
 
 :root {
   /* Override global variables */
