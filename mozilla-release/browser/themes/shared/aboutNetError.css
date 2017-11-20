@@ -184,6 +184,7 @@ span#hostname {
   background-size: 38%;
 }
 
+%if 0
 .connectionFailure #errorPageContainer,
 .netInterrupt #errorPageContainer,
 .netTimeout #errorPageContainer,
@@ -199,6 +200,7 @@ span#hostname {
 .malformedURI #errorPageContainer {
   background-image: url("chrome://browser/content/illustrations/error-malformed-url.svg");
 }
+%endif
 
 .malformedURI #errorTryAgain {
   display: none;
