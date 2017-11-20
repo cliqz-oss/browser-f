@@ -1731,7 +1731,7 @@ BrowserGlue.prototype = {
 
   // eslint-disable-next-line complexity
   _migrateUI: function BG__migrateUI() {
-    const UI_VERSION = 57;
+    const UI_VERSION = 58;
     const BROWSER_DOCURL = "chrome://browser/content/browser.xul";
 
     let currentUIVersion;
@@ -2154,6 +2154,13 @@ BrowserGlue.prototype = {
           }
         } catch (e) { /* Don't panic if this pref isn't what we expect it to be. */ }
       }
+    }
+
+    if (currentUIVersion < 58) {
+      // With Firefox 57, we are doing a one time reset of the geo prefs due to bug 1413652
+      Services.prefs.clearUserPref("browser.search.countryCode");
+      Services.prefs.clearUserPref("browser.search.region");
+      Services.prefs.clearUserPref("browser.search.isUS");
     }
 
     // Update the migration version.
