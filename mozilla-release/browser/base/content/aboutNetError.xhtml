@@ -166,10 +166,11 @@
           "malformedURI", "dnsNotFound", "connectionFailure", "netInterrupt",
           "netTimeout", "netReset", "netOffline",
         ];
+        /* Cliqz. Not used now
         if (illustratedErrors.includes(err)) {
           document.body.classList.add("illustrated", err);
         }
-
+        */
         gIsCertError = (err == "nssBadCert");
         // Only worry about captive portals if this is a cert error.
         let showCaptivePortalUI = isCaptive() && gIsCertError;
