@@ -193,11 +193,11 @@ var CustomizableUIInternal = {
       "back-button",
       "forward-button",
       "stop-reload-button",
-      "home-button",
       "urlbar-container",
       "offers-cc-browser-action", // Cliqz offers hub
       "control-center-browser-action", // Cliqz control center
       "cliqz-cc-btn", // Cliqz control center old
+      "home-button",
       "downloads-button",
     ];
 
