@@ -67,8 +67,8 @@ stage("Copy XPI") {
                 passwordVariable: 'AWS_SECRET_ACCESS_KEY',
                 usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-        sh "s3cmd cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
-        sh "s3cmd cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
+        sh "aws s3 cp $CQZ_EXTENSION_URL $UPLOAD_PATH"
+        sh "aws s3 cp $HTTPSE_EXTENSION_URL $HTTPSE_UPLOAD_PATH"
     }
 }
 
