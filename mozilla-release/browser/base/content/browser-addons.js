@@ -605,8 +605,14 @@ var LightWeightThemeWebInstaller = {
   },
 
   _installRequest(dataString, baseURI) {
-    this._removePreviousNotifications();
     let notificationBox = gBrowser.getNotificationBox();
+    // remove previous notification
+    ["lwtheme-install-request",
+     "lwtheme-install-notification"].forEach(function(value) {
+        let notification = notificationBox.getNotificationWithValue(value);
+        if (notification)
+          notificationBox.removeNotification(notification);
+      });
     notificationBox.appendNotification(
         gNavigatorBundle.getString("lwthemeInstallRequest.disabledInCliqz"),
         "lwtheme-install-request", "",
