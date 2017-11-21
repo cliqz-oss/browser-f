@@ -389,7 +389,7 @@ var gXPInstallObserver = {
           args = [install.name];
         } else {
           error += "Incompatible";
-          args = [brandShortName, Services.appinfo.version, install.name];
+          args = [brandShortName, Services.prefs.getCharPref("distribution.version"), install.name];
         }
 
         // Add Learn More link when refusing to install an unsigned add-on
