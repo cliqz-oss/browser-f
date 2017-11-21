@@ -139,6 +139,26 @@
     #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext[inFullscreen] {
       padding-top: 0; }
 
+/* When user enable extra drag space */
+[extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox {
+  /* TABS TOOLBAR */ }
+  [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    /* Add 10 more pxs to the drag space */
+    padding-top: 10px; }
+    [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab {
+      /* Force tab left and right border to cover whole tab's height */ }
+      [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:before, [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:after {
+        border-image: none; }
+
+/* When user enable tabs in title bar */
+#main-window:not([tabsintitlebar]) #navigator-toolbox {
+  /* TABS TOOLBAR */ }
+  #main-window:not([tabsintitlebar]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    /* Remove padding top */
+    padding-top: 0; }
+    #main-window:not([tabsintitlebar]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+      border-left: none; }
+
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext,
 #main-window.cliqz-blue .tabbrowser-tab .tab-content {
   background-color: #00ADEF; }
