@@ -194,9 +194,7 @@ var CustomizableUIInternal = {
       "forward-button",
       "stop-reload-button",
       "urlbar-container",
-      "offers-cc-browser-action", // Cliqz offers hub
-      "control-center-browser-action", // Cliqz control center
-      "cliqz-cc-btn", // Cliqz control center old
+      ...CustomizableUI.CLIQZ_WIDGET_IDS,
       "home-button",
       "downloads-button",
     ];
@@ -2277,13 +2275,16 @@ var CustomizableUIInternal = {
       let addToDefaultPlacements = false;
       let area = gAreas.get(widget.defaultArea);
       if (!CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
-          widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL) {
+          widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL ||
+          CustomizableUI.isCliqzWidget(widget.id)) {
         addToDefaultPlacements = true;
       }
 
       if (addToDefaultPlacements) {
         if (area.has("defaultPlacements")) {
-          area.get("defaultPlacements").push(widget.id);
+          // Cliqz widgets should be placed after urlbar by default.
+          // That is why we have special method to take care of it.
+          CustomizableUI.addWidgetToDefaultPlacements(widget.id, area);
         } else {
           area.set("defaultPlacements", [widget.id]);
         }
@@ -3045,6 +3046,15 @@ this.CustomizableUI = {
    */
   REASON_AREA_UNREGISTERED: "area-unregistered",
 
+  /**
+   * Cliqz.
+   * List of Cliqz widget ids.
+   */
+  CLIQZ_WIDGET_IDS: [
+    "offers-cc-browser-action", // Cliqz offers hub
+    "control-center-browser-action", // Cliqz control center
+    "cliqz-cc-btn", // Cliqz control center old
+  ],
 
   /**
    * An iteratable property of windows managed by CustomizableUI.
@@ -3937,6 +3947,33 @@ this.CustomizableUI = {
    */
   createSpecialWidget(aId, aDocument) {
     return CustomizableUIInternal.createSpecialWidget(aId, aDocument);
+  },
+
+  /**
+   * Cliqz.
+   * Add widget to the list of defaultPlacements.
+   * We always add widget after 'urlbar-container' if it exists, or
+   * to the end of the list if it doesn't.
+   * @param aWidgetId
+   * @param aArea
+   */
+  addWidgetToDefaultPlacements(aWidgetId, aArea) {
+    const placements = aArea.get("defaultPlacements");
+    let urlbarIndex = placements.indexOf('urlbar-container');
+    if (urlbarIndex === -1) {
+      placements.push(aWidgetId);
+    } else {
+      placements.splice(urlbarIndex, 0, aWidgetId);
+    }
+  },
+
+  /**
+   * Cliqz.
+   * Check if widget id belongs to one of Cliqz's.
+   * @param aWidgetId the ID of the widget you want to check
+   */
+  isCliqzWidget(aWidgetId) {
+    return CustomizableUI.CLIQZ_WIDGET_IDS.includes(aWidgetId);
   },
 };
 Object.freeze(this.CustomizableUI);
