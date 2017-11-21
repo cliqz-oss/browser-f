@@ -12,7 +12,7 @@ def checkoutSCM(URL, COMMIT) {
             doGenerateSubmoduleConfigurations: false,
             extensions: [
                 [$class: 'CheckoutOption', timeout: 30],
-                [$class: 'CloneOption', depth: 0, noTags: true, reference: '', shallow: false, timeout: 30, honorRefspec: true],
+                [$class: 'CloneOption', depth: 0, noTags: true, reference: '', shallow: false, timeout: 60, honorRefspec: true],
             ],
             submoduleCfg: [],
             userRemoteConfigs: [[credentialsId: '0aededfc-f41d-40bd-9a63-dd4524adb7b6', url: URL]]
