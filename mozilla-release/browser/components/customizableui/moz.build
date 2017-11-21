@@ -11,7 +11,6 @@ DIRS += [
 BROWSER_CHROME_MANIFESTS += ['test/browser.ini']
 
 EXTRA_JS_MODULES += [
-    'CustomizableUI.jsm',
     'CustomizeMode.jsm',
     'DragPositionManager.jsm',
     'PanelMultiView.jsm',
@@ -21,6 +20,7 @@ EXTRA_JS_MODULES += [
 ]
 
 EXTRA_PP_JS_MODULES += [
+    'CustomizableUI.jsm',
     'CustomizableWidgets.jsm',
 ]
 
