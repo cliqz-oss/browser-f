@@ -534,7 +534,8 @@ toolbarpaletteitem[place=toolbar] > toolbarspring {
 
 @media (min-resolution: 1.1dppx) {
   #customization-panelHolder > #widget-overflow-fixed-list::before {
-    background-image: url("chrome://browser/skin/customizableui/empty-overflow-panel@2x.png");
+    /* Hidden in Cliqz */
+    /* background-image: url("chrome://browser/skin/customizableui/empty-overflow-panel@2x.png"); */
   }
 }
 
