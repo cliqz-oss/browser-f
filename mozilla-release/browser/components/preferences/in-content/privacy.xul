@@ -597,7 +597,8 @@
     <hbox align="center">
       <checkbox id="trackingProtectionPBM"
                 preference="privacy.donottrackheader.enabled"
-                label="&doNotTrack.description;"/>
+                label="&doNotTrack.description;"
+                class="tail-with-learn-more"/>
       <label class="learnMore text-link"
              href="https://www.mozilla.org/dnt">&doNotTrack.learnMore.label;</label>
     </hbox>
@@ -723,7 +724,7 @@
               searchkeywords="&address2.label; &button.cancel.label; &button.ok.label;"/>
     </hbox>
   </hbox>
-
+#if 0
   <hbox id="addonInstallBox">
     <checkbox id="warnAddonInstall"
               label="&warnOnAddonInstall2.label;"
@@ -745,7 +746,7 @@
                               &button.ok.label;"/>
     </hbox>
   </hbox>
-
+#endif
   <vbox id="a11yPermissionsBox">
     <hbox flex="1" align="center">
       <checkbox id="a11yPrivacyCheckbox" class="tail-with-learn-more"
@@ -849,12 +850,10 @@
             label="&httpsEverywhereEnable.label;"
             accesskey="&httpsEverywhere.accesskey;"
             oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
-  <hbox align="start">
-    <label>&httpsEverywhereDesc.label;</label>
-    <label class="text-link"
-           style="padding-left: 10px;"
-           value="&httpsEverywhereMore.label;"
-           href="https://www.eff.org/https-everywhere"/>
+  <hbox>
+    <label class="tail-with-learn-more">&httpsEverywhereDesc.label;</label>
+    <label class="learnMore text-link"
+           href="https://www.eff.org/https-everywhere">&httpsEverywhereMore.label;</label>
   </hbox>
 </groupbox>
 
