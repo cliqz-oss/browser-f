@@ -313,7 +313,8 @@ var CustomizableUIInternal = {
     if (currentVersion < 7 && gSavedState.placements &&
         gSavedState.placements[CustomizableUI.AREA_NAVBAR]) {
       let placements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
-      let newPlacements = ["back-button", "forward-button", "stop-reload-button", "home-button"];
+      /* Cliqz. "home-button" removed from default placements we add on upgrade. */
+      let newPlacements = ["back-button", "forward-button", "stop-reload-button"];
       for (let button of placements) {
         if (!newPlacements.includes(button)) {
           newPlacements.push(button);
@@ -369,6 +370,7 @@ var CustomizableUIInternal = {
 
     if (currentVersion < 9 && gSavedState.placements && gSavedState.placements["nav-bar"]) {
       let placements = gSavedState.placements["nav-bar"];
+#if 0
       if (placements.includes("urlbar-container")) {
         let urlbarIndex = placements.indexOf("urlbar-container");
         let secondSpringIndex = urlbarIndex + 1;
@@ -390,6 +392,7 @@ var CustomizableUIInternal = {
           placements.splice(secondSpringIndex, 0, "spring");
         }
       }
+#endif
 
       // Finally, replace the bookmarks menu button with the library one if present
       if (placements.includes("bookmarks-menu-button")) {
