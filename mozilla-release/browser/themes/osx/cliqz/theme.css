@@ -87,8 +87,8 @@
         #navigator-toolbox #nav-bar #urlbar-container #urlbar:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar[focused="true"] {
           box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
           background-color: #fff; }
-      #navigator-toolbox #nav-bar #urlbar-container[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
-        color: #000; }
+        #navigator-toolbox #nav-bar #urlbar-container #urlbar[pageproxystate="valid"] > #identity-box.chromeUI > #identity-icon-labels {
+          color: #000; }
   #navigator-toolbox #PersonalToolbar {
     border-top: 1px solid #e1e1e1;
     box-shadow: rgba(0, 0, 0, 0.19) 0 1px 1px 0;
@@ -138,6 +138,26 @@
       width: 36px; }
     #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext[inFullscreen] {
       padding-top: 0; }
+
+/* When user enable extra drag space */
+[extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox {
+  /* TABS TOOLBAR */ }
+  [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    /* Add 10 more pxs to the drag space */
+    padding-top: 10px; }
+    [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab {
+      /* Force tab left and right border to cover whole tab's height */ }
+      [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:before, [extradragspace][tabsintitlebar]:root:not([inFullscreen]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:after {
+        border-image: none; }
+
+/* When user enable tabs in title bar */
+#main-window:not([tabsintitlebar]) #navigator-toolbox {
+  /* TABS TOOLBAR */ }
+  #main-window:not([tabsintitlebar]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext {
+    /* Remove padding top */
+    padding-top: 0; }
+    #main-window:not([tabsintitlebar]) #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext #tabbrowser-tabs .tabbrowser-tab:first-of-type {
+      border-left: none; }
 
 #main-window.cliqz-blue #navigator-toolbox #TabsToolbar:-moz-lwtheme-darktext,
 #main-window.cliqz-blue .tabbrowser-tab .tab-content {
