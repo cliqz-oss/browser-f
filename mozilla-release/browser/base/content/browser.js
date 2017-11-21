@@ -300,16 +300,14 @@ let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
 XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
   "chrome://browser/content/PrivateTabUI.jsm");
 #endif
-/*
+
 // CLIQZ Blue Theme
 // TODO - move this out into a separate file!
 try {
   var THEME_PREF = "extensions.cliqz.freshtab.blueTheme.enabled",
       THEME_CLASS = "cliqz-blue",
       FRESHTAB_CONFIG = "extensions.cliqz.freshtabConfig",
-      pref_service = Components.classes["@mozilla.org/preferences-service;1"]
-        .getService(Components.interfaces.nsIPrefBranchInternal),
-      branch = pref_service.QueryInterface(Components.interfaces.nsIPrefBranchInternal);
+      branch = Services.prefs.getBranch('');
 
   function observe(subject, topic, data) {
     setThemeState(getThemeState());
@@ -350,7 +348,7 @@ try {
   Cu.reportError(e);
 }
 // CLIQZ Blue Theme end
-*/
+
 var gInitialPages = [
   "about:blank",
   "about:newtab",
