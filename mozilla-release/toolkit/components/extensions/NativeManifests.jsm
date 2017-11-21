@@ -29,7 +29,7 @@ const TYPES = {
 
 const NATIVE_MANIFEST_SCHEMA = "chrome://extensions/content/schemas/native_manifest.json";
 
-const REGPATH = "Software\\Mozilla";
+const REGPATH = "Software\\CLIQZ";
 
 this.NativeManifests = {
   _initializePromise: null,

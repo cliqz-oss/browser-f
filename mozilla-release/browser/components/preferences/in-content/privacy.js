@@ -106,8 +106,6 @@ var gPrivacyPane = {
       }
       var stateCheckbox = document.getElementById("httpsEverywhereEnable");
 
-      document.getElementById("httpsEverywhereGroup").hidden = false;
-
       if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
         // HTTPS Everywhere is an web extension
         stateCheckbox.checked = !addon.userDisabled;
@@ -365,10 +363,12 @@ var gPrivacyPane = {
       bundlePrefs.getString("microphonepermissionstitle"),
       bundlePrefs.getString("microphonepermissionstext"),
     ]);
+#if 0
     appendSearchKeywords("addonExceptions", [
       bundlePrefs.getString("addons_permissions_title2"),
       bundlePrefs.getString("addonspermissionstext"),
     ]);
+#endif
     appendSearchKeywords("viewSecurityDevicesButton", [
       pkiBundle.getString("enable_fips"),
     ]);
