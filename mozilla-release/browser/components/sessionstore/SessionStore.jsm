@@ -1175,10 +1175,12 @@ var SessionStoreInternal = {
           // Restore session cookies before loading any tabs.
           SessionCookies.restore(aInitialState.cookies || []);
 
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) &&
-            gSessionStartup.willOverrideHomepage;
-          let options = {firstWindow: true, overwriteTabs: overwrite};
-          this.restoreWindows(aWindow, aInitialState, options);
+          gSessionStartup.willOverrideHomepagePromise.then(willOverrideHomepage => {
+            let overwrite = this._isCmdLineEmpty(aWindow, aInitialState) && willOverrideHomepage;
+            let options = {firstWindow: true, overwriteTabs: overwrite};
+            this.restoreWindows(aWindow, aInitialState, options);
+          });
+
         }
       } else {
         // Nothing to restore, notify observers things are complete.
