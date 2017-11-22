@@ -559,7 +559,8 @@ nsBrowserContentHandler.prototype = {
     try {
       var addFreshTab = prefb.getBoolPref("browser.startup.addFreshTab");
       if (addFreshTab)
-        startPage = this.startPage;
+        // TEMP: AboutRedirector.cpp seems to have issues on this one
+        startPage = this.startPage.replace("about:home", "resource://cliqz/freshtab/home.html");
     } catch (e) {
       Components.utils.reportError(e);
     }
