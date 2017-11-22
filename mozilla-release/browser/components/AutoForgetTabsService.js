@@ -264,7 +264,7 @@ AutoForgetTabsService.prototype = {
       stream = channel.open();
     }
     catch(e) {
-      dump("There are no AFT file in extension. Trying to load from file.\n");
+      Cu.reportError("There are no AFT file in extension. Trying to load from file.\n");
     }
 
     if (!stream) {
@@ -285,7 +285,7 @@ AutoForgetTabsService.prototype = {
       }
     }
     else {
-      dump("No AFT database file or resource.\n");
+      Cu.reportError("No AFT database file or resource.\n");
     }
 
     this._usrBlackList = readSetFromFileOrRemoveIt(
