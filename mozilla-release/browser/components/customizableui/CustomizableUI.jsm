@@ -3051,9 +3051,9 @@ this.CustomizableUI = {
    * List of Cliqz widget ids.
    */
   CLIQZ_WIDGET_IDS: [
-    "offers-cc-browser-action", // Cliqz offers hub
     "control-center-browser-action", // Cliqz control center
     "cliqz-cc-btn", // Cliqz control center old
+    "offers-cc-browser-action", // Cliqz offers hub
   ],
 
   /**
