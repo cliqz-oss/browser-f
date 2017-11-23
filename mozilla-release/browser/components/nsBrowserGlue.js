@@ -2089,7 +2089,7 @@ BrowserGlue.prototype = {
       let currentTheme = Services.prefs.getCharPref("lightweightThemes.selectedThemeID", "");
       if (currentTheme == "firefox-compact-dark@mozilla.org" ||
           currentTheme == "firefox-compact-light@mozilla.org") {
-        Services.prefs.setIntPref("browser.uidensity", 1);
+        Services.prefs.setIntPref("browser.uidensity", 0);
       }
     }
 
