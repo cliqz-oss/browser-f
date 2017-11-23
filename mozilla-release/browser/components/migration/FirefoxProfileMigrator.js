@@ -58,7 +58,7 @@ function getFile(path) {
   return file;
 }
 
-function insertWholeBookmarkFolder(db, aId, aGuid) {
+function* insertWholeBookmarkFolder(db, aId, aGuid) {
   let query = `SELECT b.id, h.url, COALESCE(b.title, h.title) AS title,
     b.type, k.keyword, b.dateAdded, b.lastModified
     FROM moz_bookmarks b
