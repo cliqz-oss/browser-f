@@ -1620,7 +1620,7 @@ var gBrowserInit = {
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
 
-    if (!AppConstants.MOZILLA_OFFICIAL)
+    if (!AppConstants.RELEASE_BUILD)
       DevelopmentHelpers.init();
 
     gExtensionsNotifications.init();
