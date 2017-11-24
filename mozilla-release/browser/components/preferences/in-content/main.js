@@ -265,8 +265,10 @@ var gMainPane = {
       gMainPane.setHomePageToBookmark);
     setEventListener("restoreDefaultHomePage", "command",
       gMainPane.restoreDefaultHomePage);
+#if 0
     setEventListener("disableHomePageExtension", "command",
                      gMainPane.makeDisableControllingExtension("homepage_override"));
+#endif
     setEventListener("disableContainersExtension", "command",
                      gMainPane.makeDisableControllingExtension("privacy.containers"));
     setEventListener("chooseLanguage", "command",
@@ -691,7 +693,7 @@ var gMainPane = {
           element.disabled = isLocked || isControlled;
         });
     }
-
+#if 0
     if (homePref.locked) {
       // An extension can't control these settings if they're locked.
       hideControllingExtension("homepage_override");
@@ -701,7 +703,7 @@ var gMainPane = {
       handleControllingExtension("homepage_override")
         .then(setInputDisabledStates);
     }
-
+#endif
     // If the pref is set to about:home or about:newtab, set the value to ""
     // to show the placeholder text (about:home title) rather than
     // exposing those URLs to users.
@@ -785,13 +787,13 @@ var gMainPane = {
       useCurrent.label = useCurrent.getAttribute("label2");
     else
       useCurrent.label = useCurrent.getAttribute("label1");
-
+#if 0
     // If the homepage is controlled by an extension then you can't use this.
     if (await getControllingExtensionId("homepage_override")) {
       useCurrent.disabled = true;
       return;
     }
-
+#endif
     // In this case, the button's disabled state is set by preferences.xml.
     let prefName = "pref.browser.homepage.disable_button.current_page";
     if (document.getElementById(prefName).locked)
