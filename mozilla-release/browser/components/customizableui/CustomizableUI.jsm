@@ -319,9 +319,11 @@ var CustomizableUIInternal = {
         }
       }
 
+#if 0
       if (!newPlacements.includes("sidebar-button")) {
         newPlacements.push("sidebar-button");
       }
+#endif
 
       gSavedState.placements[CustomizableUI.AREA_NAVBAR] = newPlacements;
     }
@@ -390,7 +392,6 @@ var CustomizableUIInternal = {
           placements.splice(secondSpringIndex, 0, "spring");
         }
       }
-#endif
 
       // Finally, replace the bookmarks menu button with the library one if present
       if (placements.includes("bookmarks-menu-button")) {
@@ -400,6 +401,7 @@ var CustomizableUIInternal = {
         let libraryIndex = downloadButtonIndex == -1 ? bmbIndex : (downloadButtonIndex + 1);
         placements.splice(libraryIndex, 0, "library-button");
       }
+#endif
     }
 
     if (currentVersion < 10 && gSavedState.placements) {
