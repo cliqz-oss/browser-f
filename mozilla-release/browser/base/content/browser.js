@@ -1619,10 +1619,10 @@ var gBrowserInit = {
 
     if (AppConstants.MOZ_DATA_REPORTING)
       gDataNotificationInfoBar.init();
-
-    if (!AppConstants.RELEASE_BUILD)
+#if 0
+    if (!AppConstants.MOZILLA_RELEASE)
       DevelopmentHelpers.init();
-
+#endif
     gExtensionsNotifications.init();
 
     let wasMinimized = window.windowState == window.STATE_MINIMIZED;
