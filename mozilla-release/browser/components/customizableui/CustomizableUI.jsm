@@ -195,6 +195,7 @@ var CustomizableUIInternal = {
       "stop-reload-button",
       "urlbar-container",
       ...CustomizableUI.CLIQZ_WIDGET_IDS,
+      "bookmarks-menu-button",
       "home-button",
       "downloads-button",
     ];
