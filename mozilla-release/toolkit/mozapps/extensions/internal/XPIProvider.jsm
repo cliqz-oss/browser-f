@@ -5654,11 +5654,13 @@ AddonWrapper.prototype = {
         XPIProvider.enableDefaultTheme();
       }
       if (!(theme && val) || isWebExtension(addon.type)) {
+        /* In CLIQZ we need to be able to userDisable system addons like HTTPSEverywhere
         // hidden and system add-ons should not be user disasbled,
         // as there is no UI to re-enable them.
         if (this.hidden) {
           throw new Error(`Cannot disable hidden add-on ${addon.id}`);
         }
+        */
         XPIProvider.updateAddonDisabledState(addon, val);
       }
     } else {
