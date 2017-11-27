@@ -89,7 +89,7 @@ pref("extensions.webextensions.remote", true);
 #endif
 
 // Extensions that should not be flagged as legacy in about:addons
-pref("extensions.legacy.exceptions", "{972ce4c6-7e08-4474-a285-3208198ce6fd},testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
+pref("extensions.legacy.exceptions", "{972ce4c6-7e08-4474-a285-3208198ce6fd},cliqz@cliqz.com,https-everywhere@cliqz.com,testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
 
 // Require signed add-ons by default
 pref("xpinstall.signatures.required", true);
@@ -1585,7 +1585,7 @@ pref("extensions.interposition.prefetching", true);
 pref("extensions.allow-non-mpc-extensions", false);
 #endif
 
-pref("extensions.legacy.enabled", false);
+pref("extensions.legacy.enabled", true);
 
 // Enable blocking of e10s and e10s-multi for add-on users on beta/release.
 #if defined(RELEASE_OR_BETA) && !defined(MOZ_DEV_EDITION)
