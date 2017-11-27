@@ -8444,7 +8444,9 @@ var RestoreLastSessionObserver = {
   init() {
     let browser_tabs_restorebutton_pref = Services.prefs.getIntPref("browser.tabs.restorebutton");
     Services.telemetry.scalarSet("browser.session.restore.browser_tabs_restorebutton", browser_tabs_restorebutton_pref);
+#if 0
     Services.telemetry.scalarSet("browser.session.restore.browser_startup_page", Services.prefs.getIntPref("browser.startup.page"));
+#endif
     if (SessionStore.canRestoreLastSession &&
         !PrivateBrowsingUtils.isWindowPrivate(window)) {
       if (browser_tabs_restorebutton_pref == 1) {
