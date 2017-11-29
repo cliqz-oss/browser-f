@@ -455,6 +455,16 @@ var CustomizableUIInternal = {
           }
         }
       }
+
+      // Cliqz
+      // Make sure no "search-container" is in navbar
+      const navbarPlacements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
+      if (navbarPlacements) {
+        const searchContainerIndex = navbarPlacements.indexOf("search-container");
+        if (searchContainerIndex !== -1) {
+          navbarPlacements.splice(searchContainerIndex, 1);
+        }
+      }
     }
   },
 
