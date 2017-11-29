@@ -543,6 +543,10 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
  */
 #search-container {
   min-width: 25ch;
+  /*
+   * Hidden in Cliqz
+   */
+  display: none;
 }
 
 #urlbar,
