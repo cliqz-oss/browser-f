@@ -17,10 +17,15 @@ function init(aEvent) {
 
   var distroId = Services.prefs.getCharPref("distribution.about", "");
   if (distroId) {
-    var distroVersion = Services.prefs.getCharPref("distribution.version");
+    var distroString = distroId;
+
+    var distroVersion = Services.prefs.getCharPref("distribution.version", "");
+    if (distroVersion) {
+      distroString += " - " + distroVersion;
+    }
 
     var distroIdField = document.getElementById("distributionId");
-    distroIdField.value = distroId + " - " + distroVersion;
+    distroIdField.value = distroString;
     distroIdField.style.display = "block";
 
     // DB-1148: Add platform and extension version to About dialog.
