@@ -392,10 +392,15 @@ var gMainPane = {
     // Not used in Cliqz build because Cliqz itself a "distributed" build
     let distroId = Services.prefs.getCharPref("distribution.id", "");
     if (distroId) {
-      let distroVersion = Services.prefs.getCharPref("distribution.version");
+      let distroString = distroId;
+
+      let distroVersion = Services.prefs.getCharPref("distribution.version", "");
+      if (distroVersion) {
+        distroString += " - " + distroVersion;
+      }
 
       let distroIdField = document.getElementById("distributionId");
-      distroIdField.value = distroId + " - " + distroVersion;
+      distroIdField.value = distroString;
       distroIdField.hidden = false;
 
       let distroAbout = Services.prefs.getStringPref("distribution.about", "");
