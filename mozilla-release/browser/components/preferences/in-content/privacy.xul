@@ -168,8 +168,8 @@
 
   <!-- Data Choices tab -->
 #ifdef MOZ_CRASHREPORTER
-  <preference id="browser.crashReports.unsubmittedCheck.autoSubmit"
-              name="browser.crashReports.unsubmittedCheck.autoSubmit"
+  <preference id="browser.crashReports.unsubmittedCheck.autoSubmit2"
+              name="browser.crashReports.unsubmittedCheck.autoSubmit2"
               type="bool"/>
 #endif
 
@@ -800,7 +800,7 @@
 #if 0
               class="tail-with-learn-more"
 #endif
-              preference="browser.crashReports.unsubmittedCheck.autoSubmit"
+              preference="browser.crashReports.unsubmittedCheck.autoSubmit2"
               label="&alwaysSubmitCrashReports1.label;"
               accesskey="&alwaysSubmitCrashReports1.accesskey;"/>
 #if 0
