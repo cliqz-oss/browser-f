@@ -385,7 +385,7 @@ pref("browser.helperApps.deleteTempFileOnExit", true);
 #endif
 
 // search engines URL
-pref("browser.search.searchEnginesURL",      "https://addons.mozilla.org/%LOCALE%/firefox/search-engines/");
+pref("browser.search.searchEnginesURL",      "https://addons.mozilla.org/%LOCALE%/firefox/search-tools/");
 
 // pointer to the default engine name
 pref("browser.search.defaultenginename",      "chrome://browser-region/locale/region.properties");
