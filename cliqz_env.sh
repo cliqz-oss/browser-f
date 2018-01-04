@@ -51,7 +51,7 @@ fi
 
 # by default use beta update channel, except Release
 export MOZ_UPDATE_CHANNEL=beta
-if [ "$CQZ_RELEASE_CHANNEL" = "release" ]; then
+if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
   export MOZ_UPDATE_CHANNEL=release
   # turn on PGO only for Release Windows build
   if [ $IS_WIN ]; then
@@ -61,7 +61,7 @@ fi
 
 export MOZ_OBJDIR=../obj
 
-if [ "$CQZ_BUILD_64BIT_WINDOWS" = "1" ]; then
+if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
   export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
 else
   export MOZCONFIG=browser/config/cliqz-release.mozconfig
@@ -89,7 +89,7 @@ export MOZ_BUILD_DATE=$CQZ_BUILD_ID
 # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
 # build artifacts back (to locale folder, same as FF)
 export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
-if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
+if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
   # upload symbols only for release build
   export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
 fi

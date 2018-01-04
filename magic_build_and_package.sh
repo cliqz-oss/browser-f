@@ -43,12 +43,12 @@ echo '***** Packaging *****'
 ./mach package
 
 echo '***** Prepare build symbols (release only) *****'
-if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
+if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
   ./mach buildsymbols
 fi
 
 echo '***** Build DE language pack *****'
-if [ "$CQZ_BUILD_DE_LOCALIZATION" = "1" ]; then
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   cd $OLDPWD
   cd $SRC_BASE/$MOZ_OBJDIR/browser/locales
   $MAKE merge-de LOCALE_MERGEDIR=$(pwd)/mergedir

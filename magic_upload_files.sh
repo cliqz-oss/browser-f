@@ -10,7 +10,7 @@ cd $SRC_BASE
 cd $OBJ_DIR
 
 echo '***** Generate MAR for DE, if needed *****'
-if [ "$CQZ_BUILD_DE_LOCALIZATION" = "1" ]; then
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   $MAKE -C ./tools/update-packaging full-update AB_CD=de \
     PACKAGE_BASE_DIR=`pwd`/dist/l10n-stage
 fi
@@ -46,7 +46,7 @@ $MAKE upload
 echo '***** Genereting build_properties.json *****'
 $ROOT_PATH/$SRC_BASE/build/gen_build_properties.py
 
-if [ "$CQZ_BUILD_DE_LOCALIZATION" = "1" ]; then
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   # Rename build_properties so name wont collide with repack
   cp build_properties.json en_build_properties.json
 
