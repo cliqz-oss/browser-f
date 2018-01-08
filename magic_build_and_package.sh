@@ -1,17 +1,8 @@
 #! /bin/bash
 
-# Copyright (c) 2016 Cliqz GmbH. All rights reserved.
-# Authors: Lucian Corlaciu <lucian@cliqz.com>
-#          Max Breev <maxim@cliqz.com>
-
-# Required ENVs:
-# WIN32_REDIST_DIR
-# CQZ_GOOGLE_API_KEY or MOZ_GOOGLE_API_KEY
-# MOZ_MOZILLA_API_KEY
-# CQZ_RELEASE_CHANNEL or MOZ_UPDATE_CHANNEL
-# CQZ_CERT_DB_PATH
-#
 # Optional ENVs:
+#  CQZ_BUILD_ID - specify special build timestamp or use latest one (depend on channel)
+#  CQZ_RELEASE_CHANNEL - specify special build channel (beta by default)
 #  CQZ_BUILD_DE_LOCALIZATION - for build DE localization
 
 set -e
@@ -27,12 +18,6 @@ fi
 
 if [ -z "$LANG" ]; then
   LANG='en-US'
-fi
-
-# for support old build
-if [[ "$LANG" == 'de' ]]; then
-  echo '***** German builds detected *****'
-  export MOZ_UI_LOCALE=de
 fi
 
 # for localization repack
@@ -58,12 +43,12 @@ echo '***** Packaging *****'
 ./mach package
 
 echo '***** Prepare build symbols (release only) *****'
-if [ "$MOZ_UPDATE_CHANNEL" = "release" ]; then
+if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
   ./mach buildsymbols
 fi
 
 echo '***** Build DE language pack *****'
-if [ $CQZ_BUILD_DE_LOCALIZATION ]; then
+if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   cd $OLDPWD
   cd $SRC_BASE/$MOZ_OBJDIR/browser/locales
   $MAKE merge-de LOCALE_MERGEDIR=$(pwd)/mergedir

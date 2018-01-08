@@ -71,7 +71,7 @@ class BuildProperties:
         self.properties['properties']['locale'] = os.environ.get('LANG', None)
         if not self.properties['properties']['locale']:
             raise ValueError("Environment variable LANG must be set")
-        self.properties['properties']['branch'] = os.environ.get('CQZ_RELEASE_CHANNEL', 'master')
+        self.properties['properties']['branch'] = os.environ.get('MOZ_UPDATE_CHANNEL', 'master')
 
 if __name__ == '__main__':
     s3_path = os.environ.get('S3_UPLOAD_PATH','')

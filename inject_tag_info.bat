@@ -8,9 +8,15 @@ if NOT "%lang%" == "" set ff_exe=%ff_version%.%lang%
 echo %ff_exe%
 echo %lang%
 
-set installer=dist\install\sea\cliqz-%ff_exe%.win32.installer.exe
-set tmp_installer=dist\install\sea\cliqz-%ff_exe%.win32.installer_tmp.exe
-set clean_installer=dist\install\sea\cliqz-%ff_exe%.win32.installer_clean.exe
+IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
+  SET platform_prefix=win64
+) ELSE (
+  SET platform_prefix=win32
+)
+
+set installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer.exe
+set tmp_installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_tmp.exe
+set clean_installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_clean.exe
 
 rem copy clean installer for future use
 copy %installer% %clean_installer%

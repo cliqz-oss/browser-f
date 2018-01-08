@@ -4,37 +4,66 @@
 
 ECHO [%TIME%] BUILD.CMD STARTS =========
 
-:::::::::::::::::::::::::::::::::::
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
 :: BUILD PARAMETERS
 ::
-:: Parameters must be set outside this script:
-::  CQZ_BUILD_ID
-::  CQZ_WORKSPACE - path to source code
-::  CLZ_CERTIFICATE_PATH - path to certificate for digital signing
-::  CLZ_CERTIFICATE_PWD - password for certificate
+:: All parameters are optional (with some default vaules)
+::  CQZ_BUILD_ID - Timestamp in format YYYYMMDDHHMMSS. Internally used by Firefox
+::                 as MOZ_BUILD_DATE. In Cliqz browser on build process downloading
+::                 an extensions from predefined path, which based on this timestamp.
+::                 Default: will be taken last build id from repository.cliqz.com.
+::                 It must be not possible to upload files from developer machine to S3 bucket)
 ::
-:: Optional parameters:
-::  CQZ_RELEASE_CHANNEL - if not set will be set to "beta"
-::  CQZ_BUILD_DE_LOCALIZATION - set it to 1 if you need DE localization together with en-US
-:::::::::::::::::::::::::::::::::::
-IF "%CQZ_BUILD_ID%"=="" (
-  ECHO "CQZ_BUILD_ID must be specified. Format YYYYMMDDHHMMSS, like 20160705124211"
-  EXIT 1
-)
-IF "%CQZ_WORKSPACE%"=="" (
-  ECHO "CQZ_WORKSPACE must be specified"
-  EXIT 1
-)
+::  CQZ_WORKSPACE - path to source code.
+::                  Default: a folder from where this script will be running
+::
+::  CQZ_BUILD_64BIT_WINDOWS - flag to build 64-bit browser.
+::                            Default: not specified.
+::
+::  CLZ_CERTIFICATE_PATH - path to certificate for digital signing
+::                         Default: not specified, signing and futher steps will not procceed
+::  CLZ_CERTIFICATE_PWD  - password for certificate
+::                         Default: not specified, signing and futher steps will not procceed
+::
+::  CQZ_RELEASE_CHANNEL - which version to build
+::                        Default: beta
+::
+::  CQZ_BUILD_DE_LOCALIZATION - flag to build DE localization together with en-US
+::                              Default: not specified
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+IF "%CQZ_WORKSPACE%"=="" SET CQZ_WORKSPACE=%cd%
 
 SET LANG=en-US
-IF "%CQZ_RELEASE_CHANNEL%" == "" SET CQZ_RELEASE_CHANNEL=beta
-
 SET CQZ_CERT_DB_PATH=C:\certdb
-SET WIN32_REDIST_DIR=C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC\redist\x86\Microsoft.VC140.CRT\
-SET WIN_UCRT_REDIST_DIR=c:\Program Files (x86)\Windows Kits\10\redist\ucrt\DLLs\x86\
+IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
+  SET WIN32_REDIST_DIR=C:\Program Files ^(x86^)\Microsoft Visual Studio 14.0\VC\redist\x64\Microsoft.VC140.CRT\
+  SET WIN_UCRT_REDIST_DIR=C:\Program Files ^(x86^)\Windows Kits\10\redist\ucrt\DLLs\x64\
+  SET BUILD_SHELL=C:\mozilla-build\start-shell-msvc2015-x64.bat
+) ELSE (
+  SET WIN32_REDIST_DIR=C:\Program Files ^(x86^)\Microsoft Visual Studio 14.0\VC\redist\x86\Microsoft.VC140.CRT\
+  SET WIN_UCRT_REDIST_DIR=C:\Program Files ^(x86^)\Windows Kits\10\redist\ucrt\DLLs\x86\
+  SET BUILD_SHELL=C:\mozilla-build\start-shell-msvc2015.bat
+)
 SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe
 
-ECHO INFO: Build configuration - %CQZ_RELEASE_CHANNEL% win32 (Localization: %CQZ_BUILD_DE_LOCALIZATION%)
+:::::::::::::::::::::::::::::::::::
+:: Information about build
+:::::::::::::::::::::::::::::::::::
+SET LOCALIZATION_INFO=Localization: en-US
+IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
+  SET LOCALIZATION_INFO=%LOCALIZATION_INFO%, de
+)
+IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
+  SET PLATFORM_INFO=64 bit
+) ELSE (
+  SET PLATFORM_INFO=32 bit
+)
+IF "%CQZ_RELEASE_CHANNEL%"=="" (
+  SET CHANNEL_INFO=beta
+) ELSE (
+  SET CHANNEL_INFO=%CQZ_RELEASE_CHANNEL%
+)
+ECHO INFO: Build configuration - %CHANNEL_INFO% channel, %PLATFORM_INFO% (%LOCALIZATION_INFO%)
 
 :::::::::::::::::::::::::::::::::::
 :: CERTIFICATE DB SETUP
@@ -51,14 +80,14 @@ certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 :: BOOTSTRAP
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Launch bootstrap stage
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive | call C:\mozilla-build\start-shell-msvc2015.bat
-ECHO rustup target add i686-pc-windows-msvc | call C:\mozilla-build\start-shell-msvc2015.bat
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& python mozilla-release/python/mozboot/bin/bootstrap.py --application-choice=browser --no-interactive | call %BUILD_SHELL%
+ECHO rustup target add i686-pc-windows-msvc | call %BUILD_SHELL%
 
 :::::::::::::::::::::::::::::::::::
 :: BUILD
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Starting build
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber | call C:\mozilla-build\start-shell-msvc2015.bat
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber | call %BUILD_SHELL%
 
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Build failed! Exiting.
@@ -79,7 +108,7 @@ IF ERRORLEVEL 1 (
 
 SET OLD_LANG=%LANG%
 SET LANG=de
-IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
+IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
   CD %CQZ_WORKSPACE%
   CALL sign_win.bat
 
@@ -90,9 +119,11 @@ IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
 )
 SET LANG=%OLD_LANG%
 
-:::::::::::::::::::::::::::::::::::
-:: SIGNING STUB INSTALLER
-:::::::::::::::::::::::::::::::::::
+::::::::::::::::::::::::::::::::::::::::
+:: SIGNING STUB INSTALLER, only 32-bit
+::::::::::::::::::::::::::::::::::::::::
+IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" GOTO inject_tag_area
+
 ECHO [%TIME%] INFO: Build successful. Signing...
 CD %CQZ_WORKSPACE%
 set STUB_PREFIX=-stub
@@ -105,7 +136,7 @@ IF ERRORLEVEL 1 (
 
 SET OLD_LANG=%LANG%
 SET LANG=de
-IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
+IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
   CD %CQZ_WORKSPACE%
   CALL sign_win.bat
 
@@ -120,6 +151,7 @@ set STUB_PREFIX=
 :::::::::::::::::::::::::::::::::::
 :: INJECT TAG AREA
 :::::::::::::::::::::::::::::::::::
+:inject_tag_area
 ECHO [%TIME%] INFO: Signing complete successful. Inject tagged area...
 SET GOROOT=C:\Go
 CD %CQZ_WORKSPACE%
@@ -132,7 +164,7 @@ IF ERRORLEVEL 1 (
 
 SET OLD_LANG=%LANG%
 SET LANG=de
-IF DEFINED CQZ_BUILD_DE_LOCALIZATION (
+IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
   CD %CQZ_WORKSPACE%
   CALL inject_tag_info.bat
 
@@ -147,7 +179,7 @@ SET LANG=%OLD_LANG%
 :: UPLOAD AND SUBMIT
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Injected tag area successful. Uploading...
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_upload_files.sh | call C:\mozilla-build\start-shell-msvc2015.bat
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_upload_files.sh | call %BUILD_SHELL%
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Upload failed! Exiting.
   EXIT 1

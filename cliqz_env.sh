@@ -51,38 +51,47 @@ fi
 
 # by default use beta update channel, except Release
 export MOZ_UPDATE_CHANNEL=beta
-if [ "$CQZ_RELEASE_CHANNEL" = "release" ]; then
+if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
   export MOZ_UPDATE_CHANNEL=release
   # turn on PGO only for Release Windows build
   if [ $IS_WIN ]; then
-    if [ $CQZ_BUILD_ID ]; then
-      export MOZ_PGO=1 # release build optimization flag
-    fi
+    export MOZ_PGO=1 # release build optimization flag
   fi
 fi
 
 export MOZ_OBJDIR=../obj
 
-export MOZCONFIG=browser/config/cliqz-release.mozconfig
+if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
+  export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
+else
+  export MOZCONFIG=browser/config/cliqz-release.mozconfig
+fi
+
 export CQZ_VERSION=$(cat ./mozilla-release/browser/config/version_display.txt)
-export MOZ_AUTOMATION_UPLOAD=1  # TODO: remove, duplicates cliqz.mozconfig
 export CQZ_BALROG_DOMAIN=balrog-admin.10e99.net
 export BALROG_PATH=../build-tools/scripts/updates
 export S3_BUCKET=repository.cliqz.com
 export S3_BUCKET_SERVICE=cliqz-browser-data
-# this condition only for transaction period between old and new build system
+
+# check CQZ_BUILD_ID and try to obtain, if not specified
 if [ -z $CQZ_BUILD_ID ]; then
-  export S3_UPLOAD_PATH=`echo dist/pr/$CQZ_RELEASE_CHANNEL`
-else
-  # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
-  # build artifacts back (to locale folder, same as FF)
-  export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
-  if [ "$CQZ_RELEASE_CHANNEL" = "release" ]; then
-    # upload symbols only for release build
-    export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$CQZ_BUILD_ID`
-  fi
-  # set our own BUILD_ID in new build system, must be specified in format %Y%m%d%H%M%S
-  export MOZ_BUILD_DATE=$CQZ_BUILD_ID
+  export CQZ_BUILD_ID="`wget -qO- https://$S3_BUCKET/dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/lastbuildid`"
+fi
+
+if [ -z $CQZ_BUILD_ID ]; then
+  echo "CQZ_BUILD_ID not specified and can not be obtain from "$S3_BUCKET
+  exit 1
+fi
+
+# set our own BUILD_ID in new build system, must be specified in format %Y%m%d%H%M%S
+export MOZ_BUILD_DATE=$CQZ_BUILD_ID
+
+# set path on S3 with BUILD_ID. From this path we take *.xpi and upload
+# build artifacts back (to locale folder, same as FF)
+export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
+if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
+  # upload symbols only for release build
+  export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
 fi
 
 OBJ_DIR=$MOZ_OBJDIR

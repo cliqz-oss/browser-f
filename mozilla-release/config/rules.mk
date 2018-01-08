@@ -1247,24 +1247,8 @@ endif
 # CHROME PACKAGING
 
 # Cliqz additional distribution files
-# For transition period (moving to new build system) let's use both, old and new
-# variant for downloading XPI.
-# NEW:
-ifdef CQZ_BUILD_ID
-CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/cliqz@cliqz.com.xpi"
-HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(CQZ_BUILD_ID)/https-everywhere@cliqz.com.xpi"
-endif  # CQZ_BUILD_ID
-
-# OLD:
-ifndef CQZ_BUILD_ID
-# TODO: Move to external file.
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser_beta/latest.xpi"
-HTTPSE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_beta/https-everywhere/https-everywhere@cliqz.com-5.2.9.3-browser_beta-signed.xpi"
-ifeq (release, $(CQZ_RELEASE_CHANNEL))
-CLIQZ_EXT_URL = "http://cdn2.cliqz.com/update/browser/Cliqz.1.13.0.xpi"
-HTTPSE_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser/https-everywhere/https-everywhere@cliqz.com-5.2.9.3-browser-signed.xpi"
-endif  # ifeq (release, $(CQZ_RELEASE_CHANNEL))
-endif  # CQZ_BUILD_ID
+CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
+HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(MOZ_UPDATE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
