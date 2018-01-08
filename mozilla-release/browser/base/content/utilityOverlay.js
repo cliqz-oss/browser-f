@@ -228,7 +228,7 @@ function openLinkIn(url, where, params) {
   var aInBackground         = params.inBackground;
   var aDisallowInheritPrincipal = params.disallowInheritPrincipal;
   var aInitiatingDoc        = params.initiatingDoc;
-  var aIsPrivate            = params.private;
+  var aIsPrivate            = params.private || params.isContentWindowPrivate;
   var aSkipTabAnimation     = params.skipTabAnimation;
   var aAllowPinnedTabHostChange = !!params.allowPinnedTabHostChange;
   var aNoReferrer           = params.noReferrer;
