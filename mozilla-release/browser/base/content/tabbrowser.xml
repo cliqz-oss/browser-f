@@ -915,8 +915,10 @@
                 }
                 // Tabs in private windows aren't registered as "Open" so
                 // that they don't appear as switch-to-tab candidates.
+                // CLIQZ: also don't register windows from Forget tabs.
                 if (!isBlankPageURL(aLocation.spec) &&
-                    (!PrivateBrowsingUtils.isWindowPrivate(window) ||
+                    ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
+                      !PrivateBrowsingUtils.isBrowserPrivate(this.mTab.linkedBrowser)) ||
                     PrivateBrowsingUtils.permanentPrivateBrowsing)) {
                   this.mTabBrowser._unifiedComplete
                                   .registerOpenPage(aLocation, userContextId);
