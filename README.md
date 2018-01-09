@@ -2,8 +2,8 @@
 
 Cliqz develops novel Internet browsers that incorporate proprietary features such as search and anti-tracking. This repository is about the Cliqz desktop browser, based on Mozilla Firefox – thus the repository name “browser-f” like Firefox. It is available for Windows and Mac. Learn more about our products and team at [cliqz.com](https://cliqz.com).
 
-Most features developed by Cliqz and offered as part of the Cliqz browsers are maintained in the open source project [browser-core](https://github.com/cliqz-oss/browser-core).  
- 
+Most features developed by Cliqz and offered as part of the Cliqz browsers are maintained in the open source project [browser-core](https://github.com/cliqz-oss/browser-core).
+
 If you are curious about our mobile browsers, please visit our open source projects for [Cliqz for Android](https://github.com/cliqz-oss/browser-android) and [Cliqz for iOS](https://github.com/cliqz-oss/browser-ios).
 
 ## Building
@@ -15,23 +15,21 @@ Next run a building script: `./magic_build_and_package.sh`
 
 The successful build should create packages for the appropriate platform in:
 
-* windows installer: `./mozilla-release/obj-firefox/dist/installer/sea/`
-* mac dmg: `./mozilla-release/obj-firefox/dist/`
-* linux tar.bz2: `./mozilla-release/obj-firefox/dist/`
+* windows installer: `./obj/dist/installer/sea/`
+* mac dmg: `./obj/dist/`
+* linux tar.bz2: `./obj/dist/`
+
+Details:
+
+To build a Cliqz browser some environment variables must be set up. If they don't - build script will use deafult values for them. Also developer can specify them to have special build:
+* CQZ_BUILD_ID - special identifier which will be used as MOZ_BUILD_DATE on all platforms (for same buildid). It used to save build artifacts to separate location in repository.cliqz.com. Also this ID used to download a special version of Cliqz and https-everywhere extensions, which are necessary for proper build process.
+* CQZ_RELEASE_CHANNEL - which version to build, beta or release. By default building "beta" version.
+* CQZ_BUILD_DE_LOCALIZATION - by default will be only en-US localization build. If you need a DE version - set this flag to 1. By default not specified.
+* CQZ_BUILD_64BIT_WINDOWS - to build 64-bit version (for Windows only). On Mac always building 64-bit version. By default not specified.
 
 ## Running
 
-To test the build use the regular Firefox process followed by:
-
-* change working directory `cd mozilla-release`
-* set environment variables:
-
-```
-export MOZ_OBJDIR=obj-firefox
-export MOZCONFIG=`pwd`/browser/config/mozconfig
-```
-
-Then run as regular Firefox build with `./mach run`.
+To test the build switch to build folder (./obj/dist/cliqz) and launch binaries.
 
 ## Developing
 
