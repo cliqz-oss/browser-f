@@ -44,8 +44,10 @@ withCredentials([
     def CQZ_BUILD_64BIT_WINDOWS
 
     if (params.CQZ_BUILD_64BIT_WINDOWS) {
+        currentBuild.description = '64 bit'
         CQZ_BUILD_64BIT_WINDOWS = 1
     } else {
+        currentBuild.description = '32 bit'
         CQZ_BUILD_64BIT_WINDOWS = 0
     }
 
