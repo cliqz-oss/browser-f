@@ -50,7 +50,7 @@ else
 fi
 
 # by default use beta update channel, except Release
-if [ -z $CQZ_RELEASE_CHANNEL]; then
+if [ -z $CQZ_RELEASE_CHANNEL ]; then
   export CQZ_RELEASE_CHANNEL=beta
 fi
 export MOZ_UPDATE_CHANNEL=beta
