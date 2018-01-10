@@ -50,7 +50,11 @@ else
 fi
 
 # by default use beta update channel, except Release
+if [ -z $CQZ_RELEASE_CHANNEL]; then
+  export CQZ_RELEASE_CHANNEL=beta
+fi
 export MOZ_UPDATE_CHANNEL=beta
+
 if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
   export MOZ_UPDATE_CHANNEL=release
   # turn on PGO only for Release Windows build
@@ -60,7 +64,6 @@ if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
 fi
 
 export MOZ_OBJDIR=../obj
-
 if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
   export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
 else
@@ -75,7 +78,7 @@ export S3_BUCKET_SERVICE=cliqz-browser-data
 
 # check CQZ_BUILD_ID and try to obtain, if not specified
 if [ -z $CQZ_BUILD_ID ]; then
-  export CQZ_BUILD_ID="`wget -qO- https://$S3_BUCKET/dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/lastbuildid`"
+  export CQZ_BUILD_ID="`wget -qO- https://$S3_BUCKET/dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/lastbuildid`"
 fi
 
 if [ -z $CQZ_BUILD_ID ]; then
@@ -88,10 +91,10 @@ export MOZ_BUILD_DATE=$CQZ_BUILD_ID
 
 # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
 # build artifacts back (to locale folder, same as FF)
-export S3_UPLOAD_PATH=`echo dist/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
-if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
+export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
+if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
   # upload symbols only for release build
-  export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$MOZ_UPDATE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
+  export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
 fi
 
 OBJ_DIR=$MOZ_OBJDIR
